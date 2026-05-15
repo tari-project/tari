@@ -309,6 +309,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             change_output_hashes: vec![],
             received_output_hashes: vec![],
             lock_height: 0,
+            rejection_reason: None,
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -381,7 +382,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let cancelled_tx_id = completed_txs[1].tx_id;
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
-    db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
+    db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown, None)
         .unwrap();
     let completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);

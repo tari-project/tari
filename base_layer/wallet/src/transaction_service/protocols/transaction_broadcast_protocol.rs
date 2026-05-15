@@ -120,7 +120,8 @@ where
                 return Ok(self.tx_id);
             }
             if let Err(e) = check_transaction_size(&completed_tx.transaction, self.tx_id) {
-                self.cancel_pending_transaction(TxCancellationReason::Oversized, None).await;
+                self.cancel_pending_transaction(TxCancellationReason::Oversized, None)
+                    .await;
                 return Err(e);
             }
 
@@ -246,10 +247,10 @@ where
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCancelled(
-                self.tx_id,
-                reason,
-                response.details.clone().unwrap_or_default(),
-            )))
+                    self.tx_id,
+                    reason,
+                    response.details.clone().unwrap_or_default(),
+                )))
                 .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -412,7 +413,11 @@ where
                 self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason, details) {
+        if let Err(e) = self
+            .resources
+            .db
+            .reject_completed_transaction(self.tx_id, reason, details)
+        {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel pending TxId: {} after failed sending attempt with error {:?}", self.tx_id, e

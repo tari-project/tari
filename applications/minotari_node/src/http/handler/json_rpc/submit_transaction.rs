@@ -77,8 +77,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     is_synced,
                     details: None,
                 },
-                TxStorageResponse::NotStoredConsensus(details) |
-                TxStorageResponse::NotStored(details) => {
+                TxStorageResponse::NotStoredConsensus(details) | TxStorageResponse::NotStored(details) => {
                     TxSubmissionResponse {
                         accepted: false,
                         rejection_reason: TxSubmissionRejectionReason::ValidationFailed,

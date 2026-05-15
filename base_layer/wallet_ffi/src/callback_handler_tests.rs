@@ -373,7 +373,7 @@ mod test {
         };
         db.insert_completed_transaction(5u64.into(), completed_tx_cancelled.clone())
             .unwrap();
-        db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
+        db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown, None)
             .unwrap();
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
@@ -637,6 +637,7 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 3u64.into(),
                 TxCancellationReason::UserCancelled,
+                String::new(),
             )))
             .unwrap();
         let start = Instant::now();
@@ -656,6 +657,7 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 4u64.into(),
                 TxCancellationReason::UserCancelled,
+                String::new(),
             )))
             .unwrap();
 
@@ -663,6 +665,7 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 5u64.into(),
                 TxCancellationReason::UserCancelled,
+                String::new(),
             )))
             .unwrap();
 

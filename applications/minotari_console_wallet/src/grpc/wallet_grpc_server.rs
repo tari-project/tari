@@ -1694,7 +1694,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
-                        rejected_reason: txn.rejection_reason.clone().unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                        rejected_reason: txn
+                            .rejection_reason
+                            .clone()
+                            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
                     }),
                 };
@@ -1834,7 +1837,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
-                    rejected_reason: txn.rejection_reason.clone().unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                    rejected_reason: txn
+                        .rejection_reason
+                        .clone()
+                        .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                     lock_height: txn.lock_height,
                 });
             }
@@ -1997,7 +2003,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
-                        rejected_reason: txn.rejection_reason.clone().unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                        rejected_reason: txn
+                            .rejection_reason
+                            .clone()
+                            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
                     };
 
@@ -2141,7 +2150,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
-                rejected_reason: txn.rejection_reason.clone().unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                rejected_reason: txn
+                    .rejection_reason
+                    .clone()
+                    .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: txn.lock_height,
             });
         }
@@ -4152,7 +4164,10 @@ fn completed_tx_to_transaction_info(
             .into_iter()
             .map(|pr| pr.to_vec())
             .collect(),
-        rejected_reason: txn.rejection_reason.clone().unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+        rejected_reason: txn
+            .rejection_reason
+            .clone()
+            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
         lock_height: txn.lock_height,
     }
 }
@@ -4286,7 +4301,10 @@ fn convert_wallet_transaction_into_transaction_info(
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
-                rejected_reason: tx.rejection_reason.clone().unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                rejected_reason: tx
+                    .rejection_reason
+                    .clone()
+                    .unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: tx.lock_height,
             }
         },

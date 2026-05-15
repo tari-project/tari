@@ -3353,6 +3353,7 @@ mod test {
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
+            rejection_reason: None,
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
@@ -3391,6 +3392,7 @@ mod test {
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
+            rejection_reason: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -3645,6 +3647,7 @@ mod test {
             mined_timestamp: None,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
+            rejection_reason: None,
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -3783,6 +3786,7 @@ mod test {
                 mined_timestamp: None,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
                 lock_height: 0,
+                rejection_reason: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3928,6 +3932,7 @@ mod test {
                 mined_timestamp: None,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
                 lock_height: 0,
+                rejection_reason: None,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

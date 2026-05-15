@@ -120,16 +120,21 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction".to_string(),
             TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent".to_string(),
             TxStorageResponse::NotStoredConsensus(details) => {
-                format!("Not stored due to consensus rule{}",
-                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default())
+                format!(
+                    "Not stored due to consensus rule{}",
+                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default()
+                )
             },
             TxStorageResponse::NotStored(details) => {
-                format!("Not stored{}",
-                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default())
+                format!(
+                    "Not stored{}",
+                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default()
+                )
             },
             TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined".to_string(),
-            TxStorageResponse::NotStoredFeeTooLow =>
-                "Not stored tx fee is below the minimum accepted by this mempool".to_string(),
+            TxStorageResponse::NotStoredFeeTooLow => {
+                "Not stored tx fee is below the minimum accepted by this mempool".to_string()
+            },
         };
         fmt.write_str(&storage)
     }
