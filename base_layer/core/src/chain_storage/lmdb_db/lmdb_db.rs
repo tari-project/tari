@@ -101,13 +101,16 @@ use jmt::{JellyfishMerkleTree, KeyHash, storage::TreeWriter};
 use lmdb_zero::{
     ConstTransaction,
     Database,
+    DatabaseOptions,
     EnvBuilder,
     Environment,
+    Error as LmdbError,
     LmdbResultExt,
     ReadTransaction,
     WriteTransaction,
+    error::NOTFOUND,
     open,
-    traits::AsLmdbBytes,
+    traits::{AsLmdbBytes, CreateCursor},
 };
 use log::*;
 use primitive_types::{U256, U512};
@@ -172,6 +175,7 @@ use crate::{
         InputMinedInfo,
         MinedInfo,
         MmrTree,
+        Optional,
         Reorg,
         TemplateRegistrationEntry,
         ValidatorNodeEntry,
@@ -283,7 +287,7 @@ const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_que
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
-const LMDB_DB_JMT_VALUE_DATA_v1: &str = "jmt_value_data";
+const LMDB_DB_JMT_VALUE_DATA_V1: &str = "jmt_value_data";
 const LMDB_DB_JMT_VALUE_DATA_V2: &str = "jmt_values_data";
 const LMDB_DB_JMT_NODE_DATA_V1: &str = "jmt_node_data";
 const LMDB_DB_JMT_NODE_DATA_V2: &str = "jmt_nodes_data";
@@ -327,7 +331,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_TEMPLATE_REGISTRATIONS,
         LMDB_DB_UTXO_SMT,
         LMDB_DB_JMT_VALUE_DATA_V2,
-        LMDB_DB_JMT_NODE_DATA_V1,
+        LMDB_DB_JMT_NODE_DATA_V2,
     ]
 }
 
@@ -393,7 +397,7 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .add_database(LMDB_DB_UTXO_SMT, flags)
-        .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags )
+        .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags)
         .add_database(LMDB_DB_JMT_NODE_DATA_V2, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
@@ -4386,7 +4390,7 @@ impl fmt::Display for MetadataValue {
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let _unused = verify_metadata_keys(db);
 
-    const MIGRATION_VERSION: u64 = 6;
+    const MIGRATION_VERSION: u64 = 7;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -4696,6 +4700,16 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             write_txn.commit()?;
         }
 
+        // MIGRATION: Rebuild the JMT on disk. The v1 layout used three databases
+        // (jmt_value_data, jmt_node_data, jmt_unique_key_data) with key encodings and stored
+        // payloads that are incompatible with v2 (which uses jmt_values_data + jmt_nodes_data).
+        // Rather than translating the old data, we re-derive the JMT from the canonical UTXO set:
+        // insert every unspent UTXO into a fresh tree, write it to the v2 tables, then drop the
+        // legacy tables entirely so their pages return to disk.
+        if migrate_from_version == 6 {
+            migrate_jmt_v1_to_v2(db)?;
+        }
+
         // Let's update the migration version
         {
             let migrated_to_version = migrate_from_version + 1;
@@ -4713,6 +4727,178 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             txn.commit()?;
         }
     }
+    Ok(())
+}
+
+/// Rebuild the JMT from the canonical UTXO set under the new v2 layout and drop the legacy
+/// v1 databases.
+///
+/// The v1 (`jmt_value_data`, `jmt_node_data`, `jmt_unique_key_data`) and v2
+/// (`jmt_values_data`, `jmt_nodes_data`) tables differ in both key encoding *and* stored payload,
+/// so the rows cannot be copied across. Instead this migration:
+///
+/// 1. Walks `utxo_commitment_index` to enumerate every unspent UTXO commitment.
+/// 2. For each commitment, looks up the mined output and computes `output.smt_hash(mined_height)`.
+/// 3. Inserts the full set into a fresh `JellyfishMerkleTree` at version 0 and writes the
+///    resulting node/value batch into the v2 tables via `LmdbTreeWriter`.
+/// 4. Deletes the three legacy v1 tables with `Database::delete` so their pages are reclaimed.
+///
+/// On a fresh database (no v1 tables present) the function is a no-op.
+fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
+    info!(target: LOG_TARGET, "[MIGRATIONS] v6: Starting JMT v1 → v2 rebuild");
+
+    // Open the legacy v1 databases by name. We deliberately avoid registering these in
+    // `build_lmdb_store` so that fresh nodes don't create them and migrated nodes can drop them
+    // permanently.
+    let open_v1 = |name: &'static str| -> Result<Option<Database<'static>>, ChainStorageError> {
+        match Database::open(db.env.clone(), Some(name), &DatabaseOptions::defaults()) {
+            Ok(opened) => Ok(Some(opened)),
+            Err(LmdbError::Code(code)) if code == NOTFOUND => Ok(None),
+            Err(e) => Err(ChainStorageError::AccessError(format!(
+                "Could not open legacy database `{name}`: {e}"
+            ))),
+        }
+    };
+
+    let v1_value_data = open_v1(LMDB_DB_JMT_VALUE_DATA_V1)?;
+    let v1_node_data = open_v1(LMDB_DB_JMT_NODE_DATA_V1)?;
+    let v1_unique_key_data = open_v1(LMDB_DB_JMT_UNIQUE_KEY_DATA)?;
+
+    if v1_value_data.is_none() && v1_node_data.is_none() && v1_unique_key_data.is_none() {
+        info!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] v6: No v1 JMT tables present, nothing to migrate"
+        );
+        return Ok(());
+    }
+
+    // Collect every unspent UTXO into a JMT batch. We do the lookups in a read transaction, then
+    // drop it before opening the write transaction.
+    let batch: Vec<(KeyHash, Option<Vec<u8>>)> = {
+        let read_txn = db.read_transaction()?;
+
+        // Commitments are the keys of `utxo_commitment_index`. Snapshot them so we can release
+        // the cursor borrow before we start doing per-key lookups.
+        let commitments: Vec<[u8; 32]> = {
+            let mut cursor = (&read_txn).cursor(db.utxo_commitment_index.clone()).map_err(|e| {
+                ChainStorageError::AccessError(format!(
+                    "Could not open cursor on utxo_commitment_index: {e}"
+                ))
+            })?;
+            let access = read_txn.access();
+            let mut out: Vec<[u8; 32]> = Vec::new();
+            let mut entry = cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                ChainStorageError::AccessError(format!(
+                    "Failed to read first utxo_commitment_index entry: {e}"
+                ))
+            })?;
+            while let Some((commitment, _output_hash)) = entry {
+                if commitment.len() != 32 {
+                    return Err(ChainStorageError::CriticalError(format!(
+                        "utxo_commitment_index key has unexpected length {}",
+                        commitment.len()
+                    )));
+                }
+                let mut bytes = [0u8; 32];
+                bytes.copy_from_slice(commitment);
+                out.push(bytes);
+                entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                    ChainStorageError::AccessError(format!(
+                        "Failed to advance cursor on utxo_commitment_index: {e}"
+                    ))
+                })?;
+            }
+            out
+        };
+
+        info!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] v6: {} unspent UTXOs will be inserted into the new JMT",
+            commitments.len()
+        );
+
+        let total = commitments.len();
+        db.set_stats_total_height(total as u64);
+        let mut batch: Vec<(KeyHash, Option<Vec<u8>>)> = Vec::with_capacity(total);
+        for (i, commitment) in commitments.into_iter().enumerate() {
+            let output_hash: HashOutput =
+                lmdb_get(&read_txn, &db.utxo_commitment_index, commitment.as_ref())?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
+                        entity: "utxo_commitment_index",
+                        field: "commitment",
+                        value: to_hex(commitment.as_ref()),
+                    }
+                })?;
+            let utxo_info = db
+                .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "TransactionOutput",
+                    field: "output_hash",
+                    value: output_hash.to_hex(),
+                })?;
+            let smt_node = utxo_info.output.smt_hash(utxo_info.mined_height).to_vec();
+            batch.push((KeyHash(commitment), Some(smt_node)));
+
+            if (i + 1).is_multiple_of(100_000) {
+                db.update_stats_progress((i + 1) as u64);
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v6: Prepared {}/{total} JMT batch entries",
+                    i + 1
+                );
+            }
+        }
+        batch
+    };
+
+    // Apply the rebuilt tree to the (currently empty) v2 tables in a single write transaction.
+    {
+        let write_txn = db.write_transaction()?;
+
+        // Reset the JMTVersion counter so the new tree starts from a clean baseline.
+        lmdb_delete(
+            &write_txn,
+            &db.metadata_db,
+            &MetadataKey::JMTVersion.as_u32(),
+            "metadata",
+        )
+        .optional()?;
+
+        let reader = LmdbTreeReader::new(&write_txn, db.jmt_node_data.clone(), db.jmt_value_data.clone());
+        let new_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (_root, ops) = new_smt
+            .put_value_set(batch, 0u64)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
+        let writer = LmdbTreeWriter::new(
+            &write_txn,
+            db.jmt_node_data.clone(),
+            db.jmt_value_data.clone(),
+            db.metadata_db.clone(),
+        );
+        writer
+            .write_node_batch(&ops.node_batch)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+
+        write_txn.commit()?;
+    }
+
+    // Drop each legacy v1 database. `Database::delete` consumes the handle and calls
+    // `mdb_drop` with the delete flag, returning the pages to the LMDB free list.
+    let delete_legacy = |name: &'static str, opt: Option<Database<'static>>| -> Result<(), ChainStorageError> {
+        if let Some(legacy) = opt {
+            legacy.delete().map_err(|e| {
+                ChainStorageError::AccessError(format!("Failed to delete legacy database `{name}`: {e}"))
+            })?;
+            info!(target: LOG_TARGET, "[MIGRATIONS] v6: Dropped legacy database `{name}`");
+        }
+        Ok(())
+    };
+    delete_legacy(LMDB_DB_JMT_VALUE_DATA_V1, v1_value_data)?;
+    delete_legacy(LMDB_DB_JMT_NODE_DATA_V1, v1_node_data)?;
+    delete_legacy(LMDB_DB_JMT_UNIQUE_KEY_DATA, v1_unique_key_data)?;
+
+    info!(target: LOG_TARGET, "[MIGRATIONS] v6: JMT v1 → v2 rebuild complete");
     Ok(())
 }
 
