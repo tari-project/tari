@@ -1,0 +1,30 @@
+[package]
+name = "minotari_utils"
+description = "Utility tool for Tari base node operations"
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+version = { workspace = true }
+edition = { workspace = true }
+
+[[bin]]
+name = "minotari_utils"
+path = "src/main.rs"
+
+[dependencies]
+tari_core = { workspace = true }
+
+lmdb-zero = "0.4.4"
+rusqlite = "0.32"
+
+clap = { version = "4.0", features = ["derive", "env"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+csv = "1.3"
+tabled = "0.15"
+anyhow = "1.0"
+env_logger = "0.11"
+bytesize = "1.3"
+
+[dev-dependencies]
+tempfile = "3.8"

@@ -1,0 +1,234 @@
+---
+name: "Integration Tests"
+
+"on":
+  push:
+    branches:
+      - "ci-*"
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  merge_group:
+  schedule:
+    - cron: "0 2 * * *" # daily @ 02h00 (non-critical)
+    - cron: "0 12 * * 6" # weekly - Saturday @ noon (long-running)
+  workflow_dispatch:
+    inputs:
+      ci_bins:
+        type: boolean
+        default: true
+        description: "run ci on binaries"
+      ci_ffi:
+        type: boolean
+        default: true
+        description: "run ci on ffi"
+      ci_profile:
+        default: ci
+        description: "ci profile to run"
+        type: string
+
+permissions: {}
+
+env:
+  toolchain: stable
+  nightly_toolchain: nightly-2025-06-24
+  RUSTUP_PERMIT_COPY_RENAME: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # cancel-in-progress: true
+
+jobs:
+  base_layer:
+    name: Cucumber tests / Base Layer
+    runs-on: [self-hosted, ubuntu-high-cpu]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Envs setup
+        id: envs_setup
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ] ; then
+            echo "CI_FFI=false" >> $GITHUB_ENV
+            if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
+              echo "CI_PROFILE=(not @long-running)" >> $GITHUB_ENV
+            elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
+              echo "CI_PROFILE=@long-running" >> $GITHUB_ENV
+            fi
+          else
+            echo "CI ..."
+            echo "CI_PROFILE=@critical and (not @long-running)" >> $GITHUB_ENV
+            CI_BINS=${{ inputs.ci_bins }}
+            echo "Run binary - ${CI_BINS}"
+            echo "CI_BINS=${CI_BINS:-true}" >> $GITHUB_ENV
+          fi
+
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          toolchain: ${{ env.toolchain }}
+
+      - name: Install ubuntu dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: caching (nightly)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
+
+      - name: cargo test compile
+        run: cargo test --no-run --locked --all-features --release
+
+      - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
+        if: ${{ env.CI_BINS == 'true' }}
+        timeout-minutes: 120
+        run: |
+          set -e
+          set -o pipefail
+          echo "Running integration tests with profile: ${{ env.CI_PROFILE }}"
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
+            -c 5 \
+            --retry 2
+          exit_code=$?
+          echo "Integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "Integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v7 # upload test results as artifact
+        if: always()
+        with:
+          name: junit-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+  ffi:
+    name: Cucumber tests / FFI
+    runs-on: [self-hosted, ubuntu-high-cpu]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Envs setup
+        id: envs_setup
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ] ; then
+            echo "CI_FFI=false" >> $GITHUB_ENV
+            if [ "${{ github.event.schedule }}" == "0 2 * * *" ] ; then
+              echo "CI_PROFILE=(not @long-running)" >> $GITHUB_ENV
+            elif [ "${{ github.event.schedule }}" == "0 12 * * 6" ] ; then
+              echo "CI_PROFILE=@long-running" >> $GITHUB_ENV
+            fi
+          else
+            echo "CI ..."
+            echo "CI_PROFILE=@critical and (not @long-running)" >> $GITHUB_ENV
+            CI_FFI=${{ inputs.ci_ffi }}
+            echo "Run FFI - ${CI_FFI}"
+            echo "CI_FFI=${CI_FFI:-true}" >> $GITHUB_ENV
+          fi
+
+      - name: Setup rust toolchain
+        if: ${{ env.CI_FFI == 'true' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          toolchain: ${{ env.toolchain }}
+
+      - name: Install ubuntu dependencies
+        if: ${{ env.CI_FFI == 'true' }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Cache cargo files and outputs
+        if: ${{ env.CI_FFI == 'true' }}
+        # Don't use rust-cache.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
+
+      - name: cargo test compile
+        if: ${{ env.CI_FFI == 'true' }}
+        run: cargo test --no-run --locked --all-features --release
+
+      - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
+        if: ${{ env.CI_FFI == 'true' }}
+        timeout-minutes: 90
+        run: |
+          set -e
+          set -o pipefail
+          echo "Running FFI integration tests with profile: ${{ env.CI_PROFILE }}"
+          cargo test \
+            --test cucumber \
+            -v \
+            --all-features \
+            --release \
+            --package tari_integration_tests \
+            -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
+            -c 1 \
+            --retry 2
+          exit_code=$?
+          echo "FFI integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "FFI integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v7 # upload test results as artifact
+        if: always()
+        with:
+          name: junit-ffi-cucumber
+          path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+  # needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

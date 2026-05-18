@@ -1,0 +1,112 @@
+//   Copyright 2022. The Tari Project
+//
+//   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//   following conditions are met:
+//
+//   1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//   disclaimer.
+//
+//   2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//   following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//   3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//   products derived from this software without specific prior written permission.
+//
+//   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fs,
+    io,
+    path::PathBuf,
+    str::{self},
+};
+
+use cucumber::{
+    World as _,
+    WriterExt,
+    event::ScenarioFinished,
+    writer::{self, Verbosity},
+};
+use log::*;
+use tari_common::initialize_logging;
+use tari_integration_tests::TariWorld;
+use tokio::runtime::Runtime;
+
+pub mod steps;
+
+pub const LOG_TARGET: &str = "cucumber";
+pub const LOG_TARGET_STDOUT: &str = "stdout";
+
+fn main() {
+    // Set the network env var once at startup — safe because no other threads exist yet.
+    // This replaces the unsafe set_var calls that were scattered across spawn functions.
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
+
+    initialize_logging(
+        &PathBuf::from("log4rs/cucumber.yml"),
+        &PathBuf::from("./"),
+        include_str!("../log4rs/cucumber.yml"),
+    )
+    .expect("logging not configured");
+    // Output capture removed - using internal feature that's not stable
+    // Tests will output to regular stdout/stderr instead
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(async {
+        let world = TariWorld::cucumber()
+        // .repeat_failed() — removed: retrying hides flaky tests instead of surfacing them
+        // following config needed to use eprint statements in the tests
+        .max_concurrent_scenarios(10)
+        .after(move |_feature, _rule, scenario, ev, maybe_world| {
+            Box::pin(async move {
+                match ev {
+                    ScenarioFinished::StepFailed(_capture_locations, _location, _error) => {
+                        error!(target: LOG_TARGET, "Scenario failed");
+                    },
+                    ScenarioFinished::StepPassed => {
+                        info!(target: LOG_TARGET, "Scenario was successful.");
+                    },
+                    ScenarioFinished::StepSkipped => {
+                        warn!(target: LOG_TARGET, "Some steps were skipped.");
+                    },
+                    ScenarioFinished::BeforeHookFailed(_info) => {
+                        error!(target: LOG_TARGET, "Before hook failed!");
+                    },
+                }
+                if let Some(maybe_world) = maybe_world {
+                    maybe_world.after(scenario).await;
+                }
+            })
+        })
+        .before(move |feature, _rule, scenario, world| {
+            Box::pin(async move {
+                println!("{} : {}", scenario.keyword, scenario.name); // This will be printed into the stdout_buffer
+                info!(target: LOG_TARGET, "Starting {} {}", scenario.keyword, scenario.name);
+
+                world.before(feature, scenario).await;
+            })
+        });
+        let file = fs::File::create("cucumber-output-junit.xml").unwrap();
+        world
+            .fail_on_skipped()
+            .fail_fast()
+            .with_writer(
+                writer::Summarize::new(writer::Basic::new(
+                    io::stdout(),
+                    writer::Coloring::Auto,
+                    Verbosity::ShowWorldAndDocString,
+                ))
+                .tee::<TariWorld, _>(writer::JUnit::for_tee(file, 0))
+                .normalized(),
+            )
+            .run_and_exit("tests/features/")
+            .await;
+    });
+}

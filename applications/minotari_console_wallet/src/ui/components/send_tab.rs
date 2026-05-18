@@ -1,0 +1,558 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+#![allow(clippy::indexing_slicing)]
+use log::*;
+#[cfg(feature = "ledger")]
+use minotari_ledger_wallet_comms::accessor_methods::ledger_get_public_spend_key;
+use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
+use tari_transaction_components::{
+    MicroMinotari,
+    transaction_components::memo_field::{MemoField, TxType},
+};
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
+use tari_utilities::hex::Hex;
+use tokio::{runtime::Handle, sync::watch};
+use tui::{
+    Frame,
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, Paragraph, TableState, Wrap},
+};
+use unicode_width::UnicodeWidthStr;
+
+use crate::ui::{
+    components::{Component, KeyHandled, balance::Balance},
+    state::{AppState, UiTransactionSendStatus},
+    widgets::draw_dialog,
+};
+
+const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
+
+pub struct SendTab {
+    balance: Balance,
+    send_input_mode: SendInputMode,
+    to_field: String,
+    payment_id_field: String,
+    amount_field: String,
+    fee_field: String,
+    message_field: String,
+    error_message: Option<String>,
+    success_message: Option<String>,
+    offline_message: Option<String>,
+    send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
+    confirmation_dialog: Option<ConfirmationDialogType>,
+    selected_unique_id: Option<Vec<u8>>,
+    table_state: TableState,
+    wallet_type: LegacyWalletType,
+}
+
+impl SendTab {
+    pub fn new(app_state: &AppState, wallet_type: LegacyWalletType) -> Self {
+        Self {
+            balance: Balance::new(),
+            send_input_mode: SendInputMode::None,
+            to_field: String::new(),
+            payment_id_field: String::new(),
+            amount_field: String::new(),
+            fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
+            message_field: String::new(),
+            error_message: None,
+            success_message: None,
+            offline_message: None,
+            send_result_watch: None,
+            confirmation_dialog: None,
+            selected_unique_id: None,
+            table_state: TableState::default(),
+            wallet_type,
+        }
+    }
+
+    // casting here is okay as we only use it here for draw widths
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
+    fn draw_send_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
+    where B: Backend {
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            "Send Transaction",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+        f.render_widget(block, area);
+        let vert_chunks = Layout::default()
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                ]
+                .as_ref(),
+            )
+            .margin(1)
+            .split(area);
+        let mut instructions = vec![Spans::from(vec![
+            Span::raw("Press "),
+            Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("To", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" field, "),
+            Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Amount/Token, ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" field, "),
+            Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
+        ])];
+
+        let mut send_instructions = vec![];
+        send_instructions.append(&mut vec![
+            Span::styled("S/O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to send a transaction"),
+        ]);
+        instructions.push(Spans::from(send_instructions));
+
+        let instructions = Paragraph::new(instructions)
+            .wrap(Wrap { trim: false })
+            .block(Block::default());
+        f.render_widget(instructions, vert_chunks[0]);
+
+        let to_input = Paragraph::new(self.to_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::To => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("(T)o (Tari Address or Emoji ID) :"),
+            );
+        f.render_widget(to_input, vert_chunks[1]);
+
+        let amount_fee_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(vert_chunks[2]);
+
+        let amount_input = Paragraph::new(match &self.selected_unique_id {
+            Some(token) => format!("Token selected: {}", token.to_hex()),
+            None => self.amount_field.to_string(),
+        })
+        .style(match self.send_input_mode {
+            SendInputMode::Amount => Style::default().fg(Color::Magenta),
+            _ => Style::default(),
+        })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("(A)mount (uT or T) or select Token:"),
+        );
+        f.render_widget(amount_input, amount_fee_layout[0]);
+
+        let fee_input = Paragraph::new(self.fee_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::Fee => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
+        f.render_widget(fee_input, amount_fee_layout[1]);
+
+        let payment_id_input = Paragraph::new(self.payment_id_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::PaymentId => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(P)ayment-id:"));
+        f.render_widget(payment_id_input, vert_chunks[3]);
+
+        match self.send_input_mode {
+            SendInputMode::None => (),
+            SendInputMode::To => f.set_cursor(
+                // Put cursor past the end of the input text
+                vert_chunks[1].x + self.to_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                vert_chunks[1].y + 1,
+            ),
+            SendInputMode::Amount => {
+                if self.selected_unique_id.is_none() {
+                    f.set_cursor(
+                        // Put cursor past the end of the input text
+                        amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
+                        // Move one line down, from the border to the input line
+                        amount_fee_layout[0].y + 1,
+                    )
+                }
+            },
+            SendInputMode::Fee => f.set_cursor(
+                // Put cursor past the end of the input text
+                amount_fee_layout[1].x + self.fee_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                amount_fee_layout[1].y + 1,
+            ),
+            SendInputMode::PaymentId => f.set_cursor(
+                // Put cursor past the end of the input text
+                vert_chunks[3].x + self.payment_id_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                vert_chunks[3].y + 1,
+            ),
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
+        if self.confirmation_dialog.is_some() {
+            if 'n' == c {
+                self.confirmation_dialog = None;
+                return KeyHandled::Handled;
+            } else if 'y' == c {
+                match self.confirmation_dialog {
+                    None => (),
+                    Some(ConfirmationDialogType::Normal) => {
+                        self.confirmation_dialog = None;
+                        if 'y' == c {
+                            let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
+                                v
+                            } else {
+                                if self.selected_unique_id.is_none() {
+                                    self.error_message =
+                                        Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                                    return KeyHandled::Handled;
+                                }
+                                MicroMinotari::from(0)
+                            };
+
+                            let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
+                                v
+                            } else {
+                                self.error_message =
+                                    Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                                return KeyHandled::Handled;
+                            };
+
+                            let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+                            let mut reset_fields = false;
+
+                            #[cfg(feature = "ledger")]
+                            if let LegacyWalletType::Ledger(ledger) = &self.wallet_type {
+                                match ledger_get_public_spend_key(ledger.account) {
+                                    Ok(spend_key) => {
+                                        if spend_key != ledger.public_alpha {
+                                            self.error_message = Some(
+                                                "Ledger public spend key does not match wallet public spend key. \
+                                                 Please ensure you have selected the correct Ledger.\nPress Enter to \
+                                                 continue."
+                                                    .to_string(),
+                                            );
+                                            return KeyHandled::Handled;
+                                        }
+                                    },
+                                    _ => {
+                                        self.error_message = Some(
+                                            "Could not connect to Ledger. Please ensure your Ledger is connected and \
+                                             unlocked.\nPress Enter to continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                }
+                            };
+
+                            match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
+                                self.to_field.clone(),
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                fee_per_gram,
+                                match MemoField::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther) {
+                                    Ok(payment_id) => payment_id,
+                                    Err(_) => {
+                                        self.error_message = Some(
+                                            "Payment ID is invalid or too large (max 256 bytes)\nPress Enter to \
+                                             continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                },
+                                tx,
+                            )) {
+                                Err(e) => {
+                                    self.error_message = Some(format!(
+                                        "Error sending one-sided transaction to stealth address:\n{e}\nPress Enter to \
+                                         continue."
+                                    ))
+                                },
+                                Ok(_) => reset_fields = true,
+                            }
+
+                            if reset_fields {
+                                self.to_field = "".to_string();
+                                self.amount_field = "".to_string();
+                                self.selected_unique_id = None;
+                                self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
+                                self.message_field = "".to_string();
+                                self.payment_id_field = "".to_string();
+                                self.send_input_mode = SendInputMode::None;
+                                self.send_result_watch = Some(rx);
+                            }
+                            return KeyHandled::Handled;
+                        }
+                    },
+                }
+            } else {
+                // dont care
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
+
+    fn on_key_send_input(&mut self, c: char) -> KeyHandled {
+        if self.send_input_mode != SendInputMode::None {
+            match self.send_input_mode {
+                SendInputMode::None => (),
+                SendInputMode::To => match c {
+                    '\n' => self.send_input_mode = SendInputMode::Amount,
+                    c => {
+                        self.to_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::Amount => match c {
+                    '\n' => {
+                        if self.selected_unique_id.is_some() {
+                            self.amount_field = "".to_string();
+                        }
+                        self.send_input_mode = SendInputMode::PaymentId
+                    },
+                    c => {
+                        if self.selected_unique_id.is_none() {
+                            let symbols = &['t', 'T', 'u', 'U'];
+                            if c.is_numeric() || symbols.contains(&c) {
+                                self.amount_field.push(c);
+                            }
+                        }
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::Fee => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        if c.is_numeric() {
+                            self.fee_field.push(c);
+                        }
+                        return KeyHandled::Handled;
+                    },
+                },
+                SendInputMode::PaymentId => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        self.payment_id_field.push(c);
+                        return KeyHandled::Handled;
+                    },
+                },
+            }
+        }
+
+        KeyHandled::NotHandled
+    }
+}
+
+impl<B: Backend> Component<B> for SendTab {
+    #[allow(clippy::too_many_lines)]
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+        let areas = Layout::default()
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(14),
+                    Constraint::Min(42),
+                    Constraint::Length(1),
+                ]
+                .as_ref(),
+            )
+            .split(area);
+
+        self.balance.draw(f, areas[0], app_state);
+        self.draw_send_form(f, areas[1], app_state);
+
+        let rx_option = self.send_result_watch.take();
+        if let Some(rx) = rx_option {
+            trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
+            let status = match (*rx.borrow()).clone() {
+                UiTransactionSendStatus::Initiated => "Initiated",
+                UiTransactionSendStatus::Error(e) => {
+                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
+                    return;
+                },
+                UiTransactionSendStatus::TransactionComplete => {
+                    self.success_message =
+                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                    return;
+                },
+            };
+            draw_dialog(
+                f,
+                area,
+                "Please Wait".to_string(),
+                format!("Transaction Send Status: {status}"),
+                Color::Green,
+                120,
+                10,
+            );
+            self.send_result_watch = Some(rx);
+        }
+
+        if let Some(msg) = self.success_message.clone() {
+            draw_dialog(f, area, "Success!".to_string(), msg, Color::Green, 120, 9);
+        }
+
+        if let Some(msg) = self.offline_message.clone() {
+            draw_dialog(f, area, "Offline!".to_string(), msg, Color::Green, 120, 9);
+        }
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        match self.confirmation_dialog {
+            None => (),
+            Some(ConfirmationDialogType::Normal) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Sending Transaction".to_string(),
+                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+        }
+    }
+
+    fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if self.error_message.is_some() {
+            if '\n' == c {
+                self.error_message = None;
+            }
+            return;
+        }
+
+        if self.success_message.is_some() {
+            if '\n' == c {
+                self.success_message = None;
+            }
+            return;
+        }
+
+        if self.offline_message.is_some() {
+            if '\n' == c {
+                self.offline_message = None;
+            }
+            return;
+        }
+
+        if self.send_result_watch.is_some() {
+            return;
+        }
+
+        if self.on_key_confirmation_dialog(c, app_state) == KeyHandled::Handled {
+            return;
+        }
+
+        if self.on_key_send_input(c) == KeyHandled::Handled {
+            return;
+        }
+
+        match c {
+            't' => self.send_input_mode = SendInputMode::To,
+            'a' => {
+                self.send_input_mode = SendInputMode::Amount;
+            },
+            'f' => self.send_input_mode = SendInputMode::Fee,
+            'p' => self.send_input_mode = SendInputMode::PaymentId,
+            's' | 'o' => {
+                if self.to_field.is_empty() {
+                    self.error_message =
+                        Some("Destination Tari Address/Emoji ID\nPress Enter to continue.".to_string());
+                    return;
+                }
+                if self.amount_field.is_empty() && self.selected_unique_id.is_none() {
+                    self.error_message = Some("Amount or token required\nPress Enter to continue.".to_string());
+                    return;
+                }
+                if self.amount_field.parse::<MicroMinotari>().is_err() && self.selected_unique_id.is_none() {
+                    self.error_message =
+                        Some("Amount should be a valid amount of Minotari\nPress Enter to continue.".to_string());
+                    return;
+                }
+
+                self.confirmation_dialog = Some(ConfirmationDialogType::Normal);
+            },
+            _ => {},
+        }
+    }
+
+    fn on_up(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
+            let index = self.table_state.selected().unwrap_or_default();
+            if index == 0 {
+                self.table_state.select(None);
+            }
+        } else {
+            // dont care
+        }
+    }
+
+    fn on_down(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
+            self.table_state.select(None);
+        } else {
+            // dont care
+        }
+    }
+
+    fn on_esc(&mut self, _app_state: &mut AppState) {
+        self.send_input_mode = SendInputMode::None;
+    }
+
+    fn on_backspace(&mut self, _app_state: &mut AppState) {
+        match self.send_input_mode {
+            SendInputMode::To => {
+                let _ = self.to_field.pop();
+            },
+            SendInputMode::Amount => {
+                if self.selected_unique_id.is_none() {
+                    let _ = self.amount_field.pop();
+                }
+            },
+            SendInputMode::Fee => {
+                let _ = self.fee_field.pop();
+            },
+            SendInputMode::PaymentId => {
+                let _ = self.payment_id_field.pop();
+            },
+            SendInputMode::None => {},
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub enum SendInputMode {
+    None,
+    To,
+    Amount,
+    Fee,
+    PaymentId,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ConfirmationDialogType {
+    Normal,
+}

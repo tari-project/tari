@@ -1,0 +1,141 @@
+// Copyright 2019. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
+};
+use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
+use tari_transaction_components::{
+    MicroMinotari,
+    tari_proof_of_work::Difficulty,
+    transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+};
+
+use crate::chain_storage::{
+    InputMinedInfo,
+    MinedInfo,
+    OutputMinedInfo,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
+};
+/// API Response enum
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub enum NodeCommsResponse {
+    ChainMetadata(ChainMetadata),
+    TransactionKernels(Vec<TransactionKernel>),
+    BlockHeaders(Vec<ChainHeader>),
+    BlockHeader(Option<ChainHeader>),
+    Block(Box<Option<Block>>),
+    TransactionOutputs(Vec<TransactionOutput>),
+    HistoricalBlocks(Vec<HistoricalBlock>),
+    HistoricalBlock(Box<Option<HistoricalBlock>>),
+    NewBlockTemplate(NewBlockTemplate),
+    NewBlock {
+        success: bool,
+        error: Option<String>,
+        block: Option<Block>,
+    },
+    TargetDifficulty(Difficulty),
+    MmrNodes(Vec<HashOutput>, Vec<u8>),
+    FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
+    FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
+    FetchValidatorNodeChangesResponse(Vec<ValidatorNodeChange>),
+    GetValidatorNode(Option<ValidatorNodeRegistrationInfo>),
+    FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
+    OutputMinedInfo(Option<OutputMinedInfo>),
+    MinedInfo(MinedInfo),
+    InputMinedInfo(Option<InputMinedInfo>),
+    PayRef(Option<FixedHash>),
+}
+
+impl Display for NodeCommsResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
+        use NodeCommsResponse::*;
+        match self {
+            ChainMetadata(_) => write!(f, "ChainMetadata"),
+            TransactionKernels(_) => write!(f, "TransactionKernel"),
+            BlockHeaders(_) => write!(f, "BlockHeaders"),
+            BlockHeader(_) => write!(f, "BlockHeader"),
+            Block(_) => write!(f, "Block"),
+            HistoricalBlock(_) => write!(f, "HistoricalBlock"),
+            TransactionOutputs(_) => write!(f, "TransactionOutputs"),
+            HistoricalBlocks(_) => write!(f, "HistoricalBlocks"),
+            NewBlockTemplate(_) => write!(f, "NewBlockTemplate"),
+            NewBlock {
+                success,
+                error,
+                block: _,
+            } => write!(
+                f,
+                "NewBlock({},{},...)",
+                success,
+                error.as_ref().unwrap_or(&"Unspecified".to_string())
+            ),
+            TargetDifficulty(_) => write!(f, "TargetDifficulty"),
+            MmrNodes(_, _) => write!(f, "MmrNodes"),
+            FetchMempoolTransactionsByExcessSigsResponse(resp) => write!(
+                f,
+                "FetchMempoolTransactionsByExcessSigsResponse({} transaction(s), {} not found)",
+                resp.transactions.len(),
+                resp.not_found.len()
+            ),
+            FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
+            GetValidatorNode(_) => write!(f, "GetValidatorNode"),
+            FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
+            OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
+            MinedInfo(_) => write!(f, "MinedInfo"),
+            InputMinedInfo(_) => write!(f, "InputMinedInfo"),
+            PayRef(_) => write!(f, "PayRef"),
+            FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
+        }
+    }
+}
+
+/// Container struct for mempool transaction responses
+#[derive(Debug, Clone)]
+pub struct FetchMempoolTransactionsResponse {
+    pub transactions: Vec<Arc<Transaction>>,
+    pub not_found: Vec<PrivateKey>,
+}
+
+/// Represents a validator node state change
+#[derive(Debug, Clone)]
+pub enum ValidatorNodeChange {
+    Add {
+        registration: Box<ValidatorNodeRegistration>,
+        activation_epoch: VnEpoch,
+        minimum_value_promise: MicroMinotari,
+        shard_key: [u8; 32],
+    },
+    Remove {
+        public_key: CompressedPublicKey,
+    },
+}

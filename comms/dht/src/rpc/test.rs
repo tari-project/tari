@@ -1,0 +1,177 @@
+//  Copyright 2020, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#![allow(clippy::indexing_slicing)]
+use std::{convert::TryInto, sync::Arc, time::Duration};
+
+use futures::StreamExt;
+use tari_comms::{
+    PeerManager,
+    peer_manager::PeerFeatures,
+    protocol::rpc::mock::RpcRequestMock,
+    test_utils::node_identity::build_node_identity,
+};
+use tari_test_utils::collect_recv;
+
+use crate::{
+    DhtConfig,
+    rpc::{DhtRpcService, DhtRpcServiceImpl},
+    test_utils::build_peer_manager,
+};
+
+fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
+    let peer_manager = build_peer_manager();
+    let mock = RpcRequestMock::new(peer_manager.clone());
+    let config = Arc::new(DhtConfig::default_local_test());
+    let service = DhtRpcServiceImpl::new(peer_manager.clone(), config);
+
+    (service, mock, peer_manager)
+}
+
+mod get_peers {
+    use std::borrow::BorrowMut;
+
+    use tari_comms::test_utils::node_identity::build_many_node_identities;
+
+    use super::*;
+    use crate::{proto::rpc::GetPeersRequest, rpc::UnvalidatedPeerInfo};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn it_returns_empty_peer_stream() {
+        let (service, mock, _) = setup();
+        let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let req = GetPeersRequest {
+            n: 10,
+            include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
+        };
+
+        let req = mock.request_with_context(node_identity.node_id().clone(), req);
+        let mut peers_stream = service.get_peers(req).await.unwrap();
+        let next = peers_stream.next().await;
+        // Empty stream
+        assert!(next.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn it_returns_all_peers() {
+        let (service, mock, peer_manager) = setup();
+        let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
+        for peer in nodes.iter().chain(clients.iter()) {
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+        let req = GetPeersRequest {
+            n: 5,
+            include_clients: true,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
+        };
+
+        let peers_stream = service
+            .get_peers(mock.request_with_context(Default::default(), req))
+            .await
+            .unwrap();
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
+        assert_eq!(results.len(), 5);
+
+        let peers = results
+            .into_iter()
+            .map(Result::unwrap)
+            .map(|r| r.peer.unwrap())
+            .map(|p| p.try_into().unwrap())
+            .collect::<Vec<UnvalidatedPeerInfo>>();
+
+        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_client()).count(), 2);
+        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_node()).count(), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn it_excludes_clients() {
+        let (service, mock, peer_manager) = setup();
+        let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
+        for peer in nodes.iter().chain(clients.iter()) {
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+        let req = GetPeersRequest {
+            n: 3,
+            include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
+        };
+
+        let peers_stream = service
+            .get_peers(mock.request_with_context(Default::default(), req))
+            .await
+            .unwrap();
+        let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
+        assert_eq!(results.len(), 3);
+
+        let peers = results
+            .into_iter()
+            .map(Result::unwrap)
+            .map(|r| r.peer.unwrap())
+            .map(|p| p.try_into().unwrap())
+            .collect::<Vec<UnvalidatedPeerInfo>>();
+
+        assert!(peers.iter().all(|p| p.claims[0].features.is_node()));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn it_returns_n_peers() {
+        let (service, mock, peer_manager) = setup();
+
+        let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let peers = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        for peer in &peers {
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+        let req = GetPeersRequest {
+            n: 2,
+            include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
+        };
+
+        let req = mock.request_with_context(node_identity.node_id().clone(), req);
+        let peers_stream = service.get_peers(req).await.unwrap();
+        let results = peers_stream.collect::<Vec<_>>().await;
+        assert_eq!(results.len(), 2);
+    }
+}

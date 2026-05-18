@@ -1,0 +1,82 @@
+// Copyright 2021. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::fmt::Display;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::BlockHash;
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionOutput};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputMinedInfo {
+    pub output: TransactionOutput,
+    pub mined_height: u64,
+    pub header_hash: BlockHash,
+    pub mined_timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputMinedInfo {
+    pub input: TransactionInput,
+    pub spent_height: u64,
+    pub header_hash: BlockHash,
+    pub spent_timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinedInfo {
+    pub input: Option<InputMinedInfo>,
+    pub output: Option<OutputMinedInfo>,
+}
+
+impl Display for MinedInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(output) = &self.output {
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(output.mined_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            writeln!(
+                f,
+                "Output mined at height {} in block {} at timestamp {}",
+                output.mined_height,
+                output.header_hash,
+                time.to_rfc2822()
+            )?;
+        } else {
+            writeln!(f, "Output not mined ")?;
+        }
+        if let Some(input) = &self.input {
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(input.spent_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            writeln!(
+                f,
+                "Output spent at height {} in block {} at timestamp {}",
+                input.spent_height,
+                input.header_hash,
+                time.to_rfc2822()
+            )?;
+        } else {
+            writeln!(f, "Output not spent")?;
+        }
+        Ok(())
+    }
+}

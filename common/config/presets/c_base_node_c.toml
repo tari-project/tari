@@ -1,0 +1,444 @@
+# A path to the file that stores your node identity and secret key (default = "config/base_node_id.json")
+#identity_file = "config/base_node_id.json"
+
+# Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
+# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
+#use_libtor = false
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+# (default = "config/tor_id.json")
+#tor_identity_file = "config/base_node_tor_id.json"
+
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases. (default = "lmdb")
+#db_type = "lmdb"
+
+# The relative path to store persistent data (default = "data/base_node")
+#data_dir = "data/base_node"
+
+# The relative path to store the lmdb blockchain data (default = "db")
+#lmdb_path = "db"
+
+# The maximum amount of VMs that RandomX will be use (default = 5)
+#max_randomx_vms = 5
+
+# Bypass range proof verification to speed up validation (default = false)
+#bypass_range_proof_verification = false
+
+# This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
+# couple of nodes that you always want to have in sync. If set this node will only sync to the nodes in this set.
+# force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
+
+# This allowlist provides a method to keep a connection open to the spesified nodes in this list.
+#monitored_peers= ["public_key1::address1", "public_key2::address2",... ]
+
+# The maximum amount of seconds wait for remote base node responses for messaging-based requests.
+#messaging_request_timeout = 60
+
+# The time interval between status line updates in the CLI (default = 5 s)
+#status_line_interval = 5
+
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# (min value = 30, default value = 1500).
+#buffer_size = 1500
+
+# Liveness metadata auto ping interval between peers (default = 30 s)
+#metadata_auto_ping_interval = 30
+
+# Obscure GRPC error responses (default = false)
+#report_grpc_error = false
+
+# Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
+# tari_pulse_interval = 120
+
+# Interval which the node will use to discover and dial the seed peers (Default: Disabled).
+# tari_pulse_health_check = 600 # 10 mins
+
+[base_node.lmdb]
+#init_size_bytes = 16_777_216 # 16 *1024 * 1024
+#grow_size_bytes = 16_777_216 # 16 *1024 * 1024
+#resize_threshold_bytes = 4_194_304 # 4 *1024 * 1024
+# Turn off readahead. Most operating systems perform readahead on read requests by default. This option turns it
+# off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and system
+# RAM is full. The option is not implemented on Windows. (Default: false)
+#no_read_ahead = false
+
+[base_node.storage]
+# The maximum number of orphans that can be stored in the Orphan block pool.
+#orphan_storage_capacity = 720
+# The pruning horizon that is set for a default configuration of the blockchain db.
+#pruning_horizon = 0
+# The chain height interval used to determine when a pruned node should perform pruning.
+#pruning_interval = 50
+# Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command. Default = false
+track_reorgs = true
+# Clean out
+#cleanup_orphans_at_startup = true
+#clear_bad_blocks_at_startup = true
+
+[base_node.mempool]
+# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
+#unconfirmed_pool.storage_capacity = 40_000
+# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
+# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
+#unconfirmed_pool.weight_tx_skip_count = 20
+# The minimum fee accepted by the mempool
+#unconfirmed_pool.min_fee = 50,
+
+# The height horizon to clear transactions from the reorg pool.
+#reorg_pool.expiry_height = 5
+
+# Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
+# not initiate any more mempool syncs. Default: 2
+#service.initial_sync_num_peers = 2
+# The maximum number of transactions to sync in a single sync session Default: 10_000
+#service.initial_sync_max_transactions = 10_000
+# The maximum number of blocks added via sync or re-org to triggering a sync
+#service.block_sync_trigger = 5
+
+[base_node.state_machine]
+# The initial max sync latency (seconds). If a peer fails to stream a header/block within this deadline another sync
+# peer will be selected. If there are no further peers the sync will be restarted with an increased by
+# `max_latency_increase`. [default = 240]
+blockchain_sync_config.initial_max_sync_latency = 240
+# If all sync peers exceed latency increase allowed latency by this value (seconds) [default = 10]
+blockchain_sync_config.max_latency_increase = 10
+# Longer ban period (seconds) for potentially malicious infractions (protocol violations etc.) [default = 2 hours]
+#blockchain_sync_config.ban_period = 7_200 # 2 * 60 * 60
+# Short ban period (seconds) for infractions that are likely not malicious (slow to respond spotty connections etc)
+# [default = 4 minutes]
+#blockchain_sync_config.short_ban_period = 240
+# An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty sync peers
+# are chosen based on their advertised chain metadata. [default = []]
+#blockchain_sync_config.forced_sync_peers = []
+# Number of threads to use for validation [default = 6]
+#blockchain_sync_config.validation_concurrency = 6
+# The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
+# [default = 240]
+blockchain_sync_config.rpc_deadline = 240
+# The maximum allowed reorg depth which a node will accept
+# blockchain_sync_config.max_reorg_depth_allowed = 1000
+
+# The maximum amount of VMs that RandomX will be use (default = 0)
+#max_randomx_vms = 0
+# The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
+# propagation by delaying lagging, but also to give it time to receive the block via propagation, which is more network
+# efficient)
+# Note that time_before_considered_lagging will override this setting if the node sees a stronger chain for longer than
+# that configured time.
+# (default = 1)
+#blocks_behind_before_considered_lagging = 1
+# The amount of time this node can know about a stronger chain before considered to be lagging.
+# This is to give a node time to receive the block via propagation, which is usually less network
+# intensive. Be careful of setting this higher than the block time, which would potentially cause it
+# to always be behind the network (default = 10) (in seconds)
+#time_before_considered_lagging = 10
+#This is the amount of metadata events that a node will wait for before decide to start syncing for a peer, choosing the best peer out of the list
+#initial_sync_peer_count = 5,
+
+[base_node.p2p]
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
+# automatically configured
+#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
+#   `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
+#datastore_path = "peer_db"
+
+# Name to use for the peer database
+#peer_database_name = "peers"
+
+# The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
+#max_concurrent_inbound_tasks = 100
+
+# The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
+#max_concurrent_outbound_tasks = 100
+
+# Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
+# addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
+# should always be false for non-test nodes.
+#allow_test_addresses = false
+
+# CIDR for addresses allowed to enter into liveness check mode on the listener.
+#listener_liveness_allowlist_cidrs = []
+# Enables periodic socket-level liveness checks. Default: Disabled
+listener_self_liveness_check_interval = 15
+
+# The maximum simultaneous comms RPC sessions allowed (default value = 100). Setting this to -1 will allow unlimited
+# sessions.
+#rpc_max_simultaneous_sessions = 100
+# The maximum comms RPC sessions allowed per peer (default value = 10).
+#rpc_max_sessions_per_peer = 10
+# If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
+# with a new session. If false, the RPC server will reject the new session and preserve the older session.
+# (default value = true).
+#cull_oldest_peer_rpc_connection_on_full = true
+
+[base_node.p2p.transport]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable. (default = "tor")
+#type = "tor"
+
+# The address and port to listen for peer connections over TCP. (use: type = "tcp")
+#tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address. (default = )
+#tcp.tor_socks_address =
+# Optional tor SOCKS proxy authentication (default = "none")
+#tcp.tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses. (use: type = "tor")
+# Address of the tor control server
+#tor.control_address = "/ip4/127.0.0.1/tcp/9051"
+# SOCKS proxy auth (default = "none")
+#tor.socks_auth = "none"
+# Use this socks address instead of getting it from the tor proxy. (default = )
+#tor.socks_address_override =
+# Authentication to use for the tor control server (default = "auto")
+#tor.control_auth = "auto" # or "password=xxxxxx"
+# The onion port to use.
+#tor.onion_port = 18141
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
+# made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
+#tor.proxy_bypass_addresses = []
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
+# better network performance for TCP nodes; set it to 'false' for better privacy.
+#tor.proxy_bypass_for_outbound_tcp = true
+# If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
+#tor.forward_address =
+# If set, the listener will bind to this address instead of the forward_address. You need to make sure that this listener is connectable from the forward_address.
+#tor.listener_address_override =
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+# (use: type = "socks5")
+# The address of the SOCKS5 proxy. Traffic will be forwarded to tcp.listener_address.
+# (Default = "/ip4/127.0.0.1/tcp/8080")
+#socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# SOCKS proxy auth (Default = "none", or assign "username_password=username:xxxxxxx")
+#socks.auth = "none"
+
+# Use a Memory proxy transport. (use: type = "memory")
+#memory.listener_address = "/memory/0"
+
+[base_node.p2p.dht]
+# The `DbConnectionUrl` for the Dht database. Default: In-memory database
+database_url = "data/base_node/dht.db"
+# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
+#num_neighbouring_nodes = 6
+# Number of random peers to include. Default: 4
+#num_random_nodes = 6
+# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
+#minimize_connections = false
+# Send to this many peers when using the broadcast strategy. Default: 8
+#broadcast_factor = 8
+# Send to this many peers when using the propagate strategy. Default: 4
+#propagation_factor = 4
+
+# The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
+#saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
+# The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 100,000
+#saf.msg_storage_capacity = 100_000
+# A request to retrieve stored messages will be ignored if the requesting node is not within one of this nodes _n_
+# closest nodes. Default 10
+#saf.num_closest_nodes = 10
+# The maximum number of messages to return from a store and forward retrieval request. Default: 100
+#saf.max_returned_messages = 50
+# The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
+# Default: 6 hours
+#saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
+# The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
+# Default: 3 days
+#saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
+# The limit on the message size to store in SAF storage in bytes. Default 500 KiB
+#saf.max_message_size = 524_288 # 512 * 1024
+# When true, store and forward messages are requested from peers on connect (Default: true)
+#saf.auto_request = true
+# The maximum allowed time between asking for a message and accepting a response
+#saf.max_inflight_request_age = 120
+# The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
+#saf.num_neighbouring_nodes = 8
+
+# The max capacity of the message hash cache. Default: 2,500
+#dedup_cache_capacity = 2_500
+# The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
+#dedup_cache_trim_interval = 300 # 5 * 60
+# The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
+# Default: 1
+#dedup_allowed_message_occurrences = 1
+# The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
+#discovery_request_timeout = 120 # 2 * 60
+# Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+#auto_join = true
+# The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
+# enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
+# change happens again after this period, another join will be sent. Default: 10 minutes
+#join_cooldown_interval = 120 # 10 * 60
+
+# The interval to update the neighbouring and random pools, if necessary.
+#connectivity.update_interval = 120 # 2 * 60
+# The interval to change the random pool peers. Default = 30 mins
+#connectivity.random_pool_refresh_interval = 1_800 # 30 * 60
+# This is the percentage of nodes that we want to churn per refresh cycle
+# This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes
+# connectivity.churn_rate = 10
+# Length of cooldown when high connection failure rates are encountered. Default: 45s
+#connectivity.high_failure_rate_cooldown = 45
+# The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
+# making sybil attacks costly. This setting does not guarantee this ratio is maintained.
+# Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
+#connectivity.minimum_desired_tcpv4_node_ratio = 0.1
+
+# True to enable network discovery, false to disable it. Default: true
+#network_discovery.enabled = true
+# A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
+# more "aggressive" strategy is employed. Default: 50
+#network_discovery.min_desired_peers = 50
+# The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
+#network_discovery.idle_period = 1_800 # 30 * 60
+# The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less
+# than `min_desired_peers` then the actual number of rounds performed will exceed this value. Default: 10
+#network_discovery.idle_after_num_rounds = 10
+# Time to idle after a failed round. Default: 5 secs
+#network_discovery.on_failure_idle_period = 5
+# The maximum number of sync peer to select for each round. The selection strategy varies depending on the current state.
+# Default: 5
+#network_discovery.max_sync_peers = 5
+# The maximum number of peers we allow per round of sync. (Default: 500)
+#network_discovery.max_peers_to_sync_per_round = 500
+# Maximum number of seed peers to try during bootstrap phase (Default: 5)
+#network_discovery.max_seed_peer_sync_count = 5
+# Initial refresh sync peers delay period, when a configured connection needs preference. (Default: Disabled)
+#network_discovery.initial_peer_sync_delay = 0
+# The minimum number of peers to attempt to sync with during each seed peer sync operation.
+# If this many peers are successfully added to the peer DB (across all seed peers attempted
+# in one round), the current seed_strap round will end early, provided that
+# `min_successful_seed_contacts_for_early_exit` is also met.
+# Set to 0 to disable this early exit condition (it will always try up to `max_seed_peer_sync_count`
+# seed peers unless an error occurs or `max_peers_to_sync_per_round` is hit repeatedly). (Default: 15)
+#network_discovery.seed_peer_min_initial_sync_peers_needed = 15
+# The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
+# before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.(Default: 5)
+#network_discovery.min_successful_seed_contacts_for_early_exit = 5
+# Maximum time to wait for a dial during bootstrap before abandoning the attempt. (Default: 30 seconds)
+#network_discovery.bootstrap_dial_peer_timeout = 30
+# Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_connect_timeout = 10
+# Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
+# (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_get_peers_stream_timeout = 5
+# Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
+# (Default: 10 seconds)
+#network_discovery.bootstrap_rpc_streaming_timeout = 5
+# Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
+#network_discovery.bootstrap_timeout = 300 # 5 * 60
+
+# Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
+#ban_duration = 21_600 # 6 * 60 * 60
+# Length of time to ban a peer for a "short" duration. Default: 60 mins
+#ban_duration_short = 3_600 # 60 * 60
+# The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
+# Default: 100_000 messages
+#flood_ban_max_msg_count = 100_000
+# The timespan over which to calculate the max message rate.
+# `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
+#  Default: 100 seconds
+#flood_ban_timespan = 100
+# Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
+# In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
+# peers that were previously tried. Default: 2 hours
+#offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
+# Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
+#   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+#                or
+#   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+excluded_dial_addresses = []
+# Enables the DHT to forward messages to other nodes in the network - communication nodes only (Default: false)
+#enable_forwarding = false
+
+# setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
+# peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
+#peer_validator_config.min_peer_version = ""
+
+# Wallet Query HTTP service details
+# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
+# This address must be accessible by the wallet (on a global scale over the internet).
+[base_node.http_wallet_query_service]
+#port = 9000
+#listen_ip = "0.0.0.0"
+#external_address = "http://127.0.0.1:9000"
+
+# If not enabled (false), no Cache-Control header is set anywhere. [Default: true]
+#http_cache.enabled - true
+
+# The Cache-Control string to use for the 'get_tip_info' handler.
+# [Default: "public, max-age=15, s-maxage=15, stale-while-revalidate=15"]
+#http_cache.get_tip_info = "public, max-age=15, s-maxage=15, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_header_by_height' handler.
+# [Default: "public, max-age=120, s-maxage=60, stale-while-revalidate=15"]
+#http_cache.get_header_by_height = "public, max-age=120, s-maxage=60, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.get_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'sync_utxos_by_block' handler
+# [Default: "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"]
+#http_cache.sync_utxos_by_block = "public, max-age=3600, s-maxage=1800, stale-while-revalidate=60"
+
+# The Cache-Control string to use for the 'get_height_at_time' handler.
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_height_at_time = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'transaction_query' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.transaction_query = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_deleted_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_deleted_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+# The Cache-Control string to use for the 'get_utxos_mined_info' handler
+# [Default: "public, max-age=60, s-maxage=30, stale-while-revalidate=15"]
+#http_cache.get_utxos_mined_info = "public, max-age=60, s-maxage=30, stale-while-revalidate=15"
+
+########################################################################################################################
+#                                                                                                                      #
+#                                         XMRig Solo Mining Proxy                                                     #
+#                                                                                                                      #
+########################################################################################################################
+
+# Enable the built-in XMRig-compatible JSON-RPC proxy for solo RandomXT mining.
+# When enabled, XMRig can be pointed at `xmrig_proxy_address` with "coin": "tari", "daemon": true.
+# (default = false)
+#xmrig_proxy_enabled = false
+
+# The address the XMRig proxy listens on. (default = "/ip4/127.0.0.1/tcp/18085")
+#xmrig_proxy_address = "/ip4/127.0.0.1/tcp/18085"
+
+# Wallet address that receives RandomXT mining rewards via the XMRig proxy.
+# Must match the network the base node is running on. Required when xmrig_proxy_enabled = true.
+# (default = "")
+#xmrig_proxy_wallet_payment_address = ""
+
+# Extra data embedded in the coinbase produced by the XMRig proxy (e.g. pool tag or miner name).
+# (default = "tari_base_node_xmrig")
+#xmrig_proxy_coinbase_extra = "tari_base_node_xmrig"
+
+# Range proof type for coinbase outputs produced by the XMRig proxy.
+# Valid values: "RevealedValue", "BulletProofPlus". (default = "RevealedValue")
+#xmrig_proxy_range_proof_type = "RevealedValue"
+

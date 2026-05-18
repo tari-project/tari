@@ -1,0 +1,378 @@
+---
+name: "CI"
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - "ci-*"
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  merge_group:
+
+permissions: {}
+
+env:
+  toolchain: stable
+  toolchain_msrv_reject_older: 1.93.0
+  nightly_toolchain: nightly-2025-06-24
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_TERM_COLOR: always
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO_INCREMENTAL: 0
+  RUSTUP_PERMIT_COPY_RENAME: true
+  PROTOC: protoc
+  TERM: unknown
+  ## Must be a JSon string
+  TS_FEATURES: '["default","safe","grpc","ledger","libtor","metrics","miner_input"]'
+
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+jobs:
+  ci:
+    name: ci
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+      - name: caching (nightly)
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # Use a "small" suffix to use the build caches where possible, but build caches won't use this
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
+      - name: Install cargo-lints
+        run: cargo install cargo-lints
+      - name: Clippy check (with lints)
+        run: |
+          rustup component add --toolchain stable-x86_64-unknown-linux-gnu clippy
+          cargo lints clippy --all-targets --all-features
+      - name: cargo machete
+        run: |
+          cargo install cargo-machete@0.7.0
+          cargo machete
+      - name: cargo vet
+        # Disable cargo vet
+        if: ${{ false }}
+        run: |
+          cargo install cargo-vet@0.10.0 --locked
+          cargo vet
+      - name: Install nightly with rustfmt
+        run: rustup toolchain install ${{ env.nightly_toolchain }} --component rustfmt
+      - name: cargo format
+        run: cargo +${{ env.nightly_toolchain }} fmt --all -- --check
+
+  ledger-build-tests:
+    name: ledger build tests
+    runs-on: [ubuntu-latest]
+    env:
+      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.4"
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v6
+
+      - name: ledger build tests
+        shell: bash
+        run: |
+          for ledger_target in stax flex nanosplus nanox; do
+            echo "Building for ${ledger_target}"
+            docker run --rm \
+              -v "${GITHUB_WORKSPACE}:/app" \
+              -w /app/applications/minotari_ledger_wallet/wallet \
+              "${DOCKER_IMAGE}" \
+              cargo ledger build "${ledger_target}" -- --locked
+          done
+
+  wasm-build-tests:
+    name: wasm build tests
+
+    runs-on: [ubuntu-latest]
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v6
+
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+
+      - name: caching
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # Use a "small" suffix to use the build caches where possible, but build caches won't use this
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
+
+      - name: wasm build tests
+        shell: bash
+        run: |
+          wasm-pack build base_layer/node_components --target web
+          wasm-pack build base_layer/common_types --target web
+          wasm-pack build base_layer/transaction_components --target web
+
+  build-stable:
+    # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
+    #  on stable Rust.
+    name: cargo check with ${{ matrix.rust }}
+    runs-on: [self-hosted, ubuntu-high-cpu]
+    # fail jobs unless - msrv-reject-older
+    continue-on-error: ${{ startsWith(matrix.rust, 'msrv-reject-older') || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - msrv
+          # - msrv_reject_older
+
+    env:
+      RUSTUP_PERMIT_COPY_RENAME: true
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+      - name: caching (stable)
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
+
+      - name: Extract MSRV from env/Cargo.toml
+        id: msrv
+        if: startsWith(matrix.rust,'msrv')
+        run: |
+          if [[ "${{ matrix.rust }}" == 'msrv' ]]; then
+            version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/[^0-9.]//g')
+          else
+            version=${{ env.toolchain_msrv_reject_older }}
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+          # Temporary disable toolchain pinning
+          rm -vf rust-toolchain.toml
+
+      # Stable toolchain
+      - name: Set up Rust (stable)
+        if: matrix.rust == 'stable'
+        uses: dtolnay/rust-toolchain@stable
+
+      # MSRV toolchain
+      - name: Set up Rust (${{ matrix.rust }}-${{ steps.msrv.outputs.version }})
+        if: startsWith(matrix.rust,'msrv')
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: rustup show
+        run: rustup show
+
+      - name: cargo check
+        run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
+
+      - name: cargo check individual features
+        shell: bash
+        run: |
+          FEATURES_ARRAY=( $(echo ${TS_FEATURES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          for FEATURE_TEST in "${FEATURES_ARRAY[@]}"; do
+            echo "Testing for feature ${FEATURE_TEST} ..."
+            cargo check --release --all-targets \
+              --features ${FEATURE_TEST} \
+              --workspace --exclude tari_integration_tests --locked
+          done
+
+      - name: cargo check wallet ffi separately
+        run: cargo check --release --package minotari_wallet_ffi --locked
+
+  licenses:
+    name: file licenses
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+      - name: install ripgrep
+        run: |
+          #wget https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb.sha256
+          wget https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb
+          sudo dpkg -i ripgrep_14.1.0-1_amd64.deb
+          rg --version || exit 1
+      - name: run the license check
+        run: ./scripts/file_license_check.sh
+
+  test:
+    name: test
+    runs-on: [self-hosted, ubuntu-high-cpu]
+    permissions:
+      checks: write
+      pull-requests: write
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        tari_target_network:
+          [
+            { target: "testnet", network: "esmeralda" },
+            { target: "nextnet", network: "nextnet" },
+            { target: "mainnet", network: "stagenet" },
+          ]
+    env:
+      TARI_TARGET_NETWORK: ${{ matrix.tari_target_network.target }}
+      TARI_NETWORK: ${{ matrix.tari_target_network.network }}
+      RUST_LOG: debug
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+      - name: caching (stable)
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked --force
+      - name: cargo test compile
+        run: cargo +${{ env.toolchain }} test -vv --no-run --locked --all-features --release
+      - name: cargo test
+        run: cargo +${{ env.toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci --no-fail-fast
+      - name: upload artifact
+        uses: actions/upload-artifact@v7 # upload test results as artifact
+        if: always()
+        with:
+          name: test-results-${{ matrix.tari_target_network.target }}.${{ matrix.tari_target_network.network }}
+          path: ${{ github.workspace }}/target/nextest/ci/junit.xml
+
+  # Allows other workflows to know the PR number
+  artifacts:
+    name: pr_2_artifact
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Save the PR number in an artifact
+        shell: bash
+        env:
+          PR_NUM: ${{ github.event.number }}
+        run: echo $PR_NUM > pr_num.txt
+
+      - name: Upload the PR number
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr_num
+          path: ./pr_num.txt
+
+  # needed for test results
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: Event File
+          path: ${{ github.event_path }}

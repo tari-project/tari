@@ -1,0 +1,32 @@
+[package]
+name = "minotari_mcp_common"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+async-trait = "0.1"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+regex = "1.10"
+unicode-normalization = "0.1"
+tonic = { version = "0.13.1", default-features = false, features = ["transport", "tls-ring"] }
+prost = "0.13.3"
+prost-reflect = "0.15.0"
+schemars = { version = "0.8", features = ["derive"] }
+minotari_node_grpc_client = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
+which = "5.0"
+
+[dev-dependencies]
+tokio-test = "0.4"

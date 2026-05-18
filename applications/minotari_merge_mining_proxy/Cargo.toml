@@ -1,0 +1,65 @@
+[package]
+name = "minotari_merge_mining_proxy"
+description = "The Tari merge mining proxy for xmrig"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_merge_mining_proxy --features=dhat-heap            ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_merge_mining_proxy --features=dhat-heap  ...(PowerShell)
+dhat-heap = []
+
+[dependencies]
+minotari_app_grpc = { workspace = true }
+minotari_app_utilities = { workspace = true, features = ["miner_input"] }
+minotari_node_grpc_client = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_node_components = { workspace = true }
+tari_comms = { workspace = true }
+tari_core = { workspace = true }
+tari_max_size = { workspace = true }
+tari_utilities = { workspace = true }
+
+tonic = { version = "0.13.1", features = ["tls-webpki-roots"] }
+tracing = "0.1"
+anyhow = "1.0.53"
+bincode = "1.3.1"
+borsh = { workspace = true }
+bytes = "1.1"
+chrono = { version = "0.4", default-features = false }
+clap = { version = "4", features = ["derive", "env"] }
+config = { version = "0.14.0" }
+crossterm = { version = "0.28" }
+dhat = "0.3.3"
+futures = "0.3"
+hex = "0.4.2"
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
+http-body = "1.0"
+http-body-util = "0.1"
+jsonrpc = "0.12.0"
+log = { workspace = true, features = ["std"] }
+monero = { version = "0.21.0", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json", "native-tls", "blocking"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "net", "signal"] }
+url = "2.1.1"
+rand = { workspace = true }
+blake2 = "0.10"
+
+[build-dependencies]
+tari_features = { workspace = true }
+
+[dev-dependencies]
+hyper = { version = "1.6.0", features = ["full"] }

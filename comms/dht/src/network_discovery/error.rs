@@ -1,0 +1,84 @@
+//  Copyright 2020, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use tari_comms::{
+    connectivity::ConnectivityError,
+    peer_manager::PeerManagerError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
+use tokio::task::JoinError;
+
+use crate::peer_validator::DhtPeerValidatorError;
+
+#[derive(thiserror::Error, Debug)]
+pub enum NetworkDiscoveryError {
+    #[error("RPC error: {0}")]
+    RpcError(#[from] RpcError),
+    #[error("RPC status error: {0}")]
+    RpcStatus(#[from] RpcStatus),
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("No sync peers available")]
+    NoSyncPeers,
+    #[error("Sync peer sent invalid peer: {0}")]
+    PeerValidationError(#[from] DhtPeerValidatorError),
+    #[error("Sync peer sent empty peer message")]
+    EmptyPeerMessageReceived,
+    #[error("Sync peer sent too many peers")]
+    TooManyPeersReceived,
+    #[error("Sync peer sent duplicate peer")]
+    DuplicatePeerReceived,
+    #[error("Sync peer sent invalid peer data: {0}")]
+    InvalidPeerDataReceived(anyhow::Error),
+    #[error("Tokio task join error: `{0}`")]
+    JoinError(#[from] JoinError),
+    #[error("Timeout waiting for {operation} to {peer} after {duration}")]
+    Timeout {
+        operation: String,
+        peer: String,
+        duration: String,
+    },
+    #[error("Peer connection to {peer} closed: {reason}")]
+    PeerConnectionClosed { peer: String, reason: String },
+}
+
+// Custom PartialEq implementation that only compares the discriminant (variant type)
+impl PartialEq for NetworkDiscoveryError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::RpcError(_), Self::RpcError(_)) |
+                (Self::RpcStatus(_), Self::RpcStatus(_)) |
+                (Self::PeerManagerError(_), Self::PeerManagerError(_)) |
+                (Self::ConnectivityError(_), Self::ConnectivityError(_)) |
+                (Self::NoSyncPeers, Self::NoSyncPeers) |
+                (Self::PeerValidationError(_), Self::PeerValidationError(_)) |
+                (Self::EmptyPeerMessageReceived, Self::EmptyPeerMessageReceived) |
+                (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
+                (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
+                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_)) |
+                (Self::PeerConnectionClosed { .. }, Self::PeerConnectionClosed { .. })
+        )
+    }
+}

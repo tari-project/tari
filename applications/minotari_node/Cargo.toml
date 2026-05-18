@@ -1,0 +1,106 @@
+[package]
+name = "minotari_node"
+description = "The tari full base node implementation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+minotari_app_grpc = { workspace = true }
+minotari_app_utilities = { workspace = true }
+tari_common = { workspace = true }
+tari_comms = { workspace = true, features = ["rpc"] }
+tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_node_components = { workspace = true }
+tari_comms_dht = { workspace = true }
+tari_core = { workspace = true }
+tari_libtor = { workspace = true, optional = true }
+tari_p2p = { workspace = true, features = ["auto-update"] }
+tari_storage = { workspace = true }
+tari_service_framework = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_utilities = { workspace = true }
+anyhow = "1.0.53"
+async-trait = "0.1.52"
+bincode = "1.3.1"
+borsh = { workspace = true }
+chrono = { version = "0.4", default-features = false }
+clap = { version = "4", features = ["derive", "env"] }
+console-subscriber = "0.4"
+config = { version = "0.14.0" }
+crossterm = { version = "0.28.1", default-features = false, features = [
+    "event-stream",
+    "use-dev-tty",
+    # we do not need libc feature however 0.28.1 has a bug that requires it
+    # https://github.com/crossterm-rs/crossterm/issues/935
+    "libc",
+    "windows",
+] }
+derive_more = "0.99.17"
+dhat = "0.3.3"
+either = "1.6.1"
+futures = { version = "^0.3.16", default-features = false, features = [
+    "alloc",
+] }
+qrcode = { version = "0.12" }
+log = { workspace = true, features = ["std"] }
+log4rs = { workspace = true, default-features = false, features = [
+    "config_parsing",
+    "threshold_filter",
+    "yaml_format",
+    "console_appender",
+    "rolling_file_appender",
+    "compound_policy",
+    "size_trigger",
+    "fixed_window_roller",
+] }
+nom = "7.1"
+rustyline = "9.0"
+rustyline-derive = "0.5"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+strum = { version = "0.22", features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["signal"] }
+tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }
+tari_metrics = { workspace = true, optional = true, features = ["server"] }
+url = { version = "2.5.4", features = ["default", "serde"] }
+axum = { version = "0.8.4", features = ["default", "http2"] }
+http = "0.2.12"
+utoipa = "5.3.1"
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+tower-http = { version = "0.6", features = ["limit"] }
+# XMRig proxy dependencies
+bytes = "1.1"
+hex = "0.4.2"
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-util = "0.1"
+http-body-util = "0.1"
+
+[features]
+default = ["libtor"]
+metrics = ["tari_metrics", "tari_comms/metrics"]
+safe = []
+libtor = ["tari_libtor"]
+# If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_node --features=dhat-heap            ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_node --features=dhat-heap  ...(PowerShell)
+dhat-heap = []
+
+[build-dependencies]
+tari_features = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = [
+    # We need to specify extra features for log4rs even though it is not used directly in this crate
+    "log4rs",
+]
+
+[dev-dependencies]
+toml = { version = "0.5" }
+serde_json = "1.0.108"
+tempfile = "3.1.0"

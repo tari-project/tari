@@ -1,0 +1,907 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+#![allow(clippy::indexing_slicing)]
+use std::collections::HashMap;
+
+use chrono::{DateTime, Local};
+use log::*;
+use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{LegacyTransactionStatus, TransactionDirection},
+};
+use tari_transaction_components::transaction_components::memo_field::TxType;
+use tokio::runtime::Handle;
+use tui::{
+    Frame,
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, ListItem, Paragraph, Wrap},
+};
+
+use crate::ui::{
+    MAX_WIDTH,
+    components::{Component, balance::Balance, styles},
+    state::{AppState, CompletedTransactionInfo},
+    widgets::{MultiColumnList, WindowedListState, draw_dialog},
+};
+
+const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
+const ADDRESS_DISPLAY_SIZE: u16 = 95;
+const MAX_ADDRESS_LENGTH: u16 = ADDRESS_DISPLAY_SIZE - 1 - 3; // column border: 1 space, selection arrows: 3 spaces
+
+pub struct TransactionsTab {
+    balance: Balance,
+    selected_tx_list: SelectedTransactionList,
+    pending_list_state: WindowedListState,
+    completed_list_state: WindowedListState,
+    detailed_transaction: Option<CompletedTransactionInfo>,
+    error_message: Option<String>,
+    confirmation_dialog: bool,
+    payref_search: String,
+    payref_search_active: bool,
+}
+
+impl TransactionsTab {
+    pub fn new() -> Self {
+        Self {
+            balance: Balance::new(),
+            selected_tx_list: SelectedTransactionList::None,
+            pending_list_state: WindowedListState::new(),
+            completed_list_state: WindowedListState::new(),
+            detailed_transaction: None,
+            error_message: None,
+            confirmation_dialog: false,
+            payref_search: String::new(),
+            payref_search_active: false,
+        }
+    }
+
+    // casting here is okay the max value is 7
+    #[allow(clippy::cast_possible_truncation)]
+    fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {
+            self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+            (Constraint::Max(3), Constraint::Min(4))
+        } else {
+            (
+                Constraint::Length((3 + app_state.get_pending_txs().len()).min(7) as u16),
+                Constraint::Min(4),
+            )
+        };
+        let list_areas = Layout::default()
+            .constraints([pending_constraint, completed_constraint].as_ref())
+            .split(area);
+
+        self.draw_pending_transactions(f, list_areas[0], app_state);
+        self.draw_completed_transactions(f, list_areas[1], app_state);
+    }
+
+    fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        };
+
+        let title = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("(P)ending Transactions ({}) ", app_state.get_pending_txs().len()),
+            style,
+        ));
+        f.render_widget(title, area);
+
+        // Pending Transactions
+        self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+        let mut pending_list_state = self
+            .pending_list_state
+            .update_list_state((area.height as usize).saturating_sub(3));
+        let window = self.pending_list_state.get_start_end();
+        let windowed_view = app_state.get_pending_txs_slice(window.0, window.1);
+
+        let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
+            .iter()
+            .copied()
+            .collect();
+
+        let mut column0_items = Vec::new();
+        let mut column1_items = Vec::new();
+        let mut column2_items = Vec::new();
+        let mut column3_items = Vec::new();
+
+        for t in windowed_view {
+            let text_color = text_colors
+                .get(&t.cancelled.is_some())
+                .unwrap_or(&Color::Reset)
+                .to_owned();
+
+            if t.direction == TransactionDirection::Outbound {
+                column0_items.push(ListItem::new(Span::styled(
+                    get_alias_and_clip(t.destination_address.to_base58(), MAX_ADDRESS_LENGTH),
+                    Style::default().fg(text_color),
+                )));
+                let amount_style = if t.cancelled.is_some() {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Red)
+                };
+                let amount = format!("{}", t.amount);
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
+            } else {
+                column0_items.push(ListItem::new(Span::styled(
+                    get_alias_and_clip(t.source_address.to_base58(), MAX_ADDRESS_LENGTH),
+                    Style::default().fg(text_color),
+                )));
+                let amount_style = if t.cancelled.is_some() {
+                    Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Green)
+                };
+                let amount = format!("{}", t.amount);
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
+            }
+
+            column2_items.push(ListItem::new(Span::styled(
+                match t.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
+                Style::default().fg(text_color),
+            )));
+
+            column3_items.push(ListItem::new(Span::styled(
+                t.payment_id.clone().unwrap_or_default().payment_id_as_string(),
+                Style::default().fg(text_color),
+            )));
+        }
+
+        let column_list = MultiColumnList::new()
+            .highlight_style(styles::highlight())
+            .heading_style(styles::header_row())
+            .max_width(MAX_WIDTH)
+            .add_column(
+                Some("Source/Destination address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
+            .add_column(Some("Amount/Token"), Some(18), column1_items)
+            .add_column(Some("Mined At (Local)"), Some(20), column2_items)
+            .add_column(Some("Payment ID"), None, column3_items);
+
+        column_list.render(f, area, &mut pending_list_state);
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn draw_completed_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        //  Completed Transactions
+        let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        };
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("Completed (T)ransactions ({}) ", app_state.get_completed_txs().len()),
+            style,
+        ));
+        f.render_widget(block, area);
+
+        let completed_txs = app_state.get_completed_txs();
+        self.completed_list_state.set_num_items(completed_txs.len());
+        if let Some(detailed_tx) = &self.detailed_transaction &&
+            self.selected_tx_list == SelectedTransactionList::CompletedTxs
+        {
+            let found_index = completed_txs.iter().position(|tx| tx.tx_id == detailed_tx.tx_id);
+            self.completed_list_state.select(found_index);
+        }
+        let mut completed_list_state = self
+            .completed_list_state
+            .update_list_state((area.height as usize).saturating_sub(3));
+        let (start, end) = self.completed_list_state.get_start_end();
+        let windowed_view = &completed_txs[start..end];
+
+        let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
+            .iter()
+            .copied()
+            .collect();
+
+        let base_node_state = app_state.get_base_node_state();
+        let chain_height = base_node_state.chain_metadata.as_ref().map(|cm| cm.best_block_height());
+
+        let mut column0_items = Vec::new();
+        let mut column1_items = Vec::new();
+        let mut column2_items = Vec::new();
+        let mut column3_items = Vec::new();
+
+        for tx in windowed_view {
+            let cancelled = tx.cancelled.is_some();
+            let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
+
+            let mut transaction_status = tx.status;
+            let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
+            if let Some(tx_type) = tx.payment_id.as_ref().and_then(|p| p.get_tx_type()) {
+                match tx.status {
+                    LegacyTransactionStatus::OneSidedUnconfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedUnconfirmed
+                    },
+                    LegacyTransactionStatus::OneSidedConfirmed => {
+                        transaction_status = LegacyTransactionStatus::MinedConfirmed
+                    },
+                    _ => {},
+                }
+                transaction_type = tx_type;
+            };
+
+            if let Some(payment_id) = tx.payment_id.as_ref() {
+                if (payment_id.is_open() || payment_id.is_address_and_data()) &&
+                    transaction_type == TxType::PaymentToSelf &&
+                    tx.source_address != tx.destination_address
+                {
+                    transaction_type = TxType::PaymentToOther;
+                }
+                if transaction_type == TxType::Burn && tx.destination_address != TariAddress::default() {
+                    transaction_type = TxType::PaymentToOther;
+                }
+            }
+
+            let address_text = match (&tx.direction, &tx.coinbase, transaction_type) {
+                (_, true, _) => "Mining reward",
+                (_, _, TxType::Burn) => "Burned output",
+                (_, _, TxType::CoinJoin) => "Coin join",
+                (_, _, TxType::CoinSplit) => "Coin split",
+                (_, _, TxType::ImportedUtxoNoneRewindable) => "Imported output",
+                (_, _, TxType::PaymentToSelf) => "Payment to self",
+                (_, _, TxType::ValidatorNodeRegistration) => "Validator node registration",
+                (_, _, TxType::CodeTemplateRegistration) => "Code template registration",
+                (_, _, TxType::HtlcAtomicSwapRefund) => "HTLC atomic swap refund",
+                (_, _, TxType::ClaimAtomicSwap) => "Claim atomic swap",
+                (TransactionDirection::Outbound, _, _) => &tx.destination_address.to_base58(),
+                _ => &tx.source_address.to_base58(),
+            };
+            column0_items.push(ListItem::new(Span::styled(
+                get_alias_and_clip(address_text.to_string(), MAX_ADDRESS_LENGTH),
+                Style::default().fg(text_color),
+            )));
+            if tx.direction == TransactionDirection::Outbound {
+                let amount_style = if tx.cancelled.is_some() {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Red)
+                };
+                let amount = format!("{}", tx.amount);
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
+            } else {
+                let color = match (tx.cancelled.is_some(), chain_height) {
+                    // cancelled
+                    (true, _) => Color::DarkGray,
+                    // not mature yet
+                    (_, Some(height)) if tx.maturity > height => Color::Yellow,
+                    // default
+                    _ => Color::Green,
+                };
+                let amount_style = Style::default().fg(color);
+                let amount = format!("{}", tx.amount);
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
+            }
+
+            column2_items.push(ListItem::new(Span::styled(
+                match tx.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
+                Style::default().fg(text_color),
+            )));
+
+            let status_display = if matches!(tx.cancelled, Some(TxCancellationReason::UserCancelled)) {
+                "Cancelled".to_string()
+            } else if tx.cancelled.is_some() {
+                "Rejected".to_string()
+            } else {
+                transaction_status.to_string()
+            };
+            column3_items.push(ListItem::new(Span::styled(
+                status_display,
+                Style::default().fg(text_color),
+            )));
+        }
+
+        let column_list = MultiColumnList::new()
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
+            .heading_style(Style::default().fg(Color::Magenta))
+            .max_width(MAX_WIDTH)
+            .add_column(
+                Some("Source/Destination Address"),
+                Some(ADDRESS_DISPLAY_SIZE),
+                column0_items,
+            )
+            .add_column(Some("Amount/Token"), Some(18), column1_items)
+            .add_column(Some("Mined At (Local)"), Some(20), column2_items)
+            .add_column(Some("Status"), None, column3_items);
+
+        column_list.render(f, area, &mut completed_list_state);
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            "Transaction Details",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+        f.render_widget(block, area);
+
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(24), Constraint::Min(2)].as_ref())
+            .margin(1)
+            .split(area);
+
+        // Labels
+        let constraints = [Constraint::Length(1); 14];
+        let label_layout = Layout::default().constraints(constraints).split(columns[0]);
+
+        let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
+        let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
+        let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
+        let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
+        let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
+        let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
+        let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
+        let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
+        let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
+        let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
+        let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
+        let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
+        let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
+        let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
+
+        let trim = Wrap { trim: true };
+        let paragraph = Paragraph::new(payment_ref).wrap(trim);
+        f.render_widget(paragraph, label_layout[0]);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
+        f.render_widget(paragraph, label_layout[1]);
+        let paragraph = Paragraph::new(source_address).wrap(trim);
+        f.render_widget(paragraph, label_layout[2]);
+        let paragraph = Paragraph::new(destination_address).wrap(trim);
+        f.render_widget(paragraph, label_layout[3]);
+        let paragraph = Paragraph::new(direction).wrap(trim);
+        f.render_widget(paragraph, label_layout[4]);
+        let paragraph = Paragraph::new(amount).wrap(trim);
+        f.render_widget(paragraph, label_layout[5]);
+        let paragraph = Paragraph::new(fee).wrap(trim);
+        f.render_widget(paragraph, label_layout[6]);
+        let paragraph = Paragraph::new(status).wrap(trim);
+        f.render_widget(paragraph, label_layout[7]);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+        f.render_widget(paragraph, label_layout[8]);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+        f.render_widget(paragraph, label_layout[9]);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        f.render_widget(paragraph, label_layout[10]);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        f.render_widget(paragraph, label_layout[11]);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
+        f.render_widget(paragraph, label_layout[12]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[13]);
+
+        // Content
+        let required_confirmations = app_state.get_required_confirmations();
+        if let Some(tx) = self.detailed_transaction.as_ref() {
+            let constraints = [Constraint::Length(1); 14];
+            let content_layout = Layout::default().constraints(constraints).split(columns[1]);
+            let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
+
+            let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
+                if let Some(fee) = tx.payment_id.as_ref().and_then(|p| p.get_fee()) {
+                    let status = match tx.status {
+                        LegacyTransactionStatus::OneSidedUnconfirmed => LegacyTransactionStatus::MinedUnconfirmed,
+                        LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::MinedConfirmed,
+                        _ => tx.status,
+                    };
+
+                    (
+                        status,
+                        tx.direction,
+                        tx.amount,
+                        fee,
+                        tx.weight,
+                        tx.inputs_count,
+                        tx.outputs_count,
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
+                        tx.source_address.clone(),
+                        tx.destination_address.clone(),
+                    )
+                } else {
+                    (
+                        tx.status,
+                        tx.direction,
+                        tx.amount,
+                        tx.fee,
+                        tx.weight,
+                        tx.inputs_count,
+                        tx.outputs_count,
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
+                        tx.source_address.clone(),
+                        tx.destination_address.clone(),
+                    )
+                };
+
+            let source_address =
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Outbound {
+                    Span::raw("")
+                } else {
+                    let address = clip_address(format!("{source}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
+                };
+            let destination_address =
+                if tx.status == LegacyTransactionStatus::Pending && direction == TransactionDirection::Inbound {
+                    Span::raw("")
+                } else {
+                    let address = clip_address(format!("{destination}"), 69);
+                    Span::styled(address, Style::default().fg(Color::White))
+                };
+
+            let direction = Span::styled(format!("{direction}"), Style::default().fg(Color::White));
+            let amount = amount.to_string();
+            let content = &amount;
+            let amount = Span::styled(content, Style::default().fg(Color::White));
+            let fee_details = {
+                Span::styled(
+                    format!(" (weight: {weight}g, #inputs: {inputs_count}, #outputs: {outputs_count})"),
+                    Style::default().fg(Color::Gray),
+                )
+            };
+            let fee = Spans::from(vec![
+                Span::styled(format!("{fee}"), Style::default().fg(Color::White)),
+                fee_details,
+            ]);
+            let status_msg = if let Some(reason) = tx.cancelled {
+                format!("Cancelled: {reason}")
+            } else {
+                status.to_string()
+            };
+
+            let status = Span::styled(status_msg, Style::default().fg(Color::White));
+
+            // let mined_time = DateTime::<Local>::from_naive_utc_and_offset(tx.mined_timestamp,
+            // Local::now().offset().to_owned());
+            let mined_timestamp = Span::styled(
+                match tx.mined_timestamp {
+                    None => String::new(),
+                    Some(mined_timestamp) => format!(
+                        "{}",
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
+                            .format("%Y-%m-%d %H:%M:%S")
+                    ),
+                },
+                Style::default().fg(Color::White),
+            );
+
+            let imported_time =
+                DateTime::<Local>::from_naive_utc_and_offset(tx.timestamp, Local::now().offset().to_owned());
+            let imported_timestamp = Span::styled(
+                format!("{}", imported_time.format("%Y-%m-%d %H:%M:%S")),
+                Style::default().fg(Color::White),
+            );
+
+            let confirmation_count = app_state.get_confirmations(tx.tx_id);
+            let confirmations_msg = if (tx.status == LegacyTransactionStatus::MinedConfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedConfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseConfirmed) &&
+                tx.cancelled.is_none()
+            {
+                format!("{required_confirmations} required confirmations met")
+            } else if (tx.status == LegacyTransactionStatus::MinedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::OneSidedUnconfirmed ||
+                tx.status == LegacyTransactionStatus::CoinbaseUnconfirmed) &&
+                tx.cancelled.is_none()
+            {
+                if let Some(count) = confirmation_count {
+                    format!("{count} of {required_confirmations} required confirmations met")
+                } else {
+                    "N/A".to_string()
+                }
+            } else {
+                "N/A".to_string()
+            };
+            let confirmations = Span::styled(confirmations_msg.as_str(), Style::default().fg(Color::White));
+            let mined_height = Span::styled(
+                tx.mined_height
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "N/A".to_string()),
+                Style::default().fg(Color::White),
+            );
+            let maturity = if tx.maturity > 0 {
+                format!("Spendable at Block #{}", tx.maturity)
+            } else {
+                "N/A".to_string()
+            };
+            let maturity = Span::styled(maturity, Style::default().fg(Color::White));
+
+            let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
+
+            let payment_ref_content = {
+                let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
+                    (Some(hex), Some(status)) => format!("{hex} Status: {status}"),
+                    (None, Some(status)) => format!("PayRef: N/A Status: {status}"),
+                    (Some(hex), None) => hex.clone(),
+                    (None, None) => "N/A".to_string(),
+                };
+
+                // Color code based on status
+                let color = match &tx.payment_reference_status {
+                    Some(status) if status.starts_with("Available") => Color::Green,
+                    Some(status) if status.starts_with("Pending") => Color::Yellow,
+                    Some(status) if status.contains("Not mined") => Color::Gray,
+                    _ => Color::White,
+                };
+
+                Span::styled(payref_text, Style::default().fg(color))
+            };
+
+            let paragraph = Paragraph::new(payment_ref_content).wrap(trim);
+            f.render_widget(paragraph, content_layout[0]);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
+            f.render_widget(paragraph, content_layout[1]);
+            let paragraph = Paragraph::new(source_address).wrap(trim);
+            f.render_widget(paragraph, content_layout[2]);
+            let paragraph = Paragraph::new(destination_address).wrap(trim);
+            f.render_widget(paragraph, content_layout[3]);
+            let paragraph = Paragraph::new(direction).wrap(trim);
+            f.render_widget(paragraph, content_layout[4]);
+            let paragraph = Paragraph::new(amount).wrap(trim);
+            f.render_widget(paragraph, content_layout[5]);
+            let paragraph = Paragraph::new(fee).wrap(trim);
+            f.render_widget(paragraph, content_layout[6]);
+            let paragraph = Paragraph::new(status).wrap(trim);
+            f.render_widget(paragraph, content_layout[7]);
+            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+            f.render_widget(paragraph, content_layout[8]);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+            f.render_widget(paragraph, content_layout[9]);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            f.render_widget(paragraph, content_layout[10]);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            f.render_widget(paragraph, content_layout[11]);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
+            f.render_widget(paragraph, content_layout[12]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[13]);
+        }
+    }
+
+    fn search_by_payref(&mut self, app_state: &AppState) {
+        let search_term = self.payref_search.trim().replace(' ', "").to_lowercase();
+
+        // Search in completed transactions
+        let completed_txs = app_state.get_completed_txs();
+        for (index, tx) in completed_txs.iter().enumerate() {
+            if let Some(payref_hex) = &tx.payment_reference_hex &&
+                payref_hex.to_lowercase().contains(&search_term)
+            {
+                // Found a match - select this transaction
+                self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                self.completed_list_state.select(Some(index));
+                self.pending_list_state.select(None);
+                self.detailed_transaction = Some((*tx).clone());
+                return;
+            }
+        }
+
+        // If no match found, show error
+        self.error_message = Some(format!(
+            "No transaction found with PayRef containing '{search_term}'\nPress Enter to continue."
+        ));
+    }
+}
+
+impl<B: Backend> Component<B> for TransactionsTab {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+        let areas = Layout::default()
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(1),
+                    Constraint::Min(9),
+                    Constraint::Length(16),
+                ]
+                .as_ref(),
+            )
+            .split(area);
+
+        self.balance.draw(f, areas[0], app_state);
+
+        let mut span_vec = if app_state.get_pending_txs().is_empty() {
+            vec![]
+        } else {
+            vec![
+                Span::styled("P/T", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" moves between transaction lists, "),
+            ]
+        };
+
+        span_vec.push(Span::styled(
+            " Up↑/Down↓",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        span_vec.push(Span::raw(" select Tx "));
+        span_vec.push(Span::styled("(C)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" cancel selected pending Txs "));
+        span_vec.push(Span::styled("(A)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" show/hide mining "));
+        span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" rebroadcast Txs "));
+        span_vec.push(Span::styled("(S)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" search PayRef "));
+        span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" exit list"));
+
+        let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: false });
+        f.render_widget(instructions, areas[1]);
+
+        self.draw_transaction_lists(f, areas[2], app_state);
+        self.draw_detailed_transaction(f, areas[3], app_state);
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        if self.confirmation_dialog {
+            draw_dialog(
+                f,
+                area,
+                "Confirm Cancellation".to_string(),
+                "Are you sure you want to cancel this pending transaction? \n(Y)es / (N)o".to_string(),
+                Color::Red,
+                120,
+                9,
+            );
+        }
+
+        // Draw PayRef search input if active
+        if self.payref_search_active {
+            let search_prompt = format!(
+                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel",
+                self.payref_search
+            );
+            draw_dialog(
+                f,
+                area,
+                "PayRef Search".to_string(),
+                search_prompt,
+                Color::Yellow,
+                120,
+                9,
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if self.error_message.is_some() && '\n' == c {
+            self.error_message = None;
+            return;
+        }
+
+        if self.confirmation_dialog {
+            if 'n' == c {
+                self.confirmation_dialog = false;
+                return;
+            } else if 'y' == c {
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs &&
+                    let Some(i) = self.pending_list_state.selected() &&
+                    let Some(pending_tx) = app_state.get_pending_tx(i).cloned() &&
+                    let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id))
+                {
+                    self.error_message = Some(format!(
+                        "Could not cancel pending transaction.\n{e}\nPress Enter to continue."
+                    ));
+                }
+                self.confirmation_dialog = false;
+                return;
+            } else {
+                // dont care
+            }
+        }
+
+        // Handle PayRef search input mode
+        if self.payref_search_active {
+            match c {
+                '\n' => {
+                    // Perform search
+                    if !self.payref_search.is_empty() {
+                        self.search_by_payref(app_state);
+                    }
+                    self.payref_search_active = false;
+                },
+                '\u{1b}' => {
+                    // Escape key - cancel search
+                    self.payref_search_active = false;
+                    self.payref_search.clear();
+                },
+                '\u{7f}' => {
+                    // Backspace
+                    self.payref_search.pop();
+                },
+                c if c.is_ascii_hexdigit() || c == ' ' => {
+                    // Only allow hex characters and spaces
+                    self.payref_search.push(c);
+                },
+                _ => {
+                    // Ignore other characters
+                },
+            }
+            return;
+        }
+
+        match c {
+            's' => {
+                // Activate PayRef search mode
+                self.payref_search_active = true;
+                self.payref_search.clear();
+            },
+            'p' => {
+                self.completed_list_state.select(None);
+                self.selected_tx_list = SelectedTransactionList::PendingTxs;
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                let idx = match self.pending_list_state.selected() {
+                    None => {
+                        self.pending_list_state.select_first();
+                        0
+                    },
+                    Some(i) => i,
+                };
+                self.detailed_transaction = app_state.get_pending_tx(idx).cloned()
+            },
+            't' => {
+                self.pending_list_state.select(None);
+                self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                let idx = match self.completed_list_state.selected() {
+                    None => {
+                        self.completed_list_state.select_first();
+                        0
+                    },
+                    Some(i) => i,
+                };
+                self.detailed_transaction = app_state.get_completed_tx(idx).cloned();
+            },
+            'c' if self.selected_tx_list == SelectedTransactionList::PendingTxs => {
+                self.confirmation_dialog = true;
+            },
+            // Rebroadcast
+            'r' => {
+                if let Err(e) = Handle::current().block_on(app_state.rebroadcast_all()) {
+                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {e}");
+                }
+            },
+            'a' => app_state.toggle_abandoned_coinbase_filter(),
+            '\n' => match self.selected_tx_list {
+                SelectedTransactionList::None => {},
+                SelectedTransactionList::PendingTxs => {
+                    self.detailed_transaction = match self.pending_list_state.selected() {
+                        None => None,
+                        Some(i) => app_state.get_pending_tx(i).cloned(),
+                    };
+                },
+                SelectedTransactionList::CompletedTxs => {
+                    self.detailed_transaction = match self.completed_list_state.selected() {
+                        None => None,
+                        Some(i) => app_state.get_completed_tx(i).cloned(),
+                    };
+                },
+            },
+            _ => {},
+        }
+    }
+
+    fn on_up(&mut self, app_state: &mut AppState) {
+        if self.confirmation_dialog {
+            return;
+        }
+        match self.selected_tx_list {
+            SelectedTransactionList::None => {},
+            SelectedTransactionList::PendingTxs => {
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                self.pending_list_state.previous();
+                self.detailed_transaction = match self.pending_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_pending_tx(i).cloned(),
+                };
+            },
+            SelectedTransactionList::CompletedTxs => {
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                self.completed_list_state.previous();
+                self.detailed_transaction = match self.completed_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_completed_tx(i).cloned(),
+                };
+            },
+        }
+    }
+
+    fn on_down(&mut self, app_state: &mut AppState) {
+        if self.confirmation_dialog {
+            return;
+        }
+        match self.selected_tx_list {
+            SelectedTransactionList::None => {},
+            SelectedTransactionList::PendingTxs => {
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                self.pending_list_state.next();
+                self.detailed_transaction = match self.pending_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_pending_tx(i).cloned(),
+                };
+            },
+            SelectedTransactionList::CompletedTxs => {
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                self.completed_list_state.next();
+                self.detailed_transaction = match self.completed_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_completed_tx(i).cloned(),
+                };
+            },
+        }
+    }
+
+    fn on_esc(&mut self, _app_state: &mut AppState) {
+        self.selected_tx_list = SelectedTransactionList::None;
+        self.pending_list_state.select(None);
+        self.completed_list_state.select(None);
+        self.detailed_transaction = None;
+        self.confirmation_dialog = false;
+    }
+}
+
+#[derive(PartialEq)]
+pub enum SelectedTransactionList {
+    None,
+    PendingTxs,
+    CompletedTxs,
+}
+
+// Return alias or pub key if the contact is not in the list, clipping the address in the middle if needed.
+fn get_alias_and_clip(address_string: String, max_len: u16) -> String {
+    let address = if address_string == TariAddress::default().to_base58() {
+        "Offline payment".to_string()
+    } else {
+        address_string
+    };
+    clip_address(address, max_len)
+}
+
+// Clip the emoji address in the middle if needed.
+fn clip_address(address: String, max_len: u16) -> String {
+    let max_len = max_len as usize;
+    if address.chars().count() > max_len {
+        let display_portion = (max_len - 4) / 2;
+        let chars: Vec<char> = address.chars().collect();
+        let adjust_odd = usize::from(!max_len.is_multiple_of(2));
+        format!(
+            "{}....{}",
+            chars[..display_portion].iter().collect::<String>(),
+            chars[chars.len() - display_portion - adjust_odd..]
+                .iter()
+                .collect::<String>()
+        )
+    } else {
+        address
+    }
+}

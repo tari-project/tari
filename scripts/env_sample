@@ -1,0 +1,5 @@
+
+# Copy env_sample to .env if need be ...
+
+# Supported OSX Sig
+#osxsign="Mac Developer: XXXX (XXXX)"

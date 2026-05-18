@@ -1,0 +1,6 @@
+libtari_wallet_ffi.*
+wallet/
+bak/
+recovered/
+seeds.txt
+recovery/

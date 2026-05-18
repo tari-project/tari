@@ -1,0 +1,89 @@
+//   Copyright 2022. The Tari Project
+//
+//   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//   following conditions are met:
+//
+//   1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//   disclaimer.
+//
+//   2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//   following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//   3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//   products derived from this software without specific prior written permission.
+//
+//   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
+
+use rand::RngExt;
+
+pub mod base_node_process;
+pub mod ffi;
+pub use ffi::FfiConnectivityStatus;
+pub mod merge_mining_proxy;
+pub mod miner;
+pub mod transaction;
+pub mod wallet;
+pub mod wallet_ffi;
+pub mod wallet_process;
+#[macro_use]
+pub mod polling;
+pub mod port_pool;
+pub mod tx_event_stream;
+pub mod world;
+
+pub use polling::{DEFAULT_TIMEOUT, SHORT_TIMEOUT, scaled_timeout, timeout_multiplier};
+pub use world::TariWorld;
+
+pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u16> {
+    let min = range.clone().min().expect("A minimum possible port number");
+    let max = range.max().expect("A maximum possible port number");
+
+    loop {
+        let port = loop {
+            let port = rand::rng().random_range(min..max);
+            if !world.assigned_ports.contains_key(&port) {
+                break port;
+            }
+        };
+
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            world.assigned_ports.insert(port, port);
+            return Some(port);
+        }
+    }
+}
+
+pub fn get_base_dir() -> PathBuf {
+    let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
+}
+
+pub async fn wait_for_service(port: u16) {
+    // The idea is that if the port is taken it means the service is running.
+    // If the port is not taken the service hasn't come up yet
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("service on port {port} to start"),
+        condition: async {
+            Ok(TcpListener::bind(("127.0.0.1", port)).is_err())
+        }
+    );
+}
+
+pub async fn get_peer_addresses(world: &TariWorld, peers: &[String]) -> Vec<String> {
+    peers
+        .iter()
+        .map(|peer_string| {
+            let peer = world.base_nodes.get(peer_string.as_str()).unwrap().identity.to_peer();
+            peer.to_short_string()
+        })
+        .collect()
+}

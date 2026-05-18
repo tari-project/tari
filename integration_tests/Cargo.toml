@@ -1,0 +1,72 @@
+[package]
+name = "tari_integration_tests"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
+minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
+minotari_node = { path = "../applications/minotari_node", features = [
+    "metrics",
+] }
+minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
+tari_crypto = { version = "0.23" }
+tari_common = { path = "../common" }
+tari_common_sqlite = { path = "../common_sqlite" }
+tari_common_types = { path = "../base_layer/common_types" }
+tari_comms = { path = "../comms/core" }
+tari_comms_dht = { path = "../comms/dht" }
+tari_transaction_components = { path = "../base_layer/transaction_components" }
+tari_node_components = { path = "../base_layer/node_components" }
+minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = [
+    "grpc",
+] }
+minotari_offline_signer = { path = "../applications/minotari_offline_signer", features = [
+    "test-keystore",
+] }
+tari_core = { path = "../base_layer/core" }
+minotari_miner = { path = "../applications/minotari_miner" }
+tari_p2p = { path = "../base_layer/p2p" }
+tari_script = { path = "../infrastructure/tari_script" }
+tari_shutdown = { path = "../infrastructure/shutdown" }
+tari_utilities = { version = "0.10" }
+minotari_wallet = { path = "../base_layer/wallet" }
+minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
+minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+
+anyhow = { workspace = true }
+async-trait = "0.1.50"
+chrono = { version = "0.4", default-features = false }
+csv = "1.1"
+cucumber = { version = "0.22", features = [
+    "default",
+    "libtest",
+    "output-junit",
+] }
+futures = { version = "^0.3.1" }
+indexmap = "1.9.1"
+libc = "0.2.65"
+log = { workspace = true, features = ["std"] }
+rand = { workspace = true }
+reqwest = "0.12"
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = "0.3.47"
+tokio = { workspace = true, features = [
+    "macros",
+    "time",
+    "sync",
+    "rt-multi-thread",
+] }
+tonic = "0.13.1"
+
+[package.metadata.cargo-machete]
+ignored = ["minotari_wallet_ffi"]
+
+[[test]]
+name = "cucumber" # this should be the same as the filename of your test target
+harness = false   # allows Cucumber to print output instead of libtest

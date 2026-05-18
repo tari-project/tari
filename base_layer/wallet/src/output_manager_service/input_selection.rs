@@ -1,0 +1,174 @@
+//  Copyright 2022. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    ops::Range,
+};
+
+use tari_common_types::types::CompressedCommitment;
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
+pub enum UtxoSelectionMode {
+    #[default]
+    Safe,
+    ListingOnly,
+}
+
+#[derive(Debug, Clone)]
+pub struct UtxoSelectionCriteria {
+    pub mode: UtxoSelectionMode,
+    pub filter: UtxoSelectionFilter,
+    pub ordering: UtxoSelectionOrdering,
+    pub excluding: Vec<CompressedCommitment>,
+    pub min_dust: u64,
+    pub excluding_onesided: bool,
+    pub excluding_multisig: bool,
+    pub range_limit: Option<RangeLimit>,
+}
+
+impl Default for UtxoSelectionCriteria {
+    fn default() -> Self {
+        Self {
+            mode: UtxoSelectionMode::Safe,
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::Default,
+            excluding: Vec::new(),
+            min_dust: 0,
+            excluding_onesided: false,
+            excluding_multisig: true,
+            range_limit: None,
+        }
+    }
+}
+
+/// Select outputs within the specified amount ranges
+#[derive(Debug, Clone, Default)]
+pub struct RangeLimit {
+    /// The range of amounts to select from
+    pub range: Range<u64>,
+    /// The maximum number of inputs to select
+    pub transaction_input_limit: u64,
+    /// The target minimum amount to select
+    pub target_minimum_amount: u64,
+}
+
+impl UtxoSelectionCriteria {
+    pub fn smallest_first(min_dust: u64) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::SmallestFirst,
+            min_dust,
+            ..Default::default()
+        }
+    }
+
+    pub fn largest_first(min_dust: u64) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::Standard,
+            ordering: UtxoSelectionOrdering::LargestFirst,
+            min_dust,
+            ..Default::default()
+        }
+    }
+
+    pub fn specific(commitments: Vec<CompressedCommitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::SpecificOutputs { commitments },
+            ordering: UtxoSelectionOrdering::Default,
+            ..Default::default()
+        }
+    }
+
+    pub fn must_include(commitments: Vec<CompressedCommitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::MustInclude { commitments },
+            ordering: UtxoSelectionOrdering::Default,
+            ..Default::default()
+        }
+    }
+}
+
+impl Display for UtxoSelectionCriteria {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "filter: {}, ordering: {}", self.filter, self.ordering)
+    }
+}
+
+/// UTXO selection ordering
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UtxoSelectionOrdering {
+    /// The Default ordering is heuristic and depends on the requested value and the value of the available UTXOs.
+    /// If the requested value is larger than the largest available UTXO, we select LargerFirst as inputs, otherwise
+    /// SmallestFirst.
+    #[default]
+    Default,
+    /// Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
+    /// is removing small UTXOs from the blockchain, con is that it costs more in fees
+    SmallestFirst,
+    /// A strategy that selects the largest UTXOs first. Preferred when the amount is large
+    LargestFirst,
+}
+
+impl Display for UtxoSelectionOrdering {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UtxoSelectionOrdering::SmallestFirst => write!(f, "Smallest"),
+            UtxoSelectionOrdering::LargestFirst => write!(f, "Largest"),
+            UtxoSelectionOrdering::Default => write!(f, "Default"),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum UtxoSelectionFilter {
+    /// Select OutputType::Standard outputs only
+    #[default]
+    Standard,
+    /// Selects specific outputs. All outputs must be exist and be spendable.
+    SpecificOutputs { commitments: Vec<CompressedCommitment> },
+    /// Set of UTXOs that must be included in the selection. The system may include additional UTXOs if the specified
+    /// ones don't have the required combined amount for the transaction.
+    MustInclude { commitments: Vec<CompressedCommitment> },
+}
+impl UtxoSelectionFilter {
+    pub fn is_standard(&self) -> bool {
+        matches!(self, UtxoSelectionFilter::Standard)
+    }
+}
+
+impl Display for UtxoSelectionFilter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            UtxoSelectionFilter::Standard => {
+                write!(f, "Standard")
+            },
+            UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
+                write!(f, "Specific({} output(s))", outputs.len())
+            },
+            UtxoSelectionFilter::MustInclude { commitments: outputs } => {
+                write!(f, "MustInclude({} output(s))", outputs.len())
+            },
+        }
+    }
+}

@@ -1,0 +1,119 @@
+[workspace.package]
+version = "5.3.1-pre.4"
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+
+[workspace]
+members = [
+    "base_layer/core",
+    "base_layer/common_types",
+    "base_layer/transaction_components",
+    "base_layer/node_components",
+    "base_layer/mmr",
+    "base_layer/p2p",
+    "base_layer/service_framework",
+    "base_layer/sidechain",
+    "base_layer/wallet",
+    "base_layer/wallet_ffi",
+    "base_layer/transaction_key_manager",
+    "clients/rust/base_node_grpc_client",
+    "clients/rust/wallet_grpc_client",
+    "comms/core",
+    "comms/dht",
+    "comms/rpc_macros",
+    "common_sqlite",
+    "common/tari_features",
+    "infrastructure/libtor",
+    "infrastructure/metrics",
+    "infrastructure/jellyfish",
+    "infrastructure/shutdown",
+    "infrastructure/storage",
+    "infrastructure/tari_script",
+    "infrastructure/test_utils",
+    "buildtools/deps_only",
+    "applications/minotari_node",
+    "applications/minotari_console_wallet",
+    "applications/minotari_app_utilities",
+    "applications/minotari_merge_mining_proxy",
+    "applications/minotari_miner",
+    "applications/minotari_ledger_wallet/comms",
+    "applications/minotari_ledger_wallet/common",
+    "applications/minotari_utils",
+    "applications/minotari_offline_signer",
+    "integration_tests",
+    "hashing",
+]
+# Add here until we move to edition=2021
+resolver = "2"
+
+
+[workspace.dependencies]
+tari_jellyfish = { path = "infrastructure/jellyfish", version = "5.3.1-pre.4" }
+tari_common = { path = "common", version = "5.3.1-pre.4" }
+tari_common_sqlite = { path = "common_sqlite", version = "5.3.1-pre.4" }
+tari_common_types = { path = "base_layer/common_types", version = "5.3.1-pre.4" }
+tari_comms = { path = "comms/core", version = "5.3.1-pre.4" }
+tari_comms_dht = { path = "comms/dht", default-features = false, version = "5.3.1-pre.4" }
+tari_comms_rpc_macros = { path = "comms/rpc_macros", version = "5.3.1-pre.4" }
+tari_core = { path = "base_layer/core", default-features = false, version = "5.3.1-pre.4" }
+tari_features = { path = "common/tari_features", version = "5.3.1-pre.4" }
+tari_hashing = { path = "hashing", version = "5.3.1-pre.4" }
+tari_libtor = { path = "infrastructure/libtor", version = "5.3.1-pre.4" }
+tari_node_components = { path = "base_layer/node_components", version = "5.3.1-pre.4" }
+tari_metrics = { path = "infrastructure/metrics", version = "5.3.1-pre.4" }
+tari_mmr = { path = "base_layer/mmr", version = "5.3.1-pre.4" }
+tari_max_size = { path = "infrastructure/max_size", version = "5.3.1-pre.4" }
+tari_p2p = { path = "base_layer/p2p", version = "5.3.1-pre.4" }
+tari_script = { path = "infrastructure/tari_script", version = "5.3.1-pre.4" }
+tari_service_framework = { path = "base_layer/service_framework", version = "5.3.1-pre.4" }
+tari_shutdown = { path = "infrastructure/shutdown", version = "5.3.1-pre.4" }
+tari_sidechain = { path = "base_layer/sidechain", version = "5.3.1-pre.4" }
+tari_storage = { path = "infrastructure/storage", version = "5.3.1-pre.4" }
+tari_transaction_components = { path = "base_layer/transaction_components", version = "5.3.1-pre.4" }
+tari_transaction_key_manager = { path = "base_layer/transaction_key_manager", version = "5.3.1-pre.4" }
+tari_test_utils = { path = "infrastructure/test_utils", version = "5.3.1-pre.4" }
+minotari_app_grpc = { path = "applications/minotari_app_grpc", version = "5.3.1-pre.4" }
+minotari_app_utilities = { path = "applications/minotari_app_utilities", version = "5.3.1-pre.4" }
+minotari_wallet = { path = "base_layer/wallet", version = "5.3.1-pre.4" }
+minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client", version = "5.3.1-pre.4" }
+minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client", version = "5.3.1-pre.4" }
+minotari_console_wallet = { path = "applications/minotari_console_wallet", version = "5.3.1-pre.4" }
+minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy", version = "5.3.1-pre.4" }
+minotari_miner = { path = "applications/minotari_miner", version = "5.3.1-pre.4" }
+minotari_node = { path = "applications/minotari_node", version = "5.3.1-pre.4" }
+minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.3.1-pre.4" }
+minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
+minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "5.3.1-pre.4" }
+minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "5.3.1-pre.4" }
+minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "5.3.1-pre.4" }
+
+tari_utilities = { version = "0.10" }
+tari_crypto = { version = "0.23" }
+
+anyhow = { version = "1.0" }
+serde_json = "1"
+serde = "1"
+rand = { version = "0.10.1" }
+rand_core = { version = "0.10.1" }
+thiserror = { version = "2" }
+borsh = { version = "1.5.7" }
+tokio = { version = "1.47" }
+log = { version = "0.4" }
+log4rs = { version = "1.4", default-features = false}
+base64 = "0.22"
+[profile.release]
+# By default, Rust will wrap an integer in release mode instead of throwing the overflow error
+# seen in debug mode. Panicking at this time is better than silently using the wrong value.
+overflow-checks = true
+opt-level = 3
+debug = false
+# To enable debug symbols with dhat profiling in release mode, enable the 'dhat-heap' feature and use
+# CARGO_PROFILE_* Environment Variables:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --features=dhat-heap               ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --features=dhat-heap     ...(PowerShell)
+
+[patch.crates-io]
+liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }

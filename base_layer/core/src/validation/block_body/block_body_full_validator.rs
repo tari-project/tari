@@ -1,0 +1,171 @@
+//  Copyright 2021, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use log::error;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock};
+use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
+use tari_utilities::hex::Hex;
+
+use super::BlockBodyInternalConsistencyValidator;
+use crate::{
+    chain_storage::{self, BlockchainBackend},
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::monero_rx::MoneroPowData,
+    validation::{
+        BlockBodyValidator,
+        CandidateBlockValidator,
+        ValidationError,
+        aggregate_body::AggregateBodyChainLinkedValidator,
+        block_body::block_body_partial_validator::BlockBodyPartialValidator,
+        helpers::check_mmr_roots,
+    },
+};
+
+const LOG_TARGET: &str = "c::val::block_body_full_validator";
+
+pub struct BlockBodyFullValidator {
+    consensus_manager: BaseNodeConsensusManager,
+    block_internal_validator: BlockBodyInternalConsistencyValidator,
+    aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
+    block_body_partial_validator: BlockBodyPartialValidator,
+}
+
+impl BlockBodyFullValidator {
+    pub fn new(rules: BaseNodeConsensusManager, bypass_range_proof_verification: bool) -> Self {
+        let factories = CryptoFactories::default();
+        let block_internal_validator =
+            BlockBodyInternalConsistencyValidator::new(rules.clone(), bypass_range_proof_verification, factories);
+        let aggregate_body_chain_validator = AggregateBodyChainLinkedValidator::new(rules.clone());
+        let block_body_partial_validator = BlockBodyPartialValidator::new(rules.clone());
+        Self {
+            consensus_manager: rules,
+            block_internal_validator,
+            aggregate_body_chain_validator,
+            block_body_partial_validator,
+        }
+    }
+
+    pub fn validate<B: BlockchainBackend>(
+        &self,
+        backend: &B,
+        block: &Block,
+        metadata_option: Option<&ChainMetadata>,
+    ) -> Result<Block, ValidationError> {
+        if let Some(metadata) = metadata_option {
+            validate_block_metadata(block, metadata)?;
+        }
+
+        // validate the block body against the current db
+        // the inputs may be only references to outputs, that's why the validator returns a new body and we need a new
+        // block
+        let body = self
+            .aggregate_body_chain_validator
+            .validate(&block.body, &block.header, backend)?;
+        let block = Block::new(block.header.clone(), body);
+
+        // validate the internal consistency of the block body
+        self.block_internal_validator.validate(&block)?;
+
+        let mmr_roots = match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block) {
+            Ok(mmr_roots) => mmr_roots,
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
+                );
+                return Err(e.into());
+            },
+        };
+        check_mmr_roots(&block.header, &mmr_roots)?;
+
+        BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
+
+        Ok(block)
+    }
+
+    fn check_monero_seed_height<B: BlockchainBackend>(
+        header: &BlockHeader,
+        rules: &BaseNodeConsensusManager,
+        backend: &B,
+    ) -> Result<(), ValidationError> {
+        if header.pow.pow_algo == PowAlgorithm::RandomXM {
+            let monero_data = MoneroPowData::from_header(header, rules)?;
+            let seed_height = backend.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
+            if seed_height != 0 {
+                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
+                let seed_used_height = header.height.saturating_sub(seed_height);
+                if seed_used_height > rules.consensus_constants(header.height).max_randomx_seed_height() {
+                    return Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::OldSeedHash,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator {
+    fn validate_body_with_metadata(
+        &self,
+        backend: &B,
+        block: &ChainBlock,
+        metadata: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        self.validate(backend, block.block(), Some(metadata))?;
+        Ok(())
+    }
+
+    // This body-at-height validation is intended to validate the block body without any knowledge of consecutive
+    // blocks that may exist. For example, it cannot validate that kernels are unique, that outputs have not been
+    // spent already or that the block is building on tip.
+    fn validate_body_at_height(&self, backend: &B, block: &ChainBlock) -> Result<(), ValidationError> {
+        self.block_internal_validator.validate(block.block())?;
+        self.block_body_partial_validator.validate(backend, block.block())?;
+
+        Ok(())
+    }
+}
+
+impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError> {
+        self.validate(backend, block, None)
+    }
+}
+
+fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    if block.header.prev_hash != *metadata.best_block_hash() {
+        return Err(ValidationError::IncorrectPreviousHash {
+            expected: metadata.best_block_hash().to_hex(),
+            block_hash: block.header.prev_hash.to_hex(),
+        });
+    }
+    if block.header.height != metadata.best_block_height() + 1 {
+        return Err(ValidationError::IncorrectHeight {
+            expected: metadata.best_block_height() + 1,
+            block_height: block.header.height,
+        });
+    }
+
+    Ok(())
+}

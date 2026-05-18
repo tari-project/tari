@@ -1,0 +1,48 @@
+[package]
+name = "minotari_app_grpc"
+description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = ["base_node"]
+base_node = ["tari_core", "tari_comms"]
+
+
+[dependencies]
+tari_common_types = { workspace = true }
+tari_comms = { workspace = true, optional = true }
+tari_core = { workspace = true, optional = true}
+tari_crypto = { workspace = true }
+tari_script = { workspace = true }
+tari_node_components = { workspace = true }
+tari_max_size = { workspace = true }
+tari_sidechain = { workspace = true }
+tari_utilities = { workspace = true }
+tari_transaction_components = { workspace = true }
+
+argon2 = { version = "0.6.0-rc.8", features = ["password-hash"] }
+base64 = { workspace = true }
+borsh = { workspace = true }
+log = { workspace = true }
+prost = "0.13.3"
+rand = { workspace = true }
+rcgen = "0.12.1"
+subtle = "2.5.0"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+tonic = { version = "0.13.1", features = ["tls-ring"] }
+zeroize = "1"
+
+[build-dependencies]
+tari_features = { workspace = true }
+tonic-build = "0.13.1"
+
+[package.metadata.cargo-machete]
+ignored = [
+    "prost",
+] # this is so we can run cargo machete without getting false positive about macro dependancies

@@ -1,0 +1,89 @@
+[package]
+name = "tari_transaction_components"
+description = "Core Tari transaction components"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+ledger = ["minotari_ledger_wallet_comms"]
+wasm = ["wasm-bindgen"]
+
+[dependencies]
+minotari_ledger_wallet_comms = { workspace = true, optional = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_hashing = { workspace = true }
+tari_max_size = { workspace = true }
+tari_sidechain = { workspace = true }
+tari_script = { workspace = true }
+tari_utilities = { workspace = true }
+minotari_ledger_wallet_common = { workspace = true }
+
+anyhow = { workspace = true }
+base64 = { workspace = true }
+bitflags = { version = "2.4", features = ["serde"] }
+borsh = { workspace = true, features = ["derive"] }
+
+bytes = "1.11.1"
+chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
+
+derivative = "2.2.0"
+decimal-rs = "0.1.42"
+digest = "0.10"
+
+integer-encoding = "3.0"
+num-format = "0.4.0"
+newtype-ops = "0.1.4"
+num-traits = "0.2.15"
+num-derive = "0.4.2"
+
+primitive-types = { version = "0.12", features = ["serde"] }
+log = { workspace = true }
+rand = { workspace = true }
+serde_repr = "0.1.8"
+serde_valid = "1.0.5"
+strum_macros = "0.22"
+tari_crypto = { workspace = true, features = ["borsh"] }
+
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+blake2 = "0.10"
+semver = { version = "1.0", features = ["serde"] }
+uuid = "1.17.0"
+zeroize = "1"
+
+utoipa = "5.3.1"
+wasm-bindgen = { version = "0.2.100", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+
+[dev-dependencies]
+argon2 = "0.6.0-rc.8"
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
+tari_test_utils = { workspace = true }
+hex = "0.4"
+toml = "0.5.8"
+
+serde_json = "1.0"
+static_assertions = "1.1.0"
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(tari_target_network_mainnet)',
+    'cfg(tari_target_network_nextnet)',
+    'cfg(tari_target_network_testnet)',
+] }
+
+
+
+[package.metadata.cargo-machete]
+ignored = ["hickory-proto"]

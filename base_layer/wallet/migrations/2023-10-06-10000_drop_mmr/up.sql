@@ -1,0 +1,1 @@
+ALTER TABLE outputs DROP mined_mmr_position;

@@ -1,0 +1,71 @@
+[package]
+name = "tari_comms_dht"
+description = "Tari comms DHT module"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tari_comms = { workspace = true, features = ["rpc"] }
+tari_common = { workspace = true }
+tari_common_sqlite = { workspace = true }
+tari_comms_rpc_macros = { workspace = true }
+tari_crypto = { workspace = true }
+tari_utilities = { workspace = true }
+tari_shutdown = { workspace = true }
+
+anyhow = { workspace = true }
+bitflags = { version = "2.4", features = ["serde"] }
+blake2 = "0.10"
+chacha20 = "0.7.1"
+chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4", default-features = false }
+diesel = { version = "2.3.8", features = [
+    "sqlite",
+    "serde_json",
+    "chrono",
+    "numeric",
+] }
+diesel_migrations = "2.3"
+digest = "0.10"
+futures = "^0.3.1"
+futures-util = "^0.3.1"
+log = { workspace = true }
+prost = "0.13.3"
+rand = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tower = { version = "0.4", features = ["full"] }
+zeroize = "1"
+
+# Uncomment for tokio tracing via tokio-console (needs "tracing" features)
+#console-subscriber = "0.4"
+#tokio = { workspace = true, features = ["rt", "macros", "tracing"] }
+# Uncomment for normal use (non tokio-console tracing)
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+# tower-filter dependencies
+pin-project = "0.4"
+
+[dev-dependencies]
+tari_test_utils = { workspace = true }
+
+env_logger = "0.11"
+futures-test = { version = "0.3.5" }
+lmdb-zero = "0.4.4"
+once_cell = "1.8.0"
+tempfile = "3.1.0"
+tokio-stream = { version = "0.1.9", features = ["sync"] }
+petgraph = "0.5.1"
+clap = "4"
+
+
+[build-dependencies]
+tari_common = { workspace = true }
+
+[features]
+test-mocks = []

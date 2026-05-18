@@ -1,0 +1,81 @@
+deny = [
+    # Prevent spelling mistakes in lints
+    'unknown_lints',
+    # clippy groups:
+    'clippy::correctness',
+    # All clippy allows must have a reason
+    # TODO: enable lint-reasons feature
+    #    'clippy::allow_attributes_without_reason',
+    # Docs
+    #'missing_docs',
+    #    'clippy::missing_errors_doc',
+    #    'clippy::missing_safety_doc',
+    #    'clippy::missing_panics_doc',
+
+    # Common mistakes
+    'clippy::await_holding_lock',
+    'unused_variables',
+    'unused_imports',
+    'dead_code',
+    'unused_extern_crates',
+    'unused_must_use',
+    'unreachable_patterns',
+    'clippy::cloned_instead_of_copied',
+    'clippy::create_dir',
+    'clippy::dbg_macro',
+    'clippy::else_if_without_else',
+    'clippy::inline_always',
+    'let_underscore_drop',
+    'clippy::let_unit_value',
+    'clippy::indexing_slicing',
+    'clippy::match_wild_err_arm',
+    # In crypto code, it is fairly common to have similar names e.g. `owner_pk` and `owner_k`
+    # 'clippy::similar_names',
+    'clippy::needless_borrow',
+    # style
+    'clippy::style',
+    'clippy::explicit_into_iter_loop',
+    'clippy::explicit_iter_loop',
+    'clippy::if_not_else',
+    'clippy::match_bool',
+    # Although generally good practice, this is disabled because the code becomes worse
+    # or needs mod-level exclusion in these cases:
+    # tauri commands, blockchain async db needs owned copy, &Arc<T>, Copy types, T: AsRef<..>, T: ToString
+    # 'clippy::needless_pass_by_value',
+    'clippy::range_plus_one',
+    'clippy::struct_excessive_bools',
+    'clippy::too_many_lines',
+    'clippy::trivially_copy_pass_by_ref',
+    # Highlights potential casting mistakes
+    'clippy::cast_lossless',
+    'clippy::cast_possible_truncation',
+    'clippy::cast_possible_wrap',
+    # Precision loss is almost always competely fine and is only useful as a sanity check.
+    # https://rust-lang.github.io/rust-clippy/master/index.html#cast_precision_loss
+    # 'clippy::cast_precision_loss',
+    #    'clippy::cast_sign_loss'
+    'clippy::unnecessary_to_owned',
+    'clippy::nonminimal_bool',
+    'clippy::needless_question_mark',
+    # dbg! macro is intended as a debugging tool. It should not be in version control.
+    'clippy::dbg_macro',
+]
+
+allow = [
+    # allow Default::default calls
+    'clippy::default_trait_access',
+    # Generally when developers fix this, it can lead to leaky abstractions or worse, so
+    # too many arguments is generally the lesser of two evils
+    'clippy::too_many_arguments',
+    # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
+    'clippy::bool-assert-comparison',
+    'clippy::blocks_in_conditions',
+    'clippy::result_large_err',
+]
+
+warn = [
+    # TODO: resolve these
+    "clippy::large_enum_variant",
+    # This lint is quite pedantic
+    #    "clippy::uninlined_format_args"
+]

@@ -1,0 +1,106 @@
+//  Copyright 2020, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::marker::PhantomData;
+
+use log::*;
+use tari_common_types::types::{CompressedCommitment, PrivateKey};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_transaction_components::{MicroMinotari, crypto_factories::CryptoFactories};
+
+use crate::{
+    chain_storage::BlockchainBackend,
+    consensus::BaseNodeConsensusManager,
+    validation::{FinalHorizonStateValidation, ValidationError},
+};
+
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";
+
+/// Validate that the chain balances at a given height.
+pub struct ChainBalanceValidator<B> {
+    rules: BaseNodeConsensusManager,
+    factories: CryptoFactories,
+    _phantom: PhantomData<B>,
+}
+
+impl<B: BlockchainBackend> ChainBalanceValidator<B> {
+    pub fn new(rules: BaseNodeConsensusManager, factories: CryptoFactories) -> Self {
+        Self {
+            rules,
+            factories,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValidator<B> {
+    fn validate(
+        &self,
+        backend: &B,
+        height: u64,
+        total_utxo_sum: &CompressedCommitment,
+        total_kernel_sum: &CompressedCommitment,
+        total_burned_sum: &CompressedCommitment,
+    ) -> Result<(), ValidationError> {
+        let emission_h = self.get_emission_commitment_at(height);
+        let total_offset = self.fetch_total_offset_commitment(height, backend)?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Emission:{emission_h:?}. Offset:{total_offset:?}, total kernel: {total_kernel_sum:?}, height: {height}, total_utxo: {total_utxo_sum:?}, total_burned: {total_burned_sum:?}"
+        );
+        let input =
+            &(&emission_h.to_commitment()? + &total_kernel_sum.to_commitment()?) + &total_offset.to_commitment()?;
+
+        if (&total_utxo_sum.to_commitment()? + &total_burned_sum.to_commitment()?) != input {
+            return Err(ValidationError::ChainBalanceValidationFailed(height));
+        }
+
+        Ok(())
+    }
+}
+
+impl<B: BlockchainBackend> ChainBalanceValidator<B> {
+    fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<CompressedCommitment, ValidationError> {
+        let chain_header = backend.fetch_chain_header_by_height(height)?;
+        let offset = &chain_header.accumulated_data().total_kernel_offset;
+        Ok(CompressedCommitment::from_commitment(
+            self.factories.commitment.commit(offset, &0u64.into()),
+        ))
+    }
+
+    fn get_emission_commitment_at(&self, height: u64) -> CompressedCommitment {
+        // With inflating tail emission, we **must** know the value of the premine as part of the supply calc in order
+        // to determine the correct inflation curve. Therefore, the premine is already included in the supply
+        let total_supply = self.rules.get_total_emission_at(height);
+        debug!(
+            target: LOG_TARGET,
+            "Expected emission at height {height} is {total_supply}"
+        );
+        self.commit_value(total_supply)
+    }
+
+    #[inline]
+    fn commit_value(&self, v: MicroMinotari) -> CompressedCommitment {
+        CompressedCommitment::from_commitment(self.factories.commitment.commit_value(&PrivateKey::default(), v.into()))
+    }
+}

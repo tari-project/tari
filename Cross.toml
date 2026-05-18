@@ -1,0 +1,94 @@
+[build.env]
+passthrough = [
+  "CFLAGS",
+  "TARGET",
+  "RUST_TARGET",
+  "BUILD_TARGET",
+  "CARGO_BUILD_TARGET",
+  "TARGET_CFLAGS",
+  "CC_aarch64_unknown_linux_gnu",
+  "CC_riscv64_unknown_linux_gnu",
+  "CC_x86_64_unknown_linux_gnu",
+  "PKG_CONFIG_PATH",
+  "PKG_CONFIG_ALLOW_CROSS",
+  "RUSTFLAGS",
+  "RUST_BACKTRACE",
+  "RUST_DEBUG",
+  "RUST_LOG",
+  "ARCH",
+  "FEATURES",
+  "ROARING_ARCH",
+  "TARI_NETWORK",
+  "TARI_TARGET_NETWORK",
+  "TARI_NETWORK_DIR",
+]
+
+[target.x86_64-linux-android]
+image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
+pre-build = [ """
+export DEBIAN_FRONTEND=noninteractive && \
+apt-get update && \
+apt-get --assume-yes --no-install-recommends install \
+ curl unzip && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip && \
+unzip -o protoc-30.2-linux-x86_64.zip -d /usr/ && \
+/usr/bin/protoc --version
+""" ]
+
+[target.x86_64-linux-android.env]
+passthrough = [
+  "CFLAGS=-DMDB_USE_ROBUST=0",
+]
+
+[target.aarch64-linux-android]
+image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
+pre-build = [ """
+export DEBIAN_FRONTEND=noninteractive && \
+apt-get update && \
+apt-get --assume-yes --no-install-recommends install \
+ curl unzip && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip && \
+unzip -o protoc-30.2-linux-x86_64.zip -d /usr/ && \
+/usr/bin/protoc --version
+""" ]
+
+[target.aarch64-linux-android.env]
+passthrough = [
+  "CFLAGS=-DMDB_USE_ROBUST=0",
+]
+
+# Currently needs cross-rs from git ```cargo install cross --git https://github.com/cross-rs/cross```
+[target.aarch64-unknown-linux-gnu]
+image.name = "ubuntu:18.04"
+# targetting is needed for apple silicon
+image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
+pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.aarch64-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+  "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig",
+]
+
+[target.x86_64-unknown-linux-gnu]
+image = "ubuntu:18.04"
+pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.x86_64-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+  "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig",
+]
+
+[target.riscv64gc-unknown-linux-gnu]
+#image.name = "riscv64/ubuntu:22.04"
+#image.toolchain = ["linux/riscv64=riscv64-unknown-linux-gnu", "linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu"]
+image.name = "ubuntu:22.04"
+image.toolchain = ["linux/arm64=aarch64-unknown-linux-gnu", "linux/amd64=x86_64-unknown-linux-gnu", "linux/riscv64=riscv64gc-unknown-linux-gnu"]
+pre-build = "./scripts/cross_compile_ubuntu_18-pre-build.sh"
+
+[target.riscv64gc-unknown-linux-gnu.env]
+passthrough = [
+  "PKG_CONFIG_ALLOW_CROSS=true",
+  "PKG_CONFIG_PATH=/usr/lib/riscv64-linux-gnu/pkgconfig",
+]

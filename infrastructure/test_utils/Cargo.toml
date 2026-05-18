@@ -1,0 +1,22 @@
+[package]
+name = "tari_test_utils"
+description = "Utility functions used in Tari test functions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_shutdown = { workspace = true }
+
+futures = { version = "^0.3.1" }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "sync"] }
+tempfile = "3.1.0"
+
+[dev-dependencies]
+futures-test = { version = "^0.3.1" }

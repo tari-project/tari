@@ -1,0 +1,53 @@
+[package]
+name = "tari_common"
+description = "Utilities and features for the Tari domain layer, shared across both Base and Digital Asset layers."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+build = ["toml", "prost-build"]
+static-application-info = ["git2"]
+
+[dependencies]
+tari_features = { workspace = true }
+
+anyhow = { workspace = true }
+cargo_toml = { version = "0.20.4" }
+config = { version = "0.14.0", default-features = false, features = ["toml"] }
+dirs-next = "1.0.2"
+git2 = { version = "0.20.4", default-features = false, optional = true }
+log = { workspace = true }
+log4rs = { workspace = true, default-features = false, features = [
+    "config_parsing",
+    "threshold_filter",
+    "yaml_format",
+] }
+multiaddr = { version = "0.18.2" }
+path-clean = "0.1.0"
+prost-build = { version = "0.11.9", optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9.17"
+sha2 = "0.10"
+structopt = { version = "0.3.13", default-features = false }
+tempfile = "3.1.0"
+thiserror = { workspace = true }
+toml = { version = "0.5", optional = true }
+
+[dev-dependencies]
+tari_test_utils = { workspace = true }
+toml = "0.5.8"
+
+[build-dependencies]
+tari_features = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(tari_target_network_mainnet)',
+    'cfg(tari_target_network_nextnet)',
+] }

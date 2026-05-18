@@ -1,0 +1,49 @@
+---
+# Notes for this action:
+# Restoring caches is largely useless, since the compiler flags are only useful for code coverage runs.
+# This GA is self-hosted, and has local caching solutions.
+name: Source Coverage
+
+'on':
+  push:
+    branches:
+      - development
+      - ci-coverage-*
+
+env:
+  toolchain: stable
+  RUSTUP_PERMIT_COPY_RENAME: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: test and generate coverage
+    runs-on: [ self-hosted, ubuntu-high-mem ]
+    steps:
+      - name: checkout source code
+        uses: actions/checkout@v6
+
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+
+      - name: run tests with coverage
+        # Prepare the coverage data, even if some tests fail
+        continue-on-error: true
+        run: bash -c ./scripts/source_coverage.sh
+
+      - name: Coveralls upload
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          format: lcov
+          file: lcov.info
+

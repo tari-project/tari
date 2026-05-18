@@ -1,0 +1,26 @@
+[package]
+name = "tari_libtor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "A Rust wrapper around the Tor library (libtor) for use in Tari applications."
+
+[dependencies]
+tari_common = { workspace = true }
+tari_p2p = { workspace = true }
+
+derivative = "2.2.0"
+log = { workspace = true }
+rand = { workspace = true }
+tor-hash-passwd = "1.0.1"
+
+[target.'cfg(unix)'.dependencies]
+libtor = { version = "47.13.0", features = ["vendored-openssl"] }
+
+[package.metadata.cargo-machete]
+ignored = [
+    "openssl",
+] # this is so we can run cargo machete without getting false positive about macro dependancies

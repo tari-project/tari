@@ -1,0 +1,719 @@
+// Copyright 2019 The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    iter,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::{Stream, future::Either, pin_mut, stream::StreamExt};
+use log::*;
+use tari_comms::{
+    Minimized,
+    PeerManager,
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
+    peer_manager::NodeId,
+    types::CommsPublicKey,
+};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
+use tari_service_framework::reply_channel::RequestContext;
+use tari_shutdown::ShutdownSignal;
+use tokio::{sync::RwLock, time, time::MissedTickBehavior};
+use tokio_stream::wrappers;
+
+use super::{
+    LOG_TARGET,
+    LivenessRequest,
+    LivenessResponse,
+    config::LivenessConfig,
+    error::LivenessError,
+    message::{PingPong, PingPongMessage},
+    state::LivenessState,
+};
+use crate::{
+    domain_message::DomainMessage,
+    services::liveness::{LivenessEvent, PingPongEvent, handle::LivenessEventSender},
+    tari_message::TariMessageType,
+};
+
+pub const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(30);
+
+/// Service responsible for testing Liveness of Peers.
+pub struct LivenessService<THandleStream, TPingStream> {
+    config: LivenessConfig,
+    request_rx: Option<THandleStream>,
+    ping_stream: Option<TPingStream>,
+    state: LivenessState,
+    connectivity: ConnectivityRequester,
+    outbound_messaging: OutboundMessageRequester,
+    event_publisher: LivenessEventSender,
+    shutdown_signal: ShutdownSignal,
+    monitored_peers: Arc<RwLock<Vec<NodeId>>>,
+    peer_manager: Arc<PeerManager>,
+    seeds: Vec<NodeId>,
+}
+
+impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
+where
+    TPingStream: Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>>,
+    TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
+{
+    pub fn new(
+        config: LivenessConfig,
+        request_rx: TRequestStream,
+        ping_stream: TPingStream,
+        state: LivenessState,
+        connectivity: ConnectivityRequester,
+        outbound_messaging: OutboundMessageRequester,
+        event_publisher: LivenessEventSender,
+        shutdown_signal: ShutdownSignal,
+        peer_manager: Arc<PeerManager>,
+    ) -> Self {
+        Self {
+            request_rx: Some(request_rx),
+            ping_stream: Some(ping_stream),
+            state,
+            connectivity,
+            outbound_messaging,
+            event_publisher,
+            shutdown_signal,
+            config: config.clone(),
+            monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
+            peer_manager,
+            seeds: Vec::new(),
+        }
+    }
+
+    pub async fn run(mut self) {
+        debug!(target: LOG_TARGET, "Liveness service started");
+        debug!(target: LOG_TARGET, "Config = {:?}", self.config);
+        let ping_stream = self.ping_stream.take().expect("ping_stream cannot be None").fuse();
+        pin_mut!(ping_stream);
+
+        let request_stream = self.request_rx.take().expect("ping_stream cannot be None").fuse();
+        pin_mut!(request_stream);
+
+        let mut ping_tick = match self.config.auto_ping_interval {
+            Some(interval) => {
+                let mut interval = time::interval_at((Instant::now() + interval).into(), interval);
+                interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                Either::Left(wrappers::IntervalStream::new(interval))
+            },
+            None => Either::Right(futures::stream::iter(iter::empty())),
+        };
+
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or_else(|_| {
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
+
+        loop {
+            tokio::select! {
+                // Requests from the handle
+                Some(request_context) = request_stream.next() => {
+                    let (request, reply_tx) = request_context.split();
+                    let _result = reply_tx.send(self.handle_request(request).await);
+                },
+
+                // Tick events
+                Some(_) = ping_tick.next() => {
+                    if let Err(err) = self.start_ping_round().await {
+                        warn!(target: LOG_TARGET, "Error when pinging peers: {err}");
+                    }
+                    if self.config.max_allowed_ping_failures > 0 {
+                        self.disconnect_failed_peers().await;
+                    }
+                },
+
+                // Incoming messages from the Comms layer
+                Some(msg) = ping_stream.next() => {
+                    if let Err(err) = self.handle_incoming_message(msg).await {
+                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {err}");
+                    }
+                },
+
+                _ = self.shutdown_signal.wait() => {
+                    info!(target: LOG_TARGET, "Liveness service shutting down because the shutdown signal was received");
+                    break;
+                }
+            }
+        }
+    }
+
+    async fn handle_incoming_message(
+        &mut self,
+        msg: DomainMessage<Result<PingPongMessage, prost::DecodeError>>,
+    ) -> Result<(), LivenessError> {
+        let DomainMessage::<_> {
+            source_peer,
+            dht_header,
+            inner: ping_pong_msg,
+            ..
+        } = msg;
+        let node_id = source_peer.node_id.clone();
+        let public_key = source_peer.public_key.clone();
+        let message_tag = dht_header.message_tag;
+        let ping_pong_msg = match ping_pong_msg {
+            Ok(p) => p,
+            Err(e) => {
+                self.connectivity
+                    .ban_peer(node_id.clone(), format!("Peer sent a badly formed PingPongMessage:{e}"))
+                    .await?;
+                return Err(e.into());
+            },
+        };
+
+        match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
+            PingPong::Ping => {
+                self.state.inc_pings_received();
+                self.send_pong(ping_pong_msg.nonce, public_key).await?;
+                self.state.inc_pongs_sent();
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Received ping from peer '{}' with useragent '{}' (Trace: {})",
+                    node_id.short_str(),
+                    source_peer.user_agent,
+                    message_tag,
+                );
+
+                let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into(), ping_pong_msg.nonce);
+                self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
+            },
+            PingPong::Pong => {
+                if !self.state.is_inflight(ping_pong_msg.nonce) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Received Pong that was not requested from '{}' with useragent {}. Ignoring it. (Trace: {})",
+                        node_id.short_str(),
+                        source_peer.user_agent,
+                        message_tag,
+                    );
+                    return Ok(());
+                }
+
+                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
+                trace!(
+                    target: LOG_TARGET,
+                    "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
+                    node_id.short_str(),
+                    source_peer.user_agent,
+                    maybe_latency
+                        .map(|latency| format!("Latency: {latency:.2?}"))
+                        .unwrap_or_default(),
+                    message_tag,
+                );
+
+                let pong_event = PingPongEvent::new(
+                    node_id.clone(),
+                    maybe_latency,
+                    ping_pong_msg.metadata.into(),
+                    ping_pong_msg.nonce,
+                );
+                self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
+
+                if let Some(address) = source_peer.last_address_used() {
+                    let mut peer_to_update = source_peer.clone();
+                    if let Some(val) = maybe_latency {
+                        peer_to_update.addresses.update_latency(&address, val);
+                    }
+                    peer_to_update.addresses.mark_last_seen_now(&address);
+                    self.peer_manager.add_or_update_peer(peer_to_update).await?;
+                }
+            },
+        }
+        Ok(())
+    }
+
+    async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
+        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
+        let nonce = msg.nonce;
+        self.state.add_inflight_ping(
+            nonce,
+            node_id.clone(),
+            self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+        );
+        debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
+
+        self.outbound_messaging
+            .send_direct_node_id(
+                node_id,
+                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                "Send ping".to_string(),
+            )
+            .await?;
+
+        Ok(nonce)
+    }
+
+    async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
+        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
+        self.outbound_messaging
+            .send_direct_unencrypted(
+                dest,
+                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                "Sending pong".to_string(),
+            )
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
+    }
+
+    async fn handle_request(&mut self, request: LivenessRequest) -> Result<LivenessResponse, LivenessError> {
+        #[allow(clippy::enum_glob_use)]
+        use LivenessRequest::*;
+        match request {
+            SendPing(node_id) => {
+                let nonce = self.send_ping(node_id).await?;
+                self.state.inc_pings_sent();
+                Ok(LivenessResponse::Ok(Some(vec![nonce])))
+            },
+            SendPings(node_ids) => {
+                let mut nonces = Vec::with_capacity(node_ids.len());
+                for node_id in node_ids {
+                    nonces.push(self.send_ping(node_id).await?);
+                    self.state.inc_pings_sent();
+                }
+                Ok(LivenessResponse::Ok(Some(nonces)))
+            },
+            GetPingCount => {
+                let ping_count = self.get_ping_count();
+                Ok(LivenessResponse::Count(ping_count))
+            },
+            GetPongCount => {
+                let pong_count = self.get_pong_count();
+                Ok(LivenessResponse::Count(pong_count))
+            },
+            GetAvgLatency(node_id) => {
+                let latency = self.state.get_avg_latency(&node_id);
+                Ok(LivenessResponse::AvgLatency(latency))
+            },
+            GetNetworkAvgLatency => {
+                let latency = self.state.get_network_avg_latency();
+                Ok(LivenessResponse::AvgLatency(latency))
+            },
+            SetMetadataEntry(key, value) => {
+                self.state.set_metadata_entry(key, value);
+                Ok(LivenessResponse::Ok(None))
+            },
+            AddMonitoredPeer(node_id) => {
+                let node_id_exists = { self.monitored_peers.read().await.iter().any(|val| val == &node_id) };
+                if !node_id_exists {
+                    self.monitored_peers.write().await.push(node_id.clone());
+                }
+                Ok(LivenessResponse::Ok(None))
+            },
+            RemoveMonitoredPeer(node_id) => {
+                let node_id_exists = { self.monitored_peers.read().await.iter().position(|val| *val == node_id) };
+                if let Some(pos) = node_id_exists {
+                    self.monitored_peers.write().await.swap_remove(pos);
+                }
+                Ok(LivenessResponse::Ok(None))
+            },
+        }
+    }
+
+    async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
+        let mut monitored_peers = { self.monitored_peers.read().await.clone() };
+        // Try to select connections that exclude seed nodes
+        let mut selected_peers = self
+            .connectivity
+            .select_connections(ConnectivitySelection::random_nodes(
+                self.config.num_peers_per_round,
+                self.seeds.clone(),
+            ))
+            .await?
+            .into_iter()
+            .map(|c| c.peer_node_id().clone())
+            .collect::<Vec<_>>();
+
+        // If not enough connections were selected, use potentially connected seed nodes as a fallback
+        if selected_peers.len() < self.config.num_peers_per_round {
+            selected_peers = self
+                .connectivity
+                .select_connections(ConnectivitySelection::random_nodes(
+                    self.config.num_peers_per_round,
+                    vec![],
+                ))
+                .await?
+                .into_iter()
+                .map(|c| c.peer_node_id().clone())
+                .collect::<Vec<_>>();
+            if selected_peers.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Cannot broadcast pings because there are no connected broadcast peers available"
+                )
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding seed peers to ping round as there are no other connected broadcast peers available"
+                )
+            }
+        }
+        selected_peers.append(&mut monitored_peers);
+
+        let len_peers = selected_peers.len();
+
+        for peer in selected_peers {
+            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
+            self.state.add_inflight_ping(
+                msg.nonce,
+                peer.clone(),
+                self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+            );
+            self.outbound_messaging
+                .send_direct_node_id(
+                    peer,
+                    OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                    "Start ping round".to_string(),
+                )
+                .await?;
+        }
+
+        self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
+
+        Ok(())
+    }
+
+    async fn disconnect_failed_peers(&mut self) {
+        let max_allowed_ping_failures = self.config.max_allowed_ping_failures;
+        let mut node_ids = Vec::new();
+        for node_id in self
+            .state
+            .failed_pings_iter()
+            .filter(|(_, n)| **n > max_allowed_ping_failures)
+            .map(|(node_id, _)| node_id)
+        {
+            if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone()).await {
+                debug!(
+                    target: LOG_TARGET,
+                    "Disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings"
+                );
+                match conn
+                    .disconnect(Minimized::No, "LivenessService disconnect failed peers")
+                    .await
+                {
+                    Ok(_) => {
+                        node_ids.push(node_id.clone());
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Failed to disconnect peer {node_id} ({err})");
+                    },
+                }
+            }
+        }
+        self.state.clear_failed_pings(&node_ids);
+    }
+
+    fn publish_event(&mut self, event: LivenessEvent) {
+        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
+            trace!(
+                target: LOG_TARGET,
+                "Could not publish LivenessEvent as there are no subscribers"
+            )
+        });
+    }
+
+    fn get_ping_count(&self) -> usize {
+        self.state.pings_received()
+    }
+
+    fn get_pong_count(&self) -> usize {
+        self.state.pongs_received()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use futures::stream;
+    use tari_common_sqlite::connection::DbConnection;
+    use tari_comms::{
+        message::MessageTag,
+        net_address::MultiaddressesWithStats,
+        peer_manager::{
+            Peer,
+            PeerFeatures,
+            PeerFlags,
+            database::{MIGRATIONS, PeerDatabaseSql},
+        },
+        test_utils::mocks::create_connectivity_mock,
+        types::TransportProtocol,
+    };
+    use tari_comms_dht::{
+        DhtProtocolVersion,
+        envelope::{DhtMessageHeader, DhtMessageType},
+        outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
+    };
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
+    use tokio::{
+        sync::{broadcast, mpsc, oneshot},
+        task,
+    };
+
+    use super::*;
+    use crate::{
+        create_test_peer,
+        proto::liveness::MetadataKey,
+        services::liveness::{handle::LivenessHandle, state::Metadata},
+    };
+
+    pub fn build_peer_manager() -> Arc<PeerManager> {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+        Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn get_ping_pong_count() {
+        let mut state = LivenessState::new();
+        state.inc_pings_received();
+        state.inc_pongs_received();
+        state.inc_pongs_received();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, _) = mpsc::unbounded_channel();
+        let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
+
+        // Setup liveness service
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, _) = broadcast::channel(200);
+
+        let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
+
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            receiver,
+            stream::empty(),
+            state,
+            connectivity,
+            outbound_messaging,
+            publisher,
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+
+        // Run the service
+        task::spawn(service.run());
+
+        let res = liveness_handle.get_ping_count().await.unwrap();
+        assert_eq!(res, 1);
+
+        let res = liveness_handle.get_pong_count().await.unwrap();
+        assert_eq!(res, 2);
+    }
+
+    #[tokio::test]
+    async fn send_ping() {
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
+        let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
+
+        // Setup liveness service
+        let (sender_service, receiver) = reply_channel::unbounded();
+        let (publisher, _) = broadcast::channel(200);
+        let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
+
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            receiver,
+            stream::empty(),
+            LivenessState::default(),
+            connectivity,
+            outbound_messaging,
+            publisher,
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+
+        // Run the LivenessService
+        task::spawn(service.run());
+
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let node_id = NodeId::from_key(&pk);
+        // Receive outbound request
+        task::spawn(async move {
+            #[allow(clippy::single_match)]
+            match outbound_rx.recv().await {
+                Some(DhtOutboundRequest::SendMessage(_, _, reply_tx)) => {
+                    let (_, rx) = oneshot::channel();
+                    reply_tx
+                        .send(SendMessageResponse::Queued(
+                            vec![MessageSendState::new(MessageTag::new(), rx)].into(),
+                        ))
+                        .unwrap();
+                },
+                None => {},
+            }
+        });
+
+        liveness_handle.send_ping(node_id).await.unwrap();
+    }
+
+    fn create_dummy_message<T>(inner: T) -> DomainMessage<Result<T, prost::DecodeError>> {
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let source_peer = Peer::new(
+            pk.clone(),
+            NodeId::from_key(&pk),
+            MultiaddressesWithStats::empty(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            Default::default(),
+            Default::default(),
+        );
+        DomainMessage {
+            dht_header: DhtMessageHeader {
+                version: DhtProtocolVersion::latest(),
+                destination: Default::default(),
+                message_signature: Vec::new(),
+                ephemeral_public_key: None,
+                message_type: DhtMessageType::None,
+                flags: Default::default(),
+                message_tag: MessageTag::new(),
+                expires: None,
+            },
+            authenticated_origin: None,
+            source_peer,
+            inner: Ok(inner),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_message_ping() {
+        let state = LivenessState::new();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+        // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
+        let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
+
+        let metadata = Metadata::new();
+        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata));
+        // A stream which emits one message and then closes
+        let pingpong_stream = stream::iter(std::iter::once(msg));
+
+        // Setup liveness service
+        let (publisher, _) = broadcast::channel(200);
+
+        let shutdown = Shutdown::new();
+
+        let service = LivenessService::new(
+            Default::default(),
+            stream::empty(),
+            pingpong_stream,
+            state,
+            connectivity,
+            outbound_messaging,
+            publisher,
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+
+        task::spawn(service.run());
+
+        // Test oms got request to send message
+        unwrap_oms_send_msg!(outbound_rx.recv().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn handle_message_pong() {
+        let mut state = LivenessState::new();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+        let (outbound_tx, _) = mpsc::unbounded_channel();
+        let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
+
+        let mut metadata = Metadata::new();
+        metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
+
+        state.add_inflight_ping(
+            msg.inner.as_ref().map(|i| i.nonce).unwrap(),
+            msg.source_peer.node_id.clone(),
+            MAX_INFLIGHT_TTL,
+        );
+
+        // A stream which emits an inflight pong message and an unexpected one
+        let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(321, metadata));
+        let pingpong_stream = stream::iter(vec![msg, malicious_msg]);
+
+        // Setup liveness service
+        let (publisher, _) = broadcast::channel(200);
+        let mut shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            stream::empty(),
+            pingpong_stream,
+            state,
+            connectivity,
+            outbound_messaging,
+            publisher.clone(),
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+
+        task::spawn(service.run());
+
+        // Listen for the pong event
+        let mut subscriber = publisher.subscribe();
+
+        let event = time::timeout(Duration::from_secs(10), subscriber.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        match &*event {
+            LivenessEvent::ReceivedPong(event) => {
+                assert_eq!(event.metadata.get(MetadataKey::ChainMetadata).unwrap(), b"dummy-data");
+            },
+            _ => panic!("Unexpected event"),
+        }
+
+        shutdown.trigger();
+
+        // No further events (malicious_msg was ignored)
+        let mut subscriber = publisher.subscribe();
+        drop(publisher);
+        let msg = subscriber.recv().await;
+        assert!(msg.is_err());
+    }
+}

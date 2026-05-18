@@ -1,0 +1,179 @@
+//   Copyright 2022. The Tari Project
+//
+//   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//   following conditions are met:
+//
+//   1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//   disclaimer.
+//
+//   2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//   following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//   3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//   products derived from this software without specific prior written permission.
+//
+//   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use tari_script::{TariScript, inputs, script};
+use tari_transaction_components::{
+    MicroMinotari,
+    helpers::borsh::SerializedSize,
+    key_manager::{KeyManager, TariKeyId},
+    test_helpers::{TestParams, create_transaction_with},
+    transaction_components::{
+        OutputFeatures,
+        Transaction,
+        TransactionInput,
+        TransactionOutput,
+        WalletOutput,
+        WalletOutputBuilder,
+        covenants::Covenant,
+    },
+    weight::TransactionWeight,
+};
+
+#[derive(Clone)]
+struct TestTransactionBuilder {
+    amount: MicroMinotari,
+    fee_per_gram: MicroMinotari,
+    inputs_max_height: u64,
+    inputs: Vec<(TransactionInput, WalletOutput)>,
+    keys: TestParams,
+    lock_height: u64,
+    output: Option<(TransactionOutput, WalletOutput, TariKeyId)>,
+}
+
+impl TestTransactionBuilder {
+    pub fn new(key_manager: &KeyManager) -> Self {
+        Self {
+            amount: MicroMinotari(0),
+            fee_per_gram: MicroMinotari(1),
+            inputs_max_height: 0,
+            inputs: vec![],
+            keys: TestParams::new(key_manager),
+            lock_height: 0,
+            output: None,
+        }
+    }
+
+    pub fn fee_per_gram(&mut self, fee: MicroMinotari) -> &mut Self {
+        self.fee_per_gram = fee;
+        self
+    }
+
+    pub fn update_inputs_max_height(&mut self, height: u64) -> &mut Self {
+        self.inputs_max_height = height;
+        self
+    }
+
+    fn update_amount(&mut self, amount: MicroMinotari) {
+        self.amount += amount
+    }
+
+    pub fn add_input(&mut self, u: WalletOutput, key_manager: &KeyManager) -> &mut Self {
+        self.update_amount(u.value());
+
+        if u.features().maturity > self.inputs_max_height {
+            self.update_inputs_max_height(u.features().maturity);
+        }
+
+        self.inputs.push((
+            u.to_transaction_input(key_manager)
+                .expect("The wallet output to convert to an Input"),
+            u,
+        ));
+
+        self
+    }
+
+    pub fn build(mut self, key_manager: &KeyManager) -> (Transaction, WalletOutput) {
+        self.create_utxo(key_manager, self.inputs.len());
+
+        let inputs = self.inputs.iter().map(|f| f.1.clone()).collect();
+        let outputs = vec![(self.output.clone().unwrap().1, self.output.clone().unwrap().2)];
+        let tx = create_transaction_with(self.lock_height, self.fee_per_gram, inputs, outputs, key_manager);
+
+        (tx, self.output.clone().unwrap().1)
+    }
+
+    fn create_utxo(&mut self, key_manager: &KeyManager, num_inputs: usize) {
+        let script = script!(Nop).unwrap();
+        let features = OutputFeatures::default();
+        let covenant = Covenant::default();
+        let value = self.amount -
+            self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone())
+                .expect("Failed to estimate fee");
+        let builder = WalletOutputBuilder::new(value, self.keys.commitment_mask_key_id.clone())
+            .with_features(features)
+            .with_script(script)
+            .with_script_key(self.keys.script_key_id.clone())
+            .with_input_data(inputs!(self.keys.script_key_pk.clone()))
+            .with_sender_offset_public_key(self.keys.sender_offset_key_pk.clone())
+            .sign_metadata_signature(key_manager, &self.keys.sender_offset_key_id.clone())
+            .expect("sign as sender and receiver");
+        let wallet_output = builder.try_build(key_manager).expect("Get output from wallet output");
+        let utxo = wallet_output.to_transaction_output().expect("wallet into output");
+
+        self.output = Some((utxo, wallet_output, self.keys.sender_offset_key_id.clone()));
+    }
+
+    fn estimate_fee(
+        &self,
+        num_inputs: usize,
+        features: OutputFeatures,
+        script: TariScript,
+        covenant: Covenant,
+    ) -> std::io::Result<MicroMinotari> {
+        let features_and_scripts_bytes =
+            features.get_serialized_size()? + script.get_serialized_size()? + covenant.get_serialized_size()?;
+        let weights = TransactionWeight::v1();
+        let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
+        Ok(MicroMinotari(fee))
+    }
+}
+
+pub fn build_transaction_with_output_and_fee_per_gram(
+    utxos: Vec<WalletOutput>,
+    fee_per_gram: u64,
+    key_manager: &KeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager);
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager);
+    }
+    builder.fee_per_gram(MicroMinotari(fee_per_gram));
+
+    builder.build(key_manager)
+}
+
+pub fn build_transaction_with_output_and_lockheight(
+    utxos: Vec<WalletOutput>,
+    lockheight: u64,
+    key_manager: &KeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager);
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager);
+    }
+    builder.lock_height = lockheight;
+
+    builder.build(key_manager)
+}
+
+pub fn build_transaction_with_output(
+    utxos: Vec<WalletOutput>,
+    key_manager: &KeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager);
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager);
+    }
+
+    builder.build(key_manager)
+}

@@ -1,0 +1,18 @@
+[package]
+name = "tari_infra_derive"
+description = "Tari derive macros"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "0.6.11"
+syn = "0.15.29"
+proc-macro2 = "0.4.27"

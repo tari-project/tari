@@ -1,0 +1,52 @@
+
+########################################################################################################################
+#                                                                                                                      #
+#                      Miner Configuration Options (MinerConfig)                                                       #
+#                                                                                                                      #
+########################################################################################################################
+
+[miner]
+
+# GRPC address of base node (default = "http://127.0.0.1:18142")
+#base_node_grpc_address = "http://127.0.0.1:18142"
+# GRPC authentication for the base node (default = "none")
+#base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+# GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
+#base_node_grpc_tls_domain_name = "localhost"
+
+# Number of mining threads (default: number of logical CPU cores)
+#num_mining_threads = 8
+
+# Start mining only when base node is bootstrapped and current block height is on the tip of network (default = true)
+#mine_on_tip_only = true
+
+# Will check tip with node every N seconds and restart mining if height already taken and option `mine_on_tip_only` is
+# set to true (default = 30 s)
+#validate_tip_timeout_sec = 30
+
+# Stratum Mode configuration - mining pool address (e.g. "miningcore.tari.com:3052")
+#mining_pool_address = "miningcore.tari.com:3052"
+
+# Stratum Mode configuration - mining wallet address/public key
+# (e.g. "20B19870ABEE8ABC6ACC77AE4E6CA169057645B27C35334B74446B4D3EE52150")
+#stratum_mining_wallet_address = "YOUR_WALLET_TARI_ADDRESS"
+
+# Stratum Mode configuration - mining worker name (e.g. "worker1") (default = "")
+#stratum_mining_worker_name = "worker1"
+
+# The extra data to store in the coinbase, usually some data about the mining pool.
+# Note that this data is publicly readable, but it is suggested you populate it so that
+# pool dominance can be seen before any one party has more than 51%.
+#coinbase_extra = "minotari_miner"
+
+# Base node reconnect timeout after any GRPC or miner error (default: 10 s)
+#wait_timeout_on_error = 10
+
+# The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
+# e.g. "78e724f466d202abdee0f23c261289074e4a2fc9eb61e83e0179eead76ce2d3f17"
+#wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
+# Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
+#range_proof_type = "revealed_value"
+
+# The mining algorithm to use - options are Sha3x or RandomXT (the Tari version of RandomX). (default = "Sha3X")
+#proof_of_work_algo = "Sha3X"
