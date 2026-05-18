@@ -287,9 +287,6 @@ const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_que
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
-const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
-const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
-const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
@@ -327,9 +324,6 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_VALIDATOR_NODES_EXIT,
         LMDB_DB_TEMPLATE_REGISTRATIONS,
         LMDB_DB_UTXO_SMT,
-        LMDB_DB_JMT_VALUE_DATA,
-        LMDB_DB_JMT_NODE_DATA,
-        LMDB_DB_JMT_UNIQUE_KEY_DATA,
     ]
 }
 
@@ -533,7 +527,6 @@ pub struct LMDBDatabase {
     utxo_smt: DatabaseRef,
     jmt_value_data: DatabaseRef,
     jmt_node_data: DatabaseRef,
-    jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
@@ -595,7 +588,6 @@ impl LMDBDatabase {
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
-            jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -1371,7 +1363,6 @@ impl LMDBDatabase {
             write_txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
         );
         smt_writer
             .delete_all_for_version(height)
@@ -1386,7 +1377,7 @@ impl LMDBDatabase {
         self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
-        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
         let root = jmt
@@ -1656,7 +1647,7 @@ impl LMDBDatabase {
         header: &BlockHeader,
         body: AggregateBody,
     ) -> Result<(), ChainStorageError> {
-        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -1810,7 +1801,7 @@ impl LMDBDatabase {
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.jmt_value_data.clone(),
         );
         smt_writer
             .write_node_batch(&ops.node_batch)
@@ -2212,12 +2203,12 @@ impl LMDBDatabase {
         version: u64,
         updates: &[HorizonStateTreeUpdate],
     ) -> Result<(), ChainStorageError> {
-        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let writer = LmdbTreeWriter::new(
             write_txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.jmt_value_data.clone(),
         );
 
         // if the previous committed version is not contiguous with the new version,
@@ -2537,7 +2528,7 @@ impl LMDBDatabase {
             txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
-            self.jmt_unique_key_data.clone(),
+            self.jmt_value_data.clone(),
         )
     }
 }
@@ -2575,7 +2566,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
         let read_tx = self.read_transaction()?;
         let smt_reader =
-            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_value_data.clone());
 
         Ok(smt_reader)
     }
@@ -3473,7 +3464,7 @@ impl BlockchainBackend for LMDBDatabase {
         expected_root: HashOutput,
     ) -> Result<(), ChainStorageError> {
         let txn = self.read_transaction()?;
-        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
+        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
         let root = output_smt
             .get_root_hash(version)
