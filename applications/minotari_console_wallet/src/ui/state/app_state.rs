@@ -819,6 +819,7 @@ pub struct CompletedTransactionInfo {
     pub burn: bool,
     pub payment_reference_hex: Option<String>,
     pub payment_reference_status: Option<String>, // "Available", "Pending 3/5", "Not Mined", etc.
+    pub rejection_reason: Option<String>,
 }
 
 impl CompletedTransactionInfo {
@@ -872,6 +873,21 @@ impl CompletedTransactionInfo {
             burn,
             payment_reference_hex: None,    // Will be populated when transactions are loaded
             payment_reference_status: None, // Will be populated when transactions are loaded
+            rejection_reason: tx.rejection_reason,
+        })
+    }
+
+    pub fn get_suggested_fix(&self) -> Option<String> {
+        self.rejection_reason.as_ref().map(|reason| {
+            if reason.contains("Ledger") {
+                "Ensure your Ledger device is connected and the Tari app is open.".to_string()
+            } else if reason.contains("Insufficient funds") {
+                "Check your balance and ensure you have enough funds to cover the transaction and fees.".to_string()
+            } else if reason.contains("Timeout") {
+                "The network may be congested. Try increasing the fee or waiting for a better connection.".to_string()
+            } else {
+                "Contact Tari support or check the community forums for assistance.".to_string()
+            }
         })
     }
 }

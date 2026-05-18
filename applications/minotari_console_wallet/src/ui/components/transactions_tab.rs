@@ -308,6 +308,8 @@ impl TransactionsTab {
                 "Cancelled".to_string()
             } else if let Some(reason) = tx.cancelled {
                 format!("Rejected: {reason}")
+            } else if let Some(rejection) = &tx.rejection_reason {
+                format!("{transaction_status}: {rejection}")
             } else {
                 transaction_status.to_string()
             };
@@ -349,7 +351,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 14];
+        let constraints = [Constraint::Length(1); 15];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
@@ -360,6 +362,7 @@ impl TransactionsTab {
         let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
+        let suggested_fix_label = Span::styled("Suggested Fix:", Style::default().fg(Color::Yellow));
         let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
         let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
@@ -384,23 +387,25 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[6]);
         let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(suggested_fix_label).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[11]);
-        let paragraph = Paragraph::new(maturity).wrap(trim);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
         f.render_widget(paragraph, label_layout[12]);
-        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[13]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[14]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 14];
+            let constraints = [Constraint::Length(1); 15];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
@@ -470,6 +475,8 @@ impl TransactionsTab {
             ]);
             let status_msg = if let Some(reason) = tx.cancelled {
                 format!("Cancelled: {reason}")
+            } else if let Some(rejection) = &tx.rejection_reason {
+                format!("{status}: {rejection}")
             } else {
                 status.to_string()
             };
@@ -568,18 +575,22 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[6]);
             let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
+            let suggested_fix = tx.get_suggested_fix().unwrap_or_else(|| "N/A".to_string());
+            let suggested_fix = Span::styled(suggested_fix, Style::default().fg(Color::Yellow));
+            f.render_widget(Paragraph::new(suggested_fix).wrap(trim), content_layout[8]);
+
             let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
-            f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
-            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[11]);
-            let paragraph = Paragraph::new(maturity).wrap(trim);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
             f.render_widget(paragraph, content_layout[12]);
-            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[13]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[14]);
         }
     }
 
