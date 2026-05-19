@@ -91,7 +91,7 @@ use std::{
     fmt,
     fs::{self, File},
     ops::Deref,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
@@ -451,8 +451,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     config: LMDBConfig,
     consensus_manager: BaseNodeConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
-    let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, None)
+    open_lmdb_database_with_compaction(path.as_ref(), config, consensus_manager, None)
 }
 
 pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
@@ -461,8 +460,175 @@ pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
     consensus_manager: BaseNodeConsensusManager,
     stats_sender: Option<watch::Sender<DatabaseStats>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
-    let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, stats_sender)
+    open_lmdb_database_with_compaction(path.as_ref(), config, consensus_manager, stats_sender)
+}
+
+/// Open the LMDB env, run migrations, and — if a migration freed pages that can no longer be
+/// returned to the OS via `mdb_drop` — compact the env into a fresh file and reopen it.
+///
+/// The compaction step writes a fresh `data.mdb` next to the original via `mdb_env_copy2` with
+/// `MDB_CP_COMPACT`, then atomically swaps it in. The original is renamed to `data.mdb.bak` as a
+/// safety net: if any of the swap/reopen steps fail the operator can restore it manually.
+fn open_lmdb_database_with_compaction(
+    path: &Path,
+    config: LMDBConfig,
+    consensus_manager: BaseNodeConsensusManager,
+    stats_sender: Option<watch::Sender<DatabaseStats>>,
+) -> Result<LMDBDatabase, ChainStorageError> {
+    let env_path = path.to_path_buf();
+    let (lmdb_store, file_lock) = build_lmdb_store(&env_path, config.clone())?;
+    let db = LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager.clone(), stats_sender.clone())?;
+
+    if !db.needs_compaction() {
+        return Ok(db);
+    }
+
+    compact_and_reopen_lmdb_database(db, lmdb_store, env_path, config, consensus_manager, stats_sender)
+}
+
+/// Compact the env behind `db` into a new file and reopen the database against the compacted copy.
+fn compact_and_reopen_lmdb_database(
+    db: LMDBDatabase,
+    lmdb_store: LMDBStore,
+    env_path: PathBuf,
+    config: LMDBConfig,
+    consensus_manager: BaseNodeConsensusManager,
+    stats_sender: Option<watch::Sender<DatabaseStats>>,
+) -> Result<LMDBDatabase, ChainStorageError> {
+    info!(
+        target: LOG_TARGET,
+        "[MIGRATIONS] Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",
+        env_path.display()
+    );
+    println!("Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",env_path.display());
+
+    let original_data = env_path.join("data.mdb");
+    let original_lock = env_path.join("lock.mdb");
+    let backup_data = env_path.join("data.mdb.bak");
+    let compact_dir = env_path.join(".compact_tmp");
+
+    // Pre-flight: ensure no stale temp directory from a previous interrupted run.
+    if compact_dir.exists() {
+        fs::remove_dir_all(&compact_dir).map_err(|e| {
+            ChainStorageError::AccessError(format!(
+                "Could not remove stale compaction tempdir {}: {e}",
+                compact_dir.display()
+            ))
+        })?;
+    }
+    fs::create_dir(&compact_dir).map_err(|e| {
+        ChainStorageError::AccessError(format!(
+            "Could not create compaction tempdir {}: {e}",
+            compact_dir.display()
+        ))
+    })?;
+
+    // Pre-flight: confirm we have at least the current data.mdb size free on the volume.
+    // `mdb_env_copy2(COMPACT)` writes a brand-new file that is at most the size of the current
+    // file, so this is an upper bound. If we run out mid-copy we'd leave a half-written file
+    // that we still have to clean up, so check first.
+    let original_size = fs::metadata(&original_data)
+        .map_err(|e| {
+            ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display()))
+        })?
+        .len();
+    let pre_size_mb = original_size / BYTES_PER_MB as u64;
+    info!(
+        target: LOG_TARGET,
+        "[MIGRATIONS] Pre-compaction data.mdb size: {pre_size_mb} MB"
+    );
+    println!("[MIGRATIONS] Pre-compaction data.mdb size: {pre_size_mb} MB");
+
+    // Write the compacted copy. This uses an internal long-lived read transaction; we run
+    // single-threaded at startup so nothing else is writing.
+    let compacted_size = match db.compact_copy_env(&compact_dir) {
+        Ok(size) => size,
+        Err(e) => {
+            warn!(target: LOG_TARGET, "[MIGRATIONS] env.copy(COMPACT) failed: {e}");
+            let _ = fs::remove_dir_all(&compact_dir);
+            return Err(e);
+        },
+    };
+    let post_size_mb = compacted_size / BYTES_PER_MB as u64;
+    info!(
+        target: LOG_TARGET,
+        "[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",
+        pre_size_mb.saturating_sub(post_size_mb)
+    );
+    println!("[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",pre_size_mb.saturating_sub(post_size_mb));
+
+    // Drop every Arc<Environment> reference so the OS lets us swap data.mdb. `LMDBDatabase`,
+    // `LMDBStore` and the chain_storage `file_lock` together hold all of them in this process.
+    drop(db);
+    drop(lmdb_store);
+
+    // Rename data.mdb -> data.mdb.bak (atomic on the same filesystem). On Windows, the
+    // pre-existing backup is removed first because rename-over is not always atomic.
+    if backup_data.exists() {
+        fs::remove_file(&backup_data).map_err(|e| {
+            ChainStorageError::AccessError(format!(
+                "Could not remove stale backup file {}: {e}",
+                backup_data.display()
+            ))
+        })?;
+    }
+    fs::rename(&original_data, &backup_data).map_err(|e| {
+        let _ = fs::remove_dir_all(&compact_dir);
+        ChainStorageError::AccessError(format!(
+            "Could not rename {} -> {}: {e}",
+            original_data.display(),
+            backup_data.display()
+        ))
+    })?;
+
+    // Move the compacted file into place. If this fails we restore the backup so the caller can
+    // retry the migration on a subsequent startup.
+    let new_data = compact_dir.join("data.mdb");
+    if let Err(e) = fs::rename(&new_data, &original_data) {
+        warn!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] Could not move compacted data.mdb into place: {e}; restoring backup"
+        );
+        let _ = fs::rename(&backup_data, &original_data);
+        let _ = fs::remove_dir_all(&compact_dir);
+        return Err(ChainStorageError::AccessError(format!(
+            "Could not rename compacted file into place: {e}"
+        )));
+    }
+
+    // Stale lock.mdb from the old env confuses some platforms; LMDB recreates it on reopen.
+    let _ = fs::remove_file(&original_lock);
+    let _ = fs::remove_dir_all(&compact_dir);
+
+    // Reopen against the compacted file.
+    let (new_store, new_lock) = build_lmdb_store(&env_path, config).inspect_err(|_| {
+        // Best-effort restore so the operator isn't left with a missing data.mdb.
+        if !original_data.exists() {
+            let _ = fs::rename(&backup_data, &original_data);
+        }
+    })?;
+    let new_db = LMDBDatabase::new(&new_store, new_lock, consensus_manager, stats_sender).inspect_err(|_| {
+        if !original_data.exists() {
+            let _ = fs::rename(&backup_data, &original_data);
+        }
+    })?;
+
+    // Everything succeeded: drop the backup. If this fails it's not fatal — operators can
+    // remove the .bak manually.
+    if let Err(e) = fs::remove_file(&backup_data) {
+        warn!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] Could not remove backup file {}: {e}",
+            backup_data.display()
+        );
+    }
+
+    info!(
+        target: LOG_TARGET,
+        "[MIGRATIONS] LMDB compaction complete: {pre_size_mb} MB -> {post_size_mb} MB"
+    );
+    println!("[MIGRATIONS] LMDB compaction complete: {pre_size_mb} MB -> {post_size_mb} MB");
+    Ok(new_db)
 }
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
@@ -537,6 +703,11 @@ pub struct LMDBDatabase {
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
+    /// Set by `run_migrations` if a migration step freed enough pages that the env should be
+    /// compacted (copied with `MDB_CP_COMPACT`) to reclaim the disk space. The freed pages
+    /// from `mdb_drop` are reused by future writes but never returned to the OS, so without
+    /// this step the file size never shrinks.
+    needs_compaction: bool,
 }
 
 impl LMDBDatabase {
@@ -600,6 +771,7 @@ impl LMDBDatabase {
             _file_lock: Arc::new(file_lock),
             consensus_manager,
             stats_collector: LMDBStatsCollector::new(),
+            needs_compaction: false,
         };
 
         // If a stats sender was provided, add it to the collector
@@ -610,6 +782,35 @@ impl LMDBDatabase {
         run_migrations(&mut db)?;
 
         Ok(db)
+    }
+
+    /// Returns true if a migration step in this `new()` call freed pages that should be
+    /// reclaimed via an `MDB_CP_COMPACT` copy of the env. The caller (typically
+    /// `create_lmdb_database`) is responsible for performing the compact-and-swap.
+    pub fn needs_compaction(&self) -> bool {
+        self.needs_compaction
+    }
+
+    /// Copy the environment to `dest_dir` with `MDB_CP_COMPACT`. The destination directory must
+    /// already exist and be empty; the env writes `data.mdb` (and optionally `lock.mdb`) into it.
+    /// Returns the size of the freshly-compacted `data.mdb` for logging.
+    pub fn compact_copy_env(&self, dest_dir: &Path) -> Result<u64, ChainStorageError> {
+        let dest_str = dest_dir
+            .to_str()
+            .ok_or_else(|| ChainStorageError::CriticalError("compact_copy_env: non-utf8 path".to_string()))?;
+        self.env
+            .copy(dest_str, lmdb_zero::copy::COMPACT)
+            .map_err(|e| ChainStorageError::AccessError(format!("env.copy(COMPACT) failed: {e}")))?;
+        let copied = dest_dir.join("data.mdb");
+        let size = fs::metadata(&copied)
+            .map_err(|e| {
+                ChainStorageError::AccessError(format!(
+                    "Could not stat compacted file {}: {e}",
+                    copied.display()
+                ))
+            })?
+            .len();
+        Ok(size)
     }
 
     /// Get a reference to the stats collector
@@ -4706,8 +4907,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // Rather than translating the old data, we re-derive the JMT from the canonical UTXO set:
         // insert every unspent UTXO into a fresh tree, write it to the v2 tables, then drop the
         // legacy tables entirely so their pages return to disk.
-        if migrate_from_version == 6 {
-            migrate_jmt_v1_to_v2(db)?;
+        if migrate_from_version == 6 && migrate_jmt_v1_to_v2(db)? {
+            // The v1 tables were dropped from the env; their pages are now on the free list
+            // but the file size has not shrunk. Signal the caller to compact-copy the env.
+            db.needs_compaction = true;
         }
 
         // Let's update the migration version
@@ -4753,7 +4956,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 /// the JMT bookkeeping cost across enough entries.
 const JMT_MIGRATION_BATCH_SIZE: usize = 5_000;
 
-fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
+fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError> {
     info!(target: LOG_TARGET, "[MIGRATIONS] v6: Starting JMT v1 → v2 rebuild");
 
     // Open the legacy v1 databases by name. We deliberately avoid registering these in
@@ -4778,7 +4981,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> 
             target: LOG_TARGET,
             "[MIGRATIONS] v6: No v1 JMT tables present, nothing to migrate"
         );
-        return Ok(());
+        return Ok(false);
     }
 
     println!("Starting JMT v1 → v2 rebuild");
@@ -4965,7 +5168,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> 
     println!("JMT rebuild complete");
 
     info!(target: LOG_TARGET, "[MIGRATIONS] v6: JMT v1 → v2 rebuild complete");
-    Ok(())
+    Ok(true)
 }
 
 /// Apply a single chunk of commitments to the v2 JMT tables in its own write transaction.
