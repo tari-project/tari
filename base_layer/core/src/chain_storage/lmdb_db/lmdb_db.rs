@@ -161,7 +161,7 @@ use super::{
     lmdb::lmdb_get_prefix_cursor,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
-    stats_collector::{DatabaseStats, LMDBStatsCollector},
+    stats_collector::{DatabaseStats, LMDBStatsCollector, MigrationPhase},
 };
 use crate::{
     PrunedKernelMmr,
@@ -500,6 +500,10 @@ fn compact_and_reopen_lmdb_database(
         "[MIGRATIONS] Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",
         env_path.display()
     );
+
+    // Emit a phase=LmdbCompact update through the readiness channel before the long-running
+    // env.copy call so clients can show "Compacting LMDB" instead of a stuck progress bar.
+    publish_compaction_progress(stats_sender.as_ref(), MigrationPhase::LmdbCompact, 0, 0);
     println!("Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",env_path.display());
 
     let original_data = env_path.join("data.mdb");
@@ -554,6 +558,16 @@ fn compact_and_reopen_lmdb_database(
         target: LOG_TARGET,
         "[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",
         pre_size_mb.saturating_sub(post_size_mb)
+    );
+    // The env.copy call is monolithic, so once it returns we report 100% for the
+    // LMDB-compact phase. `current_height` and `total_height` use MB as units, which
+    // matches the progress bar shown for the JMT rebuild phase (entries, not MB) - the
+    // `phase` field tells the client which unit to render.
+    publish_compaction_progress(
+        stats_sender.as_ref(),
+        MigrationPhase::LmdbCompact,
+        pre_size_mb,
+        pre_size_mb,
     );
     println!("[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",pre_size_mb.saturating_sub(post_size_mb));
 
@@ -630,6 +644,41 @@ fn compact_and_reopen_lmdb_database(
     println!("[MIGRATIONS] LMDB compaction complete: {pre_size_mb} MB -> {post_size_mb} MB");
     Ok(new_db)
 }
+
+/// Push a single `DatabaseStats` update for the LMDB-compaction phase through the readiness
+/// `watch::Sender`. We can't use the in-process `LMDBStatsCollector` here because the
+/// `LMDBDatabase` owning it is dropped before the swap/reopen — the readiness handler's sender
+/// is the one channel that survives across the rebuild.
+fn publish_compaction_progress(
+    stats_sender: Option<&watch::Sender<DatabaseStats>>,
+    phase: MigrationPhase,
+    current: u64,
+    total: u64,
+) {
+    let Some(sender) = stats_sender else {
+        return;
+    };
+    // Preserve current_db_version / target_db_version / metadata so the gRPC consumer still
+    // sees the migration version transition alongside the phase update.
+    let mut stats = sender.borrow().clone();
+    stats.migration_stats.phase = phase;
+    stats.migration_stats.current_height = current;
+    stats.migration_stats.total_height = total;
+    stats.migration_stats.progress_percentage = if total > 0 {
+        (current as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    stats.last_updated = Instant::now();
+    stats.timestamp = chrono::Utc::now().timestamp_millis() as u64;
+    if let Err(e) = sender.send(stats) {
+        warn!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] Could not publish compaction phase to readiness channel: {e}"
+        );
+    }
+}
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
@@ -5019,6 +5068,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
     };
 
     let total = commitments.len();
+    db.stats_collector().set_migration_phase(MigrationPhase::JmtRebuild);
     db.set_stats_total_height(total as u64);
     info!(
         target: LOG_TARGET,

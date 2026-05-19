@@ -214,6 +214,19 @@ message MigrationProgress {
   double progress_percentage = 3;
   uint64 current_db_version = 4;
   uint64 target_db_version = 5;
+  // Which sub-step of the migration is currently running. Lets clients show a more specific
+  // label (e.g. "Rebuilding JMT" vs. "Compacting LMDB") in addition to the numeric progress.
+  MigrationPhase phase = 6;
+}
+
+enum MigrationPhase {
+  MIGRATION_PHASE_UNSPECIFIED = 0;
+  // Walking the UTXO set and (re)building the v2 JMT tables. `current_block`/`total_blocks`
+  // count UTXOs processed during this phase.
+  MIGRATION_PHASE_JMT_REBUILD = 1;
+  // Running `mdb_env_copy2(MDB_CP_COMPACT)` to reclaim disk space freed by the migration.
+  // No fine-grained progress; the call is monolithic from LMDB's side.
+  MIGRATION_PHASE_LMDB_COMPACT = 2;
 }
 
 /// return type of GetNewBlockTemplate
