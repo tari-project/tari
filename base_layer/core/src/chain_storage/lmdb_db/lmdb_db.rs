@@ -293,7 +293,6 @@ const LMDB_DB_JMT_NODE_DATA_V1: &str = "jmt_node_data";
 const LMDB_DB_JMT_NODE_DATA_V2: &str = "jmt_nodes_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
-
 /// Returns the list of all LMDB database names used by Tari.
 /// This is the authoritative source for database names to avoid duplication.
 pub fn get_all_database_names() -> Vec<&'static str> {
@@ -487,6 +486,7 @@ fn open_lmdb_database_with_compaction(
 }
 
 /// Compact the env behind `db` into a new file and reopen the database against the compacted copy.
+#[allow(clippy::too_many_lines)]
 fn compact_and_reopen_lmdb_database(
     db: LMDBDatabase,
     lmdb_store: LMDBStore,
@@ -504,7 +504,10 @@ fn compact_and_reopen_lmdb_database(
     // Emit a phase=LmdbCompact update through the readiness channel before the long-running
     // env.copy call so clients can show "Compacting LMDB" instead of a stuck progress bar.
     publish_compaction_progress(stats_sender.as_ref(), MigrationPhase::LmdbCompact, 0, 0);
-    println!("Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",env_path.display());
+    println!(
+        "Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",
+        env_path.display()
+    );
 
     let original_data = env_path.join("data.mdb");
     let original_lock = env_path.join("lock.mdb");
@@ -520,7 +523,7 @@ fn compact_and_reopen_lmdb_database(
             ))
         })?;
     }
-    fs::create_dir(&compact_dir).map_err(|e| {
+    fs::create_dir_all(&compact_dir).map_err(|e| {
         ChainStorageError::AccessError(format!(
             "Could not create compaction tempdir {}: {e}",
             compact_dir.display()
@@ -532,9 +535,7 @@ fn compact_and_reopen_lmdb_database(
     // file, so this is an upper bound. If we run out mid-copy we'd leave a half-written file
     // that we still have to clean up, so check first.
     let original_size = fs::metadata(&original_data)
-        .map_err(|e| {
-            ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display()))
-        })?
+        .map_err(|e| ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display())))?
         .len();
     let pre_size_mb = original_size / BYTES_PER_MB as u64;
     info!(
@@ -549,7 +550,7 @@ fn compact_and_reopen_lmdb_database(
         Ok(size) => size,
         Err(e) => {
             warn!(target: LOG_TARGET, "[MIGRATIONS] env.copy(COMPACT) failed: {e}");
-            let _ = fs::remove_dir_all(&compact_dir);
+            let _unused = fs::remove_dir_all(&compact_dir);
             return Err(e);
         },
     };
@@ -569,7 +570,10 @@ fn compact_and_reopen_lmdb_database(
         pre_size_mb,
         pre_size_mb,
     );
-    println!("[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",pre_size_mb.saturating_sub(post_size_mb));
+    println!(
+        "[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",
+        pre_size_mb.saturating_sub(post_size_mb)
+    );
 
     // Drop every Arc<Environment> reference so the OS lets us swap data.mdb. `LMDBDatabase`,
     // `LMDBStore` and the chain_storage `file_lock` together hold all of them in this process.
@@ -587,7 +591,7 @@ fn compact_and_reopen_lmdb_database(
         })?;
     }
     fs::rename(&original_data, &backup_data).map_err(|e| {
-        let _ = fs::remove_dir_all(&compact_dir);
+        let _unused = fs::remove_dir_all(&compact_dir);
         ChainStorageError::AccessError(format!(
             "Could not rename {} -> {}: {e}",
             original_data.display(),
@@ -603,27 +607,27 @@ fn compact_and_reopen_lmdb_database(
             target: LOG_TARGET,
             "[MIGRATIONS] Could not move compacted data.mdb into place: {e}; restoring backup"
         );
-        let _ = fs::rename(&backup_data, &original_data);
-        let _ = fs::remove_dir_all(&compact_dir);
+        let _unused = fs::rename(&backup_data, &original_data);
+        let _unused = fs::remove_dir_all(&compact_dir);
         return Err(ChainStorageError::AccessError(format!(
             "Could not rename compacted file into place: {e}"
         )));
     }
 
     // Stale lock.mdb from the old env confuses some platforms; LMDB recreates it on reopen.
-    let _ = fs::remove_file(&original_lock);
-    let _ = fs::remove_dir_all(&compact_dir);
+    let _unused = fs::remove_file(&original_lock);
+    let _unused = fs::remove_dir_all(&compact_dir);
 
     // Reopen against the compacted file.
     let (new_store, new_lock) = build_lmdb_store(&env_path, config).inspect_err(|_| {
         // Best-effort restore so the operator isn't left with a missing data.mdb.
         if !original_data.exists() {
-            let _ = fs::rename(&backup_data, &original_data);
+            let _unused = fs::rename(&backup_data, &original_data);
         }
     })?;
     let new_db = LMDBDatabase::new(&new_store, new_lock, consensus_manager, stats_sender).inspect_err(|_| {
         if !original_data.exists() {
-            let _ = fs::rename(&backup_data, &original_data);
+            let _unused = fs::rename(&backup_data, &original_data);
         }
     })?;
 
@@ -853,10 +857,7 @@ impl LMDBDatabase {
         let copied = dest_dir.join("data.mdb");
         let size = fs::metadata(&copied)
             .map_err(|e| {
-                ChainStorageError::AccessError(format!(
-                    "Could not stat compacted file {}: {e}",
-                    copied.display()
-                ))
+                ChainStorageError::AccessError(format!("Could not stat compacted file {}: {e}", copied.display()))
             })?
             .len();
         Ok(size)
@@ -4990,13 +4991,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 /// so the rows cannot be copied across. Instead this migration:
 ///
 /// 1. Walks `utxo_commitment_index` to enumerate every unspent UTXO commitment.
-/// 2. Splits the commitments into fixed-size chunks. For each chunk we resolve the mined
-///    output, compute `output.smt_hash(mined_height)`, and apply the chunk as one JMT
-///    version in its own write transaction so the LMDB env can resize between commits.
-/// 3. The chunked write transactions are wrapped in a retry loop that reacts to
-///    `DbResizeRequired` by growing the LMDB map and reapplying the failed chunk.
-/// 4. Deletes the three legacy v1 tables with `Database::delete` so their pages are
-///    reclaimed.
+/// 2. Splits the commitments into fixed-size chunks. For each chunk we resolve the mined output, compute
+///    `output.smt_hash(mined_height)`, and apply the chunk as one JMT version in its own write transaction so the LMDB
+///    env can resize between commits.
+/// 3. The chunked write transactions are wrapped in a retry loop that reacts to `DbResizeRequired` by growing the LMDB
+///    map and reapplying the failed chunk.
+/// 4. Deletes the three legacy v1 tables with `Database::delete` so their pages are reclaimed.
 ///
 /// On a fresh database (no v1 tables present) the function is a no-op.
 ///
@@ -5005,6 +5005,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 /// the JMT bookkeeping cost across enough entries.
 const JMT_MIGRATION_BATCH_SIZE: usize = 5_000;
 
+#[allow(clippy::too_many_lines)]
 fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError> {
     info!(target: LOG_TARGET, "[MIGRATIONS] v6: Starting JMT v1 → v2 rebuild");
 
@@ -5059,9 +5060,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
             bytes.copy_from_slice(commitment);
             out.push(bytes);
             entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-                ChainStorageError::AccessError(format!(
-                    "Failed to advance cursor on utxo_commitment_index: {e}"
-                ))
+                ChainStorageError::AccessError(format!("Failed to advance cursor on utxo_commitment_index: {e}"))
             })?;
         }
         out
@@ -5114,13 +5113,11 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
             let read_txn = db.read_transaction()?;
             let mut entries = Vec::with_capacity(chunk.len());
             for commitment in chunk {
-                let output_hash: HashOutput =
-                    lmdb_get(&read_txn, &db.utxo_commitment_index, commitment.as_ref())?.ok_or_else(|| {
-                        ChainStorageError::ValueNotFound {
-                            entity: "utxo_commitment_index",
-                            field: "commitment",
-                            value: to_hex(commitment.as_ref()),
-                        }
+                let output_hash: HashOutput = lmdb_get(&read_txn, &db.utxo_commitment_index, commitment.as_ref())?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "utxo_commitment_index",
+                        field: "commitment",
+                        value: to_hex(commitment.as_ref()),
                     })?;
                 let utxo_info = db
                     .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
@@ -5167,7 +5164,9 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
                     }
                 },
                 Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err)) => {
-                    if let Some(ChainStorageError::DbResizeRequired(size_hint)) = jmt_err.downcast_ref::<ChainStorageError>() {
+                    if let Some(ChainStorageError::DbResizeRequired(size_hint)) =
+                        jmt_err.downcast_ref::<ChainStorageError>()
+                    {
                         resize_attempts += 1;
                         if resize_attempts >= max_resizes {
                             return Err(ChainStorageError::DbTransactionTooLarge(batch_entries.len()));
@@ -5234,10 +5233,7 @@ fn apply_jmt_migration_batch(
     let write_txn = db.write_transaction()?;
     let reader = LmdbTreeReader::new(&write_txn, db.jmt_node_data.clone(), db.jmt_value_data.clone());
     let new_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-    let value_set: Vec<(KeyHash, Option<Vec<u8>>)> = batch
-        .iter()
-        .map(|(k, v)| (*k, Some(v.clone())))
-        .collect();
+    let value_set: Vec<(KeyHash, Option<Vec<u8>>)> = batch.iter().map(|(k, v)| (*k, Some(v.clone()))).collect();
     let (_root, ops) = new_smt
         .put_value_set(value_set, version)
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
@@ -5253,9 +5249,7 @@ fn apply_jmt_migration_batch(
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
     write_txn.commit().map_err(|e| match e {
-        lmdb_zero::Error::Code(code) if code == lmdb_zero::error::MAP_FULL => {
-            ChainStorageError::DbResizeRequired(None)
-        },
+        lmdb_zero::Error::Code(code) if code == lmdb_zero::error::MAP_FULL => ChainStorageError::DbResizeRequired(None),
         other => ChainStorageError::AccessError(format!("Failed to commit JMT migration batch: {other}")),
     })?;
     Ok(())
