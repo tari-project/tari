@@ -25,7 +25,7 @@ base64 = { workspace = true }
 blake2 = "0.10"
 bitflags = { version = "2.4", features = ["serde"] }
 bs58 = "0.5.1"
-borsh = { workspace = true }
+borsh = { workspace = true, features = ["derive"] }
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 crc32fast = "1.2.1"

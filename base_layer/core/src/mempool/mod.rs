@@ -99,8 +99,8 @@ pub enum TxStorageResponse {
     NotStoredOrphan,
     NotStoredTimeLocked,
     NotStoredAlreadySpent,
-    NotStoredConsensus,
-    NotStored,
+    NotStoredConsensus(Option<String>),
+    NotStored(Option<String>),
     NotStoredAlreadyMined,
     NotStoredFeeTooLow,
 }
@@ -114,17 +114,29 @@ impl TxStorageResponse {
 impl Display for TxStorageResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let storage = match self {
-            TxStorageResponse::UnconfirmedPool => "Unconfirmed pool",
-            TxStorageResponse::ReorgPool => "Reorg pool",
-            TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction",
-            TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction",
-            TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
-            TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
-            TxStorageResponse::NotStored => "Not stored",
-            TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined",
-            TxStorageResponse::NotStoredFeeTooLow => "Not stored tx fee is below the minimum accepted by this mempool",
+            TxStorageResponse::UnconfirmedPool => "Unconfirmed pool".to_string(),
+            TxStorageResponse::ReorgPool => "Reorg pool".to_string(),
+            TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction".to_string(),
+            TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction".to_string(),
+            TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent".to_string(),
+            TxStorageResponse::NotStoredConsensus(details) => {
+                format!(
+                    "Not stored due to consensus rule{}",
+                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default()
+                )
+            },
+            TxStorageResponse::NotStored(details) => {
+                format!(
+                    "Not stored{}",
+                    details.as_ref().map(|d| format!(": {d}")).unwrap_or_default()
+                )
+            },
+            TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined".to_string(),
+            TxStorageResponse::NotStoredFeeTooLow => {
+                "Not stored tx fee is below the minimum accepted by this mempool".to_string()
+            },
         };
-        fmt.write_str(storage)
+        fmt.write_str(&storage)
     }
 }
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {

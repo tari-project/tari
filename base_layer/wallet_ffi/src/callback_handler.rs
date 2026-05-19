@@ -271,7 +271,7 @@ where
                                     self.receive_transaction_send_result(tx_id, status);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionCancelled(tx_id, reason) => {
+                                TransactionEvent::TransactionCancelled(tx_id, reason, _) => {
                                     self.receive_transaction_cancellation(tx_id, reason as u64);
                                     self.trigger_balance_refresh().await;
                                 },

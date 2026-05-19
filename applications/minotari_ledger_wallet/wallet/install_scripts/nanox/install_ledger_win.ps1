@@ -1,3 +1,10 @@
+[CmdletBinding()]
+param(
+    # Install a specific release tag (e.g. v5.2.0-pre.7), including pre-releases.
+    # If omitted, the latest published release is used.
+    [string]$Tag
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "🚀 Installing Minotari Ledger Wallet (Nano X)" -ForegroundColor Cyan
@@ -53,13 +60,19 @@ if (-not (Get-Command ledgerctl -ErrorAction SilentlyContinue)) {
 # Download latest release
 # -------------------------
 
-Write-Host "🌐 Fetching latest Minotari Ledger release..."
+if ($Tag) {
+    Write-Host "🌐 Fetching Minotari Ledger release info for tag '$Tag'..."
+    $ReleaseUri = "https://api.github.com/repos/tari-project/tari/releases/tags/$Tag"
+} else {
+    Write-Host "🌐 Fetching latest Minotari Ledger release..."
+    $ReleaseUri = "https://api.github.com/repos/tari-project/tari/releases/latest"
+}
 
 New-Item -ItemType Directory -Force -Path $DownloadDir | Out-Null
 Set-Location $DownloadDir
 
 $Release = Invoke-RestMethod `
-    -Uri "https://api.github.com/repos/tari-project/tari/releases/latest" `
+    -Uri $ReleaseUri `
     -Headers @{ "User-Agent" = "PowerShell" }
 
 $Asset = $Release.assets |

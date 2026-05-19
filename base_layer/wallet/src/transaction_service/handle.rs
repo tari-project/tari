@@ -720,7 +720,7 @@ pub enum TransactionEvent {
     TransactionDiscoveryInProgress(TxId),
     TransactionSendResult(TxId, TransactionSendStatus),
     TransactionCompletedImmediately(TxId),
-    TransactionCancelled(TxId, TxCancellationReason),
+    TransactionCancelled(TxId, TxCancellationReason, String),
     TransactionBroadcast(TxId),
     DetectedTransactionUnconfirmed {
         tx_id: TxId,
@@ -775,8 +775,8 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionCompletedImmediately(tx) => {
                 write!(f, "TransactionCompletedImmediately for {tx}")
             },
-            TransactionEvent::TransactionCancelled(tx, rejection) => {
-                write!(f, "TransactionCancelled for {tx}:{rejection:?}")
+            TransactionEvent::TransactionCancelled(tx, rejection, reason) => {
+                write!(f, "TransactionCancelled for {tx}:{rejection:?} reason:{reason}")
             },
             TransactionEvent::TransactionBroadcast(tx) => {
                 write!(f, "TransactionBroadcast for {tx}")
