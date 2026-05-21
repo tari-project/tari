@@ -20,10 +20,9 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde_json::{Value};
-
+use cucumber::when;
+use serde_json::Value;
 use tari_integration_tests::TariWorld;
-use cucumber::{when};
 
 // Helper to resolve the XMRig proxy port for a given base node
 fn get_xmrig_proxy_port(world: &TariWorld, base_node_name: &String) -> u16 {
@@ -59,7 +58,7 @@ async fn xmrig_proxy_get_getheight(world: &mut TariWorld, base_node_name: String
     } else {
         resp.get("height").unwrap().as_u64().unwrap()
     };
-     
+
     // Compare against the first base node's height
     let node_name = world
         .base_nodes
@@ -74,14 +73,13 @@ async fn xmrig_proxy_get_getheight(world: &mut TariWorld, base_node_name: String
         .get_tip_info(minotari_node_grpc_client::grpc::Empty {})
         .await
         .expect("Failed to get tip info")
-        .into_inner(); 
+        .into_inner();
     let best_height = tip_info.metadata.unwrap().best_block_height;
     println!("Height: {} node height: {}", height, best_height);
     assert_eq!(
-        height,
-        best_height,
+        height, best_height,
         "XMRig getheight height {height} does not match node height {best_height}"
-    ); 
+    );
 }
 
 #[when(expr = r"I call GET \/getinfo on proxy of node {word}")]
@@ -124,8 +122,7 @@ async fn xmrig_proxy_get_getinfo(world: &mut TariWorld, base_node_name: String) 
         .into_inner();
     let best_height = tip_info.metadata.unwrap().best_block_height;
     assert_eq!(
-        height,
-        best_height,
+        height, best_height,
         "XMRig getinfo height {height} does not match node height {best_height}"
     );
 }

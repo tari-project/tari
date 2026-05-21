@@ -126,7 +126,7 @@ impl InnerService {
             top_hash: *meta.best_block_hash(),
         })
     }
-    
+
     /// Handle GET /get_height, /getinfo, /getheight requests (some mining software uses these).
     pub async fn handle_get(&self, path: &str) -> Result<Response<ProxyBody>, XmrigProxyError> {
         match path {
@@ -136,7 +136,7 @@ impl InnerService {
             _ => json_response(StatusCode::NOT_FOUND, &json!({"error": "Not found"})),
         }
     }
-    
+
     async fn handle_get_height(&self, req: &Value) -> Result<Response<ProxyBody>, XmrigProxyError> {
         let tip = self.get_chain_tip().await?;
         json_response(
