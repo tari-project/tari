@@ -2992,10 +2992,10 @@ async fn coinbase_transactions_have_opposing_cancellation(world: &mut TariWorld,
         condition: async {
             let cancelled_a = get_coinbase_cancellation_status(world, &wallet_a).await;
             let cancelled_b = get_coinbase_cancellation_status(world, &wallet_b).await;
-            if cancelled_a != cancelled_b {
-                Ok(true)
-            } else {
+            if cancelled_a == cancelled_b {
                 Err(format!("both wallets show cancelled={cancelled_a}"))
+            } else {
+                Ok(true)
             }
         }
     );
