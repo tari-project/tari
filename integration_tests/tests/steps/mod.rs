@@ -38,6 +38,7 @@ pub mod offline_signing_steps;
 pub mod wallet_cli_steps;
 pub mod wallet_ffi_steps;
 pub mod wallet_steps;
+pub mod xmrig_proxy_steps;
 
 pub const CONFIRMATION_PERIOD: u64 = 4;
 // Deprecated: use tari_integration_tests::wait_for_or_panic with DEFAULT_TIMEOUT instead
