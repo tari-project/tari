@@ -83,6 +83,21 @@ use tokio::sync::watch;
 
 use super::lmdb_db::{MetadataKey, MetadataValue};
 
+/// Which sub-step of the migration is currently running. Surfaced via the readiness gRPC so
+/// clients can show a meaningful label in addition to the numeric `current_height/total_height`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MigrationPhase {
+    /// No migration phase has been set yet, or the migration is not currently running.
+    #[default]
+    Unspecified,
+    /// Walking the UTXO set and inserting entries into the v2 JMT tables. Per-batch progress
+    /// is reported via `update_migration_progress`.
+    JmtRebuild,
+    /// Running `mdb_env_copy2(MDB_CP_COMPACT)` to reclaim disk space freed by the migration.
+    /// LMDB does not expose intermediate progress for this operation.
+    LmdbCompact,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MigrationStats {
     pub current_height: u64,
@@ -90,6 +105,7 @@ pub struct MigrationStats {
     pub progress_percentage: f64,
     pub current_db_version: u64,
     pub target_db_version: u64,
+    pub phase: MigrationPhase,
 }
 
 /// Statistics data for database operations
@@ -124,6 +140,7 @@ impl DatabaseStats {
                 progress_percentage,
                 current_db_version: 0,
                 target_db_version: 0,
+                phase: MigrationPhase::default(),
             },
             last_updated: Instant::now(),
             metadata: HashMap::new(),
@@ -255,6 +272,18 @@ impl LMDBStatsCollector {
     pub fn set_current_db_version(&self, current_version: u64) {
         let mut stats = self.receiver.borrow().clone();
         stats.migration_stats.current_db_version = current_version;
+        self.update_db_stats(stats);
+    }
+
+    /// Set the migration phase. The phase resets `current_height` and the progress percentage so
+    /// that per-phase counters start clean; callers should follow with `set_total_height` and
+    /// `update_migration_progress` as the phase makes progress.
+    pub fn set_migration_phase(&self, phase: MigrationPhase) {
+        let mut stats = self.receiver.borrow().clone();
+        stats.migration_stats.phase = phase;
+        stats.migration_stats.current_height = 0;
+        stats.migration_stats.progress_percentage = 0.0;
+        stats.timestamp = self.get_current_timestamp();
         self.update_db_stats(stats);
     }
 

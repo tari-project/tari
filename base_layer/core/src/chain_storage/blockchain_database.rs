@@ -1290,9 +1290,8 @@ where B: BlockchainBackend
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-        let tip = db.fetch_chain_metadata()?.best_block_height();
 
-        let smt_reader = db.create_smt_reader()?;
+        let (smt_reader, current_version) = db.create_smt_reader()?;
 
         let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         let mut result = Vec::with_capacity(hashes.len());
@@ -1316,7 +1315,7 @@ where B: BlockchainBackend
                 );
 
                 let spent = smt
-                    .get(smt_key, tip)
+                    .get(smt_key, current_version)
                     .map_err(ChainStorageError::JellyfishMerkleTreeError)?
                     .is_none();
                 trace!(
@@ -2158,13 +2157,9 @@ where B: BlockchainBackend
         db.fetch_horizon_sync_output_checkpoint()
     }
 
-    pub fn verify_horizon_sync_output_root(
-        &self,
-        version: u64,
-        expected_root: HashOutput,
-    ) -> Result<(), ChainStorageError> {
+    pub fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError> {
         let db = self.db_read_access()?;
-        db.verify_horizon_sync_output_root(version, expected_root)
+        db.verify_horizon_sync_output_root(expected_root)
     }
 
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
@@ -2357,7 +2352,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let header = &block.header;
     let body = &block.body;
 
-    let smt_reader = db.create_smt_reader()?;
+    let (smt_reader, current_version) = db.create_smt_reader()?;
     let metadata = db.fetch_chain_metadata()?;
     if header.prev_hash != *metadata.best_block_hash() {
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
@@ -2432,7 +2427,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let block_output_mr = block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?;
 
     let (output_smt_root, changes) = output_smt
-        .put_value_set(batch, header.height)
+        .put_value_set(batch, current_version + 1)
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
     let mut size = tip_header.output_smt_size;

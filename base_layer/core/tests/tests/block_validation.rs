@@ -276,8 +276,10 @@ async fn inputs_are_not_malleable() {
             .difficulty(1)
             .with_transactions(txs),
     );
+
     let spent_output = output;
     let mut block = blockchain.get_block("A2").cloned().unwrap().block.block().clone();
+
     blockchain.store().rewind_to_height(block.header.height - 1).unwrap();
 
     let mut malicious_test_params = TestParams::new(&blockchain.key_manager);

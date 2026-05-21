@@ -77,6 +77,7 @@ pub use lmdb_db::{
     CheckFailure,
     DatabaseStats,
     LMDBDatabase,
+    MigrationPhase,
     PayrefRebuildStatus,
     create_lmdb_database,
     create_lmdb_database_with_stats_channel,

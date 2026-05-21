@@ -592,6 +592,17 @@ impl SpentOutput {
         }
     }
 
+    pub fn matches_output(&self, output: &TransactionOutput) -> bool {
+        match self {
+            SpentOutput::OutputHash(h) => *h == output.hash(),
+            SpentOutput::OutputData {
+                commitment,
+                metadata_signature,
+                ..
+            } => (commitment == &output.commitment) & (metadata_signature == &output.metadata_signature),
+        }
+    }
+
     pub fn create_from_output(output: TransactionOutput) -> SpentOutput {
         let rp_hash = match output.proof {
             Some(proof) => proof.hash(),

@@ -25,29 +25,26 @@ use std::ops::Deref;
 use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
-use log::warn;
 use tari_storage::lmdb_store::DatabaseRef;
 
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_fetch_matching_after, lmdb_get};
-
-pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
+use crate::chain_storage::lmdb_db::lmdb::lmdb_get;
 
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
     node_db: DatabaseRef,
-    unique_key_db: DatabaseRef,
+    value_db: DatabaseRef,
 }
 
 impl<'a> LmdbTreeReader<'a> {
     pub fn new<T: Deref<Target = ConstTransaction<'a>>>(
         txn: &'a T,
         node_db: DatabaseRef,
-        unique_key_db: DatabaseRef,
+        value_db: DatabaseRef,
     ) -> Self {
         Self {
             txn: txn.deref(),
             node_db,
-            unique_key_db,
+            value_db,
         }
     }
 }
@@ -55,8 +52,7 @@ impl<'a> LmdbTreeReader<'a> {
 impl TreeReader for LmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
         let mut lmdb_key: Vec<u8> = vec![];
-        lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
-        BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
+        BorshSerialize::serialize(node_key, &mut lmdb_key)?;
         let node = lmdb_get(self.txn, &self.node_db, &lmdb_key)?;
         Ok(node)
     }
@@ -66,21 +62,11 @@ impl TreeReader for LmdbTreeReader<'_> {
         _max_version: jmt::Version,
         key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
-        // see if there are any values already.
-        let existing_values: Vec<(Vec<u8>, Option<Vec<u8>>)> =
-            lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &key_hash.0)?;
-        let mut existing_history = vec![];
-        for (key, x) in existing_values {
-            let version = u64::from_be_bytes(key.get(32..).ok_or(anyhow::anyhow!("invalid bytes"))?.try_into()?);
-            existing_history.push((version, x));
-            warn!(target: LOG_TARGET, "found version {version} for key {key:?}");
-        }
-        // sort by version
-        existing_history.sort_by_key(|a| a.0);
+        let mut lmdb_key: Vec<u8> = vec![];
+        lmdb_key.extend_from_slice(&key_hash.0);
+        let existing = lmdb_get(self.txn, &self.value_db, &lmdb_key)?;
 
-        let latest_value = existing_history.last().and_then(|x| x.1.clone());
-
-        Ok(latest_value)
+        Ok(existing)
     }
 
     fn get_rightmost_leaf(&self) -> anyhow::Result<Option<(jmt::storage::NodeKey, jmt::storage::LeafNode)>> {
@@ -92,22 +78,18 @@ impl TreeReader for LmdbTreeReader<'_> {
 pub struct OwnedLmdbTreeReader<'a> {
     txn: ReadTransaction<'a>,
     node_db: DatabaseRef,
-    unique_key_db: DatabaseRef,
+    value_db: DatabaseRef,
 }
 
 impl<'a> OwnedLmdbTreeReader<'a> {
-    pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef, unique_key_db: DatabaseRef) -> Self {
-        Self {
-            txn,
-            node_db,
-            unique_key_db,
-        }
+    pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef, value_db: DatabaseRef) -> Self {
+        Self { txn, node_db, value_db }
     }
 }
 
 impl TreeReader for OwnedLmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
-        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.unique_key_db.clone());
+        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.value_db.clone());
         inner.get_node_option(node_key)
     }
 
@@ -116,7 +98,7 @@ impl TreeReader for OwnedLmdbTreeReader<'_> {
         max_version: jmt::Version,
         key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
-        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.unique_key_db.clone());
+        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.value_db.clone());
         inner.get_value_option(max_version, key_hash)
     }
 

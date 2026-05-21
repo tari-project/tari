@@ -164,7 +164,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<HorizonSyncOutputCheckpoint>, "fetch_horizon_sync_output_checkpoint");
 
-    make_async_fn!(verify_horizon_sync_output_root(version: u64, expected_root: HashOutput) -> (), "verify_horizon_sync_output_root");
+    make_async_fn!(verify_horizon_sync_output_root(expected_root: HashOutput) -> (), "verify_horizon_sync_output_root");
 
     //---------------------------------- TXO --------------------------------------------//
 
@@ -378,14 +378,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn apply_horizon_state_tree_updates(
-        &mut self,
-        previous_version: u64,
-        version: u64,
-        updates: Vec<HorizonStateTreeUpdate>,
-    ) -> &mut Self {
-        self.transaction
-            .apply_horizon_state_tree_updates(previous_version, version, updates);
+    pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
+        self.transaction.apply_horizon_state_tree_updates(updates);
         self
     }
 

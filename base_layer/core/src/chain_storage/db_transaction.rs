@@ -319,17 +319,9 @@ impl DbTransaction {
         self
     }
 
-    pub fn apply_horizon_state_tree_updates(
-        &mut self,
-        previous_version: u64,
-        version: u64,
-        updates: Vec<HorizonStateTreeUpdate>,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::ApplyHorizonStateTreeUpdates {
-            previous_version,
-            version,
-            updates,
-        });
+    pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
+        self.operations
+            .push(WriteOperation::ApplyHorizonStateTreeUpdates { updates });
         self
     }
 
@@ -426,8 +418,6 @@ pub enum WriteOperation {
         horizon_data: HorizonData,
     },
     ApplyHorizonStateTreeUpdates {
-        previous_version: u64,
-        version: u64,
         updates: Vec<HorizonStateTreeUpdate>,
     },
     InsertReorg {
@@ -537,12 +527,8 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Insert bad block #{height} {hash} for {reason}")
             },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
-            ApplyHorizonStateTreeUpdates { version, updates, .. } => {
-                write!(
-                    f,
-                    "Apply horizon state tree updates at version {version} ({} updates)",
-                    updates.len()
-                )
+            ApplyHorizonStateTreeUpdates { updates, .. } => {
+                write!(f, "Apply horizon state tree updates ({} updates)", updates.len())
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
