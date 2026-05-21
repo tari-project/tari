@@ -428,15 +428,19 @@ impl WalletGrpcServer {
             .get_wallet_one_sided_address()
             .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut results = Vec::new();
+
+        let mut broadcast_futures = Vec::new();
         for id in ids {
-            match self.wait_for_broadcast_confirmation(id).await {
+            broadcast_futures.push(async move { (id, self.wait_for_broadcast_confirmation(id).await) });
+        }
+        let broadcast_results = future::join_all(broadcast_futures).await;
+        for (id, result) in broadcast_results {
+            match result {
                 Ok(wallet_tx) => {
                     let address = wallet_tx.destination_address().expect("cannot fail").to_string();
                     results.push(self.build_transfer_result_from_tx(id, address, wallet_tx, &wallet_address));
                 },
                 Err(_) => {
-                    // Transaction was completed (we have the tx_id) but we couldn't confirm
-                    // broadcast status. Return success with a pending message.
                     results.push(minotari_app_grpc::tari_rpc::TransferResult {
                         address: Default::default(),
                         transaction_id: id.into(),
