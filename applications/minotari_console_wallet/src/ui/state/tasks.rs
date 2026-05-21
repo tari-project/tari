@@ -33,7 +33,12 @@ use tari_transaction_components::{
     MicroMinotari,
     transaction_components::{MemoField, OutputFeatures},
 };
-use tokio::sync::{broadcast, watch};
+use std::time::Duration;
+
+use tokio::{
+    sync::{broadcast, watch},
+    time::timeout,
+};
 
 use crate::ui::{
     state::{UiTransactionBurnStatus, UiTransactionSendStatus},
@@ -66,9 +71,13 @@ pub async fn send_one_sided_to_stealth_address_transaction(
         .await
     {
         Err(e) => {
-            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
+            let _result = result_tx.send(UiTransactionSendStatus::Error(format!(
+                "Transaction abandoned: {}",
+                UiError::from(e)
+            )));
         },
         Ok(our_tx_id) => {
+            // First wait for TransactionCompletedImmediately
             loop {
                 match event_stream.recv().await {
                     Ok(event) => {
@@ -76,7 +85,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                             our_tx_id == *tx_id
                         {
                             let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
-                            return;
+                            break;
                         }
                     },
                     Err(e @ broadcast::error::RecvError::Lagged(_)) => {
@@ -84,14 +93,50 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                         continue;
                     },
                     Err(broadcast::error::RecvError::Closed) => {
-                        break;
+                        let _result = result_tx.send(UiTransactionSendStatus::Error(
+                            "One-sided transaction could not be sent".to_string(),
+                        ));
+                        return;
                     },
                 }
             }
+            // Now wait for broadcast or rejection with a timeout
+            const BROADCAST_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+            let broadcast_result = timeout(BROADCAST_WAIT_TIMEOUT, async {
+                loop {
+                    match event_stream.recv().await {
+                        Ok(event) => match &*event {
+                            TransactionEvent::TransactionBroadcast(tx_id) if our_tx_id == *tx_id => {
+                                return Some(UiTransactionSendStatus::TransactionBroadcast);
+                            },
+                            TransactionEvent::TransactionCancelled(tx_id, reason) if our_tx_id == *tx_id => {
+                                return Some(UiTransactionSendStatus::TransactionRejected(format!(
+                                    "Transaction cancelled: {reason}. Transaction is saved and can be retried.",
+                                )));
+                            },
+                            _ => continue,
+                        },
+                        Err(e @ broadcast::error::RecvError::Lagged(_)) => {
+                            log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
+                            continue;
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            return None;
+                        },
+                    }
+                }
+            })
+            .await;
 
-            let _result = result_tx.send(UiTransactionSendStatus::Error(
-                "One-sided transaction could not be sent".to_string(),
-            ));
+            match broadcast_result {
+                Ok(Some(status)) => {
+                    let _result = result_tx.send(status);
+                },
+                Ok(None) | Err(_) => {
+                    // Channel closed or timeout: transaction is completed but broadcast status is unknown
+                    let _result = result_tx.send(UiTransactionSendStatus::TransactionBroadcast);
+                },
+            }
         },
     }
 }

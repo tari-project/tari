@@ -386,13 +386,20 @@ impl<B: Backend> Component<B> for SendTab {
             trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
-                UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
+                UiTransactionSendStatus::TransactionComplete => "Completed, waiting for broadcast...",
+                UiTransactionSendStatus::TransactionBroadcast => {
+                    self.success_message = Some(
+                        "Transaction successfully broadcast to the network!\nPlease press Enter to continue"
+                            .to_string(),
+                    );
                     return;
                 },
-                UiTransactionSendStatus::TransactionComplete => {
-                    self.success_message =
-                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                UiTransactionSendStatus::TransactionRejected(reason) => {
+                    self.error_message = Some(format!("{reason}\nPress Enter to continue."));
+                    return;
+                },
+                UiTransactionSendStatus::Error(e) => {
+                    self.error_message = Some(format!("Error sending transaction: {e}\nPress Enter to continue."));
                     return;
                 },
             };

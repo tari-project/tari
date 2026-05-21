@@ -62,7 +62,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     seeds::{cipher_seed::CipherSeed, seed_words::SeedWords},
     tari_address::TariAddress,
-    transaction::TxId,
+    transaction::{LegacyTransactionStatus, TxId},
     types::{
         CompressedCommitment,
         CompressedPublicKey,
@@ -1739,10 +1739,76 @@ pub async fn command_runner(
                             target: LOG_TARGET,
                             "send-one-sided-to-stealth-address concluded with tx_id {tx_id}"
                         );
-                        println!("Transaction ID: {tx_id}");
+                        println!("Transaction completed. ID: {tx_id}");
+                        println!("Waiting for broadcast confirmation...");
                         tx_ids.push(tx_id);
+                        // Wait for broadcast confirmation
+                        let broadcast_timeout =
+                            Duration::from_millis(config.grpc_broadcast_confirmation);
+                        match timeout(broadcast_timeout, async {
+                            loop {
+                                if let Ok(tx) =
+                                    transaction_service.get_any_transaction(tx_id).await
+                                {
+                                    if let Some(tx) = tx {
+                                        match tx.status() {
+                                            LegacyTransactionStatus::Broadcast |
+                                            LegacyTransactionStatus::MinedUnconfirmed |
+                                            LegacyTransactionStatus::MinedConfirmed |
+                                            LegacyTransactionStatus::OneSidedUnconfirmed |
+                                            LegacyTransactionStatus::OneSidedConfirmed |
+                                            LegacyTransactionStatus::MinedConfirmedLocked |
+                                            LegacyTransactionStatus::OneSidedConfirmedLocked |
+                                            LegacyTransactionStatus::CoinbaseConfirmedLocked |
+                                            LegacyTransactionStatus::Imported => {
+                                                break Ok(tx.status());
+                                            },
+                                            LegacyTransactionStatus::Rejected => {
+                                                let reason = tx
+                                                    .cancelled_reason()
+                                                    .map(|r| format!("{r}"))
+                                                    .unwrap_or_else(|| {
+                                                        "Unknown reason".to_string()
+                                                    });
+                                                break Err(reason);
+                                            },
+                                            _ => {
+                                                sleep(Duration::from_millis(100)).await;
+                                            },
+                                        }
+                                    } else {
+                                        sleep(Duration::from_millis(100)).await;
+                                    }
+                                } else {
+                                    sleep(Duration::from_millis(100)).await;
+                                }
+                            }
+                        })
+                        .await
+                        {
+                            Ok(Ok(status)) => {
+                                println!(
+                                    "Transaction {tx_id} successfully broadcast to the network \
+                                     (status: {status})."
+                                );
+                            },
+                            Ok(Err(reason)) => {
+                                eprintln!(
+                                    "Transaction {tx_id} was completed but rejected during \
+                                     submission: {reason}. Transaction is saved and can be \
+                                     retried."
+                                );
+                            },
+                            Err(_) => {
+                                println!(
+                                    "Transaction {tx_id} completed but broadcast is still \
+                                     pending. Transaction is saved and will be broadcast when \
+                                     possible."
+                                );
+                            },
+                        }
                     },
-                    Err(e) => eprintln!("SendOneSidedToStealthAddress error! {e}"),
+                    Err(e) => eprintln!("Transaction abandoned: {e}"),
                 }
             },
             MakeItRain(args) => {
