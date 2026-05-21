@@ -62,7 +62,7 @@ use crate::{
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
 const EVENT_CHANNEL_SIZE: usize = 32;
-const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
+const DIALER_REQUEST_CHANNEL_SIZE: usize = 60;
 
 /// Connection events
 #[derive(Debug)]
