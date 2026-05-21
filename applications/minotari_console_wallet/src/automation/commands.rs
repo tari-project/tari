@@ -1747,37 +1747,31 @@ pub async fn command_runner(
                             Duration::from_millis(config.grpc_broadcast_confirmation);
                         match timeout(broadcast_timeout, async {
                             loop {
-                                if let Ok(tx) =
+                                if let Ok(Some(tx)) =
                                     transaction_service.get_any_transaction(tx_id).await
                                 {
-                                    if let Some(tx) = tx {
-                                        match tx.status() {
-                                            LegacyTransactionStatus::Broadcast |
-                                            LegacyTransactionStatus::MinedUnconfirmed |
-                                            LegacyTransactionStatus::MinedConfirmed |
-                                            LegacyTransactionStatus::OneSidedUnconfirmed |
-                                            LegacyTransactionStatus::OneSidedConfirmed |
-                                            LegacyTransactionStatus::MinedConfirmedLocked |
-                                            LegacyTransactionStatus::OneSidedConfirmedLocked |
-                                            LegacyTransactionStatus::CoinbaseConfirmedLocked |
-                                            LegacyTransactionStatus::Imported => {
-                                                break Ok(tx.status());
-                                            },
-                                            LegacyTransactionStatus::Rejected => {
-                                                let reason = tx
-                                                    .cancelled_reason()
-                                                    .map(|r| format!("{r}"))
-                                                    .unwrap_or_else(|| {
-                                                        "Unknown reason".to_string()
-                                                    });
-                                                break Err(reason);
-                                            },
-                                            _ => {
-                                                sleep(Duration::from_millis(100)).await;
-                                            },
-                                        }
-                                    } else {
-                                        sleep(Duration::from_millis(100)).await;
+                                    match tx.status() {
+                                        LegacyTransactionStatus::Broadcast |
+                                        LegacyTransactionStatus::MinedUnconfirmed |
+                                        LegacyTransactionStatus::MinedConfirmed |
+                                        LegacyTransactionStatus::OneSidedUnconfirmed |
+                                        LegacyTransactionStatus::OneSidedConfirmed |
+                                        LegacyTransactionStatus::MinedConfirmedLocked |
+                                        LegacyTransactionStatus::OneSidedConfirmedLocked |
+                                        LegacyTransactionStatus::CoinbaseConfirmedLocked |
+                                        LegacyTransactionStatus::Imported => {
+                                            break Ok(tx.status());
+                                        },
+                                        LegacyTransactionStatus::Rejected => {
+                                            let reason = tx
+                                                .cancelled_reason()
+                                                .map(|r| format!("{r}"))
+                                                .unwrap_or_else(|| "Unknown reason".to_string());
+                                            break Err(reason);
+                                        },
+                                        _ => {
+                                            sleep(Duration::from_millis(100)).await;
+                                        },
                                     }
                                 } else {
                                     sleep(Duration::from_millis(100)).await;

@@ -1287,30 +1287,37 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         target: LOG_TARGET,
                         "Failed to send transaction for address `{address}`: {err}"
                     );
-                    result_slots[*i] = Some(TransferResult {
-                        address: address.clone(),
-                        transaction_id: Default::default(),
-                        is_success: false,
-                        failure_message: format!("Transaction abandoned: {err}"),
-                        transaction_info: None,
-                    });
+                    if let Some(slot) = result_slots.get_mut(*i) {
+                        *slot = Some(TransferResult {
+                            address: address.clone(),
+                            transaction_id: Default::default(),
+                            is_success: false,
+                            failure_message: format!("Transaction abandoned: {err}"),
+                            transaction_info: None,
+                        });
+                    }
                 },
             }
         }
 
         let broadcast_results = future::join_all(broadcast_futures).await;
         for (i, broadcast_result) in broadcast_results {
-            let (_, address, result) = &indexed_results[i];
+            let Some((_, address, result)) = indexed_results.get(i) else {
+                continue;
+            };
             let tx_id = result.as_ref().expect("only Ok values have broadcast futures");
+            let Some(slot) = result_slots.get_mut(i) else {
+                continue;
+            };
             match broadcast_result {
                 Ok(wallet_tx) => {
-                    result_slots[i] =
+                    *slot =
                         Some(self.build_transfer_result_from_tx(*tx_id, address.clone(), wallet_tx, &wallet_address));
                 },
                 Err(_) => {
                     // Transaction was completed (we have the tx_id) but we couldn't confirm
                     // broadcast status. Return success with a pending message.
-                    result_slots[i] = Some(TransferResult {
+                    *slot = Some(TransferResult {
                         address: address.clone(),
                         transaction_id: (*tx_id).into(),
                         is_success: true,

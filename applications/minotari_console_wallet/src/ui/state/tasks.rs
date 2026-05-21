@@ -109,9 +109,12 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                             TransactionEvent::TransactionBroadcast(tx_id) if our_tx_id == *tx_id => {
                                 return Some(UiTransactionSendStatus::TransactionBroadcast);
                             },
-                            TransactionEvent::TransactionCancelled(tx_id, reason) if our_tx_id == *tx_id => {
+                            TransactionEvent::TransactionCancelled(tx_id, reason, detail)
+                                if our_tx_id == *tx_id =>
+                            {
                                 return Some(UiTransactionSendStatus::TransactionRejected(format!(
-                                    "Transaction cancelled: {reason}. Transaction is saved and can be retried.",
+                                    "Transaction cancelled: {reason} ({detail}). Transaction is saved and can be \
+                                     retried.",
                                 )));
                             },
                             _ => continue,
