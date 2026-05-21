@@ -1743,13 +1743,10 @@ pub async fn command_runner(
                         println!("Waiting for broadcast confirmation...");
                         tx_ids.push(tx_id);
                         // Wait for broadcast confirmation
-                        let broadcast_timeout =
-                            Duration::from_millis(config.grpc_broadcast_confirmation);
+                        let broadcast_timeout = Duration::from_millis(config.grpc_broadcast_confirmation);
                         match timeout(broadcast_timeout, async {
                             loop {
-                                if let Ok(Some(tx)) =
-                                    transaction_service.get_any_transaction(tx_id).await
-                                {
+                                if let Ok(Some(tx)) = transaction_service.get_any_transaction(tx_id).await {
                                     match tx.status() {
                                         LegacyTransactionStatus::Broadcast |
                                         LegacyTransactionStatus::MinedUnconfirmed |
@@ -1782,22 +1779,19 @@ pub async fn command_runner(
                         {
                             Ok(Ok(status)) => {
                                 println!(
-                                    "Transaction {tx_id} successfully broadcast to the network \
-                                     (status: {status})."
+                                    "Transaction {tx_id} successfully broadcast to the network (status: {status})."
                                 );
                             },
                             Ok(Err(reason)) => {
                                 eprintln!(
-                                    "Transaction {tx_id} was completed but rejected during \
-                                     submission: {reason}. Transaction is saved and can be \
-                                     retried."
+                                    "Transaction {tx_id} was completed but rejected during submission: {reason}. \
+                                     Transaction is saved and can be retried."
                                 );
                             },
                             Err(_) => {
                                 println!(
-                                    "Transaction {tx_id} completed but broadcast is still \
-                                     pending. Transaction is saved and will be broadcast when \
-                                     possible."
+                                    "Transaction {tx_id} completed but broadcast is still pending. Transaction is \
+                                     saved and will be broadcast when possible."
                                 );
                             },
                         }

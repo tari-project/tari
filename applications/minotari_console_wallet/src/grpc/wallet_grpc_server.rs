@@ -360,8 +360,8 @@ impl WalletGrpcServer {
                     transaction_id: tx_id.into(),
                     is_success: true,
                     failure_message: format!(
-                        "Transaction completed but broadcast is still pending. Transaction (ID: {tx_id}) is saved \
-                         and will be broadcast when possible.",
+                        "Transaction completed but broadcast is still pending. Transaction (ID: {tx_id}) is saved and \
+                         will be broadcast when possible.",
                     ),
                     transaction_info: Some(final_tx),
                 }
@@ -431,10 +431,7 @@ impl WalletGrpcServer {
         for id in ids {
             match self.wait_for_broadcast_confirmation(id).await {
                 Ok(wallet_tx) => {
-                    let address = wallet_tx
-                        .destination_address()
-                        .expect("cannot fail")
-                        .to_string();
+                    let address = wallet_tx.destination_address().expect("cannot fail").to_string();
                     results.push(self.build_transfer_result_from_tx(id, address, wallet_tx, &wallet_address));
                 },
                 Err(_) => {

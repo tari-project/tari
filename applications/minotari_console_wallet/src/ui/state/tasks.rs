@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use log::*;
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -33,8 +35,6 @@ use tari_transaction_components::{
     MicroMinotari,
     transaction_components::{MemoField, OutputFeatures},
 };
-use std::time::Duration;
-
 use tokio::{
     sync::{broadcast, watch},
     time::timeout,
@@ -109,9 +109,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                             TransactionEvent::TransactionBroadcast(tx_id) if our_tx_id == *tx_id => {
                                 return Some(UiTransactionSendStatus::TransactionBroadcast);
                             },
-                            TransactionEvent::TransactionCancelled(tx_id, reason, detail)
-                                if our_tx_id == *tx_id =>
-                            {
+                            TransactionEvent::TransactionCancelled(tx_id, reason, detail) if our_tx_id == *tx_id => {
                                 return Some(UiTransactionSendStatus::TransactionRejected(format!(
                                     "Transaction cancelled: {reason} ({detail}). Transaction is saved and can be \
                                      retried.",
