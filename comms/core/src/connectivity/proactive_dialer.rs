@@ -35,7 +35,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
-const MAX_CONCURRENT_DIALS: usize = 30;
+pub const MAX_CONCURRENT_DIALS: usize = 30;
 
 /// Proactive peer dialing logic for maintaining target connection counts
 pub struct ProactiveDialer {
