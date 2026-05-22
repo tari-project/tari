@@ -114,8 +114,9 @@ def scenarios():
 def main():
     workflow_text = WORKFLOW.read_text(encoding="utf-8")
     expression = ffi_tag_expression(workflow_text).replace("${{ env.CI_PROFILE }}", pr_ci_profile(workflow_text))
-    selected = [(path, name, tags) for path, name, tags in scenarios() if evaluate(expression, tags)]
-    ffi_scenarios = [(path, name, tags) for path, name, tags in scenarios() if "@wallet-ffi" in tags or "@chat-ffi" in tags]
+    all_scenarios = list(scenarios())
+    selected = [(path, name, tags) for path, name, tags in all_scenarios if evaluate(expression, tags)]
+    ffi_scenarios = [(path, name, tags) for path, name, tags in all_scenarios if "@wallet-ffi" in tags or "@chat-ffi" in tags]
     print(f"PR FFI tag expression: {expression}")
     print(f"FFI scenarios in feature files: {len(ffi_scenarios)}")
     print(f"Selected PR FFI scenarios: {len(selected)}")
