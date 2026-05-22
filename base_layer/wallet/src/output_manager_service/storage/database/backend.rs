@@ -74,6 +74,11 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         op: WriteOperation,
         key_manager: &KM,
     ) -> Result<Option<DbValue>, OutputManagerStorageError>;
+    /// Persist any legacy key id strings in the outputs table as current TariKeyId strings.
+    fn migrate_legacy_output_key_ids<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<usize, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,

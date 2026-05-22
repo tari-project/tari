@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::convert::TryFrom;
+use std::{convert::TryFrom, str::FromStr};
 
+use diesel::prelude::*;
 use minotari_wallet::output_manager_service::{
     RangeLimit,
     UtxoSelectionCriteria,
@@ -33,16 +34,18 @@ use minotari_wallet::output_manager_service::{
         OutputStatus,
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbWalletOutput,
-        sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+        sqlite_db::{OutputManagerSqliteDatabase, OutputSql, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
 };
+use minotari_wallet::schema::outputs;
 use rand::Rng;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     transaction::TxId,
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{MicroMinotari, transaction_components::OutputFeatures};
+use tari_transaction_components::{MicroMinotari, key_manager::TariKeyId, transaction_components::OutputFeatures};
 use tari_transaction_key_manager::legacy_key_manager::{
     LegacyTransactionKeyManagerInterface,
     create_new_random_key_manager,
@@ -386,6 +389,65 @@ pub async fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
+}
+
+#[tokio::test]
+pub async fn test_migrate_legacy_output_key_ids_persists_current_key_ids() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(100),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let output = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+    let current_spending_key = output.wallet_output.commitment_mask_key_id().to_string();
+    let current_script_private_key = output.wallet_output.script_key_id().to_string();
+    let legacy_spending_key = key_manager
+        .convert_key_id_to_legacy_key_id(output.wallet_output.commitment_mask_key_id())
+        .to_string();
+    let legacy_script_private_key = key_manager
+        .convert_key_id_to_legacy_key_id(output.wallet_output.script_key_id())
+        .to_string();
+
+    db.add_unspent_output(output.clone(), &key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(output.hash.clone(), true)]).unwrap();
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::hash.eq(output.hash.to_vec())))
+            .set((
+                outputs::spending_key.eq(legacy_spending_key.clone()),
+                outputs::script_private_key.eq(legacy_script_private_key.clone()),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        let stored_output = OutputSql::find_by_hash(output.hash.as_slice(), OutputStatus::Unspent, &mut conn).unwrap();
+        assert_eq!(stored_output.spending_key, legacy_spending_key);
+        assert_eq!(stored_output.script_private_key, legacy_script_private_key);
+    }
+
+    let migrated_count = db.migrate_legacy_output_key_ids(&key_manager).unwrap();
+    assert_eq!(migrated_count, 1);
+
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        let stored_output = OutputSql::find_by_hash(output.hash.as_slice(), OutputStatus::Unspent, &mut conn).unwrap();
+        assert_eq!(stored_output.spending_key, current_spending_key);
+        assert_eq!(stored_output.script_private_key, current_script_private_key);
+        assert!(TariKeyId::from_str(&stored_output.spending_key).is_ok());
+        assert!(TariKeyId::from_str(&stored_output.script_private_key).is_ok());
+    }
+
+    let migrated_again_count = db.migrate_legacy_output_key_ids(&key_manager).unwrap();
+    assert_eq!(migrated_again_count, 0);
+
+    let fetched_output = db.fetch_by_commitment(output.commitment.clone(), &key_manager).unwrap();
+    assert_eq!(fetched_output.hash, output.hash);
 }
 
 #[tokio::test]

@@ -216,6 +216,7 @@ where
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
 
         debug!(target: LOG_TARGET, "Output Manager Service started");
+        self.spawn_legacy_output_key_id_migration();
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
         loop {
@@ -249,6 +250,28 @@ where
         }
         info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
+    }
+
+    fn spawn_legacy_output_key_id_migration(&self) {
+        let db = self.resources.db.clone();
+        let key_manager = self.resources.key_manager.clone();
+
+        tokio::task::spawn_blocking(move || {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                db.migrate_legacy_output_key_ids(&key_manager)
+            })) {
+                Ok(Ok(0)) => {},
+                Ok(Ok(migrated_count)) => {
+                    info!(target: LOG_TARGET, "Migrated {migrated_count} legacy output key id(s)");
+                },
+                Ok(Err(e)) => {
+                    error!(target: LOG_TARGET, "Error migrating legacy output key ids: {e}");
+                },
+                Err(_) => {
+                    error!(target: LOG_TARGET, "Panic occurred during legacy output key id migration");
+                },
+            }
+        });
     }
 
     /// This handler is called when the Service executor loops receives an API request

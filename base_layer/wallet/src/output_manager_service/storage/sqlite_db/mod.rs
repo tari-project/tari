@@ -441,6 +441,30 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         result
     }
 
+    fn migrate_legacy_output_key_ids<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<usize, OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let migrated = retry_db("migrate_legacy_output_key_ids", || {
+            OutputSql::migrate_legacy_key_ids(&mut conn, key_manager)
+        })?;
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - migrate_legacy_output_key_ids: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(migrated)
+    }
+
     fn fetch_pending_incoming_outputs<KM: LegacyTransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,

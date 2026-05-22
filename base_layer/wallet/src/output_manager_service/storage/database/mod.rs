@@ -249,6 +249,13 @@ where T: OutputManagerBackend + 'static
         self.db.clear_short_term_encumberances()
     }
 
+    pub fn migrate_legacy_output_key_ids<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<usize, OutputManagerStorageError> {
+        self.db.migrate_legacy_output_key_ids(key_manager)
+    }
+
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
     pub fn cancel_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {

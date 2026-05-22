@@ -86,6 +86,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
+const LEGACY_KEY_ID_MIGRATION_BATCH_SIZE: i64 = 500;
 
 #[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[diesel(table_name = outputs)]
@@ -962,6 +963,95 @@ impl OutputSql {
                 .set(UpdateOutputSql::from(updated_output))
                 .execute(conn)?,
         )
+    }
+
+    pub fn migrate_legacy_key_ids<KM: LegacyTransactionKeyManagerInterface>(
+        conn: &mut SqliteConnection,
+        key_manager: &KM,
+    ) -> Result<usize, OutputManagerStorageError> {
+        let mut last_seen_id = 0;
+        let mut total_migrated = 0;
+
+        loop {
+            let (last_batch_id, batch_size, migrated) =
+                Self::migrate_legacy_key_id_batch(conn, key_manager, last_seen_id)?;
+            total_migrated += migrated;
+
+            if batch_size < LEGACY_KEY_ID_MIGRATION_BATCH_SIZE as usize {
+                break;
+            }
+
+            last_seen_id = last_batch_id;
+        }
+
+        Ok(total_migrated)
+    }
+
+    fn migrate_legacy_key_id_batch<KM: LegacyTransactionKeyManagerInterface>(
+        conn: &mut SqliteConnection,
+        key_manager: &KM,
+        after_id: i32,
+    ) -> Result<(i32, usize, usize), OutputManagerStorageError> {
+        conn.transaction::<_, OutputManagerStorageError, _>(|conn| {
+            let outputs_to_check = outputs::table
+                .select((outputs::id, outputs::spending_key, outputs::script_private_key))
+                .filter(outputs::id.gt(after_id))
+                .order(outputs::id.asc())
+                .limit(LEGACY_KEY_ID_MIGRATION_BATCH_SIZE)
+                .load::<(i32, String, String)>(conn)?;
+            let batch_size = outputs_to_check.len();
+            let mut last_batch_id = after_id;
+            let mut migrated = 0;
+
+            for (id, spending_key, script_private_key) in outputs_to_check {
+                last_batch_id = id;
+                let migrated_spending_key =
+                    Self::migrate_key_id_string(&spending_key, key_manager, "spending key id")?;
+                let migrated_script_private_key =
+                    Self::migrate_key_id_string(&script_private_key, key_manager, "script private key id")?;
+
+                if migrated_spending_key.is_none() && migrated_script_private_key.is_none() {
+                    continue;
+                }
+
+                diesel::update(outputs::table.filter(outputs::id.eq(id)))
+                    .set((
+                        outputs::spending_key.eq(migrated_spending_key.unwrap_or(spending_key)),
+                        outputs::script_private_key.eq(migrated_script_private_key.unwrap_or(script_private_key)),
+                    ))
+                    .execute(conn)
+                    .num_rows_affected_or_not_found(1)?;
+                migrated += 1;
+            }
+
+            Ok((last_batch_id, batch_size, migrated))
+        })
+    }
+
+    fn migrate_key_id_string<KM: LegacyTransactionKeyManagerInterface>(
+        stored_key_id: &str,
+        key_manager: &KM,
+        key_role: &str,
+    ) -> Result<Option<String>, OutputManagerStorageError> {
+        if TariKeyId::from_str(stored_key_id).is_ok() {
+            return Ok(None);
+        }
+
+        let legacy = LegacyTariKeyId::from_str(stored_key_id).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create {key_role}({stored_key_id}) from stored string ({e})"
+            );
+            OutputManagerStorageError::ConversionError {
+                reason: format!("{key_role}({stored_key_id}) could not be converted from string ({e})"),
+            }
+        })?;
+
+        Ok(Some(
+            key_manager
+                .convert_legacy_tari_key_id_to_current(&legacy)?
+                .to_string(),
+        ))
     }
 
     pub fn find_by_commitment_and_cancelled(
