@@ -108,15 +108,15 @@ fn extract_manifest<P: AsRef<Path>>(git_root: P) -> Result<Manifest, anyhow::Err
 
 fn find_git_root() -> Result<PathBuf, anyhow::Error> {
     let manifest = env::var("CARGO_MANIFEST_DIR")?;
-    let manifest_path = PathBuf::from(&manifest);
-    let mut path = manifest_path.clone();
+    let mut path = PathBuf::from(manifest);
 
     let mut loop_count = 0;
     while !path.join(".git").exists() {
         path = path.join("..");
         if loop_count == 10 {
-            emit_cargo_warn("Not a git repository or CARGO_MANIFEST_DIR nested deeper than 10 from the root");
-            return Ok(manifest_path);
+            return Err(anyhow::anyhow!(
+                "Not a git repository or CARGO_MANIFEST_DIR nested deeper than 10 from the root"
+            ));
         }
         loop_count += 1;
     }

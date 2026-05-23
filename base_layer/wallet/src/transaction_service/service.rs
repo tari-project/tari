@@ -3734,7 +3734,6 @@ where
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
                 TxCancellationReason::UserCancelled,
-                "User cancelled".to_string(),
             )))
             .inspect_err(|e| {
                 trace!(
@@ -3763,7 +3762,7 @@ where
 
         let _unused = self
             .db
-            .reject_completed_transaction(tx_id, TxCancellationReason::UserCancelled, None)
+            .reject_completed_transaction(tx_id, TxCancellationReason::UserCancelled)
             .inspect_err(|e| {
                 warn!(
                     target: LOG_TARGET,
@@ -3797,7 +3796,6 @@ where
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
                 TxCancellationReason::UserCancelled,
-                "User cancelled".to_string(),
             )))
             .inspect_err(|e| {
                 trace!(
@@ -4414,7 +4412,7 @@ where
                 "Failed to Cancel outputs for TxId: {tx_id} after failed sending attempt with error {e:?}"
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(tx_id, reason, None) {
+        if let Err(e) = self.resources.db.reject_completed_transaction(tx_id, reason) {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel TxId: {tx_id} after failed sending attempt with error {e:?}"

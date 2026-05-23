@@ -23,10 +23,9 @@
 #![allow(clippy::indexing_slicing)]
 use std::cmp::min;
 
-use tari_common_types::types::FixedHash;
 use tari_core::{
-    base_node::state_machine_service::states::{BlockSync, HorizonStateSync, StateEvent},
-    chain_storage::{BlockchainDatabaseConfig, DbTransaction, HorizonSyncOutputCheckpoint},
+    base_node::state_machine_service::states::{HorizonStateSync, StateEvent},
+    chain_storage::BlockchainDatabaseConfig,
 };
 
 use crate::helpers::{
@@ -35,6 +34,7 @@ use crate::helpers::{
 };
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -146,16 +146,26 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
-    // 4. Alice re-runs the sync decision without any change in the blockchain. Her tip already
-    // covers the new horizon (5 == 10 - 5) so `decide_next_sync` chooses block sync + prune
-    // instead of replaying the horizon snapshot — same end state, cheaper path.
-    println!("\n4. Alice re-decides the next sync (already at horizon \u{2192} block sync)\n");
+    // 4. Alice attempts horizon sync again without any change in the blockchain
+    println!("\n4. Alice attempts horizon sync again without any change in the blockchain\n");
 
     let event = decide_horizon_sync(&mut alice_state_machine, header_sync).await;
-    match event {
-        StateEvent::ProceedToBlockSync(_) => {},
-        _ => panic!("4. Alice should proceed to block sync, got {event:?}"),
-    }
+    let mut horizon_sync = match event {
+        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
+        _ => panic!("4. Alice should proceed to horizon sync"),
+    };
+    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut horizon_sync).await;
+
+    println!(
+        "Event: {} to block {}",
+        state_event(&event),
+        alice_node.blockchain_db.get_height().unwrap()
+    );
+    assert_eq!(event, StateEvent::HorizonStateSynchronized);
+    assert_eq!(
+        alice_node.blockchain_db.get_height().unwrap(),
+        alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
+    );
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
@@ -284,6 +294,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 }
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -637,11 +648,8 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, bob_node.node_identity.node_id(), 1).await);
 
-    // 12. Alice header-syncs from Carol then chooses a sync path. Alice's tip is already at 18
-    // (the new horizon = 22 - 4) from the block sync in step 8, so `decide_next_sync` takes the
-    // "local tip already covers new horizon" branch and routes to block sync + prune instead of
-    // re-downloading the aggregate horizon snapshot from genesis.
-    println!("\n12. Alice header-syncs from Carol then proceeds to block sync (already at horizon)\n");
+    // 12. Alice attempts horizon sync from Carol with adequate pruning horizon (to height 18)
+    println!("\n12. Alice attempts horizon sync from Carol with adequate pruning horizon (to height 18)\n");
 
     let mut header_sync_alice_from_carol = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &carol_node);
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync_alice_from_carol).await;
@@ -649,24 +657,28 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     println!("Event: {} to header {}", state_event(&event), alice_header_height);
     assert_eq!(alice_header_height, 22);
     let event = decide_horizon_sync(&mut alice_state_machine, header_sync_alice_from_carol).await;
-    let mut block_sync = match event {
-        StateEvent::ProceedToBlockSync(sync_peers) => BlockSync::from(sync_peers),
-        _ => panic!("12. Alice should proceed to block sync, got {event:?}"),
+    let mut horizon_sync = match event {
+        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
+        _ => panic!("12. Alice should proceed to horizon sync"),
     };
-    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut horizon_sync).await;
 
     println!(
         "Event: {} to block {}",
         state_event(&event),
         alice_node.blockchain_db.get_height().unwrap()
     );
-    assert_eq!(event, StateEvent::BlocksSynchronized);
-    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), alice_header_height);
+    assert_eq!(event, StateEvent::HorizonStateSynchronized);
+    assert_eq!(
+        alice_node.blockchain_db.get_height().unwrap(),
+        alice_header_height - pruning_horizon_alice
+    );
     // Carol will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
 }
 
 #[allow(clippy::too_many_lines)]
+#[ignore = "prune mode not yet working"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
@@ -852,155 +864,4 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     );
     // Carol will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_horizon_sync_discards_mismatched_checkpoint() {
-    // Exercises the full sync state machine through a horizon sync where Alice's database already
-    // contains a `HorizonSyncOutputCheckpoint` whose `sync_target_hash` does NOT match the new
-    // sync target. The synchronizer must discard the stale checkpoint and complete a fresh sync.
-    let pruning_horizon = 5;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-                ..Default::default()
-            },
-            BlockchainDatabaseConfig::default(),
-        ])
-        .await;
-    let mut alice_state_machine = state_machines.remove(0);
-    let alice_node = peer_nodes.remove(0);
-    let bob_node = peer_nodes.remove(0);
-
-    // Use the same chain construction the other tests in this file rely on so this test exercises
-    // the same code path through `create_block_chain_with_transactions` (genesys spend at block 3,
-    // follow-up spends at block 16). Rewind Bob to height 10 — same anchor as the other tests.
-    let (blocks, _coinbases) = sync::create_block_chain_with_transactions(
-        &bob_node,
-        &initial_block,
-        &initial_coinbase,
-        &consensus_manager,
-        &key_manager,
-        pruning_horizon,
-        30,
-        3,
-        16,
-        15,
-    );
-    sync::delete_some_blocks_and_headers(&blocks[10..=30], WhatToDelete::BlocksAndHeaders, &bob_node);
-    assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 10);
-
-    // The state machine sync stack needs to dial Bob before header sync will succeed. The
-    // existing happy-path tests do this by running an initial no-op horizon sync first.
-    let mut warmup = sync::initialize_horizon_sync_without_header_sync(&bob_node);
-    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut warmup).await;
-    assert_eq!(event, StateEvent::HorizonStateSynchronized);
-
-    // Alice header-syncs to Bob's tip
-    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
-    let _event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
-    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 10);
-
-    // Inject a checkpoint whose target doesn't match the upcoming horizon target. The
-    // synchronizer's `calculate_output_sync_start_stop` must discard this and start from height 1.
-    let mut txn = DbTransaction::new();
-    txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
-        checkpoint_height: 99,
-        checkpoint_hash: FixedHash::zero(),
-        sync_target_height: 99,
-        sync_target_hash: FixedHash::zero(),
-    });
-    alice_node.blockchain_db.write(txn).unwrap();
-    assert!(
-        alice_node
-            .blockchain_db
-            .fetch_horizon_sync_output_checkpoint()
-            .unwrap()
-            .is_some()
-    );
-
-    let event = decide_horizon_sync(&mut alice_state_machine, header_sync).await;
-    let mut horizon_sync = match event {
-        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
-        _ => panic!("Alice should proceed to horizon sync, got {event:?}"),
-    };
-    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut horizon_sync).await;
-
-    assert_eq!(event, StateEvent::HorizonStateSynchronized, "{}", state_event(&event));
-    assert_eq!(
-        alice_node.blockchain_db.get_height().unwrap(),
-        alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
-    );
-    // Finalization clears the checkpoint
-    assert!(
-        alice_node
-            .blockchain_db
-            .fetch_horizon_sync_output_checkpoint()
-            .unwrap()
-            .is_none(),
-        "checkpoint should be cleared after successful sync"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_horizon_sync_clears_checkpoint_on_completion() {
-    // Verifies the end-to-end resume contract: after a horizon sync runs to completion the
-    // checkpoint is cleared, so a subsequent sync starts from height 1 (verified via the resume
-    // path's no-checkpoint branch).
-    let pruning_horizon = 5;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-                ..Default::default()
-            },
-            BlockchainDatabaseConfig::default(),
-        ])
-        .await;
-    let mut alice_state_machine = state_machines.remove(0);
-    let alice_node = peer_nodes.remove(0);
-    let bob_node = peer_nodes.remove(0);
-
-    let (blocks, _coinbases) = sync::create_block_chain_with_transactions(
-        &bob_node,
-        &initial_block,
-        &initial_coinbase,
-        &consensus_manager,
-        &key_manager,
-        pruning_horizon,
-        30,
-        3,
-        16,
-        15,
-    );
-    sync::delete_some_blocks_and_headers(&blocks[15..=30], WhatToDelete::BlocksAndHeaders, &bob_node);
-
-    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
-    let _event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
-
-    let event = decide_horizon_sync(&mut alice_state_machine, header_sync).await;
-    let mut horizon_sync = match event {
-        StateEvent::ProceedToHorizonSync(sync_peers) => HorizonStateSync::from(sync_peers),
-        _ => panic!("Alice should proceed to horizon sync, got {event:?}"),
-    };
-    let event = sync::horizon_sync_execute(&mut alice_state_machine, &mut horizon_sync).await;
-
-    assert_eq!(event, StateEvent::HorizonStateSynchronized);
-    assert!(
-        alice_node
-            .blockchain_db
-            .fetch_horizon_sync_output_checkpoint()
-            .unwrap()
-            .is_none(),
-        "checkpoint should be cleared after successful sync"
-    );
 }

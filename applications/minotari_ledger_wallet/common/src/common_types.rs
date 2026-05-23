@@ -102,9 +102,8 @@ impl Instruction {
 
 /// Key manager branches shared by the Ledger application and the wallet.
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize, borsh::BorshDeserialize))]
-#[cfg_attr(feature = "borsh", borsh(use_discriminant = true))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum LedgerKeyBranch {
     MetadataEphemeralNonce = 0x01,
     OneSidedSenderOffset = 0x06,

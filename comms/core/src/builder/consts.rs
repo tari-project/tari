@@ -24,10 +24,9 @@
 pub const CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Buffer size for connectivity events
 pub const CONNECTIVITY_MANAGER_EVENTS_BUFFER_SIZE: usize = 500;
-/// Buffer size for actor requests to connection manager. Must be large enough to absorb a burst of proactive dial
-/// requests (see `comms::connectivity::proactive_dialer::MAX_CONCURRENT_DIALS`) without back-pressuring senders inside
-/// the connectivity refresh timeout.
-pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 60;
+/// Buffer size for actor requests to connection manager. A lower value is ok because the connection manager shouldn't
+/// need to handle a ton of requests concurrently.
+pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Connection manager events buffer size. The size should allow more than enough "time" for slow subscribers to read
 /// the events while not being wasteful.
 pub const CONNECTION_MANAGER_EVENTS_BUFFER_SIZE: usize = 30;

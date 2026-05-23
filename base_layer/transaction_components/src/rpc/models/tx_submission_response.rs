@@ -24,32 +24,11 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-/// V1 response format without details field, for backward compatibility with older wallets.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TxSubmissionResponseV1 {
-    pub accepted: bool,
-    pub rejection_reason: TxSubmissionRejectionReason,
-    pub is_synced: bool,
-}
-
-impl From<TxSubmissionResponse> for TxSubmissionResponseV1 {
-    fn from(v2: TxSubmissionResponse) -> Self {
-        Self {
-            accepted: v2.accepted,
-            rejection_reason: v2.rejection_reason,
-            is_synced: v2.is_synced,
-        }
-    }
-}
-
-/// V2 response format with optional details field for rejection diagnostics.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
     pub is_synced: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

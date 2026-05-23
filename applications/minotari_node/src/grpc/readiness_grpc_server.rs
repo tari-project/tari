@@ -24,12 +24,11 @@ use chrono::Utc;
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{
     self,
-    MigrationPhase as RpcMigrationPhase,
     MigrationProgress,
     ReadinessStatus,
     readiness_status::{State, Status as ReadinessStatusEnum},
 };
-use tari_core::chain_storage::{DatabaseStats, MigrationPhase};
+use tari_core::chain_storage::DatabaseStats;
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 pub struct ReadinessGrpcServer {
@@ -93,7 +92,6 @@ impl ReadinessService {
                 progress_percentage: db_status.migration_stats.progress_percentage,
                 current_db_version: db_status.migration_stats.current_db_version,
                 target_db_version: db_status.migration_stats.target_db_version,
-                phase: map_migration_phase(db_status.migration_stats.phase).into(),
             });
             ReadinessStatus {
                 status: Some(latest_db_status),
@@ -103,14 +101,6 @@ impl ReadinessService {
             // For non-migration states, use the readiness status as-is
             readiness_status
         }
-    }
-}
-
-fn map_migration_phase(phase: MigrationPhase) -> RpcMigrationPhase {
-    match phase {
-        MigrationPhase::Unspecified => RpcMigrationPhase::Unspecified,
-        MigrationPhase::JmtRebuild => RpcMigrationPhase::JmtRebuild,
-        MigrationPhase::LmdbCompact => RpcMigrationPhase::LmdbCompact,
     }
 }
 

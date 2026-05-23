@@ -50,7 +50,6 @@ diesel::table! {
         change_output_hashes -> Nullable<Binary>,
         user_payment_id -> Nullable<Binary>,
         lock_height -> Nullable<BigInt>,
-        rejection_reason -> Nullable<Text>,
     }
 }
 

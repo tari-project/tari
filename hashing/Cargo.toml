@@ -13,6 +13,6 @@ license.workspace = true
 
 [dependencies]
 tari_crypto = { workspace = true, features = ["borsh"] }
-borsh = { workspace = true}
+borsh = { workspace = true }
 digest = { version = "0.10" }
 blake2 = { version = "0.10", default-features = false }

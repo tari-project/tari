@@ -93,7 +93,7 @@ impl MempoolStorage {
             Ok(fee) => fee,
             Err(e) => {
                 warn!(target: LOG_TARGET, "Invalid transaction: {e}");
-                return Ok(TxStorageResponse::NotStoredConsensus(Some(e.to_string())));
+                return Ok(TxStorageResponse::NotStoredConsensus);
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
@@ -136,7 +136,7 @@ impl MempoolStorage {
             Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
-                Ok(TxStorageResponse::NotStoredConsensus(Some(msg)))
+                Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
@@ -147,7 +147,7 @@ impl MempoolStorage {
             },
             Err(e) => {
                 info!(target: LOG_TARGET, "Validation failed due to error: {e}");
-                Ok(TxStorageResponse::NotStored(Some(e.to_string())))
+                Ok(TxStorageResponse::NotStored)
             },
         }
     }
@@ -372,7 +372,7 @@ impl MempoolStorage {
         } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {
             TxStorageResponse::ReorgPool
         } else {
-            TxStorageResponse::NotStored(None)
+            TxStorageResponse::NotStored
         }
     }
 

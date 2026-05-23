@@ -1750,7 +1750,6 @@ async fn broadcast_all_completed_transactions_on_startup() {
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
         lock_height: 0,
-        rejection_reason: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2268,7 +2267,6 @@ fn create_mock_completed_transaction(
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
         lock_height: 0,
-        rejection_reason: None,
     }
 }
 

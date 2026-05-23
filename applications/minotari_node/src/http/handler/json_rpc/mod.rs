@@ -26,7 +26,6 @@ use axum::{Extension, Json, http::StatusCode};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};
-use tari_transaction_components::rpc::models::TxSubmissionResponseV1;
 
 use crate::http::handler::ErrorResponse;
 
@@ -51,28 +50,15 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             })?;
             let transaction = serde_json::from_value(tx.clone())
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
-            // Version defaults to 1 for backward compatibility with older wallets.
-            // V2 adds the optional `details` field in the response.
-            let version: u64 = request.params.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
-                Ok(response) => {
-                    let result = if version >= 2 {
-                        serde_json::to_value(response).unwrap_or_else(|e| {
-                            warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
-                            serde_json::Value::Null
-                        })
-                    } else {
-                        serde_json::to_value(TxSubmissionResponseV1::from(response)).unwrap_or_else(|e| {
-                            warn!(target: LOG_TARGET, "Failed to serialize V1 response: {e}");
-                            serde_json::Value::Null
-                        })
-                    };
-                    Ok(Json(JsonRpcResponse {
-                        result,
-                        error: None,
-                        id: request.id,
-                    }))
-                },
+                Ok(response) => Ok(Json(JsonRpcResponse {
+                    result: serde_json::to_value(response).unwrap_or_else(|e| {
+                        warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
+                        serde_json::Value::Null
+                    }),
+                    error: None,
+                    id: request.id,
+                })),
                 Err(e) => {
                     debug!(target: LOG_TARGET, "Error submitting transaction: {e}");
 

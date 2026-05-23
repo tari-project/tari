@@ -1905,9 +1905,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },
-            TxStorageResponse::NotStored(_) |
+            TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredConsensus(_) |
+            TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
@@ -1988,8 +1988,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                                                             * node does not think it is. */
                 }
             },
-            TxStorageResponse::NotStored(_) |
-            TxStorageResponse::NotStoredConsensus(_) |
+            TxStorageResponse::NotStored |
+            TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredTimeLocked |

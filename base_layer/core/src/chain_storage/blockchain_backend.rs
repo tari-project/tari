@@ -221,7 +221,8 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError>;
 
     /// Verify that the JMT output root at the given version matches the expected root.
-    fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError>;
+    fn verify_horizon_sync_output_root(&self, version: u64, expected_root: HashOutput)
+    -> Result<(), ChainStorageError>;
 
     /// Returns basic database stats for each internal database, such as number of entries and page sizes. This call may
     /// not apply to every database implementation.
@@ -304,7 +305,7 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
 
     /// Creates a reader to construct a JMT
-    fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError>;
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 
     /// Stats reporting methods for long-running operations
     /// Set the total number of steps for progress tracking

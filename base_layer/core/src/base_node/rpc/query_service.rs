@@ -137,8 +137,8 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredTimeLocked |
             TxStorageResponse::NotStoredAlreadySpent |
-            TxStorageResponse::NotStoredConsensus(_) |
-            TxStorageResponse::NotStored(_) |
+            TxStorageResponse::NotStoredConsensus |
+            TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored,

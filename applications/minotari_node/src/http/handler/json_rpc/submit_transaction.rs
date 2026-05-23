@@ -56,34 +56,27 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     accepted: true,
                     rejection_reason: TxSubmissionRejectionReason::None,
                     is_synced,
-                    details: None,
                 },
 
                 TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::Orphan,
                     is_synced,
-                    details: None,
                 },
                 TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
                     is_synced,
-                    details: None,
                 },
                 TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::TimeLocked,
                     is_synced,
-                    details: None,
                 },
-                TxStorageResponse::NotStoredConsensus(details) | TxStorageResponse::NotStored(details) => {
-                    TxSubmissionResponse {
-                        accepted: false,
-                        rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
-                        is_synced,
-                        details,
-                    }
+                TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
+                    accepted: false,
+                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
+                    is_synced,
                 },
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
@@ -91,7 +84,6 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     accepted: false,
                     rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
                     is_synced,
-                    details: None,
                 },
             }
         },

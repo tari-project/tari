@@ -2,23 +2,6 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-### [5.3.1-pre.3](https://github.com/tari-project/tari/compare/v5.3.1-pre.2...v5.3.1-pre.3) (2026-05-15)
-
-
-### Features
-
-* improve block add ([#7825](https://github.com/tari-project/tari/issues/7825)) ([578d932](https://github.com/tari-project/tari/commit/578d93222181d31562a2da39cece60c6309cb300))
-
-
-### Bug Fixes
-
-* cargo build crash on git not found ([#7836](https://github.com/tari-project/tari/issues/7836)) ([3359c35](https://github.com/tari-project/tari/commit/3359c35b932e385e66e796a3d667d1494864ab93))
-* consume merge mining proxy monero reservation ([#7822](https://github.com/tari-project/tari/issues/7822)) ([afe7e20](https://github.com/tari-project/tari/commit/afe7e208d6f9e58d13fb72404636ddb50cd5b624)), closes [#7045](https://github.com/tari-project/tari/issues/7045)
-* ledger builds ([#7834](https://github.com/tari-project/tari/issues/7834)) ([ef6ddb0](https://github.com/tari-project/tari/commit/ef6ddb0985bc2554ef109cfb67a7c66139fb487c))
-* mempool block on broadcast ([#7835](https://github.com/tari-project/tari/issues/7835)) ([dd5236f](https://github.com/tari-project/tari/commit/dd5236ff65e1e74c92d73164d697017fe7178b0a))
-* propagate mempool rejection details to wallet via HTTP API ([#7811](https://github.com/tari-project/tari/issues/7811)) ([7737abb](https://github.com/tari-project/tari/commit/7737abb23b9bf9e88f83fbbb19b1ac918b849032)), closes [#7776](https://github.com/tari-project/tari/issues/7776)
-* **security:** add payload integrity signature to harden offline signing (fixes [#7796](https://github.com/tari-project/tari/issues/7796)) ([#7804](https://github.com/tari-project/tari/issues/7804)) ([2c6f3fd](https://github.com/tari-project/tari/commit/2c6f3fd0eaa4aaf77f20b488eb9c4897c926cf14))
-
 ### [5.3.1-pre.2](https://github.com/tari-project/tari/compare/v5.3.1-pre.1...v5.3.1-pre.2) (2026-05-07)
 
 

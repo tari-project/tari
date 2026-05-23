@@ -1532,7 +1532,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                     ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
                                     TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
                                     TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
-                                    TransactionCancelled(tx_id, _, _) => {
+                                    TransactionCancelled(tx_id, _) => {
                                         match transaction_service.get_any_transaction(tx_id).await{
                                             Ok(Some(wallet_tx)) => {
                                                 use WalletTransaction::*;
@@ -1694,10 +1694,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
-                        rejected_reason: txn
-                            .rejection_reason
-                            .clone()
-                            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                         lock_height: txn.lock_height,
                     }),
                 };
@@ -1837,10 +1834,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
-                    rejected_reason: txn
-                        .rejection_reason
-                        .clone()
-                        .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                    rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                     lock_height: txn.lock_height,
                 });
             }
@@ -2003,10 +1997,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
-                        rejected_reason: txn
-                            .rejection_reason
-                            .clone()
-                            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                         lock_height: txn.lock_height,
                     };
 
@@ -2150,10 +2141,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
-                rejected_reason: txn
-                    .rejection_reason
-                    .clone()
-                    .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                 lock_height: txn.lock_height,
             });
         }
@@ -4164,10 +4152,7 @@ fn completed_tx_to_transaction_info(
             .into_iter()
             .map(|pr| pr.to_vec())
             .collect(),
-        rejected_reason: txn
-            .rejection_reason
-            .clone()
-            .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+        rejected_reason: txn.cancelled.map(|r| r.to_string()).unwrap_or_default(),
         lock_height: txn.lock_height,
     }
 }
@@ -4301,10 +4286,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
-                rejected_reason: tx
-                    .rejection_reason
-                    .clone()
-                    .unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
+                rejected_reason: tx.cancelled.map(|r| r.to_string()).unwrap_or_default(),
                 lock_height: tx.lock_height,
             }
         },
