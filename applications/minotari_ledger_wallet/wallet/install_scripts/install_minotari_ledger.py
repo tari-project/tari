@@ -72,12 +72,12 @@ def detect_os() -> OS:
 
 
 def run_cmd(cmd: list[str], check: bool = True, capture: bool = True) -> tuple[int, str, str]:
-    """Run a command, return (returncode, stdout, stderr)."""
+    """
+    Run a command, return (returncode, stdout, stderr).
+    FIXED: Removed broken Windows shell=True logic.
+    """
     try:
-        kwargs = {"capture_output": True, "text": True}
-        if sys.platform == "win32":
-            kwargs["shell"] = True
-            cmd = [cmd[0], "/c", " ".join(f'"{c}"' for c in cmd)] if isinstance(cmd, list) else cmd
+        kwargs = {"capture_output": True, "text": True, "shell": False}
         result = subprocess.run(cmd, **kwargs)
         return result.returncode, result.stdout or "", result.stderr or ""
     except Exception as e:
@@ -89,17 +89,43 @@ def check_python_min_version(major: int = 3, minor: int = 8) -> bool:
 
 
 def ensure_python_deps() -> bool:
-    """Install required Python packages. Returns True on success."""
+    """
+    Check (not auto-install) required Python packages.
+    FIXED: Made dependency management less intrusive (check first, ask user).
+    Returns True if all deps are available.
+    """
     required = ["ledgerwallet", "ecdsa", "protobuf"]
-    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade"] + required
-    rc, out, err = run_cmd(pip_cmd)
-    if rc != 0:
-        print(f"[!] Failed to install Python deps: {err}")
-        return False
-    return True
+    
+    # Check which packages are missing
+    missing = []
+    for pkg in required:
+        try:
+            __import__(pkg.replace("-", "_"))
+        except ImportError:
+            missing.append(pkg)
+    
+    if not missing:
+        return True  # All deps already installed
+    
+    print(f"[*] Missing Python packages: {', '.join(missing)}")
+    print(f"[*] Install them with: pip install {' '.join(missing)}")
+    print(f"[*] Or run with --auto-install to install automatically.")
+    
+    # Check for --auto-install flag
+    if "--auto-install" in sys.argv:
+        print(f"[*] Auto-installing missing packages...")
+        pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade"] + missing
+        rc, out, err = run_cmd(pip_cmd)
+        if rc != 0:
+            print(f"[!] Failed to install Python deps: {err}")
+            return False
+        return True
+    
+    print(f"[!] Please install missing packages manually, then re-run.")
+    return False
 
 
-def get_ghub_release(tag: Optional[str] = None) -> dict:
+def get_github_release(tag: Optional[str] = None) -> dict:
     """Fetch GitHub release info (latest or specific tag)."""
     if tag:
         url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/tags/{tag}"
@@ -135,56 +161,61 @@ def detect_ledger_model() -> Optional[str]:
     """
     Detect connected Ledger model via USB HID IDs.
     Falls back to ledgerwallet Python library if lsusb/hidutil not available.
+    FIXED: Bugs in macOS USB detection routine.
     """
     system = detect_os()
 
     # ── macOS: use system_profiler / hidutil ──────────────────────────────────
     if system == OS.MACOS:
-        # Try hidutil (requires macOS 10.15+)
-        rc, out, _ = run_cmd("system_profiler SPUSBDataType -json")
+        # Try system_profiler (requires macOS 10.15+)
+        rc, out, _ = run_cmd(["system_profiler", "SPUSBDataType", "-json"])
         if rc == 0 and out:
             try:
                 data = json.loads(out)
                 for device in data.get("SPUSBDataType", []):
-                    if "Ledger" in device.get("`_name`, _provider_name", "") or \
-                       "Ledger" in str(device.get("_name", "")):
-                        vid = device.get("Vendor ID", "")
-                        pid = device.get("Product ID", "")
-                        key = (vid.lower(), pid.lower())
+                    # FIXED: Check both "_name" and "name" fields
+                    name = device.get("_name", "") or device.get("name", "")
+                    if "Ledger" in name:
+                        vid = device.get("vendor_id", "") or device.get("Vendor ID", "")
+                        pid = device.get("product_id", "") or device.get("Product ID", "")
+                        # Normalize: remove "0x" prefix, lowercase
+                        vid = vid.replace("0x", "").lower().zfill(4)
+                        pid = pid.replace("0x", "").lower().zfill(4)
+                        key = (vid, pid)
                         if key in LEDGER_USB_IDS:
                             return LEDGER_USB_IDS[key]
             except Exception:
                 pass
 
         # Try hidutil for direct USB info
-        rc, out, _ = run_cmd(
-            "hidutil --list 2>/dev/null || true"
-        )
+        rc, out, _ = run_cmd(["hidutil", "list"])
         if rc == 0:
-            for vid_pid in LEDGER_USB_IDS:
+            for vid_pid, model_name in LEDGER_USB_IDS.items():
                 vid, pid = vid_pid
-                if vid in out and pid in out:
-                    return LEDGER_USB_IDS[vid_pid]
+                if vid in out.lower() and pid in out.lower():
+                    return model_name
 
     # ── Linux: use lsusb ──────────────────────────────────────────────────────
     elif system == OS.LINUX:
-        rc, out, _ = run_cmd("lsusb")
+        rc, out, _ = run_cmd(["lsusb"])
         if rc == 0:
             for line in out.splitlines():
                 if "Ledger" in line:
                     # Format: Bus 001 Device 002: ID 2c97:0005 Ledger ...
-                    parts = line.split()
-                    if "ID" in parts:
+                    if "ID" in line:
+                        parts = line.split()
                         id_part = parts[parts.index("ID") + 1]
                         if ":" in id_part:
                             vid, pid = id_part.split(":")
-                            key = (vid.lower(), pid.lower())
+                            vid = vid.lower().zfill(4)
+                            pid = pid.lower().zfill(4)
+                            key = (vid, pid)
                             if key in LEDGER_USB_IDS:
                                 return LEDGER_USB_IDS[key]
 
-    # ── Windows: use wmic/devcon ───────────────────────────────────────────────
+    # ── Windows: use PowerShell ────────────────────────────────────────────────
     elif system == OS.WINDOWS:
-        # Try PowerShell HID query
+        # Try PowerShell PnPDevice query
         ps_script = r'''
         Get-PnpDevice -Class "HIDClass" -Status OK |
           Where-Object { $_.FriendlyName -like "*Ledger*" } |
@@ -195,12 +226,13 @@ def detect_ledger_model() -> Optional[str]:
         if rc == 0 and out:
             try:
                 data = json.loads(out)
-                # Parse VID/PID from InstanceId e.g. "HID\VID_2C97&PID_0005..."
-                for vid, pid in LEDGER_USB_IDS:
+                # Parse VID/PID from InstanceId e.g. "HID\\VID_2C97&PID_0005..."
+                for vid_pid, model_name in LEDGER_USB_IDS.items():
+                    vid, pid = vid_pid
                     vid_clean = vid.replace(":", "").lower()
                     pid_clean = pid.replace(":", "").lower()
                     if vid_clean in out.lower() and pid_clean in out.lower():
-                        return LEDGER_USB_IDS[(vid, pid)]
+                        return model_name
             except Exception:
                 pass
 
@@ -211,9 +243,10 @@ def detect_ledger_model() -> Optional[str]:
         if rc == 0:
             for line in out.splitlines():
                 if "ledger" in line.lower():
-                    for vid, pid in LEDGER_USB_IDS:
+                    for vid_pid, model_name in LEDGER_USB_IDS.items():
+                        vid, pid = vid_pid
                         if vid in line.lower() and pid in line.lower():
-                            return LEDGER_USB_IDS[(vid, pid)]
+                            return model_name
 
     # ── Universal: try ledgerwallet Python lib ────────────────────────────────
     try:
@@ -247,7 +280,7 @@ def detect_ledger_model() -> Optional[str]:
 
 def ensure_ledgerctl() -> bool:
     """Ensure ledgerctl is installed and in PATH."""
-    rc, _, _ = run_cmd("ledgerctl --version", check=False)
+    rc, _, _ = run_cmd(["ledgerctl", "--version"], check=False)
     if rc == 0:
         return True
 
@@ -263,10 +296,13 @@ def ensure_ledgerctl() -> bool:
 
 
 def download_and_install(model: str, release_tag: Optional[str] = None) -> bool:
-    """Download the correct binary and install to Ledger."""
+    """
+    Download the correct binary and install to Ledger.
+    FIXED: Use try-finally block for robust cleanup of temporary directories.
+    """
     print(f"[*] Fetching release info from GitHub...")
     try:
-        release = get_ghub_release(release_tag)
+        release = get_github_release(release_tag)
         asset_url = find_asset_url(release, model)
         version = release.get("tag_name", "unknown")
         print(f"[*] Version: {version}")
@@ -278,86 +314,86 @@ def download_and_install(model: str, release_tag: Optional[str] = None) -> bool:
 
     # Download to temp dir
     tmp_dir = tempfile.mkdtemp(prefix="tari_ledger_")
-    zip_path = os.path.join(tmp_dir, f"minotari_{model}.zip")
-
-    print(f"[*] Downloading...")
+    
+    # FIXED: Use try-finally to ensure cleanup
     try:
-        urllib.request.urlretrieve(asset_url, zip_path)
-    except Exception as e:
-        print(f"[!] Download failed: {e}")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return False
+        zip_path = os.path.join(tmp_dir, f"minotari_{model}.zip")
 
-    # Extract zip
-    print(f"[*] Extracting...")
-    app_json = None
-    try:
-        with zipfile.ZipFile(zip_path, "r") as z:
-            z.extractall(tmp_dir)
-        # Find the app JSON file
-        import re
-        pattern = ASSET_PATTERNS[model]
-        for asset in release.get("assets", []):
-            if re.search(pattern, asset["name"], re.IGNORECASE):
-                base = asset["name"].replace(".zip", "")
-                # The JSON inside has model-specific name
-                model_json = {
-                    "nanos":    "app.json",     # Check actual filenames
-                    "nanox":    "app.json",
-                    "nanosplus":"app.json",
-                    "stax":     "app.json",
-                    "flex":     "app.json",
-                }
-                # Find the app JSON
-                for fname in os.listdir(tmp_dir):
-                    if fname.endswith(".json") and "app" in fname.lower():
-                        app_json = os.path.join(tmp_dir, fname)
-                        break
-                break
-    except Exception as e:
-        print(f"[!] Extraction failed: {e}")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return False
+        print(f"[*] Downloading...")
+        try:
+            urllib.request.urlretrieve(asset_url, zip_path)
+        except Exception as e:
+            print(f"[!] Download failed: {e}")
+            return False
 
-    if not app_json or not os.path.exists(app_json):
-        print(f"[!] app.json not found in extracted files")
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return False
+        # Extract zip
+        print(f"[*] Extracting...")
+        app_json = None
+        try:
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(tmp_dir)
+            # Find the app JSON file
+            import re
+            pattern = ASSET_PATTERNS[model]
+            for asset in release.get("assets", []):
+                if re.search(pattern, asset["name"], re.IGNORECASE):
+                    base = asset["name"].replace(".zip", "")
+                    # The JSON inside has model-specific name
+                    model_json = {
+                        "nanos":    "app.json",     # Check actual filenames
+                        "nanox":    "app.json",
+                        "nanosplus":"app.json",
+                        "stax":     "app.json",
+                        "flex":     "app.json",
+                    }
+                    # Find the app JSON
+                    for fname in os.listdir(tmp_dir):
+                        if fname.endswith(".json") and "app" in fname.lower():
+                            app_json = os.path.join(tmp_dir, fname)
+                            break
+                    break
+        except Exception as e:
+            print(f"[!] Extraction failed: {e}")
+            return False
 
-    # Ensure ledgerctl is available
-    if not ensure_ledgerctl():
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        return False
+        if not app_json or not os.path.exists(app_json):
+            print(f"[!] app.json not found in extracted files")
+            return False
 
-    # Run ledgerctl install
-    model_display = {
-        "nanos":    "Nano S",
-        "nanox":    "Nano X",
-        "nanosplus":"Nano S Plus",
-        "stax":     "Stax",
-        "flex":     "Flex",
-    }
-    print(f"\n[*] Installing Minotari Wallet on Ledger {model_display.get(model, model)}...")
-    print(f"[*] Ensure:")
-    print(f"    - Ledger {model_display.get(model, model)} connected via USB")
-    print(f"    - Device unlocked")
-    print(f"    - Developer Mode / Ledger Live ready")
-    print()
+        # Ensure ledgerctl is available
+        if not ensure_ledgerctl():
+            return False
 
-    rc, stdout, stderr = run_cmd(["ledgerctl", "install", app_json])
-    print(stdout)
-    if stderr:
-        print(stderr, file=sys.stderr)
+        # Run ledgerctl install
+        model_display = {
+            "nanos":    "Nano S",
+            "nanox":    "Nano X",
+            "nanosplus":"Nano S Plus",
+            "stax":     "Stax",
+            "flex":     "Flex",
+        }
+        print(f"\n[*] Installing Minotari Wallet on Ledger {model_display.get(model, model)}...")
+        print(f"[*] Ensure:")
+        print(f"    - Ledger {model_display.get(model, model)} connected via USB")
+        print(f"    - Device unlocked")
+        print(f"    - Developer Mode / Ledger Live ready")
+        print()
 
-    shutil.rmtree(tmp_dir, ignore_errors=True)
+        rc, stdout, stderr = run_cmd(["ledgerctl", "install", app_json])
+        print(stdout)
+        if stderr:
+            print(stderr, file=sys.stderr)
 
-    if rc == 0:
-        print(f"\n[+] Minotari Ledger Wallet installed successfully!")
-        return True
-    else:
-        print(f"\n[!] Installation failed (exit code {rc})")
-        return False
-
+        if rc == 0:
+            print(f"\n[+] Minotari Ledger Wallet installed successfully!")
+            return True
+        else:
+            print(f"\n[!] Installation failed (exit code {rc})")
+            return False
+    finally:
+        # FIXED: Robust cleanup using try-finally
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 def main():
     if not check_python_min_version(3, 8):
@@ -378,6 +414,9 @@ Examples:
   # Force model selection (skip auto-detection)
   python install_minotari_ledger.py --model nanox
 
+  # Auto-install missing Python dependencies
+  python install_minotari_ledger.py --auto-install
+
 Supported models: nanos, nanox, nanosplus, stax, flex
 Supported OS: macOS, Linux, Windows
 """
@@ -387,8 +426,14 @@ Supported OS: macOS, Linux, Windows
     parser.add_argument("-m", "--model", dest="model", default=None,
                         choices=["nanos", "nanox", "nanosplus", "stax", "flex"],
                         help="Force model (skip auto-detection)")
+    parser.add_argument("--auto-install", dest="auto_install", action="store_true",
+                        help="Auto-install missing Python dependencies (intrusive)")
 
     args = parser.parse_args()
+
+    # FIXED: Pass --auto-install flag to ensure_python_deps()
+    if args.auto_install:
+        sys.argv.append("--auto-install")  # Hack to pass flag to function
 
     system = detect_os()
     if system == OS.UNKNOWN:
