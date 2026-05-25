@@ -22,7 +22,7 @@
 
 use std::{error::Error, time::Duration};
 
-use multiaddr::Protocol;
+use multiaddr::{Multiaddr, Protocol};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tokio::{
@@ -48,7 +48,33 @@ use crate::{
     protocol::ProtocolId,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
+    types::TransportProtocol,
 };
+
+#[test]
+fn dial_addresses_follow_transport_preference_order() -> Result<(), Box<dyn Error>> {
+    let ip4: Multiaddr = "/ip4/127.0.0.1/tcp/18189".parse()?;
+    let ip6: Multiaddr = "/ip6/::1/tcp/18189".parse()?;
+    let onion: Multiaddr = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:18189".parse()?;
+    let memory: Multiaddr = "/memory/1".parse()?;
+
+    let mut tcp_tor_addresses = vec![onion.clone(), memory.clone(), ip6.clone(), ip4.clone()];
+    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(
+        &mut tcp_tor_addresses,
+        &[TransportProtocol::Ipv4, TransportProtocol::Ipv6, TransportProtocol::Onion],
+    );
+    assert_eq!(tcp_tor_addresses, vec![ip4.clone(), ip6.clone(), onion.clone(), memory.clone()]);
+
+    let mut tor_tcp_addresses = vec![ip4.clone(), memory.clone(), ip6.clone(), onion.clone()];
+    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(
+        &mut tor_tcp_addresses,
+        &[TransportProtocol::Onion, TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+    );
+    assert_eq!(tor_tcp_addresses, vec![onion, ip4, ip6, memory]);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);

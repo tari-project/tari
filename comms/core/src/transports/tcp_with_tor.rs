@@ -74,6 +74,11 @@ impl TcpWithTorTransport {
     pub fn tcp_transport_mut(&mut self) -> &mut TcpTransport {
         &mut self.tcp_transport
     }
+
+    pub fn set_supported_protocols(&mut self, supported_protocols: Vec<TransportProtocol>) -> &mut Self {
+        self.supported_protocols = supported_protocols;
+        self
+    }
 }
 
 #[crate::async_trait]
