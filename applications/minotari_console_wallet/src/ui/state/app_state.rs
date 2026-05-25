@@ -964,6 +964,8 @@ pub struct MyIdentity {
 pub enum UiTransactionSendStatus {
     Initiated,
     TransactionComplete,
+    TransactionBroadcast,
+    TransactionRejected(String),
     Error(String),
 }
 

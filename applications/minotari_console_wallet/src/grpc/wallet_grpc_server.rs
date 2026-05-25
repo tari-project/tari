@@ -274,6 +274,111 @@ impl WalletGrpcServer {
         self.wallet.output_manager_service.clone()
     }
 
+    /// Wait for a transaction to reach a terminal broadcast state (Broadcast, Rejected, Mined, etc.)
+    /// or timeout. Returns the transaction in whatever state it is in.
+    async fn wait_for_broadcast_confirmation(&self, tx_id: TxId) -> Result<WalletTransaction, Status> {
+        let timeout_ms = self.wallet.config.grpc_broadcast_confirmation;
+        match timeout(Duration::from_millis(timeout_ms), async {
+            loop {
+                let tx = self
+                    .get_transaction_service()
+                    .get_any_transaction(tx_id)
+                    .await
+                    .map_err(|e| Status::internal(format!("{e:?}")));
+
+                if let Ok(Some(tx)) = tx {
+                    match tx.status() {
+                        LegacyTransactionStatus::Broadcast |
+                        LegacyTransactionStatus::MinedUnconfirmed |
+                        LegacyTransactionStatus::MinedConfirmed |
+                        LegacyTransactionStatus::OneSidedUnconfirmed |
+                        LegacyTransactionStatus::OneSidedConfirmed |
+                        LegacyTransactionStatus::MinedConfirmedLocked |
+                        LegacyTransactionStatus::OneSidedConfirmedLocked |
+                        LegacyTransactionStatus::CoinbaseConfirmedLocked |
+                        LegacyTransactionStatus::Imported |
+                        LegacyTransactionStatus::Rejected => break tx,
+                        _ => {
+                            sleep(Duration::from_millis(10)).await;
+                            continue;
+                        },
+                    }
+                } else {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            }
+        })
+        .await
+        {
+            Ok(tx) => Ok(tx),
+            Err(_) => {
+                // Timeout - return whatever state the tx is in now
+                match self.get_transaction_service().get_any_transaction(tx_id).await {
+                    Ok(Some(tx)) => Ok(tx),
+                    Ok(None) => Err(Status::not_found(format!(
+                        "Transaction {tx_id} not found within timeout"
+                    ))),
+                    Err(e) => Err(Status::internal(format!("{e:?}"))),
+                }
+            },
+        }
+    }
+
+    /// Build a TransferResult from a wallet transaction, checking its broadcast status.
+    /// - Broadcast/Mined: success
+    /// - Rejected: failure with transaction info (can be retried)
+    /// - Completed/Queued (timeout): success with pending broadcast message
+    fn build_transfer_result_from_tx(
+        &self,
+        tx_id: TxId,
+        address: String,
+        wallet_tx: WalletTransaction,
+        wallet_address: &TariAddress,
+    ) -> TransferResult {
+        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx.clone(), wallet_address);
+        match wallet_tx.status() {
+            LegacyTransactionStatus::Rejected => {
+                let reason = wallet_tx
+                    .cancelled_reason()
+                    .map(|r| format!("{r}"))
+                    .unwrap_or_else(|| "Unknown reason".to_string());
+                TransferResult {
+                    address,
+                    transaction_id: tx_id.into(),
+                    is_success: false,
+                    failure_message: format!(
+                        "Transaction completed but was rejected during submission: {reason}. Transaction (ID: \
+                         {tx_id}) is saved and can be retried.",
+                    ),
+                    transaction_info: Some(final_tx),
+                }
+            },
+            LegacyTransactionStatus::Completed | LegacyTransactionStatus::Queued => {
+                // Broadcast not yet confirmed (timeout waiting for broadcast)
+                TransferResult {
+                    address,
+                    transaction_id: tx_id.into(),
+                    is_success: true,
+                    failure_message: format!(
+                        "Transaction completed but broadcast is still pending. Transaction (ID: {tx_id}) is saved and \
+                         will be broadcast when possible.",
+                    ),
+                    transaction_info: Some(final_tx),
+                }
+            },
+            _ => {
+                // Successfully broadcast or mined
+                TransferResult {
+                    address,
+                    transaction_id: tx_id.into(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                    transaction_info: Some(final_tx),
+                }
+            },
+        }
+    }
+
     async fn transfer_single_tx(
         &self,
         recipients: Vec<minotari_app_grpc::tari_rpc::PaymentRecipient>,
@@ -317,41 +422,37 @@ impl WalletGrpcServer {
                 fee_per_gram.into(),
             )
             .await
-            .map_err(|e| Status::internal(format!("Failed to send transaction: {e}")))?;
+            .map_err(|e| Status::internal(format!("Transaction abandoned: {e}")))?;
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut results = Vec::new();
-        for id in ids {
-            let wallet_address = self
-                .wallet
-                .get_wallet_one_sided_address()
-                .map_err(|e| Status::internal(format!("{e:?}")))?;
-            let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
-                loop {
-                    let tx = self
-                        .get_transaction_service()
-                        .get_any_transaction(id)
-                        .await
-                        .map_err(|e| Status::internal(format!("{e:?}")));
 
-                    if let Ok(Some(tx)) = tx {
-                        break tx;
-                    }
-                    sleep(Duration::from_millis(10)).await;
-                }
-            })
-            .await
-            .map_err(|_| {
-                error!(target: LOG_TARGET, "Transaction {id} not found within timeout");
-                Status::not_found(format!("Transaction {id} not found within timeout"))
-            })?;
-            let address = wallet_tx.destination_address().expect("cannot fail").to_string();
-            let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-            results.push(minotari_app_grpc::tari_rpc::TransferResult {
-                address,
-                transaction_id: id.into(),
-                is_success: true,
-                failure_message: Default::default(),
-                transaction_info: Some(final_tx),
-            });
+        let mut broadcast_futures = Vec::new();
+        for id in ids {
+            broadcast_futures.push(async move { (id, self.wait_for_broadcast_confirmation(id).await) });
+        }
+        let broadcast_results = future::join_all(broadcast_futures).await;
+        for (id, result) in broadcast_results {
+            match result {
+                Ok(wallet_tx) => {
+                    let address = wallet_tx.destination_address().expect("cannot fail").to_string();
+                    results.push(self.build_transfer_result_from_tx(id, address, wallet_tx, &wallet_address));
+                },
+                Err(_) => {
+                    results.push(minotari_app_grpc::tari_rpc::TransferResult {
+                        address: Default::default(),
+                        transaction_id: id.into(),
+                        is_success: true,
+                        failure_message: format!(
+                            "Transaction completed but broadcast status could not be determined. Transaction (ID: \
+                             {id}) is saved and will be broadcast when possible.",
+                        ),
+                        transaction_info: None,
+                    });
+                },
+            }
         }
         Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results }))
     }
@@ -1160,57 +1261,78 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         let transfers_results = future::join_all(transfers).await;
-        let mut results = Vec::with_capacity(transfers_results.len());
-        for (address, result) in transfers_results {
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+
+        // Collect successful tx_ids for parallel broadcast confirmation
+        let indexed_results: Vec<(usize, String, Result<TxId, TransactionServiceError>)> = transfers_results
+            .into_iter()
+            .enumerate()
+            .map(|(i, (address, result))| (i, address, result))
+            .collect();
+
+        // Wait for broadcast confirmation in parallel for all successful transactions
+        let mut broadcast_futures = Vec::new();
+        let mut result_slots: Vec<Option<TransferResult>> = vec![None; indexed_results.len()];
+
+        for (i, address, result) in &indexed_results {
             match result {
                 Ok(tx_id) => {
-                    let wallet_address = self
-                        .wallet
-                        .get_wallet_one_sided_address()
-                        .map_err(|e| Status::internal(format!("{e:?}")))?;
-                    let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
-                        loop {
-                            let tx = self
-                                .get_transaction_service()
-                                .get_any_transaction(tx_id)
-                                .await
-                                .map_err(|e| Status::internal(format!("{e:?}")));
-
-                            if let Ok(Some(tx)) = tx {
-                                break tx;
-                            }
-                            sleep(Duration::from_millis(10)).await;
-                        }
-                    })
-                    .await
-                    .map_err(|_| {
-                        error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
-                        Status::not_found(format!("Transaction {tx_id} not found within timeout"))
-                    })?;
-                    let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
-                    results.push(TransferResult {
-                        address,
-                        transaction_id: tx_id.into(),
-                        is_success: true,
-                        failure_message: Default::default(),
-                        transaction_info: Some(final_tx),
-                    });
+                    let tx_id = *tx_id;
+                    broadcast_futures.push(async move { (*i, self.wait_for_broadcast_confirmation(tx_id).await) });
                 },
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
                         "Failed to send transaction for address `{address}`: {err}"
                     );
-                    results.push(TransferResult {
-                        address,
-                        transaction_id: Default::default(),
-                        is_success: false,
-                        failure_message: err.to_string(),
+                    if let Some(slot) = result_slots.get_mut(*i) {
+                        *slot = Some(TransferResult {
+                            address: address.clone(),
+                            transaction_id: Default::default(),
+                            is_success: false,
+                            failure_message: format!("Transaction abandoned: {err}"),
+                            transaction_info: None,
+                        });
+                    }
+                },
+            }
+        }
+
+        let broadcast_results = future::join_all(broadcast_futures).await;
+        for (i, broadcast_result) in broadcast_results {
+            let Some((_, address, result)) = indexed_results.get(i) else {
+                continue;
+            };
+            let tx_id = result.as_ref().expect("only Ok values have broadcast futures");
+            let Some(slot) = result_slots.get_mut(i) else {
+                continue;
+            };
+            match broadcast_result {
+                Ok(wallet_tx) => {
+                    *slot =
+                        Some(self.build_transfer_result_from_tx(*tx_id, address.clone(), wallet_tx, &wallet_address));
+                },
+                Err(_) => {
+                    // Transaction was completed (we have the tx_id) but we couldn't confirm
+                    // broadcast status. Return success with a pending message.
+                    *slot = Some(TransferResult {
+                        address: address.clone(),
+                        transaction_id: (*tx_id).into(),
+                        is_success: true,
+                        failure_message: format!(
+                            "Transaction completed but broadcast status could not be determined. Transaction (ID: \
+                             {tx_id}) is saved and will be broadcast when possible.",
+                        ),
                         transaction_info: None,
                     });
                 },
             }
         }
+
+        let results: Vec<TransferResult> = result_slots.into_iter().flatten().collect();
 
         Ok(Response::new(TransferResponse { results }))
     }
