@@ -20,12 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp::min,
-    collections::{HashMap, HashSet},
-    str::FromStr,
-    time::Duration,
-};
+use std::{cmp::min, collections::HashMap, str::FromStr, time::Duration};
 
 use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
@@ -64,7 +59,6 @@ use crate::{
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
 const LOG_TARGET: &str = "comms::peer_manager::storage::db";
-const MAX_MULTIADDRESSES_PER_PEER: usize = 10;
 
 /// This peer's identity information
 #[derive(Clone)]
@@ -881,13 +875,14 @@ impl PeerDatabaseSql {
                 PeerFeatures::COMMUNICATION_NODE.to_i32()
             )))
             .select(peers::node_id)
+            .group_by(peers::node_id)
             .into_boxed();
 
         if exclude_failed {
             query = query.filter(multi_addresses::last_failed_reason.is_null());
         }
 
-        if let Some(order_sql) = Self::build_addr_preference_order_sql(transport_protocols) {
+        if let Some(order_sql) = Self::build_best_addr_preference_order_sql(transport_protocols) {
             query = if randomize {
                 query
                     .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
@@ -909,11 +904,11 @@ impl PeerDatabaseSql {
             query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
         }
 
-        if let Some(limit) = Self::unique_node_id_row_limit(n) {
-            query = query.limit(limit);
+        if let Some(limit) = n {
+            query = query.limit(i64::try_from(limit).unwrap_or(i64::MAX));
         }
 
-        let node_ids = Self::unique_node_ids_preserving_order(query.load::<String>(&mut conn)?, n);
+        let node_ids = query.load::<String>(&mut conn)?;
 
         if node_ids.is_empty() {
             return Ok(Vec::new());
@@ -1232,9 +1227,10 @@ impl PeerDatabaseSql {
                 )))
                 .filter(peers::node_id.ne_all(exclude_node_ids))
                 .select(peers::node_id)
+                .group_by(peers::node_id)
                 .into_boxed();
 
-            if let Some(order_sql) = Self::build_addr_preference_order_sql(transport_protocols) {
+            if let Some(order_sql) = Self::build_best_addr_preference_order_sql(transport_protocols) {
                 query = query
                     .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
                     .then_order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
@@ -1253,11 +1249,7 @@ impl PeerDatabaseSql {
                 query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
             }
 
-            if let Some(limit) = Self::unique_node_id_row_limit(Some(n)) {
-                query = query.limit(limit);
-            }
-
-            let node_ids = Self::unique_node_ids_preserving_order(query.load::<String>(conn)?, Some(n));
+            let node_ids = query.limit(i64::try_from(n).unwrap_or(i64::MAX)).load::<String>(conn)?;
 
             if node_ids.is_empty() {
                 return Ok(Vec::new());
@@ -1356,7 +1348,7 @@ impl PeerDatabaseSql {
         Some(format!("({})", conditions.join(" OR ")))
     }
 
-    fn build_addr_preference_order_sql(transport_protocols: &[TransportProtocol]) -> Option<String> {
+    fn build_best_addr_preference_order_sql(transport_protocols: &[TransportProtocol]) -> Option<String> {
         if transport_protocols.is_empty() {
             return None;
         }
@@ -1374,32 +1366,10 @@ impl PeerDatabaseSql {
             .collect::<Vec<_>>();
 
         Some(format!(
-            "CASE {} ELSE {} END",
+            "MIN(CASE {} ELSE {} END)",
             conditions.join(" "),
             transport_protocols.len()
         ))
-    }
-
-    fn unique_node_ids_preserving_order(node_ids: Vec<String>, limit: Option<usize>) -> Vec<String> {
-        let mut seen = HashSet::new();
-        let mut unique_node_ids = Vec::new();
-
-        for node_id in node_ids {
-            if seen.insert(node_id.clone()) {
-                unique_node_ids.push(node_id);
-                if limit.is_some_and(|limit| unique_node_ids.len() >= limit) {
-                    break;
-                }
-            }
-        }
-
-        unique_node_ids
-    }
-
-    fn unique_node_id_row_limit(limit: Option<usize>) -> Option<i64> {
-        limit
-            .map(|limit| limit.saturating_mul(MAX_MULTIADDRESSES_PER_PEER))
-            .map(|limit| i64::try_from(limit).unwrap_or(i64::MAX))
     }
 }
 
@@ -1923,6 +1893,42 @@ mod tests {
             ],
             ExpectedCandidateOrder::TcpThenTor,
         );
+    }
+
+    #[test]
+    fn test_limited_peer_selection_counts_unique_peers() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        let address_heavy_peer = peer_with_addresses(
+            (1..=10)
+                .map(|octet| format!("/ip4/8.8.8.{octet}/tcp/18189").parse().unwrap())
+                .collect(),
+        );
+        let other_tcp_peer = peer_with_addresses(vec!["/ip4/1.1.1.1/tcp/18189".parse().unwrap()]);
+        peers_db.add_or_update_peer(address_heavy_peer.clone()).unwrap();
+        peers_db.add_or_update_peer(other_tcp_peer.clone()).unwrap();
+
+        let transport_protocols = [TransportProtocol::Ipv4, TransportProtocol::Ipv6];
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], Some(2), &transport_protocols, false, false)
+            .unwrap();
+        let candidate_ids = candidates.iter().map(|peer| peer.node_id.clone()).collect::<Vec<_>>();
+        assert_eq!(candidate_ids.len(), 2);
+        assert!(candidate_ids.contains(&address_heavy_peer.node_id));
+        assert!(candidate_ids.contains(&other_tcp_peer.node_id));
+
+        let random_peers = peers_db
+            .get_n_random_peers(2, &[], None, &transport_protocols, false)
+            .unwrap();
+        let random_peer_ids = random_peers.iter().map(|peer| peer.node_id.clone()).collect::<Vec<_>>();
+        assert_eq!(random_peer_ids.len(), 2);
+        assert!(random_peer_ids.contains(&address_heavy_peer.node_id));
+        assert!(random_peer_ids.contains(&other_tcp_peer.node_id));
     }
 
     #[ignore]
