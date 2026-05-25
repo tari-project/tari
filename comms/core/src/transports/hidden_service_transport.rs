@@ -53,6 +53,17 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         if supports_ipv6() {
             supported_protocols.push(TransportProtocol::Ipv6);
         }
+        Self::new_with_supported_protocols(hidden_service_ctl, after_init, supported_protocols)
+    }
+
+    pub fn new_with_supported_protocols(
+        hidden_service_ctl: HiddenServiceController,
+        after_init: F,
+        mut supported_protocols: Vec<TransportProtocol>,
+    ) -> Self {
+        if !supports_ipv6() {
+            supported_protocols.retain(|protocol| protocol != &TransportProtocol::Ipv6);
+        }
         Self {
             inner: Arc::new(RwLock::new(HiddenServiceTransportInner {
                 socks_transport: None,

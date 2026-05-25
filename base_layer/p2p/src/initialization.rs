@@ -253,14 +253,19 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
                 .spawn_with_transport(transport)
                 .await?
         },
-        TransportType::Tor => {
+        TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor => {
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
+            let supported_protocols = transport_config.transport_type.get_supported_protocols();
             let hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
             let instant = Instant::now();
-            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms);
+            let transport = HiddenServiceTransport::new_with_supported_protocols(
+                hidden_service_ctl,
+                after_comms,
+                supported_protocols,
+            );
             debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
 
             comms

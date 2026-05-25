@@ -29,7 +29,9 @@ use std::{
 
 use chrono::Local;
 use cucumber::{then, when};
+use tari_comms::types::TransportProtocol;
 use tari_integration_tests::TariWorld;
+use tari_p2p::TransportType;
 
 pub mod merge_mining_steps;
 pub mod mining_steps;
@@ -71,6 +73,42 @@ pub fn cucumber_steps_log<S: AsRef<str>>(log_message: S) {
     let mut file = OpenOptions::new().create(true).append(true).open(log_file).unwrap();
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     writeln!(file, "[{}] {}", timestamp, log_message.as_ref()).unwrap();
+}
+
+fn parse_transport_type(value: &str) -> TransportType {
+    match value {
+        "tor" => TransportType::Tor,
+        "tcp" => TransportType::Tcp,
+        "tor_tcp" => TransportType::TorTcp,
+        "tcp_tor" => TransportType::TcpTor,
+        other => panic!("Unsupported transport mode '{other}'"),
+    }
+}
+
+fn parse_transport_protocols(value: &str) -> Vec<TransportProtocol> {
+    value
+        .split(',')
+        .map(|protocol| protocol.trim())
+        .map(|protocol| match protocol {
+            "ip4" => TransportProtocol::Ipv4,
+            "ip6" => TransportProtocol::Ipv6,
+            "onion" => TransportProtocol::Onion,
+            other => panic!("Unsupported transport protocol '{other}'"),
+        })
+        .collect()
+}
+
+#[then(expr = "peer selection for transport mode {word} prefers protocols {string}")]
+async fn peer_selection_for_transport_mode_prefers_protocols(_world: &mut TariWorld, mode: String, protocols: String) {
+    let transport_type = parse_transport_type(&mode);
+    let expected_protocols = parse_transport_protocols(&protocols);
+
+    assert_eq!(transport_type.get_supported_protocols(), expected_protocols);
+}
+
+#[then(expr = "default peer transport mode is {word}")]
+async fn default_peer_transport_mode_is(_world: &mut TariWorld, mode: String) {
+    assert_eq!(TransportType::default(), parse_transport_type(&mode));
 }
 
 pub fn get_saved_seed_words(world: &mut TariWorld, wallet_name: &str) -> Vec<String> {

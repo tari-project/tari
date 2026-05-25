@@ -229,9 +229,10 @@ event_channel_size = 3500
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable. (default = "tor")
-#type = "tor"
+# Select which peer address protocols are eligible and their preference order:
+# "tor" = onion only, "tcp" = TCP/IP only, "tor_tcp" = both preferring onion,
+# "tcp_tor" = both preferring TCP/IP. (default = "tcp_tor")
+#type = "tcp_tor"
 
 # The address and port to listen for peer connections over TCP. (use: type = "tcp")
 #tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
@@ -242,8 +243,7 @@ event_channel_size = 3500
 # Optional tor SOCKS proxy authentication (default = "none")
 #tcp.tor_socks_auth = "none"
 
-# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# onion v2, onion v3 and dns addresses. (use: type = "tor")
+# Configures the node to run over a tor hidden service using the Tor proxy. Used by "tor", "tor_tcp" and "tcp_tor".
 # Address of the tor control server
 #tor.control_address = "/ip4/127.0.0.1/tcp/9051"
 # SOCKS proxy auth (default = "none")

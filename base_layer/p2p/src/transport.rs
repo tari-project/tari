@@ -83,7 +83,7 @@ impl TransportConfig {
     }
 
     pub fn is_tor(&self) -> bool {
-        matches!(self.transport_type, TransportType::Tor)
+        self.transport_type.uses_tor()
     }
 }
 
@@ -95,28 +95,42 @@ pub enum TransportType {
     /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
     /// configured to allow communication with peers using the tor transport.
     Tcp,
-    /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
-    /// onion v3 and DNS addresses.
-    #[default]
+    /// Configures the node to run over a tor hidden service using the Tor proxy. This transport only contacts onion
+    /// addresses during peer selection.
     Tor,
+    /// Enables TCP and Tor peer addresses and prefers Tor addresses when both are available.
+    TorTcp,
+    /// Enables TCP and Tor peer addresses and prefers TCP addresses when both are available.
+    #[default]
+    TcpTor,
     /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
     Socks5,
 }
 
 impl TransportType {
+    pub fn uses_tor(&self) -> bool {
+        matches!(self, TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor)
+    }
+
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
         match self {
             TransportType::Memory => vec![TransportProtocol::Memory],
             TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
-            TransportType::Tor => vec![
+            TransportType::Tor => vec![TransportProtocol::Onion],
+            TransportType::TorTcp => vec![
                 TransportProtocol::Onion,
                 TransportProtocol::Ipv4,
                 TransportProtocol::Ipv6,
             ],
-            TransportType::Socks5 => vec![
-                TransportProtocol::Onion,
+            TransportType::TcpTor => vec![
                 TransportProtocol::Ipv4,
                 TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
+            ],
+            TransportType::Socks5 => vec![
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
             ],
         }
     }
@@ -253,6 +267,48 @@ impl Default for MemoryTransportConfig {
     fn default() -> Self {
         Self {
             listener_address: "/memory/0".parse().unwrap(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tari_comms::types::TransportProtocol;
+
+    #[test]
+    fn default_transport_type_prefers_tcp_then_tor() {
+        assert_eq!(TransportType::default(), TransportType::TcpTor);
+    }
+
+    #[test]
+    fn transport_type_protocols_match_peer_selection_modes() {
+        let cases = [
+            (TransportType::Tor, vec![TransportProtocol::Onion]),
+            (
+                TransportType::Tcp,
+                vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            ),
+            (
+                TransportType::TorTcp,
+                vec![
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                ],
+            ),
+            (
+                TransportType::TcpTor,
+                vec![
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion,
+                ],
+            ),
+        ];
+
+        for (transport_type, expected_protocols) in cases {
+            assert_eq!(transport_type.get_supported_protocols(), expected_protocols);
         }
     }
 }

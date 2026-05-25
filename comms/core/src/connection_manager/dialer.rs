@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -79,6 +79,27 @@ type DialFuturesUnordered = FuturesUnordered<
         ),
     >,
 >;
+
+fn select_dial_addresses(
+    peer_addresses: &[Multiaddr],
+    supported_transport_protocols: &[TransportProtocol],
+    excluded_dial_addresses: &[MultiaddrRange],
+) -> Vec<Multiaddr> {
+    supported_transport_protocols
+        .iter()
+        .flat_map(|protocol| {
+            peer_addresses
+                .iter()
+                .filter(move |address| {
+                    TransportProtocol::from(*address) == *protocol &&
+                        !excluded_dial_addresses
+                            .iter()
+                            .any(|excluded| excluded.contains(address))
+                })
+                .cloned()
+        })
+        .collect()
+}
 
 #[derive(Debug)]
 pub(crate) enum DialerRequest {
@@ -605,18 +626,12 @@ where
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
-        let addresses = dial_state
-            .peer()
-            .addresses
-            .clone()
-            .into_vec()
-            .iter()
-            .filter(|&a| {
-                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
-                    supported_transport_protocols.contains(a.into())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let peer_addresses = dial_state.peer().addresses.clone().into_vec();
+        let addresses = select_dial_addresses(
+            &peer_addresses,
+            &supported_transport_protocols,
+            &excluded_dial_addresses,
+        );
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
@@ -757,5 +772,53 @@ where
         }
 
         (dial_state, Err(ConnectionManagerError::DialConnectFailedAllAddresses))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::types::TransportProtocol;
+
+    fn addr(value: &str) -> Multiaddr {
+        value.parse().unwrap()
+    }
+
+    #[test]
+    fn select_dial_addresses_follows_transport_protocol_preference() {
+        let tcp = addr("/ip4/127.0.0.1/tcp/18189");
+        let ipv6 = addr("/ip6/::1/tcp/18189");
+        let onion = addr("/onion3/b5zgqd6emm6p2zmj7gdniysbxvmtvltrwshsyfxjoq26xqfjoicge5id:18141");
+        let peer_addresses = vec![tcp.clone(), onion.clone(), ipv6.clone()];
+        let excluded = vec![];
+
+        assert_eq!(
+            select_dial_addresses(
+                &peer_addresses,
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                ],
+                &excluded,
+            ),
+            vec![onion.clone(), tcp.clone(), ipv6.clone()],
+        );
+        assert_eq!(
+            select_dial_addresses(
+                &peer_addresses,
+                &[
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion,
+                ],
+                &excluded,
+            ),
+            vec![tcp.clone(), ipv6.clone(), onion.clone()],
+        );
+        assert_eq!(
+            select_dial_addresses(&peer_addresses, &[TransportProtocol::Onion], &excluded),
+            vec![onion],
+        );
     }
 }
