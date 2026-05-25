@@ -64,10 +64,34 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol, sort_multiaddr_by_transport_preference, transport_protocol_rank},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
+
+fn select_dial_addresses(
+    peer: &Peer,
+    supported_transport_protocols: &[TransportProtocol],
+    configured_transport_protocols: &[TransportProtocol],
+    excluded_dial_addresses: &[MultiaddrRange],
+) -> Vec<Multiaddr> {
+    let mut addresses = peer
+        .addresses
+        .address_iter()
+        .filter(|&address| {
+            let protocol = TransportProtocol::from(address);
+            !excluded_dial_addresses
+                .iter()
+                .any(|excluded| excluded.contains(address)) &&
+                supported_transport_protocols.contains(&protocol) &&
+                (configured_transport_protocols.is_empty() ||
+                    transport_protocol_rank(address, configured_transport_protocols).is_some())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    sort_multiaddr_by_transport_preference(&mut addresses, configured_transport_protocols);
+    addresses
+}
 
 type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
 type DialFuturesUnordered = FuturesUnordered<
@@ -536,6 +560,7 @@ where
                         &current_transport,
                         config.network_info.network_wire_byte,
                         config.excluded_dial_addresses.clone(),
+                        &config.transport_protocols,
                     )
                     .await
                     {
@@ -598,6 +623,7 @@ where
         transport: &TTransport,
         network_byte: u8,
         excluded_dial_addresses: Vec<MultiaddrRange>,
+        configured_transport_protocols: &[TransportProtocol],
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
@@ -605,18 +631,12 @@ where
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
-        let addresses = dial_state
-            .peer()
-            .addresses
-            .clone()
-            .into_vec()
-            .iter()
-            .filter(|&a| {
-                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
-                    supported_transport_protocols.contains(a.into())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let addresses = select_dial_addresses(
+            dial_state.peer(),
+            &supported_transport_protocols,
+            configured_transport_protocols,
+            &excluded_dial_addresses,
+        );
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
@@ -757,5 +777,123 @@ where
         }
 
         (dial_state, Err(ConnectionManagerError::DialConnectFailedAllAddresses))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        peer_manager::{PeerFeatures, PeerFlags},
+    };
+
+    const ONION3_HOST: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx";
+
+    fn peer_with_addresses(addresses: Vec<Multiaddr>) -> Peer {
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let node_id = NodeId::from_key(&pk);
+        let addresses = MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::Config);
+
+        Peer::new(
+            pk,
+            node_id,
+            addresses,
+            PeerFlags::default(),
+            PeerFeatures::COMMUNICATION_NODE,
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    fn selected_protocols(
+        peer: &Peer,
+        configured_transport_protocols: &[TransportProtocol],
+        excluded_dial_addresses: &[MultiaddrRange],
+    ) -> Vec<TransportProtocol> {
+        select_dial_addresses(
+            peer,
+            &[
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
+            ],
+            configured_transport_protocols,
+            excluded_dial_addresses,
+        )
+        .iter()
+        .map(TransportProtocol::from)
+        .collect()
+    }
+
+    #[test]
+    fn dial_addresses_follow_transport_protocol_preference() {
+        let peer = peer_with_addresses(vec![
+            format!("/onion3/{ONION3_HOST}:18141").parse().unwrap(),
+            "/ip6/::1/tcp/18190".parse().unwrap(),
+            "/ip4/1.2.3.4/tcp/18189".parse().unwrap(),
+        ]);
+
+        assert_eq!(selected_protocols(&peer, &[TransportProtocol::Onion], &[]), vec![
+            TransportProtocol::Onion
+        ]);
+        assert_eq!(
+            selected_protocols(&peer, &[TransportProtocol::Ipv4, TransportProtocol::Ipv6], &[]),
+            vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
+        );
+        assert_eq!(
+            selected_protocols(
+                &peer,
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                ],
+                &[],
+            ),
+            vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ]
+        );
+        assert_eq!(
+            selected_protocols(
+                &peer,
+                &[
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion,
+                ],
+                &[],
+            ),
+            vec![
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
+            ]
+        );
+    }
+
+    #[test]
+    fn dial_address_selection_honors_excluded_ranges() {
+        let peer = peer_with_addresses(vec![
+            format!("/onion3/{ONION3_HOST}:18141").parse().unwrap(),
+            "/ip6/::1/tcp/18190".parse().unwrap(),
+            "/ip4/1.2.3.4/tcp/18189".parse().unwrap(),
+        ]);
+        let excluded = vec!["/ip4/1.2.3.4/tcp/18189".parse().unwrap()];
+
+        assert_eq!(
+            selected_protocols(
+                &peer,
+                &[
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion,
+                ],
+                &excluded,
+            ),
+            vec![TransportProtocol::Ipv6, TransportProtocol::Onion]
+        );
     }
 }

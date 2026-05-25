@@ -35,6 +35,7 @@ pub mod merge_mining_steps;
 pub mod mining_steps;
 pub mod node_steps;
 pub mod offline_signing_steps;
+pub mod transport_steps;
 pub mod wallet_cli_steps;
 pub mod wallet_ffi_steps;
 pub mod wallet_steps;

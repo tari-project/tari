@@ -53,7 +53,7 @@ use crate::{
         storage::schema::{multi_addresses, node_identity, peers},
     },
     protocol::ProtocolId,
-    types::{CommsPublicKey, TransportProtocol},
+    types::{CommsPublicKey, TransportProtocol, transport_protocol_rank},
     utils::datetime::safe_future_datetime_from_duration,
 };
 
@@ -896,23 +896,19 @@ impl PeerDatabaseSql {
             query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
         }
 
-        // Apply limit if specified
-        if let Some(limit) = n {
-            // Safely convert usize to i64, using try_into with fallback to i64::MAX
-            let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
-            query = query.limit(limit_i64);
-        }
-
         let node_ids = query.load::<String>(&mut conn)?;
 
         if node_ids.is_empty() {
             return Ok(Vec::new());
         }
+        let original_order = Self::node_id_order(&node_ids);
+        let mut peers = self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)?;
+        Self::sort_peers_by_transport_preference(&mut peers, transport_protocols, &original_order);
+        if let Some(limit) = n {
+            peers.truncate(limit);
+        }
 
-        // A peer can have more than one valid address, so that if the join-limit-load query is not returning node IDs,
-        // it will give the requested number of unique peer-adress combinations, which will result in less peer records
-        // than what was required. For that reason, we need a 2nd query to fetch the peers by node IDs.
-        self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)
+        Ok(peers)
     }
 
     /// Get a peer by its node ID
@@ -1219,7 +1215,6 @@ impl PeerDatabaseSql {
                 )))
                 .filter(peers::node_id.ne_all(exclude_node_ids))
                 .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"))
-                .limit(i64::try_from(n).unwrap_or(i64::MAX))
                 .select(peers::node_id)
                 .distinct()
                 .into_boxed();
@@ -1241,8 +1236,13 @@ impl PeerDatabaseSql {
                 return Ok(Vec::new());
             }
 
-            // Step 2: Load full peer + addresses only for selected node_ids
-            self.get_peers_by_node_ids_str(&node_ids, true, conn)
+            // Step 2: Load full peer + addresses for matching node_ids, then apply transport preference before
+            // truncating.
+            let original_order = Self::node_id_order(&node_ids);
+            let mut peers = self.get_peers_by_node_ids_str(&node_ids, true, conn)?;
+            Self::sort_peers_by_transport_preference(&mut peers, transport_protocols, &original_order);
+            peers.truncate(n);
+            Ok(peers)
         })
     }
 
@@ -1275,6 +1275,43 @@ impl PeerDatabaseSql {
     /// Get the size of the peer database
     pub fn size(&self) -> usize {
         self.get_peer_indexes().unwrap_or_default().len()
+    }
+
+    fn node_id_order(node_ids: &[String]) -> HashMap<NodeId, usize> {
+        node_ids
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node_id)| NodeId::from_hex(node_id).ok().map(|node_id| (node_id, index)))
+            .collect()
+    }
+
+    fn peer_protocol_preference_rank(peer: &Peer, transport_protocols: &[TransportProtocol]) -> usize {
+        if transport_protocols.is_empty() {
+            return 0;
+        }
+
+        peer.addresses
+            .address_iter()
+            .filter_map(|address| transport_protocol_rank(address, transport_protocols))
+            .min()
+            .unwrap_or(usize::MAX)
+    }
+
+    fn sort_peers_by_transport_preference(
+        peers: &mut [Peer],
+        transport_protocols: &[TransportProtocol],
+        original_order: &HashMap<NodeId, usize>,
+    ) {
+        if transport_protocols.is_empty() {
+            return;
+        }
+
+        peers.sort_by_key(|peer| {
+            (
+                Self::peer_protocol_preference_rank(peer, transport_protocols),
+                original_order.get(&peer.node_id).copied().unwrap_or(usize::MAX),
+            )
+        });
     }
 
     /// Builds an OR-ed SQL clause like:
@@ -1727,6 +1764,92 @@ mod tests {
             .get_n_random_active_peers(100, &[], None, None, None, false, &[TransportProtocol::Onion])
             .unwrap();
         assert_eq!(node_with_onion_addresses.len(), 1);
+    }
+
+    enum ExpectedCandidateOrder {
+        TorOnly,
+        TcpOnly,
+        TorThenTcp,
+        TcpThenTor,
+    }
+
+    fn peer_with_addresses(addresses: Vec<Multiaddr>) -> Peer {
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let node_id = NodeId::from_key(&pk);
+        let addresses = MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::Config);
+
+        Peer::new(
+            pk,
+            node_id,
+            addresses,
+            PeerFlags::default(),
+            PeerFeatures::COMMUNICATION_NODE,
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    fn assert_available_dial_candidate_order(
+        transport_protocols: &[TransportProtocol],
+        expected_order: ExpectedCandidateOrder,
+    ) {
+        const ONION3_HOST: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx";
+
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        let tcp_peer = peer_with_addresses(vec!["/ip4/1.2.3.4/tcp/18189".parse().unwrap()]);
+        let onion_peer = peer_with_addresses(vec![format!("/onion3/{ONION3_HOST}:18141").parse().unwrap()]);
+        peers_db.add_or_update_peer(tcp_peer.clone()).unwrap();
+        peers_db.add_or_update_peer(onion_peer.clone()).unwrap();
+
+        let expected_ids = match expected_order {
+            ExpectedCandidateOrder::TorOnly => vec![&onion_peer.node_id],
+            ExpectedCandidateOrder::TcpOnly => vec![&tcp_peer.node_id],
+            ExpectedCandidateOrder::TorThenTcp => vec![&onion_peer.node_id, &tcp_peer.node_id],
+            ExpectedCandidateOrder::TcpThenTor => vec![&tcp_peer.node_id, &onion_peer.node_id],
+        };
+
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], None, transport_protocols, false, false)
+            .unwrap();
+        let candidate_ids = candidates.iter().map(|peer| &peer.node_id).collect::<Vec<_>>();
+        assert_eq!(candidate_ids, expected_ids);
+
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], Some(1), transport_protocols, false, false)
+            .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(&candidates[0].node_id, expected_ids[0]);
+    }
+
+    #[test]
+    fn test_available_dial_candidates_follow_transport_protocol_preference() {
+        assert_available_dial_candidate_order(&[TransportProtocol::Onion], ExpectedCandidateOrder::TorOnly);
+        assert_available_dial_candidate_order(
+            &[TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            ExpectedCandidateOrder::TcpOnly,
+        );
+        assert_available_dial_candidate_order(
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            ExpectedCandidateOrder::TorThenTcp,
+        );
+        assert_available_dial_candidate_order(
+            &[
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
+            ],
+            ExpectedCandidateOrder::TcpThenTor,
+        );
     }
 
     #[ignore]

@@ -57,6 +57,7 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
+    types::TransportProtocol,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
@@ -139,6 +140,8 @@ pub struct ConnectionManagerConfig {
     pub peer_validation_config: PeerValidatorConfig,
     /// Addresses that should never be dialed
     pub excluded_dial_addresses: Vec<MultiaddrRange>,
+    /// Ordered transport protocols allowed for peer dial-address selection.
+    pub transport_protocols: Vec<TransportProtocol>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -162,6 +165,7 @@ impl Default for ConnectionManagerConfig {
             noise_handshake_recv_timeout: Duration::from_secs(6),
             noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
+            transport_protocols: TransportProtocol::get_all(),
         }
     }
 }

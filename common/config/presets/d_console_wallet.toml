@@ -229,21 +229,23 @@ event_channel_size = 3500
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable. (default = "tor")
-#type = "tor"
+# Peer transport selection mode. Valid values:
+# - "tor": select and dial onion peers only.
+# - "tcp": select and dial TCP/IP peers only.
+# - "tor_tcp": select and dial onion and TCP/IP peers, preferring onion.
+# - "tcp_tor": select and dial TCP/IP and onion peers, preferring TCP/IP. (default = "tcp_tor")
+#type = "tcp_tor"
 
-# The address and port to listen for peer connections over TCP. (use: type = "tcp")
+# The address and port to listen for peer connections over TCP. (used by type = "tcp")
 #tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
-# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
-# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
-# only advertise an onion address. (default = )
+# Configures a tor proxy used by the TCP transport to connect to onion addresses. All other traffic uses direct TCP
+# connections. This setting is optional; if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
 #tcp.tor_socks_address =
 # Optional tor SOCKS proxy authentication (default = "none")
 #tcp.tor_socks_auth = "none"
 
-# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# onion v2, onion v3 and dns addresses. (use: type = "tor")
+# Tor hidden service settings used by type = "tor", "tor_tcp", and "tcp_tor".
 # Address of the tor control server
 #tor.control_address = "/ip4/127.0.0.1/tcp/9051"
 # SOCKS proxy auth (default = "none")
@@ -263,16 +265,6 @@ event_channel_size = 3500
 # If set, instructs tor to forward traffic the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
 #tor.forward_address =
 
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-# (use: type = "socks5")
-# The address of the SOCKS5 proxy. Traffic will be forwarded to tcp.listener_address.
-# (Default = "/ip4/127.0.0.1/tcp/8080")
-#socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# SOCKS proxy auth (Default = "none", or assign "username_password=username:xxxxxxx")
-#socks.auth = "none"
-
-# Use a Memory proxy transport. (use: type = "memory")
-#memory.listener_address = "/memory/0"
 
 [wallet.p2p.dht]
 # The `DbConnectionUrl` for the Dht database. Default: In-memory database

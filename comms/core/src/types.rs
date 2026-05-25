@@ -57,7 +57,7 @@ pub type CommsDataStore = LMDBStore;
 pub type CommsDatabase = PeerDatabaseSql;
 
 /// Specify the address protocol
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TransportProtocol {
     Ipv4,
     Ipv6,
@@ -83,6 +83,19 @@ impl TransportProtocol {
             TransportProtocol::Memory => "/memory",
         }
     }
+}
+
+pub fn transport_protocol_rank(address: &Multiaddr, preferred_protocols: &[TransportProtocol]) -> Option<usize> {
+    let protocol = TransportProtocol::from(address);
+    preferred_protocols.iter().position(|preferred| *preferred == protocol)
+}
+
+pub fn sort_multiaddr_by_transport_preference(addresses: &mut [Multiaddr], preferred_protocols: &[TransportProtocol]) {
+    if preferred_protocols.is_empty() {
+        return;
+    }
+
+    addresses.sort_by_key(|address| transport_protocol_rank(address, preferred_protocols).unwrap_or(usize::MAX));
 }
 
 impl From<Multiaddr> for TransportProtocol {
