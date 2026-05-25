@@ -73,7 +73,7 @@ use tari_common_types::{
         UncompressedSignature,
     },
 };
-use tari_core::blocks::pre_mine::get_pre_mine_items;
+use tari_core::blocks::pre_mine::{get_embedded_pre_mine_json, get_pre_mine_items};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
@@ -3551,26 +3551,7 @@ fn get_embedded_pre_mine_outputs(
 }
 
 fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, CommandError> {
-    let pre_mine_contents = match Network::get_current_or_user_setting_or_default() {
-        Network::MainNet => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/mainnet_pre_mine.json")
-        },
-        Network::StageNet => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/stagenet_pre_mine.json")
-        },
-        Network::NextNet => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/nextnet_pre_mine.json")
-        },
-        Network::LocalNet => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/esmeralda_pre_mine.json")
-        },
-        Network::Igor => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/igor_pre_mine.json")
-        },
-        Network::Esmeralda => {
-            include_str!("../../../../base_layer/core/src/blocks/pre_mine/esmeralda_pre_mine.json")
-        },
-    };
+    let pre_mine_contents = get_embedded_pre_mine_json(Network::get_current_or_user_setting_or_default());
     let mut utxos = Vec::new();
     let lines_count = pre_mine_contents.lines().count();
     for (counter, line) in (1..).zip(pre_mine_contents.lines()) {

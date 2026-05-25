@@ -739,6 +739,17 @@ pub fn get_pre_mine_items(network: Network) -> Result<Vec<PreMineItem>, String> 
     create_pre_mine_output_values(schedule)
 }
 
+pub fn get_embedded_pre_mine_json(network: Network) -> &'static str {
+    match network {
+        Network::MainNet => include_str!("mainnet_pre_mine.json"),
+        Network::StageNet => include_str!("stagenet_pre_mine.json"),
+        Network::NextNet => include_str!("nextnet_pre_mine.json"),
+        Network::LocalNet => include_str!("esmeralda_pre_mine.json"),
+        Network::Igor => include_str!("igor_pre_mine.json"),
+        Network::Esmeralda => include_str!("esmeralda_pre_mine.json"),
+    }
+}
+
 // The threshold is 1 more than half of the public keys if even, otherwise 1 more than half of 'public keys - 1'
 fn get_signature_threshold(number_of_keys: usize) -> Result<u8, String> {
     if number_of_keys < 2 {

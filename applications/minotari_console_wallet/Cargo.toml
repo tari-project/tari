@@ -1,5 +1,6 @@
 [package]
 name = "minotari_console_wallet"
+description = "The tari console wallet application"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
