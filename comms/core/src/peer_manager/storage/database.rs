@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::min, collections::HashMap, str::FromStr, time::Duration};
+use std::{
+    cmp::min,
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    time::Duration,
+};
 
 use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
@@ -59,6 +64,7 @@ use crate::{
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
 const LOG_TARGET: &str = "comms::peer_manager::storage::db";
+const MAX_MULTIADDRESSES_PER_PEER: usize = 10;
 
 /// This peer's identity information
 #[derive(Clone)]
@@ -875,14 +881,21 @@ impl PeerDatabaseSql {
                 PeerFeatures::COMMUNICATION_NODE.to_i32()
             )))
             .select(peers::node_id)
-            .distinct()
             .into_boxed();
 
         if exclude_failed {
             query = query.filter(multi_addresses::last_failed_reason.is_null());
         }
 
-        if randomize {
+        if let Some(order_sql) = Self::build_addr_preference_order_sql(transport_protocols) {
+            query = if randomize {
+                query
+                    .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
+                    .then_order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"))
+            } else {
+                query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
+            };
+        } else if randomize {
             query = query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
         }
 
@@ -896,7 +909,11 @@ impl PeerDatabaseSql {
             query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
         }
 
-        let node_ids = query.load::<String>(&mut conn)?;
+        if let Some(limit) = Self::unique_node_id_row_limit(n) {
+            query = query.limit(limit);
+        }
+
+        let node_ids = Self::unique_node_ids_preserving_order(query.load::<String>(&mut conn)?, n);
 
         if node_ids.is_empty() {
             return Ok(Vec::new());
@@ -1214,10 +1231,16 @@ impl PeerDatabaseSql {
                     PeerFeatures::COMMUNICATION_NODE.to_i32()
                 )))
                 .filter(peers::node_id.ne_all(exclude_node_ids))
-                .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"))
                 .select(peers::node_id)
-                .distinct()
                 .into_boxed();
+
+            if let Some(order_sql) = Self::build_addr_preference_order_sql(transport_protocols) {
+                query = query
+                    .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
+                    .then_order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
+            } else {
+                query = query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
+            }
 
             if known_good {
                 query = query.filter(multi_addresses::last_seen.is_not_null());
@@ -1230,7 +1253,11 @@ impl PeerDatabaseSql {
                 query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
             }
 
-            let node_ids: Vec<String> = query.load::<String>(conn)?;
+            if let Some(limit) = Self::unique_node_id_row_limit(Some(n)) {
+                query = query.limit(limit);
+            }
+
+            let node_ids = Self::unique_node_ids_preserving_order(query.load::<String>(conn)?, Some(n));
 
             if node_ids.is_empty() {
                 return Ok(Vec::new());
@@ -1327,6 +1354,52 @@ impl PeerDatabaseSql {
             .collect();
 
         Some(format!("({})", conditions.join(" OR ")))
+    }
+
+    fn build_addr_preference_order_sql(transport_protocols: &[TransportProtocol]) -> Option<String> {
+        if transport_protocols.is_empty() {
+            return None;
+        }
+
+        let conditions = transport_protocols
+            .iter()
+            .enumerate()
+            .map(|(index, protocol)| {
+                format!(
+                    "WHEN multi_addresses.address LIKE '{}%' THEN {}",
+                    sql_escape(protocol.get_prefix()),
+                    index
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Some(format!(
+            "CASE {} ELSE {} END",
+            conditions.join(" "),
+            transport_protocols.len()
+        ))
+    }
+
+    fn unique_node_ids_preserving_order(node_ids: Vec<String>, limit: Option<usize>) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut unique_node_ids = Vec::new();
+
+        for node_id in node_ids {
+            if seen.insert(node_id.clone()) {
+                unique_node_ids.push(node_id);
+                if limit.is_some_and(|limit| unique_node_ids.len() >= limit) {
+                    break;
+                }
+            }
+        }
+
+        unique_node_ids
+    }
+
+    fn unique_node_id_row_limit(limit: Option<usize>) -> Option<i64> {
+        limit
+            .map(|limit| limit.saturating_mul(MAX_MULTIADDRESSES_PER_PEER))
+            .map(|limit| i64::try_from(limit).unwrap_or(i64::MAX))
     }
 }
 
