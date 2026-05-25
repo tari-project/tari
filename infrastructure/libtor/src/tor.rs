@@ -125,7 +125,7 @@ impl Tor {
     /// Override a given Tor comms transport with the control address and auth from this instance
     pub fn update_comms_transport(&self, transport: &mut TransportConfig) -> Result<(), ExitError> {
         match transport.transport_type {
-            TransportType::Tor => {
+            TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor => {
                 if let Some(ref passphrase) = self.passphrase.0 {
                     transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
                 }

@@ -229,9 +229,8 @@ event_channel_size = 3500
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable. (default = "tor")
-#type = "tor"
+# Peer selection mode. Options are "tor", "tcp", "tor_tcp" and "tcp_tor". (default = "tcp_tor")
+#type = "tcp_tor"
 
 # The address and port to listen for peer connections over TCP. (use: type = "tcp")
 #tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"

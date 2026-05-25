@@ -29,7 +29,9 @@ use std::{
 
 use chrono::Local;
 use cucumber::{then, when};
+use tari_comms::{multiaddr::Multiaddr, types::TransportProtocol};
 use tari_integration_tests::TariWorld;
+use tari_p2p::TransportType;
 
 pub mod merge_mining_steps;
 pub mod mining_steps;
@@ -91,4 +93,53 @@ pub fn get_saved_seed_words(world: &mut TariWorld, wallet_name: &str) -> Vec<Str
         .into_iter()
         .map(|v| v.to_string())
         .collect::<Vec<_>>()
+}
+
+#[then(
+    regex = r#"transport mode "(Tor|Tcp|TorTcp|TcpTor)" selects peer protocols "(.*)" and orders dial addresses "(.*)""#
+)]
+async fn transport_mode_selects_peer_protocols_and_orders_dial_addresses(
+    _world: &mut TariWorld,
+    mode: String,
+    expected_protocols: String,
+    expected_addresses: String,
+) {
+    let mode = match mode.as_str() {
+        "Tor" => TransportType::Tor,
+        "Tcp" => TransportType::Tcp,
+        "TorTcp" => TransportType::TorTcp,
+        "TcpTor" => TransportType::TcpTor,
+        other => panic!("Unknown transport mode {other}"),
+    };
+    let mode_protocols = mode.get_supported_protocols();
+    let expected_protocols = parse_transport_protocols(&expected_protocols);
+    assert_eq!(mode_protocols, expected_protocols);
+
+    let onion_host = "c".repeat(56);
+    let addresses = vec![
+        "/ip4/8.8.8.8/tcp/18189".parse::<Multiaddr>().unwrap(),
+        format!("/onion3/{onion_host}:18141").parse::<Multiaddr>().unwrap(),
+        "/ip6/::1/tcp/18189".parse::<Multiaddr>().unwrap(),
+    ]
+    .into_iter()
+    .filter(|address| mode_protocols.contains(&TransportProtocol::from(address)))
+    .collect::<Vec<_>>();
+    let ordered = TransportProtocol::sort_multiaddrs_by_preference(addresses, &mode_protocols)
+        .into_iter()
+        .map(|address| TransportProtocol::from(&address))
+        .collect::<Vec<_>>();
+
+    assert_eq!(ordered, parse_transport_protocols(&expected_addresses));
+}
+
+fn parse_transport_protocols(protocols: &str) -> Vec<TransportProtocol> {
+    protocols
+        .split(',')
+        .map(|protocol| match protocol.trim() {
+            "ipv4" => TransportProtocol::Ipv4,
+            "ipv6" => TransportProtocol::Ipv6,
+            "onion" => TransportProtocol::Onion,
+            other => panic!("Unknown transport protocol {other}"),
+        })
+        .collect()
 }

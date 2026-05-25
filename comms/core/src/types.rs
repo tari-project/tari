@@ -83,6 +83,21 @@ impl TransportProtocol {
             TransportProtocol::Memory => "/memory",
         }
     }
+
+    pub fn preference_index(address: &Multiaddr, preferred_protocols: &[TransportProtocol]) -> Option<usize> {
+        let protocol = TransportProtocol::from(address);
+        preferred_protocols
+            .iter()
+            .position(|preferred_protocol| preferred_protocol == &protocol)
+    }
+
+    pub fn sort_multiaddrs_by_preference(
+        mut addresses: Vec<Multiaddr>,
+        preferred_protocols: &[TransportProtocol],
+    ) -> Vec<Multiaddr> {
+        addresses.sort_by_key(|address| Self::preference_index(address, preferred_protocols).unwrap_or(usize::MAX));
+        addresses
+    }
 }
 
 impl From<Multiaddr> for TransportProtocol {
@@ -125,3 +140,41 @@ impl From<&Multiaddr> for &TransportProtocol {
 }
 
 hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn sorts_multiaddrs_by_transport_protocol_preference() {
+        let onion_host = "a".repeat(56);
+        let onion = format!("/onion3/{onion_host}:18141").parse::<Multiaddr>().unwrap();
+        let ipv4 = "/ip4/8.8.8.8/tcp/18189".parse::<Multiaddr>().unwrap();
+        let ipv6 = "/ip6/::1/tcp/18189".parse::<Multiaddr>().unwrap();
+
+        let addresses = vec![ipv4.clone(), onion.clone(), ipv6.clone()];
+
+        assert_eq!(
+            TransportProtocol::sort_multiaddrs_by_preference(
+                addresses.clone(),
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6
+                ],
+            ),
+            vec![onion.clone(), ipv4.clone(), ipv6.clone()]
+        );
+        assert_eq!(
+            TransportProtocol::sort_multiaddrs_by_preference(
+                addresses,
+                &[
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion
+                ],
+            ),
+            vec![ipv4, ipv6, onion]
+        );
+    }
+}

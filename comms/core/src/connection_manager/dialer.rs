@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -535,6 +535,7 @@ where
                         &noise_config,
                         &current_transport,
                         config.network_info.network_wire_byte,
+                        config.transport_protocols.clone(),
                         config.excluded_dial_addresses.clone(),
                     )
                     .await
@@ -597,6 +598,7 @@ where
         noise_config: &NoiseConfig,
         transport: &TTransport,
         network_byte: u8,
+        transport_protocols: Vec<TransportProtocol>,
         excluded_dial_addresses: Vec<MultiaddrRange>,
     ) -> (
         DialState,
@@ -605,18 +607,12 @@ where
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
-        let addresses = dial_state
-            .peer()
-            .addresses
-            .clone()
-            .into_vec()
-            .iter()
-            .filter(|&a| {
-                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
-                    supported_transport_protocols.contains(a.into())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let addresses = Self::select_dial_addresses(
+            dial_state.peer(),
+            &supported_transport_protocols,
+            &transport_protocols,
+            &excluded_dial_addresses,
+        );
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
@@ -757,5 +753,135 @@ where
         }
 
         (dial_state, Err(ConnectionManagerError::DialConnectFailedAllAddresses))
+    }
+
+    fn select_dial_addresses(
+        peer: &Peer,
+        supported_transport_protocols: &[TransportProtocol],
+        preferred_transport_protocols: &[TransportProtocol],
+        excluded_dial_addresses: &[MultiaddrRange],
+    ) -> Vec<Multiaddr> {
+        let preferred_transport_protocols =
+            Self::effective_transport_protocols(supported_transport_protocols, preferred_transport_protocols);
+        let addresses = peer
+            .addresses
+            .addresses()
+            .iter()
+            .filter_map(|address| {
+                let address = address.address();
+                let protocol = TransportProtocol::from(address);
+                if !excluded_dial_addresses
+                    .iter()
+                    .any(|excluded| excluded.contains(address))
+                    && preferred_transport_protocols.contains(&protocol)
+                {
+                    Some(address.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        TransportProtocol::sort_multiaddrs_by_preference(addresses, &preferred_transport_protocols)
+    }
+
+    fn effective_transport_protocols(
+        supported_transport_protocols: &[TransportProtocol],
+        preferred_transport_protocols: &[TransportProtocol],
+    ) -> Vec<TransportProtocol> {
+        let protocols = preferred_transport_protocols
+            .iter()
+            .copied()
+            .filter(|protocol| supported_transport_protocols.contains(protocol))
+            .collect::<Vec<_>>();
+
+        if protocols.is_empty() {
+            supported_transport_protocols.to_vec()
+        } else {
+            protocols
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        backoff::ConstantBackoff,
+        connection_manager::tests::create_test_peer,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        transports::MemoryTransport,
+    };
+
+    #[test]
+    fn select_dial_addresses_applies_transport_protocol_preference() {
+        let onion = format!("/onion3/{}:18141", "d".repeat(56))
+            .parse::<Multiaddr>()
+            .unwrap();
+        let ipv4 = "/ip4/8.8.8.8/tcp/18189".parse::<Multiaddr>().unwrap();
+        let ipv6 = "/ip6/::1/tcp/18189".parse::<Multiaddr>().unwrap();
+
+        let mut peer = create_test_peer();
+        peer.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![ipv4.clone(), onion.clone(), ipv6.clone()],
+            &PeerAddressSource::Config,
+        );
+
+        let tor_preferred = Dialer::<MemoryTransport, ConstantBackoff>::select_dial_addresses(
+            &peer,
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            &[],
+        );
+        assert_eq!(tor_preferred, vec![onion.clone(), ipv4.clone(), ipv6.clone()]);
+
+        let tcp_preferred = Dialer::<MemoryTransport, ConstantBackoff>::select_dial_addresses(
+            &peer,
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            &[
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
+            ],
+            &[],
+        );
+
+        let tor_only = Dialer::<MemoryTransport, ConstantBackoff>::select_dial_addresses(
+            &peer,
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            &[TransportProtocol::Onion],
+            &[],
+        );
+        assert_eq!(tor_only, vec![onion.clone()]);
+
+        let tcp_only = Dialer::<MemoryTransport, ConstantBackoff>::select_dial_addresses(
+            &peer,
+            &[
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            &[TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            &[],
+        );
+        assert_eq!(tcp_only, vec![ipv4.clone(), ipv6.clone()]);
+
+        assert_eq!(tcp_preferred, vec![ipv4, ipv6, onion]);
     }
 }

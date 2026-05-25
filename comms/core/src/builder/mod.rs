@@ -323,6 +323,7 @@ impl CommsBuilder {
     /// Set the transport protocols to use for communication
     /// if not provided defaults to IP4, IP6, TOR and memory address
     pub fn with_transport_protocols(mut self, protocols: Vec<TransportProtocol>) -> Self {
+        self.connection_manager_config.transport_protocols = protocols.clone();
         self.transport_protocols = protocols;
         self
     }
