@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.0](https://github.com/tari-project/tari/compare/v5.3.1-pre.3...v5.4.0-pre.0) (2026-05-25)
+
+
+### Features
+
+* better wallet feedback ([#7845](https://github.com/tari-project/tari/issues/7845)) ([88b893b](https://github.com/tari-project/tari/commit/88b893b437cdef7658b18d3b69e4af4a40b5bbee))
+* **xmrig-proxy:** add getinfo and getheight methods to the node's integrated xmrig_proxy ([#7827](https://github.com/tari-project/tari/issues/7827)) ([7ae1410](https://github.com/tari-project/tari/commit/7ae14100bcc3844f14d1e6a5b10cd221f0bed1ad))
+
+
+### Bug Fixes
+
+* builds ([#7841](https://github.com/tari-project/tari/issues/7841)) ([ca68990](https://github.com/tari-project/tari/commit/ca689909ebd8cdb32e7a0c44944bc9a6875f5ccf))
+* increase buffer ([#7844](https://github.com/tari-project/tari/issues/7844)) ([cbce477](https://github.com/tari-project/tari/commit/cbce477b37155b7352eed9a1d063108bc97e9ca4))
+* jmt data usage ([#7824](https://github.com/tari-project/tari/issues/7824)) ([2ffe7da](https://github.com/tari-project/tari/commit/2ffe7dadcb319037482edf2daa77d6c3098fcd28))
+
 ### [5.3.1-pre.3](https://github.com/tari-project/tari/compare/v5.3.1-pre.2...v5.3.1-pre.3) (2026-05-15)
 
 
