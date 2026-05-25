@@ -29,7 +29,9 @@ use std::{
 
 use chrono::Local;
 use cucumber::{then, when};
+use tari_comms::types::TransportProtocol;
 use tari_integration_tests::TariWorld;
+use tari_p2p::TransportType;
 
 pub mod merge_mining_steps;
 pub mod mining_steps;
@@ -46,6 +48,34 @@ pub const CONFIRMATION_PERIOD: u64 = 4;
 pub const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
 #[allow(dead_code)]
 pub const HALF_SECOND: u64 = 500;
+
+#[then(expr = "transport type {word} selects peer protocols {word}")]
+async fn transport_type_selects_peer_protocols(_world: &mut TariWorld, transport_type: String, protocols: String) {
+    let transport_type = match transport_type.as_str() {
+        "tor" => TransportType::Tor,
+        "tcp" => TransportType::Tcp,
+        "tor_tcp" => TransportType::TorTcp,
+        "tcp_tor" => TransportType::TcpTor,
+        other => panic!("Unknown transport type '{other}'"),
+    };
+    let expected = match protocols.as_str() {
+        "onion" => vec![TransportProtocol::Onion],
+        "tcp" => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+        "onion,tcp" => vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ],
+        "tcp,onion" => vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion,
+        ],
+        other => panic!("Unknown protocol list '{other}'"),
+    };
+
+    assert_eq!(transport_type.get_supported_protocols(), expected);
+}
 
 #[when(expr = "I wait {int} seconds")]
 async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {

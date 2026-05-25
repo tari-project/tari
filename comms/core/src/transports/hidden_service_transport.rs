@@ -49,17 +49,29 @@ pub struct HiddenServiceTransport<F: Fn(TorIdentity)> {
 
 impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
     pub fn new(hidden_service_ctl: HiddenServiceController, after_init: F) -> Self {
-        let mut supported_protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Onion];
-        if supports_ipv6() {
-            supported_protocols.push(TransportProtocol::Ipv6);
-        }
+        Self::with_supported_protocols(
+            hidden_service_ctl,
+            after_init,
+            vec![
+                TransportProtocol::Ipv4,
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv6,
+            ],
+        )
+    }
+
+    pub fn with_supported_protocols(
+        hidden_service_ctl: HiddenServiceController,
+        after_init: F,
+        supported_protocols: Vec<TransportProtocol>,
+    ) -> Self {
         Self {
             inner: Arc::new(RwLock::new(HiddenServiceTransportInner {
                 socks_transport: None,
                 hidden_service_ctl: Some(hidden_service_ctl),
             })),
             after_init,
-            supported_protocols,
+            supported_protocols: filter_supported_protocols_for_host(supported_protocols),
         }
     }
 
@@ -104,6 +116,13 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         (self.after_init)(hidden_service.tor_identity().clone());
         Ok((inbound, listen_addr))
     }
+}
+
+fn filter_supported_protocols_for_host(mut supported_protocols: Vec<TransportProtocol>) -> Vec<TransportProtocol> {
+    if !supports_ipv6() {
+        supported_protocols.retain(|protocol| *protocol != TransportProtocol::Ipv6);
+    }
+    supported_protocols
 }
 #[crate::async_trait]
 impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {

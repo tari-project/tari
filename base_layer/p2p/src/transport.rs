@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{num::NonZeroU16, sync::Arc};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tari_common::configuration::MultiaddrList;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -34,21 +34,20 @@ use tari_comms::{
 
 use crate::{SocksAuthentication, TorControlAuthentication, initialization::CommsInitializationError};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default)]
 pub struct TransportConfig {
-    #[serde(rename = "type")]
     pub transport_type: TransportType,
     pub tcp: TcpTransportConfig,
     pub tor: TorTransportConfig,
     pub socks: Socks5TransportConfig,
     pub memory: MemoryTransportConfig,
+    transport_override: TransportOverride,
 }
 
 impl TransportConfig {
     pub fn new_memory(config: MemoryTransportConfig) -> Self {
         Self {
-            transport_type: TransportType::Memory,
+            transport_override: TransportOverride::Memory,
             memory: config,
             ..Default::default()
         }
@@ -72,7 +71,7 @@ impl TransportConfig {
 
     pub fn new_socks5(forward_address: Multiaddr, config: Socks5TransportConfig) -> Self {
         Self {
-            transport_type: TransportType::Socks5,
+            transport_override: TransportOverride::Socks5,
             socks: config,
             tcp: TcpTransportConfig {
                 listener_address: forward_address,
@@ -83,40 +82,184 @@ impl TransportConfig {
     }
 
     pub fn is_tor(&self) -> bool {
-        matches!(self.transport_type, TransportType::Tor)
+        self.uses_tor_hidden_service()
+    }
+
+    pub fn uses_tor_hidden_service(&self) -> bool {
+        self.transport_override == TransportOverride::None && self.transport_type.uses_tor()
+    }
+
+    pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
+        match self.transport_override {
+            TransportOverride::Memory => vec![TransportProtocol::Memory],
+            TransportOverride::Socks5 => vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            TransportOverride::None => self.transport_type.get_supported_protocols(),
+        }
+    }
+
+    pub(crate) fn is_memory_transport(&self) -> bool {
+        self.transport_override == TransportOverride::Memory
+    }
+
+    pub(crate) fn is_socks5_transport(&self) -> bool {
+        self.transport_override == TransportOverride::Socks5
+    }
+}
+
+impl Serialize for TransportConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        TransportConfigWireRef {
+            transport_type: WireTransportType::from(self),
+            tcp: &self.tcp,
+            tor: &self.tor,
+            socks: &self.socks,
+            memory: &self.memory,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TransportConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(TransportConfigWire::deserialize(deserializer)?.into())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
+enum TransportOverride {
+    #[default]
+    None,
+    Memory,
+    Socks5,
+}
+
+#[derive(Serialize)]
+struct TransportConfigWireRef<'a> {
+    #[serde(rename = "type")]
+    transport_type: WireTransportType,
+    tcp: &'a TcpTransportConfig,
+    tor: &'a TorTransportConfig,
+    socks: &'a Socks5TransportConfig,
+    memory: &'a MemoryTransportConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TransportConfigWire {
+    #[serde(rename = "type", default)]
+    transport_type: WireTransportType,
+    #[serde(default)]
+    tcp: TcpTransportConfig,
+    #[serde(default)]
+    tor: TorTransportConfig,
+    #[serde(default)]
+    socks: Socks5TransportConfig,
+    #[serde(default)]
+    memory: MemoryTransportConfig,
+}
+
+impl From<TransportConfigWire> for TransportConfig {
+    fn from(config: TransportConfigWire) -> Self {
+        let (transport_type, transport_override) = config.transport_type.into_transport_parts();
+        Self {
+            transport_type,
+            tcp: config.tcp,
+            tor: config.tor,
+            socks: config.socks,
+            memory: config.memory,
+            transport_override,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum WireTransportType {
+    Tor,
+    Tcp,
+    TorTcp,
+    #[default]
+    TcpTor,
+    Memory,
+    Socks5,
+}
+
+impl WireTransportType {
+    fn into_transport_parts(self) -> (TransportType, TransportOverride) {
+        match self {
+            WireTransportType::Tor => (TransportType::Tor, TransportOverride::None),
+            WireTransportType::Tcp => (TransportType::Tcp, TransportOverride::None),
+            WireTransportType::TorTcp => (TransportType::TorTcp, TransportOverride::None),
+            WireTransportType::TcpTor => (TransportType::TcpTor, TransportOverride::None),
+            WireTransportType::Memory => (TransportType::TcpTor, TransportOverride::Memory),
+            WireTransportType::Socks5 => (TransportType::TcpTor, TransportOverride::Socks5),
+        }
+    }
+}
+
+impl From<&TransportConfig> for WireTransportType {
+    fn from(config: &TransportConfig) -> Self {
+        match config.transport_override {
+            TransportOverride::Memory => WireTransportType::Memory,
+            TransportOverride::Socks5 => WireTransportType::Socks5,
+            TransportOverride::None => config.transport_type.into(),
+        }
+    }
+}
+
+impl From<TransportType> for WireTransportType {
+    fn from(transport_type: TransportType) -> Self {
+        match transport_type {
+            TransportType::Tor => WireTransportType::Tor,
+            TransportType::Tcp => WireTransportType::Tcp,
+            TransportType::TorTcp => WireTransportType::TorTcp,
+            TransportType::TcpTor => WireTransportType::TcpTor,
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum TransportType {
-    /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
-    Memory,
-    /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
-    /// configured to allow communication with peers using the tor transport.
-    Tcp,
-    /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
-    /// onion v3 and DNS addresses.
-    #[default]
+    /// Use Tor onion addresses only when selecting peers and dial addresses.
     Tor,
-    /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
-    Socks5,
+    /// Use TCP/IP addresses only when selecting peers and dial addresses.
+    Tcp,
+    /// Enable Tor and TCP/IP addresses, preferring Tor onion addresses.
+    TorTcp,
+    /// Enable Tor and TCP/IP addresses, preferring TCP/IP addresses.
+    #[default]
+    TcpTor,
 }
 
 impl TransportType {
+    pub fn uses_tor(&self) -> bool {
+        matches!(self, TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor)
+    }
+
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
         match self {
-            TransportType::Memory => vec![TransportProtocol::Memory],
+            TransportType::Tor => vec![TransportProtocol::Onion],
             TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
-            TransportType::Tor => vec![
+            TransportType::TorTcp => vec![
                 TransportProtocol::Onion,
                 TransportProtocol::Ipv4,
                 TransportProtocol::Ipv6,
             ],
-            TransportType::Socks5 => vec![
-                TransportProtocol::Onion,
+            TransportType::TcpTor => vec![
                 TransportProtocol::Ipv4,
                 TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
             ],
         }
     }
@@ -127,7 +270,8 @@ impl TransportType {
 pub struct TcpTransportConfig {
     /// Socket to bind the TCP listener
     pub listener_address: Multiaddr,
-    /// Optional socket address of the tor SOCKS proxy, enabling the node to communicate with Tor nodes
+    /// Deprecated for peer selection modes. The `Tcp` transport type is TCP-only; use `TorTcp` or `TcpTor` to select
+    /// onion addresses.
     pub tor_socks_address: Option<Multiaddr>,
     /// Optional tor SOCKS proxy authentication
     pub tor_socks_auth: SocksAuthentication,
@@ -254,5 +398,64 @@ impl Default for MemoryTransportConfig {
         Self {
             listener_address: "/memory/0".parse().unwrap(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn transport_type_default_prefers_tcp_then_tor() {
+        assert_eq!(TransportType::default(), TransportType::TcpTor);
+    }
+
+    #[test]
+    fn transport_type_protocol_order_matches_peer_selection_modes() {
+        assert_eq!(
+            TransportType::Tor.get_supported_protocols(),
+            vec![TransportProtocol::Onion]
+        );
+        assert_eq!(
+            TransportType::Tcp.get_supported_protocols(),
+            vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
+        );
+        assert_eq!(
+            TransportType::TorTcp.get_supported_protocols(),
+            vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6
+            ]
+        );
+        assert_eq!(
+            TransportType::TcpTor.get_supported_protocols(),
+            vec![
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_auxiliary_transports_do_not_add_public_transport_type_modes() {
+        let memory = TransportConfig::new_memory(MemoryTransportConfig::default());
+        assert_eq!(memory.transport_type, TransportType::TcpTor);
+        assert_eq!(memory.get_supported_protocols(), vec![TransportProtocol::Memory]);
+
+        let socks = TransportConfig::new_socks5(
+            "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            Socks5TransportConfig::default(),
+        );
+        assert_eq!(socks.transport_type, TransportType::TcpTor);
+        assert_eq!(
+            socks.get_supported_protocols(),
+            vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6
+            ]
+        );
     }
 }

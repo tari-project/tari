@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -79,6 +79,31 @@ type DialFuturesUnordered = FuturesUnordered<
         ),
     >,
 >;
+
+fn filter_and_order_dial_addresses(
+    addresses: impl IntoIterator<Item = Multiaddr>,
+    supported_transport_protocols: &[TransportProtocol],
+    excluded_dial_addresses: &[MultiaddrRange],
+) -> Vec<Multiaddr> {
+    let mut addresses = addresses
+        .into_iter()
+        .filter(|address| {
+            !excluded_dial_addresses
+                .iter()
+                .any(|excluded| excluded.contains(address))
+                && supported_transport_protocols.contains(&TransportProtocol::from(address))
+        })
+        .collect::<Vec<_>>();
+
+    addresses.sort_by_key(|address| {
+        let protocol = TransportProtocol::from(address);
+        supported_transport_protocols
+            .iter()
+            .position(|supported_protocol| *supported_protocol == protocol)
+            .unwrap_or(usize::MAX)
+    });
+    addresses
+}
 
 #[derive(Debug)]
 pub(crate) enum DialerRequest {
@@ -605,18 +630,11 @@ where
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
-        let addresses = dial_state
-            .peer()
-            .addresses
-            .clone()
-            .into_vec()
-            .iter()
-            .filter(|&a| {
-                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
-                    supported_transport_protocols.contains(a.into())
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+        let addresses = filter_and_order_dial_addresses(
+            dial_state.peer().addresses.clone().into_vec(),
+            &supported_transport_protocols,
+            &excluded_dial_addresses,
+        );
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
@@ -757,5 +775,69 @@ where
         }
 
         (dial_state, Err(ConnectionManagerError::DialConnectFailedAllAddresses))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn tcp4_addr() -> Multiaddr {
+        "/ip4/127.0.0.1/tcp/18189".parse().unwrap()
+    }
+
+    fn tcp6_addr() -> Multiaddr {
+        "/ip6/::1/tcp/18189".parse().unwrap()
+    }
+
+    fn onion_addr() -> Multiaddr {
+        "/onion3/e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn dial_address_selection_filters_and_orders_transport_modes() {
+        let tcp4 = tcp4_addr();
+        let tcp6 = tcp6_addr();
+        let onion = onion_addr();
+        let addresses = vec![tcp4.clone(), onion.clone(), tcp6.clone()];
+
+        assert_eq!(
+            filter_and_order_dial_addresses(addresses.clone(), &[TransportProtocol::Onion], &[]),
+            vec![onion.clone()]
+        );
+        assert_eq!(
+            filter_and_order_dial_addresses(
+                addresses.clone(),
+                &[TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+                &[]
+            ),
+            vec![tcp4.clone(), tcp6.clone()]
+        );
+        assert_eq!(
+            filter_and_order_dial_addresses(
+                addresses.clone(),
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6
+                ],
+                &[]
+            ),
+            vec![onion.clone(), tcp4.clone(), tcp6.clone()]
+        );
+        assert_eq!(
+            filter_and_order_dial_addresses(
+                addresses,
+                &[
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                    TransportProtocol::Onion
+                ],
+                &[]
+            ),
+            vec![tcp4, tcp6, onion]
+        );
     }
 }

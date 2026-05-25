@@ -66,10 +66,8 @@ use tari_comms::{
     transports::{
         HiddenServiceTransport,
         MemoryTransport,
-        SocksConfig,
         SocksTransport,
         TcpWithTorTransport,
-        predicate::FalsePredicate,
     },
     utils::cidr::parse_cidrs,
 };
@@ -221,63 +219,52 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
     transport_config: TransportConfig,
     after_comms: F,
 ) -> Result<CommsNode, CommsInitializationError> {
-    let comms = match transport_config.transport_type {
-        TransportType::Memory => {
-            debug!(target: LOG_TARGET, "Building in-memory comms stack");
-            comms
-                .with_listener_address(transport_config.memory.listener_address.clone())
-                .spawn_with_transport(MemoryTransport)
-                .await?
-        },
-        TransportType::Tcp => {
-            let config = transport_config.tcp;
-            debug!(
-                target: LOG_TARGET,
-                "Building TCP comms stack{}",
-                config
-                    .tor_socks_address
-                    .as_ref()
-                    .map(|_| " with Tor support")
-                    .unwrap_or("")
-            );
-            let mut transport = TcpWithTorTransport::new();
-            if let Some(addr) = config.tor_socks_address {
-                transport.set_tor_socks_proxy(SocksConfig {
-                    proxy_address: addr,
-                    authentication: config.tor_socks_auth.into(),
-                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                });
-            }
-            comms
-                .with_listener_address(config.listener_address)
-                .spawn_with_transport(transport)
-                .await?
-        },
-        TransportType::Tor => {
-            let tor_config = transport_config.tor;
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
-            let listener_address_override = tor_config.listener_address_override.clone();
-            let hidden_service_ctl = initialize_hidden_service(tor_config)?;
-            // Set the listener address to be the address (usually local) to which tor will forward all traffic
-            let instant = Instant::now();
-            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms);
-            debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
+    let comms = if transport_config.is_memory_transport() {
+        debug!(target: LOG_TARGET, "Building in-memory comms stack");
+        comms
+            .with_listener_address(transport_config.memory.listener_address.clone())
+            .spawn_with_transport(MemoryTransport)
+            .await?
+    } else if transport_config.is_socks5_transport() {
+        debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
+        let transport = SocksTransport::new(transport_config.socks.into());
+        comms
+            .with_listener_address(transport_config.tcp.listener_address)
+            .spawn_with_transport(transport)
+            .await?
+    } else {
+        match transport_config.transport_type {
+            TransportType::Tcp => {
+                let config = transport_config.tcp;
+                debug!(target: LOG_TARGET, "Building TCP comms stack");
+                comms
+                    .with_listener_address(config.listener_address)
+                    .spawn_with_transport(TcpWithTorTransport::new())
+                    .await?
+            },
+            TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor => {
+                let supported_protocols = transport_config.transport_type.get_supported_protocols();
+                let tor_config = transport_config.tor;
+                debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
+                let listener_address_override = tor_config.listener_address_override.clone();
+                let hidden_service_ctl = initialize_hidden_service(tor_config)?;
+                // Set the listener address to be the address (usually local) to which tor will forward all traffic
+                let instant = Instant::now();
+                let transport = HiddenServiceTransport::with_supported_protocols(
+                    hidden_service_ctl,
+                    after_comms,
+                    supported_protocols,
+                );
+                debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
 
-            comms
-                .with_listener_address(
-                    listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
-                )
-                .spawn_with_transport(transport)
-                .await?
-        },
-        TransportType::Socks5 => {
-            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-            let transport = SocksTransport::new(transport_config.socks.into());
-            comms
-                .with_listener_address(transport_config.tcp.listener_address)
-                .spawn_with_transport(transport)
-                .await?
-        },
+                comms
+                    .with_listener_address(
+                        listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
+                    )
+                    .spawn_with_transport(transport)
+                    .await?
+            },
+        }
     };
 
     Ok(comms)
@@ -331,7 +318,7 @@ async fn configure_comms_and_dht(
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_transport_protocols(config.transport.transport_type.get_supported_protocols())
+        .with_transport_protocols(config.transport.get_supported_protocols())
         .with_peer_storage(peer_database)
         .with_excluded_dial_addresses(config.dht.excluded_dial_addresses.clone().into_vec());
 
