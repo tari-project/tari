@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::{CommsPublicKey, TransportProtocol, sort_multiaddr_by_transport_preference, transport_protocol_rank},
+    types::{CommsPublicKey, TransportProtocol, transport_protocol_rank},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -77,8 +77,9 @@ fn select_dial_addresses(
 ) -> Vec<Multiaddr> {
     let mut addresses = peer
         .addresses
-        .address_iter()
-        .filter(|&address| {
+        .iter()
+        .filter(|address_with_stats| {
+            let address = address_with_stats.address();
             let protocol = TransportProtocol::from(address);
             !excluded_dial_addresses
                 .iter()
@@ -87,10 +88,18 @@ fn select_dial_addresses(
                 (configured_transport_protocols.is_empty() ||
                     transport_protocol_rank(address, configured_transport_protocols).is_some())
         })
-        .cloned()
         .collect::<Vec<_>>();
-    sort_multiaddr_by_transport_preference(&mut addresses, configured_transport_protocols);
+    // Preserve the existing address-quality ordering within each preference bucket.
+    addresses.sort_by_key(|address_with_stats| {
+        (
+            address_with_stats.last_failed_reason().is_some(),
+            transport_protocol_rank(address_with_stats.address(), configured_transport_protocols).unwrap_or(usize::MAX),
+        )
+    });
     addresses
+        .into_iter()
+        .map(|address_with_stats| address_with_stats.address().clone())
+        .collect()
 }
 
 type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
@@ -894,6 +903,30 @@ mod tests {
                 &excluded,
             ),
             vec![TransportProtocol::Ipv6, TransportProtocol::Onion]
+        );
+    }
+
+    #[test]
+    fn failed_preferred_transport_addresses_do_not_jump_healthy_fallbacks() {
+        let onion: Multiaddr = format!("/onion3/{ONION3_HOST}:18141").parse().unwrap();
+        let tcp: Multiaddr = "/ip4/1.2.3.4/tcp/18189".parse().unwrap();
+        let mut peer = peer_with_addresses(vec![onion.clone(), tcp.clone()]);
+        assert!(
+            peer.addresses
+                .mark_failed_connection_attempt(&onion, "failed".to_string())
+        );
+
+        assert_eq!(
+            selected_protocols(
+                &peer,
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                ],
+                &[],
+            ),
+            vec![TransportProtocol::Ipv4, TransportProtocol::Onion]
         );
     }
 }

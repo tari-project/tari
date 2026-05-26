@@ -102,7 +102,7 @@ impl TransportConfig {
 
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
         match self.transport_override {
-            TransportOverride::None => self.transport_type.get_supported_protocols(),
+            TransportOverride::None => self.configured_transport_protocols(),
             TransportOverride::Memory => vec![TransportProtocol::Memory],
             TransportOverride::Socks5 => vec![
                 TransportProtocol::Onion,
@@ -110,6 +110,35 @@ impl TransportConfig {
                 TransportProtocol::Ipv6,
             ],
         }
+    }
+
+    fn configured_transport_protocols(&self) -> Vec<TransportProtocol> {
+        match self.transport_type {
+            TransportType::Tor => vec![TransportProtocol::Onion],
+            TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            TransportType::TorTcp => {
+                if self.tcp_can_dial_onion_addresses() {
+                    vec![
+                        TransportProtocol::Onion,
+                        TransportProtocol::Ipv4,
+                        TransportProtocol::Ipv6,
+                    ]
+                } else {
+                    vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
+                }
+            },
+            TransportType::TcpTor => {
+                let mut protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6];
+                if self.tcp_can_dial_onion_addresses() {
+                    protocols.push(TransportProtocol::Onion);
+                }
+                protocols
+            },
+        }
+    }
+
+    fn tcp_can_dial_onion_addresses(&self) -> bool {
+        self.tcp.tor_socks_address.is_some()
     }
 
     pub(crate) fn comms_transport(&self) -> CommsTransport {
@@ -411,5 +440,49 @@ mod tests {
         let tcp_tor = TransportConfig::default();
         assert_eq!(tcp_tor.comms_transport(), CommsTransport::Tcp);
         assert!(!tcp_tor.uses_tor_hidden_service());
+    }
+
+    #[test]
+    fn combined_modes_only_select_onion_when_tcp_can_dial_it() {
+        let tor_tcp_without_proxy = TransportConfig {
+            transport_type: TransportType::TorTcp,
+            ..Default::default()
+        };
+        assert_eq!(tor_tcp_without_proxy.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ]);
+
+        let tcp_tor_without_proxy = TransportConfig::default();
+        assert_eq!(tcp_tor_without_proxy.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ]);
+
+        let tcp_with_proxy = TcpTransportConfig {
+            tor_socks_address: Some("/ip4/127.0.0.1/tcp/9050".parse().unwrap()),
+            ..Default::default()
+        };
+        let tor_tcp_with_proxy = TransportConfig {
+            transport_type: TransportType::TorTcp,
+            tcp: tcp_with_proxy.clone(),
+            ..Default::default()
+        };
+        assert_eq!(tor_tcp_with_proxy.get_supported_protocols(), vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ]);
+
+        let tcp_tor_with_proxy = TransportConfig {
+            transport_type: TransportType::TcpTor,
+            tcp: tcp_with_proxy,
+            ..Default::default()
+        };
+        assert_eq!(tcp_tor_with_proxy.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion,
+        ]);
     }
 }

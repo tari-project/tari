@@ -53,7 +53,7 @@ use crate::{
         storage::schema::{multi_addresses, node_identity, peers},
     },
     protocol::ProtocolId,
-    types::{CommsPublicKey, TransportProtocol, transport_protocol_rank},
+    types::{CommsPublicKey, TransportProtocol},
     utils::datetime::safe_future_datetime_from_duration,
 };
 
@@ -915,7 +915,7 @@ impl PeerDatabaseSql {
         }
         let original_order = Self::node_id_order(&node_ids);
         let mut peers = self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)?;
-        Self::sort_peers_by_transport_preference(&mut peers, transport_protocols, &original_order);
+        Self::sort_peers_by_original_order(&mut peers, &original_order);
         if let Some(limit) = n {
             peers.truncate(limit);
         }
@@ -1292,33 +1292,8 @@ impl PeerDatabaseSql {
             .collect()
     }
 
-    fn peer_protocol_preference_rank(peer: &Peer, transport_protocols: &[TransportProtocol]) -> usize {
-        if transport_protocols.is_empty() {
-            return 0;
-        }
-
-        peer.addresses
-            .address_iter()
-            .filter_map(|address| transport_protocol_rank(address, transport_protocols))
-            .min()
-            .unwrap_or(usize::MAX)
-    }
-
-    fn sort_peers_by_transport_preference(
-        peers: &mut [Peer],
-        transport_protocols: &[TransportProtocol],
-        original_order: &HashMap<NodeId, usize>,
-    ) {
-        if transport_protocols.is_empty() {
-            return;
-        }
-
-        peers.sort_by_key(|peer| {
-            (
-                Self::peer_protocol_preference_rank(peer, transport_protocols),
-                original_order.get(&peer.node_id).copied().unwrap_or(usize::MAX),
-            )
-        });
+    fn sort_peers_by_original_order(peers: &mut [Peer], original_order: &HashMap<NodeId, usize>) {
+        peers.sort_by_key(|peer| original_order.get(&peer.node_id).copied().unwrap_or(usize::MAX));
     }
 
     /// Builds an OR-ed SQL clause like:
@@ -1804,6 +1779,8 @@ mod tests {
         TcpThenTor,
     }
 
+    const ONION3_HOST: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx";
+
     fn peer_with_addresses(addresses: Vec<Multiaddr>) -> Peer {
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
         let node_id = NodeId::from_key(&pk);
@@ -1824,8 +1801,6 @@ mod tests {
         transport_protocols: &[TransportProtocol],
         expected_order: ExpectedCandidateOrder,
     ) {
-        const ONION3_HOST: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx";
-
         let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
@@ -1881,6 +1856,46 @@ mod tests {
             ],
             ExpectedCandidateOrder::TcpThenTor,
         );
+    }
+
+    #[test]
+    fn test_available_dial_candidates_preserve_query_order_when_failed_addresses_are_excluded() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        let failed_onion_address: Multiaddr = format!("/onion3/{ONION3_HOST}:18141").parse().unwrap();
+        let mixed_peer = peer_with_addresses(vec![
+            failed_onion_address.clone(),
+            "/ip4/1.2.3.4/tcp/18189".parse().unwrap(),
+        ]);
+        let healthy_onion_peer = peer_with_addresses(vec![format!("/onion3/{ONION3_HOST}:18142").parse().unwrap()]);
+
+        peers_db.add_or_update_peer(mixed_peer.clone()).unwrap();
+        peers_db
+            .set_last_failed_reason(&mixed_peer.node_id, "failed".to_string(), &failed_onion_address)
+            .unwrap();
+        peers_db.add_or_update_peer(healthy_onion_peer.clone()).unwrap();
+
+        let candidates = peers_db
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &[
+                    TransportProtocol::Onion,
+                    TransportProtocol::Ipv4,
+                    TransportProtocol::Ipv6,
+                ],
+                true,
+                false,
+            )
+            .unwrap();
+        let candidate_ids = candidates.iter().map(|peer| peer.node_id.clone()).collect::<Vec<_>>();
+
+        assert_eq!(candidate_ids, vec![healthy_onion_peer.node_id, mixed_peer.node_id]);
     }
 
     #[test]

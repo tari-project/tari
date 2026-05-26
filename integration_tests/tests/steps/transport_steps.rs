@@ -35,7 +35,7 @@ use tari_comms::{
     types::{CommsPublicKey, TransportProtocol, sort_multiaddr_by_transport_preference, transport_protocol_rank},
 };
 use tari_integration_tests::TariWorld;
-use tari_p2p::TransportType;
+use tari_p2p::{TcpTransportConfig, TorTransportConfig, TransportConfig, TransportType};
 
 const ONION3_HOST: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx";
 
@@ -44,11 +44,11 @@ async fn transport_peer_selection_fixtures_are_available(_world: &mut TariWorld)
 
 #[then(regex = r"^transport mode (tor|tcp|tor_tcp|tcp_tor) selects peers in order ([a-z,]+)$")]
 async fn transport_mode_selects_peers_in_order(_world: &mut TariWorld, mode: String, expected: String) {
-    let transport_type = transport_type_from_name(&mode);
+    let transport_config = transport_config_from_name(&mode);
     let (peers_db, tcp_peer, onion_peer) = peer_selection_fixture();
 
     let candidates = peers_db
-        .get_available_dial_candidates(&[], None, &transport_type.get_supported_protocols(), false, false)
+        .get_available_dial_candidates(&[], None, &transport_config.get_supported_protocols(), false, false)
         .unwrap();
     let actual = candidates
         .iter()
@@ -60,8 +60,8 @@ async fn transport_mode_selects_peers_in_order(_world: &mut TariWorld, mode: Str
 
 #[then(regex = r"^transport mode (tor|tcp|tor_tcp|tcp_tor) dials addresses in order ([a-z,]+)$")]
 async fn transport_mode_dials_addresses_in_order(_world: &mut TariWorld, mode: String, expected: String) {
-    let transport_type = transport_type_from_name(&mode);
-    let preferred_protocols = transport_type.get_supported_protocols();
+    let transport_config = transport_config_from_name(&mode);
+    let preferred_protocols = transport_config.get_supported_protocols();
     let mut addresses = vec![onion_address(), tcp_address()];
 
     addresses.retain(|address| transport_protocol_rank(address, &preferred_protocols).is_some());
@@ -71,13 +71,28 @@ async fn transport_mode_dials_addresses_in_order(_world: &mut TariWorld, mode: S
     assert_eq!(actual, expected_names(&expected));
 }
 
-fn transport_type_from_name(name: &str) -> TransportType {
+fn transport_config_from_name(name: &str) -> TransportConfig {
     match name {
-        "tor" => TransportType::Tor,
-        "tcp" => TransportType::Tcp,
-        "tor_tcp" => TransportType::TorTcp,
-        "tcp_tor" => TransportType::TcpTor,
+        "tor" => TransportConfig::new_tor(TorTransportConfig::default()),
+        "tcp" => TransportConfig::new_tcp(TcpTransportConfig::default()),
+        "tor_tcp" => {
+            let mut transport = TransportConfig::new_tcp(tcp_transport_with_tor_proxy());
+            transport.transport_type = TransportType::TorTcp;
+            transport
+        },
+        "tcp_tor" => {
+            let mut transport = TransportConfig::new_tcp(tcp_transport_with_tor_proxy());
+            transport.transport_type = TransportType::TcpTor;
+            transport
+        },
         other => panic!("unknown transport type: {other}"),
+    }
+}
+
+fn tcp_transport_with_tor_proxy() -> TcpTransportConfig {
+    TcpTransportConfig {
+        tor_socks_address: Some("/ip4/127.0.0.1/tcp/9050".parse().unwrap()),
+        ..Default::default()
     }
 }
 
