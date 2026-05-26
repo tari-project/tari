@@ -124,17 +124,18 @@ impl Tor {
 
     /// Override a given Tor comms transport with the control address and auth from this instance
     pub fn update_comms_transport(&self, transport: &mut TransportConfig) -> Result<(), ExitError> {
-        if transport.uses_tor_hidden_service() {
-            if let Some(ref passphrase) = self.passphrase.0 {
-                transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
-            }
-            transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
-            debug!(target: LOG_TARGET, "updated comms transport: {transport:?}");
-            Ok(())
-        } else {
+        if !transport.uses_tor_hidden_service() {
             let e = format!("Expected a TorHiddenService comms transport, received: {transport:?}");
-            Err(ExitError::new(ExitCode::ConfigError, e))
+            return Err(ExitError::new(ExitCode::ConfigError, e));
         }
+
+        if let Some(ref passphrase) = self.passphrase.0 {
+            transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
+        }
+
+        transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
+        debug!(target: LOG_TARGET, "updated comms transport: {transport:?}");
+        Ok(())
     }
 
     /// Run the Tor instance in the background and return a handle to the thread.

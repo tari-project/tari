@@ -236,7 +236,7 @@ event_channel_size = 3500
 # - "tcp_tor": select and dial TCP/IP and onion peers, preferring TCP/IP. (default = "tcp_tor")
 #type = "tcp_tor"
 
-# The address and port to listen for peer connections over TCP. (used by type = "tcp")
+# The address and port to listen for peer connections over TCP. (used by type = "tcp", "tor_tcp", and "tcp_tor")
 #tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
 # Configures a tor proxy used by the TCP transport to connect to onion addresses. All other traffic uses direct TCP
 # connections. This setting is optional; if it is not specified, this node will not be able to connect to nodes that
@@ -245,7 +245,7 @@ event_channel_size = 3500
 # Optional tor SOCKS proxy authentication (default = "none")
 #tcp.tor_socks_auth = "none"
 
-# Tor hidden service settings used by type = "tor", "tor_tcp", and "tcp_tor".
+# Tor hidden service settings used by type = "tor".
 # Address of the tor control server
 #tor.control_address = "/ip4/127.0.0.1/tcp/9051"
 # SOCKS proxy auth (default = "none")

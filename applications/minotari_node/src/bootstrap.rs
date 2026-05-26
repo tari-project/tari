@@ -54,7 +54,6 @@ use tari_core::{
 };
 use tari_p2p::{
     P2pConfig,
-    TransportType,
     auto_update::SoftwareUpdaterService,
     comms_connector::pubsub_connector,
     initialization,
@@ -244,13 +243,10 @@ where B: BlockchainBackend + 'static
         let comms = comms.map_err(|e| e.to_exit_error())?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
-        match p2p_config.transport.transport_type {
-            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
-            _ => {
-                identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
-                    .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-            },
-        };
+        if p2p_config.transport.uses_tor_hidden_service() {
+            identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+        }
         for peer in force_sync_peers {
             comms
                 .peer_manager()
