@@ -1230,13 +1230,7 @@ impl PeerDatabaseSql {
                 .group_by(peers::node_id)
                 .into_boxed();
 
-            if let Some(order_sql) = Self::build_best_addr_preference_order_sql(transport_protocols) {
-                query = query
-                    .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>(&order_sql))
-                    .then_order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
-            } else {
-                query = query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
-            }
+            query = query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
 
             if known_good {
                 query = query.filter(multi_addresses::last_seen.is_not_null());
@@ -1255,13 +1249,7 @@ impl PeerDatabaseSql {
                 return Ok(Vec::new());
             }
 
-            // Step 2: Load full peer + addresses for matching node_ids, then apply transport preference before
-            // truncating.
-            let original_order = Self::node_id_order(&node_ids);
-            let mut peers = self.get_peers_by_node_ids_str(&node_ids, true, conn)?;
-            Self::sort_peers_by_transport_preference(&mut peers, transport_protocols, &original_order);
-            peers.truncate(n);
-            Ok(peers)
+            self.get_peers_by_node_ids_str(&node_ids, true, conn)
         })
     }
 
