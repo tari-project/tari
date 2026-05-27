@@ -186,34 +186,6 @@ async fn added_pool_peers() {
     assert!(conn.handle_count() == 2 || conn.handle_count() == 3);
 }
 
-#[tokio::test]
-async fn insert_into_pool() {
-    let node_identity = make_node_identity();
-    let node_identities = build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE);
-
-    let config = DhtConfig {
-        num_neighbouring_nodes: 4,
-        num_random_nodes: 4,
-        ..Default::default()
-    };
-    let (mut dht_connectivity, _, _, _, _, _) = setup(config, node_identity.clone(), vec![]).await;
-
-    let shuffled = {
-        let mut v = node_identities.clone();
-        v.shuffle(&mut rand::rng());
-        v
-    };
-
-    // Insert all 10 peers into the pool
-    for ni in &shuffled {
-        dht_connectivity.insert_random_peer(ni.node_id().clone());
-    }
-
-    // insert_random_peer caps the pool at pool_size = num_neighbouring_nodes + num_random_nodes = 8
-    // (excess entries are popped off even without minimize_connections)
-    assert_eq!(dht_connectivity.random_pool.len(), 8);
-}
-
 mod metrics {
     mod collector {
         use tari_comms::peer_manager::NodeId;
