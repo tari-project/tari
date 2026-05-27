@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.1](https://github.com/tari-project/tari/compare/v5.4.0-pre.0...v5.4.0-pre.1) (2026-05-27)
+
+### Features
+
+* **sidechain:** carry next-epoch hash in EndEpoch command ([#7856](https://github.com/tari-project/tari/issues/7856)) ([941dd85](https://github.com/tari-project/tari/commit/941dd8592993629bbb1d2cc9f0dca51689a4bfef))
+
+### Bug Fixes
+
+* improve pool management ([#7857](https://github.com/tari-project/tari/issues/7857)) ([53f34f2](https://github.com/tari-project/tari/commit/53f34f25fb68f8fb42a63dc64eeb43f52d27dc1f))
+
 ## [5.4.0-pre.0](https://github.com/tari-project/tari/compare/v5.3.1-pre.3...v5.4.0-pre.0) (2026-05-25)
 
 
