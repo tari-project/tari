@@ -634,7 +634,7 @@ impl DhtConnectivity {
                 self.replace_pool_peer(&node_id).await?;
                 self.log_status();
             },
-            PeerDisconnected(node_id, minimized) => {
+            PeerDisconnected(node_id, _) => {
                 debug!(
                     target: LOG_TARGET,
                     "Peer: node_id '{}', allow_list '{}', connected 'false'",

@@ -142,7 +142,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, amount: u64
 #[then(expr = "ffi wallet {word} balance is {word}")]
 async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let balance = world.balance.get(&balance_key).unwrap().clone();
+    let balance = world.balance.get(&balance_key).unwrap();
     let wallet_name = ffi_wallet.name.clone();
     let wallet_id = ffi_wallet.id.clone();
     ffi_wallet.start_txo_validation();
@@ -157,7 +157,7 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
                 timelocked_balance: ffi_balance.get_time_locked(),
                 pending_outgoing_balance: ffi_balance.get_pending_outgoing(),
             };
-            if ffi_wallet_balance == balance {
+            if ffi_wallet_balance == *balance {
                 cucumber_steps_log(format!(
                     "Wallet {}:{} waiting for balance to be {:?} (DONE), current {:?}",
                     wallet_name, wallet_id, balance, ffi_wallet_balance
