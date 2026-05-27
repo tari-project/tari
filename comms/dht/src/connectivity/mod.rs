@@ -399,7 +399,7 @@ impl DhtConnectivity {
             target: LOG_TARGET,
             "refreshing random peer list, asking for {pool_size} peers",
         );
-        let mut new_peers = self.fetch_random_peers(pool_size, &vec![], false).await?;
+        let mut new_peers = self.fetch_random_peers(pool_size, &[], false).await?;
 
         // let see who is not connected and remove them
         let disconnected = self
@@ -651,15 +651,6 @@ impl DhtConnectivity {
                     debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());
                 }
-                if minimized == Minimized::Yes || self.config.minimize_connections {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Peer '{node_id}' was disconnected because it was minimized, will not reconnect."
-
-                    );
-                    // In case the connections was not managed, remove the connection handle
-                    self.remove_connection_handle(&node_id).await?;
-                }
                 debug!(target: LOG_TARGET, "Pool peer {node_id} disconnected. Replacing with a new peer.");
                 self.replace_pool_peer(&node_id).await?;
             },
@@ -747,15 +738,14 @@ impl DhtConnectivity {
     }
 
     fn connected_random_pool_peers(&self) -> usize {
-        // let see who is not connected and remove them
-        let connected = self
-            .connection_handles
+        self.random_pool
             .iter()
-            .filter(|c| c.is_connected())
-            .map(|peer_connection| peer_connection.peer_node_id())
-            .collect::<Vec<_>>();
-
-        self.random_pool.iter().filter(|node| connected.contains(node)).count()
+            .filter(|node| {
+                self.connection_handles
+                    .iter()
+                    .any(|c| c.is_connected() && c.peer_node_id() == *node)
+            })
+            .count()
     }
 
     fn get_pool_peers(&self) -> Vec<NodeId> {
