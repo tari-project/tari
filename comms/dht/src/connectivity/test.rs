@@ -23,7 +23,6 @@
 #![allow(clippy::indexing_slicing)]
 use std::{iter::repeat_with, sync::Arc, time::Duration};
 
-use rand::seq::SliceRandom;
 use tari_comms::{
     NodeIdentity,
     PeerManager,
