@@ -92,7 +92,7 @@ use crate::{
     config::{P2pConfig, PeerSeedsConfig},
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
-    transport::{CommsTransport, TorTransportConfig},
+    transport::{TorTransportConfig, TransportType},
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -221,23 +221,25 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
     transport_config: TransportConfig,
     after_comms: F,
 ) -> Result<CommsNode, CommsInitializationError> {
-    let comms = match transport_config.comms_transport() {
-        CommsTransport::Memory => {
-            debug!(target: LOG_TARGET, "Building in-memory comms stack");
-            comms
-                .with_listener_address(transport_config.memory.listener_address.clone())
-                .spawn_with_transport(MemoryTransport)
-                .await?
-        },
-        CommsTransport::Socks5 => {
-            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-            let transport = SocksTransport::new(transport_config.socks.into());
-            comms
-                .with_listener_address(transport_config.tcp.listener_address)
-                .spawn_with_transport(transport)
-                .await?
-        },
-        CommsTransport::TorHiddenService => {
+    if transport_config.is_memory_transport() {
+        debug!(target: LOG_TARGET, "Building in-memory comms stack");
+        return Ok(comms
+            .with_listener_address(transport_config.memory.listener_address.clone())
+            .spawn_with_transport(MemoryTransport)
+            .await?);
+    }
+
+    if transport_config.is_socks5_transport() {
+        debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
+        let transport = SocksTransport::new(transport_config.socks.into());
+        return Ok(comms
+            .with_listener_address(transport_config.tcp.listener_address)
+            .spawn_with_transport(transport)
+            .await?);
+    }
+
+    let comms = match transport_config.transport_type {
+        TransportType::Tor => {
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
@@ -254,7 +256,7 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
                 .spawn_with_transport(transport)
                 .await?
         },
-        CommsTransport::Tcp => {
+        TransportType::Tcp | TransportType::TorTcp | TransportType::TcpTor => {
             let config = transport_config.tcp;
             debug!(
                 target: LOG_TARGET,

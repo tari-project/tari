@@ -43,6 +43,7 @@ pub struct TransportConfig {
     pub tor: TorTransportConfig,
     pub socks: Socks5TransportConfig,
     pub memory: MemoryTransportConfig,
+    // Keeps internal-only transports out of the public config enum.
     #[serde(skip)]
     transport_override: TransportOverride,
 }
@@ -52,14 +53,6 @@ enum TransportOverride {
     #[default]
     None,
     Memory,
-    Socks5,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) enum CommsTransport {
-    Memory,
-    Tcp,
-    TorHiddenService,
     Socks5,
 }
 
@@ -141,24 +134,16 @@ impl TransportConfig {
         self.tcp.tor_socks_address.is_some()
     }
 
-    pub(crate) fn comms_transport(&self) -> CommsTransport {
-        match self.transport_override {
-            TransportOverride::Memory => CommsTransport::Memory,
-            TransportOverride::Socks5 => CommsTransport::Socks5,
-            TransportOverride::None => self.transport_type.comms_transport(),
-        }
-    }
-
     pub fn is_memory_transport(&self) -> bool {
-        matches!(self.comms_transport(), CommsTransport::Memory)
+        matches!(self.transport_override, TransportOverride::Memory)
     }
 
     pub fn is_socks5_transport(&self) -> bool {
-        matches!(self.comms_transport(), CommsTransport::Socks5)
+        matches!(self.transport_override, TransportOverride::Socks5)
     }
 
     pub fn uses_tor_hidden_service(&self) -> bool {
-        matches!(self.comms_transport(), CommsTransport::TorHiddenService)
+        matches!(self.transport_override, TransportOverride::None) && self.transport_type.uses_tor_hidden_service()
     }
 
     pub fn is_tor(&self) -> bool {
@@ -181,15 +166,8 @@ pub enum TransportType {
 }
 
 impl TransportType {
-    pub(crate) fn comms_transport(&self) -> CommsTransport {
-        match self {
-            TransportType::Tor => CommsTransport::TorHiddenService,
-            TransportType::Tcp | TransportType::TorTcp | TransportType::TcpTor => CommsTransport::Tcp,
-        }
-    }
-
     pub fn uses_tor_hidden_service(&self) -> bool {
-        matches!(self.comms_transport(), CommsTransport::TorHiddenService)
+        matches!(self, TransportType::Tor)
     }
 
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
@@ -402,7 +380,6 @@ mod tests {
         let memory = TransportConfig::new_memory(MemoryTransportConfig::default());
         assert_eq!(memory.transport_type, TransportType::TcpTor);
         assert!(memory.is_memory_transport());
-        assert_eq!(memory.comms_transport(), CommsTransport::Memory);
         assert_eq!(memory.get_supported_protocols(), vec![TransportProtocol::Memory]);
 
         let socks = TransportConfig::new_socks5(
@@ -411,7 +388,6 @@ mod tests {
         );
         assert_eq!(socks.transport_type, TransportType::TcpTor);
         assert!(socks.is_socks5_transport());
-        assert_eq!(socks.comms_transport(), CommsTransport::Socks5);
         assert_eq!(socks.get_supported_protocols(), vec![
             TransportProtocol::Onion,
             TransportProtocol::Ipv4,
@@ -427,18 +403,15 @@ mod tests {
         assert!(!TransportType::TcpTor.uses_tor_hidden_service());
 
         let tor = TransportConfig::new_tor(TorTransportConfig::default());
-        assert_eq!(tor.comms_transport(), CommsTransport::TorHiddenService);
         assert!(tor.uses_tor_hidden_service());
 
         let tor_tcp = TransportConfig {
             transport_type: TransportType::TorTcp,
             ..Default::default()
         };
-        assert_eq!(tor_tcp.comms_transport(), CommsTransport::Tcp);
         assert!(!tor_tcp.uses_tor_hidden_service());
 
         let tcp_tor = TransportConfig::default();
-        assert_eq!(tcp_tor.comms_transport(), CommsTransport::Tcp);
         assert!(!tcp_tor.uses_tor_hidden_service());
     }
 
