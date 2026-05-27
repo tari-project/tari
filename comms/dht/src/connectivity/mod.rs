@@ -47,6 +47,7 @@ use tari_comms::{
     PeerConnection,
     PeerConnectionError,
     PeerManager,
+    connection_manager::ConnectionDirection,
     connectivity::{
         ConnectivityError,
         ConnectivityEvent,
@@ -60,7 +61,7 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
-use tari_comms::connection_manager::ConnectionDirection;
+
 use crate::{DhtActorError, DhtConfig, DhtRequester, connectivity::metrics::MetricsError, event::DhtEvent};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
