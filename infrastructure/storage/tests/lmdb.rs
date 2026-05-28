@@ -34,7 +34,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_storage::{
     IterationResult,
-    lmdb_store::{LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore, db},
+    lmdb_store::{DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore, db},
 };
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -286,6 +286,7 @@ fn test_lmdb_resize_on_create() {
                     1024 * 1024,
                     512 * 1024,
                     false,
+                    DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
                 ))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
@@ -314,6 +315,7 @@ fn test_lmdb_resize_on_create() {
                     1024 * 1024,
                     512 * 1024,
                     false,
+                    DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
                 ))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
@@ -343,7 +345,13 @@ fn test_lmdb_resize_before_full() {
             // Create db with 1MB capacity
             let store = LMDBBuilder::new()
                 .set_path(&path)
-                .set_env_config(LMDBConfig::new(1024 * 1024, 512 * 1024, 100 * 1024, false))
+                .set_env_config(LMDBConfig::new(
+                    1024 * 1024,
+                    512 * 1024,
+                    100 * 1024,
+                    false,
+                    DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
+                ))
                 .set_max_number_of_databases(1)
                 .add_database(db_name, db::CREATE)
                 .build()

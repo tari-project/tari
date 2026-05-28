@@ -485,7 +485,7 @@ fn open_lmdb_database_with_compaction(
     let (lmdb_store, file_lock) = build_lmdb_store(&env_path, config.clone())?;
     let db = LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager.clone(), stats_sender.clone())?;
 
-    match should_compact_lmdb_env(&db) {
+    match should_compact_lmdb_env(&db, config.compaction_min_free_bytes()) {
         Ok(false) => return Ok(db),
         Ok(true) => {},
         Err(e) => {
@@ -502,13 +502,9 @@ fn open_lmdb_database_with_compaction(
     compact_and_reopen_lmdb_database(db, lmdb_store, env_path, config, consensus_manager, stats_sender)
 }
 
-/// Trigger an `MDB_CP_COMPACT` copy when at least this many bytes inside `data.mdb` are not part
-/// of any live database B-tree. 10 GB is comfortably above the noise floor of free pages
-/// produced by ordinary write traffic and well below what migrations like JMT v1 → v2 free on
-/// mainnet, so this catches all "interesting" fragmentation without firing on routine churn.
-const LMDB_COMPACTION_MIN_FREE_BYTES: u64 = 10_000 * (BYTES_PER_MB as u64);
 /// Decide whether the LMDB env has enough free pages inside `data.mdb` to make a compact-copy
-/// worth running.
+/// worth running. The trigger threshold is configurable via
+/// [`LMDBConfig::compaction_min_free_bytes`].
 ///
 /// Uses LMDB's own page accounting rather than the file size on disk: `mdb_env_info` reports the
 /// highest used page number (`last_pgno`), and `mdb_stat` for each named database reports the
@@ -516,7 +512,7 @@ const LMDB_COMPACTION_MIN_FREE_BYTES: u64 = 10_000 * (BYTES_PER_MB as u64);
 /// the count of pages currently in the free-list - exactly the bytes an `MDB_CP_COMPACT` copy
 /// would reclaim. This avoids the false-positive that comparing file size to live data would hit
 /// on a freshly-allocated sparse file with a large `mapsize`.
-fn should_compact_lmdb_env(db: &LMDBDatabase) -> Result<bool, ChainStorageError> {
+fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<bool, ChainStorageError> {
     let env_info = db
         .env
         .info()
@@ -543,13 +539,13 @@ fn should_compact_lmdb_env(db: &LMDBDatabase) -> Result<bool, ChainStorageError>
         .saturating_sub(live_pages)
         .saturating_sub(META_PAGES);
     let free_bytes = free_pages.saturating_mul(psize);
-    let trigger = free_bytes >= LMDB_COMPACTION_MIN_FREE_BYTES;
+    let trigger = free_bytes >= min_free_bytes;
     let mb = BYTES_PER_MB as u64;
     info!(
         target: LOG_TARGET,
         "[COMPACTION]  free={} MB, thresholds={} MB  -> compact={}",
         free_bytes / mb,
-        LMDB_COMPACTION_MIN_FREE_BYTES / mb,
+        min_free_bytes / mb,
         trigger
     );
     Ok(trigger)
