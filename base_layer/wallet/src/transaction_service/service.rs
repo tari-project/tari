@@ -3074,17 +3074,53 @@ where
         }
         let temp_tx_id = TxId::new_random();
 
-        if sidechain_deployment_key.is_some() {
+        if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
             return Err(TransactionServiceError::InvalidBurnTransaction(
-                "sidechain_deployment_key is no longer supported for burns; the on-chain claim key is now \
-                 always None and the L2-bound claim key is carried in the off-chain burn proof instead"
-                    .to_string(),
+                "A sidechain deployment key was provided without a claim public key".to_string(),
             ));
         }
-        // Burns never carry a confidential output's claim_public_key on chain. When the user is
-        // burning to an L2 account, the stealth claim key C = H(r·P)·G + P is computed below and
-        // attached to the off-chain PartialBurnClaimProof, not to the UTXO's sidechain feature.
-        let output_features = OutputFeatures::create_burn_output();
+
+        // Derive the commitment mask and sender-offset key up front so we can place the stealth
+        // claim key C = H(r·P)·G + P on chain (rather than the recipient's P). C looks like a
+        // random nonce — unlinkable to P across burns — and gives L2 wallets that scan the chain
+        // a discoverability signal (the L2 can compute expected C from R + p and match). The L2
+        // claim does not require C to be on chain: the off-chain burn proof carries C and binds
+        // the mask-key ownership signature to it, so a wallet may also choose to emit burns with
+        // a default-valued on-chain claim key without breaking claim validity.
+        //
+        // For L2-bound burns r is seed-deterministic so the L1 wallet can regenerate the burn
+        // proof from seed alone after recovery; for plain burns (no L2 recipient) r remains a
+        // random key — there is no proof to regenerate later.
+        let (commitment_mask_key, _) = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_commitment_mask_and_script_key()?;
+        let (sender_offset_private_key, stealth_claim_public_key) =
+            if let Some(ref account_public_key) = claim_public_key {
+                let r = self
+                    .resources
+                    .transaction_key_manager_service
+                    .derive_burn_sender_offset_key(&commitment_mask_key.key_id)?;
+                let c = self
+                    .resources
+                    .transaction_key_manager_service
+                    .compute_stealth_claim_public_key(&r.key_id, account_public_key)?;
+                (r, Some(c))
+            } else {
+                let r = self
+                    .resources
+                    .transaction_key_manager_service
+                    .get_random_key(None, None)?;
+                (r, None)
+            };
+
+        let output_features = match stealth_claim_public_key.as_ref() {
+            // L2-bound burn: on-chain claim_public_key carries the stealth address C, unlinkable
+            // to the recipient P. sidechain_deployment_key (if provided) identifies the target L2
+            // network via the sidechain_id Schnorr signature over the (now-stealth) claim key.
+            Some(c) => OutputFeatures::create_burn_confidential_output(c.clone(), sidechain_deployment_key.as_ref()),
+            None => OutputFeatures::create_burn_output(),
+        };
 
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
@@ -3131,19 +3167,7 @@ where
 
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
-        let (commitment_mask_key, _) = self
-            .resources
-            .transaction_key_manager_service
-            .get_next_commitment_mask_and_script_key()?;
 
-        // Derive sender-offset key deterministically from the commitment mask so the L1 wallet
-        // can recompute it from seed during recovery (needed to regenerate C = H(r·P)·G + P).
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .derive_burn_sender_offset_key(&commitment_mask_key.key_id)?;
         // Always encrypt recovery_data to the L1 view key so the burn output is discoverable
         // by the L1 wallet on a seed-only rescan, regardless of L2 destination.
         let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
@@ -3251,11 +3275,14 @@ where
                 .resources
                 .transaction_key_manager_service
                 .compute_stealth_claim_public_key(&sender_offset_private_key.key_id, &claim_public_key)?;
-            let ownership_proof = self.resources.transaction_key_manager_service.generate_burn_claim_signature(
-                &commitment_mask_key.key_id,
-                amount.as_u64(),
-                &stealth_claim_public_key,
-            )?;
+            let ownership_proof = self
+                .resources
+                .transaction_key_manager_service
+                .generate_burn_claim_signature(
+                    &commitment_mask_key.key_id,
+                    amount.as_u64(),
+                    &stealth_claim_public_key,
+                )?;
             let proof = PartialBurnClaimProof {
                 claim_public_key,
                 stealth_claim_public_key,
