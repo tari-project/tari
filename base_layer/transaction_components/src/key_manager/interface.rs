@@ -268,6 +268,24 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         claim_public_key: &CompressedPublicKey,
     ) -> Result<CompressedSignature, KeyManagerError>;
 
+    /// Derive a deterministic sender-offset key for an L2-targeted burn, bound to the burn's
+    /// commitment mask. Determinism allows the L1 wallet to regenerate the burn claim proof
+    /// from seed alone (given the L2 account public key) after recovery.
+    fn derive_burn_sender_offset_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+    ) -> Result<TariKeyAndId, KeyManagerError>;
+
+    /// Compute the stealth address C = H(r·P)·G + P where r is the secret behind
+    /// `sender_offset_key_id` and P is `account_public_key`. C is the on-wire claim key for
+    /// stealth-shaped burn claim proofs; the corresponding spend secret s = H(R·p) + p can only
+    /// be derived by the L2 wallet that holds p.
+    fn compute_stealth_claim_public_key(
+        &self,
+        sender_offset_key_id: &TariKeyId,
+        account_public_key: &CompressedPublicKey,
+    ) -> Result<CompressedPublicKey, KeyManagerError>;
+
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,

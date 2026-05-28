@@ -29,8 +29,17 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialBurnClaimProof {
-    /// Public key used in the DH exchange to derive the decryption key
+    /// The L2 account public key (`P`) that the burn is intended for. User-facing identifier;
+    /// for stealth-shaped proofs the on-wire claim key used in `ownership_proof` is the
+    /// stealth address `C` (see `stealth_claim_public_key`), not `P` directly.
     pub claim_public_key: CompressedPublicKey,
+    /// For stealth-shaped proofs, this is the stealth address `C = H(r·P)·G + P` that the
+    /// `ownership_proof` Schnorr signature commits to (as `H(commitment ‖ C)`), and that the
+    /// L2 wallet must derive the spend secret `s = H(R·p) + p` against in order to claim.
+    /// `None` for legacy-shaped proofs where `ownership_proof` commits to `claim_public_key`
+    /// (= `P`) directly and the L2 wallet spends with `p`.
+    #[serde(default)]
+    pub stealth_claim_public_key: Option<CompressedPublicKey>,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedSignature,
     #[serde(with = "serializers::base64")]

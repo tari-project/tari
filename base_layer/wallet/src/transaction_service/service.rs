@@ -3074,16 +3074,17 @@ where
         }
         let temp_tx_id = TxId::new_random();
 
-        if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
+        if sidechain_deployment_key.is_some() {
             return Err(TransactionServiceError::InvalidBurnTransaction(
-                "A sidechain deployment key was provided without a claim public key".to_string(),
+                "sidechain_deployment_key is no longer supported for burns; the on-chain claim key is now \
+                 always None and the L2-bound claim key is carried in the off-chain burn proof instead"
+                    .to_string(),
             ));
         }
-        let output_features = claim_public_key
-            .as_ref()
-            .cloned()
-            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_deployment_key.as_ref()))
-            .unwrap_or_else(OutputFeatures::create_burn_output);
+        // Burns never carry a confidential output's claim_public_key on chain. When the user is
+        // burning to an L2 account, the stealth claim key C = H(r·P)·G + P is computed below and
+        // attached to the off-chain PartialBurnClaimProof, not to the UTXO's sidechain feature.
+        let output_features = OutputFeatures::create_burn_output();
 
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
@@ -3137,18 +3138,15 @@ where
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
 
+        // Derive sender-offset key deterministically from the commitment mask so the L1 wallet
+        // can recompute it from seed during recovery (needed to regenerate C = H(r·P)·G + P).
         let sender_offset_private_key = self
             .resources
             .transaction_key_manager_service
-            .get_random_key(None, None)?;
-        let recovery_key_id = if let Some(ref cp) = claim_public_key {
-            TariKeyId::DHEncryptedData {
-                public_key: cp.clone(),
-                private_key: sender_offset_private_key.key_id.clone().into(),
-            }
-        } else {
-            self.resources.transaction_key_manager_service.get_view_key().key_id
-        };
+            .derive_burn_sender_offset_key(&commitment_mask_key.key_id)?;
+        // Always encrypt recovery_data to the L1 view key so the burn output is discoverable
+        // by the L1 wallet on a seed-only rescan, regardless of L2 destination.
+        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
         let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
@@ -3173,7 +3171,7 @@ where
         tx_builder.add_recipient(
             Default::default(),
             output.clone(),
-            Some(sender_offset_private_key.key_id),
+            Some(sender_offset_private_key.key_id.clone()),
             Some(recovery_key_id),
         )?;
 
@@ -3246,13 +3244,21 @@ where
             let output_hash = tx_output.output.output_hash();
             let commitment = tx_output.output.commitment().clone();
 
-            let ownership_proof = self
+            // Compute the stealth claim public key C = H(r·P)·G + P. The ownership proof commits
+            // to C (not P), so a third party holding the proof cannot construct an L2 claim — only
+            // the L2 wallet holding p can derive the spend secret s = H(R·p) + p against C.
+            let stealth_claim_public_key = self
                 .resources
                 .transaction_key_manager_service
-                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
+                .compute_stealth_claim_public_key(&sender_offset_private_key.key_id, &claim_public_key)?;
+            let ownership_proof = self.resources.transaction_key_manager_service.generate_burn_claim_signature(
+                &commitment_mask_key.key_id,
+                amount.as_u64(),
+                &stealth_claim_public_key,
+            )?;
             let proof = PartialBurnClaimProof {
-                // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 claim_public_key,
+                stealth_claim_public_key: Some(stealth_claim_public_key),
                 commitment,
                 ownership_proof,
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),

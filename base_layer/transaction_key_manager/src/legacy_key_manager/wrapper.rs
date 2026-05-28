@@ -510,6 +510,23 @@ where TBackend: TransactionKeyManagerBackend + 'static
         )
     }
 
+    fn derive_burn_sender_offset_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+    ) -> Result<TariKeyAndId, KeyManagerError> {
+        self.transaction_key_manager_inner
+            .derive_burn_sender_offset_key(commitment_mask_key_id)
+    }
+
+    fn compute_stealth_claim_public_key(
+        &self,
+        sender_offset_key_id: &TariKeyId,
+        account_public_key: &CompressedPublicKey,
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        self.transaction_key_manager_inner
+            .compute_stealth_claim_public_key(sender_offset_key_id, account_public_key)
+    }
+
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,

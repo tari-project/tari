@@ -598,10 +598,17 @@ async fn single_transaction_burn_tari() {
     }
     assert!(payment_id_verified);
 
-    // Verify burn proof
+    // The claim_public_key field of the proof echoes the user-supplied L2 account pubkey.
+    assert_eq!(burn_proof.claim_public_key, claim_public_key);
+
+    // The ownership proof commits to the stealth claim public key C = H(r·P)·G + P, not P.
+    let stealth_claim_public_key = burn_proof
+        .stealth_claim_public_key
+        .as_ref()
+        .expect("stealth proof shape");
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
         .chain(&burn_proof.commitment)
-        .chain(&claim_public_key)
+        .chain(stealth_claim_public_key)
         .finalize();
     let ownership_proof = burn_proof.ownership_proof.to_schnorr_signature().unwrap();
     let commit_value = factories
