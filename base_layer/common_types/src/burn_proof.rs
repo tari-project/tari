@@ -30,13 +30,11 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialBurnClaimProof {
     /// The L2 account public key (`P`) the burn is intended for. Lets the L2 wallet route the
-    /// claim to the right account before deriving the spend secret.
+    /// claim to the right account and derive the stealth claim key `C = H(R·p)·G + P` against
+    /// which `ownership_proof` is signed (`R = sender_offset_public_key`, `p` = the L2 account
+    /// secret). `C` itself is not carried on the wire — both L1 and L2 can compute it from
+    /// `(R, P, p)` and the on-chain `ConfidentialOutputData.claim_public_key` echoes it.
     pub claim_public_key: CompressedPublicKey,
-    /// The stealth address `C = H(r·P)·G + P` that `ownership_proof` commits to (as
-    /// `H(commitment ‖ C)`). The L2 wallet derives the spend secret `s = H(R·p) + p` against
-    /// `C` to authorize the claim; a third party holding the proof cannot derive `s` without
-    /// `p`.
-    pub stealth_claim_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedSignature,
     #[serde(with = "serializers::base64")]

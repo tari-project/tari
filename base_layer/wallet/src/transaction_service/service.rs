@@ -3260,7 +3260,7 @@ where
 
         // Generate claim proof if needed
         let mut burn_proof = None;
-        if let Some(claim_public_key) = claim_public_key {
+        if let (Some(claim_public_key), Some(stealth_claim_public_key)) = (claim_public_key, stealth_claim_public_key) {
             let tx_output = finalized
                 .sent_outputs
                 .first()
@@ -3268,13 +3268,11 @@ where
             let output_hash = tx_output.output.output_hash();
             let commitment = tx_output.output.commitment().clone();
 
-            // Compute the stealth claim public key C = H(r·P)·G + P. The ownership proof commits
-            // to C (not P), so a third party holding the proof cannot construct an L2 claim — only
-            // the L2 wallet holding p can derive the spend secret s = H(R·p) + p against C.
-            let stealth_claim_public_key = self
-                .resources
-                .transaction_key_manager_service
-                .compute_stealth_claim_public_key(&sender_offset_private_key.key_id, &claim_public_key)?;
+            // The ownership proof commits to C (the stealth claim key), not P. A third party
+            // holding the proof cannot construct an L2 claim — only the L2 wallet holding p can
+            // derive the spend secret s = H(R·p) + p against C. C is not carried in the proof:
+            // both ends recompute it from (R, P, p) and the on-chain ConfidentialOutputData
+            // echoes it for the wallets that want chain-side discoverability.
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
@@ -3285,7 +3283,6 @@ where
                 )?;
             let proof = PartialBurnClaimProof {
                 claim_public_key,
-                stealth_claim_public_key,
                 commitment,
                 ownership_proof,
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
