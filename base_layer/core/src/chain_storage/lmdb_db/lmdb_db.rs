@@ -528,16 +528,14 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
     let read_txn = db.read_transaction()?;
     let mut live_pages: u64 = 0;
     for (name, db_handle) in db.all_dbs() {
-        let stat = read_txn.db_stat(db_handle).map_err(|e| {
-            ChainStorageError::AccessError(format!("Could not read db_stat for `{name}`: {e}"))
-        })?;
+        let stat = read_txn
+            .db_stat(db_handle)
+            .map_err(|e| ChainStorageError::AccessError(format!("Could not read db_stat for `{name}`: {e}")))?;
         live_pages += stat.branch_pages as u64 + stat.leaf_pages as u64 + stat.overflow_pages as u64;
     }
     // Two fixed meta pages always exist in any LMDB env.
     const META_PAGES: u64 = 2;
-    let free_pages = total_used_pages
-        .saturating_sub(live_pages)
-        .saturating_sub(META_PAGES);
+    let free_pages = total_used_pages.saturating_sub(live_pages).saturating_sub(META_PAGES);
     let free_bytes = free_pages.saturating_mul(psize);
     let trigger = free_bytes >= min_free_bytes;
     let mb = BYTES_PER_MB as u64;
@@ -5167,9 +5165,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
             target: LOG_TARGET,
             "[MIGRATIONS] v6: in-memory JMT built ({node_count} nodes, {value_count} values); flushing to LMDB"
         );
-        println!(
-            "JMT built in memory: {node_count} nodes, {value_count} values. Flushing to LMDB."
-        );
+        println!("JMT built in memory: {node_count} nodes, {value_count} values. Flushing to LMDB.");
 
         flush_migration_node_batch_chunked(db, &ops.node_batch, JMT_MIGRATION_LMDB_WRITE_CHUNK, total as u64)?;
     }
@@ -5227,9 +5223,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
 /// lookups cannot share an accessor — closing the cursor after each chunk releases it without
 /// closing the read transaction, and `MDB_SET_RANGE` on the next iteration restores cursor
 /// position past the last drained key.
-fn collect_jmt_migration_entries(
-    db: &LMDBDatabase,
-) -> Result<Vec<(KeyHash, Vec<u8>)>, ChainStorageError> {
+fn collect_jmt_migration_entries(db: &LMDBDatabase) -> Result<Vec<(KeyHash, Vec<u8>)>, ChainStorageError> {
     // Sized to amortise cursor/accessor open-close (a handful of µs each) over a meaningful batch
     // without holding more than a few hundred KB of `(commitment, output_hash)` pairs in memory at
     // once. With ~5M UTXOs this caps the peak chunk buffer at ~512 KB instead of ~320 MB.
@@ -5257,9 +5251,7 @@ fn collect_jmt_migration_entries(
             let access = read_txn.access();
             let mut entry = match resume_after.as_ref() {
                 None => cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-                    ChainStorageError::AccessError(format!(
-                        "Failed to read first utxo_commitment_index entry: {e}"
-                    ))
+                    ChainStorageError::AccessError(format!("Failed to read first utxo_commitment_index entry: {e}"))
                 })?,
                 Some(key) => {
                     // `seek_range_k` lands on the first key >= seek key; since `key` is still in
@@ -5302,9 +5294,7 @@ fn collect_jmt_migration_entries(
                     break;
                 }
                 entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-                    ChainStorageError::AccessError(format!(
-                        "Failed to advance cursor on utxo_commitment_index: {e}"
-                    ))
+                    ChainStorageError::AccessError(format!("Failed to advance cursor on utxo_commitment_index: {e}"))
                 })?;
             }
             chunk.len() < CHUNK_SIZE
@@ -5370,9 +5360,8 @@ fn flush_migration_node_batch_chunked(
                 continue;
             }
             let mut lmdb_key: Vec<u8> = Vec::with_capacity(64);
-            borsh::BorshSerialize::serialize(node_key, &mut lmdb_key).map_err(|e| {
-                ChainStorageError::AccessError(format!("Could not serialise JMT node key: {e}"))
-            })?;
+            borsh::BorshSerialize::serialize(node_key, &mut lmdb_key)
+                .map_err(|e| ChainStorageError::AccessError(format!("Could not serialise JMT node key: {e}")))?;
             chunk.push((lmdb_key, node));
         }
         if chunk.is_empty() {
@@ -5405,7 +5394,7 @@ fn flush_migration_node_batch_chunked(
                 // Defensive: a fresh bulk build never produces deletions, but skip them if any.
                 continue;
             }
-            chunk.push((value_key.1 .0.to_vec(), value));
+            chunk.push((value_key.1.0.to_vec(), value));
         }
         if chunk.is_empty() {
             break;
@@ -5418,9 +5407,8 @@ fn flush_migration_node_batch_chunked(
             &mut resize_attempts,
             max_resizes,
             |txn, key, value| {
-                let val_bytes = bincode::serialize::<Option<Vec<u8>>>(*value).map_err(|e| {
-                    ChainStorageError::AccessError(format!("Could not serialise JMT value: {e}"))
-                })?;
+                let val_bytes = bincode::serialize::<Option<Vec<u8>>>(*value)
+                    .map_err(|e| ChainStorageError::AccessError(format!("Could not serialise JMT value: {e}")))?;
                 lmdb_replace(txn, &db.jmt_value_data, key, &val_bytes, None)
             },
         )?;

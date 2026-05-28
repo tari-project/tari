@@ -34,7 +34,15 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_storage::{
     IterationResult,
-    lmdb_store::{DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore, db},
+    lmdb_store::{
+        DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
+        LMDBBuilder,
+        LMDBConfig,
+        LMDBDatabase,
+        LMDBError,
+        LMDBStore,
+        db,
+    },
 };
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
