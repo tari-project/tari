@@ -3168,9 +3168,19 @@ where
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
 
-        // Always encrypt recovery_data to the L1 view key so the burn output is discoverable
-        // by the L1 wallet on a seed-only rescan, regardless of L2 destination.
-        let recovery_key_id = self.resources.transaction_key_manager_service.get_view_key().key_id;
+        // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can
+        // decrypt with DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account
+        // secret). The L1 wallet does not rely on decrypting `encrypted_data` to recover its own
+        // burns on a seed-only rescan — it traces them via the spent input outputs it owns. For
+        // plain burns there is no L2 to decrypt, so fall back to the L1 view key.
+        let recovery_key_id = if let Some(ref cp) = claim_public_key {
+            TariKeyId::DHEncryptedData {
+                public_key: cp.clone(),
+                private_key: sender_offset_private_key.key_id.clone().into(),
+            }
+        } else {
+            self.resources.transaction_key_manager_service.get_view_key().key_id
+        };
         let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
             .with_features(output_features)
             .with_script(script!(Nop)?)
