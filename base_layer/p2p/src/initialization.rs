@@ -221,24 +221,22 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
     transport_config: TransportConfig,
     after_comms: F,
 ) -> Result<CommsNode, CommsInitializationError> {
-    if transport_config.is_memory_transport() {
-        debug!(target: LOG_TARGET, "Building in-memory comms stack");
-        return Ok(comms
-            .with_listener_address(transport_config.memory.listener_address.clone())
-            .spawn_with_transport(MemoryTransport)
-            .await?);
-    }
-
-    if transport_config.is_socks5_transport() {
-        debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-        let transport = SocksTransport::new(transport_config.socks.into());
-        return Ok(comms
-            .with_listener_address(transport_config.tcp.listener_address)
-            .spawn_with_transport(transport)
-            .await?);
-    }
-
     let comms = match transport_config.transport_type {
+        TransportType::Memory => {
+            debug!(target: LOG_TARGET, "Building in-memory comms stack");
+            comms
+                .with_listener_address(transport_config.memory.listener_address.clone())
+                .spawn_with_transport(MemoryTransport)
+                .await?
+        },
+        TransportType::Socks5 => {
+            debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
+            let transport = SocksTransport::new(transport_config.socks.into());
+            comms
+                .with_listener_address(transport_config.tcp.listener_address)
+                .spawn_with_transport(transport)
+                .await?
+        },
         TransportType::Tor => {
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
