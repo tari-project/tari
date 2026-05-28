@@ -107,7 +107,7 @@ use tari_transaction_components::{
         RangeProofType,
         Transaction,
         memo_field::{MemoField, TxType},
-        one_sided::public_key_to_output_encryption_key,
+        one_sided::{diffie_hellman_stealth_domain_hasher, public_key_to_output_encryption_key},
     },
 };
 use tari_transaction_key_manager::{
@@ -551,7 +551,7 @@ async fn single_transaction_burn_tari() {
         .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
         .unwrap();
     let burn_value = 10000.into();
-    let (_claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+    let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -598,10 +598,23 @@ async fn single_transaction_burn_tari() {
     }
     assert!(payment_id_verified);
 
-    // Verify burn proof
+    // The claim_public_key field of the proof echoes the user-supplied L2 account pubkey.
+    assert_eq!(burn_proof.claim_public_key, claim_public_key);
+
+    // The ownership proof commits to the stealth claim key C = H(R·p)·G + P, not P. Recompute
+    // C here from R (= sender_offset_public_key on the proof) and p (= claim_private_key) to
+    // verify the signature.
+    let r_pub = burn_proof.sender_offset_public_key.to_public_key().unwrap();
+    let dh_shared = CompressedPublicKey::new_from_pk(&r_pub * &claim_private_key);
+    let stealth_hash = diffie_hellman_stealth_domain_hasher(&dh_shared);
+    let scalar = PrivateKey::from_uniform_bytes(stealth_hash.as_ref()).unwrap();
+    let stealth_claim_public_key = CompressedPublicKey::new_from_pk(
+        CompressedPublicKey::from_secret_key(&scalar).to_public_key().unwrap() +
+            &claim_public_key.to_public_key().unwrap(),
+    );
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
         .chain(&burn_proof.commitment)
-        .chain(&claim_public_key)
+        .chain(&stealth_claim_public_key)
         .finalize();
     let ownership_proof = burn_proof.ownership_proof.to_schnorr_signature().unwrap();
     let commit_value = factories

@@ -370,6 +370,22 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .generate_burn_claim_signature(commitment_mask_key_id, value, claim_public_key)
     }
 
+    pub fn derive_burn_sender_offset_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+    ) -> Result<TariKeyAndId, KeyManagerError> {
+        self.key_manager.derive_burn_sender_offset_key(commitment_mask_key_id)
+    }
+
+    pub fn compute_stealth_claim_public_key(
+        &self,
+        sender_offset_key_id: &TariKeyId,
+        account_public_key: &CompressedPublicKey,
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        self.key_manager
+            .compute_stealth_claim_public_key(sender_offset_key_id, account_public_key)
+    }
+
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
