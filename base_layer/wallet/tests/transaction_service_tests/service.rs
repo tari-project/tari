@@ -602,13 +602,9 @@ async fn single_transaction_burn_tari() {
     assert_eq!(burn_proof.claim_public_key, claim_public_key);
 
     // The ownership proof commits to the stealth claim public key C = H(r·P)·G + P, not P.
-    let stealth_claim_public_key = burn_proof
-        .stealth_claim_public_key
-        .as_ref()
-        .expect("stealth proof shape");
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
         .chain(&burn_proof.commitment)
-        .chain(stealth_claim_public_key)
+        .chain(&burn_proof.stealth_claim_public_key)
         .finalize();
     let ownership_proof = burn_proof.ownership_proof.to_schnorr_signature().unwrap();
     let commit_value = factories

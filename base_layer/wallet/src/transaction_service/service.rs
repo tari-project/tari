@@ -3258,7 +3258,7 @@ where
             )?;
             let proof = PartialBurnClaimProof {
                 claim_public_key,
-                stealth_claim_public_key: Some(stealth_claim_public_key),
+                stealth_claim_public_key,
                 commitment,
                 ownership_proof,
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
