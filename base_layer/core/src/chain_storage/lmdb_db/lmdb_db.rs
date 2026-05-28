@@ -5221,56 +5221,123 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
 /// Snapshot every entry of `utxo_commitment_index`, resolve each commitment to its UTXO data and
 /// compute the JMT payload (`smt_hash(mined_height)`), all within a single LMDB read transaction.
 ///
-/// The cursor pass deserialises the `HashOutput` from the cursor's yielded bytes so the second
-/// resolution pass does not need to re-look-up `utxo_commitment_index`.
+/// Walks the index in fixed-size chunks rather than buffering the whole snapshot up front, then
+/// resolves and hashes each chunk inline before pulling the next one. lmdb-zero only permits one
+/// live `ConstAccessor` per transaction, so the cursor and the per-output `fetch_output_in_txn`
+/// lookups cannot share an accessor — closing the cursor after each chunk releases it without
+/// closing the read transaction, and `MDB_SET_RANGE` on the next iteration restores cursor
+/// position past the last drained key.
 fn collect_jmt_migration_entries(
     db: &LMDBDatabase,
 ) -> Result<Vec<(KeyHash, Vec<u8>)>, ChainStorageError> {
+    // Sized to amortise cursor/accessor open-close (a handful of µs each) over a meaningful batch
+    // without holding more than a few hundred KB of `(commitment, output_hash)` pairs in memory at
+    // once. With ~5M UTXOs this caps the peak chunk buffer at ~512 KB instead of ~320 MB.
+    const CHUNK_SIZE: usize = 8192;
+
     let read_txn = db.read_transaction()?;
+    let expected = lmdb_len(&read_txn, &db.utxo_commitment_index)?;
+    let mut entries: Vec<(KeyHash, Vec<u8>)> = Vec::with_capacity(expected);
+    let mut chunk: Vec<([u8; 32], HashOutput)> = Vec::with_capacity(CHUNK_SIZE);
+    // Log progress at ~5% intervals so an operator can see the migration is making forward
+    // progress on chains with millions of UTXOs - this loop is dominated by Blake2b over each
+    // output and can take many seconds end-to-end.
+    let log_every = max(1, expected / 20);
+    let mut next_log = log_every;
+    // Cursor position is restored each chunk by seeking to the last drained commitment and
+    // stepping one past it. `None` means start from `MDB_FIRST`.
+    let mut resume_after: Option<[u8; 32]> = None;
 
-    let pairs: Vec<([u8; 32], HashOutput)> = {
-        let mut cursor = (&read_txn).cursor(db.utxo_commitment_index.clone()).map_err(|e| {
-            ChainStorageError::AccessError(format!("Could not open cursor on utxo_commitment_index: {e}"))
-        })?;
-        let access = read_txn.access();
-        let mut out: Vec<([u8; 32], HashOutput)> = Vec::new();
-        let mut entry = cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-            ChainStorageError::AccessError(format!("Failed to read first utxo_commitment_index entry: {e}"))
-        })?;
-        while let Some((commitment, output_hash_bytes)) = entry {
-            if commitment.len() != 32 {
-                return Err(ChainStorageError::CriticalError(format!(
-                    "utxo_commitment_index key has unexpected length {}",
-                    commitment.len()
-                )));
+    loop {
+        chunk.clear();
+        let drained_to_end = {
+            let mut cursor = (&read_txn).cursor(db.utxo_commitment_index.clone()).map_err(|e| {
+                ChainStorageError::AccessError(format!("Could not open cursor on utxo_commitment_index: {e}"))
+            })?;
+            let access = read_txn.access();
+            let mut entry = match resume_after.as_ref() {
+                None => cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                    ChainStorageError::AccessError(format!(
+                        "Failed to read first utxo_commitment_index entry: {e}"
+                    ))
+                })?,
+                Some(key) => {
+                    // `seek_range_k` lands on the first key >= seek key; since `key` is still in
+                    // this read txn's snapshot it lands on exactly that key, and we step past it.
+                    let landed = cursor
+                        .seek_range_k::<[u8], [u8]>(&access, key.as_slice())
+                        .to_opt()
+                        .map_err(|e| {
+                            ChainStorageError::AccessError(format!(
+                                "Failed to seek cursor on utxo_commitment_index: {e}"
+                            ))
+                        })?;
+                    if landed.is_some() {
+                        cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                            ChainStorageError::AccessError(format!(
+                                "Failed to advance cursor on utxo_commitment_index: {e}"
+                            ))
+                        })?
+                    } else {
+                        None
+                    }
+                },
+            };
+            while let Some((commitment, output_hash_bytes)) = entry {
+                if commitment.len() != 32 {
+                    return Err(ChainStorageError::CriticalError(format!(
+                        "utxo_commitment_index key has unexpected length {}",
+                        commitment.len()
+                    )));
+                }
+                let mut commitment_bytes = [0u8; 32];
+                commitment_bytes.copy_from_slice(commitment);
+                let output_hash: HashOutput = deserialize(output_hash_bytes).map_err(|e| {
+                    ChainStorageError::AccessError(format!(
+                        "Failed to deserialize HashOutput from utxo_commitment_index: {e}"
+                    ))
+                })?;
+                chunk.push((commitment_bytes, output_hash));
+                if chunk.len() == CHUNK_SIZE {
+                    break;
+                }
+                entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                    ChainStorageError::AccessError(format!(
+                        "Failed to advance cursor on utxo_commitment_index: {e}"
+                    ))
+                })?;
             }
-            let mut commitment_bytes = [0u8; 32];
-            commitment_bytes.copy_from_slice(commitment);
-            let output_hash: HashOutput = deserialize(output_hash_bytes).map_err(|e| {
-                ChainStorageError::AccessError(format!(
-                    "Failed to deserialize HashOutput from utxo_commitment_index: {e}"
-                ))
-            })?;
-            out.push((commitment_bytes, output_hash));
-            entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-                ChainStorageError::AccessError(format!("Failed to advance cursor on utxo_commitment_index: {e}"))
-            })?;
-        }
-        out
-    };
+            chunk.len() < CHUNK_SIZE
+        };
 
-    let mut entries: Vec<(KeyHash, Vec<u8>)> = Vec::with_capacity(pairs.len());
-    for (commitment, output_hash) in &pairs {
-        let utxo_info = db
-            .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "TransactionOutput",
-                field: "output_hash",
-                value: output_hash.to_hex(),
-            })?;
-        let smt_node = utxo_info.output.smt_hash(utxo_info.mined_height).to_vec();
-        entries.push((KeyHash(*commitment), smt_node));
+        for (commitment, output_hash) in &chunk {
+            let utxo_info = db
+                .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "TransactionOutput",
+                    field: "output_hash",
+                    value: output_hash.to_hex(),
+                })?;
+            let smt_node = utxo_info.output.smt_hash(utxo_info.mined_height).to_vec();
+            entries.push((KeyHash(*commitment), smt_node));
+
+            if entries.len() >= next_log {
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v6: collected {}/{} JMT entries",
+                    entries.len(),
+                    expected,
+                );
+                next_log = next_log.saturating_add(log_every);
+            }
+        }
+
+        if drained_to_end {
+            break;
+        }
+        resume_after = chunk.last().map(|(c, _)| *c);
     }
+
     Ok(entries)
 }
 
