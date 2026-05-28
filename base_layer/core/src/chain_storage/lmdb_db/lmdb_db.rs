@@ -462,8 +462,15 @@ pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
     open_lmdb_database_with_compaction(path.as_ref(), config, consensus_manager, stats_sender)
 }
 
-/// Open the LMDB env, run migrations, and — if a migration freed pages that can no longer be
-/// returned to the OS via `mdb_drop` — compact the env into a fresh file and reopen it.
+/// Open the LMDB env, run migrations, and — if the on-disk file contains enough free pages to
+/// be worth reclaiming — compact the env into a fresh file and reopen it.
+///
+/// The compaction trigger is decoupled from any specific migration: it inspects the LMDB env's
+/// own page accounting (`mdb_env_info` + per-DB `mdb_stat`) and only fires when free pages
+/// inside `data.mdb` exceed both an absolute and a fractional threshold. This means the JMT v1
+/// → v2 migration (and any future migration that drops databases) is reclaimed automatically,
+/// and so is incidental long-term fragmentation, without coupling the compaction step to a
+/// specific migration version.
 ///
 /// The compaction step writes a fresh `data.mdb` next to the original via `mdb_env_copy2` with
 /// `MDB_CP_COMPACT`, then atomically swaps it in. The original is renamed to `data.mdb.bak` as a
@@ -478,11 +485,74 @@ fn open_lmdb_database_with_compaction(
     let (lmdb_store, file_lock) = build_lmdb_store(&env_path, config.clone())?;
     let db = LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager.clone(), stats_sender.clone())?;
 
-    if !db.needs_compaction() {
-        return Ok(db);
+    match should_compact_lmdb_env(&db) {
+        Ok(false) => return Ok(db),
+        Ok(true) => {},
+        Err(e) => {
+            // Don't block startup if we can't evaluate fragmentation - just skip compaction and
+            // log so an operator can investigate.
+            warn!(
+                target: LOG_TARGET,
+                "[COMPACTION] Could not evaluate LMDB fragmentation, skipping compact step: {e}"
+            );
+            return Ok(db);
+        },
     }
 
     compact_and_reopen_lmdb_database(db, lmdb_store, env_path, config, consensus_manager, stats_sender)
+}
+
+/// Trigger an `MDB_CP_COMPACT` copy when at least this many bytes inside `data.mdb` are not part
+/// of any live database B-tree. 10 GB is comfortably above the noise floor of free pages
+/// produced by ordinary write traffic and well below what migrations like JMT v1 → v2 free on
+/// mainnet, so this catches all "interesting" fragmentation without firing on routine churn.
+const LMDB_COMPACTION_MIN_FREE_BYTES: u64 = 10_000 * (BYTES_PER_MB as u64);
+/// Decide whether the LMDB env has enough free pages inside `data.mdb` to make a compact-copy
+/// worth running.
+///
+/// Uses LMDB's own page accounting rather than the file size on disk: `mdb_env_info` reports the
+/// highest used page number (`last_pgno`), and `mdb_stat` for each named database reports the
+/// branch/leaf/overflow page counts it holds. The difference, minus the two fixed meta pages, is
+/// the count of pages currently in the free-list - exactly the bytes an `MDB_CP_COMPACT` copy
+/// would reclaim. This avoids the false-positive that comparing file size to live data would hit
+/// on a freshly-allocated sparse file with a large `mapsize`.
+fn should_compact_lmdb_env(db: &LMDBDatabase) -> Result<bool, ChainStorageError> {
+    let env_info = db
+        .env
+        .info()
+        .map_err(|e| ChainStorageError::AccessError(format!("Could not read LMDB env info: {e}")))?;
+    let env_stat = db
+        .env
+        .stat()
+        .map_err(|e| ChainStorageError::AccessError(format!("Could not read LMDB env stat: {e}")))?;
+    let psize = u64::from(env_stat.psize);
+    // (last_pgno + 1) * psize is the high-water-mark bytes the env has allocated inside data.mdb.
+    let total_used_pages = env_info.last_pgno as u64 + 1;
+
+    let read_txn = db.read_transaction()?;
+    let mut live_pages: u64 = 0;
+    for (name, db_handle) in db.all_dbs() {
+        let stat = read_txn.db_stat(db_handle).map_err(|e| {
+            ChainStorageError::AccessError(format!("Could not read db_stat for `{name}`: {e}"))
+        })?;
+        live_pages += stat.branch_pages as u64 + stat.leaf_pages as u64 + stat.overflow_pages as u64;
+    }
+    // Two fixed meta pages always exist in any LMDB env.
+    const META_PAGES: u64 = 2;
+    let free_pages = total_used_pages
+        .saturating_sub(live_pages)
+        .saturating_sub(META_PAGES);
+    let free_bytes = free_pages.saturating_mul(psize);
+    let trigger = free_bytes >= LMDB_COMPACTION_MIN_FREE_BYTES;
+    let mb = BYTES_PER_MB as u64;
+    info!(
+        target: LOG_TARGET,
+        "[COMPACTION]  free={} MB, thresholds={} MB  -> compact={}",
+        free_bytes / mb,
+        LMDB_COMPACTION_MIN_FREE_BYTES / mb,
+        trigger
+    );
+    Ok(trigger)
 }
 
 /// Compact the env behind `db` into a new file and reopen the database against the compacted copy.
@@ -497,7 +567,7 @@ fn compact_and_reopen_lmdb_database(
 ) -> Result<LMDBDatabase, ChainStorageError> {
     info!(
         target: LOG_TARGET,
-        "[MIGRATIONS] Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",
+        "[MIGRATIONS] Compacting LMDB env at {} to reclaim free pages inside data.mdb",
         env_path.display()
     );
 
@@ -505,7 +575,7 @@ fn compact_and_reopen_lmdb_database(
     // env.copy call so clients can show "Compacting LMDB" instead of a stuck progress bar.
     publish_compaction_progress(stats_sender.as_ref(), MigrationPhase::LmdbCompact, 0, 0);
     println!(
-        "Compacting LMDB env at {} to reclaim space freed by JMT v1 → v2 migration",
+        "Compacting LMDB env at {} to reclaim free pages inside data.mdb",
         env_path.display()
     );
 
@@ -756,11 +826,6 @@ pub struct LMDBDatabase {
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
-    /// Set by `run_migrations` if a migration step freed enough pages that the env should be
-    /// compacted (copied with `MDB_CP_COMPACT`) to reclaim the disk space. The freed pages
-    /// from `mdb_drop` are reused by future writes but never returned to the OS, so without
-    /// this step the file size never shrinks.
-    needs_compaction: bool,
 }
 
 impl LMDBDatabase {
@@ -824,7 +889,6 @@ impl LMDBDatabase {
             _file_lock: Arc::new(file_lock),
             consensus_manager,
             stats_collector: LMDBStatsCollector::new(),
-            needs_compaction: false,
         };
 
         // If a stats sender was provided, add it to the collector
@@ -835,13 +899,6 @@ impl LMDBDatabase {
         run_migrations(&mut db)?;
 
         Ok(db)
-    }
-
-    /// Returns true if a migration step in this `new()` call freed pages that should be
-    /// reclaimed via an `MDB_CP_COMPACT` copy of the env. The caller (typically
-    /// `create_lmdb_database`) is responsible for performing the compact-and-swap.
-    pub fn needs_compaction(&self) -> bool {
-        self.needs_compaction
     }
 
     /// Copy the environment to `dest_dir` with `MDB_CP_COMPACT`. The destination directory must
@@ -4966,11 +5023,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // payloads that are incompatible with v2 (which uses jmt_values_data + jmt_nodes_data).
         // Rather than translating the old data, we re-derive the JMT from the canonical UTXO set:
         // insert every unspent UTXO into a fresh tree, write it to the v2 tables, then drop the
-        // legacy tables entirely so their pages return to disk.
-        if migrate_from_version == 6 && migrate_jmt_v1_to_v2(db)? {
-            // The v1 tables were dropped from the env; their pages are now on the free list
-            // but the file size has not shrunk. Signal the caller to compact-copy the env.
-            db.needs_compaction = true;
+        // legacy tables entirely so their pages return to disk. The pages freed by dropping the
+        // legacy tables stay inside data.mdb until the env is compact-copied, which is now
+        // handled by the file-fragmentation check in `open_lmdb_database_with_compaction` rather
+        // than a migration-side flag.
+        if migrate_from_version == 6 {
+            migrate_jmt_v1_to_v2(db)?;
         }
 
         // Let's update the migration version
@@ -5010,10 +5068,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 ///
 /// On a fresh database (no v1 tables present) the function is a no-op.
 ///
-/// Number of UTXOs applied per JMT version / write transaction during the migration. Chosen to
-/// keep each commit small enough to bound the LMDB map growth per step while still amortising
-/// the JMT bookkeeping cost across enough entries.
-const JMT_MIGRATION_BATCH_SIZE: usize = 5_000;
+/// Number of LMDB rows written per write transaction when flushing the rebuilt JMT to disk.
+/// Smaller chunks bound the LMDB map growth per commit; the migration runs single-threaded so no
+/// other writers are blocked on these commits.
+const JMT_MIGRATION_LMDB_WRITE_CHUNK: usize = 50_000;
 
 #[allow(clippy::too_many_lines)]
 fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError> {
@@ -5046,50 +5104,23 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
 
     println!("Starting JMT v1 → v2 rebuild");
 
-    // Snapshot every commitment from `utxo_commitment_index` up-front. The per-chunk write
-    // transactions later look up the mined output for each commitment on demand, keeping the
-    // resident batch small.
-    let commitments: Vec<[u8; 32]> = {
-        let read_txn = db.read_transaction()?;
-        let mut cursor = (&read_txn).cursor(db.utxo_commitment_index.clone()).map_err(|e| {
-            ChainStorageError::AccessError(format!("Could not open cursor on utxo_commitment_index: {e}"))
-        })?;
-        let access = read_txn.access();
-        let mut out: Vec<[u8; 32]> = Vec::new();
-        let mut entry = cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-            ChainStorageError::AccessError(format!("Failed to read first utxo_commitment_index entry: {e}"))
-        })?;
-        while let Some((commitment, _output_hash)) = entry {
-            if commitment.len() != 32 {
-                return Err(ChainStorageError::CriticalError(format!(
-                    "utxo_commitment_index key has unexpected length {}",
-                    commitment.len()
-                )));
-            }
-            let mut bytes = [0u8; 32];
-            bytes.copy_from_slice(commitment);
-            out.push(bytes);
-            entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
-                ChainStorageError::AccessError(format!("Failed to advance cursor on utxo_commitment_index: {e}"))
-            })?;
-        }
-        out
-    };
-
-    let total = commitments.len();
+    // Snapshot and resolve every unspent UTXO to a JMT `(KeyHash, smt_hash)` entry in a single
+    // long-lived read transaction. The original implementation opened a fresh read transaction
+    // per chunk and re-looked-up the output_hash from `utxo_commitment_index` even though the
+    // cursor had already yielded it - both costs are eliminated here.
+    let entries = collect_jmt_migration_entries(db)?;
+    let total = entries.len();
     db.stats_collector().set_migration_phase(MigrationPhase::JmtRebuild);
     db.set_stats_total_height(total as u64);
     info!(
         target: LOG_TARGET,
-        "[MIGRATIONS] v6: {total} unspent UTXOs will be inserted into the new JMT in batches of {JMT_MIGRATION_BATCH_SIZE}"
+        "[MIGRATIONS] v6: {total} unspent UTXOs will be inserted into the new JMT as a single bulk build"
     );
 
     // Safety: clear the v2 JMT tables and reset the JMTVersion counter before applying any
     // batches. This protects against a previous migration attempt that crashed partway through
     // and left stale node/value rows behind - replaying batches over those would produce a
-    // corrupt tree or trip the duplicate-key check in `LmdbTreeWriter`. The per-batch writer
-    // reads `JMTVersion`, increments it, and persists it again, so each batch effectively
-    // becomes its own JMT version.
+    // corrupt tree or trip the duplicate-key check in `LmdbTreeWriter`.
     {
         let write_txn = db.write_transaction()?;
         let cleared_nodes = lmdb_clear(&write_txn, &db.jmt_node_data)?;
@@ -5111,101 +5142,62 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
         write_txn.commit()?;
     }
 
-    // Resize this many times across the whole migration before giving up.
-    let max_resizes = max(8, 1024 * BYTES_PER_MB / db.env_config.grow_size_bytes());
-    let mut resize_attempts = 0usize;
-    let mut processed = 0usize;
-    let mut batch_version = 0u64;
-
-    for chunk in commitments.chunks(JMT_MIGRATION_BATCH_SIZE) {
-        // Resolve each commitment to its smt_hash payload in a fresh read transaction.
-        let batch_entries: Vec<(KeyHash, Vec<u8>)> = {
-            let read_txn = db.read_transaction()?;
-            let mut entries = Vec::with_capacity(chunk.len());
-            for commitment in chunk {
-                let output_hash: HashOutput = lmdb_get(&read_txn, &db.utxo_commitment_index, commitment.as_ref())?
-                    .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "utxo_commitment_index",
-                        field: "commitment",
-                        value: to_hex(commitment.as_ref()),
-                    })?;
-                let utxo_info = db
-                    .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
-                    .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "TransactionOutput",
-                        field: "output_hash",
-                        value: output_hash.to_hex(),
-                    })?;
-                let smt_node = utxo_info.output.smt_hash(utxo_info.mined_height).to_vec();
-                entries.push((KeyHash(*commitment), smt_node));
-            }
-            entries
-        };
-
-        // Apply this batch with resize-on-MapFull retry. Each retry rebuilds the JMT for the
-        // batch from scratch, which is safe because no part of a previous attempt has been
-        // committed - `WriteTransaction::commit` is atomic.
-        loop {
-            // SAFETY: this migration runs single-threaded on startup, before any other
-            // BlockchainBackend traffic, so there are no concurrent write transactions.
-            unsafe {
-                LMDBStore::resize_if_required(
-                    &db.env,
-                    &db.env_config,
-                    Some(max(db.env_config.grow_size_bytes(), 128 * BYTES_PER_MB)),
-                )?;
-            }
-
-            match apply_jmt_migration_batch(db, &batch_entries, batch_version) {
-                Ok(()) => break,
-                Err(ChainStorageError::DbResizeRequired(size_hint)) => {
-                    resize_attempts += 1;
-                    if resize_attempts >= max_resizes {
-                        return Err(ChainStorageError::DbTransactionTooLarge(batch_entries.len()));
-                    }
-                    info!(
-                        target: LOG_TARGET,
-                        "[MIGRATIONS] v6: LMDB map full while writing batch {} ({} entries), resizing (attempt {})",
-                        batch_version, batch_entries.len(), resize_attempts
-                    );
-                    // SAFETY: see note above; the failed write_txn has already been dropped.
-                    unsafe {
-                        LMDBStore::resize(&db.env, &db.env_config, size_hint)?;
-                    }
-                },
-                Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err)) => {
-                    if let Some(ChainStorageError::DbResizeRequired(size_hint)) =
-                        jmt_err.downcast_ref::<ChainStorageError>()
-                    {
-                        resize_attempts += 1;
-                        if resize_attempts >= max_resizes {
-                            return Err(ChainStorageError::DbTransactionTooLarge(batch_entries.len()));
-                        }
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v6: LMDB map full inside JMT writer for batch {} ({} entries), resizing (attempt {})",
-                            batch_version, batch_entries.len(), resize_attempts
-                        );
-                        unsafe {
-                            LMDBStore::resize(&db.env, &db.env_config, *size_hint)?;
-                        }
-                    } else {
-                        return Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err));
-                    }
-                },
-                Err(e) => return Err(e),
-            }
-        }
-
-        processed += batch_entries.len();
-        batch_version += 1;
-        db.update_stats_progress(processed as u64);
+    if total == 0 {
         info!(
             target: LOG_TARGET,
-            "[MIGRATIONS] v6: Wrote {processed}/{total} UTXOs into the JMT ({batch_version} batches committed)"
+            "[MIGRATIONS] v6: utxo_commitment_index is empty; skipping JMT bulk build"
         );
-        println!("Processed {processed}/{total} UTXOs into the JMT ({batch_version} batches committed)");
+    } else {
+        // Build the entire JMT in memory in a single `batch_put_value_sets` call at version 0.
+        // The previous implementation inserted one chunk per JMT version (0, 1, 2, …) which
+        // forced the tree to re-traverse the on-disk state via `LmdbTreeReader` for every chunk
+        // and emit a stale-node entry for every internal node it had to copy - an O(T·log T)
+        // write-amplification across the whole migration. With one version against a freshly
+        // cleared tree the reader is consulted only for the pre-genesis root, no stale nodes are
+        // produced, and the cache-friendly `batch_insert_at` path is used.
+        println!("Building rebuilt JMT in memory for {total} entries...");
+        let ops = {
+            let read_txn = db.read_transaction()?;
+            let reader = LmdbTreeReader::new(&read_txn, db.jmt_node_data.clone(), db.jmt_value_data.clone());
+            let tree = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+            let (_root_hashes, ops) = tree
+                .batch_put_value_sets(vec![entries], None, 0)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+            ops
+        };
+        let node_count = ops.node_batch.nodes().len();
+        let value_count = ops.node_batch.values().len();
+        info!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] v6: in-memory JMT built ({node_count} nodes, {value_count} values); flushing to LMDB"
+        );
+        println!(
+            "JMT built in memory: {node_count} nodes, {value_count} values. Flushing to LMDB."
+        );
+
+        flush_migration_node_batch_chunked(db, &ops.node_batch, JMT_MIGRATION_LMDB_WRITE_CHUNK, total as u64)?;
     }
+
+    // Persist the final JMTVersion. We just inserted at version 0, so 0 is also the highest
+    // stored version - on-line writers read this value and pass `version + 1` to the next
+    // `put_value_set`.
+    {
+        let write_txn = db.write_transaction()?;
+        // SAFETY: this migration runs single-threaded on startup, before any other
+        // BlockchainBackend traffic, so there are no concurrent write transactions.
+        unsafe {
+            LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
+        }
+        lmdb_replace(
+            &write_txn,
+            &db.metadata_db,
+            &MetadataKey::JMTVersion.as_u32(),
+            &MetadataValue::JMTVersion(0),
+            None,
+        )?;
+        write_txn.commit()?;
+    }
+
     println!("deleting old jmt database tables");
     // Drop each legacy v1 database. `Database::delete` consumes the handle and calls
     // `mdb_drop` with the delete flag, returning the pages to the LMDB free list.
@@ -5230,39 +5222,231 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
     Ok(true)
 }
 
-/// Apply a single chunk of commitments to the v2 JMT tables in its own write transaction.
+/// Snapshot every entry of `utxo_commitment_index`, resolve each commitment to its UTXO data and
+/// compute the JMT payload (`smt_hash(mined_height)`), all within a single LMDB read transaction.
 ///
-/// The JMT version supplied here is the version *at* which `put_value_set` is invoked. The
-/// underlying [`LmdbTreeWriter`] reads the current `JMTVersion` from metadata and stores
-/// `version + 1`, so subsequent calls must pass strictly increasing versions starting at 0.
-fn apply_jmt_migration_batch(
+/// The cursor pass deserialises the `HashOutput` from the cursor's yielded bytes so the second
+/// resolution pass does not need to re-look-up `utxo_commitment_index`.
+fn collect_jmt_migration_entries(
     db: &LMDBDatabase,
-    batch: &[(KeyHash, Vec<u8>)],
-    version: u64,
+) -> Result<Vec<(KeyHash, Vec<u8>)>, ChainStorageError> {
+    let read_txn = db.read_transaction()?;
+
+    let pairs: Vec<([u8; 32], HashOutput)> = {
+        let mut cursor = (&read_txn).cursor(db.utxo_commitment_index.clone()).map_err(|e| {
+            ChainStorageError::AccessError(format!("Could not open cursor on utxo_commitment_index: {e}"))
+        })?;
+        let access = read_txn.access();
+        let mut out: Vec<([u8; 32], HashOutput)> = Vec::new();
+        let mut entry = cursor.first::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+            ChainStorageError::AccessError(format!("Failed to read first utxo_commitment_index entry: {e}"))
+        })?;
+        while let Some((commitment, output_hash_bytes)) = entry {
+            if commitment.len() != 32 {
+                return Err(ChainStorageError::CriticalError(format!(
+                    "utxo_commitment_index key has unexpected length {}",
+                    commitment.len()
+                )));
+            }
+            let mut commitment_bytes = [0u8; 32];
+            commitment_bytes.copy_from_slice(commitment);
+            let output_hash: HashOutput = deserialize(output_hash_bytes).map_err(|e| {
+                ChainStorageError::AccessError(format!(
+                    "Failed to deserialize HashOutput from utxo_commitment_index: {e}"
+                ))
+            })?;
+            out.push((commitment_bytes, output_hash));
+            entry = cursor.next::<[u8], [u8]>(&access).to_opt().map_err(|e| {
+                ChainStorageError::AccessError(format!("Failed to advance cursor on utxo_commitment_index: {e}"))
+            })?;
+        }
+        out
+    };
+
+    let mut entries: Vec<(KeyHash, Vec<u8>)> = Vec::with_capacity(pairs.len());
+    for (commitment, output_hash) in &pairs {
+        let utxo_info = db
+            .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "TransactionOutput",
+                field: "output_hash",
+                value: output_hash.to_hex(),
+            })?;
+        let smt_node = utxo_info.output.smt_hash(utxo_info.mined_height).to_vec();
+        entries.push((KeyHash(*commitment), smt_node));
+    }
+    Ok(entries)
+}
+
+/// Flush a pre-computed `NodeBatch` to the v2 JMT tables in chunked write transactions.
+///
+/// The destination tables are freshly cleared before this is called, so each row is written with
+/// a single `lmdb_replace` rather than the `get`/`delete`/`insert` sequence in
+/// [`LmdbTreeWriter::write_node_batch`]. Each chunk commits in its own transaction so the LMDB
+/// map can be resized between commits.
+fn flush_migration_node_batch_chunked(
+    db: &LMDBDatabase,
+    node_batch: &jmt::storage::NodeBatch,
+    chunk_size: usize,
+    total_entries: u64,
 ) -> Result<(), ChainStorageError> {
-    let write_txn = db.write_transaction()?;
-    let reader = LmdbTreeReader::new(&write_txn, db.jmt_node_data.clone(), db.jmt_value_data.clone());
-    let new_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-    let value_set: Vec<(KeyHash, Option<Vec<u8>>)> = batch.iter().map(|(k, v)| (*k, Some(v.clone()))).collect();
-    let (_root, ops) = new_smt
-        .put_value_set(value_set, version)
-        .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+    let max_resizes = max(8, 1024 * BYTES_PER_MB / db.env_config.grow_size_bytes());
+    let mut resize_attempts = 0usize;
 
-    let writer = LmdbTreeWriter::new(
-        &write_txn,
-        db.jmt_node_data.clone(),
-        db.jmt_value_data.clone(),
-        db.metadata_db.clone(),
-    );
-    writer
-        .write_node_batch(&ops.node_batch)
-        .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+    let total_nodes = node_batch.nodes().len();
+    let mut written_nodes = 0usize;
+    let mut nodes_iter = node_batch.nodes().iter();
+    loop {
+        // Pre-serialise the next chunk of (lmdb_key, node) pairs so we can replay the whole chunk
+        // on a `MapFull` retry without rerunning borsh.
+        let mut chunk: Vec<(Vec<u8>, &jmt::storage::Node)> = Vec::with_capacity(chunk_size);
+        for (node_key, node) in nodes_iter.by_ref().take(chunk_size) {
+            if matches!(node, jmt::storage::Node::Null) {
+                // The pre-genesis null root is not persisted; `LmdbTreeReader` returns None for
+                // missing keys which is semantically equivalent.
+                continue;
+            }
+            let mut lmdb_key: Vec<u8> = Vec::with_capacity(64);
+            borsh::BorshSerialize::serialize(node_key, &mut lmdb_key).map_err(|e| {
+                ChainStorageError::AccessError(format!("Could not serialise JMT node key: {e}"))
+            })?;
+            chunk.push((lmdb_key, node));
+        }
+        if chunk.is_empty() {
+            break;
+        }
 
-    write_txn.commit().map_err(|e| match e {
-        lmdb_zero::Error::Code(code) if code == lmdb_zero::error::MAP_FULL => ChainStorageError::DbResizeRequired(None),
-        other => ChainStorageError::AccessError(format!("Failed to commit JMT migration batch: {other}")),
-    })?;
+        flush_jmt_chunk(
+            db,
+            &chunk,
+            "jmt node",
+            &mut resize_attempts,
+            max_resizes,
+            |txn, key, node| lmdb_replace(txn, &db.jmt_node_data, key, *node, None),
+        )?;
+
+        written_nodes += chunk.len();
+        info!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] v6: Wrote {written_nodes}/{total_nodes} JMT nodes"
+        );
+    }
+
+    let total_values = node_batch.values().len();
+    let mut written_values = 0usize;
+    let mut values_iter = node_batch.values().iter();
+    loop {
+        let mut chunk: Vec<(Vec<u8>, &Option<Vec<u8>>)> = Vec::with_capacity(chunk_size);
+        for (value_key, value) in values_iter.by_ref().take(chunk_size) {
+            if value.is_none() {
+                // Defensive: a fresh bulk build never produces deletions, but skip them if any.
+                continue;
+            }
+            chunk.push((value_key.1 .0.to_vec(), value));
+        }
+        if chunk.is_empty() {
+            break;
+        }
+
+        flush_jmt_chunk(
+            db,
+            &chunk,
+            "jmt value",
+            &mut resize_attempts,
+            max_resizes,
+            |txn, key, value| {
+                let val_bytes = bincode::serialize::<Option<Vec<u8>>>(*value).map_err(|e| {
+                    ChainStorageError::AccessError(format!("Could not serialise JMT value: {e}"))
+                })?;
+                lmdb_replace(txn, &db.jmt_value_data, key, &val_bytes, None)
+            },
+        )?;
+
+        written_values += chunk.len();
+        let progress = (written_values as u64).min(total_entries);
+        db.update_stats_progress(progress);
+        info!(
+            target: LOG_TARGET,
+            "[MIGRATIONS] v6: Wrote {written_values}/{total_values} JMT values"
+        );
+        println!("Wrote {written_values}/{total_values} JMT values to disk");
+    }
+
     Ok(())
+}
+
+/// Commit a single chunk of rows to one of the JMT tables, retrying with an LMDB resize on
+/// `MapFull`. Used by [`flush_migration_node_batch_chunked`] for both the node and value tables.
+fn flush_jmt_chunk<T, F>(
+    db: &LMDBDatabase,
+    chunk: &[(Vec<u8>, T)],
+    label: &str,
+    resize_attempts: &mut usize,
+    max_resizes: usize,
+    mut write_one: F,
+) -> Result<(), ChainStorageError>
+where
+    F: FnMut(&WriteTransaction<'_>, &[u8], &T) -> Result<(), ChainStorageError>,
+{
+    loop {
+        // SAFETY: the migration runs single-threaded on startup before any other
+        // BlockchainBackend traffic, so there are no concurrent write transactions.
+        unsafe {
+            LMDBStore::resize_if_required(
+                &db.env,
+                &db.env_config,
+                Some(max(db.env_config.grow_size_bytes(), 128 * BYTES_PER_MB)),
+            )?;
+        }
+        let write_txn = db.write_transaction()?;
+        let mut chunk_err: Option<ChainStorageError> = None;
+        for (lmdb_key, value) in chunk {
+            if let Err(e) = write_one(&write_txn, lmdb_key.as_slice(), value) {
+                chunk_err = Some(e);
+                break;
+            }
+        }
+        match chunk_err {
+            None => match write_txn.commit() {
+                Ok(()) => return Ok(()),
+                Err(lmdb_zero::Error::Code(code)) if code == lmdb_zero::error::MAP_FULL => {
+                    *resize_attempts += 1;
+                    if *resize_attempts >= max_resizes {
+                        return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
+                    }
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v6: LMDB map full while committing {label} chunk ({} entries), resizing (attempt {})",
+                        chunk.len(), *resize_attempts
+                    );
+                    unsafe {
+                        LMDBStore::resize(&db.env, &db.env_config, None)?;
+                    }
+                },
+                Err(e) => {
+                    return Err(ChainStorageError::AccessError(format!(
+                        "Failed to commit {label} chunk: {e}"
+                    )));
+                },
+            },
+            Some(ChainStorageError::DbResizeRequired(size_hint)) => {
+                drop(write_txn);
+                *resize_attempts += 1;
+                if *resize_attempts >= max_resizes {
+                    return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
+                }
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v6: LMDB map full while writing {label} chunk, resizing (attempt {})",
+                    *resize_attempts
+                );
+                unsafe {
+                    LMDBStore::resize(&db.env, &db.env_config, size_hint)?;
+                }
+            },
+            Some(e) => return Err(e),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
