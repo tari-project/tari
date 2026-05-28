@@ -66,10 +66,8 @@ use tari_comms::{
     transports::{
         HiddenServiceTransport,
         MemoryTransport,
-        SocksConfig,
         SocksTransport,
         TcpWithTorTransport,
-        predicate::FalsePredicate,
     },
     utils::cidr::parse_cidrs,
 };
@@ -233,16 +231,8 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
             let config = transport_config.tcp;
             debug!(target: LOG_TARGET, "Building TCP comms stack");
             let mut transport = TcpWithTorTransport::new();
-            if let Some(addr) = config.tor_socks_address {
-                transport.set_tor_socks_proxy(SocksConfig {
-                    proxy_address: addr,
-                    authentication: config.tor_socks_auth.into(),
-                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                });
-            }
-            // Keep the explicit TCP mode limited to TCP peer addresses even when a legacy
-            // tor_socks_address is configured. Mixed TCP/Tor modes use the Tor hidden-service
-            // transport variants below.
+            // Keep the explicit TCP mode limited to TCP peer addresses. Mixed TCP/Tor modes
+            // use the Tor hidden-service transport variants below.
             transport.set_supported_protocols(TransportType::Tcp.get_supported_protocols());
             comms
                 .with_listener_address(config.listener_address)
