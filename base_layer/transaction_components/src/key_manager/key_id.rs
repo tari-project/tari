@@ -190,7 +190,7 @@ impl FromStr for TariKeyId {
             Some(val) => match *val {
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    if parts.len() < 3 {
+                    if parts.len() < 2 {
                         return Err("Wrong derived format".to_string());
                     };
 
@@ -382,6 +382,14 @@ mod tests {
     #[test]
     fn roundtrip_derived_with_dots() {
         let s = "derived.ledger_key.MetadataEphemeralNonce.0";
+        let parsed = TariKeyId::from_str(s).unwrap();
+        assert!(matches!(parsed, TariKeyId::Derived { .. }));
+        assert_eq!(parsed.to_string(), s);
+    }
+
+    #[test]
+    fn roundtrip_derived_with_simple_current_key() {
+        let s = "derived.spend_key";
         let parsed = TariKeyId::from_str(s).unwrap();
         assert!(matches!(parsed, TariKeyId::Derived { .. }));
         assert_eq!(parsed.to_string(), s);

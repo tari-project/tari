@@ -24,6 +24,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use diesel::prelude::*;
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityHandle,
@@ -34,12 +35,14 @@ use minotari_wallet::{
         handle::OutputManagerHandle,
         service::OutputManagerService,
         storage::{
+            OutputSource,
             OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
-            models::SpendingPriority,
+            models::{DbWalletOutput, SpendingPriority},
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
+    schema::outputs,
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
@@ -47,6 +50,7 @@ use minotari_wallet::{
 };
 use rand::Rng;
 use tari_common::configuration::Network;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -77,9 +81,11 @@ use tari_transaction_key_manager::legacy_key_manager::{
     MemoryKeyManager,
     create_new_random_key_manager,
 };
+use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
+    time::{Duration, sleep, timeout},
 };
 
 use crate::support::{
@@ -237,6 +243,84 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         event_publisher_bns,
         key_manager,
     )
+}
+
+#[tokio::test]
+async fn test_startup_migrates_legacy_output_key_ids() {
+    let mut shutdown = Shutdown::new();
+    let factories = CryptoFactories::default();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let output = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(5000),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let output = DbWalletOutput::from_wallet_output(output, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(output.clone(), &key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(output.hash, true)]).unwrap();
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(output.commitment.to_vec())))
+            .set(outputs::spending_key.eq("managed.comms.0"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_event_publisher, _) = broadcast::channel(200);
+    let (sender, _receiver_bns) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+    let scanner_handle = UtxoScannerHandle::new(event_sender, one_sided_message_watch, recovery_message_watch);
+
+    let output_manager_service = OutputManagerService::new(
+        OutputManagerServiceConfig { ..Default::default() },
+        oms_request_receiver,
+        db.clone(),
+        oms_event_publisher.clone(),
+        factories,
+        create_consensus_constants(0),
+        shutdown.to_signal(),
+        base_node_service_handle,
+        Network::LocalNet,
+        connectivity,
+        key_manager.clone(),
+        scanner_handle,
+    )
+    .await
+    .unwrap();
+    let mut output_manager_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+    task::spawn(async move { output_manager_service.start().await.unwrap() });
+
+    let balance = timeout(Duration::from_secs(2), output_manager_handle.get_balance())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(balance.available_balance, MicroMinotari::from(5000));
+
+    for _ in 0..50 {
+        if db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap().is_empty() {
+            break;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap().is_empty());
+    let outputs = output_manager_handle.get_unspent_outputs().await.unwrap();
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].wallet_output.commitment_mask_key_id(), &TariKeyId::SpendKey);
+
+    shutdown.trigger();
 }
 
 #[tokio::test]

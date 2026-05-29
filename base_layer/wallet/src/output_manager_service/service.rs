@@ -218,6 +218,7 @@ where
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
+        self.spawn_legacy_output_key_id_migration();
         loop {
             tokio::select! {
                 event = base_node_service_event_stream.recv() => {
@@ -249,6 +250,21 @@ where
         }
         info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
+    }
+
+    fn spawn_legacy_output_key_id_migration(&self) {
+        let db = self.resources.db.clone();
+        let key_manager = self.resources.key_manager.clone();
+
+        tokio::task::spawn_blocking(move || match db.migrate_legacy_output_key_ids(&key_manager) {
+            Ok(0) => {},
+            Ok(migrated_count) => {
+                info!(target: LOG_TARGET, "Migrated {migrated_count} legacy output key id(s)");
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Legacy output key id migration failed: {e}");
+            },
+        });
     }
 
     /// This handler is called when the Service executor loops receives an API request

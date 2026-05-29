@@ -21,35 +21,101 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::convert::TryFrom;
+use std::{convert::TryFrom, mem::size_of, str::FromStr, sync::Arc};
 
-use minotari_wallet::output_manager_service::{
-    RangeLimit,
-    UtxoSelectionCriteria,
-    error::OutputManagerStorageError,
-    service::Balance,
-    storage::{
-        OutputSource,
-        OutputStatus,
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbWalletOutput,
-        sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+use chacha20poly1305::{Key, XChaCha20Poly1305, aead::KeyInit};
+use diesel::prelude::*;
+use minotari_wallet::{
+    output_manager_service::{
+        RangeLimit,
+        UtxoSelectionCriteria,
+        error::OutputManagerStorageError,
+        service::Balance,
+        storage::{
+            OutputSource,
+            OutputStatus,
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbWalletOutput,
+            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+        },
     },
+    schema::outputs,
+    storage::sqlite_utilities::WalletDbConnection,
 };
 use rand::Rng;
+use tari_common_sqlite::{
+    connection::{DbConnection, DbConnectionUrl},
+    sqlite_connection_pool::PooledDbConnection,
+};
 use tari_common_types::{
+    seeds::cipher_seed::CipherSeed,
     transaction::TxId,
-    types::{FixedHash, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{MicroMinotari, transaction_components::OutputFeatures};
-use tari_transaction_key_manager::legacy_key_manager::{
-    LegacyTransactionKeyManagerInterface,
-    create_new_random_key_manager,
+use tari_test_utils::random;
+use tari_transaction_components::{
+    MicroMinotari,
+    crypto_factories::CryptoFactories,
+    key_manager::{SecretTransactionKeyManagerInterface, TariKeyId},
+    transaction_components::OutputFeatures,
+};
+use tari_transaction_key_manager::{
+    legacy_key_manager::{
+        LegacyTariKeyId,
+        LegacyTransactionKeyManagerInterface,
+        LegacyTransactionKeyManagerWrapper,
+        TransactionKeyManagerBackend,
+        create_new_random_key_manager,
+        wallet_types::LegacyWalletType,
+    },
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
 };
 use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
+
+fn add_test_output<KM: LegacyTransactionKeyManagerInterface>(
+    db: &OutputManagerDatabase<OutputManagerSqliteDatabase>,
+    key_manager: &KM,
+    value: MicroMinotari,
+) -> DbWalletOutput {
+    let output = make_input(
+        &mut rand::rng(),
+        value,
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let output = DbWalletOutput::from_wallet_output(output, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(output.clone(), key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(output.hash, true)]).unwrap();
+    output
+}
+
+fn set_output_key_ids(
+    connection: &WalletDbConnection,
+    output: &DbWalletOutput,
+    spending_key: &str,
+    script_private_key: &str,
+) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    diesel::update(outputs::table.filter(outputs::commitment.eq(output.commitment.to_vec())))
+        .set((
+            outputs::spending_key.eq(spending_key),
+            outputs::script_private_key.eq(script_private_key),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+}
+
+fn get_output_key_ids(connection: &WalletDbConnection, output: &DbWalletOutput) -> (String, String) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    outputs::table
+        .select((outputs::spending_key, outputs::script_private_key))
+        .filter(outputs::commitment.eq(output.commitment.to_vec()))
+        .first::<(String, String)>(&mut conn)
+        .unwrap()
+}
 
 #[allow(clippy::too_many_lines)]
 pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
@@ -988,4 +1054,169 @@ pub async fn test_mark_as_unmined() {
         }
     }
     assert_eq!(batch_invalid_count, batch_count);
+}
+
+#[tokio::test]
+async fn test_legacy_key_filter_catches_nested_key_ids() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let legacy_key_ids = [
+        "managed.comms.0",
+        "derived.managed.comms.0",
+        "imported.not-a-public-key",
+        "derived.imported.not-a-public-key",
+    ];
+
+    for (i, legacy_key_id) in legacy_key_ids.iter().enumerate() {
+        let output = add_test_output(&db, &key_manager, MicroMinotari::from(1000 + i as u64));
+        let script_key_id = output.wallet_output.script_key_id().to_string();
+        set_output_key_ids(&connection, &output, legacy_key_id, &script_key_id);
+    }
+
+    let found = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    let found_spending_keys = found
+        .into_iter()
+        .map(|(_, spending_key, _)| spending_key)
+        .collect::<Vec<_>>();
+    assert_eq!(found_spending_keys, legacy_key_ids.map(String::from));
+}
+
+#[tokio::test]
+async fn test_migrate_legacy_output_key_ids() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let direct_legacy_output = add_test_output(&db, &key_manager, MicroMinotari::from(2000));
+    let nested_legacy_output = add_test_output(&db, &key_manager, MicroMinotari::from(3000));
+
+    let direct_script_key_id = direct_legacy_output.wallet_output.script_key_id().to_string();
+    let nested_script_key_id = nested_legacy_output.wallet_output.script_key_id().to_string();
+    set_output_key_ids(
+        &connection,
+        &direct_legacy_output,
+        "managed.comms.0",
+        &direct_script_key_id,
+    );
+    set_output_key_ids(
+        &connection,
+        &nested_legacy_output,
+        "derived.managed.comms.0",
+        &nested_script_key_id,
+    );
+
+    let migrated_count = db.migrate_legacy_output_key_ids(&key_manager).unwrap();
+    assert_eq!(migrated_count, 2);
+
+    let (direct_spending_key, _) = get_output_key_ids(&connection, &direct_legacy_output);
+    assert_eq!(direct_spending_key, TariKeyId::SpendKey.to_string());
+
+    let (nested_spending_key, _) = get_output_key_ids(&connection, &nested_legacy_output);
+    assert_eq!(
+        TariKeyId::from_str(&nested_spending_key).unwrap(),
+        TariKeyId::from_str("derived.spend_key").unwrap()
+    );
+
+    let remaining_legacy_key_ids = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    assert!(remaining_legacy_key_ids.is_empty());
+    assert_eq!(db.migrate_legacy_output_key_ids(&key_manager).unwrap(), 0);
+
+    let outputs = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
+    assert_eq!(outputs.len(), 2);
+}
+
+#[tokio::test]
+async fn test_migrate_imported_legacy_output_key_id() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+
+    let key_manager_connection =
+        DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random::string(8)), Some(5)).unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let db_cipher = XChaCha20Poly1305::new(Key::from_slice(&key));
+    let kms_backend = TransactionKeyManagerSqliteDatabase::init(key_manager_connection, db_cipher);
+
+    let imported_private_key = PrivateKey::random(&mut rand::rng());
+    let imported_public_key = CompressedPublicKey::from_secret_key(&imported_private_key);
+    kms_backend
+        .insert_imported_key(imported_public_key.clone(), imported_private_key.clone())
+        .await
+        .unwrap();
+
+    let key_manager = LegacyTransactionKeyManagerWrapper::new_with_legacy_storage(
+        CipherSeed::random(),
+        kms_backend,
+        CryptoFactories::default(),
+        Arc::new(LegacyWalletType::default()),
+    )
+    .await
+    .unwrap();
+
+    let output = add_test_output(&db, &key_manager, MicroMinotari::from(2000));
+    let imported_legacy_key_id = LegacyTariKeyId::Imported {
+        key: imported_public_key,
+    }
+    .to_string();
+    let script_key_id = output.wallet_output.script_key_id().to_string();
+    set_output_key_ids(&connection, &output, &imported_legacy_key_id, &script_key_id);
+
+    let migrated_count = db.migrate_legacy_output_key_ids(&key_manager).unwrap();
+    assert_eq!(migrated_count, 1);
+
+    let (spending_key, _) = get_output_key_ids(&connection, &output);
+    assert_ne!(spending_key, imported_legacy_key_id);
+    assert_eq!(
+        key_manager
+            .get_private_key(&TariKeyId::from_str(&spending_key).unwrap())
+            .unwrap(),
+        imported_private_key
+    );
+}
+
+#[tokio::test]
+async fn test_legacy_key_migration_keyset_pagination_skips_bad_rows() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let bad_output = add_test_output(&db, &key_manager, MicroMinotari::from(1000));
+    let bad_script_key_id = bad_output.wallet_output.script_key_id().to_string();
+    set_output_key_ids(
+        &connection,
+        &bad_output,
+        "not-legacy.managed.unparseable",
+        &bad_script_key_id,
+    );
+
+    let first_page = db.fetch_outputs_with_legacy_key_ids(0, 1).unwrap();
+    assert_eq!(first_page.len(), 1);
+
+    let valid_output = add_test_output(&db, &key_manager, MicroMinotari::from(2000));
+    let valid_script_key_id = valid_output.wallet_output.script_key_id().to_string();
+    set_output_key_ids(&connection, &valid_output, "managed.comms.0", &valid_script_key_id);
+
+    let second_page = db.fetch_outputs_with_legacy_key_ids(first_page[0].0, 1).unwrap();
+    assert_eq!(second_page.len(), 1);
+    assert_eq!(second_page[0].1, "managed.comms.0");
+
+    let migrated_count = db.migrate_legacy_output_key_ids(&key_manager).unwrap();
+    assert_eq!(migrated_count, 1);
+
+    let (bad_spending_key, _) = get_output_key_ids(&connection, &bad_output);
+    assert_eq!(bad_spending_key, "not-legacy.managed.unparseable");
+
+    let (valid_spending_key, _) = get_output_key_ids(&connection, &valid_output);
+    assert_eq!(valid_spending_key, TariKeyId::SpendKey.to_string());
+
+    let remaining = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].1, "not-legacy.managed.unparseable");
+    assert_eq!(db.migrate_legacy_output_key_ids(&key_manager).unwrap(), 0);
 }

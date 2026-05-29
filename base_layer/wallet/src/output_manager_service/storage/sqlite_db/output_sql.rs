@@ -1065,6 +1065,44 @@ impl OutputSql {
         OutputSql::find(&self.spending_key, conn)
     }
 
+    pub fn find_outputs_with_legacy_key_ids(
+        last_seen_id: i32,
+        batch_size: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
+        outputs::table
+            .select((outputs::id, outputs::spending_key, outputs::script_private_key))
+            .filter(outputs::id.gt(last_seen_id))
+            .filter(
+                outputs::spending_key
+                    .like("%managed.%")
+                    .or(outputs::spending_key.like("%imported.%"))
+                    .or(outputs::script_private_key.like("%managed.%"))
+                    .or(outputs::script_private_key.like("%imported.%")),
+            )
+            .order(outputs::id.asc())
+            .limit(batch_size)
+            .load::<(i32, String, String)>(conn)
+            .map_err(OutputManagerStorageError::DieselError)
+    }
+
+    pub fn update_key_ids(
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), OutputManagerStorageError> {
+        diesel::update(outputs::table.filter(outputs::id.eq(output_id)))
+            .set((
+                outputs::spending_key.eq(spending_key),
+                outputs::script_private_key.eq(script_private_key),
+            ))
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+
+        Ok(())
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn to_db_wallet_output<KM: LegacyTransactionKeyManagerInterface>(
         self,

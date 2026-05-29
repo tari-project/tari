@@ -1462,6 +1462,25 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             })
             .collect())
     }
+
+    fn fetch_outputs_with_legacy_key_ids(
+        &self,
+        last_seen_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::find_outputs_with_legacy_key_ids(last_seen_id, batch_size, &mut conn)
+    }
+
+    fn update_output_key_ids(
+        &self,
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+    ) -> Result<(), OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::update_key_ids(output_id, spending_key, script_private_key, &mut conn)
+    }
 }
 
 fn replace_tx_id(

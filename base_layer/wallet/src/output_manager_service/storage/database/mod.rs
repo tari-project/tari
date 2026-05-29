@@ -24,7 +24,10 @@ mod backend;
 use std::{
     fmt::{Debug, Display, Error, Formatter},
     ops::Range,
+    str::FromStr,
     sync::Arc,
+    thread,
+    time::Duration,
 };
 
 pub use backend::OutputManagerBackend;
@@ -35,9 +38,10 @@ use tari_common_types::{
 };
 use tari_transaction_components::{
     MicroMinotari,
+    key_manager::TariKeyId,
     transaction_components::{OutputType, TransactionOutput},
 };
-use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
+use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
@@ -52,6 +56,8 @@ use crate::output_manager_service::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
+const LEGACY_KEY_ID_MIGRATION_BATCH_SIZE: i64 = 100;
+const LEGACY_KEY_ID_MIGRATION_BATCH_DELAY_MS: u64 = 50;
 
 #[derive(Debug, Copy, Clone)]
 pub enum SortDirection {
@@ -578,6 +584,105 @@ where T: OutputManagerBackend + 'static
         key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         self.db.fetch_outputs_by_query(q, key_manager)
+    }
+
+    pub fn fetch_outputs_with_legacy_key_ids(
+        &self,
+        last_seen_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
+        self.db.fetch_outputs_with_legacy_key_ids(last_seen_id, batch_size)
+    }
+
+    pub fn update_output_key_ids(
+        &self,
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .update_output_key_ids(output_id, spending_key, script_private_key)
+    }
+
+    pub fn migrate_legacy_output_key_ids<KM: LegacyTransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+    ) -> Result<usize, OutputManagerStorageError> {
+        let mut last_seen_id = 0;
+        let mut total_migrated = 0;
+
+        loop {
+            let batch = self.fetch_outputs_with_legacy_key_ids(last_seen_id, LEGACY_KEY_ID_MIGRATION_BATCH_SIZE)?;
+            if batch.is_empty() {
+                break;
+            }
+
+            let full_batch = batch.len() == LEGACY_KEY_ID_MIGRATION_BATCH_SIZE as usize;
+            for (output_id, spending_key, script_private_key) in batch {
+                last_seen_id = output_id;
+                let migrated_spending_key =
+                    migrate_legacy_key_id_string(output_id, "spending_key", &spending_key, key_manager);
+                let migrated_script_private_key =
+                    migrate_legacy_key_id_string(output_id, "script_private_key", &script_private_key, key_manager);
+
+                if migrated_spending_key.is_none() && migrated_script_private_key.is_none() {
+                    continue;
+                }
+
+                if let Err(e) = self.update_output_key_ids(
+                    output_id,
+                    migrated_spending_key.unwrap_or(spending_key),
+                    migrated_script_private_key.unwrap_or(script_private_key),
+                ) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Legacy output key id migration could not update output id {output_id}: {e}"
+                    );
+                    continue;
+                }
+
+                total_migrated += 1;
+            }
+
+            if full_batch {
+                thread::sleep(Duration::from_millis(LEGACY_KEY_ID_MIGRATION_BATCH_DELAY_MS));
+            }
+        }
+
+        Ok(total_migrated)
+    }
+}
+
+fn migrate_legacy_key_id_string<KM: LegacyTransactionKeyManagerInterface>(
+    output_id: i32,
+    column_name: &str,
+    key_id: &str,
+    key_manager: &KM,
+) -> Option<String> {
+    if TariKeyId::from_str(key_id).is_ok() {
+        return None;
+    }
+
+    let legacy_key_id = match LegacyTariKeyId::from_str(key_id) {
+        Ok(key_id) => key_id,
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Legacy output key id migration could not parse {column_name} for output id {output_id}: {e}"
+            );
+            return None;
+        },
+    };
+
+    match key_manager.convert_legacy_tari_key_id_to_current(&legacy_key_id) {
+        Ok(key_id) => Some(key_id.to_string()),
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Legacy output key id migration could not convert {column_name} for output id {output_id}: {e}"
+            );
+            None
+        },
     }
 }
 

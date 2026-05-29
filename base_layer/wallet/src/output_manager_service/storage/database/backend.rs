@@ -196,4 +196,15 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         q: OutputBackendQuery,
         key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_with_legacy_key_ids(
+        &self,
+        last_seen_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError>;
+    fn update_output_key_ids(
+        &self,
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+    ) -> Result<(), OutputManagerStorageError>;
 }
