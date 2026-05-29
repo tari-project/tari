@@ -1041,6 +1041,75 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    /// Return up to `batch_size` outputs (ordered by `id` ascending, `id > last_id`) whose `spending_key` or
+    /// `script_private_key` still contains a legacy key-id string - one that cannot be parsed by
+    /// `TariKeyId::from_str` and therefore needs conversion via the legacy key manager path. Only the three columns
+    /// needed by the migration are fetched; no BLOB columns are loaded.
+    ///
+    /// Keyset pagination on `id` guarantees the migration always makes forward progress, even if some rows fail to
+    /// convert and remain in the LIKE filter forever. Callers pass `last_id = 0` on the first call and then pass
+    /// the last returned id on subsequent calls until an empty vec is returned.
+    ///
+    /// ## Filter completeness
+    ///
+    /// `Managed` and `Imported` are the only `LegacyTariKeyId` variants that have no equivalent in the current
+    /// `TariKeyId` set, so they are the only variants whose stored strings cannot be parsed by
+    /// `TariKeyId::from_str`. Every legacy-requiring-migration row therefore contains the substring `"managed."` or
+    /// `"imported."` somewhere in its key string, no matter how deeply it is wrapped:
+    ///
+    /// - Direct:           `"managed.X.Y"`, `"imported.<pubkey>"`
+    /// - Inside `Derived`: `"derived.managed.X.Y"`, `"derived.imported.<pubkey>"`
+    /// - Inside `Encrypted` / `DHCommitmentMask` / `DHEncryptedData`: `"encrypted.<bytes>.managed.X.Y"`, etc.
+    /// - Arbitrarily nested: `"derived.encrypted.<bytes>.managed.X.Y"`, etc.
+    ///
+    /// Using substring patterns (`%managed.%` / `%imported.%`) catches every nesting depth in a single filter and
+    /// avoids the trap of enumerating per-depth prefix patterns that inevitably misses some combination. Current
+    /// `TariKeyId` encodings cannot produce these substrings as false positives: every nested string within a
+    /// current encoding is either another `TariKeyId` (which uses prefixes like `spend_key`, `view_key`, `derived`,
+    /// `encrypted`, `ledger_key`, `zero`, etc.) or a hex blob (no `m`, `n`, `g`, `p`, `r`, `t` characters).
+    ///
+    /// LIKE with a leading `%` cannot use a B-tree index, but SQLite's default TEXT LIKE has no usable index for
+    /// prefix patterns either, so substring matching does not regress the table-scan cost.
+    pub fn find_outputs_with_legacy_key_ids(
+        last_id: i32,
+        batch_size: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
+        outputs::table
+            .select((outputs::id, outputs::spending_key, outputs::script_private_key))
+            .filter(outputs::id.gt(last_id))
+            .filter(
+                outputs::spending_key
+                    .like("%managed.%")
+                    .or(outputs::spending_key.like("%imported.%"))
+                    .or(outputs::script_private_key.like("%managed.%"))
+                    .or(outputs::script_private_key.like("%imported.%")),
+            )
+            .order(outputs::id.asc())
+            .limit(batch_size)
+            .load::<(i32, String, String)>(conn)
+            .map_err(OutputManagerStorageError::DieselError)
+    }
+
+    /// Update the `spending_key` and `script_private_key` columns for the output identified by `output_id`.
+    pub fn update_key_ids(
+        output_id: i32,
+        new_spending_key: &str,
+        new_script_private_key: &str,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), OutputManagerStorageError> {
+        let num_updated = diesel::update(outputs::table.filter(outputs::id.eq(output_id)))
+            .set((
+                outputs::spending_key.eq(new_spending_key),
+                outputs::script_private_key.eq(new_script_private_key),
+            ))
+            .execute(conn)?;
+        if num_updated == 0 {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+        Ok(())
+    }
+
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;

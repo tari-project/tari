@@ -579,6 +579,26 @@ where T: OutputManagerBackend + 'static
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         self.db.fetch_outputs_by_query(q, key_manager)
     }
+
+    /// See `OutputManagerBackend::fetch_outputs_with_legacy_key_ids`.
+    pub fn fetch_outputs_with_legacy_key_ids(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
+        self.db.fetch_outputs_with_legacy_key_ids(last_id, batch_size)
+    }
+
+    /// See `OutputManagerBackend::update_output_key_ids`.
+    pub fn update_output_key_ids(
+        &self,
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .update_output_key_ids(output_id, spending_key, script_private_key)
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {
