@@ -196,4 +196,22 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         q: OutputBackendQuery,
         key_manager: &KM,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    /// Fetch a batch of outputs whose `spending_key` or `script_private_key` columns still hold a legacy key-id
+    /// string. Only the three columns required for migration are returned (no BLOBs).
+    ///
+    /// Keyset pagination: rows are filtered by `id > last_id` and returned ordered ascending. Callers pass
+    /// `last_id = 0` on the first call, then the last id from the previous batch. This guarantees forward
+    /// progress through the table even if some rows fail to convert and remain in the filter.
+    fn fetch_outputs_with_legacy_key_ids(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError>;
+    /// Update the `spending_key` and `script_private_key` columns for the output identified by `output_id`.
+    fn update_output_key_ids(
+        &self,
+        output_id: i32,
+        spending_key: String,
+        script_private_key: String,
+    ) -> Result<(), OutputManagerStorageError>;
 }
