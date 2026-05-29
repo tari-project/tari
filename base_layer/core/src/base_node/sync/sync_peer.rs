@@ -97,6 +97,46 @@ impl SyncPeer {
     pub fn clear_connection(&mut self) {
         self.connection = None;
     }
+
+    /// If the stored connection is currently a Weak handle (or no connection is attached),
+    /// upgrade it to Strong in place. If it's already Strong this is a no-op. The upgrade is
+    /// cheap and never touches the connectivity actor — it just clones the existing handle.
+    ///
+    /// Returns `true` if a Strong handle is attached after this call (either pre-existing or
+    /// newly upgraded), `false` if no connection was attached. Callers that get `false` should
+    /// dial a fresh Strong connection via the connectivity layer.
+    pub fn ensure_strong_connection(&mut self) -> bool {
+        match self.connection.take() {
+            Some(conn) if conn.is_strong() => {
+                self.connection = Some(conn);
+                true
+            },
+            Some(conn) => {
+                // Upgrade: clone_strong bumps the shared strong-counter, then we drop the old
+                // weak handle. Net result: +1 strong slot held by this SyncPeer.
+                self.connection = Some(conn.clone_strong());
+                true
+            },
+            None => false,
+        }
+    }
+
+    /// If the stored connection is currently a Strong handle, replace it with a Weak clone.
+    /// The connection itself remains attached so later stages can reuse it without redialing,
+    /// but the strong-count is released — letting background reapers reclaim the peer if no
+    /// other strong holder exists. No-op when the stored handle is already Weak or absent.
+    pub fn downgrade_connection(&mut self) {
+        match self.connection.take() {
+            Some(conn) if conn.is_strong() => {
+                // clone_weak does not touch the counter; dropping `conn` (the strong handle)
+                // releases its slot. Net result: -1 strong slot, connection still attached.
+                self.connection = Some(conn.clone_weak());
+            },
+            other => {
+                self.connection = other;
+            },
+        }
+    }
 }
 
 impl From<PeerChainMetadata> for SyncPeer {
@@ -218,6 +258,61 @@ mod test {
             assert!(peer.connection().is_none());
             // raw_conn (weak) observes the release via the shared counter.
             assert_eq!(raw_conn.strong_count(), 0);
+        }
+
+        #[test]
+        fn downgrade_connection_releases_strong_but_keeps_handle() {
+            let mut peer = peer_with_id();
+            let (raw_conn, _rx) = create_dummy_peer_connection(peer.node_id().clone());
+            peer.set_connection(raw_conn.clone_strong());
+            assert_eq!(raw_conn.strong_count(), 1);
+
+            peer.downgrade_connection();
+            // Connection still attached for reuse, but strong-count is back to zero.
+            assert!(peer.connection().is_some());
+            assert!(!peer.connection().unwrap().is_strong());
+            assert_eq!(raw_conn.strong_count(), 0);
+        }
+
+        #[test]
+        fn downgrade_connection_is_noop_for_weak_or_none() {
+            let mut peer = peer_with_id();
+            // None case
+            peer.downgrade_connection();
+            assert!(peer.connection().is_none());
+
+            // Weak case
+            let (raw_conn, _rx) = create_dummy_peer_connection(peer.node_id().clone());
+            peer.set_connection(raw_conn.clone_weak());
+            assert!(!peer.connection().unwrap().is_strong());
+            peer.downgrade_connection();
+            assert!(peer.connection().is_some());
+            assert!(!peer.connection().unwrap().is_strong());
+            assert_eq!(raw_conn.strong_count(), 0);
+        }
+
+        #[test]
+        fn ensure_strong_connection_upgrades_weak_in_place() {
+            let mut peer = peer_with_id();
+            let (raw_conn, _rx) = create_dummy_peer_connection(peer.node_id().clone());
+            peer.set_connection(raw_conn.clone_weak());
+            assert_eq!(raw_conn.strong_count(), 0);
+
+            let upgraded = peer.ensure_strong_connection();
+            assert!(upgraded);
+            assert!(peer.connection().unwrap().is_strong());
+            assert_eq!(raw_conn.strong_count(), 1);
+
+            // Calling again is idempotent — already-strong handles aren't double-counted.
+            let upgraded_again = peer.ensure_strong_connection();
+            assert!(upgraded_again);
+            assert_eq!(raw_conn.strong_count(), 1);
+        }
+
+        #[test]
+        fn ensure_strong_connection_returns_false_when_no_connection() {
+            let mut peer = peer_with_id();
+            assert!(!peer.ensure_strong_connection());
         }
     }
 

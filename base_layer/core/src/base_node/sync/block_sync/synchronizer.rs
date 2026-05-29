@@ -100,18 +100,18 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
-        // Sync peers typically arrive here with a Strong PeerConnection already attached by
-        // header_sync (see `HeaderSynchronizer::synchronize`). For any sync peer that lacks one
-        // — either because we entered block_sync without going through header_sync, or the
-        // upfront dial failed earlier — dial a Strong connection now so the connection remains
-        // pinned for the duration of block sync.
+        // Sync peers typically arrive here with a connection attached by header_sync (which
+        // downgrades it to Weak on exit). Upgrade each in place to Strong for the duration of
+        // block sync, or dial Strong if no connection is attached. The Strong handle pins the
+        // peer against background reapers; we'll downgrade back to Weak on exit so reuse by
+        // later stages remains free while leaving the peer eligible for reaping again.
         for peer in self.sync_peers.iter_mut() {
             if let Some(conn) = peer.connection() &&
                 !conn.is_connected()
             {
                 peer.clear_connection();
             }
-            if peer.connection().is_some() {
+            if peer.ensure_strong_connection() {
                 continue;
             }
             match self
@@ -127,7 +127,15 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             }
         }
 
-        self.synchronize_inner().await
+        let result = self.synchronize_inner().await;
+
+        // Release the Strong pin on every remaining sync peer; the connection stays attached
+        // (as Weak) so horizon_state_sync can upgrade it again without redialling.
+        for peer in self.sync_peers.iter_mut() {
+            peer.downgrade_connection();
+        }
+
+        result
     }
 
     async fn synchronize_inner(&mut self) -> Result<(), BlockSyncError> {

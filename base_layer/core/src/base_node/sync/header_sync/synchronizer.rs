@@ -121,22 +121,19 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.sync_peers.len()
         );
 
-        // Dial every sync-candidate peer up-front as a Strong reference and attach the resulting
-        // PeerConnection to its SyncPeer. The Strong handle bumps the per-connection strong
-        // counter — signaling to background reapers (ConnectivityManager n-closest pruning,
+        // Ensure every sync-candidate peer has a Strong PeerConnection attached for the
+        // duration of header sync. The Strong handle bumps the per-connection strong counter,
+        // signalling to background reapers (ConnectivityManager n-closest pruning,
         // inactive-connection reaping, DhtConnectivity random-pool pruning) that they must not
-        // disconnect the peer — and propagates with the SyncPeer through to block_sync and
-        // horizon_state_sync. The strong ref is released when the SyncPeer (or its connection)
-        // is dropped or replaced.
+        // disconnect the peer. If a stored connection is already attached (e.g. from a prior
+        // sync stage that downgraded it to Weak), upgrade in place rather than redialling.
         for peer in self.sync_peers.iter_mut() {
-            // If a previous run left a connection on the SyncPeer that's now disconnected, drop
-            // it before redialing so the strong-counter for the stale handle is released.
             if let Some(conn) = peer.connection() &&
                 !conn.is_connected()
             {
                 peer.clear_connection();
             }
-            if peer.connection().is_some() {
+            if peer.ensure_strong_connection() {
                 continue;
             }
             match self
@@ -152,7 +149,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
         }
 
-        self.synchronize_inner().await
+        let result = self.synchronize_inner().await;
+
+        // Sync is done (success or failure): downgrade every Strong handle to Weak so reapers
+        // may reclaim the connection if needed. The connections remain attached on the
+        // SyncPeers, so the next sync stage can upgrade them back in place without redialling.
+        for peer in self.sync_peers.iter_mut() {
+            peer.downgrade_connection();
+        }
+
+        result
     }
 
     async fn synchronize_inner(&mut self) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
