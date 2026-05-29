@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.2](https://github.com/tari-project/tari/compare/v5.4.0-pre.1...v5.4.0-pre.2) (2026-05-29)
+
+
+### Features
+
+* add peer transport preference modes ([#7851](https://github.com/tari-project/tari/issues/7851)) ([0c3c87d](https://github.com/tari-project/tari/commit/0c3c87df4ce14938be56fc3cbd056298484a5600)), closes [#7830](https://github.com/tari-project/tari/issues/7830)
+* **wallet:** migrate legacy output key-ids to current format on startup (closes [#7829](https://github.com/tari-project/tari/issues/7829)) ([#7859](https://github.com/tari-project/tari/issues/7859)) ([9e9c832](https://github.com/tari-project/tari/commit/9e9c8323f0d4bddb2631ff789b4e4c00004ae6fb))
+* **wallet:** stealth-address claim key for L1->L2 burns ([#7861](https://github.com/tari-project/tari/issues/7861)) ([d17fac8](https://github.com/tari-project/tari/commit/d17fac8e588c98820dff1250c4e00752545a6aed)), closes [tari-project/tari-ootle#1890](https://github.com/tari-project/tari-ootle/issues/1890)
+
+
+### Bug Fixes
+
+* **common:** make StaticApplicationInfo work for crates.io consumers ([#7860](https://github.com/tari-project/tari/issues/7860)) ([3241ca9](https://github.com/tari-project/tari/commit/3241ca916bf0b6529ca72ca27e5eb748aa1b29af))
+
 ## [5.4.0-pre.1](https://github.com/tari-project/tari/compare/v5.4.0-pre.0...v5.4.0-pre.1) (2026-05-27)
 
 ### Features
