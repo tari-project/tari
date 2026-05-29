@@ -126,7 +126,10 @@ def ensure_bootstrapped() -> None:
 
         env = os.environ.copy()
         env[BOOTSTRAP_ENV] = "1"
-        os.execve(str(python), [str(python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+        args = [str(python), str(Path(__file__).resolve()), *sys.argv[1:]]
+        if sys.platform == "win32":
+            sys.exit(subprocess.call(args, env=env))
+        os.execve(str(python), args, env)
     except (OSError, subprocess.CalledProcessError) as error:
         raise InstallerError(
             f"Failed to prepare isolated Ledger tooling environment at {venv_dir}."
@@ -250,7 +253,10 @@ def fetch_release_asset(model: str, tag: Optional[str]) -> ReleaseAsset:
 def download_file(url: str, destination: Path) -> None:
     try:
         with urllib.request.urlopen(github_request(url), timeout=120) as response:
-            total = int(response.headers.get("Content-Length") or 0)
+            try:
+                total = int(response.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                total = 0
             downloaded = 0
             with destination.open("wb") as output:
                 while True:
@@ -270,6 +276,7 @@ def download_file(url: str, destination: Path) -> None:
 
 def parse_sha256_file(text: str, expected_filename: str) -> str:
     digests = []
+    found_named_digest = False
     for line in text.splitlines():
         parts = line.strip().split()
         if not parts:
@@ -277,12 +284,16 @@ def parse_sha256_file(text: str, expected_filename: str) -> str:
         digest = parts[0].removeprefix("sha256:")
         if not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
             continue
-        digests.append(digest.lower())
-        if len(parts) > 1 and parts[-1].lstrip("*") == expected_filename:
+        filename = parts[-1].lstrip("*") if len(parts) > 1 else None
+        if filename == expected_filename:
             return digest.lower()
+        if filename is not None:
+            found_named_digest = True
+            continue
+        digests.append(digest.lower())
     if len(digests) == 1:
         return digests[0]
-    if digests:
+    if digests or found_named_digest:
         raise InstallerError(f"Checksum file did not contain a digest for {expected_filename}.")
     raise InstallerError("Checksum file did not contain a SHA256 digest.")
 

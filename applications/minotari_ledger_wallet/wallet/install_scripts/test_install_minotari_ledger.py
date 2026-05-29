@@ -17,6 +17,25 @@ sys.modules["install_minotari_ledger"] = installer
 SPEC.loader.exec_module(installer)
 
 
+class TestBootstrapHandling(unittest.TestCase):
+    def test_windows_bootstrap_waits_for_child_process(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            python = Path(temp_dir) / "python.exe"
+            python.touch()
+            with mock.patch.object(installer, "cache_dir", return_value=Path(temp_dir)), \
+                mock.patch.object(installer, "venv_python_path", return_value=python), \
+                mock.patch.object(installer, "module_available", return_value=True), \
+                mock.patch.object(installer.sys, "platform", "win32"), \
+                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--model", "flex"]), \
+                mock.patch.object(installer.subprocess, "call", return_value=7) as call, \
+                mock.patch.dict(installer.os.environ, {}, clear=True):
+                with self.assertRaises(SystemExit) as context:
+                    installer.ensure_bootstrapped()
+
+            self.assertEqual(context.exception.code, 7)
+            self.assertEqual(call.call_args.args[0], [str(python), str(SCRIPT_PATH.resolve()), "--model", "flex"])
+
+
 class TestModelMapping(unittest.TestCase):
     def test_supported_target_ids(self):
         self.assertEqual(installer.model_from_target_id(0x33100004).slug, "nanosplus")
@@ -95,11 +114,22 @@ class TestReleaseSelection(unittest.TestCase):
 
 
 class TestChecksumHandling(unittest.TestCase):
+    def test_parse_sha256_accepts_single_bare_digest(self):
+        checksum = "a" * 64
+
+        self.assertEqual(installer.parse_sha256_file(f"{checksum}\n", "firmware.zip"), checksum)
+
     def test_parse_sha256_for_expected_filename(self):
         checksum = "a" * 64
         text = f"{'b' * 64}  other.zip\n{checksum}  firmware.zip\n"
 
         self.assertEqual(installer.parse_sha256_file(text, "firmware.zip"), checksum)
+
+    def test_parse_sha256_rejects_single_hash_for_wrong_filename(self):
+        text = f"{'a' * 64}  other.zip\n"
+
+        with self.assertRaisesRegex(installer.InstallerError, "firmware.zip"):
+            installer.parse_sha256_file(text, "firmware.zip")
 
     def test_parse_sha256_rejects_multiple_hashes_without_expected_filename(self):
         text = f"{'a' * 64}  one.zip\n{'b' * 64}  two.zip\n"
@@ -114,6 +144,35 @@ class TestChecksumHandling(unittest.TestCase):
 
             with self.assertRaisesRegex(installer.InstallerError, "Checksum mismatch"):
                 installer.verify_sha256(path, "0" * 64)
+
+
+class FakeDownloadResponse:
+    def __init__(self, headers, chunks):
+        self.headers = headers
+        self.chunks = list(chunks)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _size=-1):
+        if not self.chunks:
+            return b""
+        return self.chunks.pop(0)
+
+
+class TestDownloadHandling(unittest.TestCase):
+    def test_download_file_ignores_invalid_content_length(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = Path(temp_dir) / "firmware.zip"
+            response = FakeDownloadResponse({"Content-Length": "not-a-number"}, [b"firm", b"ware"])
+
+            with mock.patch.object(installer.urllib.request, "urlopen", return_value=response):
+                installer.download_file("https://example.com/firmware.zip", destination)
+
+            self.assertEqual(destination.read_bytes(), b"firmware")
 
 
 class TestExtractionAndArtifactSelection(unittest.TestCase):
