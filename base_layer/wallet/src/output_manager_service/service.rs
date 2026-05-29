@@ -85,7 +85,11 @@ use tari_transaction_components::{
         branch_bound_builder::BranchAndBoundUtxoSelectionBuilder,
     },
 };
-use tari_transaction_key_manager::legacy_key_manager::{LegacyTransactionKeyManagerInterface, wallet_types::FeeType};
+use tari_transaction_key_manager::legacy_key_manager::{
+    LegacyTariKeyId,
+    LegacyTransactionKeyManagerInterface,
+    wallet_types::FeeType,
+};
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::Mutex, time::Instant};
 
@@ -218,6 +222,12 @@ where
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
+
+        // Spawn a background task that converts any legacy key-id strings still stored in the output table to the
+        // current format. This runs without blocking service startup - the main event loop below processes requests
+        // concurrently while the migration works through the table in batches.
+        tokio::spawn(migrate_legacy_output_keys(self.resources.clone()));
+
         loop {
             tokio::select! {
                 event = base_node_service_event_stream.recv() => {
@@ -3398,5 +3408,144 @@ impl Display for OutputInfoByTxId {
             }
         )?;
         Ok(())
+    }
+}
+
+/// Number of output rows processed per iteration of the legacy-key migration.
+const LEGACY_KEY_MIGRATION_BATCH_SIZE: i64 = 100;
+
+/// Convert one stored key-id string from the legacy encoding to the current `TariKeyId` encoding.
+///
+/// Returns the converted string and whether a conversion actually happened. If the input already parses as a
+/// current `TariKeyId` the original string is returned unchanged. If both `TariKeyId::from_str` and
+/// `LegacyTariKeyId::from_str` reject the input, or the legacy-to-current conversion errors, the original string
+/// is returned unchanged and `converted = false` is reported so the caller can decide whether to write it back.
+fn convert_one_key_id<KM: LegacyTransactionKeyManagerInterface>(
+    raw: &str,
+    output_id: i32,
+    field_name: &str,
+    key_manager: &KM,
+) -> (String, bool) {
+    use std::str::FromStr;
+    if TariKeyId::from_str(raw).is_ok() {
+        // Already in current format - nothing to do.
+        return (raw.to_string(), false);
+    }
+    match LegacyTariKeyId::from_str(raw) {
+        Ok(legacy_id) => match key_manager.convert_legacy_tari_key_id_to_current(&legacy_id) {
+            Ok(current_id) => (current_id.to_string(), true),
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Legacy key migration: could not convert {field_name} for output id={output_id}: {e}"
+                );
+                (raw.to_string(), false)
+            },
+        },
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Legacy key migration: unrecognised {field_name} format for output id={output_id}: {e}"
+            );
+            (raw.to_string(), false)
+        },
+    }
+}
+
+/// Sleep between batches to yield to the main service event loop and avoid `SQLITE_BUSY` contention against the
+/// shared connection pool. The migration is a one-time, non-time-critical task, so a short pause is appropriate.
+const LEGACY_KEY_MIGRATION_BATCH_PAUSE_MS: u64 = 50;
+
+/// Background task that converts any `spending_key` / `script_private_key` column values stored in the legacy
+/// `LegacyTariKeyId` encoding to the current `TariKeyId` encoding.
+///
+/// The LIKE filter in `OutputSql::find_outputs_with_legacy_key_ids` targets the substrings `"managed."` and
+/// `"imported."` - the only two legacy variants without a current `TariKeyId` equivalent. Using substring
+/// matching rather than prefix enumeration catches every nesting depth (`derived.managed.X`,
+/// `encrypted.<bytes>.imported.<pubkey>`, `derived.derived.managed.X`, etc.) in a single filter.
+///
+/// Iteration uses **keyset pagination** on `outputs.id` (`id > last_id`, `ORDER BY id ASC`). This guarantees
+/// the migration always makes forward progress through the table, even if some rows fail to convert and remain
+/// in the LIKE filter. Without keyset paging, a row stuck in the filter would be re-fetched on every iteration
+/// and the task would loop forever at 100% CPU.
+///
+/// Rows whose conversion fails are left in their original legacy form. They will still be converted lazily on
+/// read via the existing fallback path in `OutputSql::to_db_wallet_output`, so functionality is preserved.
+///
+/// Errors for individual rows are logged and skipped. Errors fetching a batch cause the migration to abort
+/// early with a warning.
+async fn migrate_legacy_output_keys<TBackend, TWalletConnectivity, TKeyManagerInterface>(
+    resources: OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
+) where
+    TBackend: OutputManagerBackend + 'static,
+    TWalletConnectivity: Send,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+{
+    let mut last_id: i32 = 0;
+    let mut total_migrated: usize = 0;
+    let mut total_unconvertable: usize = 0;
+
+    loop {
+        let batch = match resources
+            .db
+            .fetch_outputs_with_legacy_key_ids(last_id, LEGACY_KEY_MIGRATION_BATCH_SIZE)
+        {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Legacy key migration: failed to fetch next batch - aborting migration early: {e}"
+                );
+                return;
+            },
+        };
+
+        if batch.is_empty() {
+            break;
+        }
+
+        for (output_id, spending_key_str, script_key_str) in &batch {
+            let (new_spending, spending_converted) =
+                convert_one_key_id(spending_key_str, *output_id, "spending_key", &resources.key_manager);
+            let (new_script, script_converted) =
+                convert_one_key_id(script_key_str, *output_id, "script_private_key", &resources.key_manager);
+
+            if !spending_converted && !script_converted {
+                // Nothing changed - writing back is a no-op. Keyset paging advances past this row anyway.
+                total_unconvertable += 1;
+                continue;
+            }
+
+            if let Err(e) = resources.db.update_output_key_ids(*output_id, new_spending, new_script) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Legacy key migration: failed to update output id={output_id}: {e}"
+                );
+            } else {
+                total_migrated += 1;
+            }
+        }
+
+        // Advance the keyset cursor to the largest id seen in this batch. Rows are ORDER BY id ASC so the last
+        // tuple holds the max.
+        if let Some((max_id, _, _)) = batch.last() {
+            last_id = *max_id;
+        }
+
+        // Yield so the main service event loop and any other DB consumers can make progress.
+        tokio::time::sleep(std::time::Duration::from_millis(LEGACY_KEY_MIGRATION_BATCH_PAUSE_MS)).await;
+    }
+
+    if total_migrated > 0 {
+        info!(
+            target: LOG_TARGET,
+            "Legacy key migration complete: {total_migrated} output(s) converted to current key-id format \
+             ({total_unconvertable} row(s) could not be converted)."
+        );
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "Legacy key migration: no legacy key-ids found requiring conversion."
+        );
     }
 }

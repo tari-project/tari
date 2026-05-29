@@ -23,27 +23,33 @@
 #![allow(clippy::indexing_slicing)]
 use std::convert::TryFrom;
 
-use minotari_wallet::output_manager_service::{
-    RangeLimit,
-    UtxoSelectionCriteria,
-    error::OutputManagerStorageError,
-    service::Balance,
-    storage::{
-        OutputSource,
-        OutputStatus,
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbWalletOutput,
-        sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+use diesel::prelude::*;
+use minotari_wallet::{
+    output_manager_service::{
+        RangeLimit,
+        UtxoSelectionCriteria,
+        error::OutputManagerStorageError,
+        service::Balance,
+        storage::{
+            OutputSource,
+            OutputStatus,
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbWalletOutput,
+            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+        },
     },
+    schema::outputs,
 };
 use rand::Rng;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     transaction::TxId,
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{MicroMinotari, transaction_components::OutputFeatures};
+use tari_transaction_components::{MicroMinotari, key_manager::TariKeyId, transaction_components::OutputFeatures};
 use tari_transaction_key_manager::legacy_key_manager::{
+    LegacyTariKeyId,
     LegacyTransactionKeyManagerInterface,
     create_new_random_key_manager,
 };
@@ -988,4 +994,160 @@ pub async fn test_mark_as_unmined() {
         }
     }
     assert_eq!(batch_invalid_count, batch_count);
+}
+
+/// Test that `find_outputs_with_legacy_key_ids` catches every nesting depth a legacy key-id can take.
+///
+/// `Managed` and `Imported` are the only `LegacyTariKeyId` variants without a current `TariKeyId`
+/// equivalent, so every legacy-needing-migration string contains the substring `"managed."` or
+/// `"imported."` somewhere - regardless of how many wrappers (`Derived`, `Encrypted`,
+/// `DHCommitmentMask`, `DHEncryptedData`) are layered around it. This test injects four representative
+/// shapes and asserts the substring filter catches all of them:
+///
+/// 1. Direct `Managed`         - `"managed.comms.0"`
+/// 2. Direct `Imported`        - `"imported.<pubkey>"`
+/// 3. Single-nest `Derived`    - `"derived.managed.comms.0"`
+/// 4. Multi-nest `Derived`     - `"derived.derived.managed.comms.0"`
+///
+/// A per-prefix enumeration approach (`managed.%`, `derived.managed.%`, ...) would miss the
+/// multi-nest case; the substring approach catches it in a single filter.
+#[tokio::test]
+async fn test_legacy_key_filter_catches_every_nesting_depth() {
+    use tari_crypto::keys::PublicKey;
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let mut kmos = Vec::with_capacity(4);
+    for value in [1000, 1500, 2000, 2500] {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
+        kmos.push(kmo);
+    }
+
+    // Sanity check: nothing flagged before injection.
+    assert!(db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap().is_empty());
+
+    // Overwrite each row's spending_key with a distinct legacy shape. wallet_types constants:
+    // SPEND_KEY_BRANCH = "comms" so `managed.comms.0` is the canonical legacy spend key.
+    let (_sk, pubkey) = tari_crypto::ristretto::RistrettoPublicKey::random_keypair(&mut rand::rng());
+    let pubkey_hex = pubkey.to_hex();
+    let injections = [
+        (&kmos[0], "managed.comms.0".to_string()),
+        (&kmos[1], format!("imported.{pubkey_hex}")),
+        (&kmos[2], "derived.managed.comms.0".to_string()),
+        (&kmos[3], "derived.derived.managed.comms.0".to_string()),
+    ];
+    for (kmo, legacy) in &injections {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+            .set(outputs::spending_key.eq(legacy))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let found = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    assert_eq!(
+        found.len(),
+        injections.len(),
+        "substring LIKE filter must catch every nesting depth, including 'derived.derived.managed.*'"
+    );
+
+    // Spot-check that each injected string came back so we know the filter did not silently dedupe
+    // or skip one variant.
+    let returned_keys: std::collections::HashSet<&str> = found.iter().map(|(_, k, _)| k.as_str()).collect();
+    for (_, expected) in &injections {
+        assert!(
+            returned_keys.contains(expected.as_str()),
+            "filter did not return injected legacy string '{expected}'"
+        );
+    }
+}
+
+/// Test the full round-trip the migration loop performs on a single legacy `Managed` row:
+/// detect via filter, parse, convert via the legacy key manager, write back, confirm the row
+/// no longer matches the filter, and confirm an unrelated clean output stays loadable.
+#[tokio::test]
+async fn test_migrate_legacy_output_key_ids_roundtrip() {
+    use std::str::FromStr;
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    // Two outputs: kmo1 will get the legacy injection; kmo2 stays clean as a witness that the
+    // migration does not disturb unrelated rows.
+    let kmo1 = {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(2000),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
+        kmo
+    };
+    let kmo2 = {
+        let uo = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(3000),
+            &OutputFeatures::default(),
+            key_manager.key_manager(),
+        );
+        let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+        db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
+        kmo
+    };
+    db.mark_outputs_as_unspent(vec![(kmo1.hash, true), (kmo2.hash, true)])
+        .unwrap();
+
+    // Overwrite kmo1's spending_key with the legacy comms-key string.
+    let legacy_key_str = "managed.comms.0";
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo1.commitment.to_vec())))
+            .set(outputs::spending_key.eq(legacy_key_str))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let found = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    assert_eq!(found.len(), 1, "filter must find the injected row");
+    let (output_id, found_spending, found_script) = found.into_iter().next().unwrap();
+    assert_eq!(found_spending, legacy_key_str);
+
+    // Mirror what `migrate_legacy_output_keys` does for one row.
+    let legacy_id = LegacyTariKeyId::from_str(&found_spending).expect("must parse as LegacyTariKeyId");
+    let current_id = key_manager
+        .convert_legacy_tari_key_id_to_current(&legacy_id)
+        .expect("conversion must succeed");
+    assert_eq!(
+        current_id,
+        TariKeyId::SpendKey,
+        "legacy managed.comms.0 must convert to TariKeyId::SpendKey"
+    );
+    db.update_output_key_ids(output_id, current_id.to_string(), found_script)
+        .unwrap();
+
+    assert!(
+        db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap().is_empty(),
+        "filter must be empty after the row was converted and written back"
+    );
+
+    // Clean output must still be loadable - wallet remains functional across the migration.
+    let unspent = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
+    assert!(
+        unspent.iter().any(|o| o.hash == kmo2.hash),
+        "clean output should still be loadable after migration"
+    );
 }
