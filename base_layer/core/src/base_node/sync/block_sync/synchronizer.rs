@@ -28,7 +28,13 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use tari_comms::{PeerConnection, connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient};
+use tari_comms::{
+    PeerConnection,
+    RefKind,
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::RpcClient,
+};
 use tari_node_components::blocks::{Block, ChainBlock};
 use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody};
 use tari_utilities::hex::Hex;
@@ -94,26 +100,34 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
-        // Protect every sync-candidate peer from being collaterally disconnected by unrelated
-        // subsystems (e.g. DhtConnectivity's random-pool-full pruning) while this sync runs.
-        // `add_peer_to_sync_list` returns an `Arc<NodeId>` handle; holding the handles alive for
-        // the duration of sync keeps each peer on the connectivity manager's sync list. When
-        // this function returns and the handles drop, the manager's next sweep prunes the
-        // entries and the peers become eligible for normal disconnect behaviour again.
-        let mut _sync_guards: Vec<Arc<NodeId>> = Vec::with_capacity(self.sync_peers.len());
-        for peer in self.sync_peers.iter() {
-            match self.connectivity.add_peer_to_sync_list(peer.node_id().clone()).await {
-                Ok(handle) => _sync_guards.push(handle),
+        // Sync peers typically arrive here with a Strong PeerConnection already attached by
+        // header_sync (see `HeaderSynchronizer::synchronize`). For any sync peer that lacks one
+        // — either because we entered block_sync without going through header_sync, or the
+        // upfront dial failed earlier — dial a Strong connection now so the connection remains
+        // pinned for the duration of block sync.
+        for peer in self.sync_peers.iter_mut() {
+            if let Some(conn) = peer.connection() &&
+                !conn.is_connected()
+            {
+                peer.clear_connection();
+            }
+            if peer.connection().is_some() {
+                continue;
+            }
+            match self
+                .connectivity
+                .dial_peer(peer.node_id().clone(), RefKind::Strong)
+                .await
+            {
+                Ok(conn) => peer.set_connection(conn),
                 Err(e) => debug!(
                     target: LOG_TARGET,
-                    "Failed to register sync peer {} on sync list: {e}", peer.node_id()
+                    "Failed to dial sync peer {} as strong: {e}", peer.node_id()
                 ),
             }
         }
 
         self.synchronize_inner().await
-        // `_sync_guards` drops here (success or error), releasing this sync's references on
-        // each peer's sync-list entry.
     }
 
     async fn synchronize_inner(&mut self) -> Result<(), BlockSyncError> {
@@ -168,15 +182,25 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
-            let mut conn = match self.connect_to_sync_peer(node_id.clone()).await {
-                Ok(val) => val,
-                Err(e) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to connect to sync peer `{node_id}`: {e}"
-                    );
-                    self.remove_sync_peer(&node_id);
-                    continue;
+            // Prefer the connection that travelled with this SyncPeer from header_sync (Strong).
+            // We hand the attempt code a Weak clone so dropping it has no effect on the strong
+            // counter — the SyncPeer's Strong handle still pins the connection.
+            let stored_conn = sync_peer
+                .connection()
+                .filter(|c| c.is_connected())
+                .map(|c| c.clone_weak());
+            let mut conn = match stored_conn {
+                Some(c) => c,
+                None => match self.connect_to_sync_peer(node_id.clone()).await {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to connect to sync peer `{node_id}`: {e}"
+                        );
+                        self.remove_sync_peer(&node_id);
+                        continue;
+                    },
                 },
             };
             // Defensive: the connection may have been torn down by another subsystem between
@@ -265,7 +289,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
-        let connection = self.connectivity.dial_peer(peer).await?;
+        // `synchronize()` already holds a Strong reference to every sync peer for the duration
+        // of this sync, so the per-attempt dial here can be Weak — the strong handle in the
+        // outer guard list keeps the connection pinned.
+        let connection = self.connectivity.dial_peer(peer, RefKind::Weak).await?;
         Ok(connection)
     }
 

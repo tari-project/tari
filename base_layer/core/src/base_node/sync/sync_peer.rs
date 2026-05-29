@@ -28,7 +28,7 @@ use std::{
 
 use primitive_types::U512;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{PeerConnection, peer_manager::NodeId};
 
 use crate::{base_node::chain_metadata_service::PeerChainMetadata, common::rolling_avg::RollingAverageTime};
 
@@ -36,6 +36,12 @@ use crate::{base_node::chain_metadata_service::PeerChainMetadata, common::rollin
 pub struct SyncPeer {
     peer_metadata: PeerChainMetadata,
     avg_latency: RollingAverageTime,
+    /// Optional pre-dialled connection that travels with this sync peer across header_sync →
+    /// block_sync → horizon_state_sync. Populated when entering header sync (typically as a
+    /// [`tari_comms::RefKind::Strong`] handle so it remains pinned for the full sync). Cloning
+    /// the SyncPeer preserves the underlying connection's strength because
+    /// [`PeerConnection::clone`] is Arc-like.
+    connection: Option<PeerConnection>,
 }
 
 impl SyncPeer {
@@ -72,6 +78,25 @@ impl SyncPeer {
     pub fn calc_avg_latency(&self) -> Option<Duration> {
         self.avg_latency.calculate_average()
     }
+
+    /// Returns the connection held by this peer, if any.
+    pub fn connection(&self) -> Option<&PeerConnection> {
+        self.connection.as_ref()
+    }
+
+    /// Stores a pre-dialled `PeerConnection` on this sync peer. Typically called once at the
+    /// entry to header sync with a [`tari_comms::RefKind::Strong`] handle; that strong handle
+    /// then propagates with the SyncPeer into block_sync and horizon_state_sync, pinning the
+    /// connection for the full sync cycle.
+    pub fn set_connection(&mut self, connection: PeerConnection) {
+        self.connection = Some(connection);
+    }
+
+    /// Drops any stored connection for this peer (releasing the strong ref if one was held).
+    /// Use when a peer is being removed from the sync set, e.g. after a failed attempt.
+    pub fn clear_connection(&mut self) {
+        self.connection = None;
+    }
 }
 
 impl From<PeerChainMetadata> for SyncPeer {
@@ -79,6 +104,7 @@ impl From<PeerChainMetadata> for SyncPeer {
         Self {
             peer_metadata,
             avg_latency: RollingAverageTime::new(20),
+            connection: None,
         }
     }
 }
@@ -138,6 +164,62 @@ mod test {
     use tari_common_types::chain_metadata::ChainMetadata;
 
     use super::*;
+
+    mod connection_attachment {
+        use tari_common_types::types::FixedHash;
+        use tari_comms::{
+            RefKind,
+            test_utils::mocks::create_dummy_peer_connection,
+            types::{CommsPublicKey, CommsSecretKey},
+        };
+        use tari_crypto::keys::SecretKey;
+
+        use super::*;
+
+        fn peer_with_id() -> SyncPeer {
+            let sk = CommsSecretKey::random(&mut rand::rng());
+            let pk = CommsPublicKey::from_secret_key(&sk);
+            let node_id = NodeId::from_key(&pk);
+            PeerChainMetadata::new(
+                node_id,
+                ChainMetadata::new(0, FixedHash::zero(), 0, 0, U512::from(1), 0).unwrap(),
+                None,
+            )
+            .into()
+        }
+
+        #[test]
+        fn set_connection_stores_handle_and_clone_preserves_strength() {
+            let mut peer = peer_with_id();
+            assert!(peer.connection().is_none());
+
+            let (raw_conn, _rx) = create_dummy_peer_connection(peer.node_id().clone());
+            let strong = raw_conn.clone_strong();
+            assert_eq!(strong.strong_count(), 1);
+
+            peer.set_connection(strong);
+            assert!(peer.connection().is_some());
+            assert_eq!(peer.connection().unwrap().strong_count(), 1);
+
+            // Cloning the SyncPeer clones the underlying strong handle (Arc-like): counter bumps.
+            let peer_clone = peer.clone();
+            assert_eq!(peer.connection().unwrap().strong_count(), 2);
+            drop(peer_clone);
+            assert_eq!(peer.connection().unwrap().strong_count(), 1);
+
+            // Weak clone used inside attempt loops does not bump the counter.
+            let weak = peer.connection().unwrap().clone_with(RefKind::Weak);
+            assert_eq!(peer.connection().unwrap().strong_count(), 1);
+            drop(weak);
+            assert_eq!(peer.connection().unwrap().strong_count(), 1);
+
+            // Releasing the SyncPeer entirely drops the only Strong handle.
+            peer.clear_connection();
+            assert!(peer.connection().is_none());
+            // raw_conn (weak) observes the release via the shared counter.
+            assert_eq!(raw_conn.strong_count(), 0);
+        }
+    }
 
     mod sort_by_latency {
         use tari_common_types::types::FixedHash;
