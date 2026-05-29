@@ -22,7 +22,6 @@
 
 use std::{
     fmt,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -43,6 +42,7 @@ use crate::{
     Minimized,
     NodeIdentity,
     PeerConnection,
+    RefKind,
     connection_manager::ConnectionManagerError,
     peer_manager::{NodeId, Peer},
 };
@@ -88,29 +88,33 @@ impl fmt::Display for ConnectivityEvent {
 #[derive(Debug)]
 pub enum ConnectivityRequest {
     WaitStarted(oneshot::Sender<()>),
+    /// Dial a peer and return a connection of the requested [`RefKind`].
+    ///
+    /// `Strong` requests bump the connection's strong counter — reapers and DHT pool pruning will
+    /// then skip this peer until every strong handle is dropped. `Weak` requests do not pin the
+    /// connection.
     DialPeer {
         node_id: NodeId,
+        ref_kind: RefKind,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     },
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
+    /// Batch select returns only weak handles. Callers wanting to pin specific peers should call
+    /// [`PeerConnection::clone_strong`] on those individually.
     SelectConnections(
         ConnectivitySelection,
         oneshot::Sender<Result<Vec<PeerConnection>, ConnectivityError>>,
     ),
-    GetConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
+    /// Look up an existing connection; returns a handle of the requested [`RefKind`].
+    GetConnection(NodeId, RefKind, oneshot::Sender<Option<PeerConnection>>),
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
     GetMinimizeConnectionsThreshold(oneshot::Sender<Option<usize>>),
+    /// Batch accessor: returns only weak handles. See [`Self::SelectConnections`].
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
     GetAllowList(oneshot::Sender<Vec<NodeId>>),
-    /// Register a peer as currently in use for sync and get back a ref-counted handle.
-    /// The peer remains in the sync list while any `Arc<NodeId>` clone of this handle is
-    /// alive; once every clone is dropped the manager will prune it on its next sweep.
-    AddPeerToSyncList(NodeId, oneshot::Sender<Arc<NodeId>>),
-    /// Retrieve the current sync-peer list (only peers with active sync references).
-    GetSyncPeerList(oneshot::Sender<Vec<NodeId>>),
     GetSeeds(oneshot::Sender<Vec<Peer>>),
     GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
     GetNodeIdentity(oneshot::Sender<NodeIdentity>),
@@ -139,14 +143,24 @@ impl ConnectivityRequester {
         self.event_tx.clone()
     }
 
-    /// Dial a single peer
-    pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
+    /// Dial a single peer, returning a connection of the requested [`RefKind`].
+    ///
+    /// Pass [`RefKind::Strong`] when the caller needs the connection pinned (reapers will skip
+    /// the peer while any strong handle is alive) — typical for sync. Pass [`RefKind::Weak`]
+    /// for opportunistic users (metadata service, gossip, etc.) that can tolerate the
+    /// connection being torn down by the reaper.
+    pub async fn dial_peer(
+        &self,
+        peer: NodeId,
+        ref_kind: RefKind,
+    ) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
             self.sender
                 .send(ConnectivityRequest::DialPeer {
                     node_id: peer.clone(),
+                    ref_kind,
                     reply_tx: Some(reply_tx),
                 })
                 .await
@@ -169,22 +183,29 @@ impl ConnectivityRequester {
     }
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
+    /// All returned connections share the same [`RefKind`].
     #[allow(clippy::let_with_type_underscore)]
     pub async fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
+        ref_kind: RefKind,
     ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
         peers
             .into_iter()
-            .map(|peer| async move { self.dial_peer(peer).await })
+            .map(move |peer| async move { self.dial_peer(peer, ref_kind).await })
             .collect::<FuturesUnordered<_>>()
     }
 
     /// Send a request to dial many peers without waiting for the response.
+    ///
+    /// Fire-and-forget dials produce no caller-side handle, so the resulting connection is
+    /// stored as weak in the pool — callers wanting to pin the connection must `dial_peer` or
+    /// `get_connection` with [`RefKind::Strong`] afterwards.
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {
                 node_id: peer,
+                ref_kind: RefKind::Weak,
                 reply_tx: None,
             })
         }))
@@ -206,11 +227,16 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)?
     }
 
-    /// Get an active connection to the given node id if one exists. This will return None if the peer is not connected.
-    pub async fn get_connection(&mut self, node_id: NodeId) -> Result<Option<PeerConnection>, ConnectivityError> {
+    /// Get an active connection to the given node id if one exists, as a handle of the
+    /// requested [`RefKind`]. Returns `Ok(None)` if the peer is not connected.
+    pub async fn get_connection(
+        &mut self,
+        node_id: NodeId,
+        ref_kind: RefKind,
+    ) -> Result<Option<PeerConnection>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(ConnectivityRequest::GetConnection(node_id, reply_tx))
+            .send(ConnectivityRequest::GetConnection(node_id, ref_kind, reply_tx))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
@@ -332,33 +358,6 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
-    }
-
-    /// Register `node_id` as currently in use for a sync and return an `Arc<NodeId>` handle.
-    ///
-    /// While the returned handle (or any clone of it) is alive, other subsystems that query the
-    /// sync-peer list (e.g. DhtConnectivity) will treat the peer as protected from opportunistic
-    /// disconnection such as random-pool pruning. The connectivity manager keeps its own
-    /// `Arc<NodeId>` clone in a list and periodically prunes entries whose strong-count has
-    /// dropped to 1 (only the manager's own copy remaining).
-    pub async fn add_peer_to_sync_list(&mut self, node_id: NodeId) -> Result<Arc<NodeId>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::AddPeerToSyncList(node_id, reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
-    }
-
-    /// Retrieve the current sync-peer list. Entries whose caller-side handles have all been
-    /// dropped will have been pruned on the manager's previous sweep.
-    pub async fn get_sync_peer_list(&mut self) -> Result<Vec<NodeId>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetSyncPeerList(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Returns a Future that resolves when the connectivity actor has started.

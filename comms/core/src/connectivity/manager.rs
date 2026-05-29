@@ -53,6 +53,7 @@ use crate::{
     PeerConnection,
     PeerConnectionError,
     PeerManager,
+    RefKind,
     connection_manager::{
         ConnectionDirection,
         ConnectionManagerError,
@@ -110,7 +111,6 @@ impl ConnectivityManager {
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
             allow_list: vec![],
-            sync_peers: vec![],
             proactive_dialer,
             seeds: vec![],
         }
@@ -170,15 +170,6 @@ struct ConnectivityManagerActor {
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
-    /// Peers currently being used for a sync operation.
-    ///
-    /// Each entry is an `Arc<NodeId>`; when a caller registers a peer via `AddPeerToSyncList`
-    /// they receive an `Arc<NodeId>` clone and this list keeps its own. When the caller drops
-    /// their handle the list entry's strong-count drops to 1, and the manager prunes such
-    /// entries on the next access (see `sweep_sync_peers`). While an entry has strong-count >= 2
-    /// it signals "in use by sync" and other subsystems should not proactively disconnect the
-    /// peer (see DhtConnectivity::handle_new_peer_connected).
-    sync_peers: Vec<Arc<NodeId>>,
     proactive_dialer: ProactiveDialer,
     seeds: Vec<NodeId>,
 }
@@ -284,23 +275,27 @@ impl ConnectivityManagerActor {
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },
-            DialPeer { node_id, reply_tx } => {
+            DialPeer { node_id, ref_kind, reply_tx } => {
                 let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_dial_peer");
                 span.follows_from(tracing_id);
-                self.handle_dial_peer(node_id.clone(), reply_tx).instrument(span).await;
+                self.handle_dial_peer(node_id.clone(), ref_kind, reply_tx)
+                    .instrument(span)
+                    .await;
             },
             SelectConnections(selection, reply) => {
+                // Batch accessor — always returns weak handles. Callers wanting to pin a
+                // specific connection should call `clone_strong()` on it.
                 let _result = reply.send(self.select_connections(selection));
             },
-            GetConnection(node_id, reply) => {
+            GetConnection(node_id, ref_kind, reply) => {
                 let _result = reply.send(
                     self.pool
                         .get(&node_id)
                         .filter(|c| c.status() == ConnectionStatus::Connected)
                         .and_then(|c| c.connection())
                         .filter(|conn| conn.is_connected())
-                        .cloned(),
+                        .map(|conn| conn.clone_with(ref_kind)),
                 );
             },
             GetPeerStats(node_id, reply) => {
@@ -347,15 +342,6 @@ impl ConnectivityManagerActor {
                 let allow_list = self.allow_list.clone();
                 let _result = reply.send(allow_list);
             },
-            AddPeerToSyncList(node_id, reply) => {
-                let handle = self.acquire_sync_peer_handle(node_id);
-                let _result = reply.send(handle);
-            },
-            GetSyncPeerList(reply) => {
-                self.sweep_sync_peers();
-                let list = self.sync_peers.iter().map(|p| (**p).clone()).collect();
-                let _result = reply.send(list);
-            },
             GetSeeds(reply) => {
                 let seeds = self.peer_manager.get_seed_peers().await.unwrap_or_else(|e| {
                     error!(target: LOG_TARGET, "Error when retrieving seed peers: {e:?}");
@@ -382,6 +368,7 @@ impl ConnectivityManagerActor {
     async fn handle_dial_peer(
         &mut self,
         node_id: NodeId,
+        ref_kind: RefKind,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.is_peer_banned(&node_id).await {
@@ -403,7 +390,10 @@ impl ConnectivityManagerActor {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.
             Some(state) if state.is_connected() => {
                 if let Some(reply_tx) = reply_tx {
-                    let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
+                    let _result = reply_tx.send(Ok(state
+                        .connection()
+                        .expect("Already checked")
+                        .clone_with(ref_kind)));
                 }
             },
             maybe_state => {
@@ -425,7 +415,38 @@ impl ConnectivityManagerActor {
                     },
                 }
 
-                if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
+                // When the caller wants a Strong handle but the dial is happening asynchronously
+                // (no existing pooled connection), wrap their reply_tx so the connection returned
+                // by the lower-level ConnectionManager — which is always Weak — is upgraded to a
+                // Strong clone before delivery. For Weak (or fire-and-forget None) we pass the
+                // reply through unchanged.
+                let wrapped_reply_tx = match (reply_tx, ref_kind) {
+                    (Some(outer_tx), RefKind::Strong) => {
+                        let (inner_tx, inner_rx) =
+                            oneshot::channel::<Result<PeerConnection, ConnectionManagerError>>();
+                        tokio::spawn(async move {
+                            match inner_rx.await {
+                                Ok(Ok(conn)) => {
+                                    let _result = outer_tx.send(Ok(conn.clone_strong()));
+                                },
+                                Ok(Err(err)) => {
+                                    let _result = outer_tx.send(Err(err));
+                                },
+                                Err(_) => {
+                                    // dial actor dropped reply — propagate by dropping outer_tx
+                                },
+                            }
+                        });
+                        Some(inner_tx)
+                    },
+                    (other, _) => other,
+                };
+
+                if let Err(err) = self
+                    .connection_manager
+                    .send_dial_peer(node_id, wrapped_reply_tx)
+                    .await
+                {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send dial request to connection manager: {err:?}"
@@ -542,12 +563,10 @@ impl ConnectivityManagerActor {
         };
         let num_connections = connections.len();
 
-        // Remove peers that are on the allow list or are currently in use for sync
-        self.sweep_sync_peers();
-        connections.retain(|conn| {
-            !self.allow_list.contains(conn.peer_node_id()) &&
-                !self.sync_peers.iter().any(|p| **p == *conn.peer_node_id())
-        });
+        // Remove peers that are on the allow list or are currently pinned by a strong
+        // reference. A non-zero strong-count is the source of truth for "in use by sync (or any
+        // other strong holder)" — this replaces the previous out-of-band sync_peers list.
+        connections.retain(|conn| !self.allow_list.contains(conn.peer_node_id()) && !conn.is_strongly_held());
         debug!(
             target: LOG_TARGET,
             "minimize_connections: ({}) Filtered peers: {}, Handles: {}",
@@ -611,6 +630,8 @@ impl ConnectivityManagerActor {
         let mut connections = self
             .pool
             .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
+        // Strong handles pin a connection — skip them even when they appear idle.
+        connections.retain(|conn| !conn.is_strongly_held());
         connections.truncate(excess_connections);
         let mut nodes_to_remove = Vec::new();
         for conn in &mut connections {
@@ -1254,32 +1275,6 @@ impl ConnectivityManagerActor {
     fn publish_event(&mut self, event: ConnectivityEvent) {
         // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
         let _result = self.event_tx.send(event);
-    }
-
-    /// Drop sync-peer entries whose caller-side handles have all been released.
-    ///
-    /// An entry with `Arc::strong_count == 1` means only this manager still holds a reference,
-    /// so no active sync is using the peer. Pruning is run lazily on every sync-list access to
-    /// avoid keeping a timer purely for this list.
-    fn sweep_sync_peers(&mut self) {
-        self.sync_peers.retain(|p| Arc::strong_count(p) > 1);
-    }
-
-    /// Register `node_id` on the sync-peer list and return a shared `Arc<NodeId>` handle.
-    ///
-    /// If the peer is already registered, the existing `Arc` is cloned and returned (so all
-    /// callers interested in the same peer share the same handle). Otherwise a fresh `Arc` is
-    /// created, one clone is retained by the manager and another is returned. The caller must
-    /// keep the returned handle alive for as long as the peer should remain protected; dropping
-    /// it signals to the manager that the peer is no longer in use for sync.
-    fn acquire_sync_peer_handle(&mut self, node_id: NodeId) -> Arc<NodeId> {
-        self.sweep_sync_peers();
-        if let Some(existing) = self.sync_peers.iter().find(|p| ***p == node_id) {
-            return existing.clone();
-        }
-        let handle = Arc::new(node_id);
-        self.sync_peers.push(handle.clone());
-        handle
     }
 
     async fn ban_peer(

@@ -35,6 +35,7 @@ use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
     PeerConnection,
+    RefKind,
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
@@ -642,7 +643,7 @@ impl DhtActor {
 
                 let connections = match dest_node_id {
                     Some(node_id) => {
-                        let dest_connection = connectivity.get_connection(node_id.clone()).await?;
+                        let dest_connection = connectivity.get_connection(node_id.clone(), RefKind::Weak).await?;
                         // If the peer was added to the exclude list, we don't want to send directly to the peer.
                         // This ensures that we don't just send a message back to the peer that sent it.
                         let dest_connection = dest_connection.filter(|c| !exclude.contains(c.peer_node_id()));
@@ -762,7 +763,10 @@ impl DiscoveryDialTask {
     pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
         if self.peer_manager.exists(&public_key).await? {
             let node_id = NodeId::from_public_key(&public_key);
-            match self.connectivity.dial_peer(node_id).await {
+            // DHT discovery dials are weak — they exist to surface a working route to the
+            // public key, not to hold the connection open beyond the lookup. Callers wanting
+            // persistence upgrade via `clone_strong`.
+            match self.connectivity.dial_peer(node_id, RefKind::Weak).await {
                 Ok(conn) => Ok(conn),
                 Err(ConnectivityError::ConnectionFailed(err)) => match err {
                     ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
@@ -799,7 +803,7 @@ impl DiscoveryDialTask {
             node_id,
             timer.elapsed()
         );
-        let conn = self.connectivity.dial_peer(node_id).await?;
+        let conn = self.connectivity.dial_peer(node_id, RefKind::Weak).await?;
         Ok(conn)
     }
 }

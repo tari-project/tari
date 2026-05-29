@@ -479,14 +479,17 @@ impl DhtConnectivity {
             return Ok(());
         }
 
-        // Peers currently being used by a sync operation must not be disconnected by pool
-        // pruning — the sync code holds an Arc<NodeId> handle on the connectivity manager
-        // that keeps the peer on the sync list until sync finishes.
-        if self.is_sync_peer(conn.peer_node_id()).await? {
+        // Peers currently held by a strong reference (e.g. an in-progress sync) must not be
+        // disconnected by pool pruning. The strong-count is shared across all clones of the
+        // PeerConnection — including the one delivered to us in this event — so consulting it
+        // directly is the source of truth.
+        if conn.is_strongly_held() {
             debug!(
                 target: LOG_TARGET,
-                "Sync peer '{}' connected — leaving connection alone while sync holds a handle",
-                conn.peer_node_id()
+                "Peer '{}' connected — leaving connection alone while a strong handle is held \
+                 (strong_count={})",
+                conn.peer_node_id(),
+                conn.strong_count(),
             );
             return Ok(());
         }
@@ -502,6 +505,7 @@ impl DhtConnectivity {
         }
 
         let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let connected_peers = self.connected_random_pool_peers();
         if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
@@ -510,15 +514,18 @@ impl DhtConnectivity {
             );
             self.random_pool.push(conn.peer_node_id().clone());
             self.insert_connection_handle(conn).await?;
-        } else {
+            return Ok(())
+        }
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' connected but peer pool is full ({}/{})",
+                "Peer '{}' connected with direction: {} and is strongly connected: {}, but peer pool is full ({}/{})",
                 conn.peer_node_id().short_str(),
+                conn.direction(),
+                conn.is_strongly_held(),
                 self.random_pool.len(),
                 pool_size
             );
-            if conn.direction() == ConnectionDirection::Outbound {
+            if conn.direction() == ConnectionDirection::Outbound && !conn.is_strongly_held() {
                 debug!(
                     target: LOG_TARGET,
                     "Peer '{}' is an outbound connection, disconnecting it. Peer pool is full ({}/{})",
@@ -535,8 +542,16 @@ impl DhtConnectivity {
                     err
                     );
                 }
+            } else {
+                debug!(
+                        target: LOG_TARGET,
+                        "Cant disconnect peer '{}', so adding to peer pool to be managed",
+                        conn.peer_node_id().short_str()
+                    );
+                self.random_pool.push(conn.peer_node_id().clone());
+                self.insert_connection_handle(conn).await?;
             }
-        }
+
 
         Ok(())
     }
@@ -562,8 +577,15 @@ impl DhtConnectivity {
         // Retrieve all communication node peers with an active connection status
         let mut peers_by_distance = self.pool_peers_with_active_connections().await?;
         let peer_allow_list = self.peer_allow_list().await?;
-        let peer_sync_list = self.peer_sync_list().await?;
-        peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id) && !peer_sync_list.contains(&p.node_id));
+        // Connections currently pinned by a strong handle (e.g. an in-progress sync) are
+        // identified via the per-connection strong-count rather than an out-of-band list.
+        let strongly_held: std::collections::HashSet<NodeId> = self
+            .connection_handles
+            .iter()
+            .filter(|c| c.is_strongly_held())
+            .map(|c| c.peer_node_id().clone())
+            .collect();
+        peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id) && !strongly_held.contains(&p.node_id));
 
         // Remove all above threshold connections
         let threshold = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
@@ -683,14 +705,6 @@ impl DhtConnectivity {
 
     async fn peer_allow_list(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
         Ok(self.connectivity.get_allow_list().await?)
-    }
-
-    async fn peer_sync_list(&mut self) -> Result<Vec<NodeId>, DhtConnectivityError> {
-        Ok(self.connectivity.get_sync_peer_list().await?)
-    }
-
-    async fn is_sync_peer(&mut self, node_id: &NodeId) -> Result<bool, DhtConnectivityError> {
-        Ok(self.peer_sync_list().await?.contains(node_id))
     }
 
     async fn replace_pool_peer(&mut self, current_peer: &NodeId) -> Result<(), DhtConnectivityError> {

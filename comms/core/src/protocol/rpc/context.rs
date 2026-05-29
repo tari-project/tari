@@ -28,6 +28,7 @@ use super::RpcError;
 use crate::{
     PeerConnection,
     PeerManager,
+    RefKind,
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, OrNotFound, Peer},
 };
@@ -71,7 +72,13 @@ impl RpcCommsProvider for RpcCommsBackend {
     }
 
     async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {
-        self.connectivity.dial_peer(node_id.clone()).await.map_err(Into::into)
+        // RPC backend dials on behalf of an arbitrary service handler. The handler decides if
+        // it needs to pin the connection beyond the call by cloning Strong from this Weak
+        // handle.
+        self.connectivity
+            .dial_peer(node_id.clone(), RefKind::Weak)
+            .await
+            .map_err(Into::into)
     }
 
     async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError> {

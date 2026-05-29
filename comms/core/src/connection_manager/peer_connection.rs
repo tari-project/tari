@@ -131,8 +131,36 @@ pub enum PeerConnectionRequest {
 /// ID type for peer connections
 pub type ConnectionId = usize;
 
+/// Indicates whether a connection handle is requested as a *strong* (reap-blocking) reference or a
+/// *weak* one (eligible for opportunistic reaping).
+///
+/// Strong handles increment a shared per-connection strong counter. Background reapers
+/// (`ConnectivityManagerActor::reap_inactive_connections`,
+/// `maintain_n_closest_peer_connections_only`, and `DhtConnectivity` random-pool pruning) refuse to
+/// disconnect a peer while its strong count is non-zero. This replaces the previous out-of-band
+/// "sync peers" exclusion list with a per-connection ref-count surfaced directly on
+/// [`PeerConnection`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RefKind {
+    /// Caller is OK with the connection being torn down by reapers while it holds this handle.
+    Weak,
+    /// Caller requires the connection to remain alive while it holds this handle. Reapers will
+    /// skip any peer whose strong count is non-zero.
+    Strong,
+}
+
+impl RefKind {
+    pub fn is_strong(self) -> bool {
+        matches!(self, RefKind::Strong)
+    }
+
+    pub fn is_weak(self) -> bool {
+        matches!(self, RefKind::Weak)
+    }
+}
+
 /// Request handle for an active peer connection
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PeerConnection {
     id: ConnectionId,
     peer_node_id: NodeId,
@@ -146,6 +174,12 @@ pub struct PeerConnection {
     drop_notifier: OneshotTrigger<NodeId>,
     force_disconnect_rpc_clients_when_clone_drops: Arc<AtomicBool>,
     rpc_session_states: Vec<Arc<AtomicBool>>,
+    /// Shared across every clone of this connection. Counts only handles whose `is_strong` is
+    /// true. Constructed connections start with no strong handles.
+    strong_counter: Arc<AtomicUsize>,
+    /// True for handles that contribute to `strong_counter`. Mutated only by [`Clone::clone`],
+    /// [`PeerConnection::clone_weak`], [`PeerConnection::clone_strong`], and [`Drop`].
+    is_strong: bool,
 }
 
 impl PeerConnection {
@@ -171,6 +205,84 @@ impl PeerConnection {
             drop_notifier: OneshotTrigger::<NodeId>::new(),
             force_disconnect_rpc_clients_when_clone_drops: Arc::new(Default::default()),
             rpc_session_states: Vec::new(),
+            // Freshly-created connections start as weak. The connection manager / connectivity
+            // pool stores this canonical handle; callers explicitly upgrade to strong via
+            // [`PeerConnection::clone_strong`] when they need reap protection.
+            strong_counter: Arc::new(AtomicUsize::new(0)),
+            is_strong: false,
+        }
+    }
+
+    /// Number of strong handles currently outstanding on this connection (shared across all
+    /// clones). Used by reapers to decide whether the peer is currently pinned by a strong owner.
+    pub fn strong_count(&self) -> usize {
+        self.strong_counter.load(Ordering::SeqCst)
+    }
+
+    /// `true` if any clone of this connection is currently being held as a strong reference.
+    pub fn is_strongly_held(&self) -> bool {
+        self.strong_count() > 0
+    }
+
+    /// `true` if *this* handle is the strong kind (i.e. it contributes to `strong_count`).
+    pub fn is_strong(&self) -> bool {
+        self.is_strong
+    }
+
+    /// Returns a new strong clone of this connection. Increments the shared strong counter,
+    /// regardless of whether the source handle is itself strong.
+    pub fn clone_strong(&self) -> Self {
+        self.strong_counter.fetch_add(1, Ordering::SeqCst);
+        Self {
+            id: self.id,
+            peer_node_id: self.peer_node_id.clone(),
+            peer_features: self.peer_features,
+            request_tx: self.request_tx.clone(),
+            address: self.address.clone(),
+            direction: self.direction,
+            started_at: self.started_at,
+            substream_counter: self.substream_counter.clone(),
+            handle_counter: self.handle_counter.clone(),
+            drop_notifier: self.drop_notifier.clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self
+                .force_disconnect_rpc_clients_when_clone_drops
+                .clone(),
+            rpc_session_states: self.rpc_session_states.clone(),
+            strong_counter: self.strong_counter.clone(),
+            is_strong: true,
+        }
+    }
+
+    /// Returns a new weak clone of this connection. Does not touch the strong counter even if the
+    /// source handle is strong.
+    pub fn clone_weak(&self) -> Self {
+        Self {
+            id: self.id,
+            peer_node_id: self.peer_node_id.clone(),
+            peer_features: self.peer_features,
+            request_tx: self.request_tx.clone(),
+            address: self.address.clone(),
+            direction: self.direction,
+            started_at: self.started_at,
+            substream_counter: self.substream_counter.clone(),
+            handle_counter: self.handle_counter.clone(),
+            drop_notifier: self.drop_notifier.clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self
+                .force_disconnect_rpc_clients_when_clone_drops
+                .clone(),
+            rpc_session_states: self.rpc_session_states.clone(),
+            strong_counter: self.strong_counter.clone(),
+            is_strong: false,
+        }
+    }
+
+    /// Returns a clone whose ref-kind is determined by `kind`. Convenience wrapper used by the
+    /// connectivity layer to honour caller-requested [`RefKind`] without branching at the call
+    /// site.
+    pub fn clone_with(&self, kind: RefKind) -> Self {
+        match kind {
+            RefKind::Strong => self.clone_strong(),
+            RefKind::Weak => self.clone_weak(),
         }
     }
 
@@ -407,8 +519,45 @@ impl PeerConnection {
     }
 }
 
+impl Clone for PeerConnection {
+    /// Clones preserve the source handle's strength (Arc-like). A clone of a strong handle is
+    /// itself strong and bumps the shared strong counter; a clone of a weak handle is weak. Use
+    /// [`PeerConnection::clone_strong`] / [`PeerConnection::clone_weak`] to switch kinds
+    /// explicitly.
+    fn clone(&self) -> Self {
+        if self.is_strong {
+            self.strong_counter.fetch_add(1, Ordering::SeqCst);
+        }
+        Self {
+            id: self.id,
+            peer_node_id: self.peer_node_id.clone(),
+            peer_features: self.peer_features,
+            request_tx: self.request_tx.clone(),
+            address: self.address.clone(),
+            direction: self.direction,
+            started_at: self.started_at,
+            substream_counter: self.substream_counter.clone(),
+            handle_counter: self.handle_counter.clone(),
+            drop_notifier: self.drop_notifier.clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self
+                .force_disconnect_rpc_clients_when_clone_drops
+                .clone(),
+            rpc_session_states: self.rpc_session_states.clone(),
+            strong_counter: self.strong_counter.clone(),
+            is_strong: self.is_strong,
+        }
+    }
+}
+
 impl Drop for PeerConnection {
     fn drop(&mut self) {
+        // Strong handles must release their slot from the shared counter so reapers see the peer
+        // become eligible again as soon as the last strong owner drops. Done before the standard
+        // handle-counter / RPC drop logic so any observers querying `is_strongly_held` after a
+        // disconnect event see a consistent count.
+        if self.is_strong {
+            self.strong_counter.fetch_sub(1, Ordering::SeqCst);
+        }
         if self.handle_count() <= 1 ||
             self.force_disconnect_rpc_clients_when_clone_drops
                 .load(Ordering::Relaxed)
@@ -727,5 +876,74 @@ impl<TSubstream> fmt::Debug for NegotiatedSubstream<TSubstream> {
             .field("protocol", &format!("{:?}", self.protocol))
             .field("stream", &"...".to_string())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::mocks::create_dummy_peer_connection;
+
+    fn make_conn() -> PeerConnection {
+        let (conn, _rx) = create_dummy_peer_connection(NodeId::default());
+        conn
+    }
+
+    #[test]
+    fn fresh_connection_is_weak_with_zero_strong_count() {
+        let conn = make_conn();
+        assert!(!conn.is_strong());
+        assert_eq!(conn.strong_count(), 0);
+        assert!(!conn.is_strongly_held());
+    }
+
+    #[test]
+    fn clone_strong_bumps_counter_and_drop_releases() {
+        let conn = make_conn();
+        let strong = conn.clone_strong();
+        assert!(strong.is_strong());
+        assert_eq!(strong.strong_count(), 1);
+        // The source weak handle observes the same counter.
+        assert_eq!(conn.strong_count(), 1);
+        assert!(conn.is_strongly_held());
+        drop(strong);
+        assert_eq!(conn.strong_count(), 0);
+        assert!(!conn.is_strongly_held());
+    }
+
+    #[test]
+    fn default_clone_preserves_strength() {
+        let conn = make_conn();
+        let strong = conn.clone_strong();
+        // Cloning a strong handle yields a strong handle and bumps the counter.
+        let strong_clone = strong.clone();
+        assert!(strong_clone.is_strong());
+        assert_eq!(conn.strong_count(), 2);
+        drop(strong_clone);
+        assert_eq!(conn.strong_count(), 1);
+        // Cloning a weak handle yields a weak handle and does not touch the counter.
+        let weak_clone = conn.clone();
+        assert!(!weak_clone.is_strong());
+        assert_eq!(conn.strong_count(), 1);
+    }
+
+    #[test]
+    fn clone_weak_never_bumps_even_from_strong_source() {
+        let conn = make_conn();
+        let strong = conn.clone_strong();
+        let weak = strong.clone_weak();
+        assert!(!weak.is_strong());
+        // counter remains at 1 (just `strong`, not `weak`).
+        assert_eq!(conn.strong_count(), 1);
+    }
+
+    #[test]
+    fn clone_with_dispatches_to_the_right_kind() {
+        let conn = make_conn();
+        let s = conn.clone_with(RefKind::Strong);
+        let w = conn.clone_with(RefKind::Weak);
+        assert!(s.is_strong());
+        assert!(!w.is_strong());
+        assert_eq!(conn.strong_count(), 1);
     }
 }

@@ -27,6 +27,7 @@ use futures::StreamExt;
 use tari_comms::{
     CommsNode,
     Minimized,
+    RefKind,
     protocol::rpc::{RpcServer, RpcServerHandle},
     transports::TcpTransport,
 };
@@ -107,7 +108,7 @@ async fn rpc_server_can_request_drop_sessions() {
 
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -180,7 +181,7 @@ async fn rpc_server_can_prioritize_new_connections() {
 
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -237,7 +238,7 @@ async fn rpc_server_can_prioritize_old_connections() {
 
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -299,7 +300,7 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
 
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -372,7 +373,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
 
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -459,7 +460,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
         let mut clients = Vec::new();
         let mut conn1_2 = node1
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
 
@@ -518,7 +519,7 @@ async fn client_prematurely_ends_session() {
 
     let mut conn1_2 = node1
         .connectivity()
-        .dial_peer(node2.node_identity().node_id().clone())
+        .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

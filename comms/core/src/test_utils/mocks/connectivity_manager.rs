@@ -235,14 +235,16 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{req:?}")).await;
         match req {
-            DialPeer { node_id, reply_tx } => {
+            DialPeer { node_id, ref_kind, reply_tx } => {
                 self.state.add_dialed_peer(node_id.clone()).await;
                 // No reply, no reason to do anything in the mock
                 if reply_tx.is_none() {
                     return;
                 }
                 let reply_tx = reply_tx.unwrap();
-                // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
+                // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses).
+                // Honour ref_kind so tests exercising strong-handle semantics see the right
+                // ref-count behaviour.
                 self.state
                     .with_state(|state| match state.pending_conns.get_mut(&node_id) {
                         Some(replies) => {
@@ -253,7 +255,7 @@ impl ConnectivityManagerMock {
                                 state
                                     .active_conns
                                     .get(&node_id)
-                                    .cloned()
+                                    .map(|c| c.clone_with(ref_kind))
                                     .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
                             );
                         },
@@ -270,10 +272,12 @@ impl ConnectivityManagerMock {
             SelectConnections(_, reply) => {
                 reply.send(Ok(self.state.get_selected_connections().await)).unwrap();
             },
-            GetConnection(node_id, reply) => {
+            GetConnection(node_id, ref_kind, reply) => {
                 self.state
                     .with_state(|state| {
-                        reply.send(state.active_conns.get(&node_id).cloned()).unwrap();
+                        reply
+                            .send(state.active_conns.get(&node_id).map(|c| c.clone_with(ref_kind)))
+                            .unwrap();
                     })
                     .await
             },
@@ -299,12 +303,6 @@ impl ConnectivityManagerMock {
             GetNodeIdentity(_) => unimplemented!(),
             GetSeeds(_) => unimplemented!(),
             GetAllowList(reply) => {
-                let _result = reply.send(vec![]);
-            },
-            AddPeerToSyncList(node_id, reply) => {
-                let _result = reply.send(std::sync::Arc::new(node_id));
-            },
-            GetSyncPeerList(reply) => {
                 let _result = reply.send(vec![]);
             },
             GetMinimizeConnectionsThreshold(_) => unimplemented!(),

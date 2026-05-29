@@ -30,6 +30,7 @@ use tracing::{Instrument, Level, debug, error, span, trace};
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol, SendFailReason, error::MessagingProtocolError};
 use crate::{
+    RefKind,
     connection_manager::{NegotiatedSubstream, PeerConnection},
     connectivity::{ConnectivityError, ConnectivityRequester},
     message::OutboundMessage,
@@ -166,7 +167,9 @@ impl OutboundMessaging {
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
         loop {
-            match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
+            // Outbound messaging tolerates the connection being reaped — it will redial on
+            // demand if the underlying connection has been torn down. Weak is correct.
+            match self.connectivity.dial_peer(self.peer_node_id.clone(), RefKind::Weak).await {
                 Ok(conn) => break Ok(conn),
                 Err(ConnectivityError::DialCancelled) => {
                     debug!(

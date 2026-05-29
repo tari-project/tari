@@ -50,7 +50,7 @@ mod error;
 pub use error::{ConnectionManagerError, PeerConnectionError};
 
 mod peer_connection;
-pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
+pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest, RefKind};
 
 mod self_liveness;
 pub(crate) use self_liveness::SelfLivenessCheck;
