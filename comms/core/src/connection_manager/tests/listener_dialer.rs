@@ -59,17 +59,24 @@ fn dial_addresses_follow_transport_preference_order() -> Result<(), Box<dyn Erro
     let memory: Multiaddr = "/memory/1".parse()?;
 
     let mut tcp_tor_addresses = vec![onion.clone(), memory.clone(), ip6.clone(), ip4.clone()];
-    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(
-        &mut tcp_tor_addresses,
-        &[TransportProtocol::Ipv4, TransportProtocol::Ipv6, TransportProtocol::Onion],
-    );
-    assert_eq!(tcp_tor_addresses, vec![ip4.clone(), ip6.clone(), onion.clone(), memory.clone()]);
+    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(&mut tcp_tor_addresses, &[
+        TransportProtocol::Ipv4,
+        TransportProtocol::Ipv6,
+        TransportProtocol::Onion,
+    ]);
+    assert_eq!(tcp_tor_addresses, vec![
+        ip4.clone(),
+        ip6.clone(),
+        onion.clone(),
+        memory.clone()
+    ]);
 
     let mut tor_tcp_addresses = vec![ip4.clone(), memory.clone(), ip6.clone(), onion.clone()];
-    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(
-        &mut tor_tcp_addresses,
-        &[TransportProtocol::Onion, TransportProtocol::Ipv4, TransportProtocol::Ipv6],
-    );
+    Dialer::<MemoryTransport, ConstantBackoff>::sort_addresses_by_transport_preference(&mut tor_tcp_addresses, &[
+        TransportProtocol::Onion,
+        TransportProtocol::Ipv4,
+        TransportProtocol::Ipv6,
+    ]);
     assert_eq!(tor_tcp_addresses, vec![onion, ip4, ip6, memory]);
 
     Ok(())

@@ -145,19 +145,23 @@ mod test {
 
     #[test]
     fn transport_modes_expose_expected_protocol_availability_and_order() {
-        assert_eq!(TransportType::Tor.get_supported_protocols(), vec![TransportProtocol::Onion]);
-        assert_eq!(
-            TransportType::Tcp.get_supported_protocols(),
-            vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
-        );
-        assert_eq!(
-            TransportType::TorTcp.get_supported_protocols(),
-            vec![TransportProtocol::Onion, TransportProtocol::Ipv4, TransportProtocol::Ipv6]
-        );
-        assert_eq!(
-            TransportType::TcpTor.get_supported_protocols(),
-            vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6, TransportProtocol::Onion]
-        );
+        assert_eq!(TransportType::Tor.get_supported_protocols(), vec![
+            TransportProtocol::Onion
+        ]);
+        assert_eq!(TransportType::Tcp.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6
+        ]);
+        assert_eq!(TransportType::TorTcp.get_supported_protocols(), vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6
+        ]);
+        assert_eq!(TransportType::TcpTor.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion
+        ]);
     }
 
     #[test]

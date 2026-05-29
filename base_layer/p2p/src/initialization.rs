@@ -63,12 +63,7 @@ use tari_comms::{
         rpc::RpcServer,
     },
     tor::{self, HiddenServiceControllerError, TorIdentity},
-    transports::{
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksTransport,
-        TcpWithTorTransport,
-    },
+    transports::{HiddenServiceTransport, MemoryTransport, SocksTransport, TcpWithTorTransport},
     utils::cidr::parse_cidrs,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
