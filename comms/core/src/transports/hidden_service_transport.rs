@@ -63,6 +63,11 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         }
     }
 
+    pub fn with_supported_protocols(mut self, supported_protocols: Vec<TransportProtocol>) -> Self {
+        self.supported_protocols = supported_protocols;
+        self
+    }
+
     async fn is_initialized(&self) -> bool {
         self.inner.read().await.socks_transport.is_some()
     }

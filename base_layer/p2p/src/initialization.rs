@@ -63,14 +63,7 @@ use tari_comms::{
         rpc::RpcServer,
     },
     tor::{self, HiddenServiceControllerError, TorIdentity},
-    transports::{
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
-        TcpWithTorTransport,
-        predicate::FalsePredicate,
-    },
+    transports::{HiddenServiceTransport, MemoryTransport, SocksTransport, TcpWithTorTransport},
     utils::cidr::parse_cidrs,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
@@ -231,36 +224,26 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
         },
         TransportType::Tcp => {
             let config = transport_config.tcp;
-            debug!(
-                target: LOG_TARGET,
-                "Building TCP comms stack{}",
-                config
-                    .tor_socks_address
-                    .as_ref()
-                    .map(|_| " with Tor support")
-                    .unwrap_or("")
-            );
+            debug!(target: LOG_TARGET, "Building TCP comms stack");
             let mut transport = TcpWithTorTransport::new();
-            if let Some(addr) = config.tor_socks_address {
-                transport.set_tor_socks_proxy(SocksConfig {
-                    proxy_address: addr,
-                    authentication: config.tor_socks_auth.into(),
-                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                });
-            }
+            // Keep the explicit TCP mode limited to TCP peer addresses. Mixed TCP/Tor modes
+            // use the Tor hidden-service transport variants below.
+            transport.set_supported_protocols(TransportType::Tcp.get_supported_protocols());
             comms
                 .with_listener_address(config.listener_address)
                 .spawn_with_transport(transport)
                 .await?
         },
-        TransportType::Tor => {
+        TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor => {
+            let transport_type = transport_config.transport_type;
             let tor_config = transport_config.tor;
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
+            debug!(target: LOG_TARGET, "Building {transport_type:?} comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
             let hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
             let instant = Instant::now();
-            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms);
+            let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms)
+                .with_supported_protocols(transport_type.get_supported_protocols());
             debug!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
 
             comms

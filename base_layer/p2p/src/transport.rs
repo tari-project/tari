@@ -83,7 +83,7 @@ impl TransportConfig {
     }
 
     pub fn is_tor(&self) -> bool {
-        matches!(self.transport_type, TransportType::Tor)
+        self.transport_type.uses_tor_hidden_service()
     }
 }
 
@@ -92,26 +92,38 @@ impl TransportConfig {
 pub enum TransportType {
     /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
     Memory,
-    /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
-    /// configured to allow communication with peers using the tor transport.
+    /// Use only TCP peer addresses when selecting peers and dial addresses.
     Tcp,
-    /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
-    /// onion v3 and DNS addresses.
-    #[default]
+    /// Use only Tor onion peer addresses when selecting peers and dial addresses.
     Tor,
+    /// Enables both Tor and TCP peer addresses, preferring Tor when selecting dial addresses.
+    TorTcp,
+    /// Enables both TCP and Tor peer addresses, preferring TCP when selecting dial addresses.
+    #[default]
+    TcpTor,
     /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
     Socks5,
 }
 
 impl TransportType {
+    pub fn uses_tor_hidden_service(&self) -> bool {
+        matches!(self, TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor)
+    }
+
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
         match self {
             TransportType::Memory => vec![TransportProtocol::Memory],
             TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
-            TransportType::Tor => vec![
+            TransportType::Tor => vec![TransportProtocol::Onion],
+            TransportType::TorTcp => vec![
                 TransportProtocol::Onion,
                 TransportProtocol::Ipv4,
                 TransportProtocol::Ipv6,
+            ],
+            TransportType::TcpTor => vec![
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+                TransportProtocol::Onion,
             ],
             TransportType::Socks5 => vec![
                 TransportProtocol::Onion,
@@ -119,6 +131,45 @@ impl TransportType {
                 TransportProtocol::Ipv6,
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{TransportProtocol, TransportType};
+
+    #[test]
+    fn tcp_tor_is_the_default_peer_transport_mode() {
+        assert_eq!(TransportType::default(), TransportType::TcpTor);
+    }
+
+    #[test]
+    fn transport_modes_expose_expected_protocol_availability_and_order() {
+        assert_eq!(TransportType::Tor.get_supported_protocols(), vec![
+            TransportProtocol::Onion
+        ]);
+        assert_eq!(TransportType::Tcp.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6
+        ]);
+        assert_eq!(TransportType::TorTcp.get_supported_protocols(), vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6
+        ]);
+        assert_eq!(TransportType::TcpTor.get_supported_protocols(), vec![
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion
+        ]);
+    }
+
+    #[test]
+    fn hidden_service_modes_are_tor_backed() {
+        assert!(TransportType::Tor.uses_tor_hidden_service());
+        assert!(TransportType::TorTcp.uses_tor_hidden_service());
+        assert!(TransportType::TcpTor.uses_tor_hidden_service());
+        assert!(!TransportType::Tcp.uses_tor_hidden_service());
     }
 }
 
