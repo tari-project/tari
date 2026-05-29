@@ -291,7 +291,10 @@ async fn ban_peer() {
     unpack_enum!(ConnectivityEvent::PeerConnected(_conn) = events.remove(0));
     unpack_enum!(ConnectivityEvent::ConnectivityStateOnline(_n) = events.remove(0));
 
-    let conn = connectivity.get_connection(peer.node_id.clone(), RefKind::Weak).await.unwrap();
+    let conn = connectivity
+        .get_connection(peer.node_id.clone(), RefKind::Weak)
+        .await
+        .unwrap();
     assert!(conn.is_some());
 
     connectivity
@@ -312,7 +315,10 @@ async fn ban_peer() {
     let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap().unwrap();
     assert!(peer.is_banned());
 
-    let conn = connectivity.get_connection(peer.node_id.clone(), RefKind::Weak).await.unwrap();
+    let conn = connectivity
+        .get_connection(peer.node_id.clone(), RefKind::Weak)
+        .await
+        .unwrap();
     assert!(conn.is_none());
 }
 

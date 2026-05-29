@@ -169,7 +169,11 @@ impl OutboundMessaging {
         loop {
             // Outbound messaging tolerates the connection being reaped — it will redial on
             // demand if the underlying connection has been torn down. Weak is correct.
-            match self.connectivity.dial_peer(self.peer_node_id.clone(), RefKind::Weak).await {
+            match self
+                .connectivity
+                .dial_peer(self.peer_node_id.clone(), RefKind::Weak)
+                .await
+            {
                 Ok(conn) => break Ok(conn),
                 Err(ConnectivityError::DialCancelled) => {
                     debug!(

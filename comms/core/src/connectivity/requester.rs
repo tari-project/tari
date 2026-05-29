@@ -149,11 +149,7 @@ impl ConnectivityRequester {
     /// the peer while any strong handle is alive) — typical for sync. Pass [`RefKind::Weak`]
     /// for opportunistic users (metadata service, gossip, etc.) that can tolerate the
     /// connection being torn down by the reaper.
-    pub async fn dial_peer(
-        &self,
-        peer: NodeId,
-        ref_kind: RefKind,
-    ) -> Result<PeerConnection, ConnectivityError> {
+    pub async fn dial_peer(&self, peer: NodeId, ref_kind: RefKind) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();

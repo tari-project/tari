@@ -244,9 +244,7 @@ impl PeerConnection {
             substream_counter: self.substream_counter.clone(),
             handle_counter: self.handle_counter.clone(),
             drop_notifier: self.drop_notifier.clone(),
-            force_disconnect_rpc_clients_when_clone_drops: self
-                .force_disconnect_rpc_clients_when_clone_drops
-                .clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self.force_disconnect_rpc_clients_when_clone_drops.clone(),
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: true,
@@ -267,9 +265,7 @@ impl PeerConnection {
             substream_counter: self.substream_counter.clone(),
             handle_counter: self.handle_counter.clone(),
             drop_notifier: self.drop_notifier.clone(),
-            force_disconnect_rpc_clients_when_clone_drops: self
-                .force_disconnect_rpc_clients_when_clone_drops
-                .clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self.force_disconnect_rpc_clients_when_clone_drops.clone(),
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: false,
@@ -539,9 +535,7 @@ impl Clone for PeerConnection {
             substream_counter: self.substream_counter.clone(),
             handle_counter: self.handle_counter.clone(),
             drop_notifier: self.drop_notifier.clone(),
-            force_disconnect_rpc_clients_when_clone_drops: self
-                .force_disconnect_rpc_clients_when_clone_drops
-                .clone(),
+            force_disconnect_rpc_clients_when_clone_drops: self.force_disconnect_rpc_clients_when_clone_drops.clone(),
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: self.is_strong,

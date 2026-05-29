@@ -275,7 +275,11 @@ impl ConnectivityManagerActor {
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },
-            DialPeer { node_id, ref_kind, reply_tx } => {
+            DialPeer {
+                node_id,
+                ref_kind,
+                reply_tx,
+            } => {
                 let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_dial_peer");
                 span.follows_from(tracing_id);
@@ -390,10 +394,7 @@ impl ConnectivityManagerActor {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.
             Some(state) if state.is_connected() => {
                 if let Some(reply_tx) = reply_tx {
-                    let _result = reply_tx.send(Ok(state
-                        .connection()
-                        .expect("Already checked")
-                        .clone_with(ref_kind)));
+                    let _result = reply_tx.send(Ok(state.connection().expect("Already checked").clone_with(ref_kind)));
                 }
             },
             maybe_state => {
@@ -422,8 +423,7 @@ impl ConnectivityManagerActor {
                 // reply through unchanged.
                 let wrapped_reply_tx = match (reply_tx, ref_kind) {
                     (Some(outer_tx), RefKind::Strong) => {
-                        let (inner_tx, inner_rx) =
-                            oneshot::channel::<Result<PeerConnection, ConnectionManagerError>>();
+                        let (inner_tx, inner_rx) = oneshot::channel::<Result<PeerConnection, ConnectionManagerError>>();
                         tokio::spawn(async move {
                             match inner_rx.await {
                                 Ok(Ok(conn)) => {
@@ -442,11 +442,7 @@ impl ConnectivityManagerActor {
                     (other, _) => other,
                 };
 
-                if let Err(err) = self
-                    .connection_manager
-                    .send_dial_peer(node_id, wrapped_reply_tx)
-                    .await
-                {
+                if let Err(err) = self.connection_manager.send_dial_peer(node_id, wrapped_reply_tx).await {
                     error!(
                         target: LOG_TARGET,
                         "Failed to send dial request to connection manager: {err:?}"
