@@ -760,7 +760,7 @@ where
         (dial_state, Err(ConnectionManagerError::DialConnectFailedAllAddresses))
     }
 
-    fn sort_addresses_by_transport_preference(
+    pub(super) fn sort_addresses_by_transport_preference(
         addresses: &mut [Multiaddr],
         supported_transport_protocols: &[TransportProtocol],
     ) {
