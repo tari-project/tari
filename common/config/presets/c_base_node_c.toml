@@ -139,8 +139,8 @@ blockchain_sync_config.rpc_deadline = 240
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
-# _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
-# automatically configured
+# _NOTE_: If using transport type `tor`, `tor_tcp`, or `tcp_tor`, public_addresses will be ignored and an onion
+# address will be automatically configured
 #public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
@@ -213,8 +213,8 @@ listener_self_liveness_check_interval = 15
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
 # made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
 #tor.proxy_bypass_addresses = []
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
-# better network performance for TCP nodes; set it to 'false' for better privacy.
+# When using transport type `tor`, `tor_tcp`, or `tcp_tor` and set to true, outbound TCP connections bypass the tor
+# proxy. Defaults to 'true' for better network performance for TCP nodes; set it to 'false' for better privacy.
 #tor.proxy_bypass_for_outbound_tcp = true
 # If set, instructs tor to forward traffic the provided address. (e.g. "/dns4/my-base-node/tcp/32123") (default = OS-assigned port)
 #tor.forward_address =

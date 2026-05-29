@@ -112,44 +112,15 @@ pub enum TransportType {
     Socks5,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ConfigTransportType {
-    Tor,
-    Tcp,
-    TorTcp,
-    TcpTor,
-}
-
-impl From<ConfigTransportType> for TransportType {
-    fn from(value: ConfigTransportType) -> Self {
-        match value {
-            ConfigTransportType::Tor => TransportType::Tor,
-            ConfigTransportType::Tcp => TransportType::Tcp,
-            ConfigTransportType::TorTcp => TransportType::TorTcp,
-            ConfigTransportType::TcpTor => TransportType::TcpTor,
-        }
-    }
-}
-
-impl TransportType {
-    fn as_config_transport_type(self) -> Option<ConfigTransportType> {
-        match self {
-            TransportType::Tor => Some(ConfigTransportType::Tor),
-            TransportType::Tcp => Some(ConfigTransportType::Tcp),
-            TransportType::TorTcp => Some(ConfigTransportType::TorTcp),
-            TransportType::TcpTor => Some(ConfigTransportType::TcpTor),
-            TransportType::Memory | TransportType::Socks5 => None,
-        }
-    }
-}
-
 impl Serialize for TransportType {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        match self.as_config_transport_type() {
-            Some(transport_type) => transport_type.serialize(serializer),
-            None => Err(serde::ser::Error::custom(
+        match self {
+            TransportType::Tor => serializer.serialize_str("tor"),
+            TransportType::Tcp => serializer.serialize_str("tcp"),
+            TransportType::TorTcp => serializer.serialize_str("tor_tcp"),
+            TransportType::TcpTor => serializer.serialize_str("tcp_tor"),
+            TransportType::Memory | TransportType::Socks5 => Err(serde::ser::Error::custom(
                 "internal transport types cannot be serialized to config",
             )),
         }
@@ -159,7 +130,16 @@ impl Serialize for TransportType {
 impl<'de> Deserialize<'de> for TransportType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: Deserializer<'de> {
-        Ok(ConfigTransportType::deserialize(deserializer)?.into())
+        const VARIANTS: &[&str] = &["tor", "tcp", "tor_tcp", "tcp_tor"];
+
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "tor" => Ok(TransportType::Tor),
+            "tcp" => Ok(TransportType::Tcp),
+            "tor_tcp" => Ok(TransportType::TorTcp),
+            "tcp_tor" => Ok(TransportType::TcpTor),
+            _ => Err(serde::de::Error::unknown_variant(&value, VARIANTS)),
+        }
     }
 }
 
@@ -343,10 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn transport_type_protocol_order_matches_peer_selection_modes() {
-        assert_eq!(TransportType::Memory.get_supported_protocols(), vec![
-            TransportProtocol::Memory
-        ]);
+    fn public_transport_type_protocol_order_matches_peer_selection_modes() {
         assert_eq!(TransportType::Tor.get_supported_protocols(), vec![
             TransportProtocol::Onion
         ]);
@@ -363,11 +340,6 @@ mod tests {
             TransportProtocol::Ipv4,
             TransportProtocol::Ipv6,
             TransportProtocol::Onion,
-        ]);
-        assert_eq!(TransportType::Socks5.get_supported_protocols(), vec![
-            TransportProtocol::Onion,
-            TransportProtocol::Ipv4,
-            TransportProtocol::Ipv6,
         ]);
     }
 

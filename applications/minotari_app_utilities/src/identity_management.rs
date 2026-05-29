@@ -141,29 +141,27 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
     let id_str = fs::read_to_string(path.as_ref())?;
     let id = json5::from_str::<NodeIdentity>(&id_str)?;
 
-    let id = if transport_type.uses_tor_hidden_service() {
-        id
-    } else {
+    let id = if transport_type == TransportType::Tcp {
         let current_addresses = id.public_addresses();
         debug!(
             target: LOG_TARGET,
-            "Filtering onion addresses for {:?} transport. Current addresses: {:?}",
-            transport_type,
+            "Filtering addresses for TCP transport. Current addresses: {:?}",
             current_addresses
         );
-        // Remove onion addresses for transports that do not start a hidden service.
+        // For TCP transport remove all onion addresses
         let filtered_addresses: Vec<Multiaddr> = current_addresses
             .into_iter()
             .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
             .collect();
         debug!(
             target: LOG_TARGET,
-            "After filtering for {:?} transport, {} addresses remain: {:?}",
-            transport_type,
+            "After filtering for TCP transport, {} addresses remain: {:?}",
             filtered_addresses.len(),
             filtered_addresses
         );
         id.set_public_addresses(filtered_addresses);
+        id
+    } else {
         id
     };
 
@@ -183,7 +181,19 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
 
 /// Filter addresses based on transport type
 fn filter_addresses_for_transport(addresses: Vec<Multiaddr>, transport_type: TransportType) -> Vec<Multiaddr> {
-    if transport_type.uses_tor_hidden_service() {
+    if transport_type == TransportType::Tcp {
+        // Filter out onion addresses for TCP transport
+        let filtered: Vec<Multiaddr> = addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "Filtered addresses for TCP transport: {:?}",
+            filtered
+        );
+        filtered
+    } else {
         debug!(
             target: LOG_TARGET,
             "No filtering for {:?} transport, keeping all {} addresses",
@@ -191,19 +201,6 @@ fn filter_addresses_for_transport(addresses: Vec<Multiaddr>, transport_type: Tra
             addresses.len()
         );
         addresses
-    } else {
-        // Filter out onion addresses for transports that do not start a hidden service.
-        let filtered: Vec<Multiaddr> = addresses
-            .into_iter()
-            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
-            .collect();
-        debug!(
-            target: LOG_TARGET,
-            "Filtered addresses for {:?} transport: {:?}",
-            transport_type,
-            filtered
-        );
-        filtered
     }
 }
 
