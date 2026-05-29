@@ -416,10 +416,21 @@ impl DhtConnectivity {
             .partition::<Vec<_>, _>(|n| disconnected.iter().any(|c| c.peer_node_id() == n));
         // we want add  at most 10% new peers or at least 1 peer
         let keep_size = pool_size - pool_size * self.config.connectivity.churn_rate / 100;
-        while connected.len() > keep_size {
+        // this is safety counter so we dont loop endlessly here
+        let mut disconnect_counter = connected.len()/2;
+        while connected.len() > keep_size && disconnect_counter > 0 {
+            disconnect_counter = disconnect_counter.saturating_sub(1);
             // we remove a random peer so as not to keep swapping the same peer each time.
             let mut rng = rand::rng();
             let index = rng.random_range(0..connected.len());
+            if self.connection_handles.iter().any(|c| c.peer_node_id() == connected.get(index).expect("should exist") && c.is_strongly_held()) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Skipping disconnect of peer '{}' because it is strongly held",
+                    connected[index].short_str()
+                );
+                continue;
+            }
             let disconnect_peer = connected.swap_remove(index);
             disconnected_peers.push(disconnect_peer);
         }
@@ -443,7 +454,7 @@ impl DhtConnectivity {
         let stale_handles: Vec<NodeId> = self
             .connection_handles
             .iter()
-            .filter(|c| !self.random_pool.contains(c.peer_node_id()) && c.direction().is_outbound())
+            .filter(|c| !self.random_pool.contains(c.peer_node_id()) && c.direction().is_outbound() && !c.is_strong())
             .map(|c| c.peer_node_id().clone())
             .collect();
         for node_id in &stale_handles {
@@ -505,7 +516,6 @@ impl DhtConnectivity {
         }
 
         let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
-        let connected_peers = self.connected_random_pool_peers();
         if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
