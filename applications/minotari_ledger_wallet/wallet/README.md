@@ -20,6 +20,31 @@ will not start and produce an error with a message to update the firmware.
 If the firmware needs to be updated, it must be done via Ledger Live. To update the firmware, open Ledger Live, select
 `My Ledger` and follow the instructions.
 
+## One-step installer
+
+The release installer in `install_scripts/install_minotari_ledger.py` works on macOS, Windows, and Linux. It detects the
+connected Ledger model, downloads the matching Minotari Ledger Wallet release artifact, verifies the `.zip.sha256`
+checksum, and installs the app.
+
+Supported devices are Nano S Plus, Nano X, Stax, and Flex. The original Nano S is not supported by the Minotari Ledger
+Wallet.
+
+Run the installer from the `install_scripts` directory:
+
+```
+python install_minotari_ledger.py
+```
+
+Python 3.9 or newer is required.
+
+To install a specific release:
+
+```
+python install_minotari_ledger.py --tag v5.4.0-pre.1
+```
+
+The per-model scripts under `install_scripts/<model>/` are compatibility wrappers around this unified installer.
+
 ## Development environment setup
 
 Ledger does not build with the standard library, so we need to install `rust-src`. This can be done with:
