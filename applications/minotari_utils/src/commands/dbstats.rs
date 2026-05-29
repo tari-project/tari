@@ -471,9 +471,11 @@ fn get_directory_size(dir: &Path) -> Result<u64> {
 }
 
 fn find_base_node_lmdb_database(databases: &[ComponentDatabaseInfo]) -> Option<&ComponentDatabaseInfo> {
-    databases
-        .iter()
-        .find(|db| db.component == "Base Node" && db.db_type == "LMDB" && db.path.contains("data/base_node/db"))
+    databases.iter().find(|db| {
+        db.component == "Base Node" &&
+            db.db_type == "LMDB" &&
+            (db.path.contains("data/base_node/db") || db.path.contains("data\\base_node\\db"))
+    })
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
@@ -496,29 +498,37 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     let mut databases = Vec::new();
     let page_size = env_stat.psize as usize;
 
-    // Get the authoritative list of database names from Tari core
-    let db_names = get_all_database_names();
+    // Get the authoritative list of database names from Tari core, plus a few V1/legacy names
+    // so we can inspect older databases that have not yet been migrated to the V2 schema.
+    let mut db_names = get_all_database_names();
+    for legacy in ["jmt_node_data", "jmt_value_data", "jmt_unique_key_data"] {
+        db_names.push(legacy);
+    }
 
     // Get statistics for each database
     for db_name in db_names {
-        if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) &&
-            let Ok(db_stat) = ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database))
-        {
-            let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-            let total_size = total_pages * page_size;
-            let avg_size = total_size.checked_div(db_stat.entries).unwrap_or(0);
+        match Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
+            Ok(database) => match ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
+                Ok(db_stat) => {
+                    let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+                    let total_size = total_pages * page_size;
+                    let avg_size = total_size.checked_div(db_stat.entries).unwrap_or(0);
 
-            databases.push(DatabaseStats {
-                name: db_name.to_string(),
-                entries: db_stat.entries,
-                total_size,
-                avg_size,
-                depth: db_stat.depth,
-                total_pages,
-                leaf_pages: db_stat.leaf_pages,
-                branch_pages: db_stat.branch_pages,
-                overflow_pages: db_stat.overflow_pages,
-            });
+                    databases.push(DatabaseStats {
+                        name: db_name.to_string(),
+                        entries: db_stat.entries,
+                        total_size,
+                        avg_size,
+                        depth: db_stat.depth,
+                        total_pages,
+                        leaf_pages: db_stat.leaf_pages,
+                        branch_pages: db_stat.branch_pages,
+                        overflow_pages: db_stat.overflow_pages,
+                    });
+                },
+                Err(e) => eprintln!("  [warn] db_stat failed for '{db_name}': {e}"),
+            },
+            Err(e) => eprintln!("  [warn] Database::open failed for '{db_name}': {e}"),
         }
     }
 
