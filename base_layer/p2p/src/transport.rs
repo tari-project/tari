@@ -83,27 +83,7 @@ impl TransportConfig {
     }
 
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
-        match self.transport_type {
-            TransportType::TorTcp => {
-                if self.tcp_can_dial_onion_addresses() {
-                    self.transport_type.get_supported_protocols()
-                } else {
-                    vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
-                }
-            },
-            TransportType::TcpTor => {
-                let mut protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6];
-                if self.tcp_can_dial_onion_addresses() {
-                    protocols.push(TransportProtocol::Onion);
-                }
-                protocols
-            },
-            _ => self.transport_type.get_supported_protocols(),
-        }
-    }
-
-    fn tcp_can_dial_onion_addresses(&self) -> bool {
-        self.tcp.tor_socks_address.is_some()
+        self.transport_type.get_supported_protocols()
     }
 
     pub fn uses_tor_hidden_service(&self) -> bool {
@@ -185,7 +165,7 @@ impl<'de> Deserialize<'de> for TransportType {
 
 impl TransportType {
     pub fn uses_tor_hidden_service(&self) -> bool {
-        matches!(self, TransportType::Tor)
+        matches!(self, TransportType::Tor | TransportType::TorTcp | TransportType::TcpTor)
     }
 
     pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
@@ -442,63 +422,42 @@ mod tests {
     }
 
     #[test]
-    fn only_tor_mode_uses_the_hidden_service_setup() {
+    fn tor_modes_use_the_hidden_service_setup() {
         assert!(TransportType::Tor.uses_tor_hidden_service());
         assert!(!TransportType::Tcp.uses_tor_hidden_service());
-        assert!(!TransportType::TorTcp.uses_tor_hidden_service());
-        assert!(!TransportType::TcpTor.uses_tor_hidden_service());
+        assert!(TransportType::TorTcp.uses_tor_hidden_service());
+        assert!(TransportType::TcpTor.uses_tor_hidden_service());
 
         let tor = TransportConfig::new_tor(TorTransportConfig::default());
         assert!(tor.uses_tor_hidden_service());
+
+        let tcp = TransportConfig::new_tcp(TcpTransportConfig::default());
+        assert!(!tcp.uses_tor_hidden_service());
 
         let tor_tcp = TransportConfig {
             transport_type: TransportType::TorTcp,
             ..Default::default()
         };
-        assert!(!tor_tcp.uses_tor_hidden_service());
+        assert!(tor_tcp.uses_tor_hidden_service());
 
         let tcp_tor = TransportConfig::default();
-        assert!(!tcp_tor.uses_tor_hidden_service());
+        assert!(tcp_tor.uses_tor_hidden_service());
     }
 
     #[test]
-    fn combined_modes_only_select_onion_when_tcp_can_dial_it() {
-        let tor_tcp_without_proxy = TransportConfig {
+    fn combined_modes_select_both_protocols_in_configured_order() {
+        let tor_tcp = TransportConfig {
             transport_type: TransportType::TorTcp,
             ..Default::default()
         };
-        assert_eq!(tor_tcp_without_proxy.get_supported_protocols(), vec![
-            TransportProtocol::Ipv4,
-            TransportProtocol::Ipv6,
-        ]);
-
-        let tcp_tor_without_proxy = TransportConfig::default();
-        assert_eq!(tcp_tor_without_proxy.get_supported_protocols(), vec![
-            TransportProtocol::Ipv4,
-            TransportProtocol::Ipv6,
-        ]);
-
-        let tcp_with_proxy = TcpTransportConfig {
-            tor_socks_address: Some("/ip4/127.0.0.1/tcp/9050".parse().unwrap()),
-            ..Default::default()
-        };
-        let tor_tcp_with_proxy = TransportConfig {
-            transport_type: TransportType::TorTcp,
-            tcp: tcp_with_proxy.clone(),
-            ..Default::default()
-        };
-        assert_eq!(tor_tcp_with_proxy.get_supported_protocols(), vec![
+        assert_eq!(tor_tcp.get_supported_protocols(), vec![
             TransportProtocol::Onion,
             TransportProtocol::Ipv4,
             TransportProtocol::Ipv6,
         ]);
 
-        let tcp_tor_with_proxy = TransportConfig {
-            transport_type: TransportType::TcpTor,
-            tcp: tcp_with_proxy,
-            ..Default::default()
-        };
-        assert_eq!(tcp_tor_with_proxy.get_supported_protocols(), vec![
+        let tcp_tor = TransportConfig::default();
+        assert_eq!(tcp_tor.get_supported_protocols(), vec![
             TransportProtocol::Ipv4,
             TransportProtocol::Ipv6,
             TransportProtocol::Onion,

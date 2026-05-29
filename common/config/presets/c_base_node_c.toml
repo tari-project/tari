@@ -192,16 +192,14 @@ listener_self_liveness_check_interval = 15
 # - "tcp_tor": select and dial TCP/IP and onion peers, preferring TCP/IP. (default = "tcp_tor")
 #type = "tcp_tor"
 
-# The address and port to listen for peer connections over TCP. (used by type = "tcp", "tor_tcp", and "tcp_tor")
+# The address and port to listen for peer connections over TCP. (used by type = "tcp")
 #tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
-# Configures a tor proxy used by the TCP transport to connect to onion addresses. All other traffic uses direct TCP
-# connections. Set this for "tor_tcp" or "tcp_tor" if you want those modes to actually dial onion peers. If it is not
-# specified, this node will not be able to connect to nodes that only advertise an onion address.
+# Optional tor proxy settings for the TCP transport. Peer selection for type = "tcp" still selects TCP/IP peers only.
 #tcp.tor_socks_address =
 # Optional tor SOCKS proxy authentication (default = "none")
 #tcp.tor_socks_auth = "none"
 
-# Tor hidden service settings used by type = "tor".
+# Tor hidden service settings used by type = "tor", "tor_tcp", and "tcp_tor".
 # Address of the tor control server
 #tor.control_address = "/ip4/127.0.0.1/tcp/9051"
 # SOCKS proxy auth (default = "none")

@@ -75,24 +75,12 @@ fn transport_config_from_name(name: &str) -> TransportConfig {
     match name {
         "tor" => TransportConfig::new_tor(TorTransportConfig::default()),
         "tcp" => TransportConfig::new_tcp(TcpTransportConfig::default()),
-        "tor_tcp" => {
-            let mut transport = TransportConfig::new_tcp(tcp_transport_with_tor_proxy());
-            transport.transport_type = TransportType::TorTcp;
-            transport
+        "tor_tcp" => TransportConfig {
+            transport_type: TransportType::TorTcp,
+            ..Default::default()
         },
-        "tcp_tor" => {
-            let mut transport = TransportConfig::new_tcp(tcp_transport_with_tor_proxy());
-            transport.transport_type = TransportType::TcpTor;
-            transport
-        },
+        "tcp_tor" => TransportConfig::default(),
         other => panic!("unknown transport type: {other}"),
-    }
-}
-
-fn tcp_transport_with_tor_proxy() -> TcpTransportConfig {
-    TcpTransportConfig {
-        tor_socks_address: Some("/ip4/127.0.0.1/tcp/9050".parse().unwrap()),
-        ..Default::default()
     }
 }
 
