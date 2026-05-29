@@ -3079,11 +3079,48 @@ where
                 "A sidechain deployment key was provided without a claim public key".to_string(),
             ));
         }
-        let output_features = claim_public_key
-            .as_ref()
-            .cloned()
-            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_deployment_key.as_ref()))
-            .unwrap_or_else(OutputFeatures::create_burn_output);
+
+        // Derive the commitment mask and sender-offset key up front so we can place the stealth
+        // claim key C = H(r·P)·G + P on chain (rather than the recipient's P). C looks like a
+        // random nonce — unlinkable to P across burns — and gives L2 wallets that scan the chain
+        // a discoverability signal (the L2 can compute expected C from R + p and match). The L2
+        // claim does not require C to be on chain: the off-chain burn proof carries C and binds
+        // the mask-key ownership signature to it, so a wallet may also choose to emit burns with
+        // a default-valued on-chain claim key without breaking claim validity.
+        //
+        // For L2-bound burns r is seed-deterministic so the L1 wallet can regenerate the burn
+        // proof from seed alone after recovery; for plain burns (no L2 recipient) r remains a
+        // random key — there is no proof to regenerate later.
+        let (commitment_mask_key, _) = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_commitment_mask_and_script_key()?;
+        let (sender_offset_private_key, stealth_claim_public_key) =
+            if let Some(ref account_public_key) = claim_public_key {
+                let r = self
+                    .resources
+                    .transaction_key_manager_service
+                    .derive_burn_sender_offset_key(&commitment_mask_key.key_id)?;
+                let c = self
+                    .resources
+                    .transaction_key_manager_service
+                    .compute_stealth_claim_public_key(&r.key_id, account_public_key)?;
+                (r, Some(c))
+            } else {
+                let r = self
+                    .resources
+                    .transaction_key_manager_service
+                    .get_random_key(None, None)?;
+                (r, None)
+            };
+
+        let output_features = match stealth_claim_public_key.as_ref() {
+            // L2-bound burn: on-chain claim_public_key carries the stealth address C, unlinkable
+            // to the recipient P. sidechain_deployment_key (if provided) identifies the target L2
+            // network via the sidechain_id Schnorr signature over the (now-stealth) claim key.
+            Some(c) => OutputFeatures::create_burn_confidential_output(c.clone(), sidechain_deployment_key.as_ref()),
+            None => OutputFeatures::create_burn_output(),
+        };
 
         // Prepare sender part of the transaction
         let covenant = Covenant::default();
@@ -3130,17 +3167,12 @@ where
 
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
-        let (commitment_mask_key, _) = self
-            .resources
-            .transaction_key_manager_service
-            .get_next_commitment_mask_and_script_key()?;
 
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
+        // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can
+        // decrypt with DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account
+        // secret). The L1 wallet does not rely on decrypting `encrypted_data` to recover its own
+        // burns on a seed-only rescan — it traces them via the spent input outputs it owns. For
+        // plain burns there is no L2 to decrypt, so fall back to the L1 view key.
         let recovery_key_id = if let Some(ref cp) = claim_public_key {
             TariKeyId::DHEncryptedData {
                 public_key: cp.clone(),
@@ -3173,7 +3205,7 @@ where
         tx_builder.add_recipient(
             Default::default(),
             output.clone(),
-            Some(sender_offset_private_key.key_id),
+            Some(sender_offset_private_key.key_id.clone()),
             Some(recovery_key_id),
         )?;
 
@@ -3238,7 +3270,7 @@ where
 
         // Generate claim proof if needed
         let mut burn_proof = None;
-        if let Some(claim_public_key) = claim_public_key {
+        if let (Some(claim_public_key), Some(stealth_claim_public_key)) = (claim_public_key, stealth_claim_public_key) {
             let tx_output = finalized
                 .sent_outputs
                 .first()
@@ -3246,12 +3278,20 @@ where
             let output_hash = tx_output.output.output_hash();
             let commitment = tx_output.output.commitment().clone();
 
+            // The ownership proof commits to C (the stealth claim key), not P. A third party
+            // holding the proof cannot construct an L2 claim — only the L2 wallet holding p can
+            // derive the spend secret s = H(R·p) + p against C. C is not carried in the proof:
+            // both ends recompute it from (R, P, p) and the on-chain ConfidentialOutputData
+            // echoes it for the wallets that want chain-side discoverability.
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
-                .generate_burn_claim_signature(&commitment_mask_key.key_id, amount.as_u64(), &claim_public_key)?;
+                .generate_burn_claim_signature(
+                    &commitment_mask_key.key_id,
+                    amount.as_u64(),
+                    &stealth_claim_public_key,
+                )?;
             let proof = PartialBurnClaimProof {
-                // Nonce part of the DH key exchange to derive the shared secret and decryption key
                 claim_public_key,
                 commitment,
                 ownership_proof,

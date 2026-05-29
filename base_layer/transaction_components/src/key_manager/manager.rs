@@ -101,6 +101,7 @@ use crate::{
 };
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
+const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
 
 #[derive(Clone)]
 pub struct KeyManager {
@@ -1308,6 +1309,35 @@ impl TransactionKeyManagerInterface for KeyManager {
         let s = UncompressedSignature::sign(&mask, message, &mut rand::rng())
             .map_err(|e| TransactionError::InvalidSignatureError(format!("Failed to sign burn claim proof: {}", e)))?;
         Ok(CompressedSignature::new_from_schnorr(s))
+    }
+
+    fn derive_burn_sender_offset_key(
+        &self,
+        commitment_mask_key_id: &TariKeyId,
+    ) -> Result<TariKeyAndId, KeyManagerError> {
+        let mask = self.get_private_key(commitment_mask_key_id)?;
+        let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+            HASHER_LABEL_BURN_SENDER_OFFSET,
+        )
+        .chain(mask.as_bytes())
+        .finalize();
+        let secret = PrivateKey::from_uniform_bytes(hash.as_ref())?;
+        let pub_key = CompressedPublicKey::from_secret_key(&secret);
+        let key_id = self.create_encrypted_key(secret, None)?;
+        Ok(TariKeyAndId { pub_key, key_id })
+    }
+
+    fn compute_stealth_claim_public_key(
+        &self,
+        sender_offset_key_id: &TariKeyId,
+        account_public_key: &CompressedPublicKey,
+    ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let shared_secret = self.get_diffie_hellman_shared_secret(sender_offset_key_id, account_public_key)?;
+        let stealth_hash = diffie_hellman_stealth_domain_hasher(&shared_secret);
+        let scalar = PrivateKey::from_uniform_bytes(stealth_hash.as_ref())?;
+        let scalar_point = CompressedPublicKey::from_secret_key(&scalar);
+        let stealth_public = scalar_point.to_public_key()? + &account_public_key.to_public_key()?;
+        Ok(CompressedPublicKey::new_from_pk(stealth_public))
     }
 
     fn stealth_address_script_spending_key(
