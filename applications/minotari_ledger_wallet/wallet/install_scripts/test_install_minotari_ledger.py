@@ -137,6 +137,12 @@ class TestChecksumHandling(unittest.TestCase):
         with self.assertRaisesRegex(installer.InstallerError, "firmware.zip"):
             installer.parse_sha256_file(text, "firmware.zip")
 
+    def test_parse_sha256_rejects_bare_digest_mixed_with_named_mismatch(self):
+        text = f"{'a' * 64}  other.zip\n{'b' * 64}\n"
+
+        with self.assertRaisesRegex(installer.InstallerError, "firmware.zip"):
+            installer.parse_sha256_file(text, "firmware.zip")
+
     def test_checksum_mismatch_raises(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "firmware.zip"
@@ -221,6 +227,24 @@ class TestExtractionAndArtifactSelection(unittest.TestCase):
 
             self.assertEqual(artifact.kind, "manifest")
             self.assertEqual(artifact.path.name, "app_nanox.json")
+
+    def test_generic_manifest_fallback(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "app.json").write_text("{}", encoding="utf-8")
+
+            artifact = installer.find_install_artifact(root, "nanox")
+
+            self.assertEqual(artifact.kind, "manifest")
+            self.assertEqual(artifact.path.name, "app.json")
+
+    def test_manifest_fallback_rejects_other_model_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "app_stax.json").write_text("{}", encoding="utf-8")
+
+            with self.assertRaisesRegex(installer.InstallerError, "app_nanox"):
+                installer.find_install_artifact(root, "nanox")
 
 
 class FakeLedgerClient:

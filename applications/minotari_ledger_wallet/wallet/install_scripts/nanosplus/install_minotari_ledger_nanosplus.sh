@@ -14,4 +14,4 @@ else
   exit 1
 fi
 
-exec "${PYTHON_BIN}" "${INSTALLER}" --model nanosplus "$@"
+exec "${PYTHON_BIN}" "${INSTALLER}" "$@"

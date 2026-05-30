@@ -15,7 +15,7 @@ if (-not $Python) {
     Write-Error "Python 3 is required to run the Minotari Ledger installer."
 }
 
-$InstallerArgs = @("--model", "nanox")
+$InstallerArgs = @()
 if ($Tag) {
     $InstallerArgs += @("--tag", $Tag)
 }

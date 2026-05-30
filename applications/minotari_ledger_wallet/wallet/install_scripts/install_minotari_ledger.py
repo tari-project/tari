@@ -291,7 +291,7 @@ def parse_sha256_file(text: str, expected_filename: str) -> str:
             found_named_digest = True
             continue
         digests.append(digest.lower())
-    if len(digests) == 1:
+    if len(digests) == 1 and not found_named_digest:
         return digests[0]
     if digests or found_named_digest:
         raise InstallerError(f"Checksum file did not contain a digest for {expected_filename}.")
@@ -353,17 +353,10 @@ def find_install_artifact(extract_dir: Path, model: str) -> InstallArtifact:
         if matches:
             return InstallArtifact("manifest", matches[0])
 
-    manifests = sorted(
-        path
-        for path in extract_dir.rglob("*")
-        if path.is_file()
-        and path.name.startswith("app_")
-        and path.suffix.lower() in {".json", ".toml"}
+    raise InstallerError(
+        "Archive did not contain minotari_ledger_wallet.apdu, "
+        f"app_{model}.json, app_{model}.toml, app.json, or app.toml."
     )
-    if manifests:
-        return InstallArtifact("manifest", manifests[0])
-
-    raise InstallerError("Archive did not contain minotari_ledger_wallet.apdu or an app manifest.")
 
 
 def model_from_target_id(target_id: int) -> LedgerModel:

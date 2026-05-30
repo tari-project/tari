@@ -1,8 +1,8 @@
 # Minotari Ledger Flex Installer
 
 This directory keeps compatibility entry points for Ledger Flex users.
-Both scripts delegate to the unified installer in `../install_minotari_ledger.py`
-with `--model flex`.
+Both scripts delegate to the auto-detecting unified installer in
+`../install_minotari_ledger.py`.
 
 ## macOS / Linux
 

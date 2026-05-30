@@ -170,20 +170,17 @@ ledgerctl delete "MinoTari Wallet"
 
 - Installation
 
-The following command has to be run from the root of the Tari ledger wallet repository, i.e. 
-`<TARI>/applications/minotari_ledger_wallet/wallet`.
+For release artifacts, use the one-step installer above. Current Tari release archives contain
+`minotari_ledger_wallet.apdu`, and the installer downloads, verifies, extracts, and sends that APDU file to the
+connected Ledger device.
 
-First locate `app_nanosplus.json`. It will either be in the ledger wallet root
-`<TARI>/applications/minotari_ledger_wallet/wallet` or in its the target directory `./target/nanosplus/release`,
-then run one of the following commands to install the application:
+For a local development build, install the manifest generated for the selected build target if one is present:
 
 ```
-ledgerctl install app_nanosplus.json
+ledgerctl install ./target/{TARGET}/release/app_{TARGET}.json
 ```
-```
-ledgerctl install ./target/nanosplus/release/app_nanosplus.json
-ledgerctl install ./target/stax/release/app_stax.json
-```
+
+Replace `{TARGET}` with the Ledger target used for the build, for example `nanosplus`, `nanox`, `stax`, or `flex`.
 
 **Notes for Windows users:**
 - For a standard Anaconda 3 installation, the Python shell can be started from your development terminal with

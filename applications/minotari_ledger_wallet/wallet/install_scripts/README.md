@@ -45,7 +45,8 @@ The existing per-model scripts remain as thin wrappers:
 - `flex/install_minotari_ledger_flex.sh`
 - `*/install_ledger_win.ps1`
 
-They call the unified installer with the appropriate `--model` value.
+They call the same auto-detecting installer so existing entry-point paths keep
+working without bypassing device detection.
 
 ## Notes
 

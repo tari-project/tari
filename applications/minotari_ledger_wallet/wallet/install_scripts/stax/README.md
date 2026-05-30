@@ -1,8 +1,8 @@
 # Minotari Ledger Stax Installer
 
 This directory keeps compatibility entry points for Ledger Stax users.
-Both scripts delegate to the unified installer in `../install_minotari_ledger.py`
-with `--model stax`.
+Both scripts delegate to the auto-detecting unified installer in
+`../install_minotari_ledger.py`.
 
 ## macOS / Linux
 

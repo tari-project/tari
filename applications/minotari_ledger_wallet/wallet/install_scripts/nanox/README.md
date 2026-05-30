@@ -1,8 +1,8 @@
 # Minotari Ledger Nano X Installer
 
 This directory keeps compatibility entry points for Ledger Nano X users.
-Both scripts delegate to the unified installer in `../install_minotari_ledger.py`
-with `--model nanox`.
+Both scripts delegate to the auto-detecting unified installer in
+`../install_minotari_ledger.py`.
 
 ## macOS / Linux
 
