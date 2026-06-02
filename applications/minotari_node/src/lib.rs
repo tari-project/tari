@@ -65,10 +65,7 @@ use tari_common::{
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{NodeIdentity, multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
-use tari_core::base_node::{
-    StateMachineHandle,
-    state_machine_service::states::StatusInfo,
-};
+use tari_core::base_node::{StateMachineHandle, state_machine_service::states::StatusInfo};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     task::{self, JoinHandle},
