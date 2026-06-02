@@ -502,11 +502,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         value: u64,
         claim_public_key: &CompressedPublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError> {
         self.transaction_key_manager_inner.generate_burn_claim_signature(
             commitment_mask_key_id,
             value,
             claim_public_key,
+            sidechain_id,
         )
     }
 

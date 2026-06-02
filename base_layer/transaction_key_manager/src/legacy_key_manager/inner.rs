@@ -365,9 +365,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         value: u64,
         claim_public_key: &CompressedPublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError> {
         self.key_manager
-            .generate_burn_claim_signature(commitment_mask_key_id, value, claim_public_key)
+            .generate_burn_claim_signature(commitment_mask_key_id, value, claim_public_key, sidechain_id)
     }
 
     pub fn derive_burn_sender_offset_key(
