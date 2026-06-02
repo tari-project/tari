@@ -18,7 +18,7 @@ permissions: {}
 env:
   toolchain: stable
   toolchain_msrv_reject_older: 1.93.0
-  nightly_toolchain: nightly-2025-06-24
+  nightly_toolchain: nightly-2026-06-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
