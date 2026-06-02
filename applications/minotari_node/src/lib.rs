@@ -368,7 +368,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         let mut status_watch = state_machine_handle.get_status_info_watch();
         let is_serving = is_grpc_health_serving(&status_watch.borrow_and_update());
         update_grpc_health_status(&mut health_reporter, is_serving).await;
-        spawn_grpc_health_updater(health_reporter, status_watch);
+        spawn_grpc_health_updater(health_reporter, status_watch, is_serving);
 
         server_builder
             .add_service(service)
@@ -393,6 +393,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
 fn spawn_grpc_health_updater(
     mut health_reporter: HealthReporter,
     mut status_watch: tokio::sync::watch::Receiver<StatusInfo>,
+    mut last_is_serving: bool,
 ) {
     task::spawn(async move {
         loop {
@@ -400,7 +401,11 @@ fn spawn_grpc_health_updater(
                 break;
             }
             let is_serving = is_grpc_health_serving(&status_watch.borrow());
+            if is_serving == last_is_serving {
+                continue;
+            }
             update_grpc_health_status(&mut health_reporter, is_serving).await;
+            last_is_serving = is_serving;
         }
     });
 }
