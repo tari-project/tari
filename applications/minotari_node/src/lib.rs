@@ -459,7 +459,9 @@ async fn prepare_grpc_params(
 mod tests {
     use minotari_app_grpc::tari_rpc::base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME;
     use tari_core::base_node::state_machine_service::states::{
-        StateInfo, StatusInfo, events_and_states::ListeningInfo,
+        StateInfo,
+        StatusInfo,
+        events_and_states::ListeningInfo,
     };
     use tonic::{Code, Request};
     use tonic_health::{
