@@ -552,6 +552,8 @@ async fn single_transaction_burn_tari() {
         .unwrap();
     let burn_value = 10000.into();
     let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+    // Burn towards a specific sidechain so the ownership proof is bound to it (tari-ootle#445).
+    let sidechain_deployment_key = PrivateKey::random(&mut rand::rng());
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -559,7 +561,7 @@ async fn single_transaction_burn_tari() {
             20.into(),
             MemoField::new_empty(),
             Some(claim_public_key.clone()),
-            None,
+            Some(sidechain_deployment_key.clone()),
         )
         .await
         .expect("Alice sending burn tx");
@@ -612,9 +614,13 @@ async fn single_transaction_burn_tari() {
         CompressedPublicKey::from_secret_key(&scalar).to_public_key().unwrap() +
             &claim_public_key.to_public_key().unwrap(),
     );
+    // The challenge is also bound to the target sidechain's public key (= the deployment key's
+    // public key, as recorded on-chain by SideChainId::sign).
+    let sidechain_id = Some(CompressedPublicKey::from_secret_key(&sidechain_deployment_key));
     let challenge_bytes = ConfidentialOutputHasher::new("commitment_signature")
         .chain(&burn_proof.commitment)
         .chain(&stealth_claim_public_key)
+        .chain(&sidechain_id)
         .finalize();
     let ownership_proof = burn_proof.ownership_proof.to_schnorr_signature().unwrap();
     let commit_value = factories

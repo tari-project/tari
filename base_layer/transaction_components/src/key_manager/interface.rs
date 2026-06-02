@@ -261,11 +261,16 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
+    /// Sign the burn claim ownership proof. `sidechain_id` is the public key of the target
+    /// sidechain (`None` for the default L2 chain that has no deployment key); it is bound into the
+    /// signature challenge so the proof cannot be replayed to claim the burn on a different
+    /// sidechain/application that shares this claim mechanism (see tari-ootle#445).
     fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
         amount: u64,
         claim_public_key: &CompressedPublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError>;
 
     /// Derive a deterministic sender-offset key for an L2-targeted burn, bound to the burn's

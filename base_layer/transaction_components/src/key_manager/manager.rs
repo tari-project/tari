@@ -1296,14 +1296,21 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         amount: u64,
         claim_public_key: &CompressedPublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError> {
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let commitment =
             CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &amount.into()));
 
+        // Bind the proof to the target sidechain so it cannot be replayed to claim the burn on a
+        // different sidechain/application that shares this claim mechanism (tari-ootle#445). The
+        // Tari network is already mixed into the hash domain by ConfidentialOutputHasher, and the
+        // Option encoding distinguishes "no sidechain" from a specific one.
+        let sidechain_id = sidechain_id.cloned();
         let message = ConfidentialOutputHasher::new("commitment_signature")
             .chain(&commitment)
             .chain(claim_public_key)
+            .chain(&sidechain_id)
             .finalize();
 
         let s = UncompressedSignature::sign(&mask, message, &mut rand::rng())
