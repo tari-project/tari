@@ -454,3 +454,98 @@ async fn prepare_grpc_params(
 
     Ok((grpc_address, auth, tls_identity))
 }
+
+#[cfg(test)]
+mod tests {
+    use minotari_app_grpc::tari_rpc::base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME;
+    use tari_core::base_node::state_machine_service::states::{
+        StateInfo, StatusInfo, events_and_states::ListeningInfo,
+    };
+    use tonic::{Code, Request};
+    use tonic_health::{
+        ServingStatus,
+        pb::{HealthCheckRequest, health_check_response, health_server::Health},
+        server::HealthService,
+    };
+
+    use super::{grpc_serving_status, is_grpc_health_serving};
+
+    fn status_info(bootstrapped: bool, state_info: StateInfo) -> StatusInfo {
+        StatusInfo {
+            bootstrapped,
+            state_info,
+            ..StatusInfo::default()
+        }
+    }
+
+    fn expected_wire_status(status: ServingStatus) -> i32 {
+        health_check_response::ServingStatus::from(status) as i32
+    }
+
+    async fn assert_health_status(service: &HealthService, service_name: &str, expected: ServingStatus) {
+        let response = service
+            .check(Request::new(HealthCheckRequest {
+                service: service_name.to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(response.status, expected_wire_status(expected));
+    }
+
+    async fn assert_health_service_not_registered(service: &HealthService, service_name: &str) {
+        let err = service
+            .check(Request::new(HealthCheckRequest {
+                service: service_name.to_string(),
+            }))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code(), Code::NotFound);
+    }
+
+    #[test]
+    fn grpc_serving_status_maps_boolean_to_tonic_status() {
+        assert_eq!(grpc_serving_status(true), ServingStatus::Serving);
+        assert_eq!(grpc_serving_status(false), ServingStatus::NotServing);
+    }
+
+    #[test]
+    fn grpc_health_is_serving_only_when_bootstrapped_and_synced() {
+        let synced_listening = StateInfo::Listening(ListeningInfo::new(true, 0, 0, false));
+        let unsynced_listening = StateInfo::Listening(ListeningInfo::new(false, 0, 1, false));
+
+        assert!(is_grpc_health_serving(&status_info(true, synced_listening.clone())));
+        assert!(!is_grpc_health_serving(&status_info(false, synced_listening)));
+        assert!(!is_grpc_health_serving(&status_info(true, unsynced_listening)));
+        assert!(!is_grpc_health_serving(&status_info(true, StateInfo::StartUp)));
+    }
+
+    #[tokio::test]
+    async fn update_grpc_health_status_updates_overall_and_base_node_services() {
+        let (mut health_reporter, _health_server) = tonic_health::server::health_reporter();
+        let health_service = HealthService::from_health_reporter(health_reporter.clone());
+
+        super::update_grpc_health_status(&mut health_reporter, false).await;
+
+        assert_health_status(
+            &health_service,
+            super::GRPC_HEALTH_OVERALL_SERVICE_NAME,
+            ServingStatus::NotServing,
+        )
+        .await;
+        assert_health_status(&health_service, BASE_NODE_GRPC_SERVICE_NAME, ServingStatus::NotServing).await;
+        assert_health_service_not_registered(&health_service, "unknown.service").await;
+
+        super::update_grpc_health_status(&mut health_reporter, true).await;
+
+        assert_health_status(
+            &health_service,
+            super::GRPC_HEALTH_OVERALL_SERVICE_NAME,
+            ServingStatus::Serving,
+        )
+        .await;
+        assert_health_status(&health_service, BASE_NODE_GRPC_SERVICE_NAME, ServingStatus::Serving).await;
+    }
+}
