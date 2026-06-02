@@ -50,7 +50,11 @@ pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,
-    tari_rpc::{self, readiness_status::State as ReadinessState},
+    tari_rpc::{
+        self,
+        base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
+        readiness_status::State as ReadinessState,
+    },
     tls::identity::read_identity,
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
@@ -82,6 +86,7 @@ pub use crate::metrics::MetricsConfig;
 use crate::{cli::Cli, grpc::readiness_grpc_server::ReadinessGrpcServer};
 
 const LOG_TARGET: &str = "minotari::base_node::app";
+const GRPC_HEALTH_OVERALL_SERVICE_NAME: &str = "";
 
 pub async fn run_base_node(
     shutdown: Shutdown,
@@ -411,13 +416,20 @@ fn spawn_grpc_health_updater(
 }
 
 async fn update_grpc_health_status(health_reporter: &mut HealthReporter, is_serving: bool) {
-    let serving_status = if is_serving {
+    health_reporter
+        .set_service_status(GRPC_HEALTH_OVERALL_SERVICE_NAME, grpc_serving_status(is_serving))
+        .await;
+    health_reporter
+        .set_service_status(BASE_NODE_GRPC_SERVICE_NAME, grpc_serving_status(is_serving))
+        .await;
+}
+
+fn grpc_serving_status(is_serving: bool) -> ServingStatus {
+    if is_serving {
         ServingStatus::Serving
     } else {
         ServingStatus::NotServing
-    };
-
-    health_reporter.set_service_status("", serving_status).await;
+    }
 }
 
 fn is_grpc_health_serving(status: &StatusInfo) -> bool {
