@@ -67,6 +67,7 @@ strum = { version = "0.22", features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
 tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }
+tonic-health = "0.13.1"
 tari_metrics = { workspace = true, optional = true, features = ["server"] }
 url = { version = "2.5.4", features = ["default", "serde"] }
 axum = { version = "0.8.4", features = ["default", "http2"] }

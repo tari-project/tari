@@ -61,6 +61,10 @@ use tari_common::{
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{NodeIdentity, multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_core::base_node::{
+    StateMachineHandle,
+    state_machine_service::states::StatusInfo,
+};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     task::{self, JoinHandle},
@@ -70,6 +74,7 @@ use tonic::{
     codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
 };
+use tonic_health::{ServingStatus, server::HealthReporter};
 
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
 #[cfg(feature = "metrics")]
@@ -144,6 +149,7 @@ pub async fn run_base_node_with_cli(
             grpc_address.clone(),
             auth.clone(),
             tls_identity.clone(),
+            None,
             readiness_grpc_shutdown.to_signal(),
         )));
     } else {
@@ -220,6 +226,7 @@ pub async fn run_base_node_with_cli(
             grpc_address.clone(),
             auth.clone(),
             tls_identity,
+            Some(ctx.state_machine()),
             shutdown.to_signal(),
         ));
 
@@ -336,6 +343,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     grpc_address: Multiaddr,
     auth_config: GrpcAuthentication,
     tls_identity: Option<Identity>,
+    health_state_machine: Option<StateMachineHandle>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
@@ -355,17 +363,60 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         Server::builder()
     };
 
-    server_builder
-        .add_service(service)
-        .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
-        .await
-        .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {err:?}");
-            err
-        })?;
+    if let Some(state_machine_handle) = health_state_machine {
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        let mut status_watch = state_machine_handle.get_status_info_watch();
+        let is_serving = is_grpc_health_serving(&status_watch.borrow_and_update());
+        update_grpc_health_status(&mut health_reporter, is_serving).await;
+        spawn_grpc_health_updater(health_reporter, status_watch);
+
+        server_builder
+            .add_service(service)
+            .add_service(health_service)
+            .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
+            .await
+    } else {
+        server_builder
+            .add_service(service)
+            .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
+            .await
+    }
+    .map_err(|err| {
+        error!(target: LOG_TARGET, "GRPC encountered an error: {err:?}");
+        err
+    })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
+}
+
+fn spawn_grpc_health_updater(
+    mut health_reporter: HealthReporter,
+    mut status_watch: tokio::sync::watch::Receiver<StatusInfo>,
+) {
+    task::spawn(async move {
+        loop {
+            if status_watch.changed().await.is_err() {
+                break;
+            }
+            let is_serving = is_grpc_health_serving(&status_watch.borrow());
+            update_grpc_health_status(&mut health_reporter, is_serving).await;
+        }
+    });
+}
+
+async fn update_grpc_health_status(health_reporter: &mut HealthReporter, is_serving: bool) {
+    let serving_status = if is_serving {
+        ServingStatus::Serving
+    } else {
+        ServingStatus::NotServing
+    };
+
+    health_reporter.set_service_status("", serving_status).await;
+}
+
+fn is_grpc_health_serving(status: &StatusInfo) -> bool {
+    status.bootstrapped && status.state_info.is_synced()
 }
 
 /// Prepares the parameters required to call the `run_grpc` function
