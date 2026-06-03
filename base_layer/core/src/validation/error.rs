@@ -124,6 +124,8 @@ pub enum ValidationError {
     SidechainEvictionProofInvalidEpoch { epoch: VnEpoch, tip_height: u64 },
     #[error("Validator node already registered: {public_key}")]
     ValidatorNodeAlreadyRegistered { public_key: String },
+    #[error("Block body contains more than one validator node registration for the same validator node: {public_key}")]
+    DuplicateValidatorNodeRegistration { public_key: String },
     #[error("Validator node {public_key} not registered: {details}")]
     ValidatorNodeNotRegistered { public_key: String, details: String },
     #[error("Validator registration {public_key} invalid: max epoch {max_epoch} < current epoch {current_epoch}")]
@@ -191,6 +193,7 @@ impl ValidationError {
             err @ ValidationError::SidechainProofInvalid(_) |
             err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
             err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
+            err @ ValidationError::DuplicateValidatorNodeRegistration { .. } |
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
