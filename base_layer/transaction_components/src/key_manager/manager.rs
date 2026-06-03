@@ -1306,7 +1306,6 @@ impl TransactionKeyManagerInterface for KeyManager {
         // different sidechain/application that shares this claim mechanism (tari-ootle#445). The
         // Tari network is already mixed into the hash domain by ConfidentialOutputHasher, and the
         // Option encoding distinguishes "no sidechain" from a specific one.
-        let sidechain_id = sidechain_id.cloned();
         let message = ConfidentialOutputHasher::new("commitment_signature")
             .chain(&commitment)
             .chain(claim_public_key)
