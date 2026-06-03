@@ -288,7 +288,7 @@ pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) ->
         let Some(vn_reg) = sidechain_features.validator_node_registration() else {
             continue;
         };
-        if !seen.insert((sidechain_features.sidechain_public_key().cloned(), vn_reg.public_key().clone())) {
+        if !seen.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key())) {
             warn!(
                 target: LOG_TARGET,
                 "AggregateBody validation failed due to duplicate validator node registration for {}",
