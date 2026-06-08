@@ -408,9 +408,20 @@ def install_apdu_file(apdu_path: Path, model: LedgerModel) -> None:
             "--fileName",
             str(apdu_path),
         ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
         check=False,
     )
     if result.returncode != 0:
+        output = result.stdout if isinstance(result.stdout, str) else ""
+        if "Invalid status 511f" in output or "OS version on your device does not seem compatible" in output:
+            raise InstallerError(
+                "The Ledger firmware is too old for this Minotari Ledger app artifact. "
+                "Update the Ledger device firmware in Ledger Live, unlock the device, and run this installer again."
+            )
+        if output:
+            print(output, file=sys.stderr, end="" if output.endswith("\n") else "\n")
         raise InstallerError(f"ledgerblue runScript failed with exit code {result.returncode}.")
 
 

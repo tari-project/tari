@@ -302,6 +302,19 @@ class TestApduInstall(unittest.TestCase):
             with self.assertRaisesRegex(installer.InstallerError, "ledgerblue runScript failed"):
                 installer.install_apdu_file(Path("app.apdu"), installer.SUPPORTED_MODELS["flex"])
 
+    def test_apdu_install_reports_old_firmware(self):
+        completed = mock.Mock(
+            returncode=1,
+            stdout=(
+                "ledgerblue.commException.CommException: Exception : Invalid status 511f "
+                "(The OS version on your device does not seem compatible with the SDK version used to build the app)"
+            ),
+        )
+
+        with mock.patch.object(installer.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(installer.InstallerError, "firmware is too old"):
+                installer.install_apdu_file(Path("app.apdu"), installer.SUPPORTED_MODELS["nanosplus"])
+
 
 if __name__ == "__main__":
     unittest.main()
