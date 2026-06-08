@@ -26,7 +26,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniNodeId;
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{RefKind, peer_manager::NodeId};
 use tokio::task;
 
 use super::{CommandContext, HandleCommand};
@@ -53,7 +53,7 @@ impl CommandContext {
             let start = Instant::now();
             println!("☎️  Dialing peer...");
 
-            match connectivity.dial_peer(dest_node_id).await {
+            match connectivity.dial_peer(dest_node_id, RefKind::Weak).await {
                 Ok(connection) => {
                     println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
                     println!("Connection: {connection}");

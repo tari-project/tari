@@ -27,6 +27,7 @@ use log::*;
 use tari_comms::{
     Minimized,
     PeerConnection,
+    RefKind,
     connectivity::ConnectivityError,
     peer_manager::{NodeId, Peer, PeerId},
     protocol::rpc::{ClientStreaming, RpcStatus},
@@ -440,7 +441,7 @@ impl Discovering {
             .map(|peer| {
                 let connectivity = self.context.connectivity.clone();
                 let peer = peer.clone();
-                async move { connectivity.dial_peer(peer).await }
+                async move { connectivity.dial_peer(peer, RefKind::Weak).await }
             })
             .collect::<FuturesUnordered<_>>();
 

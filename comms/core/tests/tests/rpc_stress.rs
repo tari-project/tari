@@ -29,6 +29,7 @@ use std::{future::Future, time::Duration};
 use futures::{StreamExt, future};
 use tari_comms::{
     CommsNode,
+    RefKind,
     protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,
 };
@@ -100,7 +101,7 @@ async fn run_stress_test(test_params: Params) {
 
     let conn1_2 = node1
         .connectivity()
-        .dial_peer(node2.node_identity().node_id().clone())
+        .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

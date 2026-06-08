@@ -26,6 +26,7 @@ use futures::{SinkExt, StreamExt, future};
 use tari_comms::{
     BytesMut,
     CommsNode,
+    RefKind,
     Substream,
     framing,
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},
@@ -72,7 +73,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
 
     let mut conn = node1
         .connectivity()
-        .dial_peer(node2.node_identity().node_id().clone())
+        .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

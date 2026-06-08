@@ -37,6 +37,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
     PeerConnection,
+    RefKind,
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
     peer_manager::{
@@ -581,7 +582,13 @@ impl TestNode {
 
     #[allow(dead_code)]
     pub async fn expect_peer_connection(&mut self, node_id: &NodeId) -> Option<PeerConnection> {
-        if let Some(conn) = self.comms.connectivity().get_connection(node_id.clone()).await.unwrap() {
+        if let Some(conn) = self
+            .comms
+            .connectivity()
+            .get_connection(node_id.clone(), RefKind::Weak)
+            .await
+            .unwrap()
+        {
             return Some(conn);
         }
         use ConnectionManagerEvent::PeerConnected;

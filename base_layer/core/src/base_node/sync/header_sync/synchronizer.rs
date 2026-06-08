@@ -30,6 +30,7 @@ use primitive_types::U512;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     PeerConnection,
+    RefKind,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
     protocol::rpc::{RpcClient, RpcError},
@@ -120,22 +121,44 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.sync_peers.len()
         );
 
-        // Hold `Arc<NodeId>` sync-list handles for each candidate peer. While these guards are
-        // alive the connectivity manager marks the peers as "in use by sync", which prevents
-        // opportunistic disconnects (e.g. DhtConnectivity random-pool pruning). The guards are
-        // dropped automatically when this function returns.
-        let mut _sync_guards: Vec<Arc<NodeId>> = Vec::with_capacity(self.sync_peers.len());
-        for peer in self.sync_peers.iter() {
-            match self.connectivity.add_peer_to_sync_list(peer.node_id().clone()).await {
-                Ok(handle) => _sync_guards.push(handle),
+        // Ensure every sync-candidate peer has a Strong PeerConnection attached for the
+        // duration of header sync. The Strong handle bumps the per-connection strong counter,
+        // signalling to background reapers (ConnectivityManager n-closest pruning,
+        // inactive-connection reaping, DhtConnectivity random-pool pruning) that they must not
+        // disconnect the peer. If a stored connection is already attached (e.g. from a prior
+        // sync stage that downgraded it to Weak), upgrade in place rather than redialling.
+        for peer in self.sync_peers.iter_mut() {
+            if let Some(conn) = peer.connection() &&
+                !conn.is_connected()
+            {
+                peer.clear_connection();
+            }
+            if peer.ensure_strong_connection() {
+                continue;
+            }
+            match self
+                .connectivity
+                .dial_peer(peer.node_id().clone(), RefKind::Strong)
+                .await
+            {
+                Ok(conn) => peer.set_connection(conn),
                 Err(e) => debug!(
                     target: LOG_TARGET,
-                    "Failed to register sync peer {} on sync list: {e}", peer.node_id()
+                    "Failed to dial sync peer {} as strong: {e}", peer.node_id()
                 ),
             }
         }
 
-        self.synchronize_inner().await
+        let result = self.synchronize_inner().await;
+
+        // Sync is done (success or failure): downgrade every Strong handle to Weak so reapers
+        // may reclaim the connection if needed. The connections remain attached on the
+        // SyncPeers, so the next sync stage can upgrade them back in place without redialling.
+        for peer in self.sync_peers.iter_mut() {
+            peer.downgrade_connection();
+        }
+
+        result
     }
 
     async fn synchronize_inner(&mut self) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
@@ -216,7 +239,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
-        let mut conn = self.dial_sync_peer(node_id).await?;
+        // Prefer the connection pre-dialled (as Strong) in `synchronize()` and stashed on the
+        // SyncPeer. Hand the per-attempt code a Weak clone — the strong handle living on the
+        // SyncPeer keeps the connection pinned for the full sync, while dropping this clone
+        // when the attempt ends has no effect on the counter.
+        let mut conn = match sync_peer.connection() {
+            Some(stored) if stored.is_connected() => stored.clone_weak(),
+            _ => self.dial_sync_peer(node_id).await?,
+        };
         debug!(
             target: LOG_TARGET,
             "Attempting to synchronize headers with `{node_id}`"
@@ -271,7 +301,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {
         let timer = Instant::now();
         debug!(target: LOG_TARGET, "Dialing {node_id} sync peer");
-        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
+        // `synchronize()` holds Strong references to every sync peer for the duration of this
+        // sync, so the per-attempt redial can be Weak — the strong handles in the outer guard
+        // list keep the connection pinned.
+        let conn = self.connectivity.dial_peer(node_id.clone(), RefKind::Weak).await?;
         info!(
             target: LOG_TARGET,
             "Successfully dialed sync peer {} in {:.2?}",

@@ -26,6 +26,7 @@ use tari_test_utils::unpack_enum;
 
 use crate::{
     CommsBuilder,
+    RefKind,
     peer_manager::database::{MIGRATIONS, PeerDatabaseSql},
     protocol::rpc::{
         RpcError,
@@ -79,7 +80,7 @@ async fn run_service() {
 
     let mut conn = comms2
         .connectivity()
-        .dial_peer(comms1.node_identity().node_id().clone())
+        .dial_peer(comms1.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

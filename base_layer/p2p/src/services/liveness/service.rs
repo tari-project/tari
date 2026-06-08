@@ -31,6 +31,7 @@ use log::*;
 use tari_comms::{
     Minimized,
     PeerManager,
+    RefKind,
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
@@ -412,7 +413,8 @@ where
             .filter(|(_, n)| **n > max_allowed_ping_failures)
             .map(|(node_id, _)| node_id)
         {
-            if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone()).await {
+            // Liveness service is happy to be reaped — Weak handle.
+            if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone(), RefKind::Weak).await {
                 debug!(
                     target: LOG_TARGET,
                     "Disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings"

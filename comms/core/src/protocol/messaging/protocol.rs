@@ -40,6 +40,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use super::error::MessagingProtocolError;
 use crate::{
     PeerConnection,
+    RefKind,
     connectivity::ConnectivityRequester,
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
@@ -372,7 +373,10 @@ impl MessagingProtocol {
                     "NewInboundSubstream for peer '{}'",
                     node_id.short_str()
                 );
-                match self.connectivity.get_connection(node_id.clone()).await? {
+                // Inbound substream handler: looks up the existing connection so it can spawn
+                // the inbound message reader on it. Reaping mid-message is fine; the strong/weak
+                // distinction does not protect against the remote side disconnecting either.
+                match self.connectivity.get_connection(node_id.clone(), RefKind::Weak).await? {
                     Some(conn) => {
                         self.spawn_inbound_handler(conn, substream);
                     },
