@@ -53,7 +53,7 @@ working without bypassing device detection.
 - Python 3.9 or newer is required.
 - The installer creates an isolated Python environment in the user cache and
   installs Ledger tooling there instead of modifying the system Python.
-- Current Tari Ledger release archives contain `minotari_ledger_wallet.apdu`.
-  Older archives with `app_*.json` or `app_*.toml` manifests are still accepted
-  as a fallback.
+- Current Tari Ledger release archives contain `minotari_ledger_wallet.apdu`,
+  which is loaded through Ledger's secure APDU loader. Older archives with
+  `app_*.json` or `app_*.toml` manifests are still accepted as a fallback.
 - Keep the Ledger connected, unlocked, and approve prompts on the device.

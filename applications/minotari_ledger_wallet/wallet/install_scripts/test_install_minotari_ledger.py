@@ -35,6 +35,31 @@ class TestBootstrapHandling(unittest.TestCase):
             self.assertEqual(context.exception.code, 7)
             self.assertEqual(call.call_args.args[0], [str(python), str(SCRIPT_PATH.resolve()), "--model", "flex"])
 
+    def test_bootstrap_installs_missing_ledgerblue(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            python = Path(temp_dir) / "python"
+            python.touch()
+
+            def module_available(_python, module):
+                return module == "ledgerwallet"
+
+            with mock.patch.object(installer, "cache_dir", return_value=Path(temp_dir)), \
+                mock.patch.object(installer, "venv_python_path", return_value=python), \
+                mock.patch.object(installer, "module_available", side_effect=module_available), \
+                mock.patch.object(installer.subprocess, "check_call") as check_call, \
+                mock.patch.object(installer.os, "execve", side_effect=SystemExit(0)), \
+                mock.patch.object(installer.sys, "platform", "linux"), \
+                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--model", "flex"]), \
+                mock.patch.object(installer, "print_step"), \
+                mock.patch.dict(installer.os.environ, {}, clear=True):
+                with self.assertRaises(SystemExit):
+                    installer.ensure_bootstrapped()
+
+            self.assertEqual(
+                check_call.call_args_list[-1].args[0],
+                [str(python), "-m", "pip", "install", "ledgerblue"],
+            )
+
 
 class TestModelMapping(unittest.TestCase):
     def test_supported_target_ids(self):
@@ -247,77 +272,35 @@ class TestExtractionAndArtifactSelection(unittest.TestCase):
                 installer.find_install_artifact(root, "nanox")
 
 
-class FakeLedgerClient:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.commands = []
-        self.closed = False
-
-    def raw_exchange(self, command):
-        self.commands.append(command)
-        return self.responses.pop(0)
-
-    def close(self):
-        self.closed = True
-
-
-class RaisingLedgerClient:
-    def __init__(self, error):
-        self.error = error
-        self.closed = False
-
-    def raw_exchange(self, _command):
-        raise self.error
-
-    def close(self):
-        self.closed = True
-
-
 class TestApduInstall(unittest.TestCase):
-    def test_apdu_commands_are_sent_and_closed(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            apdu = Path(temp_dir) / "minotari_ledger_wallet.apdu"
-            apdu.write_text("e000000000\n# comment\n e001000000 \n", encoding="utf-8")
-            client = FakeLedgerClient([b"\x90\x00", b"\x90\x00"])
+    def test_apdu_install_uses_ledgerblue_secure_channel(self):
+        apdu = Path("minotari_ledger_wallet.apdu")
+        completed = mock.Mock(returncode=0)
 
-            with mock.patch.object(installer, "print_info"):
-                installer.install_apdu_file(apdu, client_factory=lambda: client)
+        with mock.patch.object(installer.subprocess, "run", return_value=completed) as run:
+            installer.install_apdu_file(apdu, installer.SUPPORTED_MODELS["nanosplus"])
 
-            self.assertEqual(client.commands, [bytes.fromhex("e000000000"), bytes.fromhex("e001000000")])
-            self.assertTrue(client.closed)
+        self.assertEqual(
+            run.call_args.args[0],
+            [
+                installer.sys.executable,
+                "-m",
+                "ledgerblue.runScript",
+                "--scp",
+                "--targetId",
+                "0x33100004",
+                "--fileName",
+                str(apdu),
+            ],
+        )
+        self.assertFalse(run.call_args.kwargs["check"])
 
-    def test_apdu_non_success_status_raises(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            apdu = Path(temp_dir) / "minotari_ledger_wallet.apdu"
-            apdu.write_text("e000000000\n", encoding="utf-8")
-            client = FakeLedgerClient([b"\x69\x85"])
+    def test_apdu_install_failure_is_user_facing(self):
+        completed = mock.Mock(returncode=7)
 
-            with self.assertRaisesRegex(installer.InstallerError, "rejected"):
-                installer.install_apdu_file(apdu, client_factory=lambda: client)
-
-            self.assertTrue(client.closed)
-
-    def test_client_open_failure_is_user_facing(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            apdu = Path(temp_dir) / "minotari_ledger_wallet.apdu"
-            apdu.write_text("e000000000\n", encoding="utf-8")
-
-            def open_client():
-                raise RuntimeError("usb")
-
-            with self.assertRaisesRegex(installer.InstallerError, "Could not open Ledger device"):
-                installer.install_apdu_file(apdu, client_factory=open_client)
-
-    def test_apdu_transport_failure_is_user_facing_and_closed(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            apdu = Path(temp_dir) / "minotari_ledger_wallet.apdu"
-            apdu.write_text("e000000000\n", encoding="utf-8")
-            client = RaisingLedgerClient(RuntimeError("disconnected"))
-
-            with self.assertRaisesRegex(installer.InstallerError, "Ledger communication failed"):
-                installer.install_apdu_file(apdu, client_factory=lambda: client)
-
-            self.assertTrue(client.closed)
+        with mock.patch.object(installer.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(installer.InstallerError, "ledgerblue runScript failed"):
+                installer.install_apdu_file(Path("app.apdu"), installer.SUPPORTED_MODELS["flex"])
 
 
 if __name__ == "__main__":

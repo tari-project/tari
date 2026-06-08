@@ -24,7 +24,7 @@ import venv
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 GITHUB_REPO = "tari-project/tari"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}"
@@ -119,10 +119,15 @@ def ensure_bootstrapped() -> None:
             print_step(f"Creating isolated Python environment at {venv_dir}")
             venv.EnvBuilder(with_pip=True).create(venv_dir)
 
-        if not module_available(python, "ledgerwallet"):
+        missing_modules = [
+            module
+            for module in ("ledgerwallet", "ledgerblue")
+            if not module_available(python, module)
+        ]
+        if missing_modules:
             print_step("Installing Ledger tooling into isolated environment")
             subprocess.check_call([str(python), "-m", "pip", "install", "--upgrade", "pip"])
-            subprocess.check_call([str(python), "-m", "pip", "install", "ledgerwallet"])
+            subprocess.check_call([str(python), "-m", "pip", "install", *missing_modules])
 
         env = os.environ.copy()
         env[BOOTSTRAP_ENV] = "1"
@@ -391,63 +396,22 @@ def detect_ledger_model() -> LedgerModel:
             client.close()
 
 
-def read_apdu_lines(apdu_path: Path) -> list[bytes]:
-    commands = []
-    for index, raw_line in enumerate(apdu_path.read_text(encoding="utf-8").splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            commands.append(bytes.fromhex(line))
-        except ValueError as error:
-            raise InstallerError(f"Invalid APDU hex on line {index} of {apdu_path.name}.") from error
-    if not commands:
-        raise InstallerError(f"{apdu_path.name} did not contain any APDU commands.")
-    return commands
-
-
-def create_ledger_client():
-    from ledgerwallet.client import LedgerClient
-
-    return LedgerClient()
-
-
-def apdu_status_message(index: int, status: int) -> str:
-    messages = {
-        0x6985: "Installation was rejected on the Ledger device.",
-        0x6A80: "APDU data was invalid. The app may already be installed.",
-        0x6A84: "Not enough space is available on the Ledger device.",
-        0x6A85: "Not enough space is available on the Ledger device.",
-    }
-    return messages.get(status, f"APDU {index} failed with status 0x{status:04x}.")
-
-
-def install_apdu_file(
-    apdu_path: Path,
-    client_factory: Callable[[], object] = create_ledger_client,
-) -> None:
-    commands = read_apdu_lines(apdu_path)
-    try:
-        client = client_factory()
-    except Exception as error:
-        raise InstallerError(f"Could not open Ledger device: {error}") from error
-    try:
-        for index, command in enumerate(commands, start=1):
-            try:
-                response = client.raw_exchange(command)
-            except Exception as error:
-                raise InstallerError(f"Ledger communication failed while sending APDU {index}: {error}") from error
-            if len(response) < 2:
-                raise InstallerError(f"APDU {index} returned an invalid empty response.")
-            status = int.from_bytes(response[-2:], "big")
-            if status != 0x9000:
-                raise InstallerError(apdu_status_message(index, status))
-            if index == 1 or index == len(commands) or index % 100 == 0:
-                print_info(f"Sent APDU {index}/{len(commands)}")
-    finally:
-        close = getattr(client, "close", None)
-        if callable(close):
-            close()
+def install_apdu_file(apdu_path: Path, model: LedgerModel) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ledgerblue.runScript",
+            "--scp",
+            "--targetId",
+            f"0x{model.target_id:08x}",
+            "--fileName",
+            str(apdu_path),
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        raise InstallerError(f"ledgerblue runScript failed with exit code {result.returncode}.")
 
 
 def install_manifest(manifest_path: Path) -> None:
@@ -460,9 +424,9 @@ def install_manifest(manifest_path: Path) -> None:
         raise InstallerError(f"ledgerctl install failed with exit code {result.returncode}.")
 
 
-def install_artifact(artifact: InstallArtifact) -> None:
+def install_artifact(artifact: InstallArtifact, model: LedgerModel) -> None:
     if artifact.kind == "apdu":
-        install_apdu_file(artifact.path)
+        install_apdu_file(artifact.path, model)
     elif artifact.kind == "manifest":
         install_manifest(artifact.path)
     else:
@@ -496,7 +460,7 @@ def download_and_install(model: LedgerModel, tag: Optional[str]) -> None:
 
         print_step(f"Installing Minotari Wallet on {model.display_name}")
         print_info("Keep the Ledger connected, unlocked, and approve prompts on the device.")
-        install_artifact(artifact)
+        install_artifact(artifact, model)
 
 
 def run(argv: Sequence[str]) -> int:

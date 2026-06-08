@@ -171,8 +171,8 @@ ledgerctl delete "MinoTari Wallet"
 - Installation
 
 For release artifacts, use the one-step installer above. Current Tari release archives contain
-`minotari_ledger_wallet.apdu`, and the installer downloads, verifies, extracts, and sends that APDU file to the
-connected Ledger device.
+`minotari_ledger_wallet.apdu`, and the installer downloads, verifies, extracts, and loads that APDU file through
+Ledger's secure loader.
 
 For a local development build, install the manifest generated for the selected build target if one is present:
 
