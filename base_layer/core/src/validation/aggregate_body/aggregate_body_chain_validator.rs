@@ -438,10 +438,12 @@ mod test {
     fn registration_output(vn_secret_key: &PrivateKey) -> TransactionOutput {
         let claim_public_key = CompressedPublicKey::from_secret_key(vn_secret_key);
         let max_epoch = VnEpoch(10);
-        let signature = ValidatorNodeSignature::sign_for_registration(vn_secret_key, None, &claim_public_key, max_epoch);
-        let mut output = TransactionOutput::default();
-        output.features = OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch);
-        output
+        let signature =
+            ValidatorNodeSignature::sign_for_registration(vn_secret_key, None, &claim_public_key, max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -464,6 +466,9 @@ mod test {
         let outputs = vec![registration_output(&vn_secret_key), registration_output(&vn_secret_key)];
         let body = AggregateBody::new(vec![], outputs, vec![]);
         let err = verify_no_duplicate_validator_node_registrations(&body).unwrap_err();
-        assert!(matches!(err, ValidationError::DuplicateValidatorNodeRegistration { .. }));
+        assert!(matches!(
+            err,
+            ValidationError::DuplicateValidatorNodeRegistration { .. }
+        ));
     }
 }
