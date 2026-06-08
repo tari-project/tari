@@ -112,7 +112,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             body.into_response()
         },
     };
-    let last_height = if let true = exclude_spent {
+    let last_height = if exclude_spent {
         // if we're excluding spent outputs we cannot cache for longer than a day, so we force the "height" so that the
         // caching will only be a max of 1 day. Wallets will sent full without excluding spends the last 1000 blocks so
         // this leaves a margin for wallets to get data if it changed.
