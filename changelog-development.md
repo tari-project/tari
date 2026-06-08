@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.3](https://github.com/tari-project/tari/compare/v5.4.0-pre.2...v5.4.0-pre.3) (2026-06-08)
+
+
+### Features
+
+* add synced gRPC healthcheck ([#7867](https://github.com/tari-project/tari/issues/7867)) ([561f415](https://github.com/tari-project/tari/commit/561f41531bd04c52413b9394154a503f20282881)), closes [/#diff-16fa446fb226d326cfbacc0938b31c552672cb25fb555d2e48b93b5c8ea2f3f6R346](https://github.com/tari-project///issues/diff-16fa446fb226d326cfbacc0938b31c552672cb25fb555d2e48b93b5c8ea2f3f6R346) [/#diff-16fa446fb226d326cfbacc0938b31c552672cb25fb555d2e48b93b5c8ea2f3f6R366-R383](https://github.com/tari-project///issues/diff-16fa446fb226d326cfbacc0938b31c552672cb25fb555d2e48b93b5c8ea2f3f6R366-R383)
+* change connection handling ([#7865](https://github.com/tari-project/tari/issues/7865)) ([8b3e358](https://github.com/tari-project/tari/commit/8b3e3582c00337dc034a2f199b0b3f57f1b4dbd1))
+* improve migration flow of jmt upgrade ([#7862](https://github.com/tari-project/tari/issues/7862)) ([0c12351](https://github.com/tari-project/tari/commit/0c123516654a0feb63901d7ef3e149d94cbb88df))
+
+
+### Bug Fixes
+
+* **base_node:** reject duplicate validator node registrations within a block ([#7870](https://github.com/tari-project/tari/issues/7870)) ([d584707](https://github.com/tari-project/tari/commit/d584707bf6aa98e495d7e5f9e4e1c93bf15cebbc))
+* potential cache issues ([#7623](https://github.com/tari-project/tari/issues/7623)) ([7cab6cb](https://github.com/tari-project/tari/commit/7cab6cb9c18ab164147275dac1cde31513fa42e0))
+* remove unnecessary clone from [#7868](https://github.com/tari-project/tari/issues/7868) ([#7869](https://github.com/tari-project/tari/issues/7869)) ([e2cf3b5](https://github.com/tari-project/tari/commit/e2cf3b50ace10954f9c031870f1b19d110119a97))
+* **wallet:** bind target sidechain into burn claim ownership proof ([#7868](https://github.com/tari-project/tari/issues/7868)) ([00ab044](https://github.com/tari-project/tari/commit/00ab044565ee994782a53947f9c7ea4008437afc)), closes [tari-project/tari-ootle#445](https://github.com/tari-project/tari-ootle/issues/445) [tari-project/tari-ootle#445](https://github.com/tari-project/tari-ootle/issues/445)
+
 ## [5.4.0-pre.2](https://github.com/tari-project/tari/compare/v5.4.0-pre.1...v5.4.0-pre.2) (2026-05-29)
 
 
