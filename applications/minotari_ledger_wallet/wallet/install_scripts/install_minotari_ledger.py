@@ -63,12 +63,6 @@ class ReleaseAsset:
     checksum_url: str
 
 
-@dataclass(frozen=True)
-class InstallArtifact:
-    kind: str
-    path: Path
-
-
 class InstallerError(Exception):
     """Expected installer failure with a user-facing message."""
 
@@ -150,12 +144,6 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--tag",
         help="Install a specific Tari release tag, e.g. v5.4.0-pre.1.",
     )
-    parser.add_argument(
-        "-m",
-        "--model",
-        choices=sorted(SUPPORTED_MODELS),
-        help="Skip device auto-detection and install for the specified model.",
-    )
     return parser.parse_args(argv)
 
 
@@ -188,27 +176,24 @@ def asset_matches_model(asset_name: str, model: str) -> bool:
 
 def find_asset_for_model(release: dict, model: str) -> Optional[ReleaseAsset]:
     assets = release.get("assets") or []
-    zip_asset = None
-    for asset in assets:
-        name = asset.get("name", "")
-        if asset_matches_model(name, model):
-            zip_asset = asset
-            break
+    checksum_assets = {asset.get("name", ""): asset for asset in assets}
+    for zip_asset in assets:
+        name = zip_asset.get("name", "")
+        if not asset_matches_model(name, model):
+            continue
 
-    if zip_asset is None:
-        return None
+        checksum_asset = checksum_assets.get(f"{name}.sha256")
+        if checksum_asset is None:
+            continue
 
-    checksum_name = f"{zip_asset['name']}.sha256"
-    checksum_asset = next((asset for asset in assets if asset.get("name") == checksum_name), None)
-    if checksum_asset is None:
-        return None
+        return ReleaseAsset(
+            tag_name=release.get("tag_name", "unknown"),
+            asset_name=name,
+            download_url=zip_asset["browser_download_url"],
+            checksum_url=checksum_asset["browser_download_url"],
+        )
 
-    return ReleaseAsset(
-        tag_name=release.get("tag_name", "unknown"),
-        asset_name=zip_asset["name"],
-        download_url=zip_asset["browser_download_url"],
-        checksum_url=checksum_asset["browser_download_url"],
-    )
+    return None
 
 
 def select_asset_from_releases(releases: Iterable[dict], model: str) -> ReleaseAsset:
@@ -277,6 +262,8 @@ def download_file(url: str, destination: Path) -> None:
                 print()
     except urllib.error.URLError as error:
         raise InstallerError(f"Download failed: {error.reason}") from error
+    except OSError as error:
+        raise InstallerError(f"Download failed: {error}") from error
 
 
 def parse_sha256_file(text: str, expected_filename: str) -> str:
@@ -312,7 +299,10 @@ def sha256_file(path: Path) -> str:
 
 
 def verify_sha256(path: Path, expected_digest: str) -> None:
-    actual = sha256_file(path)
+    try:
+        actual = sha256_file(path)
+    except OSError as error:
+        raise InstallerError(f"Could not read downloaded archive {path.name}: {error}") from error
     if actual.lower() != expected_digest.lower():
         raise InstallerError(
             f"Checksum mismatch for {path.name}: expected {expected_digest}, got {actual}."
@@ -321,47 +311,40 @@ def verify_sha256(path: Path, expected_digest: str) -> None:
 
 def safe_extract(zip_path: Path, extract_dir: Path) -> None:
     root = extract_dir.resolve()
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        for member in archive.infolist():
-            name = member.filename
-            normalized = name.replace("\\", "/")
-            path = PurePosixPath(normalized)
-            if (
-                not name
-                or "\0" in name
-                or ":" in name
-                or path.is_absolute()
-                or ".." in path.parts
-            ):
-                raise InstallerError(f"Unsafe path in archive: {name}")
+    try:
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            for member in archive.infolist():
+                name = member.filename
+                normalized = name.replace("\\", "/")
+                path = PurePosixPath(normalized)
+                if (
+                    not name
+                    or "\0" in name
+                    or ":" in name
+                    or path.is_absolute()
+                    or ".." in path.parts
+                ):
+                    raise InstallerError(f"Unsafe path in archive: {name}")
 
-            target = (root / Path(*path.parts)).resolve()
-            if os.path.commonpath([str(root), str(target)]) != str(root):
-                raise InstallerError(f"Unsafe path in archive: {name}")
+                target = (root / Path(*path.parts)).resolve()
+                if os.path.commonpath([str(root), str(target)]) != str(root):
+                    raise InstallerError(f"Unsafe path in archive: {name}")
 
-        archive.extractall(root)
+            archive.extractall(root)
+    except zipfile.BadZipFile as error:
+        raise InstallerError(f"Downloaded archive is not a valid zip file: {zip_path.name}") from error
+    except (RuntimeError, NotImplementedError) as error:
+        raise InstallerError(f"Could not extract archive {zip_path.name}: {error}") from error
+    except OSError as error:
+        raise InstallerError(f"Could not extract archive {zip_path.name}: {error}") from error
 
 
-def find_install_artifact(extract_dir: Path, model: str) -> InstallArtifact:
+def find_install_artifact(extract_dir: Path) -> Path:
     apdu_files = sorted(extract_dir.rglob("minotari_ledger_wallet.apdu"))
     if apdu_files:
-        return InstallArtifact("apdu", apdu_files[0])
+        return apdu_files[0]
 
-    preferred_names = [
-        f"app_{model}.json",
-        f"app_{model}.toml",
-        "app.json",
-        "app.toml",
-    ]
-    for name in preferred_names:
-        matches = sorted(extract_dir.rglob(name))
-        if matches:
-            return InstallArtifact("manifest", matches[0])
-
-    raise InstallerError(
-        "Archive did not contain minotari_ledger_wallet.apdu, "
-        f"app_{model}.json, app_{model}.toml, app.json, or app.toml."
-    )
+    raise InstallerError("Archive did not contain minotari_ledger_wallet.apdu.")
 
 
 def model_from_target_id(target_id: int) -> LedgerModel:
@@ -425,25 +408,6 @@ def install_apdu_file(apdu_path: Path, model: LedgerModel) -> None:
         raise InstallerError(f"ledgerblue runScript failed with exit code {result.returncode}.")
 
 
-def install_manifest(manifest_path: Path) -> None:
-    print_info("Using manifest fallback for older release artifact.")
-    result = subprocess.run(
-        [sys.executable, "-m", "ledgerwallet.ledgerctl", "install", str(manifest_path)],
-        check=False,
-    )
-    if result.returncode != 0:
-        raise InstallerError(f"ledgerctl install failed with exit code {result.returncode}.")
-
-
-def install_artifact(artifact: InstallArtifact, model: LedgerModel) -> None:
-    if artifact.kind == "apdu":
-        install_apdu_file(artifact.path, model)
-    elif artifact.kind == "manifest":
-        install_manifest(artifact.path)
-    else:
-        raise InstallerError(f"Unknown install artifact kind: {artifact.kind}")
-
-
 def download_and_install(model: LedgerModel, tag: Optional[str]) -> None:
     print_step(f"Resolving release artifact for {model.display_name}")
     asset = fetch_release_asset(model.slug, tag)
@@ -458,7 +422,14 @@ def download_and_install(model: LedgerModel, tag: Optional[str]) -> None:
         download_file(asset.download_url, zip_path)
         download_file(asset.checksum_url, checksum_path)
 
-        expected = parse_sha256_file(checksum_path.read_text(encoding="utf-8"), asset.asset_name)
+        try:
+            checksum_text = checksum_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as error:
+            raise InstallerError(f"Checksum file for {asset.asset_name} is not valid UTF-8.") from error
+        except OSError as error:
+            raise InstallerError(f"Could not read checksum file for {asset.asset_name}: {error}") from error
+
+        expected = parse_sha256_file(checksum_text, asset.asset_name)
         verify_sha256(zip_path, expected)
         print_info("Checksum verified")
 
@@ -466,12 +437,12 @@ def download_and_install(model: LedgerModel, tag: Optional[str]) -> None:
         extract_dir = tmp_dir / "extract"
         extract_dir.mkdir()
         safe_extract(zip_path, extract_dir)
-        artifact = find_install_artifact(extract_dir, model.slug)
-        print_info(f"Found {artifact.kind} artifact: {artifact.path.name}")
+        apdu_path = find_install_artifact(extract_dir)
+        print_info(f"Found APDU artifact: {apdu_path.name}")
 
         print_step(f"Installing Minotari Wallet on {model.display_name}")
         print_info("Keep the Ledger connected, unlocked, and approve prompts on the device.")
-        install_artifact(artifact, model)
+        install_apdu_file(apdu_path, model)
 
 
 def run(argv: Sequence[str]) -> int:
@@ -484,13 +455,9 @@ def run(argv: Sequence[str]) -> int:
             )
         ensure_bootstrapped()
 
-        if args.model:
-            model = SUPPORTED_MODELS[args.model]
-            print_info(f"Using requested model: {model.display_name}")
-        else:
-            print_step("Detecting connected Ledger model")
-            model = detect_ledger_model()
-            print_info(f"Detected {model.display_name}")
+        print_step("Detecting connected Ledger model")
+        model = detect_ledger_model()
+        print_info(f"Detected {model.display_name}")
 
         download_and_install(model, args.tag)
     except KeyboardInterrupt:

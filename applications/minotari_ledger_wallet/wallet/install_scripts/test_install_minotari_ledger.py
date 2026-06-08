@@ -26,14 +26,14 @@ class TestBootstrapHandling(unittest.TestCase):
                 mock.patch.object(installer, "venv_python_path", return_value=python), \
                 mock.patch.object(installer, "module_available", return_value=True), \
                 mock.patch.object(installer.sys, "platform", "win32"), \
-                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--model", "flex"]), \
+                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--tag", "v.test"]), \
                 mock.patch.object(installer.subprocess, "call", return_value=7) as call, \
                 mock.patch.dict(installer.os.environ, {}, clear=True):
                 with self.assertRaises(SystemExit) as context:
                     installer.ensure_bootstrapped()
 
             self.assertEqual(context.exception.code, 7)
-            self.assertEqual(call.call_args.args[0], [str(python), str(SCRIPT_PATH.resolve()), "--model", "flex"])
+            self.assertEqual(call.call_args.args[0], [str(python), str(SCRIPT_PATH.resolve()), "--tag", "v.test"])
 
     def test_bootstrap_installs_missing_ledgerblue(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -49,7 +49,7 @@ class TestBootstrapHandling(unittest.TestCase):
                 mock.patch.object(installer.subprocess, "check_call") as check_call, \
                 mock.patch.object(installer.os, "execve", side_effect=SystemExit(0)), \
                 mock.patch.object(installer.sys, "platform", "linux"), \
-                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--model", "flex"]), \
+                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--tag", "v.test"]), \
                 mock.patch.object(installer, "print_step"), \
                 mock.patch.dict(installer.os.environ, {}, clear=True):
                 with self.assertRaises(SystemExit):
@@ -136,6 +136,30 @@ class TestReleaseSelection(unittest.TestCase):
         }
 
         self.assertIsNone(installer.find_asset_for_model(release, "stax"))
+
+    def test_skips_matching_zip_without_checksum(self):
+        release = {
+            "tag_name": "v5.4.0-pre.1",
+            "assets": [
+                {
+                    "name": "minotari_ledger_wallet-flex-v5.4.0-pre.1-bad.zip",
+                    "browser_download_url": "https://example.com/bad.zip",
+                },
+                {
+                    "name": "minotari_ledger_wallet-flex-v5.4.0-pre.1-good.zip",
+                    "browser_download_url": "https://example.com/good.zip",
+                },
+                {
+                    "name": "minotari_ledger_wallet-flex-v5.4.0-pre.1-good.zip.sha256",
+                    "browser_download_url": "https://example.com/good.zip.sha256",
+                },
+            ],
+        }
+
+        asset = installer.find_asset_for_model(release, "flex")
+
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset.asset_name, "minotari_ledger_wallet-flex-v5.4.0-pre.1-good.zip")
 
 
 class TestChecksumHandling(unittest.TestCase):
@@ -232,44 +256,22 @@ class TestExtractionAndArtifactSelection(unittest.TestCase):
             with self.assertRaisesRegex(installer.InstallerError, "Unsafe path"):
                 installer.safe_extract(archive, output)
 
-    def test_apdu_artifact_is_preferred_over_manifest(self):
+    def test_apdu_artifact_is_found(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "minotari_ledger_wallet.apdu").write_text("e0000000009000\n", encoding="utf-8")
-            (root / "app_nanosplus.json").write_text("{}", encoding="utf-8")
 
-            artifact = installer.find_install_artifact(root, "nanosplus")
+            artifact = installer.find_install_artifact(root)
 
-            self.assertEqual(artifact.kind, "apdu")
-            self.assertEqual(artifact.path.name, "minotari_ledger_wallet.apdu")
+            self.assertEqual(artifact.name, "minotari_ledger_wallet.apdu")
 
-    def test_manifest_fallback(self):
+    def test_missing_apdu_artifact_raises(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "app_nanox.json").write_text("{}", encoding="utf-8")
 
-            artifact = installer.find_install_artifact(root, "nanox")
-
-            self.assertEqual(artifact.kind, "manifest")
-            self.assertEqual(artifact.path.name, "app_nanox.json")
-
-    def test_generic_manifest_fallback(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            (root / "app.json").write_text("{}", encoding="utf-8")
-
-            artifact = installer.find_install_artifact(root, "nanox")
-
-            self.assertEqual(artifact.kind, "manifest")
-            self.assertEqual(artifact.path.name, "app.json")
-
-    def test_manifest_fallback_rejects_other_model_manifest(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            (root / "app_stax.json").write_text("{}", encoding="utf-8")
-
-            with self.assertRaisesRegex(installer.InstallerError, "app_nanox"):
-                installer.find_install_artifact(root, "nanox")
+            with self.assertRaisesRegex(installer.InstallerError, "minotari_ledger_wallet.apdu"):
+                installer.find_install_artifact(root)
 
 
 class TestApduInstall(unittest.TestCase):

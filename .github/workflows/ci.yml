@@ -103,6 +103,10 @@ jobs:
       - name: checkout tari
         uses: actions/checkout@v6
 
+      - name: ledger installer python tests
+        shell: bash
+        run: python3 applications/minotari_ledger_wallet/wallet/install_scripts/test_install_minotari_ledger.py
+
       - name: ledger build tests
         shell: bash
         run: |
