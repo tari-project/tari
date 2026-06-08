@@ -40,6 +40,7 @@ use crate::{
     Minimized,
     NodeIdentity,
     PeerManager,
+    RefKind,
     connection_manager::{ConnectionManagerError, ConnectionManagerEvent},
     connectivity::ConnectivityEventRx,
     peer_manager::{Peer, PeerFeatures, PeerFlags},
@@ -172,13 +173,13 @@ async fn online_then_offline_then_online() {
     .collect::<Vec<_>>();
 
     connectivity
-        .dial_many_peers(peers.iter().map(|p| p.node_id.clone()))
+        .dial_many_peers(peers.iter().map(|p| p.node_id.clone()), RefKind::Weak)
         .await
         .collect::<Vec<_>>()
         .await;
 
     connectivity
-        .dial_many_peers(clients.iter().map(|p| p.node_id().clone()))
+        .dial_many_peers(clients.iter().map(|p| p.node_id().clone()), RefKind::Weak)
         .await
         .collect::<Vec<_>>()
         .await;
@@ -290,7 +291,10 @@ async fn ban_peer() {
     unpack_enum!(ConnectivityEvent::PeerConnected(_conn) = events.remove(0));
     unpack_enum!(ConnectivityEvent::ConnectivityStateOnline(_n) = events.remove(0));
 
-    let conn = connectivity.get_connection(peer.node_id.clone()).await.unwrap();
+    let conn = connectivity
+        .get_connection(peer.node_id.clone(), RefKind::Weak)
+        .await
+        .unwrap();
     assert!(conn.is_some());
 
     connectivity
@@ -311,7 +315,10 @@ async fn ban_peer() {
     let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap().unwrap();
     assert!(peer.is_banned());
 
-    let conn = connectivity.get_connection(peer.node_id.clone()).await.unwrap();
+    let conn = connectivity
+        .get_connection(peer.node_id.clone(), RefKind::Weak)
+        .await
+        .unwrap();
     assert!(conn.is_none());
 }
 
@@ -336,7 +343,7 @@ async fn peer_selection() {
     .collect::<Vec<_>>();
 
     connectivity
-        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()), RefKind::Weak)
         .await
         .collect::<Vec<_>>()
         .await;
@@ -391,7 +398,7 @@ async fn pool_management() {
     .collect::<Vec<_>>();
 
     connectivity
-        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()), RefKind::Weak)
         .await
         .collect::<Vec<_>>()
         .await;
@@ -407,7 +414,7 @@ async fn pool_management() {
     collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let mut important_connection = connectivity
-        .get_connection(connections[0].peer_node_id().clone())
+        .get_connection(connections[0].peer_node_id().clone(), RefKind::Weak)
         .await
         .unwrap()
         .unwrap();

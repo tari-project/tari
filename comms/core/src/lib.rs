@@ -15,7 +15,7 @@ mod builder;
 pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
 
 pub mod connection_manager;
-pub use connection_manager::{PeerConnection, PeerConnectionError};
+pub use connection_manager::{PeerConnection, PeerConnectionError, RefKind};
 
 pub mod connectivity;
 

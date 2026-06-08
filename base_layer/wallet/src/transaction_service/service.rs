@@ -3283,6 +3283,13 @@ where
             // derive the spend secret s = H(R·p) + p against C. C is not carried in the proof:
             // both ends recompute it from (R, P, p) and the on-chain ConfidentialOutputData
             // echoes it for the wallets that want chain-side discoverability.
+            //
+            // The proof is also bound to the target sidechain (the deployment key's public key,
+            // which is what `SideChainId::sign` records on-chain) so it cannot be replayed to claim
+            // the burn on a different sidechain/application (tari-ootle#445).
+            let sidechain_id = sidechain_deployment_key
+                .as_ref()
+                .map(CompressedPublicKey::from_secret_key);
             let ownership_proof = self
                 .resources
                 .transaction_key_manager_service
@@ -3290,6 +3297,7 @@ where
                     &commitment_mask_key.key_id,
                     amount.as_u64(),
                     &stealth_claim_public_key,
+                    sidechain_id.as_ref(),
                 )?;
             let proof = PartialBurnClaimProof {
                 claim_public_key,

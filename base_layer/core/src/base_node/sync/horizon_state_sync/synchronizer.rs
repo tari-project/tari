@@ -33,6 +33,7 @@ use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
 use tari_comms::{
     PeerConnection,
+    RefKind,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
     protocol::rpc::{RpcClient, RpcError, RpcStatus},
@@ -154,22 +155,40 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         })?;
 
-        // Hold `Arc<NodeId>` sync-list handles for each candidate peer. While these guards are
-        // alive the connectivity manager marks the peers as "in use by sync", which prevents
-        // opportunistic disconnects (e.g. DhtConnectivity random-pool pruning). The guards are
-        // dropped automatically when this function returns.
-        let mut _sync_guards: Vec<Arc<NodeId>> = Vec::with_capacity(self.sync_peers.len());
-        for peer in self.sync_peers.iter() {
-            match self.connectivity.add_peer_to_sync_list(peer.node_id().clone()).await {
-                Ok(handle) => _sync_guards.push(handle),
+        // Sync peers typically arrive here with a Weak connection attached by block_sync (or
+        // header_sync) on its way out. Upgrade in place to Strong for the duration of horizon
+        // sync; dial Strong if no connection is attached. On exit (success or failure) we
+        // downgrade back to Weak so any subsequent stage / future sync cycle can reuse the
+        // handle without forcibly pinning it.
+        for peer in self.sync_peers.iter_mut() {
+            if let Some(conn) = peer.connection() &&
+                !conn.is_connected()
+            {
+                peer.clear_connection();
+            }
+            if peer.ensure_strong_connection() {
+                continue;
+            }
+            match self
+                .connectivity
+                .dial_peer(peer.node_id().clone(), RefKind::Strong)
+                .await
+            {
+                Ok(conn) => peer.set_connection(conn),
                 Err(e) => debug!(
                     target: LOG_TARGET,
-                    "Failed to register sync peer {} on sync list: {e}", peer.node_id()
+                    "Failed to dial sync peer {} as strong: {e}", peer.node_id()
                 ),
             }
         }
 
-        self.synchronize_inner(&to_header).await
+        let result = self.synchronize_inner(&to_header).await;
+
+        for peer in self.sync_peers.iter_mut() {
+            peer.downgrade_connection();
+        }
+
+        result
     }
 
     async fn synchronize_inner(&mut self, to_header: &BlockHeader) -> Result<(), HorizonSyncError> {
@@ -276,7 +295,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
-        let mut conn = self.dial_sync_peer(node_id).await?;
+        // Prefer the connection that travelled with this SyncPeer from header_sync (Strong).
+        // We hand the attempt a Weak clone — the SyncPeer's Strong handle keeps the connection
+        // pinned.
+        let mut conn = match sync_peer.connection() {
+            Some(stored) if stored.is_connected() => stored.clone_weak(),
+            _ => self.dial_sync_peer(node_id).await?,
+        };
         debug!(
             target: LOG_TARGET,
             "Attempting to synchronize horizon state with `{node_id}`"
@@ -328,7 +353,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {
         let timer = Instant::now();
         debug!(target: LOG_TARGET, "Dialing {node_id} sync peer");
-        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
+        // `synchronize()` holds Strong references to every sync peer for the duration of this
+        // horizon sync, so the per-attempt redial can be Weak.
+        let conn = self.connectivity.dial_peer(node_id.clone(), RefKind::Weak).await?;
         info!(
             target: LOG_TARGET,
             "Successfully dialed sync peer {} in {:.2?}",

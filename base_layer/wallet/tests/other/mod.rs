@@ -33,6 +33,7 @@ use tari_common_types::{
     types::{FixedHash, PrivateKey, PublicKey},
 };
 use tari_comms::{
+    RefKind,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -559,7 +560,7 @@ async fn test_store_and_forward_send_tx() {
     alice_wallet
         .comms
         .connectivity()
-        .dial_peer(base_node.node_identity_ref().node_id().clone())
+        .dial_peer(base_node.node_identity_ref().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
@@ -600,7 +601,7 @@ async fn test_store_and_forward_send_tx() {
     carol_wallet
         .comms
         .connectivity()
-        .dial_peer(base_node.node_identity_ref().node_id().clone())
+        .dial_peer(base_node.node_identity_ref().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

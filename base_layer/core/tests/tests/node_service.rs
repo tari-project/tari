@@ -25,7 +25,7 @@ use std::{sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
-use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
+use tari_comms::{RefKind, connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
 use tari_core::{
     base_node::{
         comms_interface::BlockEvent,
@@ -428,7 +428,7 @@ async fn propagate_and_forward_invalid_block() {
     alice_node
         .comms
         .connectivity()
-        .dial_peer(bob_node.node_identity.node_id().clone())
+        .dial_peer(bob_node.node_identity.node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
     wait_until_online(&[&alice_node, &bob_node, &carol_node, &dan_node]).await;

@@ -57,7 +57,18 @@ pub struct LMDBConfig {
     /// off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and
     /// system RAM is full. The option is not implemented on Windows. (Default: false)
     no_read_ahead: bool,
+    /// Minimum number of free bytes inside `data.mdb` required to trigger an `MDB_CP_COMPACT` copy
+    /// on startup. Pick a value comfortably above the noise floor of free pages produced by ordinary
+    /// write traffic so this catches "interesting" fragmentation (e.g. dropped databases left behind
+    /// by migrations) without firing on routine churn. (Default: ~10 GB)
+    compaction_min_free_bytes: u64,
 }
+
+/// Default minimum free bytes inside `data.mdb` required to trigger an `MDB_CP_COMPACT` copy on
+/// startup. 10 GB is comfortably above the noise floor of free pages produced by ordinary write
+/// traffic and well below what migrations like JMT v1 → v2 free on mainnet, so this catches all
+/// "interesting" fragmentation without firing on routine churn.
+pub const DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES: u64 = 10_000 * (BYTES_PER_MB as u64);
 
 impl LMDBConfig {
     /// Specify LMDB config in bytes.
@@ -66,12 +77,14 @@ impl LMDBConfig {
         grow_size_bytes: usize,
         resize_threshold_bytes: usize,
         no_read_ahead: bool,
+        compaction_min_free_bytes: u64,
     ) -> Self {
         Self {
             init_size_bytes,
             grow_size_bytes,
             resize_threshold_bytes,
             no_read_ahead,
+            compaction_min_free_bytes,
         }
     }
 
@@ -81,12 +94,14 @@ impl LMDBConfig {
         grow_size_mb: usize,
         resize_threshold_mb: usize,
         no_read_ahead: bool,
+        compaction_min_free_bytes: u64,
     ) -> Self {
         Self {
             init_size_bytes: init_size_mb * BYTES_PER_MB,
             grow_size_bytes: grow_size_mb * BYTES_PER_MB,
             resize_threshold_bytes: resize_threshold_mb * BYTES_PER_MB,
             no_read_ahead,
+            compaction_min_free_bytes,
         }
     }
 
@@ -110,12 +125,18 @@ impl LMDBConfig {
     pub fn no_read_ahead(&self) -> bool {
         self.no_read_ahead
     }
+
+    /// Get the minimum free bytes inside `data.mdb` required to trigger an `MDB_CP_COMPACT` copy on
+    /// startup.
+    pub fn compaction_min_free_bytes(&self) -> u64 {
+        self.compaction_min_free_bytes
+    }
 }
 
 impl Default for LMDBConfig {
     fn default() -> Self {
         // Do not choose these values too small, as the entire SMT is replaced for every new block
-        Self::new_from_mb(128, 128, 64, false)
+        Self::new_from_mb(128, 128, 64, false, DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES)
     }
 }
 

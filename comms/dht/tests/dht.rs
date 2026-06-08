@@ -25,6 +25,7 @@ use std::time::Duration;
 
 use harness::*;
 use tari_comms::{
+    RefKind,
     connectivity::ConnectivityEvent,
     message::MessageExt,
     peer_manager::{NodeId, PeerFeatures},
@@ -152,7 +153,7 @@ async fn test_dht_wallet_discover_propagation() {
     client_D
         .comms
         .connectivity()
-        .dial_peer(node_C.comms.node_identity().node_id().clone())
+        .dial_peer(node_C.comms.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
@@ -259,7 +260,7 @@ async fn test_dht_node_discover_propagation() {
     node_D
         .comms
         .connectivity()
-        .dial_peer(node_C.comms.node_identity().node_id().clone())
+        .dial_peer(node_C.comms.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
@@ -369,7 +370,7 @@ async fn test_dht_propagate_dedup() {
         node1
             .comms
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
     }
@@ -503,21 +504,21 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone())
+        .dial_peer(node_C.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
     node_B
         .comms
         .connectivity()
-        .dial_peer(node_C.node_identity().node_id().clone())
+        .dial_peer(node_C.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
@@ -688,7 +689,7 @@ async fn test_dht_repropagate() {
         node1
             .comms
             .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone())
+            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
             .await
             .unwrap();
     }
@@ -797,7 +798,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 
@@ -906,7 +907,7 @@ async fn test_dht_header_not_malleable() {
     node_A
         .comms
         .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone())
+        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
 

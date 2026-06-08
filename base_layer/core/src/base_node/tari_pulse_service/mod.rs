@@ -28,7 +28,13 @@ use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
-use tari_comms::{Minimized, connectivity::ConnectivityRequester, peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{
+    Minimized,
+    RefKind,
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{Dht, DhtDiscoveryRequester, envelope::NodeDestination};
 use tari_p2p::{
     Network,
@@ -485,7 +491,12 @@ fn spawn_ping(
 ) -> JoinHandle<Option<std::time::Duration>> {
     task::spawn(async move {
         // Ensure we have a connection first
-        match tokio::time::timeout(Duration::from_secs(60), comms.dial_peer(peer_node_id.clone())).await {
+        match tokio::time::timeout(
+            Duration::from_secs(60),
+            comms.dial_peer(peer_node_id.clone(), RefKind::Weak),
+        )
+        .await
+        {
             Ok(Ok(_)) => {},
             Ok(Err(err)) => {
                 // This error is not treated as a warning or error as the result will be passed back to the caller
@@ -548,7 +559,12 @@ fn spawn_ping(
 }
 
 async fn disconnect_peer(mut comms: ConnectivityRequester, peer_node_id: NodeId) {
-    match tokio::time::timeout(Duration::from_secs(15), comms.get_connection(peer_node_id.clone())).await {
+    match tokio::time::timeout(
+        Duration::from_secs(15),
+        comms.get_connection(peer_node_id.clone(), RefKind::Weak),
+    )
+    .await
+    {
         Ok(Ok(Some(mut conn))) => {
             match tokio::time::timeout(
                 Duration::from_secs(15),
