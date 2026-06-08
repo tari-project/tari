@@ -453,7 +453,13 @@ fn generate_reference_lmdb_fixture() {
     // to a few hundred KB.
     let db = {
         use crate::test_helpers::blockchain::create_new_blockchain_with_lmdb_config;
-        let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(128, 4, 2, false));
+        let db = create_new_blockchain_with_lmdb_config(LMDBConfig::new_from_mb(
+            128,
+            4,
+            2,
+            false,
+            tari_storage::lmdb_store::DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
+        ));
         populate_chain(db, &data)
     };
 
@@ -750,7 +756,13 @@ mod write_tests {
 
         // Build a fresh chain using the exact config used to produce the committed fixture.
         // See `generate_reference_lmdb_fixture` above — these arguments must stay in sync.
-        let lmdb_config = LMDBConfig::new_from_mb(128, 4, 2, false);
+        let lmdb_config = LMDBConfig::new_from_mb(
+            128,
+            4,
+            2,
+            false,
+            tari_storage::lmdb_store::DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
+        );
         let data = load_test_chain_data();
         let fresh_db = create_new_blockchain_with_lmdb_config(lmdb_config.clone());
         let fresh_db = populate_chain(fresh_db, &data);

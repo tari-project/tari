@@ -28,4 +28,12 @@ pub use lmdb_zero::{
     db,
     traits::{AsLmdbBytes, FromLmdbBytes},
 };
-pub use store::{BYTES_PER_MB, DatabaseRef, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBStore};
+pub use store::{
+    BYTES_PER_MB,
+    DEFAULT_LMDB_COMPACTION_MIN_FREE_BYTES,
+    DatabaseRef,
+    LMDBBuilder,
+    LMDBConfig,
+    LMDBDatabase,
+    LMDBStore,
+};

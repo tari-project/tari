@@ -62,6 +62,11 @@
 # off if the OS supports it. Turning it off may help random read performance when the DB is larger than RAM and system
 # RAM is full. The option is not implemented on Windows. (Default: false)
 #no_read_ahead = false
+# Minimum number of free bytes inside `data.mdb` required to trigger an `MDB_CP_COMPACT` copy on
+# startup. Set comfortably above the noise floor of free pages produced by ordinary write traffic so
+# compaction catches "interesting" fragmentation (e.g. dropped databases left behind by migrations)
+# without firing on routine churn. (Default: 10_485_760_000 ≈ 10 GB)
+#compaction_min_free_bytes = 10_485_760_000
 
 [base_node.storage]
 # The maximum number of orphans that can be stored in the Orphan block pool.
