@@ -104,6 +104,7 @@ impl AggregateBodyChainLinkedValidator {
         check_inputs_are_spendable(db, constants, header.height, &body)?;
         check_outputs(db, constants, &body, header.height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
+        verify_no_duplicate_validator_node_registrations(&body)?;
         check_total_burned(&body)?;
         verify_timelocks(&body, header.height)?;
 
@@ -267,6 +268,40 @@ pub fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), V
     Ok(())
 }
 
+/// Ensures the body does not contain more than one validator node registration for the same validator node (scoped by
+/// sidechain id).
+///
+/// `check_validator_node_registration` only rejects a registration that duplicates one already in the validator node
+/// set as of the *parent* block. It cannot see other registrations in the same body. Without this check, a single block
+/// carrying two registrations for the same validator node would pass validation and then fail when the second
+/// registration is applied to the validator node set (the set is keyed by sidechain id + public key and inserted with
+/// `NO_OVERWRITE`), aborting the block at commit time rather than rejecting it cleanly during validation.
+// The `mutable_key_type` lint fires because `CompressedPublicKey` caches its decompressed form in a `OnceLock`. That
+// interior mutability does not affect the `Hash`/`Eq` used here, so the set behaves correctly.
+#[allow(clippy::mutable_key_type)]
+pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) -> Result<(), ValidationError> {
+    let mut seen = HashSet::new();
+    for output in body.outputs() {
+        let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+            continue;
+        };
+        let Some(vn_reg) = sidechain_features.validator_node_registration() else {
+            continue;
+        };
+        if !seen.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key())) {
+            warn!(
+                target: LOG_TARGET,
+                "AggregateBody validation failed due to duplicate validator node registration for {}",
+                vn_reg.public_key()
+            );
+            return Err(ValidationError::DuplicateValidatorNodeRegistration {
+                public_key: vn_reg.public_key().to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
@@ -386,4 +421,54 @@ fn check_validator_node_registration_spend<B: BlockchainBackend>(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey;
+    use tari_transaction_components::transaction_components::{
+        OutputFeatures,
+        TransactionOutput,
+        ValidatorNodeSignature,
+    };
+
+    use super::*;
+
+    fn registration_output(vn_secret_key: &PrivateKey) -> TransactionOutput {
+        let claim_public_key = CompressedPublicKey::from_secret_key(vn_secret_key);
+        let max_epoch = VnEpoch(10);
+        let signature =
+            ValidatorNodeSignature::sign_for_registration(vn_secret_key, None, &claim_public_key, max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn it_allows_distinct_validator_node_registrations() {
+        let outputs = vec![
+            registration_output(&PrivateKey::random(&mut rand::rng())),
+            registration_output(&PrivateKey::random(&mut rand::rng())),
+            // A non-registration output should be ignored.
+            TransactionOutput::default(),
+        ];
+        let body = AggregateBody::new(vec![], outputs, vec![]);
+        assert!(verify_no_duplicate_validator_node_registrations(&body).is_ok());
+    }
+
+    #[test]
+    fn it_rejects_two_registrations_for_the_same_validator_node() {
+        // Two distinct outputs (different commitments) registering the same validator node public key. Each passes the
+        // chain-state check individually but they collide when applied to the validator node set.
+        let vn_secret_key = PrivateKey::random(&mut rand::rng());
+        let outputs = vec![registration_output(&vn_secret_key), registration_output(&vn_secret_key)];
+        let body = AggregateBody::new(vec![], outputs, vec![]);
+        let err = verify_no_duplicate_validator_node_registrations(&body).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::DuplicateValidatorNodeRegistration { .. }
+        ));
+    }
 }
