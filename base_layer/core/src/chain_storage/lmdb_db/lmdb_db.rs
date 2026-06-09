@@ -594,10 +594,8 @@ fn compact_and_reopen_lmdb_database(
         ))
     })?;
 
-    // Pre-flight: confirm we have at least the current data.mdb size free on the volume.
-    // `mdb_env_copy2(COMPACT)` writes a brand-new file that is at most the size of the current
-    // file, so this is an upper bound. If we run out mid-copy we'd leave a half-written file
-    // that we still have to clean up, so check first.
+    // Measure the current data.mdb size: it is the upper bound on the free disk space the
+    // compacted copy can need (the free-space pre-flight below uses it as the requirement).
     let original_size = fs::metadata(&original_data)
         .map_err(|e| ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display())))?
         .len();
@@ -608,14 +606,59 @@ fn compact_and_reopen_lmdb_database(
     );
     println!("[MIGRATIONS] Pre-compaction data.mdb size: {pre_size_mb} MB");
 
+    // Confirm the volume has room for the compacted copy before touching anything destructive.
+    // `mdb_env_copy2(COMPACT)` writes a brand-new file at most the size of the current data.mdb,
+    // so `original_size` is the upper bound of free space we need. Compaction is a best-effort
+    // space reclaim — the original data.mdb is fully usable as-is — so running out of disk must
+    // NEVER fail node startup. Warn clearly and continue with the un-compacted database.
+    match fs2::available_space(&env_path) {
+        Ok(available) if available < original_size => {
+            let _unused = fs::remove_dir_all(&compact_dir);
+            let available_mb = available / BYTES_PER_MB as u64;
+            warn!(
+                target: LOG_TARGET,
+                "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, \
+                 {pre_size_mb} MB required at {}); skipping compaction and continuing normally",
+                env_path.display()
+            );
+            println!(
+                "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, \
+                 {pre_size_mb} MB required); skipping compaction and continuing normally"
+            );
+            return Ok(db);
+        },
+        Ok(_) => {},
+        Err(e) => {
+            // Couldn't read free space (unusual). Don't block startup on a diagnostic call — the
+            // copy step below is itself non-fatal on failure and will clean up after itself.
+            warn!(
+                target: LOG_TARGET,
+                "[COMPACTION] Could not determine free disk space at {}: {e}; attempting compaction anyway",
+                env_path.display()
+            );
+        },
+    }
+
     // Write the compacted copy. This uses an internal long-lived read transaction; we run
     // single-threaded at startup so nothing else is writing.
     let compacted_size = match db.compact_copy_env(&compact_dir) {
         Ok(size) => size,
         Err(e) => {
-            warn!(target: LOG_TARGET, "[MIGRATIONS] env.copy(COMPACT) failed: {e}");
+            // The copy failed — most often the device running out of space mid-copy (a TOCTOU
+            // race with the pre-flight check above), but any copy error lands here. The original
+            // data.mdb is untouched — the copy writes into `.compact_tmp` — so the node continues
+            // normally with the un-compacted database. Never fail startup here.
+            warn!(
+                target: LOG_TARGET,
+                "[COMPACTION] LMDB compact-copy failed (often insufficient disk space): {e}; \
+                 skipping compaction and continuing normally with the un-compacted database"
+            );
+            println!(
+                "[COMPACTION] LMDB compact-copy failed (often insufficient disk space): {e}; \
+                 skipping compaction and continuing normally with the un-compacted database"
+            );
             let _unused = fs::remove_dir_all(&compact_dir);
-            return Err(e);
+            return Ok(db);
         },
     };
     let post_size_mb = compacted_size / BYTES_PER_MB as u64;
