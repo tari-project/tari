@@ -622,8 +622,8 @@ fn compact_and_reopen_lmdb_database(
                 env_path.display()
             );
             println!(
-                "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, \
-                 {pre_size_mb} MB required); skipping compaction and continuing normally"
+                "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, {pre_size_mb} MB \
+                 required); skipping compaction and continuing normally"
             );
             return Ok(db);
         },
@@ -654,8 +654,8 @@ fn compact_and_reopen_lmdb_database(
                  skipping compaction and continuing normally with the un-compacted database"
             );
             println!(
-                "[COMPACTION] LMDB compact-copy failed (often insufficient disk space): {e}; \
-                 skipping compaction and continuing normally with the un-compacted database"
+                "[COMPACTION] LMDB compact-copy failed (often insufficient disk space): {e}; skipping compaction and \
+                 continuing normally with the un-compacted database"
             );
             let _unused = fs::remove_dir_all(&compact_dir);
             return Ok(db);
