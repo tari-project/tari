@@ -1037,13 +1037,15 @@ mod read_tests {
                 for output_hash in &exp.output_hashes {
                     let mined_info = state
                         .db
-                        .fetch_output(*output_hash)
+                        .fetch_outputs(*output_hash)
                         .unwrap_or_else(|e| {
                             panic!(
-                                "fetch_output failed for {} at height {}: {}",
+                                "fetch_outputs failed for {} at height {}: {}",
                                 output_hash, exp.height, e
                             )
                         })
+                        .into_iter()
+                        .next()
                         .unwrap_or_else(|| panic!("Output {} at height {} not found", output_hash, exp.height));
 
                     assert_eq!(mined_info.output.hash(), *output_hash, "Output hash mismatch");

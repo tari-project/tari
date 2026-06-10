@@ -175,7 +175,9 @@ pub fn create_block<TDB: BlockchainBackend>(
         .unwrap();
     let mut block = apply_mmr_to_block(db, block);
 
-    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
+    // Outputs are added to the SMT and spent inputs are removed, so the net size change accounts for both.
+    block.header.output_smt_size =
+        prev_block.header.output_smt_size + block.body.outputs().len() as u64 - block.body.inputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)
@@ -192,12 +194,14 @@ pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, 
         },
     };
     //     block.header.input_mr = mmr_roots.input_mr;
+    block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    //     block.header.output_smt_size = mmr_roots.output_smt_size;
-    //     block.header.kernel_mr = mmr_roots.kernel_mr;
-    //     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
-    //     block.header.validator_node_mr = mmr_roots.validator_node_mr;
-    //     block.header.validator_node_size = mmr_roots.validator_node_size;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.kernel_mr = mmr_roots.kernel_mr;
+    block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
     block
 }
 

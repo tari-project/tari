@@ -519,7 +519,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash: types::HashOutput = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
             if let Some(output) = output {
                 utxos.push(models::MinedUtxoInfo {
                     utxo_hash: hash.to_vec(),
@@ -574,11 +576,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
 
             if let Some(output) = output {
                 // is it still unspent?
-                let input = self.db().fetch_input(hash).await?;
+                let mut input_entries = self.db().fetch_inputs(hash).await?;
+                input_entries.sort_by_key(|i| i.spent_height);
+                let input = input_entries.into_iter().next_back();
                 if let Some(i) = input {
                     utxos.push(models::DeletedUtxoInfo {
                         utxo_hash: hash.to_vec(),
@@ -629,10 +635,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
 
             let utxo_info = if let Some(output) = output {
-                let input = self.db().fetch_input(hash).await?;
+                let mut input_entries = self.db().fetch_inputs(hash).await?;
+                input_entries.sort_by_key(|i| i.spent_height);
+                let input = input_entries.into_iter().next_back();
                 models::DeletedUtxoInfoV1 {
                     utxo_hash: hash.to_vec(),
                     found_in_header: Some((output.mined_height, output.header_hash.to_vec())),

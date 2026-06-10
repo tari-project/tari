@@ -62,7 +62,7 @@ use crate::{
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
     },
-    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
@@ -537,16 +537,31 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::MinedInfo(output_info))
             },
             NodeCommsRequest::FetchMinedInfoByOutputHash(output_hash) => {
-                let output_info = self.blockchain_db.fetch_mined_info_by_output_hash(output_hash).await?;
-                Ok(NodeCommsResponse::MinedInfo(output_info))
+                // A hash may be indexed under multiple headers; return the entry with the highest-mined output.
+                let result = self
+                    .blockchain_db
+                    .fetch_mined_info_by_output_hash(output_hash)
+                    .await?
+                    .into_iter()
+                    .filter(|info| info.output.is_some())
+                    .max_by_key(|info| info.output.as_ref().map_or(0, |o| o.mined_height))
+                    .unwrap_or(MinedInfo {
+                        input: None,
+                        output: None,
+                    });
+                Ok(NodeCommsResponse::MinedInfo(result))
             },
             NodeCommsRequest::FetchOutputMinedInfo(output_hash) => {
-                let output_info = self.blockchain_db.fetch_output(output_hash).await?;
-                Ok(NodeCommsResponse::OutputMinedInfo(output_info))
+                // A hash may be indexed under multiple headers; return the last-mined output.
+                let mut outputs = self.blockchain_db.fetch_outputs(output_hash).await?;
+                outputs.sort_by_key(|o| o.mined_height);
+                Ok(NodeCommsResponse::OutputMinedInfo(outputs.into_iter().next_back()))
             },
             NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {
-                let input_info = self.blockchain_db.fetch_input(output_hash).await?;
-                Ok(NodeCommsResponse::InputMinedInfo(input_info))
+                // A hash may be indexed under multiple headers; return the last-spent input.
+                let mut inputs = self.blockchain_db.fetch_inputs(output_hash).await?;
+                inputs.sort_by_key(|i| i.spent_height);
+                Ok(NodeCommsResponse::InputMinedInfo(inputs.into_iter().next_back()))
             },
             NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 let added_validators = self
@@ -1065,12 +1080,16 @@ where B: BlockchainBackend + 'static
                 continue;
             }
 
-            let output_mined_info =
-                db.fetch_output(&input.output_hash())?
-                    .ok_or_else(|| CommsInterfaceError::InvalidFullBlock {
-                        hash: block_hash,
-                        details: format!("Output {} to be spent does not exist in db", input.output_hash()),
-                    })?;
+            // Only the output's contents are used to hydrate the input, and those are identical for
+            // every index entry of the same output hash, so taking any entry is equivalent.
+            let output_mined_info = db
+                .fetch_outputs(&input.output_hash())?
+                .into_iter()
+                .next()
+                .ok_or_else(|| CommsInterfaceError::InvalidFullBlock {
+                    hash: block_hash,
+                    details: format!("Output {} to be spent does not exist in db", input.output_hash()),
+                })?;
 
             input.add_output_data(output_mined_info.output);
         }

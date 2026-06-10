@@ -22,33 +22,21 @@
 
 #![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
-
+use tari_transaction_components::transaction_components::WalletOutputBuilder;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_node_components::blocks::BlockValidationError;
-use tari_script::{push_pubkey_script, script};
+use tari_script::{inputs, push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
-use tari_transaction_components::{
-    CoinbaseBuilder,
-    aggregated_body::AggregateBody,
-    consensus::ConsensusConstantsBuilder,
-    crypto_factories::CryptoFactories,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::{T, uT},
-    tari_proof_of_work::Difficulty,
-    test_helpers::schema_to_transaction,
-    transaction_components::{
-        EncryptedData,
-        MemoField,
-        RangeProofType,
-        TransactionError,
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-    },
-    txn_schema,
-    validation::AggregatedBodyValidationError,
-};
+use tari_transaction_components::{CoinbaseBuilder, aggregated_body::AggregateBody, consensus::ConsensusConstantsBuilder, crypto_factories::CryptoFactories, key_manager::{TariKeyId, TransactionKeyManagerInterface}, tari_amount::{T, uT}, tari_proof_of_work::Difficulty, test_helpers::schema_to_transaction, transaction_components::{
+    EncryptedData,
+    MemoField,
+    RangeProofType,
+    TransactionError,
+    encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+}, txn_schema, validation::AggregatedBodyValidationError, TransactionBuilder, MicroMinotari};
 use tokio::time::Instant;
-
+use tari_transaction_components::consensus::ConsensusManager;
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
@@ -315,6 +303,153 @@ async fn it_checks_double_spends() {
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(err, ValidationError::ContainsSTxO));
+}
+#[ignore]
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn stop_blocks_replay() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+    let (txs, outputs) = schema_to_transaction(
+        &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 50 * T])],
+        &blockchain.km,
+    );
+
+    blockchain
+        .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
+        .unwrap();
+    // lets create our first tx
+
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(outputs[0].clone()).unwrap();
+    tx_builder.with_fee(100.into());
+
+        let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
+        let output_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+        let script_key_id = TariKeyId::Derived {
+            key: (&commitment_mask.key_id).into(),
+        };
+        let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
+        let input_data = inputs!(script_public_key);
+        let output = WalletOutputBuilder::new(outputs[0].value()-MicroMinotari(100), commitment_mask.key_id)
+            .with_script(script![Nop].unwrap())
+            .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
+            .unwrap()
+            .with_input_data(input_data)
+            .with_sender_offset_public_key(output_sender_offset.pub_key)
+            .with_script_key(script_key_id.clone())
+            .sign_metadata_signature(&blockchain.km, &output_sender_offset.key_id)
+            .unwrap()
+            .try_build(&blockchain.km)
+            .unwrap();
+
+        tx_builder.with_output(output.clone(), output_sender_offset.key_id.clone(), None).unwrap();
+    let finalized_tx = tx_builder.build().unwrap();
+    blockchain
+        .add_next_tip(block_spec!("2", transactions: vec![finalized_tx.transaction]))
+        .unwrap();
+
+
+    // lets create our second tx
+    let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(output.clone()).unwrap();
+    tx_builder.with_fee(100.into());
+
+    let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
+    let output_2_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+    let script_key_id = TariKeyId::Derived {
+        key: (&commitment_mask.key_id).into(),
+    };
+    let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
+    let input_data = inputs!(script_public_key);
+    let output_2 = WalletOutputBuilder::new(output.value()-MicroMinotari(100), commitment_mask.key_id)
+        .with_script(script![Nop].unwrap())
+        .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
+        .unwrap()
+        .with_input_data(input_data)
+        .with_sender_offset_public_key(output_2_sender_offset.pub_key)
+        .with_script_key(script_key_id.clone())
+        .sign_metadata_signature(&blockchain.km, &output_2_sender_offset.key_id)
+        .unwrap()
+        .try_build(&blockchain.km)
+        .unwrap();
+
+    tx_builder.with_output(output_2.clone(), output_2_sender_offset.key_id.clone(), None).unwrap();
+    let finalized_tx = tx_builder.build().unwrap();
+    blockchain
+        .add_next_tip(block_spec!("3", transactions: vec![finalized_tx.transaction.clone()]))
+        .unwrap();
+
+    // lets create duplicate commitment tx and spend output2
+    let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(outputs[1].clone()).unwrap();
+    tx_builder.with_fee(100.into());
+    tx_builder.with_output(output.clone(), output_sender_offset.key_id, None).unwrap();
+    let finalized_tx1 = tx_builder.build().unwrap();
+    let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(output_2.clone()).unwrap();
+    tx_builder.with_fee(100.into());
+
+    let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
+    let output_3_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+    let script_key_id = TariKeyId::Derived {
+        key: (&commitment_mask.key_id).into(),
+    };
+    let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
+    let input_data = inputs!(script_public_key);
+    let output_3 = WalletOutputBuilder::new(output_2.value()-MicroMinotari(100), commitment_mask.key_id)
+        .with_script(script![Nop].unwrap())
+        .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
+        .unwrap()
+        .with_input_data(input_data)
+        .with_sender_offset_public_key(output_3_sender_offset.pub_key)
+        .with_script_key(script_key_id.clone())
+        .sign_metadata_signature(&blockchain.km, &output_3_sender_offset.key_id)
+        .unwrap()
+        .try_build(&blockchain.km)
+        .unwrap();
+
+    tx_builder.with_output(output_3.clone(), output_3_sender_offset.key_id.clone(), None).unwrap();
+    let (block, _) = blockchain.create_next_tip(
+        BlockSpec::new()
+            .with_transactions(vec![finalized_tx1.transaction.clone()])
+            .finish(),
+    );
+    {
+        let txn = blockchain.db().db_read_access().unwrap();
+        validator.validate_body(&*txn, block.block()).unwrap();
+    }
+    let finalized_tx2 = tx_builder.build().unwrap();
+    blockchain
+        .add_next_tip(block_spec!("4", transactions: vec![finalized_tx1.transaction.clone(), finalized_tx2.transaction]))
+        .unwrap();
+
+    // lets create our 4th tx
+    let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(output.clone()).unwrap();
+    tx_builder.with_input(outputs[2].clone()).unwrap();
+    tx_builder.with_fee(100.into());
+    tx_builder.with_output(output_2, output_2_sender_offset.key_id.clone(), None).unwrap();
+    let finalized_tx = tx_builder.build().unwrap();
+    let (block, _) = blockchain.create_next_tip(
+        BlockSpec::new()
+            .with_transactions(vec![finalized_tx.transaction.clone()])
+            .finish(),
+    );
+    {
+        let txn = blockchain.db().db_read_access().unwrap();
+        validator.validate_body(&*txn, block.block()).unwrap();
+    }
+    blockchain
+        .add_next_tip(block_spec!("5", transactions: vec![finalized_tx.transaction]))
+        .unwrap_err();
+
+
 }
 
 #[tokio::test]

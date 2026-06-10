@@ -176,29 +176,20 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
     let mut to_remove = Vec::new();
     for input in &inputs {
         let input_output_hash = input.output_hash();
-        if let Some(InputMinedInfo {
-            header_hash: hash,
-            spent_height,
-            ..
-        }) = db.fetch_input(&input_output_hash)?
+
+        // An input is unique within a block, so select the entry for the block being validated.
+        if let Some(InputMinedInfo { spent_height, .. }) = db
+            .fetch_inputs(&input_output_hash)?
+            .into_iter()
+            .find(|info| info.header_hash == header_hash)
         {
-            if hash != header_hash {
-                return Err(ValidationError::HeaderHashMismatch(format!(
-                    "Expected {}, found {}",
-                    header_hash, hash
-                )));
-            }
             if spent_height != header_height {
                 return Err(ValidationError::HeaderHeightMismatch(format!(
                     "Expected {}, found {}",
                     header_height, spent_height
                 )));
             }
-            if let Some(OutputMinedInfo {
-                header_hash: _hash,
-                mined_height,
-                ..
-            }) = db.fetch_output(&input_output_hash)?
+            if let Some(OutputMinedInfo { mined_height, .. }) = db.fetch_outputs(&input_output_hash)?.into_iter().next()
             {
                 if spent_height < mined_height {
                     return Err(ValidationError::InputSpentBeforeMined(format!(
@@ -246,18 +237,14 @@ fn validate_output_hashes_in_db<B: BlockchainBackend>(
     let mut to_remove = Vec::new();
     for output in &outputs {
         let output_hash = output.hash();
+        // An output is unique within a block, so select the entry for the block being validated.
         if let Some(OutputMinedInfo {
-            header_hash: hash,
-            mined_height: height,
-            ..
-        }) = db.fetch_output(&output_hash)?
+            mined_height: height, ..
+        }) = db
+            .fetch_outputs(&output_hash)?
+            .into_iter()
+            .find(|info| info.header_hash == header_hash)
         {
-            if hash != header_hash {
-                return Err(ValidationError::HeaderHashMismatch(format!(
-                    "Expected {}, found {}",
-                    header_hash, hash
-                )));
-            }
             if height != header_height {
                 return Err(ValidationError::HeaderHeightMismatch(format!(
                     "Expected {}, found {}",
