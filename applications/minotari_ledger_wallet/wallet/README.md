@@ -174,13 +174,32 @@ For release artifacts, use the one-step installer above. Current Tari release ar
 `minotari_ledger_wallet.apdu`, and the installer downloads, verifies, extracts, and loads that APDU file through
 Ledger's secure loader.
 
-For a local development build, install the manifest generated for the selected build target if one is present:
+For a local development build, run the following commands from the root of the Tari ledger wallet repository, i.e.
+`<TARI>/applications/minotari_ledger_wallet/wallet`.
+
+Newer versions of `cargo-ledger` (used by the `ledger-app-builder` Docker image) no longer emit an
+`app_<device>.json` manifest. Instead, `cargo ledger build` produces a self-contained `minotari_ledger_wallet.apdu`
+install script in `./target/<device>/release/`. The old `ledgerctl install app_<device>.json` command therefore no
+longer applies; replay the `.apdu` with `ledgerblue` instead.
+
+Install `ledgerblue` into the same Python environment, then replay the `.apdu` for your device over a secure channel.
+Use the target id that matches your device:
+
+| Device      | Target id    |
+|-------------|--------------|
+| Nano S Plus | `0x33100004` |
+| Nano X      | `0x33000004` |
+| Stax        | `0x33200004` |
+| Flex        | `0x33300004` |
 
 ```
-ledgerctl install ./target/{TARGET}/release/app_{TARGET}.json
+pip3 install ledgerblue
+python3 -m ledgerblue.runScript --targetId 0x33100004 --fileName ./target/nanosplus/release/minotari_ledger_wallet.apdu --apdu --scp
+python3 -m ledgerblue.runScript --targetId 0x33200004 --fileName ./target/stax/release/minotari_ledger_wallet.apdu --apdu --scp
 ```
 
-Replace `{TARGET}` with the Ledger target used for the build, for example `nanosplus`, `nanox`, `stax`, or `flex`.
+Alternatively, if the device is connected to the build host, `cargo ledger build <device> --load` builds and installs in
+one step (this is just a wrapper around the same `ledgerblue.runScript` call).
 
 **Notes for Windows users:**
 - For a standard Anaconda 3 installation, the Python shell can be started from your development terminal with

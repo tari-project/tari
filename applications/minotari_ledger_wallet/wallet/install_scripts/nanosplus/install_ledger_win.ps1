@@ -9,6 +9,13 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Installer = Join-Path (Split-Path -Parent $ScriptDir) "install_minotari_ledger.py"
+if (-not (Test-Path $Installer)) {
+    $Installer = Join-Path $ScriptDir "install_minotari_ledger.py"
+}
+if (-not (Test-Path $Installer)) {
+    Write-Error "install_minotari_ledger.py was not found next to or above this wrapper."
+}
+
 $Python = Get-Command python -ErrorAction SilentlyContinue
 
 if (-not $Python) {

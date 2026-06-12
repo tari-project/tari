@@ -5,6 +5,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER="${SCRIPT_DIR}/../install_minotari_ledger.py"
 
+if [[ ! -f "${INSTALLER}" ]]; then
+  INSTALLER="${SCRIPT_DIR}/install_minotari_ledger.py"
+fi
+
+if [[ ! -f "${INSTALLER}" ]]; then
+  echo "install_minotari_ledger.py was not found next to or above this wrapper." >&2
+  exit 1
+fi
+
 if command -v python3 >/dev/null 2>&1; then
   PYTHON_BIN="python3"
 elif command -v python >/dev/null 2>&1; then
