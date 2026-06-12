@@ -65,9 +65,10 @@ new build targets for the current rust toolchain:
 cargo ledger setup
 ```
 
-## Device management via ledgerctl
+## Development device management via ledgerctl
 
-To control ledger devices we use the `ledgerctl` Python application.
+For development tasks such as installing a custom certificate, use the `ledgerctl` Python application. The one-step
+release installer above does not require users to run `ledgerctl` manually.
 
 Ensure that Python 3 is installed on your machine. To test this, open a Python shell and run `pip3 --version`. 
 Anaconda 3 is recommended. 
@@ -79,10 +80,9 @@ pip3 install --upgrade protobuf setuptools ecdsa
 pip3 install git+https://github.com/LedgerHQ/ledgerctl
 ```
 
-Install a custom certificate on the device to help with development. Start the device in recovery mode (varies per 
-device)
-- Nano S Plus: Hold the left button while turning on, and follow on screen instructions
-- Nano S: Hold the right button while turning on
+Install a custom certificate on the device to help with development. Start the device in recovery mode, which varies per
+device. For Nano S Plus, hold the left button while turning on and follow the on-screen instructions. For other supported
+devices, follow Ledger's model-specific recovery-mode instructions.
 
 Once in recovery mode run the following where <NAME> is simply the name of the CA. It can be anything:
 
@@ -194,8 +194,8 @@ Use the target id that matches your device:
 
 ```
 pip3 install ledgerblue
-python3 -m ledgerblue.runScript --targetId 0x33100004 --fileName ./target/nanosplus/release/minotari_ledger_wallet.apdu --apdu --scp
-python3 -m ledgerblue.runScript --targetId 0x33200004 --fileName ./target/stax/release/minotari_ledger_wallet.apdu --apdu --scp
+python3 -m ledgerblue.runScript --targetId 0x33100004 --fileName ./target/nanosplus/release/minotari_ledger_wallet.apdu --scp
+python3 -m ledgerblue.runScript --targetId 0x33200004 --fileName ./target/stax/release/minotari_ledger_wallet.apdu --scp
 ```
 
 Alternatively, if the device is connected to the build host, `cargo ledger build <device> --load` builds and installs in
