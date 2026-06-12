@@ -73,7 +73,7 @@ source bin/activate
 
 echo "📦 Installing Python dependencies..."
 pip3 install --upgrade pip
-pip3 install protobuf setuptools ecdsa ledgerwallet
+pip3 install protobuf setuptools ecdsa ledgerwallet ledgerblue
 
 # -------------------------
 # Auto-install ledgerctl
@@ -127,10 +127,12 @@ unzip -o "$ZIP_FILE"
 # Install onto Ledger
 # -------------------------
 
-APP_JSON=$(find . -name "app_stax.json" | head -n 1)
+# cargo-ledger no longer emits an app_<device>.json manifest; the build now
+# produces a self-contained .apdu install script instead.
+APP_APDU=$(find . -name "minotari_ledger_wallet.apdu" | head -n 1)
 
-if [[ -z "$APP_JSON" ]]; then
-  echo "❌ app_stax.json not found after unzip."
+if [[ -z "$APP_APDU" ]]; then
+  echo "❌ minotari_ledger_wallet.apdu not found after unzip."
   exit 1
 fi
 
@@ -142,7 +144,14 @@ echo "   • Device unlocked"
 echo "   • Developer Mode enabled"
 echo
 
-ledgerctl install "$APP_JSON"
+# Remove any previous install (best effort) so the fresh load does not clash.
+ledgerctl delete "MinoTari Wallet" || true
+
+# Replay the .apdu install script over a secure channel (Stax target id).
+python3 -m ledgerblue.runScript \
+  --targetId 0x33200004 \
+  --fileName "$APP_APDU" \
+  --apdu --scp
 
 echo
 echo "✅ Minotari Ledger Wallet installed successfully!"
