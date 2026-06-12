@@ -110,7 +110,7 @@ Write-Host "   • Developer Mode enabled"
 Write-Host ""
 
 # Remove any previous install (best effort) so the fresh load does not clash.
-ledgerctl delete "MinoTari Wallet" 2>$null
+try { ledgerctl delete "MinoTari Wallet" 2>$null } catch {}
 
 # Replay the .apdu install script over a secure channel (Nano S Plus target id).
 python -m ledgerblue.runScript --targetId 0x33100004 --fileName $appApdu.FullName --apdu --scp
