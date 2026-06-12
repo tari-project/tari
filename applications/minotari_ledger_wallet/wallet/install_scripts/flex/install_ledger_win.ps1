@@ -43,7 +43,7 @@ if (-not (Test-Path $VenvDir)) {
 
 Write-Host "📦 Installing Python dependencies..."
 pip install --upgrade pip
-pip install protobuf setuptools ecdsa ledgerwallet
+pip install protobuf setuptools ecdsa ledgerwallet ledgerblue
 
 # -------------------------
 # Auto-install ledgerctl
@@ -93,10 +93,12 @@ Expand-Archive -Path $Asset.name -DestinationPath . -Force
 # Install onto Ledger
 # -------------------------
 
-$appJson = Get-ChildItem -Recurse -Filter "app_flex.json" | Select-Object -First 1
+# cargo-ledger no longer emits an app_<device>.json manifest; the build now
+# produces a self-contained .apdu install script instead.
+$appApdu = Get-ChildItem -Recurse -Filter "minotari_ledger_wallet.apdu" | Select-Object -First 1
 
-if (-not $appJson) {
-    Write-Error "app_flex.json not found after extraction."
+if (-not $appApdu) {
+    Write-Error "minotari_ledger_wallet.apdu not found after extraction."
 }
 
 Write-Host ""
@@ -107,7 +109,11 @@ Write-Host "   • Device unlocked"
 Write-Host "   • Developer Mode enabled"
 Write-Host ""
 
-ledgerctl install $appJson.FullName
+# Remove any previous install (best effort) so the fresh load does not clash.
+ledgerctl delete "MinoTari Wallet" 2>$null
+
+# Replay the .apdu install script over a secure channel (Flex target id).
+python -m ledgerblue.runScript --targetId 0x33300004 --fileName $appApdu.FullName --apdu --scp
 
 Write-Host ""
 Write-Host "✅ Minotari Ledger Wallet installed successfully!" -ForegroundColor Green

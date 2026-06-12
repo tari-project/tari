@@ -5,7 +5,7 @@ This script installs the **Minotari Ledger Wallet app** (`minotari_ledger_wallet
 It is fully automated and handles:
 - System dependencies
 - Python virtual environment setup
-- `ledgerctl` installation
+- `ledgerctl` and `ledgerblue` installation
 - Downloading the **latest** Minotari Ledger release
 - Installing the app onto the Ledger device
 
@@ -23,10 +23,10 @@ It is fully automated and handles:
 1. Installs required tools via **Homebrew**
 2. Creates a Python **virtual environment**
 3. Installs required Python dependencies
-4. Automatically installs `ledgerctl` (if missing)
+4. Installs `ledgerctl` (for removing a previous install) and `ledgerblue` (for loading the app)
 5. Downloads the **latest** `minotari_ledger_wallet-stax` release from GitHub
 6. Unzips the release
-7. Uploads the app to the Ledger device using `ledgerctl`
+7. Loads the app onto the Ledger device by replaying the `minotari_ledger_wallet.apdu` install script with `ledgerblue`
 
 All tooling is isolated inside the virtual environment to avoid polluting system Python.
 
