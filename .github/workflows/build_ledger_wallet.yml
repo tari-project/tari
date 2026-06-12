@@ -119,26 +119,21 @@ jobs:
         with:
           pattern: "${{ env.TS_FILENAME }}*"
 
-      - name: Stage install scripts as release assets
+      - name: Bundle install scripts into a single release asset
         shell: bash
         run: |
           SCRIPTS_ROOT="applications/minotari_ledger_wallet/wallet/install_scripts"
           mkdir -p install-assets
-          for device in nanosplus nanox stax flex; do
-            src="${SCRIPTS_ROOT}/${device}"
-            [ -d "${src}" ] || continue
-            # macOS/Linux installer (already uniquely named per device)
-            cp -vf "${src}/install_minotari_ledger_${device}.sh" "install-assets/" || true
-            # Windows installer (shared filename -> rename per device to avoid clashes)
-            cp -vf "${src}/install_ledger_win.ps1" "install-assets/install_minotari_ledger_${device}_win.ps1" || true
-          done
-          echo "Staged install scripts:"
-          ls -la install-assets
+          # Bundle all per-device installers (sh + ps1 + README) into one zip,
+          # preserving the per-device folder layout.
+          ( cd "${SCRIPTS_ROOT}" && zip -r "${GITHUB_WORKSPACE}/install-assets/${TS_FILENAME}-install-scripts.zip" . )
+          echo "Bundled install scripts:"
+          unzip -l "install-assets/${TS_FILENAME}-install-scripts.zip"
 
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ env.TS_FILENAME }}*/**/*,install-assets/*"
+          artifacts: "${{ env.TS_FILENAME }}*/**/*,install-assets/${{ env.TS_FILENAME }}-install-scripts.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: true
           draft: true
