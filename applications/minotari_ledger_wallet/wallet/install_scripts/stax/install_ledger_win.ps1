@@ -112,6 +112,7 @@ Write-Host ""
 # Remove any previous install (best effort) so the fresh load does not clash.
 try { ledgerctl delete "MinoTari Wallet" 2>$null } catch {}
 
+
 # Replay the .apdu install script over a secure channel (Stax target id).
 python -m ledgerblue.runScript --targetId 0x33200004 --fileName $appApdu.FullName --apdu --scp
 
