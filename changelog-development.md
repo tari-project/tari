@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.4](https://github.com/tari-project/tari/compare/v5.4.0-pre.3...v5.4.0-pre.4) (2026-06-12)
+
+
+### Features
+
+* add ledger scripts to assets ([#7878](https://github.com/tari-project/tari/issues/7878)) ([5822b36](https://github.com/tari-project/tari/commit/5822b36c81deb10fb540be1d54e34b901e4b0701))
+* make lmdb compaction disk space non fatal ([#7874](https://github.com/tari-project/tari/issues/7874)) ([1b13660](https://github.com/tari-project/tari/commit/1b1366088a4d8dec6376269e5bb4c7d190b74923))
+
+
+### Bug Fixes
+
+* ledger ([#7877](https://github.com/tari-project/tari/issues/7877)) ([0fd9331](https://github.com/tari-project/tari/commit/0fd933111c831711f9117db85d4d376ba77b207f))
+
 ## [5.4.0-pre.3](https://github.com/tari-project/tari/compare/v5.4.0-pre.2...v5.4.0-pre.3) (2026-06-08)
 
 
