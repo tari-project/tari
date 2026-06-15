@@ -1749,14 +1749,6 @@ impl LMDBDatabase {
         let constants = self.get_consensus_constants(height);
 
         for (_, utxo) in &output_rows {
-            let smt_key = KeyHash(
-                utxo.output
-                    .commitment()
-                    .as_bytes()
-                    .try_into()
-                    .expect("Key hash is always 32 bytes"),
-            );
-            batch.push((smt_key, None));
             let output_hash = utxo.hash;
             let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
             trace!(target: LOG_TARGET, "Deleting UTXO `{output_hash}` with payref `{payref}`");
@@ -1833,6 +1825,15 @@ impl LMDBDatabase {
                 trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - burned");
                 continue;
             }
+
+            let smt_key = KeyHash(
+                utxo.output
+                    .commitment()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Key hash is always 32 bytes"),
+            );
+            batch.push((smt_key, None));
 
             // Delete the output from the UTXO commitment index
             lmdb_delete(
