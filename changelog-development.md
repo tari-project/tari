@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.5](https://github.com/tari-project/tari/compare/v5.4.0-pre.4...v5.4.0-pre.5) (2026-06-15)
+
+
+### Features
+
+* bundle install scripts ([#7879](https://github.com/tari-project/tari/issues/7879)) ([fe12274](https://github.com/tari-project/tari/commit/fe1227415e7a8c40ba71b30ee8fd69ea09bd2d46))
+* update reorg logic ([#7881](https://github.com/tari-project/tari/issues/7881)) ([9d41c68](https://github.com/tari-project/tari/commit/9d41c68c988bf6d481249f7c061b3893a4b0c538))
+
 ## [5.4.0-pre.4](https://github.com/tari-project/tari/compare/v5.4.0-pre.3...v5.4.0-pre.4) (2026-06-12)
 
 
