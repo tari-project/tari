@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #     "ledgerwallet",
+#     "ledgerblue",
 #     "requests"
 # ]
 # ///
@@ -124,35 +125,57 @@ def download_and_extract(slug, release_data, temp_dir):
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(temp_dir)
             
-        app_json_path = None
-        target_filename = f"app_{slug}.json"
+        apdu_path = None
+        target_filename = "minotari_ledger_wallet.apdu"
         for root, _, files in os.walk(temp_dir):
             if target_filename in files:
-                app_json_path = os.path.join(root, target_filename)
+                apdu_path = os.path.join(root, target_filename)
                 break
                 
-        if not app_json_path:
+        if not apdu_path:
             print_error(f"Failed to find '{target_filename}' inside the downloaded archive.")
             sys.exit(1)
             
-        return app_json_path
+        return apdu_path
     except Exception as e:
         print_error(f"Failed to download or extract firmware: {e}")
         sys.exit(1)
 
-def install_app(app_json_path):
+def install_app(slug, apdu_path):
     print_header("Installing Minotari app to Ledger...")
     print("If your device prompts you to allow an unsafe manager, please confirm it.")
     
+    target_ids = {
+        "nanox": "0x33000004",
+        "nanosplus": "0x33100004",
+        "stax": "0x33200004",
+        "flex": "0x33300004"
+    }
+    
+    if slug not in target_ids:
+        print_error(f"No targetId mapping for model '{slug}'.")
+        sys.exit(1)
+    
     try:
-        subprocess.run(["ledgerctl", "install", app_json_path], check=True)
+        # Remove any previous install (best effort) so the fresh load does not clash.
+        print("Removing previous installation (if any)...")
+        subprocess.run(["ledgerctl", "delete", "MinoTari Wallet"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        print(f"Flashing new firmware to {slug}...")
+        # Replay the .apdu install script over a secure channel
+        subprocess.run([
+            sys.executable, "-m", "ledgerblue.runScript", 
+            "--targetId", target_ids[slug], 
+            "--fileName", apdu_path, 
+            "--apdu", "--scp"
+        ], check=True)
         print_success("Minotari app installed successfully!")
     except subprocess.CalledProcessError as e:
-        print_error(f"ledgerctl failed with exit code {e.returncode}.")
-        print("Ensure the device is unlocked and on the dashboard.")
+        print_error(f"ledgerblue installation failed with exit code {e.returncode}.")
+        print("Ensure the device is unlocked, on the dashboard, and Developer Mode is enabled.")
         sys.exit(1)
     except FileNotFoundError:
-        print_error("ledgerctl command not found. Ensure this script is running via 'uv run'.")
+        print_error("Command not found. Ensure this script is running via 'uv run'.")
         sys.exit(1)
 
 def main():
@@ -174,8 +197,8 @@ def main():
         release_data = get_release_data(args.tag)
         
         with tempfile.TemporaryDirectory(prefix="minotari_ledger_") as temp_dir:
-            app_json = download_and_extract(slug, release_data, temp_dir)
-            install_app(app_json)
+            apdu_path = download_and_extract(slug, release_data, temp_dir)
+            install_app(slug, apdu_path)
             
     except KeyboardInterrupt:
         print_error("\nInstallation aborted by user.")
