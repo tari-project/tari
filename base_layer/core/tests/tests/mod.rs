@@ -32,6 +32,7 @@ mod mempool;
 mod node_comms_interface;
 mod node_service;
 mod node_state_machine;
+mod reorg_with_burn;
 
 pub fn assert_block_add_result_added(result: &BlockAddResult) -> ChainBlock {
     match result {

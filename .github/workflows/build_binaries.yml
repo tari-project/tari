@@ -438,7 +438,9 @@ jobs:
           path: "${{ env.MTS_SOURCE }}/*"
 
       - name: Sign macOS Artifacts
-        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
+        # Disabled - macOS signing/notarization is currently broken; upload unsigned binaries instead
+        if: ${{ false }}
+        # if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
         # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
@@ -651,7 +653,8 @@ jobs:
           cargo audit bin *minotari*${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
-        if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARIZE_USERNAME != '' ) ) ) }}
+        # macOS signing disabled (broken) -> archive unsigned binaries on every platform, incl. macOS
+        # if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARIZE_USERNAME != '' ) ) ) }}
         env:
           MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
         shell: bash
