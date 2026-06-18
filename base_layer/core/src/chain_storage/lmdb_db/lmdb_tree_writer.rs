@@ -104,18 +104,38 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 },
             }
         }
+        // Persist JMTVersion as the version the nodes were ACTUALLY written at (the highest node
+        // version in this batch) rather than independently recomputing `current + 1`. This ties the
+        // saved version to the saved tree, so the next reader/insert reads a base that exists.
+        //   - "+1 only when we change it": an empty batch (no nodes) does NOT bump the version.
+        //   - "save the +1 when we save to disc": the saved version == the version of the nodes
+        //     just committed in this same transaction.
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
-            _ => 0u64,
-        };
-        lmdb_replace(
-            self.txn,
-            &self.metabase_db,
-            &k.as_u32(),
-            &MetadataValue::JMTVersion(val),
-            None,
-        )?;
+        let written_version = node_batch.nodes().keys().map(|node_key| node_key.version()).max();
+        if let Some(written_version) = written_version {
+            // Invariant: the version we wrote at must be exactly one past the previously-saved
+            // version (0 for the first write). A mismatch means JMTVersion had desynced from the
+            // persisted tree before this write.
+            let current = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())? {
+                Some(MetadataValue::JMTVersion(v)) => Some(v),
+                _ => None,
+            };
+            let expected = current.map(|v| v + 1).unwrap_or(0);
+            if written_version != expected {
+                warn!(
+                    target: LOG_TARGET,
+                    "JMTVersion DESYNC: writing JMT nodes at version {written_version} but the saved version is \
+                     {current:?} (expected to write at {expected}). The persisted tree and JMTVersion were out of step."
+                );
+            }
+            lmdb_replace(
+                self.txn,
+                &self.metabase_db,
+                &k.as_u32(),
+                &MetadataValue::JMTVersion(written_version),
+                None,
+            )?;
+        }
 
         trace!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
@@ -242,6 +262,46 @@ mod test {
         assert!(jmt.get(smt_key_2, 3).unwrap().is_none());
         assert_eq!(jmt.get_leaf_count(3).unwrap(), 2);
         assert_eq!(root1, root2);
+    }
+
+    #[test]
+    fn test_jmt_version_noop_batch_desync() {
+        fn k(i: u8) -> KeyHash { KeyHash([i; 32]) }
+        let db = TempDatabase::new();
+
+        // v0: a real leaf
+        {
+            let txn = db.db().create_write_txn();
+            let w = db.db().create_lmdb_tree_writer(&txn);
+            let r = db.db().create_smt_reader().unwrap().0;
+            let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&r);
+            let (_root, ops) = jmt.put_value_set(vec![(k(1), Some(k(1).0.to_vec()))], 0).unwrap();
+            w.write_node_batch(&ops.node_batch).unwrap();
+            drop(jmt); drop(r);
+            txn.commit().unwrap();
+        }
+        let (_r, v0) = db.db().create_smt_reader().unwrap();
+        println!("after real insert, JMTVersion = {v0}");
+
+        // v0+1: a NO-OP batch (delete a key that doesn't exist)
+        {
+            let txn = db.db().create_write_txn();
+            let w = db.db().create_lmdb_tree_writer(&txn);
+            let (r, v) = db.db().create_smt_reader().unwrap();
+            let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&r);
+            let (_root, ops) = jmt.put_value_set(vec![(k(99), None)], v + 1).unwrap();
+            println!("no-op batch produced {} node(s), {} value(s)", ops.node_batch.nodes().len(), ops.node_batch.values().len());
+            w.write_node_batch(&ops.node_batch).unwrap();
+            w.cleanup_stale(&ops.stale_node_index_batch).unwrap();
+            drop(jmt); drop(r);
+            txn.commit().unwrap();
+        }
+        let (r, v1) = db.db().create_smt_reader().unwrap();
+        println!("after NO-OP batch, JMTVersion = {v1}");
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&r);
+        let root_at_v1 = jmt.get_root_hash(v1);
+        println!("get_root_hash(JMTVersion={v1}) = {:?}", root_at_v1.as_ref().map(|x| hex::encode(x.0)));
+        assert!(root_at_v1.is_ok(), "ROOT AT JMTVersion {v1} MISSING after no-op batch -> base desync: {root_at_v1:?}");
     }
 
     #[test]
