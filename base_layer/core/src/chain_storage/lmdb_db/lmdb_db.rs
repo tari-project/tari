@@ -2074,15 +2074,18 @@ impl LMDBDatabase {
                 Some(MetadataValue::JMTVersion(v)) => v,
                 _ => 0u64,
             };
-            let root = output_smt.get_root_hash(current_jmt_version).map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+            let root = output_smt
+                .get_root_hash(current_jmt_version)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
             let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &(header.height - 1)).or_not_found(
                 "BlockHeader",
                 "height",
-                (header.height-1).to_string(),
+                (header.height - 1).to_string(),
             )?;
             if prev_header.output_mr.as_slice() != root.0.as_slice() {
                 return Err(ChainStorageError::InvalidOperation(format!(
-                    "The output merkle root of the current tip header at height {} does not match the stored JMT root. Header: {}, calculated: {}",
+                    "The output merkle root of the current tip header at height {} does not match the stored JMT \
+                     root. Header: {}, calculated: {}",
                     prev_header.height,
                     prev_header.output_mr.to_hex(),
                     hex::encode(root.0.as_slice())
@@ -5856,6 +5859,7 @@ fn num_to_key(n: u32) -> Option<MetadataKey> {
         10 => Some(MetadataKey::AccumulatedDataCheckStatus),
         11 => Some(MetadataKey::BlockchainConsistencyCheckStatus),
         12 => Some(MetadataKey::HorizonSyncOutputCheckpoint),
+        13 => Some(MetadataKey::JMTVersion),
         _ => None,
     }
 }
