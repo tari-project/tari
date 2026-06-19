@@ -1899,8 +1899,7 @@ where
         // change output. Snapshot the spendable outputs to choose from (branch-and-bound consumes `uo` below), but only
         // for standard selections (we never pull in extra inputs for coin-control selections where the user
         // deliberately picked the inputs).
-        let force_change_enabled =
-            self.resources.config.force_change_output && selection_criteria.filter.is_standard();
+        let force_change_enabled = self.resources.config.force_change_output && selection_criteria.filter.is_standard();
         let force_change_pool = if force_change_enabled { uo.clone() } else { Vec::new() };
 
         let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
@@ -3446,8 +3445,8 @@ impl UtxoSelection {
 /// `candidates` must already exclude the outputs being spent. `marginal_cost` is the additional fee of adding one input
 /// plus a change output; a candidate must exceed it for the resulting change to be positive. Candidates above
 /// `marginal_cost + dust_ignore_value` produce non-dust change and are preferred (one is chosen at random). If none
-/// qualify, the largest candidate that still covers `marginal_cost` is used. Returns `None` when no candidate can create
-/// change.
+/// qualify, the largest candidate that still covers `marginal_cost` is used. Returns `None` when no candidate can
+/// create change.
 fn select_forced_change_utxo(
     candidates: &[DbWalletOutput],
     marginal_cost: MicroMinotari,
@@ -3484,7 +3483,8 @@ fn pick_forced_change_index(
         let pick = random_pick(meaningful.len()).min(meaningful.len() - 1);
         return meaningful.get(pick).copied();
     }
-    // Otherwise fall back to the largest candidate that still covers the marginal cost (so change is at least positive).
+    // Otherwise fall back to the largest candidate that still covers the marginal cost (so change is at least
+    // positive).
     values
         .iter()
         .enumerate()
@@ -3668,7 +3668,8 @@ mod force_change_output_tests {
 
     #[test]
     fn prefers_meaningful_candidates_using_random_pick() {
-        // Indices 1 and 3 are above the meaningful threshold (110). The injected random pick selects the second of them.
+        // Indices 1 and 3 are above the meaningful threshold (110). The injected random pick selects the second of
+        // them.
         let values = vec![
             MicroMinotari(50),
             MicroMinotari(200),
