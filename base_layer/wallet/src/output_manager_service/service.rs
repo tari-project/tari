@@ -26,7 +26,7 @@ use futures::{StreamExt, pin_mut};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -3458,7 +3458,7 @@ fn select_forced_change_utxo(
     }
     let values: Vec<MicroMinotari> = candidates.iter().map(|u| u.wallet_output.value()).collect();
     let index = pick_forced_change_index(&values, marginal_cost, dust_ignore_value, |len| {
-        usize::try_from(rand::rng().next_u64() % len as u64).unwrap_or(0)
+        rand::rng().random_range(0..len)
     })?;
     candidates.get(index).cloned()
 }
