@@ -1894,6 +1894,15 @@ where
             total_output_features_and_scripts_byte_size,
         );
         let input_fee = fee_calc.calculate(fee_per_gram, 0, 1, 0, 0);
+
+        // If `force_change_output` is enabled we may need to add an extra UTXO after branch-and-bound to guarantee a
+        // change output. Snapshot the spendable outputs to choose from (branch-and-bound consumes `uo` below), but only
+        // for standard selections (we never pull in extra inputs for coin-control selections where the user
+        // deliberately picked the inputs).
+        let force_change_enabled =
+            self.resources.config.force_change_output && selection_criteria.filter.is_standard();
+        let force_change_pool = if force_change_enabled { uo.clone() } else { Vec::new() };
+
         let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
             .with_target_amount(amount + kernel_fee)
             .with_fee_per_input(input_fee)
@@ -1957,14 +1966,58 @@ where
         // branch and bound does not cound the kernel fee, so we need to include it here
         let final_fee = final_fee + kernel_fee;
 
-        let (fee_with_change, fee_without_change) = if has_change {
+        let (mut fee_with_change, mut fee_without_change) = if has_change {
             (final_fee, final_fee - default_output_fee)
         } else {
             (final_fee + default_output_fee, final_fee)
         };
+
+        let mut utxos = utxos;
+        let mut total_value = total_value;
+        let mut requires_change_output = has_change;
+
+        // `force_change_output`: branch-and-bound found a selection that needs no change (a perfect match or a
+        // selection where the surplus was too small to warrant change). Add one extra UTXO so the transaction produces
+        // a meaningful change output, then recompute the fee to account for the extra input and the change output.
+        if force_change_enabled && !has_change {
+            // Exclude the outputs branch-and-bound already selected (matched by commitment) so the forced extra input
+            // is never one of the inputs we are already spending.
+            let force_change_candidates: Vec<DbWalletOutput> = force_change_pool
+                .into_iter()
+                .filter(|c| !utxos.iter().any(|s| s.commitment == c.commitment))
+                .collect();
+            let marginal_cost = input_fee + default_output_fee;
+            let dust_ignore_value = MicroMinotari::from(self.resources.config.dust_ignore_value);
+            match select_forced_change_utxo(&force_change_candidates, marginal_cost, dust_ignore_value) {
+                Some(extra) => {
+                    total_value += extra.wallet_output.value();
+                    utxos.push(extra);
+                    requires_change_output = true;
+                    let num_inputs = utxos.len() as u64;
+                    // Fees are additive in the input/output weights, so recompute from the components (this drops the
+                    // dust waste that branch-and-bound folded into the no-change fee, since the surplus is now change).
+                    fee_with_change = output_fee + input_fee * num_inputs + default_output_fee + kernel_fee;
+                    fee_without_change = output_fee + input_fee * num_inputs + kernel_fee;
+                    debug!(
+                        target: LOG_TARGET,
+                        "select_utxos force_change_output: added an extra input, now {} inputs, total_value {}",
+                        utxos.len(),
+                        total_value,
+                    );
+                },
+                None => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "select_utxos force_change_output enabled but no suitable extra UTXO is available to force a \
+                         change output; proceeding without change"
+                    );
+                },
+            }
+        }
+
         Ok(UtxoSelection {
             utxos,
-            requires_change_output: has_change,
+            requires_change_output,
             total_value,
             fee_without_change,
             fee_with_change,
@@ -3387,6 +3440,59 @@ impl UtxoSelection {
     }
 }
 
+/// Choose an extra UTXO to force a transaction to produce a meaningful change output (see
+/// [`OutputManagerServiceConfig::force_change_output`]).
+///
+/// `candidates` must already exclude the outputs being spent. `marginal_cost` is the additional fee of adding one input
+/// plus a change output; a candidate must exceed it for the resulting change to be positive. Candidates above
+/// `marginal_cost + dust_ignore_value` produce non-dust change and are preferred (one is chosen at random). If none
+/// qualify, the largest candidate that still covers `marginal_cost` is used. Returns `None` when no candidate can create
+/// change.
+fn select_forced_change_utxo(
+    candidates: &[DbWalletOutput],
+    marginal_cost: MicroMinotari,
+    dust_ignore_value: MicroMinotari,
+) -> Option<DbWalletOutput> {
+    if candidates.is_empty() {
+        return None;
+    }
+    let values: Vec<MicroMinotari> = candidates.iter().map(|u| u.wallet_output.value()).collect();
+    let index = pick_forced_change_index(&values, marginal_cost, dust_ignore_value, |len| {
+        usize::try_from(rand::rng().next_u64() % len as u64).unwrap_or(0)
+    })?;
+    candidates.get(index).cloned()
+}
+
+/// Pure selection logic for [`select_forced_change_utxo`], factored out so it can be unit tested without constructing
+/// wallet outputs. `random_pick` is given the number of preferred (non-dust) candidates and must return an index less
+/// than that number. Returns the index (into `values`) of the chosen candidate, or `None` if none can create change.
+fn pick_forced_change_index(
+    values: &[MicroMinotari],
+    marginal_cost: MicroMinotari,
+    dust_ignore_value: MicroMinotari,
+    random_pick: impl FnOnce(usize) -> usize,
+) -> Option<usize> {
+    let min_meaningful = marginal_cost + dust_ignore_value;
+    // Prefer candidates large enough to yield a non-dust change output, picked at random.
+    let meaningful: Vec<usize> = values
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| **v > min_meaningful)
+        .map(|(i, _)| i)
+        .collect();
+    if !meaningful.is_empty() {
+        let pick = random_pick(meaningful.len()).min(meaningful.len() - 1);
+        return meaningful.get(pick).copied();
+    }
+    // Otherwise fall back to the largest candidate that still covers the marginal cost (so change is at least positive).
+    values
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| **v > marginal_cost)
+        .max_by_key(|(_, v)| **v)
+        .map(|(i, _)| i)
+}
+
 #[derive(Debug, Clone)]
 pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
@@ -3547,5 +3653,67 @@ async fn migrate_legacy_output_keys<TBackend, TWalletConnectivity, TKeyManagerIn
             target: LOG_TARGET,
             "Legacy key migration: no legacy key-ids found requiring conversion."
         );
+    }
+}
+
+#[cfg(test)]
+mod force_change_output_tests {
+    use tari_transaction_components::MicroMinotari;
+
+    use super::pick_forced_change_index;
+
+    const MARGINAL: MicroMinotari = MicroMinotari(10);
+    const DUST: MicroMinotari = MicroMinotari(100);
+    // Anything above MARGINAL + DUST = 110 yields a meaningful (non-dust) change output.
+
+    #[test]
+    fn prefers_meaningful_candidates_using_random_pick() {
+        // Indices 1 and 3 are above the meaningful threshold (110). The injected random pick selects the second of them.
+        let values = vec![
+            MicroMinotari(50),
+            MicroMinotari(200),
+            MicroMinotari(80),
+            MicroMinotari(500),
+        ];
+        let chosen = pick_forced_change_index(&values, MARGINAL, DUST, |len| {
+            assert_eq!(len, 2); // only the two meaningful candidates are offered to the random picker
+            1
+        });
+        assert_eq!(chosen, Some(3));
+    }
+
+    #[test]
+    fn random_pick_out_of_range_is_clamped() {
+        let values = vec![MicroMinotari(200), MicroMinotari(300)];
+        let chosen = pick_forced_change_index(&values, MARGINAL, DUST, |_len| usize::MAX);
+        // Clamped to the last meaningful candidate rather than panicking/indexing out of bounds.
+        assert_eq!(chosen, Some(1));
+    }
+
+    #[test]
+    fn falls_back_to_largest_when_no_meaningful_candidate() {
+        // None exceed the meaningful threshold (110), but two exceed the marginal cost (10): pick the largest of those.
+        let values = vec![
+            MicroMinotari(5),  // below marginal cost, cannot create change
+            MicroMinotari(40), // covers marginal cost
+            MicroMinotari(90), // largest that covers marginal cost
+        ];
+        let chosen = pick_forced_change_index(&values, MARGINAL, DUST, |_| {
+            panic!("random pick must not be used when falling back to the largest candidate")
+        });
+        assert_eq!(chosen, Some(2));
+    }
+
+    #[test]
+    fn returns_none_when_no_candidate_covers_marginal_cost() {
+        let values = vec![MicroMinotari(1), MicroMinotari(10)]; // none strictly greater than marginal cost (10)
+        let chosen = pick_forced_change_index(&values, MARGINAL, DUST, |_| 0);
+        assert_eq!(chosen, None);
+    }
+
+    #[test]
+    fn returns_none_for_empty_candidates() {
+        let chosen = pick_forced_change_index(&[], MARGINAL, DUST, |_| 0);
+        assert_eq!(chosen, None);
     }
 }

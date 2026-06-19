@@ -165,6 +165,12 @@ event_channel_size = 3500
 # Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
 # If you set it to zero, the revalidation will be on every wallet rerun. Default is 3 days.
 #num_of_seconds_to_revalidate_invalid_utxos = 259200
+# Forces every transaction to produce a change output. Coin selection sometimes finds a perfect match (or a selection
+# that does not warrant change); a "no change" transaction is fingerprintable and can leak information about the
+# wallet's UTXO set. When set to `true`, and the selection would not produce change, an additional input is added so
+# the transaction creates a meaningful (non-dust) change output. Note that this can increase the transaction fee since
+# it adds an extra input and a change output. (default = false)
+#force_change_output = true
 
 
 [wallet.base_node]
