@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use chrono::{NaiveDateTime, Utc};
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
 use tari_utilities::ByteArray;
 
@@ -76,10 +76,30 @@ impl ScannedBlockSql {
     }
 
     pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
-        diesel::replace_into(scanned_blocks::table)
-            .values(self.clone())
-            .execute(conn)?;
-        Ok(())
+        // The wallet only ever needs a single scanned-block entry per height: the canonical block
+        // it scanned at that height. The base node can legitimately re-deliver an already scanned
+        // block - an overlapping `sync_utxos_by_block` stream, a retried scanning round, or a reorg
+        // that produces a *different* block at a height we have already saved.
+        //
+        // `scanned_blocks` is keyed on `header_hash`, not `height`, which makes both of those cases
+        // misbehave:
+        //   - A plain `insert_into` of a re-delivered (identical) header hash fails with
+        //     `UNIQUE constraint failed: scanned_blocks.header_hash`, aborting the whole scan round.
+        //   - A `replace_into` on the hash silences that case, but when the new block at the height
+        //     has a *different* hash it inserts a second row, leaving a stale duplicate-height entry
+        //     behind that desyncs last-scanned-block detection and the sparse-pruning schedule.
+        //
+        // Delete any existing row at this height first, then insert, in a single transaction so the
+        // table always holds exactly one row per height regardless of which case we hit. `replace_into`
+        // is retained as a defensive measure - a given header hash commits to its height so it can
+        // never legitimately appear at another height, but this guarantees we never throw here.
+        conn.transaction::<_, WalletStorageError, _>(|conn| {
+            diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.eq(self.height))).execute(conn)?;
+            diesel::replace_into(scanned_blocks::table)
+                .values(self.clone())
+                .execute(conn)?;
+            Ok(())
+        })
     }
 
     pub fn clear_all(conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
@@ -206,6 +226,42 @@ mod test {
         let mut blocks = ScannedBlockSql::index(conn).unwrap();
         blocks.sort_by_key(|b| b.height);
         blocks.into_iter().map(|b| b.height).collect()
+    }
+
+    fn hash_for(height: i64, variant: u8) -> Vec<u8> {
+        // Distinct hash per (height, variant) so a re-save with a different variant models a
+        // fork: the base node serving a *different* block at a height we already scanned.
+        let mut hash = [0u8; 32];
+        hash[..8].copy_from_slice(&height.to_le_bytes());
+        hash[8] = variant;
+        hash.to_vec()
+    }
+
+    #[test]
+    fn commit_replaces_identical_block_without_unique_constraint_error() {
+        let (_db, mut conn) = TestDb::new();
+        // Re-saving the exact same block (same hash, same height) - e.g. an overlapping sync
+        // stream or a retried scanning round - must not raise a UNIQUE constraint error.
+        ScannedBlockSql::new(hash_for(100, 0), 100).commit(&mut conn).unwrap();
+        ScannedBlockSql::new(hash_for(100, 0), 100).commit(&mut conn).unwrap();
+
+        let blocks = ScannedBlockSql::index(&mut conn).unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].height, 100);
+        assert_eq!(blocks[0].header_hash, hash_for(100, 0));
+    }
+
+    #[test]
+    fn commit_keeps_a_single_row_per_height_on_fork() {
+        let (_db, mut conn) = TestDb::new();
+        // Save the original block at height 100, then a reorged block with a *different* hash at
+        // the same height. The stale fork row must be replaced, not accumulated alongside it.
+        ScannedBlockSql::new(hash_for(100, 0), 100).commit(&mut conn).unwrap();
+        ScannedBlockSql::new(hash_for(100, 1), 100).commit(&mut conn).unwrap();
+
+        let blocks = ScannedBlockSql::index(&mut conn).unwrap();
+        assert_eq!(blocks.len(), 1, "duplicate-height rows must not accumulate on a fork");
+        assert_eq!(blocks[0].header_hash, hash_for(100, 1), "the latest block must win");
     }
 
     #[test]
