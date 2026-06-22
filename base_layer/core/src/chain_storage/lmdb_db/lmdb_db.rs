@@ -2068,6 +2068,32 @@ impl LMDBDatabase {
                 block_hash.to_hex()
             )));
         }
+        // We make this 1 to circumvent networks thats dont have genesis funds, as they will only have a jmt root from
+        // height 1
+        if header.height > 1 {
+            let k = MetadataKey::JMTVersion;
+            let current_jmt_version = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
+                Some(MetadataValue::JMTVersion(v)) => v,
+                _ => 0u64,
+            };
+            let root = output_smt
+                .get_root_hash(current_jmt_version)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+            let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &(header.height - 1)).or_not_found(
+                "BlockHeader",
+                "height",
+                (header.height - 1).to_string(),
+            )?;
+            if prev_header.output_mr.as_slice() != root.0.as_slice() {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "The output merkle root of the current tip header at height {} does not match the stored JMT \
+                     root. Header: {}, calculated: {}",
+                    prev_header.height,
+                    prev_header.output_mr.to_hex(),
+                    hex::encode(root.0.as_slice())
+                )));
+            }
+        }
 
         let (inputs, outputs, kernels) = body.dissolve();
 
@@ -5835,6 +5861,7 @@ fn num_to_key(n: u32) -> Option<MetadataKey> {
         10 => Some(MetadataKey::AccumulatedDataCheckStatus),
         11 => Some(MetadataKey::BlockchainConsistencyCheckStatus),
         12 => Some(MetadataKey::HorizonSyncOutputCheckpoint),
+        13 => Some(MetadataKey::JMTVersion),
         _ => None,
     }
 }

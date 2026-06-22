@@ -105,17 +105,31 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             }
         }
         let k = MetadataKey::JMTVersion;
-        let val = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
-            _ => 0u64,
-        };
-        lmdb_replace(
-            self.txn,
-            &self.metabase_db,
-            &k.as_u32(),
-            &MetadataValue::JMTVersion(val),
-            None,
-        )?;
+        let written_version = node_batch.nodes().keys().map(|node_key| node_key.version()).max();
+        if let Some(written_version) = written_version {
+            // Invariant: the version we wrote at must be exactly one past the previously-saved
+            // version (0 for the first write). A mismatch means JMTVersion had desynced from the
+            // persisted tree before this write.
+            let current = match lmdb_get(self.txn, &self.metabase_db, &k.as_u32())? {
+                Some(MetadataValue::JMTVersion(v)) => Some(v),
+                _ => None,
+            };
+            let expected = current.map(|v| v + 1).unwrap_or(0);
+            if written_version != expected {
+                warn!(
+                    target: LOG_TARGET,
+                    "JMTVersion DESYNC: writing JMT nodes at version {written_version} but the saved version is \
+                     {current:?} (expected to write at {expected}). The persisted tree and JMTVersion were out of step."
+                );
+            }
+            lmdb_replace(
+                self.txn,
+                &self.metabase_db,
+                &k.as_u32(),
+                &MetadataValue::JMTVersion(written_version),
+                None,
+            )?;
+        }
 
         trace!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
