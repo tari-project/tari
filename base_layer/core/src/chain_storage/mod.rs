@@ -74,6 +74,7 @@ pub use lmdb_db::{
     AccumulatedDataRebuildStatus,
     BlockchainCheckRequest,
     BlockchainCheckStatus,
+    BurnCommitmentRebuildStatus,
     CheckFailure,
     DatabaseStats,
     LMDBDatabase,

@@ -595,6 +595,18 @@ async fn chain_balance_validation_burned() {
             &CompressedCommitment::from_commitment(burned_sum),
         )
         .unwrap();
+
+    // The live insert path must have populated the burn commitment index when the block was committed, so the
+    // unique-burn-commitment consensus rule can find the burn. The async rebuild reconstructs exactly these entries.
+    let burn_lookup = db
+        .db_read_access()
+        .unwrap()
+        .fetch_kernel_by_burn_commitment(&burned.commitment)
+        .unwrap();
+    assert!(
+        burn_lookup.is_some(),
+        "burn commitment should be indexed after the block is committed"
+    );
 }
 
 mod transaction_validator {

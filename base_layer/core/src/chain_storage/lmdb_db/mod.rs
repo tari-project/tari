@@ -51,6 +51,7 @@ pub use lmdb_db::{
     BREATHING_TIME_MS_MIN,
     BlockchainCheckRequest,
     BlockchainCheckStatus,
+    BurnCommitmentRebuildStatus,
     CheckFailure,
     PayrefRebuildStatus,
 };

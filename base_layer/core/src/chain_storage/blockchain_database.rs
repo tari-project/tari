@@ -85,6 +85,7 @@ use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 use super::{
     AccumulatedDataRebuildStatus,
     BlockchainCheckRequest,
+    BurnCommitmentRebuildStatus,
     CheckFailure,
     MinedInfo,
     PayrefRebuildStatus,
@@ -393,6 +394,7 @@ where B: BlockchainBackend
 
         self.rebuild_payref_indexes_background_task()?;
         self.rebuild_accumulated_data_background_task()?;
+        self.rebuild_burn_commitment_index_background_task()?;
         self.initialize_blockchain_check_tasks()?;
         self.prune_database_background_task()?;
 
@@ -576,6 +578,92 @@ where B: BlockchainBackend
                     break;
                 }
                 height = height.saturating_add(1);
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Rebuilds the burn commitment index in the background so that node startup is not blocked. New databases (and ones
+    /// that have already finished) short-circuit immediately; otherwise a tokio task walks the blocks from the last
+    /// rebuilt height to the chain tip, indexing the burn kernels in each block. Blocks added or re-orged in after this
+    /// process starts already populate the index via the live insert path, so they do not need to be processed here.
+    pub fn rebuild_burn_commitment_index_background_task(&self) -> Result<(), ChainStorageError> {
+        let initial_status = {
+            let db = self.db_read_access()?;
+            db.fetch_burn_commitment_rebuild_status()?
+        };
+        debug!(target: LOG_TARGET, "[BurnIndex] Burn commitment index rebuild status: {initial_status:?}");
+        if initial_status.is_rebuilt {
+            debug!(target: LOG_TARGET, "[BurnIndex] Burn commitment index has already been rebuilt.");
+            return Ok(());
+        }
+
+        // The rebuild runs on a tokio task. When the database is constructed outside a runtime (e.g. tooling or tests),
+        // there is nothing to spawn onto; the rebuild status is left as-is so it runs on the next startup under a
+        // runtime (a base node always runs under tokio).
+        if tokio::runtime::Handle::try_current().is_err() {
+            debug!(
+                target: LOG_TARGET,
+                "[BurnIndex] No tokio runtime available; deferring burn commitment index rebuild to the next startup."
+            );
+            return Ok(());
+        }
+
+        // Fix the target height at the tip as of now. Blocks beyond this are populated by the live insert path.
+        let target_height = {
+            let db = self.db_read_access()?;
+            db.fetch_chain_metadata()?.best_block_height()
+        };
+        let db_rw_lock = self.db.clone();
+
+        tokio::task::spawn(async move {
+            let start_height = initial_status.last_rebuild_height.unwrap_or_default();
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[BurnIndex] Starting burn commitment index rebuild for heights {start_height} to {target_height}"
+            );
+
+            for height in start_height..=target_height {
+                // Add a small tokio sleep to allow other tasks to run more freely, mirroring the other rebuild tasks.
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                let finalize = height == target_height;
+                let db = db_rw_lock.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered.
+                let res = tokio::task::spawn_blocking(move || {
+                    process_burn_commitment_index_for_height(db, height, finalize)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[BurnIndex] Burn commitment index rebuild failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})"
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[BurnIndex] Burn commitment index rebuild failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})"
+                        );
+                        break;
+                    },
+                }
+                if finalize || last_status.is_rebuilt {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[BurnIndex] Burn commitment index rebuild completed, Final status: {last_status:?}"
+                    );
+                    break;
+                }
             }
         });
 
@@ -3741,6 +3829,30 @@ fn process_payref_for_height<B: BlockchainBackend>(
             target: LOG_TARGET,
             "[PayRef] Finalized index rebuilding for heights {} to {}",
             metadata_at_start.best_block_height(), height
+        );
+    }
+
+    Ok(status)
+}
+
+// Process the burn commitment index rebuild for a single block height.
+fn process_burn_commitment_index_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    height: u64,
+    finalize: bool,
+) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[BurnIndex] Processing burn commitment index rebuild for height {height}");
+
+    let write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+
+    let status = write_lock.build_burn_commitment_index_for_height(height, finalize)?;
+
+    if finalize || status.is_rebuilt {
+        debug!(
+            target: LOG_TARGET,
+            "[BurnIndex] Finalized burn commitment index rebuild at height {height}"
         );
     }
 
