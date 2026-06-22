@@ -3476,7 +3476,7 @@ fn pick_forced_change_index(
     let meaningful: Vec<usize> = values
         .iter()
         .enumerate()
-        .filter(|(_, v)| **v > min_meaningful)
+        .filter(|(_, v)| **v >= min_meaningful)
         .map(|(i, _)| i)
         .collect();
     if !meaningful.is_empty() {
