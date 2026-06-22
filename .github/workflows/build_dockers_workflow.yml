@@ -51,7 +51,7 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set Matrix
         id: set-matrix
@@ -97,7 +97,7 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup expiration for none releases
         shell: bash
