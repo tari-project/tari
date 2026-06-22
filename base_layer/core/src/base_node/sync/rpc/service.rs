@@ -390,7 +390,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Response::new(header.into()))
     }
 
-    #[instrument(level = "trace", skip(self), err)]
+    #[instrument(level = "trace", skip(self), err(level = "debug"))]
     #[allow(clippy::blocks_in_conditions)]
     async fn find_chain_split(
         &self,
