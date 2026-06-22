@@ -2068,7 +2068,9 @@ impl LMDBDatabase {
                 block_hash.to_hex()
             )));
         }
-        if header.height > 0 {
+        // We make this 1 to circumvent networks thats dont have genesis funds, as they will only have a jmt root from
+        // height 1
+        if header.height > 1 {
             let k = MetadataKey::JMTVersion;
             let current_jmt_version = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
                 Some(MetadataValue::JMTVersion(v)) => v,
