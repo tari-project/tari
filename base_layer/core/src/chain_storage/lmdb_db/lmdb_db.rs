@@ -2571,7 +2571,6 @@ impl LMDBDatabase {
                 write_txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
-                "deleted_txo_hash_to_header_index",
             )?;
         }
 
@@ -2607,7 +2606,6 @@ impl LMDBDatabase {
                     write_txn,
                     &self.deleted_txo_hash_to_header_index,
                     output_hash.as_slice(),
-                    "deleted_txo_hash_to_header_index",
                 )?;
 
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;

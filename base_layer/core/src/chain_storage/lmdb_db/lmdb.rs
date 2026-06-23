@@ -202,20 +202,9 @@ where
     Ok(())
 }
 
-pub fn lmdb_delete_if_exists<K>(
-    txn: &WriteTransaction<'_>,
-    db: &Database,
-    key: &K,
-    table_name: &'static str,
-) -> Result<(), ChainStorageError>
-where
-    K: AsLmdbBytes + ?Sized,
-{
-    if lmdb_exists(txn, db, key)? {
-        txn.access()
-            .del_key(db, key)
-            .or_not_found(table_name, "<unknown>", to_hex(key.as_lmdb_bytes()))?;
-    }
+pub fn lmdb_delete_if_exists<K>(txn: &WriteTransaction<'_>, db: &Database, key: &K) -> Result<(), ChainStorageError>
+where K: AsLmdbBytes + ?Sized {
+    txn.access().del_key(db, key).to_opt()?;
     Ok(())
 }
 
