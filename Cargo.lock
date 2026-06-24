@@ -789,7 +789,7 @@ version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "befbfd072a8e81c02f8c507aefce431fe5e7d051f83d48a23ffc9b9fe5a11799"
 dependencies = [
- "clap 4.5.23",
+ "clap",
  "heck 0.5.0",
  "indexmap 2.13.0",
  "log",
@@ -957,17 +957,6 @@ dependencies = [
  "crypto-common 0.1.6",
  "inout",
  "zeroize",
-]
-
-[[package]]
-name = "clap"
-version = "2.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
-dependencies = [
- "bitflags 1.3.2",
- "textwrap 0.11.0",
- "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1275,7 +1264,7 @@ dependencies = [
  "anes",
  "cast",
  "ciborium",
- "clap 4.5.23",
+ "clap",
  "criterion-plot",
  "itertools 0.13.0",
  "num-traits",
@@ -1490,8 +1479,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16cbb27bc2064274afa3a3d8bc9a0e71333589850573aa632ec4520e4af14d94"
 dependencies = [
  "anyhow",
- "clap 4.5.23",
- "console 0.16.3",
+ "clap",
+ "console 0.16.2",
  "cucumber-codegen",
  "cucumber-expressions",
  "derive_more 2.0.1",
@@ -1990,9 +1979,9 @@ dependencies = [
 
 [[package]]
 name = "diesel"
-version = "2.3.9"
+version = "2.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9940fb8467a0a06312218ed384185cb8536aa10d8ec017d0ce7fad2c1bd882d5"
+checksum = "29fe29a87fb84c631ffb3ba21798c4b1f3a964701ba78f0dce4bf8668562ec88"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -2703,7 +2692,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syn 2.0.108",
- "textwrap 0.16.2",
+ "textwrap",
  "thiserror 2.0.17",
  "typed-builder",
 ]
@@ -2716,15 +2705,14 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
 name = "git2"
-version = "0.20.4"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
+checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
 dependencies = [
  "bitflags 2.11.1",
  "libc",
  "libgit2-sys",
  "log",
- "url",
 ]
 
 [[package]]
@@ -3965,9 +3953,9 @@ dependencies = [
 
 [[package]]
 name = "libgit2-sys"
-version = "0.18.3+1.9.2"
+version = "0.18.5+1.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9b3acc4b91781bb0b3386669d325163746af5f6e4f73e6d2d630e09a35f3487"
+checksum = "005d6ae6eac1912906073e069f7db60b1fa98e052a68227824afe3e3a1c59ca2"
 dependencies = [
  "cc",
  "libc",
@@ -4356,7 +4344,7 @@ dependencies = [
 name = "minotari_app_utilities"
 version = "5.4.0-pre.7"
 dependencies = [
- "clap 4.5.23",
+ "clap",
  "dialoguer 0.10.4",
  "futures 0.3.31",
  "json5",
@@ -4381,7 +4369,7 @@ version = "5.4.0-pre.7"
 dependencies = [
  "anyhow",
  "chrono",
- "clap 4.5.23",
+ "clap",
  "config",
  "console-subscriber",
  "crossterm 0.28.1",
@@ -4471,7 +4459,7 @@ dependencies = [
  "borsh",
  "bytes",
  "chrono",
- "clap 4.5.23",
+ "clap",
  "config",
  "crossterm 0.28.1",
  "dhat",
@@ -4516,7 +4504,7 @@ dependencies = [
  "borsh",
  "bufstream",
  "chrono",
- "clap 4.5.23",
+ "clap",
  "config",
  "crossbeam",
  "crossterm 0.28.1",
@@ -4556,7 +4544,7 @@ dependencies = [
  "borsh",
  "bytes",
  "chrono",
- "clap 4.5.23",
+ "clap",
  "config",
  "console-subscriber",
  "crossterm 0.28.1",
@@ -4639,7 +4627,7 @@ dependencies = [
  "anyhow",
  "argon2 0.6.0-rc.8",
  "chacha20poly1305",
- "clap 4.5.23",
+ "clap",
  "keyring",
  "phc",
  "rand 0.10.1",
@@ -4659,7 +4647,7 @@ version = "5.4.0-pre.7"
 dependencies = [
  "anyhow",
  "bytesize",
- "clap 4.5.23",
+ "clap",
  "csv",
  "env_logger 0.11.9",
  "lmdb-zero",
@@ -5449,12 +5437,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
 name = "path-clean"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5907,27 +5889,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr2"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
-dependencies = [
- "proc-macro2",
- "quote",
-]
-
-[[package]]
-name = "proc-macro-error2"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
-dependencies = [
- "proc-macro-error-attr2",
- "proc-macro2",
- "quote",
 ]
 
 [[package]]
@@ -7022,15 +6983,14 @@ dependencies = [
 
 [[package]]
 name = "serde_valid"
-version = "1.0.5"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b615bed66931a7a9809b273937adc8a402d038b1e509d027fcaf62f084d33d1"
+checksum = "4b441ba4464f0faf811267a3392ff53e2d9a2f8c4f23941b62ec7c452dd80451"
 dependencies = [
  "indexmap 2.13.0",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "num-traits",
  "once_cell",
- "paste",
  "regex",
  "serde",
  "serde_json",
@@ -7042,13 +7002,11 @@ dependencies = [
 
 [[package]]
 name = "serde_valid_derive"
-version = "1.0.5"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa1a5a21ea5aab06d2e6a6b59837d450fb2be9695be97735a711edfbe79ea07"
+checksum = "5cd65e72e4b76575cde962665a131c1c83c2fe1c328c27e2f036a16567fe59af"
 dependencies = [
- "itertools 0.13.0",
- "paste",
- "proc-macro-error2",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "strsim 0.11.1",
@@ -7057,11 +7015,10 @@ dependencies = [
 
 [[package]]
 name = "serde_valid_literal"
-version = "1.0.5"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd07331596ea967dccf9a35bde71ecd757490e09827b938a5c6226c648e3a25e"
+checksum = "3728389b4f730ec97f933664f5db0731f80b64c3b23ff904a5dec5f93f205ce9"
 dependencies = [
- "paste",
  "regex",
 ]
 
@@ -7438,30 +7395,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-name = "structopt"
-version = "0.3.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c6b5c64445ba8094a6ab0c3cd2ad323e07171012d9c98b0b15651daf1787a10"
-dependencies = [
- "clap 2.34.0",
- "lazy_static",
- "structopt-derive",
-]
-
-[[package]]
-name = "structopt-derive"
-version = "0.4.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcb5ae327f9cc13b68763b5749770cb9e048a99bd9dfdfa58d0cf05d5f64afe0"
-dependencies = [
- "heck 0.3.3",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "strum"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7687,7 +7620,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
- "structopt",
  "tari_features",
  "tari_test_utils",
  "tempfile",
@@ -7813,7 +7745,7 @@ dependencies = [
  "chacha20 0.7.3",
  "chacha20poly1305",
  "chrono",
- "clap 4.5.23",
+ "clap",
  "diesel",
  "diesel_migrations",
  "digest 0.10.7",
@@ -8114,7 +8046,7 @@ name = "tari_p2p"
 version = "5.4.0-pre.7"
 dependencies = [
  "anyhow",
- "clap 4.5.23",
+ "clap",
  "config",
  "futures 0.3.31",
  "hickory-proto",
@@ -8355,16 +8287,7 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
-dependencies = [
- "unicode-width 0.1.14",
-]
-
-[[package]]
-name = "textwrap"
-version = "0.16.2"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 dependencies = [

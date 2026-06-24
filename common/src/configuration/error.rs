@@ -3,7 +3,6 @@
 
 use std::fmt;
 
-use structopt::clap::Error as ClapError;
 
 use crate::network_check::NetworkCheckError;
 
@@ -40,18 +39,8 @@ impl fmt::Display for ConfigError {
     }
 }
 
-impl From<ClapError> for ConfigError {
-    fn from(e: ClapError) -> Self {
-        Self {
-            cause: "Failed to process commandline parameters",
-            source: Some(e.to_string()),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use structopt::clap::{Error as ClapError, ErrorKind};
 
     use super::*;
 

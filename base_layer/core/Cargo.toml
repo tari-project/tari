@@ -61,7 +61,7 @@ rand = { workspace = true }
 randomx-rs = { version = "1.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serde_valid = "1.0.5"
+serde_valid = "2"
 sha3 = "0.10"
 sha2 = "0.10"
 strum_macros = "0.22"
