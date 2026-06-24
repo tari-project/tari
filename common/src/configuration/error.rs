@@ -3,7 +3,6 @@
 
 use std::fmt;
 
-
 use crate::network_check::NetworkCheckError;
 
 #[derive(Debug)]
