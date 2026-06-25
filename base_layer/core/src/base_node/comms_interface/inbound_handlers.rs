@@ -22,7 +22,12 @@
 
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
-use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
+use std::{
+    cmp::max,
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use log::*;
 use strum_macros::Display;
@@ -43,7 +48,7 @@ use tari_transaction_components::{
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
 };
 use tari_utilities::hex::Hex;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, watch};
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
@@ -104,6 +109,9 @@ pub struct InboundNodeCommsHandlers<B> {
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
     randomx_factory: RandomXFactory,
+    // Long-lived subscription to the mempool's last-seen block hash. Cloned per template request (cheap, local) so we
+    // can wait for the mempool to catch up without re-subscribing or busy-polling.
+    mempool_last_seen_hash: watch::Receiver<FixedHash>,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -119,6 +127,7 @@ where B: BlockchainBackend + 'static
         connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,
     ) -> Self {
+        let mempool_last_seen_hash = mempool.subscribe_last_seen_hash();
         Self {
             block_event_sender,
             blockchain_db,
@@ -128,6 +137,7 @@ where B: BlockchainBackend + 'static
             outbound_nci,
             connectivity,
             randomx_factory,
+            mempool_last_seen_hash,
         }
     }
 
@@ -273,27 +283,41 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
-                let mut last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                let mut is_mempool_synced = false;
-                let start = Instant::now();
-                // this will wait a max of 150ms by default before returning anyway with a potential broken template
+                let tip_hash = *best_block_header.hash();
                 // We need to ensure the mempool has seen the latest base node height before we can be confident the
-                // template is correct
-                while !is_mempool_synced && start.elapsed().as_millis() < MAX_MEMPOOL_TIMEOUT.into() {
-                    if best_block_header.hash() == &last_seen_hash || last_seen_hash == FixedHash::default() {
-                        is_mempool_synced = true;
-                    } else {
-                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                        last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                    }
-                }
+                // template is correct. Rather than busy-polling the mempool, we subscribe to its `last_seen_hash` and
+                // wait (up to MAX_MEMPOOL_TIMEOUT) for it to report it has processed our tip. A default hash means the
+                // mempool has not processed any block yet, so there is nothing to wait for.
+                let mempool_synced = |seen: &FixedHash| *seen == tip_hash || *seen == FixedHash::default();
+
+                // Clone the long-lived subscription (set up at startup). Cloning marks the new receiver as having seen
+                // the current value, so we read it first and only then wait for the *next* change - an update landing
+                // between the read and the wait cannot be missed.
+                let mut last_seen_rx = self.mempool_last_seen_hash.clone();
+                let is_mempool_synced = if mempool_synced(&last_seen_rx.borrow_and_update()) {
+                    true
+                } else {
+                    let wait_for_sync = async {
+                        // `changed()` only errors once the mempool (sender) is dropped, in which case we stop waiting.
+                        while last_seen_rx.changed().await.is_ok() {
+                            if mempool_synced(&last_seen_rx.borrow_and_update()) {
+                                return true;
+                            }
+                        }
+                        false
+                    };
+                    // On timeout we proceed anyway with a potentially stale template, as before.
+                    tokio::time::timeout(Duration::from_millis(MAX_MEMPOOL_TIMEOUT), wait_for_sync)
+                        .await
+                        .unwrap_or(false)
+                };
 
                 if !is_mempool_synced {
                     warn!(
                         target: LOG_TARGET,
                         "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'. This condition \
                          should auto correct with the next block template request",
-                        last_seen_hash, best_block_header.hash()
+                        *last_seen_rx.borrow(), best_block_header.hash()
                     );
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
@@ -1171,6 +1195,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
+            mempool_last_seen_hash: self.mempool_last_seen_hash.clone(),
         }
     }
 }

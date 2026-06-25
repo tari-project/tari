@@ -26,7 +26,7 @@ use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
-use tokio::task;
+use tokio::{sync::watch, task};
 
 use crate::{
     consensus::BaseNodeConsensusManager,
@@ -49,6 +49,9 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 #[derive(Clone)]
 pub struct Mempool {
     pool_storage: Arc<RwLock<MempoolStorage>>,
+    // Broadcasts the latest `last_seen_hash` every time the mempool processes a block (or reorg). Consumers that need
+    // to wait for the mempool to catch up to a given tip can subscribe instead of busy-polling `get_last_seen_hash`.
+    last_seen_hash_tx: watch::Sender<FixedHash>,
 }
 
 impl Mempool {
@@ -58,9 +61,17 @@ impl Mempool {
         rules: BaseNodeConsensusManager,
         validator: Box<dyn TransactionValidator>,
     ) -> Self {
+        let (last_seen_hash_tx, _) = watch::channel(FixedHash::default());
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
+            last_seen_hash_tx,
         }
+    }
+
+    /// Subscribe to changes of the mempool's `last_seen_hash`. The returned receiver yields the most recent block hash
+    /// the mempool has processed; its initial value is the hash at the time of subscription.
+    pub fn subscribe_last_seen_hash(&self) -> watch::Receiver<FixedHash> {
+        self.last_seen_hash_tx.subscribe()
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
@@ -89,8 +100,15 @@ impl Mempool {
 
     /// Update the Mempool based on the received published block.
     pub async fn process_published_block(&self, published_block: Arc<Block>) -> Result<(), MempoolError> {
-        self.with_write_access(move |storage| storage.process_published_block(&published_block))
-            .await
+        let last_seen_hash = self
+            .with_write_access(move |storage| {
+                storage.process_published_block(&published_block)?;
+                Ok(storage.last_seen_hash)
+            })
+            .await?;
+        // Notify any subscribers (e.g. new-block-template requests) that the mempool has advanced.
+        self.last_seen_hash_tx.send_replace(last_seen_hash);
+        Ok(())
     }
 
     /// Update the Mempool by clearing transactions for a block that failed to validate.
@@ -106,8 +124,14 @@ impl Mempool {
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
     ) -> Result<(), MempoolError> {
-        self.with_write_access(move |storage| storage.process_reorg(&removed_blocks, &new_blocks))
-            .await
+        let last_seen_hash = self
+            .with_write_access(move |storage| {
+                storage.process_reorg(&removed_blocks, &new_blocks)?;
+                Ok(storage.last_seen_hash)
+            })
+            .await?;
+        self.last_seen_hash_tx.send_replace(last_seen_hash);
+        Ok(())
     }
 
     /// After a sync event, we can move all orphan transactions to the unconfirmed pool after validation
