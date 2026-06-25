@@ -83,11 +83,11 @@ impl ScannedBlockSql {
         //
         // `scanned_blocks` is keyed on `header_hash`, not `height`, which makes both of those cases
         // misbehave:
-        //   - A plain `insert_into` of a re-delivered (identical) header hash fails with
-        //     `UNIQUE constraint failed: scanned_blocks.header_hash`, aborting the whole scan round.
-        //   - A `replace_into` on the hash silences that case, but when the new block at the height
-        //     has a *different* hash it inserts a second row, leaving a stale duplicate-height entry
-        //     behind that desyncs last-scanned-block detection and the sparse-pruning schedule.
+        //   - A plain `insert_into` of a re-delivered (identical) header hash fails with `UNIQUE constraint failed:
+        //     scanned_blocks.header_hash`, aborting the whole scan round.
+        //   - A `replace_into` on the hash silences that case, but when the new block at the height has a *different*
+        //     hash it inserts a second row, leaving a stale duplicate-height entry behind that desyncs
+        //     last-scanned-block detection and the sparse-pruning schedule.
         //
         // Delete any existing row at this height first, then insert, in a single transaction so the
         // table always holds exactly one row per height regardless of which case we hit. `replace_into`
@@ -95,9 +95,7 @@ impl ScannedBlockSql {
         // never legitimately appear at another height, but this guarantees we never throw here.
         conn.transaction::<_, WalletStorageError, _>(|conn| {
             diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.eq(self.height))).execute(conn)?;
-            diesel::replace_into(scanned_blocks::table)
-                .values(self)
-                .execute(conn)?;
+            diesel::replace_into(scanned_blocks::table).values(self).execute(conn)?;
             Ok(())
         })
     }
