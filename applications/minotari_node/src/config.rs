@@ -157,6 +157,9 @@ pub struct BaseNodeConfig {
     pub state_machine: BaseNodeStateMachineConfig,
     /// Obscure GRPC error responses
     pub report_grpc_error: bool,
+    /// Enable the Tari Pulse service, which periodically checks (via DNS checkpoints) whether the node is still in
+    /// sync with the network and optionally probes seed-peer liveness. Set to `false` to disable the service entirely.
+    pub tari_pulse_enabled: bool,
     /// Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_interval: Duration,
@@ -246,6 +249,7 @@ impl Default for BaseNodeConfig {
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             report_grpc_error: false,
+            tari_pulse_enabled: true,
             tari_pulse_interval: Duration::from_secs(120),
             tari_pulse_health_check: None,
             http_wallet_query_service: Default::default(),
