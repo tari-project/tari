@@ -46,7 +46,7 @@ primitive-types = { version = "0.12", features = ["serde"] }
 log = { workspace = true }
 rand = { workspace = true }
 serde_repr = "0.1.8"
-serde_valid = "1.0.5"
+serde_valid = "2"
 strum_macros = "0.22"
 tari_crypto = { workspace = true, features = ["borsh"] }
 
