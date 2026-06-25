@@ -96,7 +96,7 @@ impl ScannedBlockSql {
         conn.transaction::<_, WalletStorageError, _>(|conn| {
             diesel::delete(scanned_blocks::table.filter(scanned_blocks::height.eq(self.height))).execute(conn)?;
             diesel::replace_into(scanned_blocks::table)
-                .values(self.clone())
+                .values(self)
                 .execute(conn)?;
             Ok(())
         })
@@ -186,6 +186,7 @@ impl TryFrom<ScannedBlockSql> for ScannedBlock {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use diesel::SqliteConnection;
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 
