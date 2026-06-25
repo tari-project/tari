@@ -619,18 +619,18 @@ where
         let view_key = self.key_manager.get_view_key();
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
-                .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
+                .map_err(|e| anyhow!("Not a valid commitment: {}", e))?;
 
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Received output use the DH of view key and sender offset.
             let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
-                .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
+                .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e))?;
             let shared_secret = self
                 .key_manager
                 .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
             let recovery_key = public_key_to_output_encryption_key(&shared_secret)
-                .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
+                .map_err(|e| anyhow!("Could not hash key :{}", e))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
                 .ok()
                 .is_some()
