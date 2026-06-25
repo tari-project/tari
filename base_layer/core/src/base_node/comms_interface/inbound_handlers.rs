@@ -64,7 +64,7 @@ use crate::{
     },
     chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
-    mempool::Mempool,
+    mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
@@ -109,9 +109,9 @@ pub struct InboundNodeCommsHandlers<B> {
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
     randomx_factory: RandomXFactory,
-    // Long-lived subscription to the mempool's last-seen block hash. Cloned per template request (cheap, local) so we
-    // can wait for the mempool to catch up without re-subscribing or busy-polling.
-    mempool_last_seen_hash: watch::Receiver<FixedHash>,
+    // Long-lived subscription to the mempool's last-seen block (hash + height). Cloned per template request (cheap,
+    // local) so we can wait for the mempool to catch up without re-subscribing or busy-polling.
+    mempool_last_seen: watch::Receiver<MempoolLastSeen>,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -127,7 +127,7 @@ where B: BlockchainBackend + 'static
         connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,
     ) -> Self {
-        let mempool_last_seen_hash = mempool.subscribe_last_seen_hash();
+        let mempool_last_seen = mempool.subscribe_last_seen();
         Self {
             block_event_sender,
             blockchain_db,
@@ -137,7 +137,7 @@ where B: BlockchainBackend + 'static
             outbound_nci,
             connectivity,
             randomx_factory,
-            mempool_last_seen_hash,
+            mempool_last_seen,
         }
     }
 
@@ -282,42 +282,69 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
-                let best_block_header = self.blockchain_db.fetch_tip_header().await?;
-                let tip_hash = *best_block_header.hash();
-                // We need to ensure the mempool has seen the latest base node height before we can be confident the
-                // template is correct. Rather than busy-polling the mempool, we subscribe to its `last_seen_hash` and
-                // wait (up to MAX_MEMPOOL_TIMEOUT) for it to report it has processed our tip. A default hash means the
-                // mempool has not processed any block yet, so there is nothing to wait for.
-                let mempool_synced = |seen: &FixedHash| *seen == tip_hash || *seen == FixedHash::default();
-
+                // We need the mempool to have seen the latest base node tip before we can be confident the template is
+                // correct. Rather than busy-polling the mempool, we wait on its last-seen subscription. If the mempool
+                // advances *past* our captured tip (a newer block was added while we were preparing), the tip - and any
+                // template built on it - is stale, so we re-fetch a fresher tip and try again. The whole operation is
+                // bounded by a single overall deadline, after which we proceed with whatever tip we have.
+                //
                 // Clone the long-lived subscription (set up at startup). Cloning marks the new receiver as having seen
                 // the current value, so we read it first and only then wait for the *next* change - an update landing
                 // between the read and the wait cannot be missed.
-                let mut last_seen_rx = self.mempool_last_seen_hash.clone();
-                let is_mempool_synced = if mempool_synced(&last_seen_rx.borrow_and_update()) {
-                    true
-                } else {
-                    let wait_for_sync = async {
-                        // `changed()` only errors once the mempool (sender) is dropped, in which case we stop waiting.
-                        while last_seen_rx.changed().await.is_ok() {
-                            if mempool_synced(&last_seen_rx.borrow_and_update()) {
-                                return true;
-                            }
-                        }
-                        false
-                    };
-                    // On timeout we proceed anyway with a potentially stale template, as before.
-                    tokio::time::timeout(Duration::from_millis(MAX_MEMPOOL_TIMEOUT), wait_for_sync)
-                        .await
-                        .unwrap_or(false)
-                };
+                let mut last_seen_rx = self.mempool_last_seen.clone();
+                let deadline = Instant::now() + Duration::from_millis(MAX_MEMPOOL_TIMEOUT);
+
+                let best_block_header;
+                let is_mempool_synced;
+                // The tip height evaluated on the previous iteration; lets us tell whether a re-fetch actually advanced
+                // the tip, so we only re-fetch on genuine progress (and wait otherwise) instead of spinning.
+                let mut prev_tip_height: Option<u64> = None;
+                loop {
+                    let header = self.blockchain_db.fetch_tip_header().await?;
+                    let tip_hash = *header.hash();
+                    let tip_height = header.height();
+                    // MempoolLastSeen is Copy, so this releases the receiver borrow immediately (never held over .await).
+                    let seen = *last_seen_rx.borrow_and_update();
+
+                    // A default hash means the mempool has not processed any block yet, so there is nothing to wait for.
+                    if seen.hash == tip_hash || seen.hash == FixedHash::default() {
+                        best_block_header = header;
+                        is_mempool_synced = true;
+                        break;
+                    }
+
+                    // Mempool is ahead of our tip: a newer block landed. Re-fetch a fresher tip, but only if the last
+                    // re-fetch made progress - otherwise fall through and wait for the next mempool update so we don't
+                    // spin re-fetching an unchanged tip.
+                    if seen.height > tip_height && prev_tip_height != Some(tip_height) && Instant::now() < deadline {
+                        prev_tip_height = Some(tip_height);
+                        continue;
+                    }
+
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        best_block_header = header;
+                        is_mempool_synced = false;
+                        break;
+                    }
+                    prev_tip_height = Some(tip_height);
+                    // `changed()` errors only once the mempool (sender) is dropped, in which case we stop waiting.
+                    match tokio::time::timeout(remaining, last_seen_rx.changed()).await {
+                        Ok(Ok(())) => continue,
+                        Ok(Err(_)) | Err(_) => {
+                            best_block_header = header;
+                            is_mempool_synced = false;
+                            break;
+                        },
+                    }
+                }
 
                 if !is_mempool_synced {
                     warn!(
                         target: LOG_TARGET,
                         "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'. This condition \
                          should auto correct with the next block template request",
-                        *last_seen_rx.borrow(), best_block_header.hash()
+                        last_seen_rx.borrow().hash, best_block_header.hash()
                     );
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
@@ -1195,7 +1222,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
-            mempool_last_seen_hash: self.mempool_last_seen_hash.clone(),
+            mempool_last_seen: self.mempool_last_seen.clone(),
         }
     }
 }

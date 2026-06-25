@@ -43,15 +43,23 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
 
+/// A snapshot of the last block the mempool has processed. Broadcast over a watch channel so consumers can wait for
+/// the mempool to reach a given tip - and detect when the mempool has moved *past* it - without busy-polling.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MempoolLastSeen {
+    pub hash: FixedHash,
+    pub height: u64,
+}
+
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions that have not yet been included in a block, and
 /// transactions that have recently been included in a block.
 #[derive(Clone)]
 pub struct Mempool {
     pool_storage: Arc<RwLock<MempoolStorage>>,
-    // Broadcasts the latest `last_seen_hash` every time the mempool processes a block (or reorg). Consumers that need
-    // to wait for the mempool to catch up to a given tip can subscribe instead of busy-polling `get_last_seen_hash`.
-    last_seen_hash_tx: watch::Sender<FixedHash>,
+    // Broadcasts the last-seen block (hash + height) every time the mempool processes a block (or reorg). Consumers
+    // that need to wait for the mempool to catch up to a given tip can subscribe instead of busy-polling.
+    last_seen_tx: watch::Sender<MempoolLastSeen>,
 }
 
 impl Mempool {
@@ -61,17 +69,17 @@ impl Mempool {
         rules: BaseNodeConsensusManager,
         validator: Box<dyn TransactionValidator>,
     ) -> Self {
-        let (last_seen_hash_tx, _) = watch::channel(FixedHash::default());
+        let (last_seen_tx, _) = watch::channel(MempoolLastSeen::default());
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
-            last_seen_hash_tx,
+            last_seen_tx,
         }
     }
 
-    /// Subscribe to changes of the mempool's `last_seen_hash`. The returned receiver yields the most recent block hash
-    /// the mempool has processed; its initial value is the hash at the time of subscription.
-    pub fn subscribe_last_seen_hash(&self) -> watch::Receiver<FixedHash> {
-        self.last_seen_hash_tx.subscribe()
+    /// Subscribe to changes of the mempool's last-seen block. The returned receiver yields the most recent block
+    /// (hash + height) the mempool has processed; its initial value is the state at the time of subscription.
+    pub fn subscribe_last_seen(&self) -> watch::Receiver<MempoolLastSeen> {
+        self.last_seen_tx.subscribe()
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
@@ -100,14 +108,17 @@ impl Mempool {
 
     /// Update the Mempool based on the received published block.
     pub async fn process_published_block(&self, published_block: Arc<Block>) -> Result<(), MempoolError> {
-        let last_seen_hash = self
+        let last_seen = self
             .with_write_access(move |storage| {
                 storage.process_published_block(&published_block)?;
-                Ok(storage.last_seen_hash)
+                Ok(MempoolLastSeen {
+                    hash: storage.last_seen_hash,
+                    height: storage.last_seen_height,
+                })
             })
             .await?;
         // Notify any subscribers (e.g. new-block-template requests) that the mempool has advanced.
-        self.last_seen_hash_tx.send_replace(last_seen_hash);
+        self.last_seen_tx.send_replace(last_seen);
         Ok(())
     }
 
@@ -124,13 +135,16 @@ impl Mempool {
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
     ) -> Result<(), MempoolError> {
-        let last_seen_hash = self
+        let last_seen = self
             .with_write_access(move |storage| {
                 storage.process_reorg(&removed_blocks, &new_blocks)?;
-                Ok(storage.last_seen_hash)
+                Ok(MempoolLastSeen {
+                    hash: storage.last_seen_hash,
+                    height: storage.last_seen_height,
+                })
             })
             .await?;
-        self.last_seen_hash_tx.send_replace(last_seen_hash);
+        self.last_seen_tx.send_replace(last_seen);
         Ok(())
     }
 

@@ -48,7 +48,7 @@ mod unconfirmed_pool;
 // Public re-exports
 
 pub use error::MempoolError;
-pub use mempool::Mempool;
+pub use mempool::{Mempool, MempoolLastSeen};
 use tari_transaction_components::rpc::models::FeePerGramStat;
 
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
