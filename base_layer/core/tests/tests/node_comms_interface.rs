@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use tari_common::configuration::Network;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
@@ -395,8 +395,24 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
     let randomx_factory = RandomXFactory::new(2);
 
     // Advance the chain tip to height 2.
-    let (block1, _) = append_block(&store, &block0, vec![], &consensus_manager, Difficulty::min(), &key_manager).unwrap();
-    let (block2, _) = append_block(&store, &block1, vec![], &consensus_manager, Difficulty::min(), &key_manager).unwrap();
+    let (block1, _) = append_block(
+        &store,
+        &block0,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
+    let (block2, _) = append_block(
+        &store,
+        &block1,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
 
     // Put the mempool behind the tip (it has only seen the genesis block) so the handler has to wait. A default
     // last-seen hash would be treated as "in sync" and skip the wait entirely.
@@ -426,10 +442,22 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
             .await
     });
 
-    // Give the handler time to reach the wait, then advance the chain to height 3 and notify the mempool of the new
-    // tip. The handler should wake, re-fetch the now-height-3 tip and build the template on it.
-    tokio::time::sleep(Duration::from_millis(25)).await;
-    let (block3, _) = append_block(&store, &block2, vec![], &consensus_manager, Difficulty::min(), &key_manager).unwrap();
+    // Nudge the spawned handler so it reaches its wait before we advance the chain (best-effort, for coverage). The
+    // assertion below does not depend on winning this race: the chain is advanced to height 3 *before* the mempool is
+    // notified, so the mempool can never be observed ahead of a stale tip. Whatever the scheduling, once both the store
+    // and mempool are at height 3 the handler builds the template on height 3 (-> template height 4). Notifying right
+    // away (no fixed sleep) also gives the handler's internal timeout maximal slack, so it cannot flake on a loaded CI
+    // runner where `retries = 0`.
+    tokio::task::yield_now().await;
+    let (block3, _) = append_block(
+        &store,
+        &block2,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
     mempool
         .process_published_block(Arc::new(block3.block().clone()))
         .await

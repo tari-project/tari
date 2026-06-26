@@ -303,10 +303,12 @@ where B: BlockchainBackend + 'static
                     let header = self.blockchain_db.fetch_tip_header().await?;
                     let tip_hash = *header.hash();
                     let tip_height = header.height();
-                    // MempoolLastSeen is Copy, so this releases the receiver borrow immediately (never held over .await).
+                    // MempoolLastSeen is Copy, so this releases the receiver borrow immediately (never held over
+                    // .await).
                     let seen = *last_seen_rx.borrow_and_update();
 
-                    // A default hash means the mempool has not processed any block yet, so there is nothing to wait for.
+                    // A default hash means the mempool has not processed any block yet, so there is nothing to wait
+                    // for.
                     if seen.hash == tip_hash || seen.hash == FixedHash::default() {
                         best_block_header = header;
                         is_mempool_synced = true;
