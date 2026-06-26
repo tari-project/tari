@@ -112,6 +112,9 @@ pub struct InboundNodeCommsHandlers<B> {
     // Long-lived subscription to the mempool's last-seen block (hash + height). Cloned per template request (cheap,
     // local) so we can wait for the mempool to catch up without re-subscribing or busy-polling.
     mempool_last_seen: watch::Receiver<MempoolLastSeen>,
+    // Maximum time to wait for the mempool to catch up to the chain tip when building a new block template. Defaults
+    // to MAX_MEMPOOL_TIMEOUT; overridable (mainly for tests) via `with_mempool_sync_timeout`.
+    mempool_sync_timeout: Duration,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -138,7 +141,16 @@ where B: BlockchainBackend + 'static
             connectivity,
             randomx_factory,
             mempool_last_seen,
+            mempool_sync_timeout: Duration::from_millis(MAX_MEMPOOL_TIMEOUT),
         }
+    }
+
+    /// Override how long `GetNewBlockTemplate` will wait for the mempool to catch up to the chain tip. The production
+    /// default (`MAX_MEMPOOL_TIMEOUT`) is intentionally short; tests use this to wait deterministically without racing
+    /// that deadline.
+    pub fn with_mempool_sync_timeout(mut self, timeout: Duration) -> Self {
+        self.mempool_sync_timeout = timeout;
+        self
     }
 
     /// Handle inbound node comms requests from remote nodes and local services.
@@ -292,7 +304,7 @@ where B: BlockchainBackend + 'static
                 // the current value, so we read it first and only then wait for the *next* change - an update landing
                 // between the read and the wait cannot be missed.
                 let mut last_seen_rx = self.mempool_last_seen.clone();
-                let deadline = Instant::now() + Duration::from_millis(MAX_MEMPOOL_TIMEOUT);
+                let deadline = Instant::now() + self.mempool_sync_timeout;
 
                 let best_block_header;
                 let is_mempool_synced;
@@ -1225,6 +1237,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
             mempool_last_seen: self.mempool_last_seen.clone(),
+            mempool_sync_timeout: self.mempool_sync_timeout,
         }
     }
 }

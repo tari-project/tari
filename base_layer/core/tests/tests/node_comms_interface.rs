@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use tari_common::configuration::Network;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
@@ -422,7 +422,9 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
         .unwrap();
 
     // `mempool` is cloned into the handler; the original is retained to drive it from the test. Both share the same
-    // underlying storage and last-seen broadcast channel.
+    // underlying storage and last-seen broadcast channel. The mempool-sync timeout is raised well above the production
+    // default so the test waits for the mempool deterministically instead of racing the short production deadline (the
+    // cause of CI flakes - the handler must not give up and build on the stale tip before the test advances the chain).
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -431,7 +433,8 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
         outbound_nci,
         connectivity,
         randomx_factory,
-    );
+    )
+    .with_mempool_sync_timeout(Duration::from_secs(60));
 
     let handle = tokio::spawn(async move {
         inbound_nch
@@ -442,12 +445,10 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
             .await
     });
 
-    // Nudge the spawned handler so it reaches its wait before we advance the chain (best-effort, for coverage). The
-    // assertion below does not depend on winning this race: the chain is advanced to height 3 *before* the mempool is
-    // notified, so the mempool can never be observed ahead of a stale tip. Whatever the scheduling, once both the store
-    // and mempool are at height 3 the handler builds the template on height 3 (-> template height 4). Notifying right
-    // away (no fixed sleep) also gives the handler's internal timeout maximal slack, so it cannot flake on a loaded CI
-    // runner where `retries = 0`.
+    // Advance the chain to height 3 and notify the mempool of the new tip. The chain is advanced *before* the mempool
+    // is notified, so the mempool can never be observed ahead of a stale tip. With the generous sync timeout above, the
+    // handler reliably waits for this notification (or sees the advanced state on its first read), then builds the
+    // template on the height-3 tip regardless of scheduling - no dependence on hitting a narrow timing window.
     tokio::task::yield_now().await;
     let (block3, _) = append_block(
         &store,
