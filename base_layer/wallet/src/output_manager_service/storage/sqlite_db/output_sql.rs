@@ -281,29 +281,11 @@ impl OutputSql {
         query = match selection_criteria.ordering {
             UtxoSelectionOrdering::SmallestFirst => query.then_order_by(outputs::value.asc()),
             UtxoSelectionOrdering::LargestFirst => query.then_order_by(outputs::value.desc()),
-            UtxoSelectionOrdering::Default => {
-                // NOTE: keeping filtering by `script_lock_height` and `maturity` for all modes
-                // lets get the max value for all utxos
-                let max: Option<i64> = outputs::table
-                    .filter(outputs::status.eq(OutputStatus::Unspent as i32))
-                    .filter(outputs::script_lock_height.le(i64_tip_height))
-                    .filter(outputs::maturity.le(i64_tip_height))
-                    // make sure we account for i64 wrap around to neg
-                    .filter(outputs::script_lock_height.ge(0))
-                    .filter(outputs::maturity.ge(0))
-                    .order(outputs::value.desc())
-                    .select(outputs::value)
-                    .first(conn)
-                    .optional()?;
-
-                match max {
-                    // Want to reduce the number of inputs to reduce fees
-                    Some(max) if amount > max as u64 => query.then_order_by(outputs::value.desc()),
-
-                    // Use the smaller utxos to make up this transaction.
-                    _ => query.then_order_by(outputs::value.asc()),
-                }
-            },
+            // Always fetch the largest UTXOs first. The result set is capped at `TRANSACTION_INPUTS_LIMIT`, so ordering
+            // smallest-first could drop large spendable outputs from the candidate set even though they are counted in
+            // the wallet balance - causing spurious "not enough funds" errors. Largest-first also keeps the input count
+            // (and therefore fees) low. Branch-and-bound still re-sorts internally to find the optimal selection.
+            UtxoSelectionOrdering::Default => query.then_order_by(outputs::value.desc()),
         };
 
         Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)

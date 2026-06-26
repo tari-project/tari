@@ -543,8 +543,12 @@ mod tests {
 
     #[test]
     fn large_input_set() {
+        large_input(1000);
+    }
+
+    fn large_input(num: usize) {
         let mut utxos = Vec::new();
-        for _ in 0..1000 {
+        for _ in 0..num {
             let value: u64 = rand::rng().random_range(500..1500);
             utxos.push(MicroMinotari(value));
         }
@@ -553,6 +557,27 @@ mod tests {
         let result = selector.search().unwrap();
         assert!(result.current_value >= 500000.into());
         assert!(result.selected_utxos.len() < 500);
+    }
+
+    #[ignore]
+    #[test]
+    fn speed_bench() {
+        use std::time::Instant;
+        let test_cases = [1000, 4000, 8000, 12000, 20000, 40000];
+        for case in test_cases {
+            let mut total_duration = 0;
+            for _i in 0..200 {
+                let start = Instant::now();
+                large_input(case);
+                let duration = start.elapsed().as_micros();
+                total_duration += duration;
+            }
+            println!(
+                "Average duration over 200 runs: {} us for case {}",
+                total_duration / 200,
+                case
+            );
+        }
     }
 
     #[test]
@@ -974,20 +999,6 @@ mod tests {
         let selector = BranchAndBoundUtxoSelector::new(utxos.clone(), params, default_params());
         let result = selector.search().unwrap();
         assert_eq!(result.selected_utxos[0], MicroMinotari(100));
-    }
-
-    #[ignore]
-    #[test]
-    fn speed_bench() {
-        use std::time::Instant;
-        let mut total_duration = 0;
-        for _i in 0..1000 {
-            let start = Instant::now();
-            large_input_set();
-            let duration = start.elapsed().as_millis();
-            total_duration += duration;
-        }
-        println!("Average duration over 1000 runs: {} ms", total_duration / 1000);
     }
 
     // Tests for multi-criteria comparison (waste, current_value, final_target)

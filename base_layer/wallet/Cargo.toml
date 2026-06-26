@@ -52,7 +52,7 @@ borsh = { workspace = true }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
-diesel = { version = "2.3.8", features = [
+diesel = { version = "2.3.10", features = [
     "sqlite",
     "serde_json",
     "chrono",

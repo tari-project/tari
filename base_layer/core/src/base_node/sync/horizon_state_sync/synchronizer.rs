@@ -877,6 +877,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     HorizonSyncError::IncorrectResponse(format!("Peer sent invalid mined header: {}", e))
                 })?;
                 last_mined_header = Some(output_header_hash);
+
+                // A payload-less response is the stream terminator: it carries the tranche-end header hash
+                // with no TXO so completeness is verified explicitly rather than inferred from the last
+                // data-bearing message (the final block(s) of a tranche may legitimately stream no TXOs).
+                let proto_output = match res.txo {
+                    Some(proto_output) => proto_output,
+                    None => break,
+                };
+
                 if output_header_hash != current_header_hash {
                     current_header = self
                         .db()
@@ -898,9 +907,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                 }
 
-                let proto_output = res.txo.ok_or_else(|| {
-                    HorizonSyncError::IncorrectResponse("Peer sent no transaction output data".into())
-                })?;
                 match proto_output {
                     Txo::Output(output) => {
                         if current_header.height == 0 {

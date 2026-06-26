@@ -166,6 +166,10 @@ where B: BlockchainBackend + 'static
         }
 
         let start_header = current_header.clone();
+        // Tracks whether the stream walked all the way to `end_header`. Only on a natural completion
+        // do we emit the terminator below; an early break (peer left, send failed) must not, so that
+        // a truncated stream is not mistaken for a complete one by the consumer.
+        let mut reached_end = false;
         loop {
             let timer = Instant::now();
             let current_header_hash = current_header.hash();
@@ -309,6 +313,7 @@ where B: BlockchainBackend + 'static
             );
 
             if current_header.height + 1 > end_header.height {
+                reached_end = true;
                 break;
             }
 
@@ -323,6 +328,28 @@ where B: BlockchainBackend + 'static
                         current_header.height + 1
                     ))
                 })?;
+        }
+
+        // Always send a final terminator response tagged with the end header. It carries no TXO, so the
+        // consumer can verify the stream reached the requested end even when the final block(s) stream no
+        // outputs (e.g. an empty block, or a coinbase that was later spent and pruned on this node). Without
+        // it, the consumer would infer completeness from the last data-bearing message, which may belong to
+        // an earlier block.
+        if reached_end {
+            let end_header_hash = end_header.hash();
+            if tx
+                .send(Ok(SyncUtxosResponse {
+                    txo: None,
+                    mined_header: end_header_hash.to_vec(),
+                }))
+                .await
+                .is_err()
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' exited TXO sync session before terminator could be sent", self.peer_node_id
+                );
+            }
         }
 
         debug!(

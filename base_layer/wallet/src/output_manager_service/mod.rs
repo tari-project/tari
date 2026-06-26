@@ -48,6 +48,7 @@ use tari_transaction_components::{
     consensus::NetworkConsensus,
     crypto_factories::CryptoFactories,
     key_manager::SecretTransactionKeyManagerInterface,
+    transaction_components::MAX_TRANSACTION_INPUTS,
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
@@ -65,9 +66,12 @@ use crate::{
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
-/// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
-/// that a single comms message can hold.
-pub const TRANSACTION_INPUTS_LIMIT: u32 = 4000;
+/// The maximum number of transaction inputs that can be created in a single transaction. This is kept in sync with the
+/// consensus input limit ([`MAX_TRANSACTION_INPUTS`]) so that UTXO selection can consider every output a transaction is
+/// allowed to spend; capping it lower causes spendable outputs to be hidden from selection while still counted in the
+/// wallet balance.
+#[allow(clippy::cast_possible_truncation)]
+pub const TRANSACTION_INPUTS_LIMIT: u32 = MAX_TRANSACTION_INPUTS as u32;
 /// The maximum number of transaction outputs that can be created in a single transaction, which must be comfortably
 /// less than what can fit into one block.
 pub const TRANSACTION_OUTPUTS_LIMIT: usize = 500;

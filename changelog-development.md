@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.7](https://github.com/tari-project/tari/compare/v5.4.0-pre.6...v5.4.0-pre.7) (2026-06-24)
+
+
+### Bug Fixes
+
+* update wallet utxo selection ([#7895](https://github.com/tari-project/tari/issues/7895)) ([6c2937c](https://github.com/tari-project/tari/commit/6c2937cb78365a20a5243fcd469bfd7d7b351caf))
+
+## [5.4.0-pre.6](https://github.com/tari-project/tari/compare/v5.4.0-pre.5...v5.4.0-pre.6) (2026-06-22)
+
+
+### Features
+
+* change wallet output selection ([#7889](https://github.com/tari-project/tari/issues/7889)) ([401093a](https://github.com/tari-project/tari/commit/401093ac031b0ad7d7bab8d350a7f6631f50b050))
+* harden block add ([#7888](https://github.com/tari-project/tari/issues/7888)) ([9125a95](https://github.com/tari-project/tari/commit/9125a9500dc4ae3a1b512fc575a658db894d40f5))
+
+
+### Bug Fixes
+
+* diff check ([#7890](https://github.com/tari-project/tari/issues/7890)) ([0741da5](https://github.com/tari-project/tari/commit/0741da50efbbd830f2e724ec246ff720f8b064c8))
+
 ## [5.4.0-pre.5](https://github.com/tari-project/tari/compare/v5.4.0-pre.4...v5.4.0-pre.5) (2026-06-15)
 
 

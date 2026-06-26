@@ -165,6 +165,7 @@ event_channel_size = 3500
 # Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
 # If you set it to zero, the revalidation will be on every wallet rerun. Default is 3 days.
 #num_of_seconds_to_revalidate_invalid_utxos = 259200
+#force_change_output = true
 
 
 [wallet.base_node]

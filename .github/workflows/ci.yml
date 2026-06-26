@@ -40,7 +40,7 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -101,7 +101,7 @@ jobs:
       DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10"
     steps:
       - name: checkout tari
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: ledger installer python tests
         shell: bash
@@ -126,7 +126,7 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -195,7 +195,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Cache cargo files and outputs
         if: startsWith(runner.environment,'github-hosted')
         uses: Swatinem/rust-cache@v2
@@ -276,7 +276,7 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: install ripgrep
         run: |
           #wget https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb.sha256
@@ -308,7 +308,7 @@ jobs:
       RUST_LOG: debug
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

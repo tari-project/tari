@@ -155,7 +155,7 @@ pub async fn create_network_with_multiple_nodes(
     // `peers.db` under this path; if the `TempDir` drops when this function returns, SQLite's
     // background journal/WAL writes fail with "no such table: peers" / "disk I/O error" and the
     // entire sync stack collapses with `NoMoreSyncPeers`. The OS cleans `/tmp` between runs.
-    let temp_dir = tempdir().unwrap().into_path();
+    let temp_dir = tempdir().unwrap().keep();
     let key_manager = KeyManager::new_random().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager);
