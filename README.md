@@ -239,7 +239,7 @@ services:
     image: quay.io/tarilabs/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
-      - ./data:/root/.tari
+      - ./data:/var/tari
 # These 2 params are required for an interactive docker-compose session
     stdin_open: true
     tty: true
@@ -248,6 +248,9 @@ services:
     ports:
       - "18142:18142"
 ```
+
+The Docker image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists
+the node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
 
 Then run `docker-compose up -d` to start your docker service.
 
