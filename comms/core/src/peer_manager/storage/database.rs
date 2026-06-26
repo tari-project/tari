@@ -1138,10 +1138,14 @@ impl PeerDatabaseSql {
             // random draw, so it is more likely to be served; a stale peer needs a small draw to compete. NULL
             // `last_seen` is treated as maximally old so never-seen rows sort last. `RANDOM()` returns a signed
             // 64-bit integer, so `RANDOM() / 2^64` is in (-0.5, 0.5) and `+ 0.5` shifts it to (0, 1).
+            // The age is clamped to >= 0 with `max(0.0, ...)`: a future-dated `last_seen` (clock skew or a peer
+            // intentionally claiming a future timestamp) would otherwise produce a negative age and hence a negative
+            // score that always sorts first, letting such peers bypass the weighted-random selection. Clamping treats
+            // any future date as "brand new" instead.
             query = query
                 .order_by(diesel::dsl::sql::<diesel::sql_types::Double>(
-                    "(julianday('now') - julianday(COALESCE(multi_addresses.last_seen, '1970-01-01 00:00:00'))) * \
-                     (0.5 + RANDOM() / 18446744073709551616.0)",
+                    "max(0.0, julianday('now') - julianday(COALESCE(multi_addresses.last_seen, '1970-01-01 \
+                     00:00:00'))) * (0.5 + RANDOM() / 18446744073709551616.0)",
                 ))
                 .limit(i64::try_from(n).unwrap_or(i64::MAX));
         }
