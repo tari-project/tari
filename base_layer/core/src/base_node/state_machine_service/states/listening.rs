@@ -116,17 +116,13 @@ impl ListeningInfo {
 struct ChainStatusLogState {
     local_height: u64,
     local_accumulated_difficulty: U512,
-    network_height: u64,
-    network_accumulated_difficulty: U512,
 }
 
 impl ChainStatusLogState {
-    fn new(local: &ChainMetadata, network: &ChainMetadata) -> Self {
+    fn new(local: &ChainMetadata) -> Self {
         Self {
             local_height: local.best_block_height(),
             local_accumulated_difficulty: local.accumulated_difficulty(),
-            network_height: network.best_block_height(),
-            network_accumulated_difficulty: network.accumulated_difficulty(),
         }
     }
 }
@@ -164,8 +160,8 @@ impl Listening {
         )));
     }
 
-    fn should_log_chain_status_at_debug(&mut self, local: &ChainMetadata, network: &ChainMetadata) -> bool {
-        let log_state = ChainStatusLogState::new(local, network);
+    fn should_log_chain_status_at_debug(&mut self, local: &ChainMetadata) -> bool {
+        let log_state = ChainStatusLogState::new(local);
         if self.last_chain_status_log == Some(log_state) {
             return false;
         }
@@ -176,7 +172,7 @@ impl Listening {
 
     fn log_current_chain_status(&mut self, local: &ChainMetadata, network: &PeerChainMetadata) {
         let network_metadata = network.claimed_chain_metadata();
-        let level = if self.should_log_chain_status_at_debug(local, network_metadata) {
+        let level = if self.should_log_chain_status_at_debug(local) {
             Level::Debug
         } else {
             Level::Trace
@@ -634,7 +630,7 @@ mod test {
     }
 
     #[test]
-    fn test_chain_status_debug_log_is_deduplicated_by_tip() {
+    fn test_chain_status_debug_log_is_deduplicated_by_local_tip() {
         const NETWORK_TIP_HEIGHT: u64 = 5000;
         let block_hash = FixedHash::from([
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
@@ -645,8 +641,8 @@ mod test {
         let next_metadata = ChainMetadata::new(NETWORK_TIP_HEIGHT + 1, block_hash, 0, 0, U512::from(10001), 0).unwrap();
         let mut listening = Listening::new();
 
-        assert!(listening.should_log_chain_status_at_debug(&metadata, &metadata));
-        assert!(!listening.should_log_chain_status_at_debug(&metadata, &metadata));
-        assert!(listening.should_log_chain_status_at_debug(&metadata, &next_metadata));
+        assert!(listening.should_log_chain_status_at_debug(&metadata));
+        assert!(!listening.should_log_chain_status_at_debug(&metadata));
+        assert!(listening.should_log_chain_status_at_debug(&next_metadata));
     }
 }
