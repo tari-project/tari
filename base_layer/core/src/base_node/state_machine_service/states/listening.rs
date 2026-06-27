@@ -28,6 +28,7 @@ use std::{
 };
 
 use log::*;
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::epoch_time::EpochTime;
@@ -110,6 +111,26 @@ impl ListeningInfo {
     }
 }
 
+/// Tracks the last up-to-date/ahead chain status emitted at debug level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChainStatusLogState {
+    local_height: u64,
+    local_accumulated_difficulty: U512,
+    network_height: u64,
+    network_accumulated_difficulty: U512,
+}
+
+impl ChainStatusLogState {
+    fn new(local: &ChainMetadata, network: &ChainMetadata) -> Self {
+        Self {
+            local_height: local.best_block_height(),
+            local_accumulated_difficulty: local.accumulated_difficulty(),
+            network_height: network.best_block_height(),
+            network_accumulated_difficulty: network.accumulated_difficulty(),
+        }
+    }
+}
+
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
@@ -118,6 +139,7 @@ pub struct Listening {
     is_synced: bool,
     initial_delay_count: u64,
     network_silence: bool,
+    last_chain_status_log: Option<ChainStatusLogState>,
 }
 
 impl Listening {
@@ -140,6 +162,44 @@ impl Listening {
             shared.config.initial_sync_peer_count,
             self.network_silence,
         )));
+    }
+
+    fn should_log_chain_status_at_debug(&mut self, local: &ChainMetadata, network: &ChainMetadata) -> bool {
+        let log_state = ChainStatusLogState::new(local, network);
+        if self.last_chain_status_log == Some(log_state) {
+            return false;
+        }
+
+        self.last_chain_status_log = Some(log_state);
+        true
+    }
+
+    fn log_current_chain_status(&mut self, local: &ChainMetadata, network: &PeerChainMetadata) {
+        let network_metadata = network.claimed_chain_metadata();
+        let level = if self.should_log_chain_status_at_debug(local, network_metadata) {
+            Level::Debug
+        } else {
+            Level::Trace
+        };
+        let local_tip_accum_difficulty = local.accumulated_difficulty();
+        let network_tip_accum_difficulty = network_metadata.accumulated_difficulty();
+
+        log!(
+            target: LOG_TARGET,
+            level,
+            "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
+             accumulated difficulty of {}",
+            if local_tip_accum_difficulty > network_tip_accum_difficulty {
+                "Our blockchain is ahead of the network."
+            } else {
+                // Equals
+                "Our blockchain is up-to-date."
+            },
+            local.best_block_height(),
+            local_tip_accum_difficulty,
+            network_metadata.best_block_height(),
+            network_tip_accum_difficulty,
+        );
     }
 
     #[allow(clippy::too_many_lines)]
@@ -285,6 +345,7 @@ impl Listening {
                         // We might have gotten up to date via propagation outside of this state, so reset the timer
                         if sync_mode == SyncStatus::UpToDate {
                             time_since_better_block = None;
+                            self.log_current_chain_status(&local_metadata, peer_metadata);
                         }
                     }
 
@@ -369,6 +430,7 @@ impl From<Waiting> for Listening {
             is_synced: false,
             initial_delay_count: 0,
             network_silence: false,
+            last_chain_status_log: None,
         }
     }
 }
@@ -379,6 +441,7 @@ impl From<HeaderSyncState> for Listening {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
             network_silence: false,
+            last_chain_status_log: None,
         }
     }
 }
@@ -389,6 +452,7 @@ impl From<BlockSync> for Listening {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
             network_silence: false,
+            last_chain_status_log: None,
         }
     }
 }
@@ -399,6 +463,7 @@ impl From<DecideNextSync> for Listening {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
             network_silence: false,
+            last_chain_status_log: None,
         }
     }
 }
@@ -511,21 +576,6 @@ fn determine_sync_mode(
                 peers: vec![network.clone().into()],
             };
         }
-        debug!(
-            target: LOG_TARGET,
-            "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
-             accumulated difficulty of {}",
-            if local_tip_accum_difficulty > network_tip_accum_difficulty {
-                "Our blockchain is ahead of the network."
-            } else {
-                // Equals
-                "Our blockchain is up-to-date."
-            },
-            local.best_block_height(),
-            local_tip_accum_difficulty,
-            network.claimed_chain_metadata().best_block_height(),
-            network_tip_accum_difficulty,
-        );
         SyncStatus::UpToDate
     }
 }
@@ -581,5 +631,22 @@ mod test {
 
         let sync_mode = determine_sync_mode(2, behind_node.claimed_chain_metadata(), &archival_node);
         assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
+    }
+
+    #[test]
+    fn test_chain_status_debug_log_is_deduplicated_by_tip() {
+        const NETWORK_TIP_HEIGHT: u64 = 5000;
+        let block_hash = FixedHash::from([
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            29, 30, 31,
+        ]);
+
+        let metadata = ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, U512::from(10000), 0).unwrap();
+        let next_metadata = ChainMetadata::new(NETWORK_TIP_HEIGHT + 1, block_hash, 0, 0, U512::from(10001), 0).unwrap();
+        let mut listening = Listening::new();
+
+        assert!(listening.should_log_chain_status_at_debug(&metadata, &metadata));
+        assert!(!listening.should_log_chain_status_at_debug(&metadata, &metadata));
+        assert!(listening.should_log_chain_status_at_debug(&metadata, &next_metadata));
     }
 }
