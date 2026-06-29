@@ -255,11 +255,11 @@ impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> T
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
-/// Fixed safety margin added on top of a transaction's estimated serialized size when pre-growing the
-/// LMDB map for a block insert. Covers derived writes not present in the transaction's operations (most
-/// notably the output SMT/JMT node churn) and LMDB copy-on-write page overhead, so a block can be
-/// applied in a single resize instead of resize-and-replaying the whole transaction.
-const BLOCK_INSERT_RESIZE_MARGIN_BYTES: usize = 128 * BYTES_PER_MB;
+/// Fixed safety margin added on top of a write transaction's estimated serialized size when pre-growing
+/// the LMDB map. Covers derived writes not present in the transaction's operations (most notably the
+/// output SMT/JMT node churn produced while applying a block) and LMDB copy-on-write page overhead, so a
+/// transaction can be applied in a single resize instead of resize-and-replaying the whole transaction.
+const TXN_RESIZE_SAFETY_MARGIN_BYTES: usize = 128 * BYTES_PER_MB;
 
 const LMDB_DB_METADATA: &str = "metadata";
 const LMDB_DB_HEADERS: &str = "headers";
@@ -2995,37 +2995,29 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(());
         }
 
-        // Ensure there will be enough space in the database to insert the block and replace the SMT before it is
-        // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
-        // the write operation, with cleanup, resize and re-try afterwards.
-        let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
-                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
-                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
-        });
-        let count = block_operations.count();
-        if count > 0 {
-            // Pre-grow the map by the estimated size of this transaction's writes plus a fixed margin,
-            // so the whole block (body + derived SMT node churn) fits in a single resize. Sizing from
-            // the actual operations avoids the previous flat headroom under-provisioning large blocks
-            // and forcing the apply loop below to resize-and-replay the transaction several times.
-            let estimated_txn_bytes = txn.estimated_serialized_size();
-            let headroom = estimated_txn_bytes.saturating_add(BLOCK_INSERT_RESIZE_MARGIN_BYTES);
-            let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(&self.env)?;
-            trace!(
-                target: LOG_TARGET,
-                "[apply_db_transaction] Block insert operations: {}, mapsize: {} MB, used: {} MB, remaining: {} MB, \
-                 estimated txn: {} MB, headroom: {} MB",
-                count,
-                mapsize / BYTES_PER_MB,
-                size_used_bytes / BYTES_PER_MB,
-                size_left_bytes / BYTES_PER_MB,
-                estimated_txn_bytes / BYTES_PER_MB,
-                headroom / BYTES_PER_MB
-            );
-            unsafe {
-                LMDBStore::resize_if_required(&self.env, &self.env_config, Some(headroom))?;
-            }
+        // Ensure there will be enough space in the database to apply the whole transaction (and, for a
+        // block, replace the SMT) before it is attempted; this is more efficient than relying on an error
+        // if the LMDB environment map size was reached mid-write, with cleanup, resize and re-try
+        // afterwards. Sizing from the estimated transaction bytes plus a fixed margin lets large writes -
+        // block bodies as well as bulk output/kernel batches from blockchain/horizon sync, which carry no
+        // block-insert operation - grow the map in a single resize instead of resize-and-replaying the
+        // whole transaction several times.
+        let estimated_txn_bytes = txn.estimated_serialized_size();
+        let headroom = estimated_txn_bytes.saturating_add(TXN_RESIZE_SAFETY_MARGIN_BYTES);
+        let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(&self.env)?;
+        trace!(
+            target: LOG_TARGET,
+            "[apply_db_transaction] {} operation(s), mapsize: {} MB, used: {} MB, remaining: {} MB, estimated txn: {} \
+             MB, headroom: {} MB",
+            txn.operations().len(),
+            mapsize / BYTES_PER_MB,
+            size_used_bytes / BYTES_PER_MB,
+            size_left_bytes / BYTES_PER_MB,
+            estimated_txn_bytes / BYTES_PER_MB,
+            headroom / BYTES_PER_MB
+        );
+        unsafe {
+            LMDBStore::resize_if_required(&self.env, &self.env_config, Some(headroom))?;
         }
 
         let mark = Instant::now();
@@ -5530,7 +5522,7 @@ where
             LMDBStore::resize_if_required(
                 &db.env,
                 &db.env_config,
-                Some(max(db.env_config.grow_size_bytes(), 128 * BYTES_PER_MB)),
+                Some(max(db.env_config.grow_size_bytes(), TXN_RESIZE_SAFETY_MARGIN_BYTES)),
             )?;
         }
         let write_txn = db.write_transaction()?;

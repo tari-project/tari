@@ -465,6 +465,15 @@ impl WriteOperation {
             InsertKernel { kernel, .. } => bincode_serialized_size(kernel.as_ref()),
             InsertOutput { output, .. } => bincode_serialized_size(output.as_ref()),
             InsertReorg { reorg } => bincode_serialized_size(reorg),
+            ApplyHorizonStateTreeUpdates { updates } => {
+                // `HorizonStateTreeUpdate` is not `Serialize`, so size it from its fields: a fixed-hash
+                // key plus an optional fixed-hash value (the `Option` discriminant adds a byte; assume
+                // present as an upper bound). Horizon sync can batch a very large number of these. The
+                // much larger derived JMT node churn produced when they are applied is, like a block's
+                // SMT replacement, covered by the caller's fixed safety margin.
+                const PER_UPDATE: usize = 2 * std::mem::size_of::<FixedHash>() + 1;
+                updates.len().saturating_mul(PER_UPDATE)
+            },
             // Headers and the remaining variants are small hashes/heights/flags/accumulated-data that
             // comfortably fit within PER_OP_OVERHEAD (and several wrap non-`Serialize` types).
             _ => 0,
