@@ -60,7 +60,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # Use a "small" suffix to use the build caches where possible, but build caches won't use this
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -149,7 +149,7 @@ jobs:
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
         # Use a "small" suffix to use the build caches where possible, but build caches won't use this
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
