@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.4.0-pre.8](https://github.com/tari-project/tari/compare/v5.4.0-pre.7...v5.4.0-pre.8) (2026-06-29)
+
+
+### Features
+
+* harden prune mode ([#7902](https://github.com/tari-project/tari/issues/7902)) ([152e281](https://github.com/tari-project/tari/commit/152e2811e7d2b8df10aaa13afa9b00ad08d75c83))
+
 ## [5.4.0-pre.7](https://github.com/tari-project/tari/compare/v5.4.0-pre.6...v5.4.0-pre.7) (2026-06-24)
 
 

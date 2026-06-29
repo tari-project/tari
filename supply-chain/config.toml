@@ -3266,7 +3266,7 @@ version = "4.4.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.which]]
-version = "5.4.0-pre.7"
+version = "5.4.0-pre.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.widestring]]
