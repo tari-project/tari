@@ -255,6 +255,12 @@ impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> T
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
+/// Fixed safety margin added on top of a transaction's estimated serialized size when pre-growing the
+/// LMDB map for a block insert. Covers derived writes not present in the transaction's operations (most
+/// notably the output SMT/JMT node churn) and LMDB copy-on-write page overhead, so a block can be
+/// applied in a single resize instead of resize-and-replaying the whole transaction.
+const BLOCK_INSERT_RESIZE_MARGIN_BYTES: usize = 128 * BYTES_PER_MB;
+
 const LMDB_DB_METADATA: &str = "metadata";
 const LMDB_DB_HEADERS: &str = "headers";
 const LMDB_DB_HEADER_ACCUMULATED_DATA: &str = "header_accumulated_data";
@@ -2999,18 +3005,26 @@ impl BlockchainBackend for LMDBDatabase {
         });
         let count = block_operations.count();
         if count > 0 {
+            // Pre-grow the map by the estimated size of this transaction's writes plus a fixed margin,
+            // so the whole block (body + derived SMT node churn) fits in a single resize. Sizing from
+            // the actual operations avoids the previous flat headroom under-provisioning large blocks
+            // and forcing the apply loop below to resize-and-replay the transaction several times.
+            let estimated_txn_bytes = txn.estimated_serialized_size();
+            let headroom = estimated_txn_bytes.saturating_add(BLOCK_INSERT_RESIZE_MARGIN_BYTES);
             let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(&self.env)?;
             trace!(
                 target: LOG_TARGET,
-                "[apply_db_transaction] Block insert operations: {}, mapsize: {} MB, used: {} MB, remaining: {} MB",
-                count, mapsize / BYTES_PER_MB, size_used_bytes / BYTES_PER_MB, size_left_bytes / BYTES_PER_MB
+                "[apply_db_transaction] Block insert operations: {}, mapsize: {} MB, used: {} MB, remaining: {} MB, \
+                 estimated txn: {} MB, headroom: {} MB",
+                count,
+                mapsize / BYTES_PER_MB,
+                size_used_bytes / BYTES_PER_MB,
+                size_left_bytes / BYTES_PER_MB,
+                estimated_txn_bytes / BYTES_PER_MB,
+                headroom / BYTES_PER_MB
             );
             unsafe {
-                LMDBStore::resize_if_required(
-                    &self.env,
-                    &self.env_config,
-                    Some(max(self.env_config.grow_size_bytes(), 128 * BYTES_PER_MB)),
-                )?;
+                LMDBStore::resize_if_required(&self.env, &self.env_config, Some(headroom))?;
             }
         }
 

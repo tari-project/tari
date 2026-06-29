@@ -329,6 +329,15 @@ impl DbTransaction {
         &self.operations
     }
 
+    /// Best-effort estimate, in bytes, of how much data this transaction will write to LMDB. This is
+    /// the sum of the serialized size of each operation's dominant payload and is used to pre-grow the
+    /// LMDB environment so that `apply_db_transaction` does not have to resize-and-retry (which aborts
+    /// and replays the entire transaction) mid-write. It deliberately under-counts derived writes such
+    /// as the output SMT/JMT node churn, which is why callers add a fixed safety margin on top.
+    pub(crate) fn estimated_serialized_size(&self) -> usize {
+        self.operations.iter().map(WriteOperation::serialized_size).sum()
+    }
+
     /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
     /// This will only update the hieght of the seed, if its lower then currently stored.
     pub fn insert_monero_seed_height(&mut self, monero_seed: Vec<u8>, height: u64) {
@@ -432,6 +441,57 @@ pub enum WriteOperation {
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
     },
+}
+
+impl WriteOperation {
+    /// Best-effort estimate, in bytes, of how much data this single operation will write to LMDB.
+    /// Used to pre-size the LMDB environment before applying a transaction. Only the value-bearing
+    /// variants (block bodies, headers, outputs, kernels) are measured; small key/metadata-only
+    /// operations contribute a fixed per-operation overhead. Derived writes such as the output SMT
+    /// node churn are not represented here and are covered by the caller's safety margin.
+    pub(crate) fn serialized_size(&self) -> usize {
+        // Fixed allowance per operation to cover keys and small metadata-only writes.
+        const PER_OP_OVERHEAD: usize = 256;
+        #[allow(clippy::enum_glob_use)]
+        use WriteOperation::*;
+        // Blocks/chain blocks are not stored as a single serialized blob; they are decomposed into a
+        // header plus their inputs, outputs and kernels (each of which is stored individually), so we
+        // size them the same way. The output range proofs dominate, so this tracks the real byte
+        // volume far more closely than sizing the wrapper would.
+        let payload = match self {
+            InsertOrphanBlock(block) => block_serialized_size(block),
+            InsertChainOrphanBlock(block) => block_serialized_size(block.block()),
+            InsertTipBlockBody { block } => block_serialized_size(block.block()),
+            InsertKernel { kernel, .. } => bincode_serialized_size(kernel.as_ref()),
+            InsertOutput { output, .. } => bincode_serialized_size(output.as_ref()),
+            InsertReorg { reorg } => bincode_serialized_size(reorg),
+            // Headers and the remaining variants are small hashes/heights/flags/accumulated-data that
+            // comfortably fit within PER_OP_OVERHEAD (and several wrap non-`Serialize` types).
+            _ => 0,
+        };
+        PER_OP_OVERHEAD.saturating_add(payload)
+    }
+}
+
+/// Sums the serialized size of the components a [`Block`] is decomposed into when written to LMDB:
+/// the header plus every input, output and kernel.
+fn block_serialized_size(block: &Block) -> usize {
+    let header = bincode_serialized_size(&block.header);
+    let inputs: usize = block.body.inputs().iter().map(bincode_serialized_size).sum();
+    let outputs: usize = block.body.outputs().iter().map(bincode_serialized_size).sum();
+    let kernels: usize = block.body.kernels().iter().map(bincode_serialized_size).sum();
+    header
+        .saturating_add(inputs)
+        .saturating_add(outputs)
+        .saturating_add(kernels)
+}
+
+/// Computes the bincode-serialized byte length of a value without allocating the serialized buffer.
+/// Returns 0 on the (unexpected) serialization failure so that sizing never blocks a transaction;
+/// the apply-time resize loop remains as the correctness fallback.
+fn bincode_serialized_size<T: Serialize + ?Sized>(data: &T) -> usize {
+    #[allow(clippy::cast_possible_truncation)]
+    bincode::serialized_size(data).map(|size| size as usize).unwrap_or(0)
 }
 
 #[allow(clippy::too_many_lines)]
