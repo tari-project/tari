@@ -585,13 +585,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
-        let liveness_results = self
-            .tari_pulse
-            .as_ref()
-            .map(|handle| (*handle.get_liveness_checks()).clone())
-            .unwrap_or_default();
+        let liveness_results = self.tari_pulse.as_ref().map(|handle| handle.get_liveness_checks());
+        let empty_vec = Vec::new();
+        let liveness_results_ref = liveness_results.as_ref().map(|guard| &**guard).unwrap_or(&empty_vec);
+
         let mut liveness = Vec::new();
-        for data in liveness_results {
+        for data in liveness_results_ref {
             let liveness_check = tari_rpc::LivenessResult {
                 peer_node_id: data.peer.to_string().into_bytes(),
                 discover_latency: data
