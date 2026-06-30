@@ -142,8 +142,9 @@ impl BaseNodeContext {
         self.base_node_handles.expect_handle()
     }
 
-    pub fn tari_pulse(&self) -> TariPulseHandle {
-        self.base_node_handles.expect_handle()
+    /// Returns the Tari Pulse handle, or `None` when the Tari Pulse service is disabled and was never started.
+    pub fn tari_pulse(&self) -> Option<TariPulseHandle> {
+        self.base_node_handles.get_handle()
     }
 
     /// Returns a handle to the comms RPC server

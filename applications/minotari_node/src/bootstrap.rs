@@ -138,7 +138,7 @@ where B: BlockchainBackend + 'static
         p2p_config.transport.tor.identity = tor_identity;
 
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
-        let mut handles = StackBuilder::new(self.interrupt_signal.clone())
+        let mut stack = StackBuilder::new(self.interrupt_signal.clone())
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
                 user_agent,
@@ -187,14 +187,21 @@ where B: BlockchainBackend + 'static
                 self.factories,
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
-            ))
-            .add_initializer(TariPulseServiceInitializer::new(
+            ));
+
+        // Only start the Tari Pulse service when enabled. When disabled, the initializer is not added at all, so no
+        // TariPulseHandle is registered and the gRPC server falls back to an inert healthy state (see `tari_pulse`).
+        if base_node_config.tari_pulse_enabled {
+            stack = stack.add_initializer(TariPulseServiceInitializer::new(
                 base_node_config.tari_pulse_interval,
                 base_node_config.tari_pulse_health_check,
                 base_node_config.network,
-            ))
-            .build()
-            .await?;
+            ));
+        } else {
+            info!(target: LOG_TARGET, "Tari Pulse service is disabled by configuration; not starting it");
+        }
+
+        let mut handles = stack.build().await?;
 
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
