@@ -259,13 +259,6 @@ struct ListeningLoopState {
     chain_status_log: ChainStatusLog,
 }
 
-#[derive(Debug)]
-enum MetadataEventAction {
-    Continue,
-    StopListening,
-    Transition(StateEvent),
-}
-
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
@@ -303,7 +296,7 @@ impl Listening {
         shared: &mut BaseNodeStateMachine<B>,
         metadata_event: Result<Arc<ChainMetadataEvent>, broadcast::error::RecvError>,
         state: &mut ListeningLoopState,
-    ) -> MetadataEventAction {
+    ) -> Option<StateEvent> {
         match metadata_event.as_ref().map(|v| v.deref()) {
             Ok(ChainMetadataEvent::NetworkSilence) => {
                 self.network_silence = true;
@@ -331,7 +324,7 @@ impl Listening {
                             "Ignoring chain metadata from banned peer {}",
                             peer_metadata.node_id()
                         );
-                        return MetadataEventAction::Continue;
+                        return None;
                     },
                     Ok(false) => {},
                     Err(e) => {
@@ -340,7 +333,7 @@ impl Listening {
                             "Ignoring chain metadata from peer {} due to error: {}",
                             peer_metadata.node_id(), e
                         );
-                        return MetadataEventAction::Continue;
+                        return None;
                     },
                 }
 
@@ -360,7 +353,7 @@ impl Listening {
                     // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                     // we're out of sync
                     if !configured_sync_peers.contains(peer_metadata.node_id()) {
-                        return MetadataEventAction::Continue;
+                        return None;
                     }
                 };
 
@@ -368,9 +361,7 @@ impl Listening {
                     Ok(m) => m,
                     Err(e) => {
                         state.chain_status_log.log_and_clear();
-                        return MetadataEventAction::Transition(FatalError(format!(
-                            "Could not get local blockchain metadata. {e}"
-                        )));
+                        return Some(FatalError(format!("Could not get local blockchain metadata. {e}")));
                     },
                 };
 
@@ -436,7 +427,7 @@ impl Listening {
                 // immediately return fallen behind with the peer that has a higher pow than us
                 if sync_mode.is_lagging() && self.is_synced {
                     state.chain_status_log.log_and_clear();
-                    return MetadataEventAction::Transition(StateEvent::FallenBehind(sync_mode));
+                    return Some(StateEvent::FallenBehind(sync_mode));
                 }
                 // if we are lagging and not yet reached initial sync, we delay a bit till we get
                 // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
@@ -472,7 +463,7 @@ impl Listening {
                     if state.initial_sync_counter >= shared.config.initial_sync_peer_count {
                         state.chain_status_log.log_and_clear();
                         // lets return now that we have enough peers to chose from
-                        return MetadataEventAction::Transition(StateEvent::FallenBehind(SyncStatus::Lagging {
+                        return Some(StateEvent::FallenBehind(SyncStatus::Lagging {
                             local,
                             network,
                             sync_peers: std::mem::take(&mut state.initial_sync_peer_list),
@@ -486,11 +477,15 @@ impl Listening {
             Err(broadcast::error::RecvError::Closed) => {
                 state.chain_status_log.log_and_clear();
                 debug!(target: LOG_TARGET, "Metadata event subscriber closed");
-                return MetadataEventAction::StopListening;
+                debug!(
+                    target: LOG_TARGET,
+                    "Event listener is complete because liveness metadata and timeout streams were closed"
+                );
+                return Some(StateEvent::UserQuit);
             },
         }
 
-        MetadataEventAction::Continue
+        None
     }
 
     #[allow(clippy::too_many_lines)]
@@ -537,19 +532,12 @@ impl Listening {
                     state.chain_status_log.log_and_clear();
                 },
                 metadata_event = shared.metadata_event_stream.recv() => {
-                    match self.handle_metadata_event(shared, metadata_event, &mut state).await {
-                        MetadataEventAction::Continue => {},
-                        MetadataEventAction::StopListening => break,
-                        MetadataEventAction::Transition(state_event) => return state_event,
+                    if let Some(state_event) = self.handle_metadata_event(shared, metadata_event, &mut state).await {
+                        return state_event;
                     }
                 },
             }
         }
-        debug!(
-            target: LOG_TARGET,
-            "Event listener is complete because liveness metadata and timeout streams were closed"
-        );
-        StateEvent::UserQuit
     }
 }
 
