@@ -22,9 +22,11 @@
 
 use std::{
     cmp::Ordering,
+    collections::HashMap,
     convert::TryFrom,
     fmt::{Display, Formatter},
     ops::Deref,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -55,6 +57,7 @@ use crate::{
                 events_and_states,
             },
         },
+        sync::SyncPeer,
     },
     chain_storage::BlockchainBackend,
 };
@@ -166,18 +169,14 @@ impl Display for ChainStatusPeerLog {
 #[derive(Debug, Default)]
 struct ChainStatusLog {
     local_tip: Option<ChainStatusTipLog>,
-    peers: Vec<ChainStatusPeerLog>,
+    peers: HashMap<String, ChainStatusPeerLog>,
 }
 
 impl ChainStatusLog {
     fn record(&mut self, local: &ChainMetadata, peer_metadata: &PeerChainMetadata) {
         self.local_tip = Some(ChainStatusTipLog::new(local));
         let peer_log = ChainStatusPeerLog::new(peer_metadata);
-        if let Some(existing) = self.peers.iter_mut().find(|peer| peer.node_id == peer_log.node_id) {
-            *existing = peer_log;
-        } else {
-            self.peers.push(peer_log);
-        }
+        self.peers.insert(peer_log.node_id.clone(), peer_log);
     }
 
     fn summary_message(&self) -> Option<String> {
@@ -190,7 +189,7 @@ impl ChainStatusLog {
         let mut lagging_peers = Vec::new();
         let mut ahead_peers = Vec::new();
 
-        for peer in &self.peers {
+        for peer in self.peers.values() {
             match peer.tip.accumulated_difficulty.cmp(&local_tip.accumulated_difficulty) {
                 Ordering::Greater => ahead_peers.push(peer),
                 Ordering::Equal => in_sync_peers.push(peer),
@@ -220,7 +219,8 @@ impl ChainStatusLog {
         }
 
         Some(format!(
-            "We are in sync with the network ({local_tip}), we have lagging peers {{{}}}",
+            "We are in sync with the network ({local_tip}) with {} in sync peer(s), we have lagging peers {{{}}}",
+            in_sync_peers.len(),
             Self::format_peer_tips(&lagging_peers)
         ))
     }
@@ -248,6 +248,22 @@ impl ChainStatusLog {
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+#[derive(Debug, Default)]
+struct ListeningLoopState {
+    time_since_better_block: Option<Instant>,
+    initial_sync_counter: u64,
+    ahead_of_peers_counter: u64,
+    initial_sync_peer_list: Vec<SyncPeer>,
+    chain_status_log: ChainStatusLog,
+}
+
+#[derive(Debug)]
+enum MetadataEventAction {
+    Continue,
+    StopListening,
+    Transition(StateEvent),
 }
 
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
@@ -280,6 +296,201 @@ impl Listening {
             shared.config.initial_sync_peer_count,
             self.network_silence,
         )));
+    }
+
+    async fn handle_metadata_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+        metadata_event: Result<Arc<ChainMetadataEvent>, broadcast::error::RecvError>,
+        state: &mut ListeningLoopState,
+    ) -> MetadataEventAction {
+        match metadata_event.as_ref().map(|v| v.deref()) {
+            Ok(ChainMetadataEvent::NetworkSilence) => {
+                self.network_silence = true;
+                self.set_synced_response(shared);
+                debug!("NetworkSilence event received");
+            },
+            Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                // We received a valid metadata update, so the network is not silent.
+                if self.network_silence {
+                    self.network_silence = false;
+                    self.publish_status_info(shared);
+                }
+
+                // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
+                // updated info
+                if !self.is_synced {
+                    self.publish_status_info(shared);
+                }
+                // We already ban the peer based on some previous logic, but this message was already in the
+                // pipeline before the ban went into effect.
+                match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
+                    Ok(true) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Ignoring chain metadata from banned peer {}",
+                            peer_metadata.node_id()
+                        );
+                        return MetadataEventAction::Continue;
+                    },
+                    Ok(false) => {},
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Ignoring chain metadata from peer {} due to error: {}",
+                            peer_metadata.node_id(), e
+                        );
+                        return MetadataEventAction::Continue;
+                    },
+                }
+
+                let peer_data = PeerMetadata {
+                    metadata: peer_metadata.claimed_chain_metadata().clone(),
+                    last_updated: EpochTime::now(),
+                };
+                // If this fails, its not the end of the world, we just want to keep record of the stats of
+                // the peer
+                let _old_data = shared
+                    .peer_manager
+                    .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
+                    .await;
+
+                let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
+                if !configured_sync_peers.is_empty() {
+                    // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
+                    // we're out of sync
+                    if !configured_sync_peers.contains(peer_metadata.node_id()) {
+                        return MetadataEventAction::Continue;
+                    }
+                };
+
+                let local_metadata = match shared.db.get_chain_metadata().await {
+                    Ok(m) => m,
+                    Err(e) => {
+                        state.chain_status_log.log_and_clear();
+                        return MetadataEventAction::Transition(FatalError(format!(
+                            "Could not get local blockchain metadata. {e}"
+                        )));
+                    },
+                };
+
+                let mut sync_mode = determine_sync_mode(
+                    shared.config.blocks_behind_before_considered_lagging,
+                    &local_metadata,
+                    peer_metadata,
+                );
+
+                // Generally we will receive a block via incoming blocks, but something might have
+                // happened that we have not synced to them, e.g. our network could have been down.
+                // If we know about a stronger chain, but haven't synced to it, because we didn't get
+                // the blocks propagated to us, or we have a high `blocks_before_considered_lagging`
+                // then we will wait at least `time_before_considered_lagging` before we try to sync
+                // to that new chain. If you want to sync to a new chain immediately, then you can
+                // set this value to 1 second or lower.
+                if let SyncStatus::BehindButNotYetLagging {
+                    local,
+                    network,
+                    sync_peers,
+                } = &sync_mode
+                {
+                    if state.time_since_better_block.is_none() {
+                        state.time_since_better_block = Some(Instant::now());
+                    }
+                    if state
+                        .time_since_better_block
+                        .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
+                        .unwrap()
+                    // unwrap is safe because time_since_better_block is set right above
+                    {
+                        sync_mode = SyncStatus::Lagging {
+                            local: local.clone(),
+                            network: network.clone(),
+                            sync_peers: sync_peers.clone(),
+                        };
+                    }
+                } else {
+                    // We might have gotten up to date via propagation outside of this state, so reset the timer
+                    if sync_mode == SyncStatus::UpToDate {
+                        state.time_since_better_block = None;
+                    }
+                }
+
+                state.chain_status_log.record(&local_metadata, peer_metadata);
+
+                if !self.is_synced && sync_mode.is_up_to_date() {
+                    state.ahead_of_peers_counter += 1;
+                    if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
+                        self.set_synced_response(shared);
+                        info!(target: LOG_TARGET, "Initial sync achieved");
+                    } else {
+                        info!(
+                            target: LOG_TARGET,
+                            "We are ahead of at least {} peers, waiting for more info",
+                            state.ahead_of_peers_counter
+                        );
+                        self.set_synced_response(shared);
+                    }
+                }
+
+                // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
+                // immediately return fallen behind with the peer that has a higher pow than us
+                if sync_mode.is_lagging() && self.is_synced {
+                    state.chain_status_log.log_and_clear();
+                    return MetadataEventAction::Transition(StateEvent::FallenBehind(sync_mode));
+                }
+                // if we are lagging and not yet reached initial sync, we delay a bit till we get
+                // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
+                // peer to sync from in the next stages
+                if let SyncStatus::Lagging {
+                    local,
+                    network,
+                    sync_peers,
+                } = sync_mode
+                {
+                    state.initial_sync_counter += 1;
+                    self.initial_delay_count = state.initial_sync_counter;
+                    for peer in sync_peers {
+                        let mut found = false;
+                        // lets search the list to ensure we only have unique peers in the list with the latest
+                        // up-to-date information
+                        for initial_peer in &mut state.initial_sync_peer_list {
+                            // we compare the two peers via the comparison operator on syncpeer
+                            if *initial_peer == peer {
+                                found = true;
+                                // if the peer is already in the list, we replace all the information about the peer
+                                // with the newest up-to-date information
+                                *initial_peer = peer.clone();
+                                break;
+                            }
+                        }
+                        if !found {
+                            state.initial_sync_peer_list.push(peer.clone());
+                        }
+                    }
+                    // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
+                    // peers
+                    if state.initial_sync_counter >= shared.config.initial_sync_peer_count {
+                        state.chain_status_log.log_and_clear();
+                        // lets return now that we have enough peers to chose from
+                        return MetadataEventAction::Transition(StateEvent::FallenBehind(SyncStatus::Lagging {
+                            local,
+                            network,
+                            sync_peers: std::mem::take(&mut state.initial_sync_peer_list),
+                        }));
+                    }
+                }
+            },
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
+            },
+            Err(broadcast::error::RecvError::Closed) => {
+                state.chain_status_log.log_and_clear();
+                debug!(target: LOG_TARGET, "Metadata event subscriber closed");
+                return MetadataEventAction::StopListening;
+            },
+        }
+
+        MetadataEventAction::Continue
     }
 
     #[allow(clippy::too_many_lines)]
@@ -315,11 +526,7 @@ impl Listening {
             self.publish_status_info(shared);
         }
 
-        let mut time_since_better_block = None;
-        let mut initial_sync_counter = 0;
-        let mut ahead_of_peers_counter = 0;
-        let mut initial_sync_peer_list = Vec::new();
-        let mut chain_status_log = ChainStatusLog::default();
+        let mut state = ListeningLoopState::default();
         let mut chain_status_log_interval = interval(CHAIN_STATUS_LOG_INTERVAL);
         chain_status_log_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         chain_status_log_interval.tick().await;
@@ -327,186 +534,13 @@ impl Listening {
         loop {
             tokio::select! {
                 _ = chain_status_log_interval.tick() => {
-                    chain_status_log.log_and_clear();
+                    state.chain_status_log.log_and_clear();
                 },
                 metadata_event = shared.metadata_event_stream.recv() => {
-                    match metadata_event.as_ref().map(|v| v.deref()) {
-                        Ok(ChainMetadataEvent::NetworkSilence) => {
-                            self.network_silence = true;
-                            self.set_synced_response(shared);
-                            debug!("NetworkSilence event received");
-                        },
-                        Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
-                            // We received a valid metadata update, so the network is not silent.
-                            if self.network_silence {
-                                self.network_silence = false;
-                                self.publish_status_info(shared);
-                            }
-
-                            // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
-                            // updated info
-                            if !self.is_synced {
-                                self.publish_status_info(shared);
-                            }
-                            // We already ban the peer based on some previous logic, but this message was already in the
-                            // pipeline before the ban went into effect.
-                            match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
-                                Ok(true) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Ignoring chain metadata from banned peer {}",
-                                        peer_metadata.node_id()
-                                    );
-                                    continue;
-                                },
-                                Ok(false) => {},
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Ignoring chain metadata from peer {} due to error: {}",
-                                        peer_metadata.node_id(), e
-                                    );
-                                    continue;
-                                },
-                            }
-
-                            let peer_data = PeerMetadata {
-                                metadata: peer_metadata.claimed_chain_metadata().clone(),
-                                last_updated: EpochTime::now(),
-                            };
-                            // If this fails, its not the end of the world, we just want to keep record of the stats of
-                            // the peer
-                            let _old_data = shared
-                                .peer_manager
-                                .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
-                                .await;
-
-                            let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
-                            if !configured_sync_peers.is_empty() {
-                                // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
-                                // we're out of sync
-                                if !configured_sync_peers.contains(peer_metadata.node_id()) {
-                                    continue;
-                                }
-                            };
-
-                            let local_metadata = match shared.db.get_chain_metadata().await {
-                                Ok(m) => m,
-                                Err(e) => {
-                                    chain_status_log.log_and_clear();
-                                    return FatalError(format!("Could not get local blockchain metadata. {e}"));
-                                },
-                            };
-
-                            let mut sync_mode = determine_sync_mode(
-                                shared.config.blocks_behind_before_considered_lagging,
-                                &local_metadata,
-                                peer_metadata,
-                            );
-
-                            // Generally we will receive a block via incoming blocks, but something might have
-                            // happened that we have not synced to them, e.g. our network could have been down.
-                            // If we know about a stronger chain, but haven't synced to it, because we didn't get
-                            // the blocks propagated to us, or we have a high `blocks_before_considered_lagging`
-                            // then we will wait at least `time_before_considered_lagging` before we try to sync
-                            // to that new chain. If you want to sync to a new chain immediately, then you can
-                            // set this value to 1 second or lower.
-                            if let SyncStatus::BehindButNotYetLagging {
-                                local,
-                                network,
-                                sync_peers,
-                            } = &sync_mode
-                            {
-                                if time_since_better_block.is_none() {
-                                    time_since_better_block = Some(Instant::now());
-                                }
-                                if time_since_better_block
-                                    .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
-                                    .unwrap()
-                                // unwrap is safe because time_since_better_block is set right above
-                                {
-                                    sync_mode = SyncStatus::Lagging {
-                                        local: local.clone(),
-                                        network: network.clone(),
-                                        sync_peers: sync_peers.clone(),
-                                    };
-                                }
-                            } else {
-                                // We might have gotten up to date via propagation outside of this state, so reset the timer
-                                if sync_mode == SyncStatus::UpToDate {
-                                    time_since_better_block = None;
-                                }
-                            }
-
-                            chain_status_log.record(&local_metadata, peer_metadata);
-
-                            if !self.is_synced && sync_mode.is_up_to_date() {
-                                ahead_of_peers_counter += 1;
-                                if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
-                                    self.set_synced_response(shared);
-                                    info!(target: LOG_TARGET, "Initial sync achieved");
-                                } else {
-                                    info!(target: LOG_TARGET, "We are ahead of at least {ahead_of_peers_counter} peers, waiting for more info");
-                                    self.set_synced_response(shared);
-                                }
-                            }
-
-                            // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
-                            // immediately return fallen behind with the peer that has a higher pow than us
-                            if sync_mode.is_lagging() && self.is_synced {
-                                chain_status_log.log_and_clear();
-                                return StateEvent::FallenBehind(sync_mode);
-                            }
-                            // if we are lagging and not yet reached initial sync, we delay a bit till we get
-                            // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
-                            // peer to sync from in the next stages
-                            if let SyncStatus::Lagging {
-                                local,
-                                network,
-                                sync_peers,
-                            } = sync_mode
-                            {
-                                initial_sync_counter += 1;
-                                self.initial_delay_count = initial_sync_counter;
-                                for peer in sync_peers {
-                                    let mut found = false;
-                                    // lets search the list to ensure we only have unique peers in the list with the latest
-                                    // up-to-date information
-                                    for initial_peer in &mut initial_sync_peer_list {
-                                        // we compare the two peers via the comparison operator on syncpeer
-                                        if *initial_peer == peer {
-                                            found = true;
-                                            // if the peer is already in the list, we replace all the information about the peer
-                                            // with the newest up-to-date information
-                                            *initial_peer = peer.clone();
-                                            break;
-                                        }
-                                    }
-                                    if !found {
-                                        initial_sync_peer_list.push(peer.clone());
-                                    }
-                                }
-                                // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
-                                // peers
-                                if initial_sync_counter >= shared.config.initial_sync_peer_count {
-                                    chain_status_log.log_and_clear();
-                                    // lets return now that we have enough peers to chose from
-                                    return StateEvent::FallenBehind(SyncStatus::Lagging {
-                                        local,
-                                        network,
-                                        sync_peers: initial_sync_peer_list,
-                                    });
-                                }
-                            }
-                        },
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
-                        },
-                        Err(broadcast::error::RecvError::Closed) => {
-                            chain_status_log.log_and_clear();
-                            debug!(target: LOG_TARGET, "Metadata event subscriber closed");
-                            break;
-                        },
+                    match self.handle_metadata_event(shared, metadata_event, &mut state).await {
+                        MetadataEventAction::Continue => {},
+                        MetadataEventAction::StopListening => break,
+                        MetadataEventAction::Transition(state_event) => return state_event,
                     }
                 },
             }
@@ -745,6 +779,7 @@ mod test {
 
         let message = chain_status_log.summary_message().unwrap();
         assert!(message.contains("We are in sync with the network"));
+        assert!(message.contains("with 1 in sync peer(s)"));
         assert!(message.contains("lagging peers"));
         assert!(message.contains(&lagging_peer_id));
 
