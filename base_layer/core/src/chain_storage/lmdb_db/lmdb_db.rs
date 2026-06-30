@@ -1377,14 +1377,6 @@ impl LMDBDatabase {
             &(*header_hash, mmr_position, hash),
             "kernel_excess_sig_index",
         )?;
-
-        // Index burn kernels by their burn commitment so the unique-burn-commitment consensus rule can be enforced
-        // cheaply. We key off `is_burned()` (the BURN_KERNEL feature) so this index contains exactly the set of
-        // commitments the validator checks for uniqueness — a non-burn kernel that happens to carry a burn commitment
-        // is intentionally not indexed and not subject to the rule. We use `lmdb_replace` rather than `lmdb_insert`
-        // because burn-commitment uniqueness was not enforced historically, so a legacy database could contain a
-        // duplicate; aborting a block/kernel write here would brick sync. Uniqueness for new blocks is enforced by the
-        // validator before this point.
         if kernel.is_burned() &&
             let Some(burn_commitment) = kernel.burn_commitment.as_ref()
         {
