@@ -1384,7 +1384,8 @@ impl LMDBDatabase {
                 txn,
                 &self.burn_commitment_index,
                 burn_commitment.as_bytes(),
-                &(*header_hash, mmr_position, hash),"burn_commitment_index"
+                &(*header_hash, mmr_position, hash),
+                "burn_commitment_index",
             )?;
         }
 
@@ -1990,10 +1991,7 @@ impl LMDBDatabase {
             if kernel.kernel.is_burned() &&
                 let Some(burn_commitment) = kernel.kernel.burn_commitment.as_ref()
             {
-                lmdb_delete_if_exists(
-                    txn,
-                    &self.burn_commitment_index,
-                    burn_commitment.as_bytes())?;
+                lmdb_delete_if_exists(txn, &self.burn_commitment_index, burn_commitment.as_bytes())?;
             }
         }
         Ok(())
@@ -5252,9 +5250,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // MIGRATION: Populate the burn commitment index from the existing kernels. The unique-burn-commitment consensus
         // rule looks up new burns in this index, so already-synced databases must have it populated from their
         // historical kernels before the rule can be enforced. To avoid blocking node startup we do not build it inline
-        // here; instead we (re)set the rebuild status so the `rebuild_burn_commitment_index_background_task` repopulates
-        // it asynchronously. Kernels (and therefore burn commitments) are retained permanently even by pruned nodes, so
-        // this produces an identical index on archival and pruned nodes.
+        // here; instead we (re)set the rebuild status so the `rebuild_burn_commitment_index_background_task`
+        // repopulates it asynchronously. Kernels (and therefore burn commitments) are retained permanently even
+        // by pruned nodes, so this produces an identical index on archival and pruned nodes.
         if migrate_from_version == 7 {
             let write_txn = db.write_transaction()?;
             match fetch_chain_height(&write_txn, &db.metadata_db) {

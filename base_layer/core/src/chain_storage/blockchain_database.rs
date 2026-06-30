@@ -584,10 +584,11 @@ where B: BlockchainBackend
         Ok(())
     }
 
-    /// Rebuilds the burn commitment index in the background so that node startup is not blocked. New databases (and ones
-    /// that have already finished) short-circuit immediately; otherwise a tokio task walks the blocks from the last
-    /// rebuilt height to the chain tip, indexing the burn kernels in each block. Blocks added or re-orged in after this
-    /// process starts already populate the index via the live insert path, so they do not need to be processed here.
+    /// Rebuilds the burn commitment index in the background so that node startup is not blocked. New databases (and
+    /// ones that have already finished) short-circuit immediately; otherwise a tokio task walks the blocks from the
+    /// last rebuilt height to the chain tip, indexing the burn kernels in each block. Blocks added or re-orged in
+    /// after this process starts already populate the index via the live insert path, so they do not need to be
+    /// processed here.
     pub fn rebuild_burn_commitment_index_background_task(&self) -> Result<(), ChainStorageError> {
         let initial_status = {
             let db = self.db_read_access()?;
@@ -632,10 +633,9 @@ where B: BlockchainBackend
                 let db = db_rw_lock.clone();
                 // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
                 // shut down when base node shutdown is triggered.
-                let res = tokio::task::spawn_blocking(move || {
-                    process_burn_commitment_index_for_height(db, height, finalize)
-                })
-                .await;
+                let res =
+                    tokio::task::spawn_blocking(move || process_burn_commitment_index_for_height(db, height, finalize))
+                        .await;
                 match res {
                     Ok(Ok(current_status)) => {
                         last_status = current_status;

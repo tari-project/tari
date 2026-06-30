@@ -60,11 +60,11 @@ use crate::{
         AccumulatedDataRebuildStatus,
         BlockAddResult,
         BlockchainBackend,
-        BurnCommitmentRebuildStatus,
         BlockchainCheckRequest,
         BlockchainCheckStatus,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        BurnCommitmentRebuildStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -368,7 +368,10 @@ impl BlockchainBackend for TempDatabase {
         &self,
         burn_commitment: &CompressedCommitment,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_kernel_by_burn_commitment(burn_commitment)
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_kernel_by_burn_commitment(burn_commitment)
     }
 
     fn fetch_outputs_in_block_with_spend_state(
