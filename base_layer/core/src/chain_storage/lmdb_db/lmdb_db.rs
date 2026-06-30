@@ -202,6 +202,7 @@ use crate::{
                 lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
+                lmdb_delete_if_exists,
                 lmdb_delete_key_value,
                 lmdb_delete_keys_starting_with,
                 lmdb_delete_typed,
@@ -2566,6 +2567,11 @@ impl LMDBDatabase {
                 output_hash.as_slice(),
                 LMDB_DB_UTXOS,
             )?;
+            lmdb_delete_if_exists(
+                write_txn,
+                &self.deleted_txo_hash_to_header_index,
+                output_hash.as_slice(),
+            )?;
         }
 
         Ok(())
@@ -2595,6 +2601,11 @@ impl LMDBDatabase {
                     &self.txos_hash_to_index_db,
                     output_hash.as_slice(),
                     LMDB_DB_UTXOS,
+                )?;
+                lmdb_delete_if_exists(
+                    write_txn,
+                    &self.deleted_txo_hash_to_header_index,
+                    output_hash.as_slice(),
                 )?;
 
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;

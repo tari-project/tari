@@ -202,6 +202,12 @@ where
     Ok(())
 }
 
+pub fn lmdb_delete_if_exists<K>(txn: &WriteTransaction<'_>, db: &Database, key: &K) -> Result<(), ChainStorageError>
+where K: AsLmdbBytes + ?Sized {
+    txn.access().del_key(db, key).to_opt()?;
+    Ok(())
+}
+
 /// Deletes the given key value pair. An error is returned if the key and value does not exist
 pub fn lmdb_delete_key_value<K, V>(
     txn: &WriteTransaction<'_>,
