@@ -275,6 +275,7 @@ const LMDB_DB_KERNELS: &str = "kernels";
 const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
 const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
+const LMDB_DB_BURN_COMMITMENT_INDEX: &str = "burn_commitment_index";
 const LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX: &str = "deleted_txo_hash_to_header_index";
 const LMDB_DB_UTXO_COMMITMENT_INDEX: &str = "utxo_commitment_index";
 const LMDB_DB_UNIQUE_ID_INDEX: &str = "unique_id_index";
@@ -317,6 +318,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_KERNEL_EXCESS_INDEX,
         LMDB_DB_KERNEL_EXCESS_SIG_INDEX,
         LMDB_DB_KERNEL_MMR_SIZE_INDEX,
+        LMDB_DB_BURN_COMMITMENT_INDEX,
         LMDB_DB_UTXO_COMMITMENT_INDEX,
         LMDB_DB_CONTRACT_ID_INDEX,
         LMDB_DB_UNIQUE_ID_INDEX,
@@ -384,6 +386,7 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_KERNEL_EXCESS_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_EXCESS_SIG_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_MMR_SIZE_INDEX, flags)
+        .add_database(LMDB_DB_BURN_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
         .add_database(LMDB_DB_CONTRACT_ID_INDEX, flags)
@@ -824,6 +827,10 @@ pub struct LMDBDatabase {
     kernel_excess_sig_index: DatabaseRef,
     /// Maps kernel_mmr_size -> height
     kernel_mmr_size_index: DatabaseRef,
+    /// Maps burn_commitment -> <block_hash, mmr_pos, kernel_hash> for every burn kernel on the main chain.
+    /// Used to enforce that a burn commitment may only ever appear once in the chain. Burn commitments live
+    /// on kernels, which are never pruned, so this index is identical on archival and pruned nodes.
+    burn_commitment_index: DatabaseRef,
     /// Maps commitment -> output_hash
     utxo_commitment_index: DatabaseRef,
     /// Maps unique_id -> output_hash
@@ -900,6 +907,7 @@ impl LMDBDatabase {
             kernel_excess_index: get_database(store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
             kernel_excess_sig_index: get_database(store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
             kernel_mmr_size_index: get_database(store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
+            burn_commitment_index: get_database(store, LMDB_DB_BURN_COMMITMENT_INDEX)?,
             utxo_commitment_index: get_database(store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
             unique_id_index: get_database(store, LMDB_DB_UNIQUE_ID_INDEX)?,
             contract_index: get_database(store, LMDB_DB_CONTRACT_ID_INDEX)?,
@@ -1369,6 +1377,17 @@ impl LMDBDatabase {
             &(*header_hash, mmr_position, hash),
             "kernel_excess_sig_index",
         )?;
+        if kernel.is_burned() &&
+            let Some(burn_commitment) = kernel.burn_commitment.as_ref()
+        {
+            lmdb_insert(
+                txn,
+                &self.burn_commitment_index,
+                burn_commitment.as_bytes(),
+                &(*header_hash, mmr_position, hash),
+                "burn_commitment_index",
+            )?;
+        }
 
         lmdb_insert(
             txn,
@@ -1968,6 +1987,12 @@ impl LMDBDatabase {
                 excess_sig_key.as_slice(),
                 "kernel_excess_sig_index",
             )?;
+            // Remove the burn commitment index entry, but only if it still points at the kernel being deleted.
+            if kernel.kernel.is_burned() &&
+                let Some(burn_commitment) = kernel.kernel.burn_commitment.as_ref()
+            {
+                lmdb_delete_if_exists(txn, &self.burn_commitment_index, burn_commitment.as_bytes())?;
+            }
         }
         Ok(())
     }
@@ -3341,6 +3366,26 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    fn fetch_kernel_by_burn_commitment(
+        &self,
+        burn_commitment: &CompressedCommitment,
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        if let Some((header_hash, mmr_position, hash)) =
+            lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.burn_commitment_index, burn_commitment.as_bytes())?
+        {
+            let key = KernelKey::try_from_parts(&[
+                header_hash.as_slice(),
+                mmr_position.to_be_bytes().as_slice(),
+                hash.as_slice(),
+            ])?;
+            Ok(lmdb_get(&txn, &self.kernels_db, &key)?
+                .map(|kernel: TransactionKernelRowData| (kernel.kernel, header_hash)))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
@@ -3539,6 +3584,21 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    // Returns the burn commitment index rebuild status.
+    fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+        let txn = self.read_transaction()?;
+
+        let val: Option<MetadataValue> = lmdb_get(
+            &txn,
+            &self.metadata_db,
+            &MetadataKey::BurnCommitmentRebuildStatus.as_u32(),
+        )?;
+        match val {
+            Some(MetadataValue::BurnCommitmentRebuildStatus(status)) => Ok(status),
+            _ => Ok(BurnCommitmentRebuildStatus::default()),
+        }
+    }
+
     // Updates the stored blockchain consistency check status, maintaining currently active values where applicable, or
     // creating a default set if it does not exist yet.
     fn update_accumulated_data_check_status(
@@ -3624,6 +3684,63 @@ impl BlockchainBackend for LMDBDatabase {
         if height.is_multiple_of(50) {
             self.update_stats_progress(height);
         }
+
+        write_txn.commit()?;
+
+        Ok(status)
+    }
+
+    // Builds the burn commitment index entries for all burn kernels in the block at the given height, and persists the
+    // rebuild status. Mirrors `build_payref_indexes_for_height` but keyed on kernels rather than outputs.
+    fn build_burn_commitment_index_for_height(
+        &self,
+        height: u64,
+        finalize: bool,
+    ) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+        unsafe {
+            LMDBStore::resize_if_required(&self.env, &self.env_config, None)?;
+        }
+        let write_txn = self.write_transaction()?;
+        let best_block_height = self.fetch_chain_metadata()?.best_block_height();
+        if height > best_block_height {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Cannot build burn commitment index for height {height} which is greater than the current best block \
+                 height {best_block_height}"
+            )));
+        }
+
+        // Fetch the kernel rows for this block (the row carries the mmr_position needed for the index value).
+        let binding = self.fetch_chain_header_by_height(height)?;
+        let block_hash = binding.header().hash();
+        let kernels: Vec<(Vec<u8>, TransactionKernelRowData)> =
+            lmdb_fetch_matching_after(&write_txn, &self.kernels_db, block_hash.as_slice())?;
+
+        for (_, row) in &kernels {
+            // Mirror the live insert predicate: only burn kernels are indexed.
+            if row.kernel.is_burned() &&
+                let Some(burn_commitment) = row.kernel.burn_commitment.as_ref()
+            {
+                lmdb_replace(
+                    &write_txn,
+                    &self.burn_commitment_index,
+                    burn_commitment.as_bytes(),
+                    &(row.header_hash, row.mmr_position, row.hash),
+                    None,
+                )?;
+            }
+        }
+
+        let status = BurnCommitmentRebuildStatus {
+            is_rebuilt: finalize || height == best_block_height,
+            last_rebuild_height: Some(height),
+        };
+        lmdb_replace(
+            &write_txn,
+            &self.metadata_db,
+            &MetadataKey::BurnCommitmentRebuildStatus.as_u32(),
+            &MetadataValue::BurnCommitmentRebuildStatus(status.clone()),
+            None,
+        )?;
 
         write_txn.commit()?;
 
@@ -4535,6 +4652,7 @@ pub enum MetadataKey {
     BlockchainConsistencyCheckStatus,
     HorizonSyncOutputCheckpoint,
     JMTVersion,
+    BurnCommitmentRebuildStatus,
 }
 
 impl MetadataKey {
@@ -4561,6 +4679,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::BlockchainConsistencyCheckStatus => write!(f, "Blockchain check status"),
             MetadataKey::HorizonSyncOutputCheckpoint => write!(f, "Horizon sync output checkpoint"),
             MetadataKey::JMTVersion => write!(f, "JMT written version"),
+            MetadataKey::BurnCommitmentRebuildStatus => write!(f, "Burn commitment index rebuild status"),
         }
     }
 }
@@ -4582,6 +4701,18 @@ pub struct PayrefRebuildStatus {
 pub struct AccumulatedDataRebuildStatus {
     /// Whether accumulated data has been rebuilt fully - it only need to be rebuilt once
     /// and up to the current chain height. This will automatically be added to new blocks.
+    pub is_rebuilt: bool,
+    /// The height of the block at which the last rebuild was done
+    pub last_rebuild_height: Option<u64>,
+}
+
+/// Burn commitment index rebuild status - for new base nodes or once rebuilt, this will be set to true.
+/// The burn commitment index is built in a background task from existing kernels so that node startup is not blocked;
+/// new blocks populate the index automatically via the live insert path.
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub struct BurnCommitmentRebuildStatus {
+    /// Whether the burn commitment index has been rebuilt fully - it only needs to be rebuilt once and up to the
+    /// current chain height.
     pub is_rebuilt: bool,
     /// The height of the block at which the last rebuild was done
     pub last_rebuild_height: Option<u64>,
@@ -4753,6 +4884,7 @@ pub enum MetadataValue {
     BlockchainCheckStatus(BlockchainCheckStatus),
     HorizonSyncOutputCheckpoint(HorizonSyncOutputCheckpoint),
     JMTVersion(u64),
+    BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus),
 }
 
 impl fmt::Display for MetadataValue {
@@ -4781,6 +4913,9 @@ impl fmt::Display for MetadataValue {
                 cp.checkpoint_height, cp.sync_target_height
             ),
             MetadataValue::JMTVersion(version) => write!(f, "JMT version is {version}"),
+            MetadataValue::BurnCommitmentRebuildStatus(status) => {
+                write!(f, "Burn commitment index has been rebuilt - {}", status.is_rebuilt)
+            },
         }
     }
 }
@@ -4789,7 +4924,7 @@ impl fmt::Display for MetadataValue {
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let _unused = verify_metadata_keys(db);
 
-    const MIGRATION_VERSION: u64 = 7;
+    const MIGRATION_VERSION: u64 = 8;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -5110,6 +5245,51 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // than a migration-side flag.
         if migrate_from_version == 6 {
             migrate_jmt_v1_to_v2(db)?;
+        }
+
+        // MIGRATION: Populate the burn commitment index from the existing kernels. The unique-burn-commitment consensus
+        // rule looks up new burns in this index, so already-synced databases must have it populated from their
+        // historical kernels before the rule can be enforced. To avoid blocking node startup we do not build it inline
+        // here; instead we (re)set the rebuild status so the `rebuild_burn_commitment_index_background_task`
+        // repopulates it asynchronously. Kernels (and therefore burn commitments) are retained permanently even
+        // by pruned nodes, so this produces an identical index on archival and pruned nodes.
+        if migrate_from_version == 7 {
+            let write_txn = db.write_transaction()?;
+            match fetch_chain_height(&write_txn, &db.metadata_db) {
+                Ok(_) => {
+                    // Existing database: reset the status to the default so the background task runs and backfills the
+                    // index from the historical kernels.
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Resetting burn commitment index rebuild status to enable the background task to run"
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &MetadataKey::BurnCommitmentRebuildStatus.as_u32(),
+                        &MetadataValue::BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus::default()),
+                        None,
+                    )?;
+                },
+                Err(_) => {
+                    // New database: there is nothing to backfill, so mark the index as already rebuilt.
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Setting burn commitment index rebuild status as rebuilt for new blockchains"
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &MetadataKey::BurnCommitmentRebuildStatus.as_u32(),
+                        &MetadataValue::BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus {
+                            is_rebuilt: true,
+                            last_rebuild_height: None,
+                        }),
+                        None,
+                    )?;
+                },
+            }
+            write_txn.commit()?;
         }
 
         // Let's update the migration version
@@ -5823,7 +6003,8 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 Some(MetadataKey::AccumulatedDataCheckStatus) |
                 Some(MetadataKey::BlockchainConsistencyCheckStatus) |
                 Some(MetadataKey::HorizonSyncOutputCheckpoint) |
-                Some(MetadataKey::JMTVersion) => {
+                Some(MetadataKey::JMTVersion) |
+                Some(MetadataKey::BurnCommitmentRebuildStatus) => {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",
@@ -5879,6 +6060,7 @@ fn num_to_key(n: u32) -> Option<MetadataKey> {
         11 => Some(MetadataKey::BlockchainConsistencyCheckStatus),
         12 => Some(MetadataKey::HorizonSyncOutputCheckpoint),
         13 => Some(MetadataKey::JMTVersion),
+        14 => Some(MetadataKey::BurnCommitmentRebuildStatus),
         _ => None,
     }
 }
@@ -5898,6 +6080,7 @@ fn variant_name(v: &MetadataValue) -> &'static str {
         MetadataValue::BlockchainCheckStatus(_) => "BlockchainCheckStatus",
         MetadataValue::HorizonSyncOutputCheckpoint(_) => "HorizonSyncOutputCheckpoint",
         MetadataValue::JMTVersion(_) => "JMTVersion",
+        MetadataValue::BurnCommitmentRebuildStatus(_) => "BurnCommitmentRebuildStatus",
     }
 }
 
@@ -5918,5 +6101,6 @@ fn summarize_value(v: &MetadataValue) -> String {
             format!("{} targeting {}", cp.checkpoint_height, cp.sync_target_height)
         },
         MetadataValue::JMTVersion(v) => format!("{v}"),
+        MetadataValue::BurnCommitmentRebuildStatus(s) => format!("{s:?}"),
     }
 }

@@ -64,6 +64,7 @@ use crate::{
         BlockchainCheckStatus,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        BurnCommitmentRebuildStatus,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -363,6 +364,16 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
+    fn fetch_kernel_by_burn_commitment(
+        &self,
+        burn_commitment: &CompressedCommitment,
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_kernel_by_burn_commitment(burn_commitment)
+    }
+
     fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
@@ -444,6 +455,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
     }
 
+    fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_burn_commitment_rebuild_status()
+    }
+
     fn update_accumulated_data_check_status(
         &self,
         request: BlockchainCheckRequest,
@@ -480,6 +495,17 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .build_payref_indexes_for_height(height, metadata_at_start, initialize_stats, finalize)
+    }
+
+    fn build_burn_commitment_index_for_height(
+        &self,
+        height: u64,
+        finalize: bool,
+    ) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .build_burn_commitment_index_for_height(height, finalize)
     }
 
     fn update_accumulated_difficulty(
