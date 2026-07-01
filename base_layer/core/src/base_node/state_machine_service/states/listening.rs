@@ -137,11 +137,7 @@ impl ChainStatusTipLog {
 
 impl Display for ChainStatusTipLog {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(
-            fmt,
-            "height={}, diff={}",
-            self.height, self.accumulated_difficulty
-        )
+        write!(fmt, "height={}, diff={}", self.height, self.accumulated_difficulty)
     }
 }
 
@@ -331,17 +327,63 @@ impl Listening {
         peer_metadata: &PeerChainMetadata,
         state: &mut ListeningLoopState,
     ) -> Option<StateEvent> {
+        self.mark_network_active(shared);
+
+        if !self.accepts_peer_metadata(shared, peer_metadata).await {
+            return None;
+        }
+
+        self.record_peer_metadata(shared, peer_metadata).await;
+
+        if !Self::is_configured_sync_peer(shared, peer_metadata) {
+            return None;
+        }
+
+        let local_metadata = match Self::get_local_metadata(shared, state).await {
+            Ok(metadata) => metadata,
+            Err(state_event) => return Some(state_event),
+        };
+
+        let mut sync_mode = determine_sync_mode(
+            shared.config.blocks_behind_before_considered_lagging,
+            &local_metadata,
+            peer_metadata,
+        );
+
+        Self::promote_to_lagging_after_delay(&mut sync_mode, state, shared.config.time_before_considered_lagging);
+
+        state.chain_status_log.record(&local_metadata, peer_metadata);
+
+        self.update_initial_sync_status(shared, state, &sync_mode);
+
+        // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
+        // immediately return fallen behind with the peer that has a higher pow than us
+        if sync_mode.is_lagging() && self.is_synced {
+            state.chain_status_log.log_and_clear();
+            return Some(StateEvent::FallenBehind(sync_mode));
+        }
+
+        self.collect_initial_lagging_peers(shared, state, sync_mode)
+    }
+
+    fn mark_network_active<B: BlockchainBackend + 'static>(&mut self, shared: &mut BaseNodeStateMachine<B>) {
         // We received a valid metadata update, so the network is not silent.
         if self.network_silence {
             self.network_silence = false;
             self.publish_status_info(shared);
         }
 
-        // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
-        // updated info
+        // If we are not yet synced, propagate the updated initial-delay info while waiting for ping/pongs.
         if !self.is_synced {
             self.publish_status_info(shared);
         }
+    }
+
+    async fn accepts_peer_metadata<B: BlockchainBackend + 'static>(
+        &self,
+        shared: &BaseNodeStateMachine<B>,
+        peer_metadata: &PeerChainMetadata,
+    ) -> bool {
         // We already ban the peer based on some previous logic, but this message was already in the
         // pipeline before the ban went into effect.
         match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
@@ -351,111 +393,119 @@ impl Listening {
                     "Ignoring chain metadata from banned peer {}",
                     peer_metadata.node_id()
                 );
-                return None;
+                false
             },
-            Ok(false) => {},
+            Ok(false) => true,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
                     "Ignoring chain metadata from peer {} due to error: {}",
                     peer_metadata.node_id(), e
                 );
-                return None;
+                false
             },
         }
+    }
 
+    async fn record_peer_metadata<B: BlockchainBackend + 'static>(
+        &self,
+        shared: &mut BaseNodeStateMachine<B>,
+        peer_metadata: &PeerChainMetadata,
+    ) {
         let peer_data = PeerMetadata {
             metadata: peer_metadata.claimed_chain_metadata().clone(),
             last_updated: EpochTime::now(),
         };
-        // If this fails, its not the end of the world, we just want to keep record of the stats of
-        // the peer
+        // If this fails, it's not the end of the world; we just want to keep peer stats.
         let _old_data = shared
             .peer_manager
             .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
             .await;
+    }
 
+    fn is_configured_sync_peer<B: BlockchainBackend + 'static>(
+        shared: &BaseNodeStateMachine<B>,
+        peer_metadata: &PeerChainMetadata,
+    ) -> bool {
         let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
-        if !configured_sync_peers.is_empty() {
-            // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
-            // we're out of sync
-            if !configured_sync_peers.contains(peer_metadata.node_id()) {
-                return None;
-            }
-        };
+        configured_sync_peers.is_empty() || configured_sync_peers.contains(peer_metadata.node_id())
+    }
 
-        let local_metadata = match shared.db.get_chain_metadata().await {
-            Ok(m) => m,
-            Err(e) => {
-                state.chain_status_log.log_and_clear();
-                return Some(FatalError(format!("Could not get local blockchain metadata. {e}")));
-            },
-        };
+    async fn get_local_metadata<B: BlockchainBackend + 'static>(
+        shared: &BaseNodeStateMachine<B>,
+        state: &mut ListeningLoopState,
+    ) -> Result<ChainMetadata, StateEvent> {
+        shared.db.get_chain_metadata().await.map_err(|e| {
+            state.chain_status_log.log_and_clear();
+            FatalError(format!("Could not get local blockchain metadata. {e}"))
+        })
+    }
 
-        let mut sync_mode = determine_sync_mode(
-            shared.config.blocks_behind_before_considered_lagging,
-            &local_metadata,
-            peer_metadata,
-        );
-
-        // Generally we will receive a block via incoming blocks, but something might have
-        // happened that we have not synced to them, e.g. our network could have been down.
-        // If we know about a stronger chain, but haven't synced to it, because we didn't get
-        // the blocks propagated to us, or we have a high `blocks_before_considered_lagging`
-        // then we will wait at least `time_before_considered_lagging` before we try to sync
-        // to that new chain. If you want to sync to a new chain immediately, then you can
-        // set this value to 1 second or lower.
-        if let SyncStatus::BehindButNotYetLagging {
+    fn promote_to_lagging_after_delay(
+        sync_mode: &mut SyncStatus,
+        state: &mut ListeningLoopState,
+        time_before_considered_lagging: Duration,
+    ) {
+        // If a stronger chain is known but blocks have not propagated yet, wait before block sync.
+        let lagging_sync_mode = if let SyncStatus::BehindButNotYetLagging {
             local,
             network,
             sync_peers,
-        } = &sync_mode
+        } = sync_mode
         {
-            if state.time_since_better_block.is_none() {
-                state.time_since_better_block = Some(Instant::now());
-            }
-            if state
-                .time_since_better_block
-                .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
-                .unwrap()
-            // unwrap is safe because time_since_better_block is set right above
-            {
-                sync_mode = SyncStatus::Lagging {
+            let time_since_better_block = state.time_since_better_block.get_or_insert_with(Instant::now);
+            if time_since_better_block.elapsed() > time_before_considered_lagging {
+                Some(SyncStatus::Lagging {
                     local: local.clone(),
                     network: network.clone(),
                     sync_peers: sync_peers.clone(),
-                };
-            }
-        } else {
-            // We might have gotten up to date via propagation outside of this state, so reset the timer
-            if sync_mode == SyncStatus::UpToDate {
-                state.time_since_better_block = None;
-            }
-        }
-
-        state.chain_status_log.record(&local_metadata, peer_metadata);
-
-        if !self.is_synced && sync_mode.is_up_to_date() {
-            state.ahead_of_peers_counter += 1;
-            if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
-                self.set_synced_response(shared);
-                info!(target: LOG_TARGET, "Initial sync achieved");
+                })
             } else {
-                info!(
-                    target: LOG_TARGET,
-                    "We are ahead of at least {} peers, waiting for more info",
-                    state.ahead_of_peers_counter
-                );
-                self.set_synced_response(shared);
+                None
             }
+        } else if *sync_mode == SyncStatus::UpToDate {
+            // We might have gotten up to date via propagation outside of this state, so reset the timer.
+            state.time_since_better_block = None;
+            None
+        } else {
+            None
+        };
+
+        if let Some(sync_mode_update) = lagging_sync_mode {
+            *sync_mode = sync_mode_update;
+        }
+    }
+
+    fn update_initial_sync_status<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+        state: &mut ListeningLoopState,
+        sync_mode: &SyncStatus,
+    ) {
+        if self.is_synced || !sync_mode.is_up_to_date() {
+            return;
         }
 
-        // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
-        // immediately return fallen behind with the peer that has a higher pow than us
-        if sync_mode.is_lagging() && self.is_synced {
-            state.chain_status_log.log_and_clear();
-            return Some(StateEvent::FallenBehind(sync_mode));
+        state.ahead_of_peers_counter += 1;
+        if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
+            self.set_synced_response(shared);
+            info!(target: LOG_TARGET, "Initial sync achieved");
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "We are ahead of at least {} peers, waiting for more info",
+                state.ahead_of_peers_counter
+            );
+            self.set_synced_response(shared);
         }
+    }
+
+    fn collect_initial_lagging_peers<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+        state: &mut ListeningLoopState,
+        sync_mode: SyncStatus,
+    ) -> Option<StateEvent> {
         // if we are lagging and not yet reached initial sync, we delay a bit till we get
         // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
         // peer to sync from in the next stages
@@ -607,8 +657,8 @@ fn determine_sync_mode(
         // we only require some data from it, we need to ensure that they can supply the data we need, as in their
         // effective pruned horizon is greater than our local current chain tip.
         let pruned_mode = local.pruning_horizon() > 0;
-        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0
-            && network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
+        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
+            network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
         let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.best_block_height();
         let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
             (true, true, _) => {
@@ -643,8 +693,8 @@ fn determine_sync_mode(
         if blocks_behind_before_considered_lagging > 0 {
             // Otherwise, only wait when the tip is above us, otherwise
             // chains with a lower height will never be reorged to.
-            if network_tip_height > local_tip_height
-                && local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
+            if network_tip_height > local_tip_height &&
+                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
             {
                 trace!(
                     target: LOG_TARGET,
