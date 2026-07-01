@@ -268,7 +268,7 @@ where B: BlockchainBackend + 'static
                 inputs.push(Ok(SyncUtxosResponse {
                     txo: Some(Txo::Commitment(input_commitment.as_bytes().to_vec())),
                     mined_header: current_header_hash.to_vec(),
-                }));                
+                }));
             }
             debug!(
                 target: LOG_TARGET,

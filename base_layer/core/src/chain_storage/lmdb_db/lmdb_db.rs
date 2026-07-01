@@ -2639,10 +2639,12 @@ impl LMDBDatabase {
                     "txos_hash_to_index_db",
                 )?;
             }
-            lmdb_delete_if_exists(
+            self.remove_index_entry_for_header(
                 write_txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
+                block_hash,
+                "deleted_txo_hash_to_header_index",
             )?;
         }
 
@@ -2669,11 +2671,6 @@ impl LMDBDatabase {
             );
             return Ok(());
         }
-                lmdb_delete_if_exists(
-                    write_txn,
-                    &self.deleted_txo_hash_to_header_index,
-                    output_hash.as_slice(),
-                )?;
 
         if !matches!(output_type, OutputType::Burn) {
             trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
