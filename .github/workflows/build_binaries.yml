@@ -439,8 +439,8 @@ jobs:
 
       - name: Sign macOS Artifacts
         # Disabled - macOS signing/notarization is currently broken; upload unsigned binaries instead
-        if: ${{ false }}
-        # if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
+        # if: ${{ false }}
+        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
         # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
@@ -654,7 +654,7 @@ jobs:
 
       - name: Archive and Checksum Binaries
         # macOS signing disabled (broken) -> archive unsigned binaries on every platform, incl. macOS
-        # if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARIZE_USERNAME != '' ) ) ) }}
+        if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARIZE_USERNAME != '' ) ) ) }}
         env:
           MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
         shell: bash
