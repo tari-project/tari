@@ -42,6 +42,10 @@ use crate::{
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage_sql";
 // The maximum number of peers to return in peer manager
 const PEER_MANAGER_SYNC_PEERS: usize = 100;
+// Absolute hard ceiling on the number of peers served in a single discovery response, regardless of what the caller
+// requests or how the serve limit is configured. Acts as a safety margin so a peer cannot request an unbounded number
+// of peers. Matches the DHT RPC per-request maximum (`DHT_RPC_MAX_PEERS_PER_REQUEST`).
+const MAX_DISCOVERY_SYNC_PEERS: usize = 500;
 // The maximum amount of time a peer can be inactive before being considered stale:
 // ((5 days, 24h, 60m, 60s)/2 = 2.5 days)
 pub const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60 / 2);
@@ -187,9 +191,10 @@ impl PeerStorageSql {
     /// Criteria:
     ///  - Peer is not banned
     ///  - Peer has been seen within a defined time span (within the threshold)
-    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
-    ///    peers to sync)
-    ///  - Uses 0 as max PEER_MANAGER_SYNC_PEERS
+    ///  - Returns at most the caller's configured serve cap `max_n`, itself bounded by the absolute hard ceiling
+    ///    `MAX_DISCOVERY_SYNC_PEERS` (safety margin so a peer cannot request an unbounded number of peers). A `max_n`
+    ///    of 0 falls back to the hard ceiling.
+    ///  - A requested `n` of 0 means "as many as the cap allows"
     ///  - Peers has an address that is reachable - with supported transport protocols
     pub fn discovery_syncing(
         &self,
@@ -197,11 +202,21 @@ impl PeerStorageSql {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
+        max_n: usize,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        if n == 0 {
-            n = PEER_MANAGER_SYNC_PEERS;
+        // The configured serve limit (`max_peers_to_sync_per_round`, supplied by the DHT RPC service) lets a node
+        // serve as many peers as its peers are willing to request, but it is never allowed above the absolute hard
+        // ceiling so a misconfigured node or a client requesting a huge `n` cannot force an unbounded response.
+        let cap = if max_n == 0 {
+            MAX_DISCOVERY_SYNC_PEERS
         } else {
-            n = min(n, PEER_MANAGER_SYNC_PEERS);
+            min(max_n, MAX_DISCOVERY_SYNC_PEERS)
+        };
+        // Serve the smaller of the client's request and our cap. A requested `n` of 0 means "as many as the cap".
+        if n == 0 {
+            n = cap;
+        } else {
+            n = min(n, cap);
         }
 
         Ok(self.peer_db.get_n_random_active_peers(
@@ -725,14 +740,20 @@ mod test {
         assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[good_seed.node_id], Some(PeerFeatures::COMMUNICATION_NODE), false,)
+                .discovery_syncing(
+                    100,
+                    &[good_seed.node_id],
+                    Some(PeerFeatures::COMMUNICATION_NODE),
+                    false,
+                    100
+                )
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, 100)
                 .unwrap()
                 .len(),
             2
@@ -755,7 +776,7 @@ mod test {
 
         // Assert that peers have internal and external addresses
         let nodes_all_addresses = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, 100)
             .unwrap();
         assert!(
             nodes_all_addresses
@@ -770,7 +791,7 @@ mod test {
 
         // Assert that peers have external addresses only
         let nodes_external_addresses_only = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true, 100)
             .unwrap();
         assert!(
             nodes_external_addresses_only

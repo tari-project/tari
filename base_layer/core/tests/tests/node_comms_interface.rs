@@ -21,10 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
+use std::{sync::Arc, time::Duration};
+
 use tari_common::configuration::Network;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
+        GetNewBlockTemplateRequest,
         InboundNodeCommsHandlers,
         NodeCommsRequest,
         NodeCommsResponse,
@@ -45,7 +48,7 @@ use tari_service_framework::reply_channel;
 use tari_transaction_components::{
     MicroMinotari,
     key_manager::KeyManager,
-    tari_proof_of_work::Difficulty,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::create_utxo,
     transaction_components::covenants::Covenant,
 };
@@ -356,4 +359,117 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     } else {
         panic!();
     }
+}
+
+// A `GetNewBlockTemplate` request must not build a template on a stale tip. When the base node tip advances while the
+// handler is waiting for the mempool to catch up, the handler should re-fetch the fresher tip and build the template on
+// it. Here the mempool starts behind the tip (so the handler waits), then - mid-wait - a new block (height 3) is added
+// to the chain and the mempool is advanced to it. The returned template must be built on the *new* tip: height 4 (the
+// stale height-2 tip the handler first observed would have produced height 3). It must also be flagged mempool-in-sync.
+#[tokio::test]
+async fn inbound_get_new_block_template_refetches_advanced_tip() {
+    let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let block0 = consensus_manager.get_genesis_block();
+    let key_manager = KeyManager::new_random().unwrap();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let store = create_store_with_consensus_and_validators_and_config(
+        consensus_manager.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+    );
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(MockValidator::new(true)),
+    );
+
+    let (block_event_sender, _) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
+
+    // Advance the chain tip to height 2.
+    let (block1, _) = append_block(
+        &store,
+        &block0,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
+    let (block2, _) = append_block(
+        &store,
+        &block1,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
+
+    // Put the mempool behind the tip (it has only seen the genesis block) so the handler has to wait. A default
+    // last-seen hash would be treated as "in sync" and skip the wait entirely.
+    mempool
+        .process_published_block(Arc::new(block0.block().clone()))
+        .await
+        .unwrap();
+
+    // `mempool` is cloned into the handler; the original is retained to drive it from the test. Both share the same
+    // underlying storage and last-seen broadcast channel. The mempool-sync timeout is raised well above the production
+    // default so the test waits for the mempool deterministically instead of racing the short production deadline (the
+    // cause of CI flakes - the handler must not give up and build on the stale tip before the test advances the chain).
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        mempool.clone(),
+        consensus_manager.clone(),
+        outbound_nci,
+        connectivity,
+        randomx_factory,
+    )
+    .with_mempool_sync_timeout(Duration::from_secs(60));
+
+    let handle = tokio::spawn(async move {
+        inbound_nch
+            .handle_request(NodeCommsRequest::GetNewBlockTemplate(GetNewBlockTemplateRequest {
+                algo: PowAlgorithm::Sha3x,
+                max_weight: 0,
+            }))
+            .await
+    });
+
+    // Advance the chain to height 3 and notify the mempool of the new tip. The chain is advanced *before* the mempool
+    // is notified, so the mempool can never be observed ahead of a stale tip. With the generous sync timeout above, the
+    // handler reliably waits for this notification (or sees the advanced state on its first read), then builds the
+    // template on the height-3 tip regardless of scheduling - no dependence on hitting a narrow timing window.
+    tokio::task::yield_now().await;
+    let (block3, _) = append_block(
+        &store,
+        &block2,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .unwrap();
+    mempool
+        .process_published_block(Arc::new(block3.block().clone()))
+        .await
+        .unwrap();
+
+    let response = handle.await.unwrap().unwrap();
+    let NodeCommsResponse::NewBlockTemplate(template) = response else {
+        panic!("expected a NewBlockTemplate response");
+    };
+    // Built on the fresher tip (height 3 -> template height 4), not the stale height-2 tip (template height 3) the
+    // handler first observed.
+    assert_eq!(template.header.height, 4);
+    assert!(template.is_mempool_in_sync);
 }

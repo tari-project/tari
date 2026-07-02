@@ -169,8 +169,10 @@ pub async fn check_detected_transactions<
         let is_valid = tip_height >= mined_height;
         let previously_confirmed = tx.status.is_confirmed() && tx.mined_height.is_some() && tx.mined_in_block.is_some();
         let must_be_confirmed = tip_height.saturating_sub(mined_height) >= config.num_confirmations_required;
+        let previously_locked = tx.status.is_locked();
+        let must_be_unlocked = tip_height >= tx.lock_height;
 
-        if !(previously_confirmed && must_be_confirmed) {
+        if !(previously_confirmed && must_be_confirmed) || (previously_locked && must_be_unlocked) {
             let log_msg = format!(
                 "Updating faux transaction: TxId({}), mined_height({mined_height}), \
                  must_be_confirmed({must_be_confirmed}), output_status({output_status}), is_valid({is_valid})",

@@ -174,17 +174,18 @@ impl PeerManager {
     /// Criteria:
     ///  - Peer is not banned
     ///  - Peer has been seen within a defined time span (1 week)
-    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
-    ///    peers to sync)
+    ///  - Returns at most `max_n` peers (the caller's configured serve cap); a `max_n` of 0 falls back to the peer
+    ///    manager default
     pub async fn discovery_syncing(
         &self,
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
+        max_n: usize,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
+            .discovery_syncing(n, excluded_peers, features, external_addresses_only, max_n)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.

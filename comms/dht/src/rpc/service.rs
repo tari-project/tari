@@ -112,9 +112,18 @@ impl DhtRpcService for DhtRpcServiceImpl {
         }
 
         let external_addresses_only = !self.config.peer_validator_config.allow_test_addresses;
+        // Serve up to as many peers as our peers are configured to request in a round, rather than a hard-coded
+        // ceiling. This keeps the number of peers we send aligned with the number requested.
+        let max_n = self.config.network_discovery.max_peers_to_sync_per_round as usize;
         let peers = self
             .peer_manager
-            .discovery_syncing(message.n as usize, &excluded_peers, features, external_addresses_only)
+            .discovery_syncing(
+                message.n as usize,
+                &excluded_peers,
+                features,
+                external_addresses_only,
+                max_n,
+            )
             .await
             .map_err(RpcError::from)?;
 

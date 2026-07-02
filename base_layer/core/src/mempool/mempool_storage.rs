@@ -58,7 +58,7 @@ pub struct MempoolStorage {
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
     rules: BaseNodeConsensusManager,
-    last_seen_height: u64,
+    pub(crate) last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
 }
 

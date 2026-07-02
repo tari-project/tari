@@ -48,6 +48,10 @@
 # Obscure GRPC error responses (default = false)
 #report_grpc_error = false
 
+# Enable the Tari Pulse service, which periodically checks (via DNS checkpoints) whether the node is still in sync with
+# the network and optionally probes seed-peer liveness. Set to false to disable the service entirely. (default = true)
+# tari_pulse_enabled = true
+
 # Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
 # tari_pulse_interval = 120
 
