@@ -438,18 +438,17 @@ jobs:
           path: "${{ env.MTS_SOURCE }}/*"
 
       - name: Sign macOS Artifacts
-        # Disabled - macOS signing/notarization is currently broken; upload unsigned binaries instead
         # if: ${{ false }}
-        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
+        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARY_ISSUER != '' ) }}
         # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
           MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
           MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
-          MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
-          MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
-          MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         run: |
           set -xo pipefail
           echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
@@ -518,12 +517,14 @@ jobs:
           echo "Checksum verification archive is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
+          printf '%s' "${MACOS_NOTARY_KEY}" > "${RUNNER_TEMP}/notary_key.p8"
+
           echo -e "Submitting to Apple...\n\n"
           xcrun notarytool submit \
             "${{ env.BINFILE }}.zip" \
-            --apple-id "${MACOS_NOTARIZE_USERNAME}" \
-            --password ${MACOS_NOTARIZE_PASSWORD} \
-            --team-id ${MACOS_ASC_PROVIDER} \
+            --key "${RUNNER_TEMP}/notary_key.p8" \
+            --key-id "${MACOS_NOTARY_KEY_ID}" \
+            --issuer "${MACOS_NOTARY_ISSUER}" \
             --verbose --wait 2>&1 | tee -a notarisation.result
           # Maybe use line from with "Processing complete"?
           requestUUID=$(tail -n5 notarisation.result | grep "id:" | cut -d" " -f 4)
@@ -653,10 +654,9 @@ jobs:
           cargo audit bin *minotari*${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
-        # macOS signing disabled (broken) -> archive unsigned binaries on every platform, incl. macOS
-        if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARIZE_USERNAME != '' ) ) ) }}
+        if: ${{ ! ( ( startsWith(runner.os, 'macOS') && ( env.MACOS_NOTARY_ISSUER != '' ) ) ) }}
         env:
-          MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
@@ -789,16 +789,16 @@ jobs:
           ls -alhtR macos-universal
 
       - name: Build the macOS universal Archive and code-sign
-        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
+        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARY_ISSUER != '' ) }}
         # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
           MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
           MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
-          MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
-          MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
-          MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER }}
         run: |
           # set -xo pipefail
           echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
@@ -879,12 +879,14 @@ jobs:
           echo "Checksum verification archive is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
+          printf '%s' "${MACOS_NOTARY_KEY}" > "${RUNNER_TEMP}/notary_key.p8"
+
           echo -e "Submitting to Apple...\n\n"
           xcrun notarytool submit \
             "${{ env.BINFILE }}.zip" \
-            --apple-id "${MACOS_NOTARIZE_USERNAME}" \
-            --password ${MACOS_NOTARIZE_PASSWORD} \
-            --team-id ${MACOS_ASC_PROVIDER} \
+            --key "${RUNNER_TEMP}/notary_key.p8" \
+            --key-id "${MACOS_NOTARY_KEY_ID}" \
+            --issuer "${MACOS_NOTARY_ISSUER}" \
             --verbose --wait 2>&1 | tee -a notarisation.result
           # Maybe use line from with "Processing complete"?
           requestUUID=$(tail -n5 notarisation.result | grep "id:" | cut -d" " -f 4)
