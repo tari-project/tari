@@ -117,3 +117,6 @@ debug = false
 
 [patch.crates-io]
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
+# crates.io junit-report 0.9.0 still depends on quick-xml 0.39, which is below
+# the RustSec-patched quick-xml 0.41 line used by upstream junit-report master.
+junit-report = { git = "https://github.com/bachp/junit-report-rs", rev = "d4eb4902e245a64d08110891069d3024f9db9d04" }
