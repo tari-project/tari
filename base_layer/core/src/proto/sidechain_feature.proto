@@ -155,6 +155,8 @@ message ShardGroup {
 }
 
 message ShardGroupAccumulatedData {
-  uint64 total_exhaust_burn_msb = 1;
-  uint64 total_exhaust_burn_lsb = 2;
+  uint64 epoch_exhaust_burn_msb = 1;
+  uint64 epoch_exhaust_burn_lsb = 2;
+  uint64 epoch_fee = 3;
+  uint64 epoch_claimed = 4;
 }

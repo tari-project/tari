@@ -686,21 +686,27 @@ impl TryFrom<grpc::ShardGroupAccumulatedData> for ShardGroupAccumulatedData {
     type Error = String;
 
     fn try_from(value: grpc::ShardGroupAccumulatedData) -> Result<Self, Self::Error> {
-        let total_exhaust_burn =
-            (u128::from(value.total_exhaust_burn_msb) << 64) | u128::from(value.total_exhaust_burn_lsb);
-        Ok(Self { total_exhaust_burn })
+        let epoch_exhaust_burn =
+            (u128::from(value.epoch_exhaust_burn_msb) << 64) | u128::from(value.epoch_exhaust_burn_lsb);
+        Ok(Self {
+            epoch_exhaust_burn,
+            epoch_fee: value.epoch_fee,
+            epoch_claimed: value.epoch_claimed,
+        })
     }
 }
 
 impl From<&ShardGroupAccumulatedData> for grpc::ShardGroupAccumulatedData {
     fn from(value: &ShardGroupAccumulatedData) -> Self {
-        let total_exhaust_burn_msb = (value.total_exhaust_burn >> 64) as u64;
+        let epoch_exhaust_burn_msb = (value.epoch_exhaust_burn >> 64) as u64;
         #[allow(clippy::cast_possible_truncation)]
-        let total_exhaust_burn_lsb = (value.total_exhaust_burn & u128::from(u64::MAX)) as u64;
+        let epoch_exhaust_burn_lsb = (value.epoch_exhaust_burn & u128::from(u64::MAX)) as u64;
 
         Self {
-            total_exhaust_burn_msb,
-            total_exhaust_burn_lsb,
+            epoch_exhaust_burn_msb,
+            epoch_exhaust_burn_lsb,
+            epoch_fee: value.epoch_fee,
+            epoch_claimed: value.epoch_claimed,
         }
     }
 }

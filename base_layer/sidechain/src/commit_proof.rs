@@ -245,7 +245,12 @@ impl SidechainBlockHeader {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ShardGroupAccumulatedData {
-    pub total_exhaust_burn: u128,
+    /// Exhaust burn attributed to this shard group over the epoch.
+    pub epoch_exhaust_burn: u128,
+    /// Network fee volume attributed to this shard group over the epoch.
+    pub epoch_fee: u64,
+    /// Peg-in claim amounts attributed to this shard group over the epoch.
+    pub epoch_claimed: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
