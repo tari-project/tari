@@ -2393,6 +2393,7 @@ where B: BlockchainBackend
             leaf_index,
             kernel_hash,
             block_hash,
+            block_height: block.header().height,
         })
     }
 }
