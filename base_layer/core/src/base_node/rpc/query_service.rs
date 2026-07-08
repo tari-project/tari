@@ -666,6 +666,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             encoded_merkle_proof: bincode::serialize(&proof.merkle_proof).map_err(Error::general)?,
             block_hash: proof.block_hash,
             leaf_index: proof.leaf_index.value() as u64,
+            block_height: Some(proof.block_height),
         })
     }
 

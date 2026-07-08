@@ -121,16 +121,22 @@ where
 
                 // We trust our base node right? ;-) So just store it without validating.
 
-                db.update_burn_proof_set_merkle_proof(output_hash, &EncodedMerkleProof {
-                    block_hash: resp.block_hash,
-                    encoded_merkle_proof: resp.encoded_merkle_proof,
-                    leaf_index: resp.leaf_index,
-                })?;
+                let mined_in_height = resp.block_height;
+                db.update_burn_proof_set_merkle_proof(
+                    output_hash,
+                    &EncodedMerkleProof {
+                        block_hash: resp.block_hash,
+                        encoded_merkle_proof: resp.encoded_merkle_proof,
+                        leaf_index: resp.leaf_index,
+                    },
+                    mined_in_height,
+                )?;
 
                 info!(
                     target: LOG_TARGET,
-                    "Successfully updated burn output {} with merkle proof",
-                    output_hash
+                    "Successfully updated burn output {} with merkle proof (mined in height {:?})",
+                    output_hash,
+                    mined_in_height
                 );
 
                 let _ignore = event_publisher.send(Arc::new(TransactionEvent::TransactionBurnConfirmed {

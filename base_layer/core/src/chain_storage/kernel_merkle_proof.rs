@@ -11,6 +11,9 @@ pub struct KernelMerkleProof {
     pub leaf_index: LeafIndex,
     pub kernel_hash: FixedHash,
     pub block_hash: BlockHash,
+    /// The height of the block the kernel was mined in. Used by the wallet to derive the L1 epoch the burn
+    /// belongs to, so a downstream (L2) claim can be deferred until that epoch has been synced.
+    pub block_height: u64,
 }
 
 impl KernelMerkleProof {
