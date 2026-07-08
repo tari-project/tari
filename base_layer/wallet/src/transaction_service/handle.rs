@@ -750,10 +750,6 @@ pub enum TransactionEvent {
     TransactionBurnConfirmed {
         output_hash: HashOutput,
         commitment: Box<CompressedCommitment>,
-        /// The L1 block height the burn was mined in, if the base node reported it. Carried through so the
-        /// console wallet can embed the burn's L1 epoch in the proof file. `None` when the base node predates
-        /// the field or the height was otherwise unavailable.
-        mined_in_height: Option<u64>,
     },
     Error(String),
 }

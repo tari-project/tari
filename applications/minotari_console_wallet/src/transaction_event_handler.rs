@@ -69,12 +69,8 @@ impl TransactionEventHandler {
         while let Ok(event) = events.recv().await {
             #[allow(clippy::single_match)]
             match &*event {
-                TransactionEvent::TransactionBurnConfirmed {
-                    output_hash,
-                    mined_in_height,
-                    ..
-                } => {
-                    if let Err(err) = self.handle_burn_confirmed(*output_hash, *mined_in_height).await {
+                TransactionEvent::TransactionBurnConfirmed { output_hash, .. } => {
+                    if let Err(err) = self.handle_burn_confirmed(*output_hash).await {
                         error!(target: LOG_TARGET, "Error handling TransactionBurnConfirmed event: {}", err);
                     }
                 },
@@ -83,11 +79,7 @@ impl TransactionEventHandler {
         }
     }
 
-    async fn handle_burn_confirmed(
-        &mut self,
-        output_hash: HashOutput,
-        mined_in_height: Option<u64>,
-    ) -> anyhow::Result<()> {
+    async fn handle_burn_confirmed(&mut self, output_hash: HashOutput) -> anyhow::Result<()> {
         let proof = self
             .transaction_service
             .get_burn_proof(output_hash)
@@ -101,9 +93,10 @@ impl TransactionEventHandler {
 
         let out_dir = self.config.get_burn_proof_output_dir(self.network);
 
-        // Convert the burn's L1 block height to its epoch (height / vn_epoch_length) so an L2 claimant can defer
-        // the claim until L2 has synced past it. `None` when the base node did not report the height.
-        let mined_in_epoch = mined_in_height.map(|height| {
+        // Convert the burn's L1 block height (persisted with the merkle proof) to its epoch
+        // (height / vn_epoch_length) so an L2 claimant can defer the claim until L2 has synced past it.
+        // `None` when the base node did not report the height.
+        let mined_in_epoch = proof.mined_in_height.map(|height| {
             self.consensus_manager
                 .consensus_constants(height)
                 .block_height_to_epoch(height)

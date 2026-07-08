@@ -1479,6 +1479,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         output_hash: &FixedHash,
         merkle_proof: &EncodedMerkleProof,
+        mined_in_height: Option<u64>,
     ) -> Result<(), TransactionStorageError> {
         use crate::schema::burn_proofs;
 
@@ -1486,6 +1487,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let num_updated = diesel::update(burn_proofs::table)
             .set((
                 burn_proofs::kernel_merkle_proof.eq(Some(serializers::bincode_encode(merkle_proof)?)),
+                burn_proofs::mined_in_height.eq(mined_in_height.map(|h| h as i64)),
                 burn_proofs::updated_at.eq(now()),
             ))
             .filter(burn_proofs::output_hash.eq(output_hash.as_bytes()))
