@@ -26,6 +26,8 @@ pub struct DbBurnProof {
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<EncryptedData>,
     pub value: Option<MicroMinotari>,
+    /// The L1 block height the burn was mined in, if known (populated with the kernel merkle proof).
+    pub mined_in_height: Option<u64>,
 }
 
 impl TryFrom<BurntProofSql> for DbBurnProof {
@@ -53,6 +55,13 @@ impl TryFrom<BurntProofSql> for DbBurnProof {
             })?)),
             None => None,
         };
+        let mined_in_height =
+            match value.mined_in_height {
+                Some(h) => Some(u64::try_from(h).map_err(|e| {
+                    WalletStorageError::ConversionError(format!("Invalid mined_in_height in DB: {}", e))
+                })?),
+                None => None,
+            };
 
         Ok(Self {
             id: value.id,
@@ -64,6 +73,7 @@ impl TryFrom<BurntProofSql> for DbBurnProof {
             updated_at: value.updated_at,
             encrypted_data,
             value: v,
+            mined_in_height,
         })
     }
 }
@@ -87,6 +97,7 @@ pub(crate) struct BurntProofSql {
     pub kernel_excess: Option<Vec<u8>>,
     #[allow(dead_code)]
     pub kernel_excess_sig: Option<Vec<u8>>,
+    pub mined_in_height: Option<i64>,
 }
 
 fn get_encryption_domain(commitment: &[u8], field_name: &'static str) -> Vec<u8> {

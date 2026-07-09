@@ -2679,6 +2679,9 @@ message GetBurnClaimProofResponse {
   bytes encrypted_data = 3;
   TransactionKernel kernel = 4;
   uint64 value = 5;
+  // The L1 epoch the burn was mined in (block_height / vn_epoch_length). Optional: absent until the burn is
+  // confirmed on-chain, or when connected to a base node that does not report the mined block height.
+  optional uint64 mined_in_epoch = 6;
 }
 
 message BurnClaimProof {

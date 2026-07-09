@@ -3207,6 +3207,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             kernel: Some(proof.kernel.into()),
             encrypted_data: proof.encrypted_data.map(|ed| ed.into_vec()).unwrap_or_default(),
             value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),
+            mined_in_epoch: proof.mined_in_height.map(|height| {
+                self.rules
+                    .consensus_constants(height)
+                    .block_height_to_epoch(height)
+                    .as_u64()
+            }),
         }))
     }
 

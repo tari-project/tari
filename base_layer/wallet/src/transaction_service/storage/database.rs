@@ -215,6 +215,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         output_hash: &FixedHash,
         merkle_proof: &EncodedMerkleProof,
+        mined_in_height: Option<u64>,
     ) -> Result<(), TransactionStorageError>;
 
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
@@ -963,8 +964,10 @@ where T: TransactionBackend + 'static
         &self,
         output_hash: &FixedHash,
         merkle_proof: &EncodedMerkleProof,
+        mined_in_height: Option<u64>,
     ) -> Result<(), TransactionStorageError> {
-        self.db.update_burn_proof_set_merkle_proof(output_hash, merkle_proof)
+        self.db
+            .update_burn_proof_set_merkle_proof(output_hash, merkle_proof, mined_in_height)
     }
 
     pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {

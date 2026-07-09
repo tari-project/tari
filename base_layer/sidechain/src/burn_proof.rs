@@ -32,6 +32,12 @@ pub struct CompleteClaimBurnProof {
     pub claim_proof: BurnClaimProof,
     #[serde(with = "serializers::base64")]
     pub encrypted_data: Vec<u8>,
+    /// The L1 epoch the burn was mined in (`block_height / vn_epoch_length`). Lets an L2 claimant defer the
+    /// claim until L2 has synced past this epoch, avoiding a premature, permanently-rejected submission.
+    /// `Option` (via `serde(default)`) so proof files written before this field, or by wallets connected to a
+    /// base node that did not report the height, still deserialize (as `None`) and older readers ignore it.
+    #[serde(default)]
+    pub mined_in_epoch: Option<u64>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -53,4 +59,59 @@ pub struct AbridgedTransactionKernel {
     pub lock_height: u64,
     pub excess: CompressedCommitment,
     pub excess_sig: CompressedRistrettoSchnorr,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_proof(mined_in_epoch: Option<u64>) -> CompleteClaimBurnProof {
+        CompleteClaimBurnProof {
+            claim_proof: BurnClaimProof {
+                burn_public_key: Default::default(),
+                commitment: Default::default(),
+                ownership_proof: Default::default(),
+                encoded_merkle_proof: EncodedMerkleProof {
+                    block_hash: Default::default(),
+                    encoded_merkle_proof: vec![1, 2, 3],
+                    leaf_index: 7,
+                },
+                kernel: AbridgedTransactionKernel {
+                    version: 0,
+                    fee: 100,
+                    lock_height: 0,
+                    excess: Default::default(),
+                    excess_sig: Default::default(),
+                },
+                value: 12_345,
+                sender_offset_public_key: Default::default(),
+            },
+            encrypted_data: vec![9, 9, 9],
+            mined_in_epoch,
+        }
+    }
+
+    #[test]
+    fn mined_in_epoch_round_trips() {
+        let proof = sample_proof(Some(42));
+        let json = serde_json::to_string(&proof).unwrap();
+        assert!(
+            json.contains("mined_in_epoch"),
+            "serialized proof should contain the field: {json}"
+        );
+        let parsed: CompleteClaimBurnProof = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.mined_in_epoch, Some(42));
+    }
+
+    #[test]
+    fn absent_mined_in_epoch_defaults_to_none() {
+        // Simulate a proof file written before the field existed by dropping the key entirely, so the reader must
+        // rely on `#[serde(default)]` rather than a `null` value being present.
+        let mut value = serde_json::to_value(sample_proof(Some(42))).unwrap();
+        value.as_object_mut().unwrap().remove("mined_in_epoch");
+        assert!(value.get("mined_in_epoch").is_none());
+
+        let parsed: CompleteClaimBurnProof = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed.mined_in_epoch, None, "absent field must deserialize as None");
+    }
 }

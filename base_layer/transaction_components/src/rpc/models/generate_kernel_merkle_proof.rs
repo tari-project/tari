@@ -12,4 +12,8 @@ pub struct GenerateKernelMerkleProofResponse {
     #[serde(with = "serializers::base64")]
     pub encoded_merkle_proof: Vec<u8>,
     pub leaf_index: u64,
+    /// The height of the block the kernel was mined in. `Option` (via `serde(default)`) so responses from
+    /// older base nodes that predate this field deserialize as `None` rather than failing.
+    #[serde(default)]
+    pub block_height: Option<u64>,
 }

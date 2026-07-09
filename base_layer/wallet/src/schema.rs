@@ -14,6 +14,7 @@ diesel::table! {
         value -> Nullable<BigInt>,
         kernel_excess -> Nullable<Binary>,
         kernel_excess_sig -> Nullable<Binary>,
+        mined_in_height -> Nullable<BigInt>,
     }
 }
 

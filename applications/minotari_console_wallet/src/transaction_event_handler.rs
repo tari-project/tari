@@ -35,6 +35,7 @@ use minotari_wallet::{
 use tari_common::configuration::Network;
 use tari_common_types::types::HashOutput;
 use tari_sidechain::{AbridgedTransactionKernel, BurnClaimProof, CompleteClaimBurnProof};
+use tari_transaction_components::consensus::ConsensusManager;
 use tari_utilities::hex::Hex;
 use tokio::fs;
 
@@ -44,10 +45,13 @@ pub fn start(wallet: &WalletSqlite) -> impl Future<Output = ()> + 'static {
     let network = wallet.network.as_network();
     let transaction_service = wallet.transaction_service.clone();
     let config = wallet.config.transaction_service_config.clone();
+    // Used to map a burn's L1 block height to its epoch (height / vn_epoch_length) when writing the proof file.
+    let consensus_manager = ConsensusManager::builder(network).build();
     TransactionEventHandler {
         transaction_service,
         config,
         network,
+        consensus_manager,
     }
     .run()
 }
@@ -56,6 +60,7 @@ struct TransactionEventHandler {
     config: TransactionServiceConfig,
     network: Network,
     transaction_service: TransactionServiceHandle,
+    consensus_manager: ConsensusManager,
 }
 
 impl TransactionEventHandler {
@@ -88,13 +93,27 @@ impl TransactionEventHandler {
 
         let out_dir = self.config.get_burn_proof_output_dir(self.network);
 
-        write_burn_proof_to_file(out_dir, proof).await?;
+        // Convert the burn's L1 block height (persisted with the merkle proof) to its epoch
+        // (height / vn_epoch_length) so an L2 claimant can defer the claim until L2 has synced past it.
+        // `None` when the base node did not report the height.
+        let mined_in_epoch = proof.mined_in_height.map(|height| {
+            self.consensus_manager
+                .consensus_constants(height)
+                .block_height_to_epoch(height)
+                .as_u64()
+        });
+
+        write_burn_proof_to_file(out_dir, proof, mined_in_epoch).await?;
 
         Ok(())
     }
 }
 
-async fn write_burn_proof_to_file<P: AsRef<Path>>(burn_proofs_dir: P, proof: DbBurnProof) -> anyhow::Result<()> {
+async fn write_burn_proof_to_file<P: AsRef<Path>>(
+    burn_proofs_dir: P,
+    proof: DbBurnProof,
+    mined_in_epoch: Option<u64>,
+) -> anyhow::Result<()> {
     fs::create_dir_all(&burn_proofs_dir).await?;
     let kernel_merkle_proof = proof
         .kernel_merkle_proof
@@ -126,9 +145,15 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(burn_proofs_dir: P, proof: DbB
             sender_offset_public_key: proof.burn_proof.sender_offset_public_key,
         },
         encrypted_data: encrypted_data.into_vec(),
+        mined_in_epoch,
     };
 
     fs::write(&final_path, serde_json::to_vec_pretty(&complete_proof)?).await?;
-    info!(target: LOG_TARGET, "Wrote burn proof to {}", final_path.display());
+    info!(
+        target: LOG_TARGET,
+        "Wrote burn proof (mined in epoch {:?}) to {}",
+        mined_in_epoch,
+        final_path.display()
+    );
     Ok(())
 }
