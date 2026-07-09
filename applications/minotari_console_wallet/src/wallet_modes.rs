@@ -258,14 +258,10 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
-                match handle
+                tls_identity = handle
                     .block_on(read_identity(config.config_dir.clone()))
                     .map(Some)
-                    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))
-                {
-                    Ok(identity) => tls_identity = identity,
-                    Err(e) => return Err(e),
-                }
+                    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
             }
 
             handle.spawn(run_grpc(
@@ -370,14 +366,10 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
-                match handle
+                tls_identity = handle
                     .block_on(read_identity(config.config_dir.clone()))
                     .map(Some)
-                    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))
-                {
-                    Ok(identity) => tls_identity = identity,
-                    Err(e) => return Err(e),
-                }
+                    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
             }
 
             handle.block_on(async { grpc.start_balance_debouncer_event_monitor().await });
