@@ -967,14 +967,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
-        match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&mut conn) {
-            Ok(info) => {
-                for item in info {
-                    let item = item.decrypt(&self.cipher)?;
-                    tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
-                }
-            },
-            Err(e) => return Err(e),
+        let info = UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&mut conn)?;
+        for item in info {
+            let item = item.decrypt(&self.cipher)?;
+            tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -1125,13 +1121,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut sender_info: Vec<InboundTransactionSenderInfo> = vec![];
-        match InboundTransactionSenderInfoSql::get_pending_inbound_transaction_sender_info(&mut conn) {
-            Ok(info) => {
-                for item in info {
-                    sender_info.push(InboundTransactionSenderInfo::try_from(item)?);
-                }
-            },
-            Err(e) => return Err(e),
+        let info = InboundTransactionSenderInfoSql::get_pending_inbound_transaction_sender_info(&mut conn)?;
+        for item in info {
+            sender_info.push(InboundTransactionSenderInfo::try_from(item)?);
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
