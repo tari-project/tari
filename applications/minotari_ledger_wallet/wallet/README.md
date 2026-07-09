@@ -29,21 +29,39 @@ checksum, and installs the app.
 Supported devices are Nano S Plus, Nano X, Stax, and Flex. The original Nano S is not supported by the Minotari Ledger
 Wallet.
 
-Run the installer from the `install_scripts` directory:
+Run the launcher from the `install_scripts` directory.
+
+On macOS or Linux:
 
 ```
-python install_minotari_ledger.py
+./install_minotari_ledger.sh
 ```
 
-Python 3.9 or newer is required.
-
-To install a specific release:
+On Windows PowerShell:
 
 ```
-python install_minotari_ledger.py --tag v5.4.0-pre.1
+.\install_minotari_ledger.ps1
 ```
 
-The per-model scripts under `install_scripts/<model>/` are compatibility wrappers around this unified installer.
+The launcher checks for Python 3.9 or newer and prompts before running a
+platform package-manager command if Python is missing. The Python installer
+creates an isolated user-cache environment for Ledger tooling.
+
+To install a specific release on macOS or Linux:
+
+```
+./install_minotari_ledger.sh --tag v5.4.0-pre.1
+```
+
+On Windows PowerShell:
+
+```
+.\install_minotari_ledger.ps1 -Tag v5.4.0-pre.1
+```
+
+If Python 3.9 or newer is already available, the installer can also be run directly with
+`python install_minotari_ledger.py`. No model-specific script is needed because the connected Ledger model is always
+auto-detected.
 
 ## Development environment setup
 
