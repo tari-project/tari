@@ -526,14 +526,14 @@ async fn handle_incoming_response(
             target: LOG_TARGET,
             "Response for {} (request key: {}) received after {}ms and is_synced: {}",
             response,
-            &request_key,
+            request_key,
             started.elapsed().as_millis(),
             is_synced
         );
         let _result = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Failed to finalize request (request key:{}): {:?}", &request_key, e
+                "Failed to finalize request (request key:{}): {:?}", request_key, e
             );
             e
         }));
@@ -553,7 +553,7 @@ async fn handle_outbound_request(
 ) -> Result<(), CommsInterfaceError> {
     let debug_info = format!(
         "Node request:{} to {}",
-        &request,
+        request,
         node_id
             .as_ref()
             .map(|n| n.short_str())
@@ -670,7 +670,7 @@ async fn handle_request_timeout(
         warn!(
             target: LOG_TARGET,
             "Request (request key {}) timed out after {}ms",
-            &request_key,
+            request_key,
             started.elapsed().as_millis()
         );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);

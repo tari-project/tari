@@ -736,7 +736,7 @@ impl UnconfirmedPool {
         trace!(
             target: LOG_TARGET,
             "Deleted transaction: {}",
-            &prioritized_transaction.transaction
+            prioritized_transaction.transaction
         );
         Ok(Some(prioritized_transaction.transaction))
     }

@@ -3513,8 +3513,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         debug!(
             target: LOG_TARGET,
             "Found new orphan tip {} ({})",
-            &prev_chain_header.height(),
-            &prev_chain_header.hash(),
+            prev_chain_header.height(),
+            prev_chain_header.hash(),
         );
         return Ok(vec![prev_chain_header]);
     }
@@ -3523,8 +3523,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         target: LOG_TARGET,
         "Found {} children of orphan {} ({})",
         children.len(),
-        &prev_chain_header.height(),
-        &prev_chain_header.hash()
+        prev_chain_header.height(),
+        prev_chain_header.hash()
     );
 
     let mut res = vec![];
