@@ -124,9 +124,8 @@ jobs:
         run: |
           SCRIPTS_ROOT="applications/minotari_ledger_wallet/wallet/install_scripts"
           mkdir -p install-assets
-          # Bundle all per-device installers (sh + ps1 + README) into one zip,
-          # preserving the per-device folder layout.
-          ( cd "${SCRIPTS_ROOT}" && zip -r "${GITHUB_WORKSPACE}/install-assets/${TS_FILENAME}-install-scripts.zip" . )
+          # Bundle the unified installer, platform launchers, and docs.
+          ( cd "${SCRIPTS_ROOT}" && zip -r "${GITHUB_WORKSPACE}/install-assets/${TS_FILENAME}-install-scripts.zip" README.md install_minotari_ledger.py install_minotari_ledger.sh install_minotari_ledger.ps1 -x "test_*" "__pycache__/*" "*.pyc" )
           echo "Bundled install scripts:"
           unzip -l "install-assets/${TS_FILENAME}-install-scripts.zip"
 

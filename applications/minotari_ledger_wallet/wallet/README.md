@@ -20,6 +20,49 @@ will not start and produce an error with a message to update the firmware.
 If the firmware needs to be updated, it must be done via Ledger Live. To update the firmware, open Ledger Live, select
 `My Ledger` and follow the instructions.
 
+## One-step installer
+
+The release installer in `install_scripts/install_minotari_ledger.py` works on macOS, Windows, and Linux. It detects the
+connected Ledger model, downloads the matching Minotari Ledger Wallet release artifact, verifies the `.zip.sha256`
+checksum, and installs the app.
+
+Supported devices are Nano S Plus, Nano X, Stax, and Flex. The original Nano S is not supported by the Minotari Ledger
+Wallet.
+
+Run the launcher from the `install_scripts` directory.
+
+On macOS or Linux:
+
+```
+./install_minotari_ledger.sh
+```
+
+On Windows PowerShell:
+
+```
+.\install_minotari_ledger.ps1
+```
+
+The launcher checks for Python 3.9 or newer and prompts before running a
+platform package-manager command if Python is missing. The Python installer
+creates an isolated user-cache environment for Ledger tooling.
+
+To install a specific release on macOS or Linux:
+
+```
+./install_minotari_ledger.sh --tag v5.4.0-pre.1
+```
+
+On Windows PowerShell:
+
+```
+.\install_minotari_ledger.ps1 -Tag v5.4.0-pre.1
+```
+
+If Python 3.9 or newer is already available, the installer can also be run directly with
+`python install_minotari_ledger.py`. No model-specific script is needed because the connected Ledger model is always
+auto-detected.
+
 ## Development environment setup
 
 Ledger does not build with the standard library, so we need to install `rust-src`. This can be done with:
@@ -40,9 +83,10 @@ new build targets for the current rust toolchain:
 cargo ledger setup
 ```
 
-## Device management via ledgerctl
+## Development device management via ledgerctl
 
-To control ledger devices we use the `ledgerctl` Python application.
+For development tasks such as installing a custom certificate, use the `ledgerctl` Python application. The one-step
+release installer above does not require users to run `ledgerctl` manually.
 
 Ensure that Python 3 is installed on your machine. To test this, open a Python shell and run `pip3 --version`. 
 Anaconda 3 is recommended. 
@@ -54,10 +98,9 @@ pip3 install --upgrade protobuf setuptools ecdsa
 pip3 install git+https://github.com/LedgerHQ/ledgerctl
 ```
 
-Install a custom certificate on the device to help with development. Start the device in recovery mode (varies per 
-device)
-- Nano S Plus: Hold the left button while turning on, and follow on screen instructions
-- Nano S: Hold the right button while turning on
+Install a custom certificate on the device to help with development. Start the device in recovery mode, which varies per
+device. For Nano S Plus, hold the left button while turning on and follow the on-screen instructions. For other supported
+devices, follow Ledger's model-specific recovery-mode instructions.
 
 Once in recovery mode run the following where <NAME> is simply the name of the CA. It can be anything:
 
@@ -145,16 +188,20 @@ ledgerctl delete "MinoTari Wallet"
 
 - Installation
 
-The following commands have to be run from the root of the Tari ledger wallet repository, i.e.
+For release artifacts, use the one-step installer above. Current Tari release archives contain
+`minotari_ledger_wallet.apdu`, and the installer downloads, verifies, extracts, and loads that APDU file through
+Ledger's secure loader.
+
+For a local development build, run the following commands from the root of the Tari ledger wallet repository, i.e.
 `<TARI>/applications/minotari_ledger_wallet/wallet`.
 
-> **Note:** Newer versions of `cargo-ledger` (used by the `ledger-app-builder` Docker image) no longer emit an
-> `app_<device>.json` manifest. Instead, `cargo ledger build` produces a self-contained `minotari_ledger_wallet.apdu`
-> install script in `./target/<device>/release/`. The old `ledgerctl install app_<device>.json` command therefore no
-> longer applies — replay the `.apdu` with `ledgerblue` instead.
+Newer versions of `cargo-ledger` (used by the `ledger-app-builder` Docker image) no longer emit an
+`app_<device>.json` manifest. Instead, `cargo ledger build` produces a self-contained `minotari_ledger_wallet.apdu`
+install script in `./target/<device>/release/`. The old `ledgerctl install app_<device>.json` command therefore no
+longer applies; replay the `.apdu` with `ledgerblue` instead.
 
-Install `ledgerblue` (one-time, into the same Python environment), then replay the `.apdu` for your device over a
-secure channel. Use the target id that matches your device:
+Install `ledgerblue` into the same Python environment, then replay the `.apdu` for your device over a secure channel.
+Use the target id that matches your device:
 
 | Device      | Target id    |
 |-------------|--------------|
@@ -165,8 +212,8 @@ secure channel. Use the target id that matches your device:
 
 ```
 pip3 install ledgerblue
-python3 -m ledgerblue.runScript --targetId 0x33100004 --fileName ./target/nanosplus/release/minotari_ledger_wallet.apdu --apdu --scp
-python3 -m ledgerblue.runScript --targetId 0x33200004 --fileName ./target/stax/release/minotari_ledger_wallet.apdu --apdu --scp
+python3 -m ledgerblue.runScript --targetId 0x33100004 --fileName ./target/nanosplus/release/minotari_ledger_wallet.apdu --scp
+python3 -m ledgerblue.runScript --targetId 0x33200004 --fileName ./target/stax/release/minotari_ledger_wallet.apdu --scp
 ```
 
 Alternatively, if the device is connected to the build host, `cargo ledger build <device> --load` builds and installs in
