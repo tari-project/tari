@@ -864,8 +864,8 @@ impl ConnectivityManagerActor {
                     .last_seen_since()
                     // Haven't seen them in expire_peer_last_seen_duration
                     .map(|t| t > self.config.expire_peer_last_seen_duration)
-                    // Or don't delete if never seen
-                    .unwrap_or(false)
+                    // marking true as its probably a dead peer
+                    .unwrap_or(true)
             {
                 debug!(
                     target: LOG_TARGET,

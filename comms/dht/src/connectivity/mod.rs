@@ -35,6 +35,7 @@ mod test;
 
 mod metrics;
 use std::{
+    cmp,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -396,11 +397,6 @@ impl DhtConnectivity {
 
     async fn refresh_random_pool(&mut self) -> Result<(), DhtConnectivityError> {
         let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
-        info!(
-            target: LOG_TARGET,
-            "refreshing random peer list, asking for {pool_size} peers",
-        );
-        let mut new_peers = self.fetch_random_peers(pool_size, &[], false).await?;
 
         // let see who is not connected and remove them
         let disconnected = self
@@ -414,29 +410,50 @@ impl DhtConnectivity {
             .random_pool
             .drain(..)
             .partition::<Vec<_>, _>(|n| disconnected.iter().any(|c| c.peer_node_id() == n));
-        // we want add  at most 10% new peers or at least 1 peer
-        let keep_size = pool_size - pool_size * self.config.connectivity.churn_rate / 100;
-        // this is safety counter so we dont loop endlessly here
-        let mut disconnect_counter = connected.len() / 2;
-        while connected.len() > keep_size && disconnect_counter > 0 {
-            disconnect_counter = disconnect_counter.saturating_sub(1);
-            // we remove a random peer so as not to keep swapping the same peer each time.
-            let mut rng = rand::rng();
-            let index = rng.random_range(0..connected.len());
-            if self
-                .connection_handles
-                .iter()
-                .any(|c| c.peer_node_id() == connected.get(index).expect("should exist") && c.is_strongly_held())
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "Skipping disconnect of peer '{}' because it is strongly held",
-                    connected.get(index).expect("should exist").short_str()
-                );
-                continue;
+
+        // We add at most `churn_rate`% new peers per refresh (or at least 1), and only start
+        // churning healthy peers once the pool has more connected peers than the churn floor.
+        let max_churn = cmp::max(pool_size * self.config.connectivity.churn_rate / 100, 1);
+        let keep_size = pool_size.saturating_sub(max_churn);
+        // The pool is only healthy enough to churn/explore once we hold more than the churn floor
+        // of connected peers. Below that we are short on peers.
+        let is_pool_healthy = connected.len() > keep_size;
+
+        // When the pool is healthy we can afford to churn out a few peers and probe/revive
+        // arbitrary (possibly never-seen) peers. When we are short on peers we do NOT churn and
+        // we only backfill with known-good peers (ones we have successfully connected to before)
+        // instead of wasting dials on never-seen/dead peers.
+        let known_good = !is_pool_healthy;
+        info!(
+            target: LOG_TARGET,
+            "refreshing random peer list, asking for {pool_size} peers (known_good = {known_good}, #connected = {})",
+            connected.len(),
+        );
+        let mut new_peers = self.fetch_random_peers(pool_size, &[], known_good).await?;
+
+        if is_pool_healthy {
+            // this is safety counter so we dont loop endlessly here
+            let mut disconnect_counter = connected.len() / 2;
+            while connected.len() > keep_size && disconnect_counter > 0 {
+                disconnect_counter = disconnect_counter.saturating_sub(1);
+                // we remove a random peer so as not to keep swapping the same peer each time.
+                let mut rng = rand::rng();
+                let index = rng.random_range(0..connected.len());
+                if self
+                    .connection_handles
+                    .iter()
+                    .any(|c| c.peer_node_id() == connected.get(index).expect("should exist") && c.is_strongly_held())
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Skipping disconnect of peer '{}' because it is strongly held",
+                        connected.get(index).expect("should exist").short_str()
+                    );
+                    continue;
+                }
+                let disconnect_peer = connected.swap_remove(index);
+                disconnected_peers.push(disconnect_peer);
             }
-            let disconnect_peer = connected.swap_remove(index);
-            disconnected_peers.push(disconnect_peer);
         }
         new_peers.truncate(pool_size.saturating_sub(connected.len()));
 
@@ -733,7 +750,10 @@ impl DhtConnectivity {
                 target: LOG_TARGET,
                 "Peer '{current_peer}' in peer pool is unavailable. Adding a new peer if possible"
             );
-            match self.fetch_random_peers(1, &exclude, false).await?.pop() {
+            // Reactive backfill after a peer dropped: prefer known-good peers so we don't refill
+            // the pool with never-seen/dead peers. Exploration of new peers happens in the periodic
+            // `refresh_random_pool` churn instead.
+            match self.fetch_random_peers(1, &exclude, true).await?.pop() {
                 Some(new_peer) => {
                     self.insert_random_peer(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
