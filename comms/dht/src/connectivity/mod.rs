@@ -420,16 +420,35 @@ impl DhtConnectivity {
         let is_pool_healthy = connected.len() > keep_size;
 
         // When the pool is healthy we can afford to churn out a few peers and probe/revive
-        // arbitrary (possibly never-seen) peers. When we are short on peers we do NOT churn and
-        // we only backfill with known-good peers (ones we have successfully connected to before)
-        // instead of wasting dials on never-seen/dead peers.
-        let known_good = !is_pool_healthy;
+        // arbitrary (possibly never-seen) peers. When we are short on peers we do NOT churn and we
+        // prefer known-good peers (ones we have successfully connected to before) instead of
+        // wasting dials on never-seen/dead peers.
         info!(
             target: LOG_TARGET,
-            "refreshing random peer list, asking for {pool_size} peers (known_good = {known_good}, #connected = {})",
+            "refreshing random peer list, asking for {pool_size} peers (is_pool_healthy = {is_pool_healthy}, \
+             #connected = {})",
             connected.len(),
         );
-        let mut new_peers = self.fetch_random_peers(pool_size, &[], known_good).await?;
+        let mut new_peers = if is_pool_healthy {
+            self.fetch_random_peers(pool_size, &[], false).await?
+        } else {
+            // Prefer known-good peers, but fall back to any peers if we don't have enough known-good
+            // ones (e.g. fresh start or after being offline, when every known-good peer may itself be
+            // offline). Without this fallback the node could get stuck never dialling anyone and never
+            // recover to a healthy state or discover new peers.
+            let mut peers = self.fetch_random_peers(pool_size, &[], true).await?;
+            if peers.len() < pool_size {
+                let remaining = pool_size - peers.len();
+                debug!(
+                    target: LOG_TARGET,
+                    "Only {} known-good peer(s) available, falling back to {remaining} any-status peer(s)",
+                    peers.len(),
+                );
+                let extra = self.fetch_random_peers(remaining, &peers, false).await?;
+                peers.extend(extra);
+            }
+            peers
+        };
 
         if is_pool_healthy {
             // this is safety counter so we dont loop endlessly here
