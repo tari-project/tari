@@ -850,7 +850,6 @@ impl ConnectivityManagerActor {
 
         let _num_failed = self.mark_peer_failed(node_id.clone());
 
-
         Ok(())
     }
 
