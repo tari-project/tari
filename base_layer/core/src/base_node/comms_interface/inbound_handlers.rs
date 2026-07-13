@@ -1082,7 +1082,7 @@ where B: BlockchainBackend + 'static
             inputs.len(),
             timer.elapsed()
         );
-        let block = Block::new(header, AggregateBody::new(inputs, outputs, kernels));
+        let block = Block::new(header, AggregateBody::new_unsorted(inputs, outputs, kernels));
         Ok(Arc::new(block))
     }
 

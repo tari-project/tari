@@ -462,7 +462,7 @@ fn check_cut_through() {
         outputs.retain(|x| !input.is_equal_to(x));
         inputs.retain(|x| *x != input);
     }
-    tx3_cut_through.body = AggregateBody::new(inputs, outputs, tx3_cut_through.body.kernels().clone());
+    tx3_cut_through.body = AggregateBody::new_unsorted(inputs, outputs, tx3_cut_through.body.kernels().clone());
     tx3.body.sort();
     tx3_cut_through.body.sort();
 
@@ -520,7 +520,7 @@ fn inputs_not_malleable() {
     let mut inputs = tx.body().inputs().clone();
     inputs[0].set_script(script![Drop].unwrap()).unwrap();
     inputs[0].input_data = stack;
-    tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
+    tx.body = AggregateBody::new_unsorted(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();

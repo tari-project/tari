@@ -109,7 +109,7 @@ async fn it_passes_if_large_output_block_is_valid() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    assert!(validator.validate_body(&*txn, block.clone()).is_ok());
     let finished = start.elapsed();
     // this here here for benchmarking purposes.
     // we can extrapolate full block validation by multiplying the time by 4.6, this we get from the max_weight /weight
@@ -142,7 +142,7 @@ async fn it_validates_when_a_coinbase_is_spent() {
     block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    assert!(validator.validate_body(&*txn, block.clone()).is_ok());
 }
 
 #[tokio::test]
@@ -182,8 +182,8 @@ async fn it_passes_if_large_block_is_valid() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
-    validator.validate_body(&*txn, &block).unwrap();
-    // assert!(validator.validate_body(&*txn, &block).is_ok());
+    validator.validate_body(&*txn, block.clone()).unwrap();
+    // assert!(validator.validate_body(&*txn, block.clone()).is_ok());
     let finished = start.elapsed();
     // this here here for benchmarking purposes.
     // we can extrapolate full block validation by multiplying the time by 32.9, this we get from the max_weight /weight
@@ -211,7 +211,7 @@ async fn it_passes_if_block_is_valid() {
     block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
-    assert!(validator.validate_body(&*txn, &block).is_ok());
+    assert!(validator.validate_body(&*txn, block.clone()).is_ok());
 }
 
 #[tokio::test]
@@ -220,7 +220,7 @@ async fn it_checks_the_coinbase_reward() {
 
     let (block, _) = blockchain.create_chained_block(block_spec!("A", parent: "GB", reward: 10 * T, ));
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     println!("err {err:?}");
     assert!(matches!(
         err,
@@ -259,7 +259,7 @@ async fn it_allows_multiple_coinbases() {
     let (block, _) = blockchain.create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,));
     let block = blockchain.mine_block("GB", block, Difficulty::min());
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::BlockError(BlockValidationError::TransactionError(TransactionError::NoCoinbase))
@@ -285,7 +285,7 @@ async fn it_checks_duplicate_kernel() {
             .finish(),
     );
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
 }
 
@@ -313,7 +313,7 @@ async fn it_checks_double_spends() {
             .finish(),
     );
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
@@ -334,7 +334,7 @@ async fn it_checks_input_maturity() {
             .finish(),
     );
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::TransactionError(TransactionError::InputMaturity)
@@ -360,7 +360,7 @@ async fn it_checks_txo_sort_order() {
     let block = blockchain.mine_block("A", block, Difficulty::min());
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
@@ -389,7 +389,7 @@ async fn it_limits_the_script_byte_size() {
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs));
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TariScriptExceedsMaxSize { .. })
@@ -416,11 +416,11 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
     outputs[0].encrypted_data = EncryptedData::from_bytes(&vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]).unwrap();
-    txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
+    txs[0].body = AggregateBody::new_unsorted(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs));
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(
         err,
         ValidationError::AggregatedBodyValidationError(
@@ -450,7 +450,7 @@ async fn it_rejects_invalid_input_metadata() {
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs));
 
     let txn = blockchain.db().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(err, ValidationError::UnknownInputs(_)));
 }
 

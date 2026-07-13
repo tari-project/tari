@@ -111,7 +111,7 @@ mod test {
             ExecutionStack::new(vec![]),
             ComAndPubSignature::new_from_capk_signature(RistrettoComAndPubSig::default()),
         );
-        let aggregate_body = AggregateBody::new(vec![input], vec![], vec![]);
+        let aggregate_body = AggregateBody::new_unsorted(vec![input], vec![], vec![]);
         let fee = Fee::new(TransactionWeight::latest());
         assert_eq!(
             fee.calculate_body(100.into(), &aggregate_body)

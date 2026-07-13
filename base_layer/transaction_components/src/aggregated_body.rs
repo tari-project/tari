@@ -73,7 +73,7 @@ impl AggregateBody {
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
-    pub fn new(
+    pub fn new_unsorted(
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
@@ -95,6 +95,20 @@ impl AggregateBody {
     ) -> AggregateBody {
         AggregateBody {
             sorted: true,
+            inputs,
+            outputs,
+            kernels,
+        }
+    }
+
+    pub fn new(
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        kernels: Vec<TransactionKernel>,
+        sorted: bool,
+    ) -> AggregateBody {
+        AggregateBody {
+            sorted,
             inputs,
             outputs,
             kernels,

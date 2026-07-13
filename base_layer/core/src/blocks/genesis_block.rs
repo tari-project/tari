@@ -405,7 +405,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
                 pow_data: not_before_proof.clone(),
             },
         },
-        body: AggregateBody::new(vec![], vec![], vec![]),
+        body: AggregateBody::new_unsorted(vec![], vec![], vec![]),
     }
 }
 

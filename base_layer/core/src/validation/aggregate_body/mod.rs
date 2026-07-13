@@ -23,6 +23,7 @@ mod aggregate_body_chain_validator;
 pub use aggregate_body_chain_validator::{
     AggregateBodyChainLinkedValidator,
     check_total_burned,
+    hydrate_compact_inputs,
     validate_input_maturity,
     verify_no_duplicated_inputs_outputs,
     verify_timelocks,

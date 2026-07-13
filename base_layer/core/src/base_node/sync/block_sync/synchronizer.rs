@@ -398,13 +398,13 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let (header, header_accum_data) = header.into_parts();
             let block = Block::new(header, body);
 
-            // Validate the block inside a tokio task
-            let task_block = block.clone();
+            // Validate the block body. The validator consumes the block, hydrates its (compact) inputs and returns the
+            // fully-hydrated block, so we use its return value rather than `block` below.
             let db = self.db.inner().clone();
             let validator = self.block_validator.clone();
             let res = {
                 let txn = db.db_read_access()?;
-                validator.validate_body(&*txn, &task_block)
+                validator.validate_body(&*txn, block)
             };
 
             let block = match res {
