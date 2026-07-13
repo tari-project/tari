@@ -587,7 +587,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let liveness_results = self.tari_pulse.as_ref().map(|handle| handle.get_liveness_checks());
         let empty_vec = Vec::new();
-        let liveness_results_ref = liveness_results.as_ref().map(|guard| &**guard).unwrap_or(&empty_vec);
+        let liveness_results_ref = liveness_results.as_deref().unwrap_or(&empty_vec);
 
         let mut liveness = Vec::new();
         for data in liveness_results_ref {

@@ -401,7 +401,7 @@ impl BaseNodeWalletClient for Client {
         debug!(
             target: LOG_TARGET,
             "Requesting deleted UTXOs for {} hashes, must include header {} from Base Node wallet",
-            hashes.len(), &must_include_header.to_hex()
+            hashes.len(), must_include_header.to_hex()
         );
         let mut target_url = server_address.join("/get_utxos_deleted_info")?;
         target_url.set_query(Some(&format!(

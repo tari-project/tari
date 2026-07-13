@@ -351,7 +351,7 @@ where
                         warn!(
                             target: LOG_TARGET,
                             "Transaction {} is mined but has no height (Operation ID: {})",
-                            &unconfirmed_tx.tx_id,
+                            unconfirmed_tx.tx_id,
                             self.operation_id,
                         );
                         continue;
@@ -362,7 +362,7 @@ where
                 warn!(
                     target: LOG_TARGET,
                     "Transaction {} is unmined (Operation ID: {})",
-                    &unconfirmed_tx.tx_id,
+                    unconfirmed_tx.tx_id,
                     self.operation_id,
                 );
                 unmined.push((*unconfirmed_tx).clone());
