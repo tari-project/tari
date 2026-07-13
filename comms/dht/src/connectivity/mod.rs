@@ -444,7 +444,9 @@ impl DhtConnectivity {
                     "Only {} known-good peer(s) available, falling back to {remaining} any-status peer(s)",
                     peers.len(),
                 );
-                let extra = self.fetch_random_peers(remaining, &peers, false).await?;
+                let mut exclude = connected.clone();
+                exclude.extend(peers.clone());
+                let extra = self.fetch_random_peers(remaining, &exclude, false).await?;
                 peers.extend(extra);
             }
             peers
