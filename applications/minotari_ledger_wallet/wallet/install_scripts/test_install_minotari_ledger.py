@@ -17,48 +17,78 @@ sys.modules["install_minotari_ledger"] = installer
 SPEC.loader.exec_module(installer)
 
 
-class TestBootstrapHandling(unittest.TestCase):
-    def test_windows_bootstrap_waits_for_child_process(self):
+class TestColorHandling(unittest.TestCase):
+    class _Tty:
+        def isatty(self):
+            return True
+
+    class _NotTty:
+        def isatty(self):
+            return False
+
+    def test_style_wraps_when_tty_and_color_allowed(self):
+        with mock.patch.dict(installer.os.environ, {}, clear=True):
+            styled = installer._style("==>", "cyan", self._Tty())
+
+        self.assertTrue(styled.startswith(installer._ANSI["cyan"]))
+        self.assertTrue(styled.endswith(installer._ANSI["reset"]))
+        self.assertIn("==>", styled)
+
+    def test_style_is_plain_when_not_a_tty(self):
+        with mock.patch.dict(installer.os.environ, {}, clear=True):
+            self.assertEqual(installer._style("==>", "cyan", self._NotTty()), "==>")
+
+    def test_style_respects_no_color(self):
+        with mock.patch.dict(installer.os.environ, {"NO_COLOR": "1"}, clear=True):
+            self.assertEqual(installer._style("==>", "green", self._Tty()), "==>")
+
+    def test_style_respects_dumb_terminal(self):
+        with mock.patch.dict(installer.os.environ, {"TERM": "dumb"}, clear=True):
+            self.assertEqual(installer._style("==>", "red", self._Tty()), "==>")
+
+
+class TestAppRemoval(unittest.TestCase):
+    def test_remove_existing_app_deletes_by_name(self):
+        completed = mock.Mock(returncode=0)
+
+        with mock.patch.object(installer, "ledgerctl_command", return_value=["ledgerctl"]), \
+            mock.patch.object(installer.subprocess, "run", return_value=completed) as run, \
+            mock.patch.object(installer, "print_info"):
+            installer.remove_existing_app()
+
+        self.assertEqual(
+            run.call_args.args[0],
+            ["ledgerctl", "delete", installer.LEDGER_APP_NAME],
+        )
+        # Removal is best-effort: it must not force a non-zero exit on the subprocess.
+        self.assertFalse(run.call_args.kwargs["check"])
+
+    def test_remove_existing_app_ignores_missing_ledgerctl(self):
+        with mock.patch.object(installer, "ledgerctl_command", return_value=["ledgerctl"]), \
+            mock.patch.object(installer.subprocess, "run", side_effect=OSError("not found")), \
+            mock.patch.object(installer, "print_info"):
+            # Should not raise even when ledgerctl cannot be launched.
+            installer.remove_existing_app()
+
+    def test_ledgerctl_command_prefers_script_next_to_interpreter(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            python = Path(temp_dir) / "python.exe"
-            python.touch()
-            with mock.patch.object(installer, "cache_dir", return_value=Path(temp_dir)), \
-                mock.patch.object(installer, "venv_python_path", return_value=python), \
-                mock.patch.object(installer, "module_available", return_value=True), \
-                mock.patch.object(installer.sys, "platform", "win32"), \
-                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--tag", "v.test"]), \
-                mock.patch.object(installer.subprocess, "call", return_value=7) as call, \
-                mock.patch.dict(installer.os.environ, {}, clear=True):
-                with self.assertRaises(SystemExit) as context:
-                    installer.ensure_bootstrapped()
+            interpreter = Path(temp_dir) / "python"
+            interpreter.touch()
+            script = Path(temp_dir) / "ledgerctl"
+            script.touch()
 
-            self.assertEqual(context.exception.code, 7)
-            self.assertEqual(call.call_args.args[0], [str(python), str(SCRIPT_PATH.resolve()), "--tag", "v.test"])
+            with mock.patch.object(installer.sys, "executable", str(interpreter)), \
+                mock.patch.object(installer.sys, "platform", "linux"):
+                self.assertEqual(installer.ledgerctl_command(), [str(script)])
 
-    def test_bootstrap_installs_missing_ledgerblue(self):
+    def test_ledgerctl_command_falls_back_to_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            python = Path(temp_dir) / "python"
-            python.touch()
+            interpreter = Path(temp_dir) / "python"
+            interpreter.touch()
 
-            def module_available(_python, module):
-                return module == "ledgerwallet"
-
-            with mock.patch.object(installer, "cache_dir", return_value=Path(temp_dir)), \
-                mock.patch.object(installer, "venv_python_path", return_value=python), \
-                mock.patch.object(installer, "module_available", side_effect=module_available), \
-                mock.patch.object(installer.subprocess, "check_call") as check_call, \
-                mock.patch.object(installer.os, "execve", side_effect=SystemExit(0)), \
-                mock.patch.object(installer.sys, "platform", "linux"), \
-                mock.patch.object(installer.sys, "argv", ["install_minotari_ledger.py", "--tag", "v.test"]), \
-                mock.patch.object(installer, "print_step"), \
-                mock.patch.dict(installer.os.environ, {}, clear=True):
-                with self.assertRaises(SystemExit):
-                    installer.ensure_bootstrapped()
-
-            self.assertEqual(
-                check_call.call_args_list[-1].args[0],
-                [str(python), "-m", "pip", "install", "ledgerblue"],
-            )
+            with mock.patch.object(installer.sys, "executable", str(interpreter)), \
+                mock.patch.object(installer.sys, "platform", "linux"):
+                self.assertEqual(installer.ledgerctl_command(), ["ledgerctl"])
 
 
 class TestModelMapping(unittest.TestCase):

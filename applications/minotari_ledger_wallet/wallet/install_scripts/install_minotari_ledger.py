@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = [
+#     "ledgerwallet",
+#     "ledgerblue",
+# ]
+# ///
 """
 Unified installer for the Minotari Ledger Wallet application.
 
 The installer detects the connected Ledger model, downloads the matching Tari
 release artifact, verifies it, and installs it. It supports Nano S Plus, Nano X,
 Stax, and Flex. The original Nano S is intentionally unsupported.
+
+The Ledger tooling this installer needs is declared inline (PEP 723) so the
+`install_minotari_ledger.sh` / `install_minotari_ledger.ps1` launchers can run it
+with `uv run`, which provisions an isolated Python plus dependencies on demand.
+No system Python or pip setup is required.
 """
 
 from __future__ import annotations
@@ -20,7 +32,6 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-import venv
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -29,7 +40,10 @@ from typing import Iterable, Optional, Sequence
 GITHUB_REPO = "tari-project/tari"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}"
 USER_AGENT = "minotari-ledger-installer/1.0"
-BOOTSTRAP_ENV = "MINOTARI_LEDGER_INSTALLER_BOOTSTRAPPED"
+
+# Name the app registers on the device (from wallet/Cargo.toml [package.metadata.ledger]).
+# Used to remove a previous install before flashing a fresh one.
+LEDGER_APP_NAME = "MinoTari Wallet"
 
 
 @dataclass(frozen=True)
@@ -67,72 +81,65 @@ class InstallerError(Exception):
     """Expected installer failure with a user-facing message."""
 
 
+_ANSI = {
+    "reset": "\033[0m",
+    "cyan": "\033[1;36m",
+    "green": "\033[1;32m",
+    "yellow": "\033[1;33m",
+    "red": "\033[1;31m",
+}
+
+
+def _enable_windows_ansi() -> None:
+    """Best-effort enabling of ANSI escape processing on legacy Windows consoles."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        enable_virtual_terminal_processing = 0x0004
+        for handle_id in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+            handle = kernel32.GetStdHandle(handle_id)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(handle, mode.value | enable_virtual_terminal_processing)
+    except Exception:  # pragma: no cover - colour is a nicety, never fatal
+        pass
+
+
+def _color_enabled(stream) -> bool:
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("TERM") == "dumb":
+        return False
+    return bool(getattr(stream, "isatty", lambda: False)())
+
+
+def _style(text: str, color: str, stream) -> str:
+    if not _color_enabled(stream):
+        return text
+    return f"{_ANSI[color]}{text}{_ANSI['reset']}"
+
+
 def print_step(message: str) -> None:
-    print(f"==> {message}")
+    print(f"{_style('==>', 'cyan', sys.stdout)} {message}")
 
 
 def print_info(message: str) -> None:
     print(f"    {message}")
 
 
-def cache_dir() -> Path:
-    if sys.platform == "win32":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Caches"
-    else:
-        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return root / "minotari-ledger-installer"
+def print_success(message: str) -> None:
+    print(f"{_style('==>', 'green', sys.stdout)} {message}")
 
 
-def venv_python_path(venv_dir: Path) -> Path:
-    if sys.platform == "win32":
-        return venv_dir / "Scripts" / "python.exe"
-    return venv_dir / "bin" / "python"
+def print_warning(message: str) -> None:
+    print(f"{_style('==> WARNING:', 'yellow', sys.stderr)} {message}", file=sys.stderr)
 
 
-def module_available(python: Path, module: str) -> bool:
-    result = subprocess.run(
-        [str(python), "-c", f"import {module}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
-
-
-def ensure_bootstrapped() -> None:
-    if os.environ.get(BOOTSTRAP_ENV) == "1":
-        return
-
-    venv_dir = cache_dir() / f"venv-py{sys.version_info.major}{sys.version_info.minor}"
-    python = venv_python_path(venv_dir)
-
-    try:
-        if not python.exists():
-            print_step(f"Creating isolated Python environment at {venv_dir}")
-            venv.EnvBuilder(with_pip=True).create(venv_dir)
-
-        missing_modules = [
-            module
-            for module in ("ledgerwallet", "ledgerblue")
-            if not module_available(python, module)
-        ]
-        if missing_modules:
-            print_step("Installing Ledger tooling into isolated environment")
-            subprocess.check_call([str(python), "-m", "pip", "install", "--upgrade", "pip"])
-            subprocess.check_call([str(python), "-m", "pip", "install", *missing_modules])
-
-        env = os.environ.copy()
-        env[BOOTSTRAP_ENV] = "1"
-        args = [str(python), str(Path(__file__).resolve()), *sys.argv[1:]]
-        if sys.platform == "win32":
-            sys.exit(subprocess.call(args, env=env))
-        os.execve(str(python), args, env)
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise InstallerError(
-            f"Failed to prepare isolated Ledger tooling environment at {venv_dir}."
-        ) from error
+def print_error(message: str) -> None:
+    print(f"{_style('Error:', 'red', sys.stderr)} {message}", file=sys.stderr)
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -362,7 +369,11 @@ def detect_ledger_model() -> LedgerModel:
     try:
         from ledgerwallet.client import LedgerClient, NoLedgerDeviceException
     except ImportError as error:
-        raise InstallerError("Ledger tooling is not installed.") from error
+        raise InstallerError(
+            "Ledger tooling is not installed. Run this installer through the "
+            "install_minotari_ledger.sh / install_minotari_ledger.ps1 launcher "
+            "(or `uv run install_minotari_ledger.py`) so dependencies are provisioned."
+        ) from error
 
     client = None
     try:
@@ -377,6 +388,39 @@ def detect_ledger_model() -> LedgerModel:
     finally:
         if client is not None:
             client.close()
+
+
+def ledgerctl_command() -> list:
+    """Locate the ledgerctl console script that ships with the ledgerwallet package.
+
+    Prefer the script next to the running interpreter (the uv-managed environment)
+    and fall back to whatever is on PATH.
+    """
+    script_name = "ledgerctl.exe" if sys.platform == "win32" else "ledgerctl"
+    candidate = Path(sys.executable).with_name(script_name)
+    if candidate.exists():
+        return [str(candidate)]
+    return [script_name]
+
+
+def remove_existing_app() -> None:
+    """Best-effort removal of a previous install so a fresh load does not clash.
+
+    A device with no prior install, or one where the user declines the on-device
+    prompt, is not an error here; the subsequent install step surfaces real
+    failures.
+    """
+    print_info(f"Removing any existing '{LEDGER_APP_NAME}' installation")
+    try:
+        subprocess.run(
+            [*ledgerctl_command(), "delete", LEDGER_APP_NAME],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        # ledgerctl unavailable or not runnable; leave it to the install step.
+        pass
 
 
 def install_apdu_file(apdu_path: Path, model: LedgerModel) -> None:
@@ -442,18 +486,19 @@ def download_and_install(model: LedgerModel, tag: Optional[str]) -> None:
 
         print_step(f"Installing Minotari Wallet on {model.display_name}")
         print_info("Keep the Ledger connected, unlocked, and approve prompts on the device.")
+        remove_existing_app()
         install_apdu_file(apdu_path, model)
 
 
 def run(argv: Sequence[str]) -> int:
     args = parse_args(argv)
+    _enable_windows_ansi()
 
     try:
         if sys.version_info < (3, 9):
             raise InstallerError(
                 f"Python 3.9+ is required; found {sys.version_info.major}.{sys.version_info.minor}."
             )
-        ensure_bootstrapped()
 
         print_step("Detecting connected Ledger model")
         model = detect_ledger_model()
@@ -464,10 +509,10 @@ def run(argv: Sequence[str]) -> int:
         print("\nInstallation interrupted.", file=sys.stderr)
         return 130
     except InstallerError as error:
-        print(f"Error: {error}", file=sys.stderr)
+        print_error(str(error))
         return 1
 
-    print_step("Minotari Ledger Wallet installed successfully")
+    print_success("Minotari Ledger Wallet installed successfully")
     return 0
 
 
