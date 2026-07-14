@@ -1418,7 +1418,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
         if !transfer_res.is_success {
             panic!(
                 "Failed to send transaction from wallet {} to wallet {}, with message \n {}",
-                &sender_wallet, &receiver_wallet, &transfer_res.failure_message
+                sender_wallet, receiver_wallet, transfer_res.failure_message
             );
         }
         tx_ids.push(transfer_res.transaction_id);

@@ -308,10 +308,10 @@ async fn stealth_sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, s
 #[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
 async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: String, seed_node: String) {
-    println!("Create base node for SHA3 miner {}", &sha3_miner);
+    println!("Create base node for SHA3 miner {}", sha3_miner);
     spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()]).await;
 
-    println!("Create wallet for SHA3 miner {}", &sha3_miner);
+    println!("Create wallet for SHA3 miner {}", sha3_miner);
     spawn_wallet(
         world,
         sha3_miner.clone(),
@@ -322,7 +322,7 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
     )
     .await;
 
-    println!("Register SHA3 miner {}", &sha3_miner);
+    println!("Register SHA3 miner {}", sha3_miner);
     register_miner_process(
         world,
         sha3_miner.clone(),
@@ -426,12 +426,12 @@ async fn num_blocks_with_difficulty(
     node: String,
     pow_algo: String,
 ) {
-    let wallet_name = format!("wallet-{}", &node);
+    let wallet_name = format!("wallet-{}", node);
     if world.wallets.get(&wallet_name).is_none() {
         spawn_wallet(world, wallet_name.clone(), Some(node.clone()), vec![], None, None).await;
     };
 
-    let miner_name = format!("miner-{}", &node);
+    let miner_name = format!("miner-{}", node);
     if world.miners.get(&miner_name).is_none() {
         register_miner_process(
             world,

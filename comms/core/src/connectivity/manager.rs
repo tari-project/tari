@@ -848,38 +848,7 @@ impl ConnectivityManagerActor {
             return Ok(());
         }
 
-        let num_failed = self.mark_peer_failed(node_id.clone());
-
-        if num_failed >= self.config.max_failures_mark_offline {
-            debug!(
-                target: LOG_TARGET,
-                "Marking peer '{}' as offline because this node failed to connect to them {} times",
-                node_id.short_str(),
-                num_failed
-            );
-
-            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? &&
-                !peer.is_banned() &&
-                peer
-                    .last_seen_since()
-                    // Haven't seen them in expire_peer_last_seen_duration
-                    .map(|t| t > self.config.expire_peer_last_seen_duration)
-                    // Or don't delete if never seen
-                    .unwrap_or(false)
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer `{}` was marked as offline after {} attempts (last seen: {}). Removing peer from peer \
-                     list",
-                    node_id,
-                    num_failed,
-                    peer.last_seen_since()
-                        .map(|d| format!("{}s ago", d.as_secs()))
-                        .unwrap_or_else(|| "Never".to_string()),
-                );
-                self.peer_manager.soft_delete_peer(node_id).await?;
-            }
-        }
+        let _num_failed = self.mark_peer_failed(node_id.clone());
 
         Ok(())
     }

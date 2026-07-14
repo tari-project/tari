@@ -100,7 +100,7 @@ impl InboundDomainConnector {
             target: LOG_TARGET,
             "Forwarding message {:?} to pubsub, Trace: {}",
             inbound_message.tag,
-            &peer_message.dht_header.message_tag
+            peer_message.dht_header.message_tag
         );
         Ok(peer_message)
     }

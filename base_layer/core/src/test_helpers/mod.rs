@@ -159,8 +159,8 @@ pub fn create_block<TDB: BlockchainBackend>(
     let mut block = header
         .into_builder()
         .with_transactions(
-            Some(coinbase_transaction)
-                .filter(|_| !spec.skip_coinbase)
+            (!spec.skip_coinbase)
+                .then_some(coinbase_transaction)
                 .into_iter()
                 .chain(spec.transactions)
                 .collect(),
