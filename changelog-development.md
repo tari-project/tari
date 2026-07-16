@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.5.0-pre.0](https://github.com/tari-project/tari/compare/v5.4.0-rc.0...v5.5.0-pre.0) (2026-07-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* enforce unique burn commtiments (#7910)
+
+### Features
+
+*  better logs ([#7924](https://github.com/tari-project/tari/issues/7924)) ([2c394a9](https://github.com/tari-project/tari/commit/2c394a9ded48067cd4383e345a877a7cfb272b97))
+*  better resize management ([#7906](https://github.com/tari-project/tari/issues/7906)) ([45425cb](https://github.com/tari-project/tari/commit/45425cb325afeba28bfecb44e945d3c68f6b9d39))
+* add mined_in_epoch to burn claim proof file ([#7919](https://github.com/tari-project/tari/issues/7919)) ([dd1cf1d](https://github.com/tari-project/tari/commit/dd1cf1d018a3876e949bf9c3b423ac3bdffd694d))
+* enforce unique burn commtiments ([#7910](https://github.com/tari-project/tari/issues/7910)) ([8c10d94](https://github.com/tari-project/tari/commit/8c10d94184a2b8376c99a7c6c85dc1959b86ee8a))
+* improve node pool management ([#7921](https://github.com/tari-project/tari/issues/7921)) ([9542ed2](https://github.com/tari-project/tari/commit/9542ed274e31dd759cdd65b084403e3cef6b7423))
+* improve peer sync ([#7903](https://github.com/tari-project/tari/issues/7903)) ([1dbd6e0](https://github.com/tari-project/tari/commit/1dbd6e06e1ba3ad127daf5ad0e716901a4cf9208))
+* improve template calls ([#7900](https://github.com/tari-project/tari/issues/7900)) ([a1845cc](https://github.com/tari-project/tari/commit/a1845ccb524a58a8399aa9534d152daa624c203d))
+* **installer:** add unified Minotari Ledger installer ([#7864](https://github.com/tari-project/tari/issues/7864)) ([bad5a5f](https://github.com/tari-project/tari/commit/bad5a5fb3f077cf03d81d51362916b7bb4b46c2f)), closes [#7795](https://github.com/tari-project/tari/issues/7795)
+* make taripulse optional ([#7897](https://github.com/tari-project/tari/issues/7897)) ([4223d34](https://github.com/tari-project/tari/commit/4223d34c2221a8c804fe971297696ac1c25935ac))
+* use uv and not python directly ([#7922](https://github.com/tari-project/tari/issues/7922)) ([1c714ec](https://github.com/tari-project/tari/commit/1c714ecc5b374b70cec64e3576ac172e1168189a))
+
+
+### Bug Fixes
+
+* coinbase status ([#7911](https://github.com/tari-project/tari/issues/7911)) ([1739585](https://github.com/tari-project/tari/commit/173958528be1722e06d71ab936ca54da0c858dd4))
+* **deps:** update crossbeam-epoch advisory ([#7918](https://github.com/tari-project/tari/issues/7918)) ([1c7c5ac](https://github.com/tari-project/tari/commit/1c7c5acba21112b735ed69f290cca75dc5433cb9))
+* harden utxo scanner ([#7898](https://github.com/tari-project/tari/issues/7898)) ([4062b24](https://github.com/tari-project/tari/commit/4062b241fc24dabdb46965b79fe22a99d01dd285))
+* prune  deleted_txo_hash_to_header_index ([#7894](https://github.com/tari-project/tari/issues/7894)) ([8871066](https://github.com/tari-project/tari/commit/88710661114317c71079ab56adacc676fef31cd6))
+* reduce listening state log spam ([#7905](https://github.com/tari-project/tari/issues/7905)) ([7c1104f](https://github.com/tari-project/tari/commit/7c1104f2e215a40faa6ed7b343859f4a3cf3ea46))
+
 ## [5.4.0-pre.8](https://github.com/tari-project/tari/compare/v5.4.0-pre.7...v5.4.0-pre.8) (2026-06-29)
 
 
