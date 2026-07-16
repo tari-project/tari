@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.5.0-pre.1](https://github.com/tari-project/tari/compare/v5.5.0-pre.0...v5.5.0-pre.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* linux builds ([#7925](https://github.com/tari-project/tari/issues/7925)) ([d5979b5](https://github.com/tari-project/tari/commit/d5979b57a9fa0c30919f5547ac1133adf97079f7))
+
 ## [5.5.0-pre.0](https://github.com/tari-project/tari/compare/v5.4.0-rc.0...v5.5.0-pre.0) (2026-07-16)
 
 
