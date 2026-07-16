@@ -1263,12 +1263,25 @@ impl ConnectivityManagerActor {
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
-            disconnect_with_timeout(conn, Minimized::Yes, None, "ConnectivityManagerActor ban peer").await?;
-            let status = self.pool.get_connection_status(node_id);
-            debug!(
-                target: LOG_TARGET,
-                "Disconnected banned peer {node_id}. The peer connection status is {status}"
-            );
+            // The ban is already recorded above; closing the connection is best-effort. The connection may
+            // already have been torn down (frequently the very reason we are banning the peer, e.g. it dropped
+            // mid-sync), in which case the disconnect request cannot be sent. That is an expected race, not an
+            // error, so we log it quietly and still consider the ban successful.
+            match disconnect_with_timeout(conn, Minimized::Yes, None, "ConnectivityManagerActor ban peer").await {
+                Ok(_) => {
+                    let status = self.pool.get_connection_status(node_id);
+                    debug!(
+                        target: LOG_TARGET,
+                        "Disconnected banned peer {node_id}. The peer connection status is {status}"
+                    );
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Banned peer {node_id} but its connection was already closing ({err}); nothing to disconnect"
+                    );
+                },
+            }
         }
         ban_result?;
         Ok(())

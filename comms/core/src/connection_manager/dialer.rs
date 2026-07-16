@@ -307,9 +307,10 @@ where
             .and_then(|reply_oneshots| {
                 reply_oneshots.into_iter().for_each(|tx| {
                     log_if_error_fmt!(
+                        level: debug,
                         target: LOG_TARGET,
                         tx.send(result.clone()),
-                        "Failed to send dial result for peer '{}'",
+                        "Failed to send dial result for peer '{}' (requester no longer waiting)",
                         peer_node_id.short_str()
                     );
                 });
