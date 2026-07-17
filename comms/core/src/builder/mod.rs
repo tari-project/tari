@@ -314,9 +314,11 @@ impl CommsBuilder {
     pub fn with_minimize_connections(mut self, connections: Option<usize>) -> Self {
         self.maintain_n_closest_connections_only = connections;
         self.connectivity_config.maintain_n_closest_connections_only = connections;
-        if let Some(val) = connections {
-            self.connectivity_config.reaper_min_connection_threshold = val;
-        }
+        self
+    }
+    /// The closest number of peer connections to maintain; connections above the threshold will be removed
+    pub fn with_reaper_min_connection_thresholds(mut self, connections: usize) -> Self {
+        self.connectivity_config.reaper_min_connection_threshold = connections;
         self
     }
 

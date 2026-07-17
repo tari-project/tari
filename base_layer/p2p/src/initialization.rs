@@ -560,6 +560,7 @@ impl ServiceInitializer for P2pInitializer {
             } else {
                 None
             })
+            .with_reaper_min_connection_thresholds(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
             .set_self_liveness_check(config.listener_self_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
