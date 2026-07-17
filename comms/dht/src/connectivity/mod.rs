@@ -73,6 +73,15 @@ const LOG_TARGET: &str = "comms::dht::connectivity";
 /// occupy a pool slot indefinitely.
 const PENDING_DIAL_GRACE: Duration = Duration::from_secs(60);
 
+/// How many dials to keep in flight per connection still wanted. Dials fail far more often than they
+/// succeed, so dialing only the shortfall leaves the pool permanently short of its target.
+const DIAL_OVERSUBSCRIBE_FACTOR: usize = 3;
+
+/// Ceiling on in-flight dials, as a multiple of the pool size. Oversubscribing helps only up to the
+/// point where the transport itself becomes the bottleneck — Tor in particular starts failing SOCKS
+/// requests when flooded — so the dial budget is capped regardless of how far below target we are.
+const MAX_IN_FLIGHT_POOL_MULTIPLE: usize = 2;
+
 /// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
@@ -412,6 +421,7 @@ impl DhtConnectivity {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn refresh_random_pool(&mut self) -> Result<(), DhtConnectivityError> {
         let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
 
@@ -442,19 +452,24 @@ impl DhtConnectivity {
         // dropping those would cancel dials that have not had time to complete. Everything else is a
         // stale slot and is released so it can be replaced below.
         let pending_dials = &self.pending_dials;
-        let (mut pending, mut disconnected_peers) = remainder.into_iter().partition::<Vec<_>, _>(|n| {
+        let (pending, mut disconnected_peers) = remainder.into_iter().partition::<Vec<_>, _>(|n| {
             pending_dials
                 .get(n)
                 .is_some_and(|dialed_at| dialed_at.elapsed() < PENDING_DIAL_GRACE)
         });
 
-        // The pool holds at most `pool_size` slots and live connections take precedence, so surplus
-        // dials are released. `refresh_entire_pool` deliberately dials twice `pool_size` to improve
-        // its odds of filling the pool, and without this those extra slots are never given back:
-        // the pool stays oversubscribed, `needed` is always zero and no further peers are dialed.
-        let free_slots = pool_size.saturating_sub(connected.len());
-        if pending.len() > free_slots {
-            disconnected_peers.extend(pending.split_off(free_slots));
+        // `pool_size` is a target for *connections*, not for slots, so more may land than we need
+        // once dials are oversubscribed below. Release the surplus, keeping strongly held peers
+        // (e.g. an in-progress sync) in preference to idle ones.
+        if connected.len() > pool_size {
+            let strongly_held = self
+                .connection_handles
+                .iter()
+                .filter(|c| c.is_strongly_held())
+                .map(|c| c.peer_node_id().clone())
+                .collect::<Vec<_>>();
+            connected.sort_by_key(|node_id| !strongly_held.contains(node_id));
+            disconnected_peers.extend(connected.split_off(pool_size));
         }
 
         // We add at most `churn_rate`% new peers per refresh (or at least 1), and only start
@@ -465,15 +480,6 @@ impl DhtConnectivity {
         // of connected peers. Below that we are short on peers.
         let is_pool_healthy = connected.len() > keep_size;
         let should_churn = churn_due && is_pool_healthy;
-
-        info!(
-            target: LOG_TARGET,
-            "refreshing random peer list, asking for {pool_size} peers (is_pool_healthy = {is_pool_healthy}, \
-             churn_due = {churn_due}, #connected = {}, #pending = {}, #stale = {})",
-            connected.len(),
-            pending.len(),
-            disconnected_peers.len(),
-        );
 
         if should_churn {
             // this is safety counter so we dont loop endlessly here
@@ -506,8 +512,27 @@ impl DhtConnectivity {
         exclude.extend(pending.iter().cloned());
         exclude.extend(disconnected_peers.iter().cloned());
 
-        // Only the slots we hold neither a connection nor an in-flight dial for need filling.
-        let needed = pool_size.saturating_sub(connected.len() + pending.len());
+        // Most dials never land — on a Tor-heavy network the large majority fail — so the number in
+        // flight is deliberately allowed to exceed the number of connections we still want. Dialing
+        // only the shortfall means a shortfall of 24 yields perhaps a handful of connections and the
+        // pool sits below target indefinitely. Overshooting is the cheaper mistake: surplus
+        // connections are reaped above, a persistent shortfall is not self-correcting.
+        let shortfall = pool_size.saturating_sub(connected.len());
+        let target_in_flight = cmp::min(
+            shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR),
+            pool_size.saturating_mul(MAX_IN_FLIGHT_POOL_MULTIPLE),
+        );
+        let needed = target_in_flight.saturating_sub(pending.len());
+
+        info!(
+            target: LOG_TARGET,
+            "refreshing random peer list, target {pool_size} connections (is_pool_healthy = \
+             {is_pool_healthy}, churn_due = {churn_due}, #connected = {}, #pending = {}, #stale = {}, \
+             #shortfall = {shortfall}, #target_in_flight = {target_in_flight}, #dialing_now = {needed})",
+            connected.len(),
+            pending.len(),
+            disconnected_peers.len(),
+        );
         // When the pool is healthy we can afford to probe/revive arbitrary (possibly never-seen)
         // peers. When we are short on peers we prefer known-good peers (ones we have successfully
         // connected to before) instead of wasting dials on never-seen/dead peers.

@@ -240,9 +240,14 @@ impl PeerManager {
             self.peer_storage_sql
                 .random_peers(n, excluded, flags, &self.transport_protocols, known_good)?;
         if known_good && peers.len() < n {
+            // The fallback must also exclude what the first query already returned: a known-good peer
+            // satisfies the relaxed query too, so without this it is selected twice and the caller
+            // dials the same peer more than once while believing it reached `n` distinct peers.
+            let mut excluded = excluded.to_vec();
+            excluded.extend(peers.iter().map(|peer| peer.node_id.clone()));
             let mut additional = self.peer_storage_sql.random_peers(
                 n.checked_sub(peers.len()).unwrap_or(1),
-                excluded,
+                &excluded,
                 flags,
                 &self.transport_protocols,
                 false,
