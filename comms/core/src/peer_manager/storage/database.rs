@@ -60,6 +60,11 @@ use crate::{
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
 const LOG_TARGET: &str = "comms::peer_manager::storage::db";
 
+/// How recently a peer must have been seen to still count as "known good" when selecting random
+/// peers. Peers are gossiped far faster than they are re-verified, so without a recency bound the
+/// candidate set is dominated by peers that were reachable once and have long since gone.
+const KNOWN_GOOD_LAST_SEEN_WINDOW: TimeDelta = TimeDelta::hours(1);
+
 /// This peer's identity information
 #[derive(Clone)]
 pub struct ThisPeerIdentity {
@@ -1239,7 +1244,13 @@ impl PeerDatabaseSql {
                 .into_boxed();
 
             if known_good {
-                query = query.filter(multi_addresses::last_seen.is_not_null());
+                // "Known good" has to mean recently reachable, not merely reachable once: a peer
+                // last seen hours ago has usually gone, and dialing it is not free — on a Tor-heavy
+                // network it costs a slow rendezvous that fails, crowding out a live peer. Callers
+                // that cannot fill `n` from this set fall back to a relaxed query, so narrowing it
+                // costs nothing when few recent peers are known.
+                let cutoff = chrono::Utc::now().naive_utc() - KNOWN_GOOD_LAST_SEEN_WINDOW;
+                query = query.filter(multi_addresses::last_seen.gt(cutoff));
             }
             if let Some(flags) = peer_flags {
                 query = query.filter(peers::flags.eq(flags.to_i32()));
