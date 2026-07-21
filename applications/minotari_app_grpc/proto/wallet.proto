@@ -23,7 +23,6 @@ syntax = "proto3";
 
 package tari.rpc;
 
-import "google/protobuf/timestamp.proto";
 import "types.proto";
 import "transaction.proto";
 import "sidechain_types.proto";
