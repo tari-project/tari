@@ -1,0 +1,159 @@
+---
+name: Private Release Ledger (reusable)
+
+'on':
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      repo_name:
+        required: false
+        type: string
+        default: ""
+      branch:
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+
+env:
+  TS_FILENAME: "minotari_ledger_wallet"
+  SHARUN: "shasum --algorithm 256"
+  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10"
+
+concurrency:
+  # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
+
+permissions: {}
+
+jobs:
+  builds:
+    name: building ${{ matrix.ledger_target }}
+    continue-on-error: ${{ matrix.best_effort || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        #  - ledger_target: nanos
+        #    best_effort: true
+          - ledger_target: nanox
+            best_effort: true
+          - ledger_target: nanosplus
+          - ledger_target: flex
+            best_effort: true
+          - ledger_target: stax
+            best_effort: true
+
+    permissions:
+      packages: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo_name != '' && inputs.repo_name || github.repository }}
+          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
+          token: ${{ secrets.PRIV_SRC_TOKEN != '' && secrets.PRIV_SRC_TOKEN || github.token }}
+
+      - name: Set up QEMU for Docker
+        uses: docker/setup-qemu-action@v4
+
+      - name: Build ledger firwmare
+        shell: bash
+        run: |
+          docker run --rm \
+            -v ".:/app" \
+            -w "/app/applications/minotari_ledger_wallet/wallet" \
+            ${{env.DOCKER_IMAGE}} \
+            cargo ledger build ${{ matrix.ledger_target }} -- --locked
+
+      - name: env Setup
+        env:
+          SHA_SHORT: ${GITHUB_SHA::7}
+        shell: bash
+        run: |
+          BINFILE="${TS_FILENAME}-${{ matrix.ledger_target }}-${{ inputs.version }}-${{ env.SHA_SHORT }}"
+          echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
+
+      - name: archive ledger firmware for ${{ matrix.ledger_target }}
+        shell: bash
+        run: |
+          # set -xo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/dist"
+          cd "${GITHUB_WORKSPACE}/dist"
+          echo "Copying files for ${{ env.BINFILE }} to $(pwd)"
+          ls -la ${{ github.workspace }}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/key*.gif . 2>/dev/null || true
+          cp -vf ${GITHUB_WORKSPACE}/applications/minotari_ledger_wallet/wallet/target/${{ matrix.ledger_target }}/release/minotari_ledger_wallet.* .
+          echo "Compute files shasum"
+          ${SHARUN} * >> "${{ env.BINFILE }}.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.sha256"
+          echo "Checksum verification for files is "
+          ${SHARUN} --check "${{ env.BINFILE }}.sha256"
+          7z a "${{ env.BINFILE }}.zip" *
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
+
+      - name: Artifact upload for ${{ matrix.ledger_target }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.BINFILE }}
+          path: "${{ github.workspace }}/dist/${{ env.BINFILE }}.zip*"
+
+  create-release:
+    if: ${{ inputs.version != '' && inputs.dry_run == false }}
+    needs: [ builds ]
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo_name != '' && inputs.repo_name || github.repository }}
+          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
+          token: ${{ secrets.PRIV_SRC_TOKEN != '' && secrets.PRIV_SRC_TOKEN || github.token }}
+
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "${{ env.TS_FILENAME }}*"
+
+      - name: Bundle install scripts into a single release asset
+        shell: bash
+        run: |
+          SCRIPTS_ROOT="applications/minotari_ledger_wallet/wallet/install_scripts"
+          mkdir -p install-assets
+          # Bundle the unified installer, platform launchers, and docs.
+          ( cd "${SCRIPTS_ROOT}" && zip -r "${GITHUB_WORKSPACE}/install-assets/${TS_FILENAME}-install-scripts.zip" README.md install_minotari_ledger.py install_minotari_ledger.sh install_minotari_ledger.ps1 -x "test_*" "__pycache__/*" "*.pyc" )
+          echo "Bundled install scripts:"
+          unzip -l "install-assets/${TS_FILENAME}-install-scripts.zip"
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.TS_FILENAME }}*/**/*,install-assets/${{ env.TS_FILENAME }}-install-scripts.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          prerelease: true
+          draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          replacesArtifacts: true
