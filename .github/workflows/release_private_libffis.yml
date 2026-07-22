@@ -49,12 +49,12 @@ jobs:
       tari_networks: ${{ steps.set-matrix.outputs.tari_networks }}
 
     steps:
-      - name: Checkout source code
+      # Tooling only: this job reads .github/workflows/build_libffis.json to build the
+      # matrix. That file lives in THIS (caller) repo, not necessarily in the private
+      # source, so check out the caller here. Only the `builds` job below pulls the
+      # private source to compile.
+      - name: Checkout workflow definitions (caller repo)
         uses: actions/checkout@v7
-        with:
-          repository: ${{ inputs.repo_name != '' && inputs.repo_name || github.repository }}
-          ref: ${{ inputs.branch != '' && inputs.branch || github.ref }}
-          token: ${{ secrets.PRIV_SRC_TOKEN != '' && secrets.PRIV_SRC_TOKEN || github.token }}
 
       - name: Set Matrix from JSon file
         id: set-matrix
