@@ -337,10 +337,9 @@ pub fn ledger_get_script_offset(
 ) -> Result<PrivateKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_script_offset: account '{}', partial_script_offset '{}', derived_script_keys: '{:?}', \
+        "ledger_get_script_offset: account '{}', derived_script_keys: '{:?}', \
         script_key_indexes: '{:?}', derived_sender_offsets '{:?}', sender_offset_indexes '{:?}'",
         account,
-        partial_script_offset.to_hex(),
         derived_script_keys,
         script_key_indexes,
         derived_sender_offsets,
