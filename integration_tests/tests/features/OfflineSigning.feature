@@ -4,7 +4,9 @@
 @offline-signing @wallet
 Feature: Offline One-Sided Transaction Signing
 
-  @critical
+  # @flaky: respawns the sender wallet to run the key-export CLI command; under CI contention the
+  # respawned wallet's gRPC can be slow to bind, so allow the retry mechanism to cover it.
+  @critical @flaky
   Scenario: Full offline signing flow via gRPC
     # Set up infrastructure
     Given I have a seed node NODE
