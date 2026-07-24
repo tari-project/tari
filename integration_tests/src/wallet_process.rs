@@ -165,12 +165,14 @@ pub async fn spawn_wallet(
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
-        // Cap the worker count. The default is `available_parallelism()`, and with `-c 5` there
-        // are 10-15 of these runtimes alive at once on top of the main cucumber runtime and every
-        // base node task — on a high-core CI runner that is hundreds of 4 MB-stack threads
-        // competing for the same cores, which shows up as scheduling jitter and timeout flakes.
+        // Cap the worker count. The default is `available_parallelism()`, and with several
+        // scenarios in flight there are ~10 of these runtimes alive at once on top of the main
+        // cucumber runtime and every base node task — on a high-core CI runner that is hundreds of
+        // 4 MB-stack threads competing for the same cores, which shows up as scheduling jitter and
+        // timeout flakes. A full console wallet still runs comms + tx/output services + gRPC
+        // concurrently, so 4 (not 2) is the floor that keeps it from starving under that load.
         let rt = runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(4)
             .thread_stack_size(4 * 1024 * 1024)// 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
             .enable_all()
             .build()

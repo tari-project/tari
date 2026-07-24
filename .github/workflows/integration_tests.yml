@@ -121,7 +121,7 @@ jobs:
             --release \
             --package tari_integration_tests \
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
-            -c 5 \
+            -c 4 \
             --retry 2 \
             --retry-tag-filter @flaky \
             --retry-after 5s

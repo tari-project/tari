@@ -49,7 +49,7 @@ pub const LOG_TARGET_STDOUT: &str = "stdout";
 /// Default number of scenarios to run at once. Overridable with `CUCUMBER_CONCURRENCY` so that a
 /// local run and CI can use the same number — a mismatch between the two makes CI-only flakes
 /// impossible to reproduce.
-const DEFAULT_CONCURRENCY: usize = 5;
+const DEFAULT_CONCURRENCY: usize = 4;
 
 /// Hard ceiling on how long a single scenario may run before the watchdog gives up on it.
 /// Overridable with `CUCUMBER_SCENARIO_TIMEOUT_SECS`.
