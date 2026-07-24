@@ -20,7 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fs, io, net::TcpListener, path::PathBuf, thread};
+use std::{
+    fmt,
+    fs,
+    io,
+    net::TcpListener,
+    os::unix::fs::{DirBuilderExt, PermissionsExt},
+    path::{Path, PathBuf},
+    thread,
+};
 
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
@@ -29,10 +37,11 @@ use rand::{RngExt, distr::Alphanumeric};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig};
 use tor_hash_passwd::EncryptedKey;
+use zeroize::Zeroizing;
 
 const LOG_TARGET: &str = "tari_libtor";
 
-pub struct TorPassword(Option<String>);
+pub struct TorPassword(Option<Zeroizing<String>>);
 
 impl fmt::Debug for TorPassword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -52,71 +61,44 @@ pub struct Tor {
     socks_port: u16,
 }
 
-impl Default for Tor {
-    fn default() -> Tor {
-        Tor {
-            control_port: 0,
-            data_dir: "/tmp/tor-data".into(),
-            log_destination: "/tmp/tor.log".into(),
-            log_level: LogLevel::Err,
-            passphrase: TorPassword(None),
-            socks_port: 0,
-        }
-    }
-}
-
 impl Tor {
     /// Returns a new Tor instance with random options.
     /// The data directory, passphrase, and log destination are temporary and randomized.
-    /// Two TCP ports will be provided by the operating system.
-    /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
-    /// node identity file.
-    pub fn initialize(data_dir: PathBuf) -> Result<Tor, ExitError> {
+    /// The control port is provided by the operating system; the socks port is chosen by Tor itself.
+    /// The onion address and port info are still loaded from the node identity file.
+    ///
+    /// There is deliberately no `Default`/public constructor: a `Tor` can only be created via
+    /// `initialize`, which always sets a private, hashed control-port passphrase and an owner-only
+    /// data directory. This avoids handing out an instance that starts an unauthenticated control
+    /// port over a world-writable `/tmp` directory holding onion-service private keys.
+    pub fn initialize(base_dir: PathBuf) -> Result<Tor, ExitError> {
         debug!(target: LOG_TARGET, "Initializing libtor");
-        let mut instance = Tor::default();
 
-        // check for unused ports to assign
-        let (socks_port, control_port) = get_available_ports()?;
-        debug!(target: LOG_TARGET, "Using socks port {socks_port} and control_port {control_port}");
-        instance.socks_port = socks_port;
-        instance.control_port = control_port;
+        // The control port must be known up-front because `update_comms_transport` wires it into the
+        // comms transport before Tor is started. The socks port has no such requirement, so it is left
+        // to Tor's `SocksPortAuto` rather than being probed here.
+        let control_port = get_available_port()?;
+        debug!(target: LOG_TARGET, "Using auto socks port and control_port {control_port}");
 
-        // generate a random passphrase
+        // generate a random control-port passphrase
         let passphrase: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(30)
             .map(char::from)
             .collect();
-        instance.passphrase = TorPassword(Some(passphrase));
 
-        // data dir
-        instance.data_dir = data_dir.join("data");
+        // The data directory holds onion-service private keys, so it must be owner-only (0700).
+        let data_dir = base_dir.join("data");
+        create_secure_dir(&data_dir)?;
 
-        let exists = fs::exists(instance.data_dir.clone()).map_err(|e| {
-            ExitError::new(
-                ExitCode::InputError,
-                format!(
-                    "Could not verify libtor data directory: {} ({})",
-                    instance.data_dir.display(),
-                    e
-                ),
-            )
-        })?;
-        if !exists {
-            fs::create_dir_all(&instance.data_dir).map_err(|e| {
-                ExitError::new(
-                    ExitCode::InputError,
-                    format!(
-                        "Could not create libtor data directory: {} ({})",
-                        instance.data_dir.display(),
-                        e
-                    ),
-                )
-            })?;
-        }
-
-        // log destination
-        instance.log_destination = data_dir.join("tor.log");
+        let instance = Tor {
+            control_port,
+            data_dir,
+            log_destination: base_dir.join("tor.log"),
+            log_level: LogLevel::Err,
+            passphrase: TorPassword(Some(Zeroizing::new(passphrase))),
+            socks_port: 0,
+        };
 
         debug!(target: LOG_TARGET, "tor instance: {instance:?}");
         Ok(instance)
@@ -130,9 +112,19 @@ impl Tor {
         }
 
         if let Some(ref passphrase) = self.passphrase.0 {
-            transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
+            transport.tor.control_auth = TorControlAuthentication::Password(passphrase.as_str().to_owned());
         }
-        transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
+        transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port)
+            .parse()
+            .map_err(|e| {
+                ExitError::new(
+                    ExitCode::ConfigError,
+                    format!(
+                        "Failed to construct Tor control address for port {}: {}",
+                        self.control_port, e
+                    ),
+                )
+            })?;
         debug!(target: LOG_TARGET, "updated comms transport: {transport:?}");
         Ok(())
     }
@@ -177,22 +169,48 @@ impl Tor {
         }
 
         if let Some(secret) = passphrase.0 {
-            let hash = EncryptedKey::hash_password(&secret).to_string();
+            let hash = EncryptedKey::hash_password(secret.as_str()).to_string();
             tor.flag(TorFlag::HashedControlPassword(hash));
+            // `secret` (Zeroizing) is wiped from memory as it drops here.
         }
 
         tor.start_background()
     }
 }
 
-/// Attempt to find 2 available TCP ports
-fn get_available_ports() -> Result<(u16, u16), io::Error> {
-    let localhost = "127.0.0.1";
-    let listener1 = TcpListener::bind((localhost, 0))?;
-    let port1 = listener1.local_addr()?.port();
+/// Create `path` (and any missing parents) and ensure it is only accessible by the owner (0700).
+///
+/// The Tor data directory stores onion-service private keys, so it must never be group- or
+/// world-readable. `DirBuilder::mode` sets the permissions on the directories it creates, and the
+/// explicit `set_permissions` afterwards also tightens an already-existing directory (where
+/// `create` is a no-op) instead of relying on the process umask.
+fn create_secure_dir(path: &Path) -> Result<(), ExitError> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+        .map_err(|e| {
+            ExitError::new(
+                ExitCode::InputError,
+                format!("Could not create libtor data directory: {} ({})", path.display(), e),
+            )
+        })?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|e| {
+        ExitError::new(
+            ExitCode::InputError,
+            format!("Could not secure libtor data directory: {} ({})", path.display(), e),
+        )
+    })
+}
 
-    let listener2 = TcpListener::bind((localhost, 0))?;
-    let port2 = listener2.local_addr()?.port();
-
-    Ok((port1, port2))
+/// Attempt to find an available TCP port for the Tor control port.
+///
+/// Only the control port is probed: it must be known before Tor starts so it can be written into
+/// the comms transport by [`Tor::update_comms_transport`]. The socks port is instead left to Tor's
+/// `SocksPortAuto`. A probe like this has an inherent TOCTOU window between closing the listener and
+/// Tor re-binding the port; it is unavoidable while the control address must be known ahead of
+/// Tor start-up, but binding to `127.0.0.1` keeps the exposure local to the host.
+fn get_available_port() -> Result<u16, io::Error> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    Ok(listener.local_addr()?.port())
 }

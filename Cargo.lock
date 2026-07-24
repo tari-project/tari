@@ -7913,6 +7913,7 @@ dependencies = [
  "tari_common",
  "tari_p2p",
  "tor-hash-passwd",
+ "zeroize",
 ]
 
 [[package]]

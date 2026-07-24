@@ -16,6 +16,7 @@ derivative = "2.2.0"
 log = { workspace = true }
 rand = { workspace = true }
 tor-hash-passwd = "1.0.1"
+zeroize = "1"
 
 [target.'cfg(unix)'.dependencies]
 libtor = { version = "47.13.0", features = ["vendored-openssl"] }
