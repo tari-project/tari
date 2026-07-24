@@ -20,9 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
-
-use rand::RngExt;
+use std::{net::TcpListener, path::PathBuf, process, time::Duration};
 
 pub mod base_node_process;
 pub mod ffi;
@@ -41,25 +39,6 @@ pub mod world;
 
 pub use polling::{DEFAULT_TIMEOUT, SHORT_TIMEOUT, scaled_timeout, timeout_multiplier};
 pub use world::TariWorld;
-
-pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u16> {
-    let min = range.clone().min().expect("A minimum possible port number");
-    let max = range.max().expect("A maximum possible port number");
-
-    loop {
-        let port = loop {
-            let port = rand::rng().random_range(min..max);
-            if !world.assigned_ports.contains_key(&port) {
-                break port;
-            }
-        };
-
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            world.assigned_ports.insert(port, port);
-            return Some(port);
-        }
-    }
-}
 
 pub fn get_base_dir() -> PathBuf {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

@@ -575,7 +575,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 async fn stop_node(world: &mut TariWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
     println!("Stopping node {node}");
-    base_ps.kill();
+    base_ps.kill().await;
 }
 
 #[then(expr = "node {word} lists heights {int} to {int}")]
@@ -638,7 +638,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
     let mut node_a_peers = node_a_ps.seed_nodes.clone();
     let is_seed_node = node_a_ps.is_seed_node;
     node_a_peers.push(node_b);
-    node_a_ps.kill();
+    node_a_ps.kill().await;
     spawn_base_node(world, is_seed_node, node_a, node_a_peers).await;
 }
 

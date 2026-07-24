@@ -47,7 +47,8 @@ use tonic::transport::Channel;
 
 use crate::{TariWorld, get_peer_addresses, wait_for_service};
 
-#[derive(Clone)]
+// NOTE: deliberately NOT `Clone`. `Drop` triggers the node's shutdown signal, so a stray clone
+// going out of scope would shut down a node that is still in use.
 pub struct BaseNodeProcess {
     pub name: String,
     pub port: u16,
@@ -64,7 +65,11 @@ pub struct BaseNodeProcess {
 
 impl Drop for BaseNodeProcess {
     fn drop(&mut self) {
-        self.kill();
+        // Only signal — never block. `Drop` can run on a Tokio worker thread (e.g. when the world
+        // is torn down, or when an entry is replaced in `world.base_nodes`), and blocking there
+        // starves the very runtime the node needs in order to finish shutting down. Callers that
+        // need the ports back must use `kill().await`.
+        self.kill_signal.trigger();
     }
 }
 
@@ -103,7 +108,13 @@ pub async fn spawn_base_node_with_config(
     let temp_dir_path: PathBuf;
     let base_node_identity: NodeIdentity;
 
-    if let Some(node_ps) = world.base_nodes.get(&bn_name) {
+    // Take the previous incarnation out of the world *before* starting the replacement, and wait
+    // for it to release its ports. Leaving it in the map meant it was dropped by the `insert` at
+    // the end of this function — i.e. after the replacement task had already been spawned onto the
+    // same four ports — so its teardown would race the new node for them.
+    if let Some(mut node_ps) = world.base_nodes.shift_remove(&bn_name) {
+        node_ps.kill().await;
+
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
         http_port = node_ps.http_port;
@@ -273,7 +284,7 @@ pub async fn spawn_base_node_with_config(
 
     // make the new base node able to be referenced by other processes
     world.base_nodes.insert(bn_name.clone(), process);
-    if is_seed_node {
+    if is_seed_node && !world.seed_nodes.contains(&bn_name) {
         world.seed_nodes.push(bn_name);
     }
 
@@ -293,21 +304,40 @@ impl BaseNodeProcess {
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE))
     }
 
-    pub fn kill(&mut self) {
+    /// Shut the node down and wait for all of its ports to be released.
+    ///
+    /// This is `async` on purpose: the node itself runs as a task on the shared cucumber runtime,
+    /// so waiting for it with a blocking `std::thread::sleep` would occupy a worker thread that
+    /// the node needs in order to run its own shutdown — the more scenarios tear down at once,
+    /// the longer every teardown takes, and unrelated scenarios' `wait_for!` polls get starved
+    /// into spurious timeouts.
+    ///
+    /// All four ports are checked against a single shared deadline rather than 30s each, so the
+    /// worst case is 30s per node instead of 120s.
+    pub async fn kill(&mut self) {
         self.kill_signal.trigger();
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        for (label, port) in [
+
+        let ports = [
             ("p2p", self.port),
             ("grpc", self.grpc_port),
             ("http", self.http_port),
             ("xmrig_proxy", self.xmrig_proxy_port),
-        ] {
-            while std::time::Instant::now() < deadline {
-                if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(20));
+        ];
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            if ports
+                .iter()
+                .all(|(_, port)| TcpListener::bind(("127.0.0.1", *port)).is_ok())
+            {
+                return;
             }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        for (label, port) in ports {
             if TcpListener::bind(("127.0.0.1", port)).is_err() {
                 eprintln!(
                     "WARNING: base node '{}' {} port {} was not released within 30s timeout",

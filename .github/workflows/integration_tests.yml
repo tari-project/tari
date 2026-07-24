@@ -35,6 +35,12 @@ env:
   toolchain: stable
   nightly_toolchain: nightly-2026-06-01
   RUSTUP_PERMIT_COPY_RENAME: true
+  # CI runners are slower and far more contended than a dev machine; scale every `wait_for!`
+  # deadline accordingly rather than letting load show up as timeout "flakes".
+  INTEGRATION_TEST_TIMEOUT_MULTIPLIER: "2"
+  # Bound for the in-process scenario watchdog, so a hung scenario is named and killed instead of
+  # silently eating the job's 120 minute budget.
+  CUCUMBER_SCENARIO_TIMEOUT_SECS: "900"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -116,7 +122,9 @@ jobs:
             --package tari_integration_tests \
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
             -c 5 \
-            --retry 2
+            --retry 2 \
+            --retry-tag-filter @flaky \
+            --retry-after 5s
           exit_code=$?
           echo "Integration tests exit code: $exit_code"
           if [ $exit_code -ne 0 ]; then
@@ -130,6 +138,18 @@ jobs:
         with:
           name: junit-cucumber
           path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+      # Without these the only thing a failed run leaves behind is stdout, which is why CI cucumber
+      # failures have been so hard to diagnose. The per-component log4rs files carry the base node /
+      # wallet / comms side of the story.
+      - name: upload logs on failure
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: cucumber-logs-base-layer
+          path: ${{ github.workspace }}/integration_tests/log/
+          retention-days: 7
+          if-no-files-found: warn
 
   ffi:
     name: Cucumber tests / FFI
@@ -207,7 +227,9 @@ jobs:
             --package tari_integration_tests \
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
             -c 1 \
-            --retry 2
+            --retry 2 \
+            --retry-tag-filter @flaky \
+            --retry-after 5s
           exit_code=$?
           echo "FFI integration tests exit code: $exit_code"
           if [ $exit_code -ne 0 ]; then
@@ -221,6 +243,15 @@ jobs:
         with:
           name: junit-ffi-cucumber
           path: ${{ github.workspace }}/integration_tests/cucumber-output-junit.xml
+
+      - name: upload logs on failure
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: cucumber-logs-ffi
+          path: ${{ github.workspace }}/integration_tests/log/
+          retention-days: 7
+          if-no-files-found: warn
 
   # needed for test results
   event_file:

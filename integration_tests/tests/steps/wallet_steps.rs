@@ -1213,7 +1213,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 async fn stop_all_wallets(world: &mut TariWorld) {
     for (wallet, wallet_ps) in &mut world.wallets {
         cucumber_steps_log(format!("Stopping wallet {wallet}"));
-        wallet_ps.kill();
+        wallet_ps.kill().await;
     }
 }
 
@@ -1224,7 +1224,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     world.wallet_addresses.insert(wallet.clone(), wallet_address);
     cucumber_steps_log(format!("Stopping wallet {}", wallet.as_str()));
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 }
 
 #[when(expr = "I start wallet {word}")]
@@ -1245,7 +1245,7 @@ async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
 async fn restart_wallet(world: &mut TariWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     // stop wallet
-    wallet_ps.kill();
+    wallet_ps.kill().await;
     // start wallet
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
     let base_node_ps = world.base_nodes.get(&base_node).unwrap();
@@ -2225,7 +2225,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2355,7 +2355,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2483,7 +2483,7 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2797,8 +2797,9 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
         recipients: vec![transfer_with_tx_id],
     };
 
+    // No sleep here: `response` is already resolved by the `await` above, so sleeping before
+    // reading it only burned wall-clock without synchronising anything.
     let response = client.user_pay_for_fee(user_pay_for_fee_req).await;
-    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let tx_results = response
         .expect("UserPayForFee response should succeed")

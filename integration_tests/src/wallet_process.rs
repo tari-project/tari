@@ -51,7 +51,10 @@ pub struct WalletProcess {
 
 impl Drop for WalletProcess {
     fn drop(&mut self) {
-        self.kill();
+        // Signal only — see the note on `BaseNodeProcess::drop`. Blocking here would occupy a
+        // cucumber runtime worker thread. Callers needing the gRPC port back use `kill().await`.
+        self.kill_signal.trigger();
+        self.is_running = false;
     }
 }
 
@@ -83,6 +86,8 @@ pub async fn spawn_wallet(
             .allocate_wallet_ports()
             .expect("Port pool exhausted — too many concurrent wallets");
         grpc_port = wallet_ports.grpc;
+        // NOTE: the wallet does not own an HTTP port — `http_port` below is the *base node's*
+        // HTTP query service that this wallet is configured to talk to.
         world.assigned_ports.insert(grpc_port, grpc_port);
 
         temp_dir_path = world
@@ -160,7 +165,12 @@ pub async fn spawn_wallet(
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
+        // Cap the worker count. The default is `available_parallelism()`, and with `-c 5` there
+        // are 10-15 of these runtimes alive at once on top of the main cucumber runtime and every
+        // base node task — on a high-core CI runner that is hundreds of 4 MB-stack threads
+        // competing for the same cores, which shows up as scheduling jitter and timeout flakes.
         let rt = runtime::Builder::new_multi_thread()
+            .worker_threads(2)
             .thread_stack_size(4 * 1024 * 1024)// 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
             .enable_all()
             .build()
@@ -279,16 +289,25 @@ impl WalletProcess {
         self.is_running
     }
 
-    pub fn kill(&mut self) {
+    /// Shut the wallet down and wait for its gRPC port to be released so the next scenario (or a
+    /// respawn of this same wallet) doesn't hit a port conflict.
+    ///
+    /// `async` with a Tokio sleep rather than `std::thread::sleep`: this is called from step
+    /// definitions and from the scenario teardown hook, both of which run on the shared cucumber
+    /// runtime that every base node task is also scheduled on.
+    pub async fn kill(&mut self) {
         self.kill_signal.trigger();
         self.is_running = false;
-        // Wait for the gRPC port to be released so the next scenario doesn't hit port conflicts
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while std::time::Instant::now() < deadline {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while tokio::time::Instant::now() < deadline {
             if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
-                break;
+                return;
             }
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        eprintln!(
+            "WARNING: wallet '{}' grpc port {} was not released within 10s timeout",
+            self.name, self.grpc_port
+        );
     }
 }
