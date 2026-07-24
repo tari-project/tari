@@ -31,7 +31,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{Network, PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_shutdown::Shutdown;
-use tokio::runtime;
+use tokio::{runtime, sync::watch};
 use tonic::transport::Channel;
 
 use crate::{TariWorld, get_peer_addresses, wait_for_service};
@@ -47,6 +47,10 @@ pub struct WalletProcess {
     pub peer_seeds: Vec<String>,
     pub http_port: u16,
     is_running: bool,
+    /// Flips to `true` once the wallet's runtime thread has fully exited — i.e. its tokio runtime
+    /// (and therefore its SQLite pool and comms stack) has been dropped. `kill()` waits on this so
+    /// a respawn of the same wallet does not race the previous incarnation's teardown.
+    finished: watch::Receiver<bool>,
 }
 
 impl Drop for WalletProcess {
@@ -115,6 +119,8 @@ pub async fn spawn_wallet(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     let wallet_cfg = wallet_config.clone();
+    // Signalled once the wallet's runtime thread returns (runtime dropped → DB/comms released).
+    let (finished_tx, finished_rx) = watch::channel(false);
     thread::spawn(move || {
         let mut wallet_app_config = minotari_console_wallet::ApplicationConfig {
             common: common_config,
@@ -184,7 +190,12 @@ pub async fn spawn_wallet(
             cli.seed_words_file_name = Some(temp_dir_path.join(file_name));
         }
 
-        if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli) {
+        let run_result = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli);
+        // `run_wallet_with_cli` owns the runtime, so by the time it returns the runtime (and with it
+        // the SQLite pool and comms) has been dropped and the DB file is released. Signal before
+        // surfacing any error so `kill()` is always released.
+        let _ = finished_tx.send(true);
+        if let Err(e) = run_result {
             panic!("{e:?}");
         }
     });
@@ -217,6 +228,7 @@ pub async fn spawn_wallet(
         peer_seeds,
         is_running: true,
         http_port,
+        finished: finished_rx,
     });
 }
 
@@ -291,25 +303,37 @@ impl WalletProcess {
         self.is_running
     }
 
-    /// Shut the wallet down and wait for its gRPC port to be released so the next scenario (or a
-    /// respawn of this same wallet) doesn't hit a port conflict.
+    /// Shut the wallet down and wait for its runtime thread to fully exit before returning.
     ///
-    /// `async` with a Tokio sleep rather than `std::thread::sleep`: this is called from step
+    /// Waiting only for the gRPC port to free (as this used to) is not enough: the gRPC server
+    /// stops early in the shutdown sequence while the wallet's SQLite database and comms stack are
+    /// still being torn down. The export / sign / import steps kill a wallet and immediately
+    /// respawn it on the *same* temp dir and port; if the respawn starts before the previous
+    /// incarnation released the database, it blocks opening the still-locked DB and never binds its
+    /// gRPC — surfacing as a "service on port N to start" timeout. Blocking on full completion
+    /// (runtime dropped → DB + comms released) makes those respawns safe.
+    ///
+    /// `async` with Tokio primitives rather than `std::thread::sleep`: this is called from step
     /// definitions and from the scenario teardown hook, both of which run on the shared cucumber
     /// runtime that every base node task is also scheduled on.
     pub async fn kill(&mut self) {
         self.kill_signal.trigger();
         self.is_running = false;
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-        while tokio::time::Instant::now() < deadline {
-            if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
-                return;
+
+        let mut finished = self.finished.clone();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        while !*finished.borrow() {
+            match tokio::time::timeout_at(deadline, finished.changed()).await {
+                Ok(Ok(())) => {},     // value changed — re-check the loop condition
+                Ok(Err(_)) => return, // sender dropped: the thread has ended, so teardown is done
+                Err(_) => {
+                    eprintln!(
+                        "WARNING: wallet '{}' (grpc port {}) did not finish shutting down within 30s",
+                        self.name, self.grpc_port
+                    );
+                    return;
+                },
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        eprintln!(
-            "WARNING: wallet '{}' grpc port {} was not released within 10s timeout",
-            self.name, self.grpc_port
-        );
     }
 }
