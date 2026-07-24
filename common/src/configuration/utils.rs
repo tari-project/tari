@@ -122,6 +122,19 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     Ok(cfg)
 }
 
+/// Substrings that mark an environment variable name as sensitive; matching values are masked in logs and output.
+const SENSITIVE_KEYWORDS: &[&str] = &["PASSWORD", "SECRET", "KEY", "SEED"];
+
+/// Returns the value to display for an env var, masking it if the name indicates it holds a sensitive value.
+fn mask_if_sensitive<'a>(name: &str, value: &'a str) -> &'a str {
+    let upper = name.to_uppercase();
+    if SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw)) {
+        "***"
+    } else {
+        value
+    }
+}
+
 /// Checks for environment variables that look like they are intended to configure Tari applications but use an
 /// incorrect prefix or format. Warns users about common mistakes and suggests the correct format.
 fn check_for_incorrect_env_vars() {
@@ -144,7 +157,7 @@ fn check_for_incorrect_env_vars() {
                      '{}{}'? Configuration environment variables must use the 'TARI_' prefix with '__' as the nested \
                      key separator.",
                     var_name,
-                    var_value,
+                    mask_if_sensitive(&var_name, &var_value),
                     correct_prefix,
                     suffix
                 );
@@ -157,15 +170,10 @@ fn check_for_incorrect_env_vars() {
 /// Also prints any config property overrides (`-p` args) if provided.
 /// This is useful for debugging configuration issues.
 pub fn print_env_vars(config_overrides: &[(String, String)]) {
-    // Names containing these substrings will have their values masked
-    const SENSITIVE_KEYWORDS: &[&str] = &["PASSWORD", "SECRET", "KEY", "SEED"];
-
     let mut env_vars: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| k.starts_with("TARI_") || k.starts_with("MINOTARI_"))
         .map(|(k, v)| {
-            let upper = k.to_uppercase();
-            let masked = SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw));
-            let display_value = if masked { "***".to_string() } else { v };
+            let display_value = mask_if_sensitive(&k, &v).to_string();
             (k, display_value)
         })
         .collect();
@@ -185,9 +193,7 @@ pub fn print_env_vars(config_overrides: &[(String, String)]) {
     } else {
         println!("\nConfig property overrides (-p args):");
         for (key, value) in config_overrides {
-            let upper = key.to_uppercase();
-            let masked = SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw));
-            let display_value = if masked { "***" } else { value.as_str() };
+            let display_value = mask_if_sensitive(key, value);
             println!("  {key}={display_value}");
         }
     }
