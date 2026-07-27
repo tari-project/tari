@@ -128,14 +128,20 @@ impl BasicAuthCredentials {
         // We start with an empty default buffer
         let mut compare_bytes = [0u8; MAX_USERNAME_LEN];
 
-        // Add the username bytes to the buffer
+        // Add the username bytes to the buffer, clipping to the maximum length so that an over-length
+        // username (which is already flagged as invalid above) cannot cause a panic here. This keeps the
+        // work constant time for all inputs up to the buffer size.
         let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
         let (prefix, suffix) = compare_bytes.split_at_mut(bytes_len_clipped);
-        prefix.copy_from_slice(bytes);
+        prefix.copy_from_slice(
+            bytes
+                .get(..bytes_len_clipped)
+                .expect("bytes_len_clipped is at most bytes.len()"),
+        );
         suffix.copy_from_slice(
             self.random_bytes
-                .get(bytes.len()..MAX_USERNAME_LEN)
-                .expect("Already checked"),
+                .get(bytes_len_clipped..MAX_USERNAME_LEN)
+                .expect("bytes_len_clipped is at most MAX_USERNAME_LEN"),
         );
 
         // Perform the bitwise comparison and combine the result with the valid username result.
@@ -314,6 +320,26 @@ mod tests {
             let username = [0u8; MAX_USERNAME_LEN / 2 + 1].to_hex();
             let err = BasicAuthCredentials::new(username, hashed_password.to_string().into()).unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsername));
+        }
+
+        #[test]
+        fn it_rejects_oversized_username_without_panicking() {
+            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+            let credentials =
+                BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
+
+            // A username longer than `MAX_USERNAME_LEN` comes straight from an attacker-controlled
+            // Authorization header; it must be rejected rather than panic in the constant time comparison.
+            let oversized = "a".repeat(MAX_USERNAME_LEN + 1);
+            assert!(!bool::from(credentials.constant_time_verify_username(&oversized)));
+            let err = credentials
+                .constant_time_validate(&oversized, &SafePassword::from("secret".to_string()))
+                .unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
+
+            // A much longer username exercises the same path with a wider gap over the buffer size.
+            let very_oversized = "b".repeat(MAX_USERNAME_LEN * 4);
+            assert!(!bool::from(credentials.constant_time_verify_username(&very_oversized)));
         }
 
         // This unit test asserts that the minimum variance is less than 10% (chosen to be robust for running the unit
