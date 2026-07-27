@@ -11,6 +11,8 @@ use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GetUtxosMinedInfoRequest {
+    /// Bounded by `MAX_ALLOWED_QUERY_SIZE`; larger sets must be split over multiple requests.
+    #[validate(max_items = 512)]
     pub hashes: Vec<Vec<u8>>,
     /// Version of the request. Version 2 also checks the mempool for unmined outputs.
     #[serde(default = "default_version")]

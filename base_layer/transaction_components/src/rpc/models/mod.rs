@@ -26,6 +26,13 @@ pub use sync_utxos_by_block::*;
 pub use transaction_query::*;
 pub use tx_submission_response::*;
 
+// `serde_valid`'s derive only accepts literals, so the request models below spell out `max_items = 512` instead of
+// referring to `MAX_ALLOWED_QUERY_SIZE`. Keep the two in lockstep.
+const _: () = assert!(
+    crate::rpc::MAX_ALLOWED_QUERY_SIZE == 512,
+    "the `max_items` validations on the request models must be updated to match MAX_ALLOWED_QUERY_SIZE"
+);
+
 #[allow(clippy::too_many_lines)]
 pub fn transaction_output_schema() -> Schema {
     Schema::Object(

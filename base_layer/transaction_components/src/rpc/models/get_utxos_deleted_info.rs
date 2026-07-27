@@ -6,6 +6,8 @@ use utoipa::ToSchema;
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GetUtxosDeletedInfoRequest {
+    /// Bounded by `MAX_ALLOWED_QUERY_SIZE`; larger sets must be split over multiple requests.
+    #[validate(max_items = 512)]
     pub hashes: Vec<Vec<u8>>,
     pub must_include_header: Vec<u8>,
 }
