@@ -173,12 +173,18 @@ impl Default for RpcServer {
     }
 }
 
+/// The default maximum time a session may sit without receiving a request before it is closed. This
+/// is well above any client's polling interval, so it only ever reclaims sessions whose peer is
+/// gone.
+const DEFAULT_IDLE_SESSION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
 #[derive(Clone)]
 pub struct RpcServerBuilder {
     maximum_simultaneous_sessions: Option<usize>,
     maximum_sessions_per_client: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
+    idle_session_timeout: Option<Duration>,
     cull_oldest_peer_rpc_connection_on_full: bool,
 }
 
@@ -217,6 +223,22 @@ impl RpcServerBuilder {
         self
     }
 
+    /// Close a session that has not received a request for `timeout`. A session holds a slot in the
+    /// global session limit for as long as its substream is open, and a peer that goes away without
+    /// closing the substream (common over Tor) never releases it. Only idle time counts; a session
+    /// servicing requests is never closed.
+    pub fn with_idle_session_timeout(mut self, timeout: Duration) -> Self {
+        self.idle_session_timeout = Some(timeout);
+        self
+    }
+
+    /// Allow sessions to stay open indefinitely while idle. See [`Self::with_idle_session_timeout`]
+    /// for why this is generally a bad idea outside of tests.
+    pub fn with_no_idle_session_timeout(mut self) -> Self {
+        self.idle_session_timeout = None;
+        self
+    }
+
     pub fn finish(self) -> RpcServer {
         let (request_tx, request_rx) = mpsc::channel(10);
         RpcServer {
@@ -234,6 +256,7 @@ impl Default for RpcServerBuilder {
             maximum_sessions_per_client: None,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
+            idle_session_timeout: Some(DEFAULT_IDLE_SESSION_TIMEOUT),
             cull_oldest_peer_rpc_connection_on_full: false,
         }
     }
@@ -453,22 +476,6 @@ where
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
-        if !self.executor.can_spawn() {
-            let msg = format!("Used all {} sessions", self.executor.max_available());
-            debug!(
-                target: LOG_TARGET,
-                "Rejecting RPC session request for peer `{}` because {}",
-                node_id,
-                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
-            );
-            handshake
-                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
-                    "Cannot spawn more sessions",
-                ))
-                .await?;
-            return Err(RpcServerError::MaximumSessionsReached(msg));
-        }
-
         let service = match self.service.make_service(protocol.clone()).await {
             Ok(s) => s,
             Err(err) => {
@@ -485,14 +492,12 @@ where
             },
         };
 
-        match self.new_session_possible_for(node_id) {
-            Ok(num_sessions) => {
-                info!(
-                    target: LOG_TARGET,
-                    "NEW SESSION for {node_id} ({num_sessions} currently active) "
-                );
-            },
-
+        // The per-peer limit is enforced before the global one so that culling still happens when
+        // the server is sitting on its global limit - that is precisely when reclaiming a slot from
+        // a peer that is over its own quota matters. Doing the global check first made
+        // `cull_oldest_peer_rpc_connection_on_full` unreachable exactly when it was needed.
+        let num_sessions = match self.new_session_possible_for(node_id) {
+            Ok(num_sessions) => num_sessions,
             Err(err) => {
                 handshake
                     .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
@@ -501,7 +506,30 @@ where
                     .await?;
                 return Err(err);
             },
+        };
+
+        if !self.executor.can_spawn() {
+            let msg = format!("Used all {} sessions", self.executor.max_available());
+            debug!(
+                target: LOG_TARGET,
+                "Rejecting RPC session request for peer `{}` because {}",
+                node_id,
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
+            );
+            handshake
+                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                    "Cannot spawn more sessions",
+                ))
+                .await?;
+            // A session culled above only releases its slot once that task winds down, so this
+            // request is still rejected. The client's next attempt is the one that gets in.
+            return Err(RpcServerError::MaximumSessionsReached(msg));
         }
+
+        info!(
+            target: LOG_TARGET,
+            "NEW SESSION for {node_id} ({num_sessions} currently active) "
+        );
 
         let version = handshake.perform_server_handshake().await?;
         debug!(
@@ -632,10 +660,27 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
+        // Only the time spent waiting for the next request is bounded - handling a request holds
+        // this loop and cannot trip the timer. Without this, a session (and the slot it occupies in
+        // the global session limit) is held for as long as the substream stays open, which for a
+        // peer that has gone away without closing it is forever.
+        let idle_timeout = self.config.idle_session_timeout;
+        let idle_sleep = time::sleep(idle_timeout.unwrap_or(DEFAULT_IDLE_SESSION_TIMEOUT));
+        tokio::pin!(idle_sleep);
+
         loop {
             tokio::select! {
                 _ = self.stop_rx.changed() => {
                     debug!(target: LOG_TARGET, "({}) Stop signal received, closing substream.", self.logging_context_string);
+                    break;
+                }
+                () = &mut idle_sleep, if idle_timeout.is_some() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Closing session idle for {:.0?}.",
+                        self.logging_context_string,
+                        idle_timeout.unwrap_or_default()
+                    );
                     break;
                 }
                 result = self.framed.next() => {
@@ -677,6 +722,9 @@ where
                                 elapsed,
                                 if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
                             );
+                            if let Some(timeout) = idle_timeout {
+                                idle_sleep.as_mut().reset(time::Instant::now() + timeout);
+                            }
                         },
                         Some(Err(err)) => {
                             if let Err(err) = self.framed.close().await {

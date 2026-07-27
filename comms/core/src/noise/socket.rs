@@ -162,6 +162,11 @@ impl<TSocket> NoiseSocket<TSocket> {
         self.get_remote_static()
             .and_then(|s| CommsPublicKey::from_canonical_bytes(s).ok())
     }
+
+    /// Returns true if the remote closed the connection, i.e. a read reached the end of the stream.
+    fn is_eof(&self) -> bool {
+        matches!(self.read_state, ReadState::Eof(_))
+    }
 }
 
 fn poll_write_all<TSocket>(
@@ -633,9 +638,23 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive(&mut self) -> io::Result<usize> {
-        time::timeout(self.recv_timeout, self.socket.read(&mut []))
+        let num_bytes = time::timeout(self.recv_timeout, self.socket.read(&mut []))
             .await
-            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
+            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))??;
+
+        // Handshake messages carry no payload, so the read above is issued with an empty buffer and
+        // returns Ok(0) both when a handshake message was consumed and when the remote hung up
+        // before sending one. Left undetected, the EOF case lets the handshake continue and fail on
+        // the next `send` with a confusing snow state error ("NotTurnToWrite") rather than
+        // reporting that the peer closed the connection.
+        if self.socket.is_eof() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "peer closed the connection during the noise handshake",
+            ));
+        }
+
+        Ok(num_bytes)
     }
 
     fn build(self) -> io::Result<NoiseSocket<TSocket>> {
@@ -769,6 +788,24 @@ mod test {
             listener_socket.get_remote_static(),
             Some(dialer_keypair.public.as_ref())
         );
+    }
+
+    #[tokio::test]
+    async fn handshake_reports_eof_when_peer_hangs_up() {
+        let ((_dialer_keypair, dialer), (_listener_keypair, mut listener)) = build_test_connection().await.unwrap();
+
+        // The peer reads our first handshake message and then hangs up without replying.
+        let listener_task = tokio::spawn(async move {
+            listener.receive().await.unwrap();
+            drop(listener);
+        });
+
+        let err = dialer.perform_handshake().await.unwrap_err();
+        listener_task.await.unwrap();
+
+        // Before the EOF was detected explicitly this surfaced as an InvalidData "EncryptionError:
+        // state error: NotTurnToWrite" from snow, which says nothing about the peer hanging up.
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof, "unexpected error: {err}");
     }
 
     #[tokio::test]
