@@ -158,6 +158,12 @@ pub struct P2pConfig {
     /// it with a new session. If false, the RPC server will reject the new session and preserve the older session.
     /// (default value = true).
     pub cull_oldest_peer_rpc_connection_on_full: bool,
+    /// How long an RPC session may sit without receiving a request before the server closes it and reclaims its slot
+    /// in `rpc_max_simultaneous_sessions`. Time spent servicing a request does not count towards this. A peer that
+    /// disappears without closing its substream would otherwise hold its session forever.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rpc_idle_session_timeout: Duration,
     /// The maximum time a seed peer connection is allowed to stay open before being forcibly closed.
     /// Default: 15 minutes
     #[serde(with = "serializers::seconds")]
@@ -187,6 +193,7 @@ impl Default for P2pConfig {
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,
             cull_oldest_peer_rpc_connection_on_full: true,
+            rpc_idle_session_timeout: Duration::from_secs(10 * 60),
             max_seed_peer_age: Duration::from_secs(15 * 60),
         }
     }

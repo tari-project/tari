@@ -48,6 +48,7 @@ use crate::{
         rpc,
         rpc::{
             RpcError,
+            RpcPoolClient,
             RpcServer,
             RpcServerBuilder,
             RpcStatusCode,
@@ -537,6 +538,55 @@ async fn max_global_sessions() {
 
     client.close().await;
 
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let _client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn idle_sessions_are_closed_and_their_slot_reclaimed() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(1)
+        .with_minimum_client_deadline(Duration::from_secs(0))
+        .with_idle_session_timeout(Duration::from_secs(1));
+    let (muxer, _outbound, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+
+    let node_identity = build_node_identity(Default::default());
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+    spawn_inbound(inbound.into_incoming(), muxer.clone(), node_identity.node_id().clone());
+
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // A session that keeps making requests is never closed, even once it has been alive for longer
+    // than the idle timeout - each request restarts the clock.
+    for _ in 0..3 {
+        time::sleep(Duration::from_millis(400)).await;
+        client.say_hello(Default::default()).await.unwrap();
+    }
+    assert!(client.is_connected());
+
+    // Once it goes quiet for longer than the timeout, the server closes the session out from under
+    // it. The client only notices when it next tries to use it - it does not read the substream
+    // while no request is in flight.
+    time::sleep(Duration::from_millis(2500)).await;
+    client.say_hello(Default::default()).await.unwrap_err();
+
+    // ...and the slot it held in the global session limit of 1 is free again.
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     let _client = GreetingClient::builder()

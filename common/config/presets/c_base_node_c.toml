@@ -191,6 +191,10 @@ listener_self_liveness_check_interval = 15
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
 #cull_oldest_peer_rpc_connection_on_full = true
+# How long, in seconds, an RPC session may sit without receiving a request before the server closes it and reclaims its
+# slot in `rpc_max_simultaneous_sessions`. Time spent servicing a request does not count towards this. A peer that
+# disappears without closing its substream would otherwise hold its session forever. (default value = 600).
+#rpc_idle_session_timeout = 600
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
