@@ -29,6 +29,7 @@ use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
 use minotari_offline_signer::cli::execute_from_args as execute_offline_signer_from_args;
 use tari_integration_tests::{
     TariWorld,
+    wait_for,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
@@ -115,7 +116,7 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
         drop(std::fs::remove_file(&output));
         std::fs::write(&input, &prepared_json).expect("Failed to write prepared transaction file");
 
-        wallet_ps.kill();
+        wallet_ps.kill().await;
         (
             input,
             output,
@@ -142,16 +143,14 @@ async fn sign_prepared_transaction_using_wallet(world: &mut TariWorld, wallet_na
 
     // Poll for the signed output file to appear. The CLI writes it once the
     // command has finished, which happens after wallet startup + unlock.
-    let poll_interval = Duration::from_millis(500);
-    let timeout = Duration::from_secs(60);
-    let mut waited = Duration::ZERO;
-    while waited < timeout && !output_file.exists() {
-        tokio::time::sleep(poll_interval).await;
-        waited += poll_interval;
-    }
-    assert!(
-        output_file.exists(),
-        "Signed transaction file never appeared at {output_file:?} within {timeout:?}"
+    // Uses `wait_for!` so the deadline honours INTEGRATION_TEST_TIMEOUT_MULTIPLIER like every
+    // other wait in the suite, instead of a hard-coded 60s that CI cannot stretch.
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("signed transaction file to appear at {output_file:?}"),
+        condition: async {
+            Ok(output_file.exists())
+        }
     );
 
     let signed_json =
@@ -348,8 +347,38 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
         response.failure_message
     );
 
-    println!(
-        "Signed transaction broadcast successfully, tx_id: {}",
-        response.transaction_id
+    let tx_id = response.transaction_id;
+    println!("Signed transaction broadcast successfully, tx_id: {tx_id}");
+
+    // Wait until the base node has actually accepted the transaction into its mempool before the
+    // scenario goes on to mine. `broadcast_signed_one_sided_transaction` returns as soon as the
+    // wallet has *queued* the broadcast, not once the base node has accepted it. Without this wait
+    // the following "mine N blocks" step races the wallet's broadcast protocol and can mine right
+    // past the transaction, so it lands several blocks late — too close to the tip to reach the
+    // required confirmations, leaving the recipient's one-sided output permanently unconfirmed
+    // (detected as pending_incoming but never available). Waiting for at least `Broadcast`
+    // guarantees the tx is in the mempool, so it is mined in the very next block.
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("broadcast tx {tx_id} to reach the base node mempool"),
+        condition: async {
+            let info = client
+                .get_transaction_info(grpc::GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            Ok(info.transactions.first().is_some_and(|t| {
+                matches!(
+                    t.status(),
+                    grpc::TransactionStatus::Broadcast |
+                        grpc::TransactionStatus::MinedUnconfirmed |
+                        grpc::TransactionStatus::MinedConfirmed |
+                        grpc::TransactionStatus::OneSidedUnconfirmed |
+                        grpc::TransactionStatus::OneSidedConfirmed
+                )
+            }))
+        }
     );
 }

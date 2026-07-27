@@ -31,7 +31,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{Network, PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_shutdown::Shutdown;
-use tokio::runtime;
+use tokio::{runtime, sync::watch};
 use tonic::transport::Channel;
 
 use crate::{TariWorld, get_peer_addresses, wait_for_service};
@@ -47,11 +47,18 @@ pub struct WalletProcess {
     pub peer_seeds: Vec<String>,
     pub http_port: u16,
     is_running: bool,
+    /// Flips to `true` once the wallet's runtime thread has fully exited — i.e. its tokio runtime
+    /// (and therefore its SQLite pool and comms stack) has been dropped. `kill()` waits on this so
+    /// a respawn of the same wallet does not race the previous incarnation's teardown.
+    finished: watch::Receiver<bool>,
 }
 
 impl Drop for WalletProcess {
     fn drop(&mut self) {
-        self.kill();
+        // Signal only — see the note on `BaseNodeProcess::drop`. Blocking here would occupy a
+        // cucumber runtime worker thread. Callers needing the gRPC port back use `kill().await`.
+        self.kill_signal.trigger();
+        self.is_running = false;
     }
 }
 
@@ -83,6 +90,8 @@ pub async fn spawn_wallet(
             .allocate_wallet_ports()
             .expect("Port pool exhausted — too many concurrent wallets");
         grpc_port = wallet_ports.grpc;
+        // NOTE: the wallet does not own an HTTP port — `http_port` below is the *base node's*
+        // HTTP query service that this wallet is configured to talk to.
         world.assigned_ports.insert(grpc_port, grpc_port);
 
         temp_dir_path = world
@@ -110,6 +119,8 @@ pub async fn spawn_wallet(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     let wallet_cfg = wallet_config.clone();
+    // Signalled once the wallet's runtime thread returns (runtime dropped → DB/comms released).
+    let (finished_tx, finished_rx) = watch::channel(false);
     thread::spawn(move || {
         let mut wallet_app_config = minotari_console_wallet::ApplicationConfig {
             common: common_config,
@@ -160,7 +171,14 @@ pub async fn spawn_wallet(
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
+        // Cap the worker count. The default is `available_parallelism()`, and with several
+        // scenarios in flight there are ~10 of these runtimes alive at once on top of the main
+        // cucumber runtime and every base node task — on a high-core CI runner that is hundreds of
+        // 4 MB-stack threads competing for the same cores, which shows up as scheduling jitter and
+        // timeout flakes. A full console wallet still runs comms + tx/output services + gRPC
+        // concurrently, so 4 (not 2) is the floor that keeps it from starving under that load.
         let rt = runtime::Builder::new_multi_thread()
+            .worker_threads(4)
             .thread_stack_size(4 * 1024 * 1024)// 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
             .enable_all()
             .build()
@@ -172,7 +190,12 @@ pub async fn spawn_wallet(
             cli.seed_words_file_name = Some(temp_dir_path.join(file_name));
         }
 
-        if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli) {
+        let run_result = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli);
+        // `run_wallet_with_cli` owns the runtime, so by the time it returns the runtime (and with it
+        // the SQLite pool and comms) has been dropped and the DB file is released. Signal before
+        // surfacing any error so `kill()` is always released.
+        let _ = finished_tx.send(true);
+        if let Err(e) = run_result {
             panic!("{e:?}");
         }
     });
@@ -205,6 +228,7 @@ pub async fn spawn_wallet(
         peer_seeds,
         is_running: true,
         http_port,
+        finished: finished_rx,
     });
 }
 
@@ -279,16 +303,37 @@ impl WalletProcess {
         self.is_running
     }
 
-    pub fn kill(&mut self) {
+    /// Shut the wallet down and wait for its runtime thread to fully exit before returning.
+    ///
+    /// Waiting only for the gRPC port to free (as this used to) is not enough: the gRPC server
+    /// stops early in the shutdown sequence while the wallet's SQLite database and comms stack are
+    /// still being torn down. The export / sign / import steps kill a wallet and immediately
+    /// respawn it on the *same* temp dir and port; if the respawn starts before the previous
+    /// incarnation released the database, it blocks opening the still-locked DB and never binds its
+    /// gRPC — surfacing as a "service on port N to start" timeout. Blocking on full completion
+    /// (runtime dropped → DB + comms released) makes those respawns safe.
+    ///
+    /// `async` with Tokio primitives rather than `std::thread::sleep`: this is called from step
+    /// definitions and from the scenario teardown hook, both of which run on the shared cucumber
+    /// runtime that every base node task is also scheduled on.
+    pub async fn kill(&mut self) {
         self.kill_signal.trigger();
         self.is_running = false;
-        // Wait for the gRPC port to be released so the next scenario doesn't hit port conflicts
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while std::time::Instant::now() < deadline {
-            if std::net::TcpListener::bind(("127.0.0.1", self.grpc_port)).is_ok() {
-                break;
+
+        let mut finished = self.finished.clone();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        while !*finished.borrow() {
+            match tokio::time::timeout_at(deadline, finished.changed()).await {
+                Ok(Ok(())) => {},     // value changed — re-check the loop condition
+                Ok(Err(_)) => return, // sender dropped: the thread has ended, so teardown is done
+                Err(_) => {
+                    eprintln!(
+                        "WARNING: wallet '{}' (grpc port {}) did not finish shutting down within 30s",
+                        self.name, self.grpc_port
+                    );
+                    return;
+                },
             }
-            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 }

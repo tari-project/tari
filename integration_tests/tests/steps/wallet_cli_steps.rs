@@ -56,7 +56,7 @@ async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
 #[then(expr = "I get balance of wallet {word} is at least {int} uT via command line")]
 async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
     tari_integration_tests::wait_for!(
         timeout: Duration::from_secs(10),
         description: "wallet to shut down",
@@ -87,7 +87,7 @@ async fn make_it_rain(
     wallet_b: String,
 ) {
     let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 
     let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
     let wallet_b_address = wallet_b_client
@@ -123,7 +123,7 @@ async fn make_it_rain(
 #[when(expr = "I do coin split on wallet {word} to {int} uT {int} coins via command line")]
 async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, splits: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 
     let mut cli = get_default_cli();
 
@@ -145,7 +145,7 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
 #[then(expr = "I get count of utxos of wallet {word} and it's at least {int} via command line")]
 async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 
     let mut cli = get_default_cli();
 
@@ -160,7 +160,7 @@ async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
 #[when(expr = "I export the utxos of wallet {word} via command line")]
 async fn export_utxos(world: &mut TariWorld, wallet: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_a_ps.kill();
+    wallet_a_ps.kill().await;
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
 
@@ -185,7 +185,7 @@ async fn export_utxos(world: &mut TariWorld, wallet: String) {
 #[then(expr = "I run whois {word} on wallet {word} via command line")]
 async fn whois(world: &mut TariWorld, node: String, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 
     let mut cli = get_default_cli();
 
@@ -211,7 +211,7 @@ async fn recover_wallet_via_cli(
     node: String,
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
-        wallet_ps.kill();
+        wallet_ps.kill().await;
     }
 
     let mut cli = get_default_cli();
@@ -243,7 +243,7 @@ async fn export_wallet_view_and_spend_keys_via_cli(
     view_and_spend_key: String,
 ) {
     let wallet_ps = if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
-        wallet_ps.kill();
+        wallet_ps.kill().await;
         wallet_ps.clone()
     } else {
         panic!("Wallet '{wallet_name}' not found");
@@ -278,7 +278,7 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
     node: String,
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
-        wallet_ps.kill();
+        wallet_ps.kill().await;
         world.wallets.remove(&wallet_name);
     }
 
@@ -314,7 +314,7 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
 #[then(expr = "I change base node of {word} to {word} via command line")]
 async fn change_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
     let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
@@ -322,7 +322,7 @@ async fn change_base_node_via_cli(world: &mut TariWorld, wallet: String, base_no
 #[then(expr = "I set custom base node of {word} to {word} via command line")]
 async fn set_custom_base_node_via_cli(world: &mut TariWorld, wallet: String, base_node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
+    wallet_ps.kill().await;
     let seed_nodes = world.base_nodes.get(&base_node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node), seed_nodes, None, None).await;
 }
@@ -331,7 +331,7 @@ async fn set_custom_base_node_via_cli(world: &mut TariWorld, wallet: String, bas
 async fn clear_custom_base_node_via_cli(world: &mut TariWorld, wallet: String) {
     let (base_node_name, peer_seeds) = {
         let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-        wallet_ps.kill();
+        wallet_ps.kill().await;
         (wallet_ps.base_node_name.clone(), wallet_ps.peer_seeds.clone())
     };
     spawn_wallet(world, wallet, base_node_name, peer_seeds, None, None).await;
@@ -382,7 +382,7 @@ async fn recover_wallet_into_wallet_connected_to_all_seed_nodes(
     target_wallet_name: String,
 ) {
     if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
-        wallet_ps.kill();
+        wallet_ps.kill().await;
     }
 
     let mut cli = get_default_cli();
@@ -407,7 +407,7 @@ async fn recover_all_wallets_connected_to_all_seed_nodes(world: &mut TariWorld) 
 
     for wallet_name in wallet_names {
         if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
-            wallet_ps.kill();
+            wallet_ps.kill().await;
         }
 
         // Delete the wallet data directory so recovery can start fresh (boot() rejects recovery if db exists)
