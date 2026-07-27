@@ -25,6 +25,7 @@ use log::debug;
 
 use crate::{
     multiaddr::{Multiaddr, Protocol},
+    net_address::is_external_address,
     peer_manager::{NodeId, PeerIdentityClaim},
     peer_validator::{PeerValidatorConfig, error::PeerValidatorError},
     types::CommsPublicKey,
@@ -80,6 +81,13 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
         .ok_or_else(|| PeerValidatorError::InvalidMultiaddr("Multiaddr was empty".to_string()))?;
 
     match proto {
+        Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_)
+            if !allow_test_addrs && !is_external_address(addr) =>
+        {
+            Err(PeerValidatorError::InvalidMultiaddr(
+                "Non-global DNS addresses are invalid".to_string(),
+            ))
+        },
         Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
                 PeerValidatorError::InvalidMultiaddr("Address does not include a TCP port".to_string())
@@ -89,12 +97,9 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             expect_end_of_address(addr_iter)
         },
 
-        Protocol::Ip4(addr) if !allow_test_addrs && addr.is_unspecified() => Err(PeerValidatorError::InvalidMultiaddr(
-            "Non-global IP addresses are invalid".to_string(),
-        )),
-        Protocol::Ip6(addr) if !allow_test_addrs && addr.is_unspecified() => Err(PeerValidatorError::InvalidMultiaddr(
-            "Non-global IP addresses are invalid".to_string(),
-        )),
+        Protocol::Ip4(_) | Protocol::Ip6(_) if !allow_test_addrs && !is_external_address(addr) => Err(
+            PeerValidatorError::InvalidMultiaddr("Non-global IP addresses are invalid".to_string()),
+        ),
         Protocol::Ip4(_) | Protocol::Ip6(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
                 PeerValidatorError::InvalidMultiaddr("Address does not include a TCP port".to_string())
@@ -205,6 +210,15 @@ mod test {
             "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
             "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
             multiaddr!(Dnsaddr("mike-magic-nodes.com")),
+            multiaddr!(Dnsaddr("localhost"), Tcp(1u16)),
+            multiaddr!(Dns4("peer.local"), Tcp(1u16)),
+            multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([10, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([172, 16, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([192, 168, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip6([0xfc00, 0, 0, 0, 0, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip6([0xfe80, 0, 0, 0, 0, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Memory(1234u64)),
             multiaddr!(Memory(0u64)),
         ];
@@ -221,9 +235,16 @@ mod test {
     fn validate_address_allow_test_addrs() {
         let valid = [
             multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([10, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([172, 16, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip4([192, 168, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip6([0xfc00, 0, 0, 0, 0, 0, 0, 1]), Tcp(1u16)),
+            multiaddr!(Ip6([0xfe80, 0, 0, 0, 0, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip4([172, 0, 0, 1]), Tcp(1u16)),
             multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(1u16)),
+            multiaddr!(Dnsaddr("localhost"), Tcp(1u16)),
+            multiaddr!(Dns4("peer.local"), Tcp(1u16)),
             "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
                 .parse()
                 .unwrap(),

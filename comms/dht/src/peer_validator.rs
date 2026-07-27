@@ -22,7 +22,7 @@
 
 use log::*;
 use tari_comms::{
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    net_address::{MultiaddressesWithStats, PeerAddressSource, is_external_address},
     peer_manager::{NodeId, Peer, PeerFlags},
     peer_validator,
     peer_validator::{PeerValidatorError, find_most_recent_claim},
@@ -105,13 +105,36 @@ impl<'a> PeerValidator<'a> {
             )
         });
 
+        let mut accepted_address_count = 0;
         for claim in new_peer.claims {
-            peer_validator::validate_peer_identity_claim(
-                &self.config.peer_validator_config,
-                &new_peer.public_key,
-                &claim,
-            )?;
-            peer.update_addresses(&claim.addresses, &PeerAddressSource::FromDiscovery {
+            if claim.addresses.len() > self.config.peer_validator_config.max_permitted_peer_addresses_per_claim {
+                return Err(PeerValidatorError::PeerIdentityTooManyAddresses {
+                    length: claim.addresses.len(),
+                    max: self.config.peer_validator_config.max_permitted_peer_addresses_per_claim,
+                }
+                .into());
+            }
+            if !matches!(claim.is_valid(&new_peer.public_key), Ok(true)) {
+                return Err(PeerValidatorError::InvalidPeerSignature { peer: node_id.clone() }.into());
+            }
+
+            let addresses = if self.config.peer_validator_config.allow_test_addresses {
+                claim.addresses.clone()
+            } else {
+                claim
+                    .addresses
+                    .iter()
+                    .filter(|address| is_external_address(address))
+                    .cloned()
+                    .collect()
+            };
+            peer_validator::validate_addresses(&self.config.peer_validator_config, &addresses)?;
+            if addresses.is_empty() {
+                continue;
+            }
+
+            accepted_address_count += addresses.len();
+            peer.update_addresses(&addresses, &PeerAddressSource::FromDiscovery {
                 peer_identity_claim: claim.clone(),
             });
             trace!(
@@ -119,8 +142,12 @@ impl<'a> PeerValidator<'a> {
                 "Peer '{}' / '{}' added with address(es) from claim: {:?}",
                 node_id,
                 new_peer.public_key.to_hex(),
-                claim.addresses
+                addresses
             );
+        }
+
+        if accepted_address_count == 0 {
+            return Err(PeerValidatorError::PeerHasNoAddresses { peer: node_id }.into());
         }
 
         Ok(peer)
@@ -185,6 +212,54 @@ mod tests {
         let err = validator
             .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5), None)
             .unwrap_err();
+        assert!(matches!(
+            err,
+            DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. })
+        ));
+    }
+
+    #[test]
+    fn it_filters_internal_addresses_from_mixed_signed_claims() {
+        let mut config = DhtConfig::default_local_test();
+        config.peer_validator_config.allow_test_addresses = false;
+        let node_identity = make_node_identity();
+        let public_address = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
+        let private_address = Multiaddr::from_str("/ip4/192.168.1.20/tcp/80").unwrap();
+        let loopback_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/80").unwrap();
+        let link_local_address = Multiaddr::from_str("/ip4/169.254.1.20/tcp/80").unwrap();
+        node_identity.set_public_addresses(vec![
+            public_address.clone(),
+            private_address,
+            loopback_address,
+            link_local_address,
+        ]);
+
+        let peer = node_identity.to_peer();
+        let validated = PeerValidator::new(&config)
+            .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5), None)
+            .unwrap();
+        let addresses = validated.addresses.address_iter().collect::<Vec<_>>();
+
+        assert_eq!(addresses, vec![&public_address]);
+    }
+
+    #[test]
+    fn it_rejects_claims_with_only_internal_addresses() {
+        let mut config = DhtConfig::default_local_test();
+        config.peer_validator_config.allow_test_addresses = false;
+        let node_identity = make_node_identity();
+        node_identity.set_public_addresses(vec![
+            Multiaddr::from_str("/ip4/10.1.2.3/tcp/80").unwrap(),
+            Multiaddr::from_str("/ip4/172.16.2.3/tcp/80").unwrap(),
+            Multiaddr::from_str("/ip4/192.168.2.3/tcp/80").unwrap(),
+            Multiaddr::from_str("/ip4/127.0.0.1/tcp/80").unwrap(),
+        ]);
+
+        let peer = node_identity.to_peer();
+        let err = PeerValidator::new(&config)
+            .validate_peer(UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5), None)
+            .unwrap_err();
+
         assert!(matches!(
             err,
             DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. })

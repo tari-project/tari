@@ -23,6 +23,31 @@ const LOG_TARGET: &str = "comms::net_address::multiaddr_with_stats";
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
 
+/// Returns true if an address is suitable for sharing with external peers.
+///
+/// Loopback, unspecified, private and link-local IP addresses are local-only.
+/// The same applies to DNS names in the reserved `.localhost` and `.local`
+/// namespaces.
+pub fn is_external_address(address: &Multiaddr) -> bool {
+    if address.is_empty() {
+        return false;
+    }
+
+    let mut protocols = address.iter();
+    let internal = match protocols.next() {
+        Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private() || ip.is_link_local(),
+        Some(Protocol::Ip6(ip)) => {
+            ip.is_loopback() || ip.is_unspecified() || ip.is_unique_local() || ip.is_unicast_link_local()
+        },
+        Some(Protocol::Dns4(name)) | Some(Protocol::Dns6(name)) | Some(Protocol::Dnsaddr(name)) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost" || name.ends_with(".localhost") || name == "local" || name.ends_with(".local")
+        },
+        _ => false,
+    };
+    !internal
+}
+
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct MultiaddrWithStats {
     address: Multiaddr,
@@ -146,16 +171,7 @@ impl MultiaddrWithStats {
 
     /// Returns true if the address is an external address, i.e. not a loopback, unspecified or private IP address.
     pub fn is_external(&self) -> bool {
-        if self.address.is_empty() {
-            return false;
-        }
-        let mut protocols = self.address.iter();
-        let internal = match protocols.next() {
-            Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
-            Some(Protocol::Ip6(ip)) => ip.is_loopback() || ip.is_unspecified(),
-            _ => false, // onion3 etc = OK
-        };
-        !internal
+        is_external_address(&self.address)
     }
 
     pub fn offline_at(&self) -> Option<NaiveDateTime> {
