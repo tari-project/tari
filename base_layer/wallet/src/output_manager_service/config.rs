@@ -35,7 +35,8 @@ pub struct OutputManagerServiceConfig {
     /// The number of confirmations (difference between tip height and mined height) required for the output to be
     /// marked as mined confirmed
     pub num_confirmations_required: u64,
-    /// The number of batches the unconfirmed outputs will be divided into before being queried from the base node
+    /// The number of outputs sent to the base node in a single validation query. The base node rejects batch queries
+    /// larger than `MAX_ALLOWED_QUERY_SIZE`, so values outside `1..=MAX_ALLOWED_QUERY_SIZE` are clamped to that range.
     pub tx_validator_batch_size: usize,
     /// Wallets currently will choose the best outputs as inputs when spending, however since a lurking base node can
     /// generate a transaction graph of inputs to outputs with relative ease, a wallet may reveal its transaction
@@ -60,5 +61,19 @@ impl Default for OutputManagerServiceConfig {
             num_of_seconds_to_revalidate_invalid_utxos: 60 * 60 * 24 * 3,
             force_change_output: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+    use super::*;
+
+    #[test]
+    fn default_validator_batch_size_is_within_the_base_node_limit() {
+        // The base node rejects batch queries larger than this, so the default must never exceed it.
+        let batch_size = OutputManagerServiceConfig::default().tx_validator_batch_size;
+        assert!(batch_size >= 1 && batch_size <= MAX_ALLOWED_QUERY_SIZE);
     }
 }

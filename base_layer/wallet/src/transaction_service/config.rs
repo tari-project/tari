@@ -55,7 +55,8 @@ pub struct TransactionServiceConfig {
     /// This is the number of block confirmations required for a transaction to be considered completely mined and
     /// confirmed
     pub num_confirmations_required: u64,
-    /// The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+    /// The number of unconfirmed transactions processed per round of base node queries. Values below 1 are treated
+    /// as 1.
     pub max_tx_query_batch_size: usize,
     /// This option specifies the transaction routing mechanism as being directly between wallets, making use of store
     /// and forward or using any combination of these.
@@ -141,5 +142,16 @@ impl From<String> for TransactionRoutingMechanism {
                 Self::DirectAndStoreAndForward
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_tx_query_batch_size_is_a_valid_chunk_size() {
+        // `chunks()` panics on a zero size.
+        assert!(TransactionServiceConfig::default().max_tx_query_batch_size >= 1);
     }
 }

@@ -32,7 +32,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, FixedHash},
 };
-use tari_transaction_components::rpc::models::TxLocation;
+use tari_transaction_components::rpc::{MAX_ALLOWED_QUERY_SIZE, models::TxLocation};
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{ByteArray, hex::Hex};
 
@@ -94,7 +94,24 @@ where
         }
     }
 
+    /// The number of outputs to query from the base node in one request.
+    ///
+    /// `tx_validator_batch_size` is operator configurable, so it is clamped here: the base node rejects batch queries
+    /// larger than `MAX_ALLOWED_QUERY_SIZE` outright, and a configured `0` would panic `chunks()`.
+    fn batch_size(&self) -> usize {
+        self.config.tx_validator_batch_size.clamp(1, MAX_ALLOWED_QUERY_SIZE)
+    }
+
     pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
+        if self.config.tx_validator_batch_size != self.batch_size() {
+            warn!(
+                target: LOG_TARGET,
+                "Configured `tx_validator_batch_size` of {} is out of range, using {} instead (Operation ID: {})",
+                self.config.tx_validator_batch_size,
+                self.batch_size(),
+                self.operation_id,
+            );
+        }
         let mut base_node_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
         let base_node_peer = base_node_client.get_address().await;
@@ -140,7 +157,7 @@ where
             )
             .for_protocol(self.operation_id)?;
 
-        for batch in invalid_outputs.chunks(self.config.tx_validator_batch_size) {
+        for batch in invalid_outputs.chunks(self.batch_size()) {
             let (mined, in_mempool, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
                 .await
@@ -237,7 +254,7 @@ where
         }
 
         let mut spent = Vec::with_capacity(mined_outputs.len());
-        for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
+        for batch in mined_outputs.chunks(self.batch_size()) {
             debug!(
                 target: LOG_TARGET,
                 "Asking base node for status of {} commitments (Operation ID: {})",
@@ -337,7 +354,7 @@ where
             self.operation_id
         );
 
-        for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
+        for batch in unconfirmed_outputs.chunks(self.batch_size()) {
             debug!(
                 target: LOG_TARGET,
                 "Asking base node for location of {} unconfirmed outputs by hash (Operation ID: {})",

@@ -133,7 +133,7 @@ broadcast_send_timeout = 180
 # This is the number of block confirmations required for a transaction to be considered completely mined and
 # confirmed. (default = 3)
 #num_confirmations_required = 3
-# The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+# The number of unconfirmed transactions processed per round of base node queries. Values below 1 are treated as 1.
 # (default = 20)
 #max_tx_query_batch_size = 20
 # This option specifies the transaction routing mechanism as being directly between wallets, making
@@ -159,7 +159,8 @@ event_channel_size = 3500
 # The number of confirmations (difference between tip height and mined height) required for the output to be marked as
 # mined confirmed (default = 3)
 #num_confirmations_required = 3
-# The number of batches the unconfirmed outputs will be divided into before being queried from the base node
+# The number of outputs sent to the base node in a single validation query. The base node rejects batch queries
+# larger than 512, so values outside 1..=512 are clamped to that range.
 # (default = 100)
 #tx_validator_batch_size = 100
 # Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
