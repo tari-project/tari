@@ -2888,43 +2888,45 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let tx_id = TxId::from(req.transaction_id);
+        // The completed transaction may no longer exist — e.g. it was reorged out of the chain and
+        // then cancelled. That is exactly the case where the *historical* PayRefs matter, so a
+        // missing transaction must not short-circuit the whole call: we only skip deriving the
+        // current PayRefs / commitment info (which need the live transaction) and still return the
+        // archived history below.
         let completed_tx = match transaction_service.get_completed_transaction(tx_id).await {
-            Ok(completed_tx) => completed_tx,
+            Ok(completed_tx) => Some(completed_tx),
             Err(e) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
-                    "get_transaction_pay_refs: Failed to get transaction {}: {}",
+                    "get_transaction_pay_refs: No live transaction {} ({}); returning historical PayRefs only",
                     req.transaction_id,
                     e
                 );
-                return Err(Status::not_found(format!(
-                    "Transaction {} not found",
-                    req.transaction_id
-                )));
+                None
             },
         };
 
-        let payment_references = {
-            // Only return PayRefs if transaction is mined and has block hash
-            if let Some(block_hash) = &completed_tx.mined_in_block {
+        // Only derive current PayRefs when the transaction is still present and mined.
+        let payment_references = match completed_tx
+            .as_ref()
+            .and_then(|tx| tx.mined_in_block.as_ref().map(|block_hash| (tx, block_hash)))
+        {
+            Some((completed_tx, block_hash)) => {
                 let mut payment_references = Vec::new();
 
                 // Generate PayRefs from sent output hashes
                 for output_hash in &completed_tx.sent_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 // Generate PayRefs from received output hashes
                 for output_hash in &completed_tx.received_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 // Generate PayRefs from change output hashes (per-output approach)
                 for output_hash in &completed_tx.change_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 debug!(
@@ -2935,14 +2937,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 );
 
                 payment_references
-            } else {
+            },
+            None => {
                 debug!(
                     target: LOG_TARGET,
-                    "get_transaction_pay_refs: Transaction {} is not mined yet",
+                    "get_transaction_pay_refs: Transaction {} is not present/mined; current PayRefs empty",
                     req.transaction_id
                 );
                 vec![]
-            }
+            },
         };
 
         // Fetch historical payrefs for this transaction
@@ -2966,7 +2969,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetTransactionPayRefsResponse {
             #[allow(deprecated)]
             payment_references,
-            output_commitments_info: get_transaction_output_commitments_info(&completed_tx),
+            output_commitments_info: completed_tx
+                .as_ref()
+                .map(get_transaction_output_commitments_info)
+                .unwrap_or_default(),
             historical_payment_references,
         }))
     }

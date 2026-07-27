@@ -347,8 +347,38 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
         response.failure_message
     );
 
-    println!(
-        "Signed transaction broadcast successfully, tx_id: {}",
-        response.transaction_id
+    let tx_id = response.transaction_id;
+    println!("Signed transaction broadcast successfully, tx_id: {tx_id}");
+
+    // Wait until the base node has actually accepted the transaction into its mempool before the
+    // scenario goes on to mine. `broadcast_signed_one_sided_transaction` returns as soon as the
+    // wallet has *queued* the broadcast, not once the base node has accepted it. Without this wait
+    // the following "mine N blocks" step races the wallet's broadcast protocol and can mine right
+    // past the transaction, so it lands several blocks late — too close to the tip to reach the
+    // required confirmations, leaving the recipient's one-sided output permanently unconfirmed
+    // (detected as pending_incoming but never available). Waiting for at least `Broadcast`
+    // guarantees the tx is in the mempool, so it is mined in the very next block.
+    wait_for!(
+        timeout: Duration::from_secs(60),
+        description: format!("broadcast tx {tx_id} to reach the base node mempool"),
+        condition: async {
+            let info = client
+                .get_transaction_info(grpc::GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            Ok(info.transactions.first().is_some_and(|t| {
+                matches!(
+                    t.status(),
+                    grpc::TransactionStatus::Broadcast |
+                        grpc::TransactionStatus::MinedUnconfirmed |
+                        grpc::TransactionStatus::MinedConfirmed |
+                        grpc::TransactionStatus::OneSidedUnconfirmed |
+                        grpc::TransactionStatus::OneSidedConfirmed
+                )
+            }))
+        }
     );
 }
