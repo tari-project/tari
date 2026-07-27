@@ -62,8 +62,9 @@ pub struct Tor {
 }
 
 impl Tor {
-    /// Returns a new Tor instance with random options.
-    /// The data directory, passphrase, and log destination are temporary and randomized.
+    /// Returns a new Tor instance rooted at `base_dir`.
+    /// The data directory (`base_dir/data`) and log destination (`base_dir/data/tor.log`) are
+    /// deterministic; only the control-port passphrase and the ports are randomized.
     /// The control port is provided by the operating system; the socks port is chosen by Tor itself.
     /// The onion address and port info are still loaded from the node identity file.
     ///
@@ -91,10 +92,14 @@ impl Tor {
         let data_dir = base_dir.join("data");
         create_secure_dir(&data_dir)?;
 
+        // The log is kept inside the 0700 data directory: `base_dir` itself is created elsewhere and
+        // may be group- or world-readable, and the Tor log can leak operational detail.
+        let log_destination = data_dir.join("tor.log");
+
         let instance = Tor {
             control_port,
             data_dir,
-            log_destination: base_dir.join("tor.log"),
+            log_destination,
             log_level: LogLevel::Err,
             passphrase: TorPassword(Some(Zeroizing::new(passphrase))),
             socks_port: 0,
