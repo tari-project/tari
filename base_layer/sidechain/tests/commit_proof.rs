@@ -17,10 +17,22 @@ fn it_rejects_a_qc_with_too_many_signatures() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     for elem in &mut proof.proof_elements {
         if let CommitProofElement::QuorumCertificate(qc) = elem {
-            let signature = qc.signatures.first().unwrap().clone();
+            let signature = qc
+                .signatures
+                .first()
+                .expect("commit_proof.json fixture must have at least one signature to clone")
+                .clone();
             qc.signatures = vec![signature; MAX_QC_SIGNATURES + 1];
         }
     }
     let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
-    assert!(err.to_string().contains("at most"), "Unexpected error message: {err}");
+    let expected = format!(
+        "must contain at most {} signatures but contained {}",
+        MAX_QC_SIGNATURES,
+        MAX_QC_SIGNATURES + 1
+    );
+    assert!(
+        err.to_string().contains(&expected),
+        "Expected the signature-count error, got: {err}"
+    );
 }
