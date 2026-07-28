@@ -481,6 +481,7 @@ mod test {
             CIPHER_SEED_CHECKSUM_BYTES,
             CIPHER_SEED_ENTROPY_BYTES,
             CIPHER_SEED_MAC_BYTES,
+            CIPHER_SEED_MAIN_SALT_BYTES,
             CIPHER_SEED_VERSION,
             CipherSeed,
         },
@@ -507,8 +508,14 @@ mod test {
             !rendered.contains(&format!("{:?}", seed.salt)),
             "CipherSeed Debug leaked the salt: {rendered}"
         );
-        assert!(rendered.contains("Hidden<[u8; 16]>"), "entropy was not redacted");
-        assert!(rendered.contains("Hidden<[u8; 5]>"), "salt was not redacted");
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_ENTROPY_BYTES}]>")),
+            "entropy was not redacted: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_MAIN_SALT_BYTES}]>")),
+            "salt was not redacted: {rendered}"
+        );
     }
 
     #[test]
