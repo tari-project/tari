@@ -43,6 +43,11 @@ Feature: Offline One-Sided Transaction Signing
     # Since v5.0.0 the view wallet signs the canonical payload bytes with its view key.
     # The offline signer verifies this signature before using any spend key material.
     # Any tampering with the signed content must be detected and signing must abort.
+    #
+    # NOTE: the view key is shareable by design, so this signature only stops a MITM
+    # that has no view access. A holder of the view key can forge a payload that passes
+    # this check — see the operator confirmation scenario below, which is the defence
+    # that covers that case.
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
     When I have wallet WALLET_RECEIVER connected to all seed nodes
@@ -59,6 +64,29 @@ Feature: Offline One-Sided Transaction Signing
     When I tamper with the prepared offline signing payload
     # The offline signer must detect the tamper and refuse to produce a signed output
     Then signing the tampered payload using standalone offline signer OFFLINE_SIGNER fails with an integrity error
+
+  @security
+  Scenario: Offline signer refuses to sign without operator confirmation
+    # The payload integrity signature is produced with the wallet's view key, which is
+    # shareable by design (view-only wallets, auditors, exchanges, explorers). Anyone
+    # holding the view key can therefore build a payload that pays themselves, sign it,
+    # and have the air-gapped signer verify it as authentic. The only check that catches
+    # that is the operator confirming the transaction summary before the spend key is used,
+    # so the signer must fail closed when it cannot obtain a confirmation.
+    Given I have a seed node NODE
+    When I have wallet WALLET_SENDER connected to all seed nodes
+    When I have wallet WALLET_RECEIVER connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    When mining node MINER mines 4 blocks
+    Then all nodes are at height 4
+    When I wait for wallet WALLET_SENDER to have at least 1002000 uT
+    Then I initialize standalone offline signer OFFLINE_SIGNER from wallet WALLET_SENDER seed words
+    Then I export wallet WALLET_SENDER view and spend keys as SENDER_KEYS
+    Then I create view wallet VIEW_WALLET from view and spend keys SENDER_KEYS on node NODE
+    When I wait for wallet VIEW_WALLET to have at least 1002000 uT
+    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
+    # The payload here is perfectly valid; it is the missing confirmation that must stop the signing
+    Then signing the prepared payload using standalone offline signer OFFLINE_SIGNER without confirmation is refused
 
   @standalone-offline-signer
   Scenario: Full offline signing flow via standalone offline signer

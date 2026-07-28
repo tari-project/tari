@@ -66,7 +66,7 @@ use tari_crypto::{
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::{ByteArray, Hidden, hex::Hex};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     MicroMinotari,
@@ -151,7 +151,9 @@ impl KeyManager {
         private_key: PrivateKey,
         encryption_key: TariKeyId,
     ) -> Result<TariKeyId, KeyManagerError> {
-        let private_encryption_key = self.get_private_key(&encryption_key)?.to_vec();
+        // `to_vec` copies the key out of the zeroizing `PrivateKey` into a plain heap allocation; wrap it so that copy
+        // is wiped when it goes out of scope rather than left in freed memory.
+        let private_encryption_key = Zeroizing::new(self.get_private_key(&encryption_key)?.to_vec());
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_encryption_key));
         let encrypted_vec = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(private_key.to_vec()))

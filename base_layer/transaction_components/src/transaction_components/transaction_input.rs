@@ -535,11 +535,22 @@ impl Display for TransactionInput {
     }
 }
 
+/// An input is identified by the output it spends, and `Ord` orders inputs on exactly that. `Eq` must agree with it —
+/// `Ord` requires that `a.cmp(b) == Ordering::Equal` exactly when `a == b`, and `sort`, `dedup`, `binary_search` and
+/// `contains` all assume it.
+///
+/// `eq` used to additionally compare the script signature and the input data, so two inputs spending the same output
+/// with different witnesses compared as *unequal* while `cmp` reported them *equal*. That is precisely the shape a
+/// competing double spend takes, and it made `ReorgPool::discard_double_spends` — which asks `contains` whether a
+/// published block spent an input — miss them.
+///
+/// Note that the ordering itself is deliberately left alone: `is_all_unique_and_sorted` is the consensus check that
+/// rejects a body containing two inputs spending the same output, and it does so by relying on `cmp` reporting them
+/// equal. Adding tie-breakers to `cmp` would let such a body through, so the inconsistency is resolved by narrowing
+/// `eq` instead. Inputs that differ only in their witness are still distinguished by `canonical_hash`.
 impl PartialEq<Self> for TransactionInput {
     fn eq(&self, other: &Self) -> bool {
-        self.output_hash() == other.output_hash() &&
-            self.script_signature == other.script_signature &&
-            self.input_data == other.input_data
+        self.output_hash() == other.output_hash()
     }
 }
 
@@ -620,5 +631,52 @@ impl SpentOutput {
             rangeproof_hash: rp_hash,
             minimum_value_promise: output.minimum_value_promise,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Two inputs that spend the same output but carry different witnesses. This is the shape a competing double
+    /// spend takes.
+    fn same_output_different_witness() -> (TransactionInput, TransactionInput) {
+        let a = TransactionInput::default();
+        let mut b = a.clone();
+        b.input_data = ExecutionStack::new(vec![StackItem::Number(1)]);
+        (a, b)
+    }
+
+    #[test]
+    fn eq_agrees_with_cmp() {
+        // `Ord` requires `a == b` exactly when `a.cmp(b)` is `Equal`; `sort`, `dedup`, `binary_search` and `contains`
+        // all rely on it
+        let (a, b) = same_output_different_witness();
+        assert_eq!((a == b), (a.cmp(&b) == Ordering::Equal));
+        assert_eq!(a, b);
+        assert_eq!(a.cmp(&b), Ordering::Equal);
+
+        // Inputs spending different outputs are neither equal nor ordered equal
+        let c = TransactionInput::new_with_output_hash(
+            FixedHash::from([1u8; 32]),
+            ExecutionStack::default(),
+            Default::default(),
+        );
+        assert_ne!(a, c);
+        assert_ne!(a.cmp(&c), Ordering::Equal);
+    }
+
+    #[test]
+    fn inputs_spending_the_same_output_are_found_by_contains() {
+        // `ReorgPool::discard_double_spends` asks `contains` whether a published block spent an input; a different
+        // witness on the same output must not hide the double spend
+        let (a, b) = same_output_different_witness();
+        assert!([a].contains(&b));
+    }
+
+    #[test]
+    fn differing_witnesses_are_still_distinguished_by_the_canonical_hash() {
+        let (a, b) = same_output_different_witness();
+        assert_ne!(a.canonical_hash(), b.canonical_hash());
     }
 }
