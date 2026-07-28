@@ -64,7 +64,8 @@ pub struct PeerSeedsConfig {
         serialize_with = "serialize_string"
     )]
     pub dns_seed_name_servers: DnsNameServerList,
-    /// All DNS seed records must pass DNSSEC validation
+    /// All DNS seed records must pass DNSSEC validation. Name servers that return records which cannot be proven
+    /// authentic are treated as failed, and no seed peers are taken from them.
     #[serde(default)]
     pub dns_seeds_use_dnssec: bool,
 }

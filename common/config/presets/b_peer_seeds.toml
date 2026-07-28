@@ -20,7 +20,8 @@
 #    "9.9.9.9:853/dns.quad9.net"
 #]
 
-# All DNS seed records must pass DNSSEC validation (default: dns_seeds_use_dnssec = false)
+# All DNS seed records must pass DNSSEC validation. Records that cannot be proven authentic are rejected, so a name
+# server serving an unsigned or badly signed zone yields no seed peers. (default: dns_seeds_use_dnssec = false)
 #dns_seeds_use_dnssec = false
 
 [nextnet.p2p.seeds]

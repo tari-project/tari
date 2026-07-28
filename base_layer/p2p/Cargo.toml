@@ -36,6 +36,7 @@ tower = "0.4.11"
 hickory-resolver = { version = "0.26.1", features = [
     "tokio",
     "tls-ring",
+    "dnssec-ring",
     "rustls-platform-verifier",
 ] }
 hickory-proto = { version = "0.26.1" }

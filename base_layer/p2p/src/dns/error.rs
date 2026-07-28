@@ -40,6 +40,8 @@ pub enum DnsClientError {
     SystemHasNoDnsServers,
     #[error("DNS server name was not provided for DNSSEC connection e.g.1.1.1.1:853/cloudflare-dns.com")]
     DnsNameRequiredForDnsSec,
+    #[error("DNSSEC validation failed for `{name}`: record is {proof}, expected Secure")]
+    DnssecValidationFailed { name: String, proof: String },
     #[error("Connection error: {0}")]
     Connection(String),
 }
