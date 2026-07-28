@@ -158,15 +158,21 @@ impl DnsClient {
 mod test {
     use super::*;
 
+    /// A name server that is never contacted. `Custom` is used rather than `System` so that these tests do not depend
+    /// on the host having a usable `/etc/resolv.conf` — building a `System` resolver reads it and fails without one.
+    fn test_name_server() -> DnsNameServer {
+        DnsNameServer::custom("127.0.0.1:53".parse().unwrap(), "localhost".to_string())
+    }
+
     #[test]
     fn connect_secure_requires_dnssec() {
-        let client = DnsClient::connect_secure(DnsNameServer::System).unwrap();
+        let client = DnsClient::connect_secure(test_name_server()).unwrap();
         assert!(client.require_dnssec);
     }
 
     #[test]
     fn connect_does_not_require_dnssec() {
-        let client = DnsClient::connect(DnsNameServer::System).unwrap();
+        let client = DnsClient::connect(test_name_server()).unwrap();
         assert!(!client.require_dnssec);
     }
 
