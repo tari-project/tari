@@ -74,6 +74,6 @@ mod tests {
     fn default_validator_batch_size_is_within_the_base_node_limit() {
         // The base node rejects batch queries larger than this, so the default must never exceed it.
         let batch_size = OutputManagerServiceConfig::default().tx_validator_batch_size;
-        assert!(batch_size >= 1 && batch_size <= MAX_ALLOWED_QUERY_SIZE);
+        assert!((1..=MAX_ALLOWED_QUERY_SIZE).contains(&batch_size));
     }
 }
