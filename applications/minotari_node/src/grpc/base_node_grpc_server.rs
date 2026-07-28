@@ -170,6 +170,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
             GrpcMethod::GetNetworkDifficulty,
+            GrpcMethod::GetNetworkState,
             GrpcMethod::SubmitBlock,
             GrpcMethod::SubmitBlockBlob,
             GrpcMethod::GetTipInfo,
@@ -438,6 +439,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::GetNetworkStateRequest>,
     ) -> Result<Response<tari_rpc::GetNetworkStateResponse>, Status> {
+        self.check_method_enabled(GrpcMethod::GetNetworkState)?;
         trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
