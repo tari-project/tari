@@ -68,6 +68,9 @@ pub fn get_public_spend_key_bytes_from_tari_dual_address(address_bytes: &[u8]) -
 
 /// Extract payment ID bytes from integrated address, if present
 pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err("Invalid address size".to_string());
+    }
     validate_checksum(address_bytes)?;
     if address_bytes.len() <= TARI_DUAL_ADDRESS_MIN_SIZE {
         return Ok(Vec::new()); // No payment ID
@@ -84,6 +87,9 @@ pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Resu
 
 /// Check if address has payment ID
 pub fn address_has_payment_id(address_bytes: &[u8]) -> Result<bool, String> {
+    if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err("Invalid address size".to_string());
+    }
     validate_checksum(address_bytes)?;
     Ok(address_bytes.len() > TARI_DUAL_ADDRESS_MIN_SIZE)
 }
@@ -236,6 +242,19 @@ mod tests {
         // Test too large
         let too_large = vec![0u8; TARI_DUAL_ADDRESS_MAX_SIZE + 1];
         assert!(tari_dual_address_display(&too_large).is_err());
+    }
+
+    #[test]
+    fn test_oversized_address_rejected_by_all_parsers() {
+        // An oversized buffer with a valid DammSum checksum must be rejected by every parser,
+        // not just the size-bounded ones. The checksum alone is attacker-computable.
+        let oversized = create_test_address(TARI_DUAL_ADDRESS_MAX_SIZE + 1);
+        assert!(validate_checksum(&oversized).is_ok()); // checksum is valid on its own
+
+        assert!(tari_dual_address_display(&oversized).is_err());
+        assert!(get_public_spend_key_bytes_from_tari_dual_address(&oversized).is_err());
+        assert!(get_payment_id_bytes_from_tari_dual_address(&oversized).is_err());
+        assert!(address_has_payment_id(&oversized).is_err());
     }
 
     #[test]
