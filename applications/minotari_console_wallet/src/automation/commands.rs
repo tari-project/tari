@@ -25,7 +25,7 @@ use std::{
     convert::TryInto,
     fs::{self, File},
     io::{self, BufRead, BufReader, LineWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -54,6 +54,7 @@ use minotari_wallet::{
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
+use rand::{RngExt, distr::Alphanumeric};
 use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -2257,12 +2258,16 @@ pub async fn command_runner(
                 }
             },
             ImportPaperWallet(args) => {
+                // The temporary wallet holds the recovered master seed, so it gets a unique directory (a leftover
+                // one from an earlier run can never be reused) that is removed again by the guard on every exit
+                // path, including errors.
                 let temp_path = config
                     .db_file
                     .parent()
                     .ok_or(CommandError::General("No parent".to_string()))?
-                    .join("temp");
+                    .join(format!("temp-{}", random_alphanumeric(8)));
                 println!("saving temp wallet in: {temp_path:?}");
+                let temp_wallet_dir = TempWalletDir::create(temp_path.clone())?;
                 {
                     let passphrase = if args.passphrase.is_empty() {
                         None
@@ -2291,7 +2296,10 @@ pub async fn command_runner(
                     };
 
                     let wallet_type = LegacyWalletType::DerivedKeys;
-                    let password = SafePassword::from("password".to_string());
+                    // The temporary wallet database is deleted again when this command finishes, so its password
+                    // is never needed a second time; a random single-use one keeps the seed it holds unreadable
+                    // if the database does survive (e.g. the process is killed before the guard can run).
+                    let password = SafePassword::from(random_alphanumeric(32));
                     let shutdown = Shutdown::new();
                     let shutdown_signal = shutdown.to_signal();
                     let mut new_config = config.clone();
@@ -2386,8 +2394,8 @@ pub async fn command_runner(
                         Err(e) => eprintln!("SendMinotari error! {e}"),
                     }
                 }
-                println!("removing temp wallet in: {temp_path:?}");
-                fs::remove_dir_all(temp_path)?;
+                // `temp_wallet_dir` drops here (after the new wallet above), removing the temporary wallet.
+                drop(temp_wallet_dir);
             },
 
             ShowPayRef(args) => {
@@ -3433,6 +3441,70 @@ pub async fn command_runner(
     Ok(unban_peer_manager_peers)
 }
 
+/// A random alphanumeric string of `len` characters, from the OS random number generator.
+fn random_alphanumeric(len: usize) -> String {
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
+/// Owns a temporary wallet directory and removes it, and everything in it, when it goes out of scope.
+///
+/// The paper wallet import writes a wallet database containing the recovered master seed into this directory, so it
+/// must not outlive the command - not when it returns early with an error, and not when it unwinds. `Drop` cannot
+/// return an error, so a removal failure is reported to the user and the log instead of being propagated.
+struct TempWalletDir {
+    path: PathBuf,
+}
+
+impl TempWalletDir {
+    /// Creates the directory (owner-only where the platform supports it) and takes ownership of it.
+    fn create(path: PathBuf) -> Result<Self, CommandError> {
+        create_owner_only_dir(&path)?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TempWalletDir {
+    fn drop(&mut self) {
+        if !self.path.exists() {
+            return;
+        }
+        println!("removing temp wallet in: {:?}", self.path);
+        if let Err(e) = fs::remove_dir_all(&self.path) {
+            error!(
+                target: LOG_TARGET,
+                "Could not remove temporary wallet directory '{}': {}", self.path.display(), e
+            );
+            eprintln!(
+                "Could not remove temporary wallet directory '{}': {}. It contains wallet keys and should be deleted \
+                 manually.",
+                self.path.display(),
+                e
+            );
+        }
+    }
+}
+
+/// Creates `path`, and any missing parents, so that only the owner can read it (0700). The directory holds a wallet
+/// database, so it must never be group- or world-readable. `DirBuilder::mode` is ignored for a directory that already
+/// exists, hence the explicit `set_permissions` as well.
+#[cfg(target_family = "unix")]
+fn create_owner_only_dir(path: &Path) -> Result<(), CommandError> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    fs::DirBuilder::new().recursive(true).mode(0o700).create(path)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(target_family = "unix"))]
+fn create_owner_only_dir(path: &Path) -> Result<(), CommandError> {
+    fs::create_dir_all(path)?;
+    Ok(())
+}
+
 async fn detect_tx_metadata(wallet: &WalletSqlite, destination: &TariAddress) -> TxType {
     if let Ok(interactive_address) = wallet.get_wallet_interactive_address() {
         if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address() {
@@ -3721,4 +3793,51 @@ fn write_audit_to_csv_file(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn random_alphanumeric_is_the_requested_length_and_not_repeated() {
+        let first = random_alphanumeric(32);
+        let second = random_alphanumeric(32);
+        assert_eq!(first.len(), 32);
+        assert_eq!(second.len(), 32);
+        assert!(first.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn temp_wallet_dir_is_owner_only_and_removed_on_drop() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+        {
+            let _guard = TempWalletDir::create(path.clone()).unwrap();
+            assert!(path.is_dir());
+            #[cfg(target_family = "unix")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o700);
+            }
+            // The database (and anything else the wallet writes) must go with the directory.
+            fs::write(path.join("console_wallet.db"), b"seed").unwrap();
+        }
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn temp_wallet_dir_is_removed_when_the_scope_exits_with_an_error() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+
+        fn fail(path: PathBuf) -> Result<(), CommandError> {
+            let _guard = TempWalletDir::create(path)?;
+            Err(CommandError::General("recovery failed".to_string()))
+        }
+
+        assert!(fail(path.clone()).is_err());
+        assert!(!path.exists());
+    }
 }
