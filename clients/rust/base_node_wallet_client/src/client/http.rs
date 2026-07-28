@@ -11,6 +11,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
     rpc::{
+        MAX_ALLOWED_QUERY_SIZE,
         models,
         models::{
             BlockHeader,
@@ -34,6 +35,18 @@ use url::Url;
 use crate::{BaseNodeWalletClient, JsonRpcResponse};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
+
+/// The base node rejects any batch query carrying more than `MAX_ALLOWED_QUERY_SIZE` items with a `400`. Fail here
+/// instead, so callers get an actionable error naming the limit rather than an opaque HTTP error body.
+fn check_query_size(len: usize, item_name: &str) -> Result<(), anyhow::Error> {
+    if len > MAX_ALLOWED_QUERY_SIZE {
+        return Err(anyhow!(
+            "Cannot query {len} {item_name} in a single request, the base node allows at most \
+             {MAX_ALLOWED_QUERY_SIZE}. Split the request into smaller batches."
+        ));
+    }
+    Ok(())
+}
 
 /// HTTP client for the Base Node wallet service.
 pub struct Client {
@@ -356,6 +369,7 @@ impl BaseNodeWalletClient for Client {
         hashes: Vec<Vec<u8>>,
         version: u32,
     ) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
+        check_query_size(hashes.len(), "output hashes")?;
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,
@@ -397,6 +411,7 @@ impl BaseNodeWalletClient for Client {
         hashes: Vec<Vec<u8>>,
         must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, anyhow::Error> {
+        check_query_size(hashes.len(), "output hashes")?;
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,
@@ -610,5 +625,20 @@ impl BaseNodeWalletClient for Client {
             .await?;
 
         Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_query_size_rejects_only_above_the_limit() {
+        check_query_size(0, "output hashes").expect("empty query is not this check's concern");
+        check_query_size(MAX_ALLOWED_QUERY_SIZE, "output hashes").expect("a query at the limit is allowed");
+
+        let err = check_query_size(MAX_ALLOWED_QUERY_SIZE + 1, "output hashes")
+            .expect_err("a query over the limit must be rejected before it is sent");
+        assert!(err.to_string().contains(&MAX_ALLOWED_QUERY_SIZE.to_string()));
     }
 }

@@ -76,6 +76,7 @@ use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    rpc::MAX_ALLOWED_QUERY_SIZE,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         CoinBaseExtra,
@@ -222,6 +223,20 @@ pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
         warn!(target: LOG_TARGET, "Obscured status error: {status}");
         Status::new(status.code(), "Error has occurred. Details are obscured.")
     }
+}
+
+/// Rejects a batch query that asks for more than `MAX_ALLOWED_QUERY_SIZE` items, so that a single call can never force
+/// the node into an unbounded number of database lookups. `item_name` is used in the error message, e.g. "hashes".
+fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Result<(), Status> {
+    if len > MAX_ALLOWED_QUERY_SIZE {
+        return Err(obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!(
+                "Exceeded maximum allowed query {item_name}. Requested: {len}, max: {MAX_ALLOWED_QUERY_SIZE}"
+            )),
+        ));
+    }
+    Ok(())
 }
 
 pub async fn get_heights(
@@ -2158,6 +2173,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
+        check_query_size(request.signatures.len(), "signatures", report_error_flag)?;
 
         let kernels = request
             .signatures
@@ -2214,6 +2230,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
+        check_query_size(request.commitments.len(), "commitments", report_error_flag)?;
 
         let outputs = request
             .commitments
@@ -2270,6 +2287,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
+        check_query_size(request.hashes.len(), "hashes", report_error_flag)?;
 
         let hashes = request
             .hashes
@@ -3119,6 +3137,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for SearchPaymentReferencesViaOutputHash: {} hashes",
             request.hashes.len()
         );
+        check_query_size(request.hashes.len(), "hashes", report_error_flag)?;
 
         let hashes = request
             .hashes
@@ -3206,6 +3225,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for SearchPaymentReferences: {} PayRefs",
             request.payment_reference_hex.len()
         );
+        check_query_size(
+            request
+                .payment_reference_hex
+                .len()
+                .saturating_add(request.payment_reference_bytes.len()),
+            "payment references",
+            report_error_flag,
+        )?;
 
         let (mut tx, rx) = mpsc::channel(100);
         let mut node_service = self.node_service.clone();

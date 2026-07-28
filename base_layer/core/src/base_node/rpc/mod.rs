@@ -16,6 +16,7 @@ use tari_comms::{
     types::CompressedSignature,
 };
 use tari_comms_rpc_macros::tari_rpc;
+pub use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
 use tari_transaction_components::{
     rpc::{models, models::GenerateKernelMerkleProofResponse},
     transaction_components::TransactionOutput,

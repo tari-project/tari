@@ -730,6 +730,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_utxos_mined_info_rejects_oversized_query() {
+        use crate::base_node::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+        let service = make_service().await;
+
+        // One over the limit is rejected before any db work is done
+        let err = service
+            .get_utxos_mined_info(models::GetUtxosMinedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE + 1],
+                version: 1,
+            })
+            .await
+            .unwrap_err();
+        match err {
+            Error::SerdeValidation(_) => {},
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        // Exactly at the limit is accepted
+        service
+            .get_utxos_mined_info(models::GetUtxosMinedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE],
+                version: 1,
+            })
+            .await
+            .expect("query at the limit should be accepted");
+    }
+
+    #[tokio::test]
+    async fn get_utxos_deleted_info_rejects_oversized_query() {
+        use crate::base_node::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+        let service = make_service().await;
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+
+        let oversized = || models::GetUtxosDeletedInfoRequest {
+            hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE + 1],
+            must_include_header: genesis.hash().to_vec(),
+        };
+
+        for err in [
+            service.get_utxos_deleted_info(oversized()).await.unwrap_err(),
+            service.get_utxos_deleted_info_v1(oversized()).await.unwrap_err(),
+        ] {
+            match err {
+                Error::SerdeValidation(_) => {},
+                other => panic!("unexpected error: {other:?}"),
+            }
+        }
+
+        // Exactly at the limit is accepted
+        service
+            .get_utxos_deleted_info(models::GetUtxosDeletedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE],
+                must_include_header: genesis.hash().to_vec(),
+            })
+            .await
+            .expect("query at the limit should be accepted");
+    }
+
+    #[tokio::test]
     async fn fetch_utxos_start_header_not_found() {
         let service = make_service().await;
         let req = SyncUtxosByBlockRequest {

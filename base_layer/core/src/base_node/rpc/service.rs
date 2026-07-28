@@ -14,7 +14,7 @@ use url::Url;
 use crate::{
     base_node::{
         StateMachineHandle,
-        rpc::{BaseNodeWalletService, sync_utxos_by_block_task::SyncUtxosByBlockTask},
+        rpc::{BaseNodeWalletService, MAX_ALLOWED_QUERY_SIZE, sync_utxos_by_block_task::SyncUtxosByBlockTask},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
@@ -49,7 +49,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
-const MAX_QUERY_DELETED_HASHES: usize = 1000;
 
 pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
@@ -286,8 +285,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         };
 
         let message = request.into_message();
+        if message.sigs.is_empty() {
+            return Err(RpcStatus::bad_request("Empty signatures"));
+        }
+        if message.sigs.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query signatures. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
+        }
 
-        let mut responses: Vec<TxQueryBatchResponse> = Vec::new();
+        let mut responses: Vec<TxQueryBatchResponse> = Vec::with_capacity(message.sigs.len());
 
         let metadata = self
             .db
@@ -322,6 +329,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus> {
         let message = request.into_message();
+        if message.output_hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty output hashes"));
+        }
+        if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
+        }
 
         let state_machine = self.state_machine();
         // Determine if we are synced
@@ -366,7 +381,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         if message.output_hashes.is_empty() {
             return Err(RpcStatus::bad_request("Empty output hashes"));
         }
-        const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
             return Err(RpcStatus::bad_request(&format!(
                 "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
@@ -440,10 +454,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<QueryDeletedRequest>,
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
         let message = request.into_message();
-        if message.hashes.len() > MAX_QUERY_DELETED_HASHES {
-            return Err(RpcStatus::bad_request(
-                &"Received more hashes than we allow".to_string(),
-            ));
+        if message.hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty utxo hashes"));
+        }
+        if message.hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
         }
         let chain_include_header = message.chain_must_include_header;
         if !chain_include_header.is_empty() {
