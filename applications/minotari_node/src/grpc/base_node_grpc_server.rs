@@ -440,7 +440,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         _request: Request<tari_rpc::GetNetworkStateRequest>,
     ) -> Result<Response<tari_rpc::GetNetworkStateResponse>, Status> {
         self.check_method_enabled(GrpcMethod::GetNetworkState)?;
-        trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetNetworkState");
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
         let metadata = handler.get_metadata().await.map_err(|e| {
