@@ -362,7 +362,7 @@ mod test {
     #[test]
     fn it_creates_the_identity_file_with_the_required_permissions() {
         let path = temp_path("create");
-        let _ = fs::remove_file(&path);
+        let _unused = fs::remove_file(&path);
 
         save_as_json(&path, &"identity").unwrap();
 
