@@ -136,6 +136,7 @@ use crate::{
             read_and_verify,
             read_session_info,
             read_verify_session_info,
+            validate_session_id,
             write_json_object_to_file_as_line,
             write_to_json_file,
         },
@@ -898,6 +899,12 @@ pub async fn command_runner(
                 let session_info = read_session_info::<PreMineSpendStep1SessionInfo>(file_path.clone())?;
                 // Verify  session info
                 // session_info.recipient_info
+                // The session ID comes from a file supplied by the leader and is used as a directory name, so it must
+                // be verified before any path is constructed with it
+                if let Err(e) = validate_session_id(&session_info.session_id) {
+                    eprintln!("\nError: {e}\n");
+                    break;
+                }
 
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
@@ -994,18 +1001,18 @@ pub async fn command_runner(
                 }
 
                 let out_dir = out_dir(&session_info.session_id)?;
-                let out_file_leader = out_dir.join(get_file_name(SPEND_STEP_2_LEADER, Some(args.alias.clone())));
+                let out_file_leader = out_dir.join(get_file_name(SPEND_STEP_2_LEADER, Some(alias.clone())));
                 write_json_object_to_file_as_line(&out_file_leader, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file_leader, false, PreMineSpendStep2OutputsForLeader {
                     outputs_for_leader,
-                    alias: args.alias.clone(),
+                    alias: alias.clone(),
                 })?;
 
                 let out_file_self = out_dir.join(get_file_name(SPEND_STEP_2_SELF, None));
                 write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file_self, false, PreMineSpendStep2OutputsForSelf {
                     outputs_for_self,
-                    alias: args.alias.clone(),
+                    alias: alias.clone(),
                 })?;
 
                 println!();
