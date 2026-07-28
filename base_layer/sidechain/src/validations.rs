@@ -17,6 +17,11 @@ use crate::{
 
 const LOG_TARGET: &str = "c::sidechain::validations";
 
+/// The maximum number of signatures a quorum certificate may contain. A valid quorum certificate contains at most one
+/// signature per committee member, so this is an upper bound for any committee size. It is checked at deserialization
+/// boundaries so that the work done before any signature is verified is bounded.
+pub const MAX_QC_SIGNATURES: usize = 1000;
+
 pub fn check_proof_elements(
     header: &SidechainBlockHeader,
     proof_elements: &[CommitProofElement],
@@ -174,6 +179,16 @@ fn validate_qc(
             details: format!(
                 "Quorum certificate must contain at least {} signatures but contained {}",
                 quorum_threshold,
+                qc.signatures.len()
+            ),
+        });
+    }
+
+    if qc.signatures.len() > MAX_QC_SIGNATURES {
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: format!(
+                "Quorum certificate must contain at most {} signatures but contained {}",
+                MAX_QC_SIGNATURES,
                 qc.signatures.len()
             ),
         });

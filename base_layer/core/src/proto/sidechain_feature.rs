@@ -35,6 +35,7 @@ use tari_sidechain::{
     CommitProofElement,
     EvictNodeAtom,
     EvictionProof,
+    MAX_QC_SIGNATURES,
     QuorumCertificate,
     QuorumDecision,
     ShardGroup,
@@ -564,6 +565,13 @@ impl TryFrom<proto::types::QuorumCertificate> for QuorumCertificate {
     type Error = String;
 
     fn try_from(value: proto::types::QuorumCertificate) -> Result<Self, Self::Error> {
+        if value.signatures.len() > MAX_QC_SIGNATURES {
+            return Err(format!(
+                "QuorumCertificate contains too many signatures: expected at most {}, got {}",
+                MAX_QC_SIGNATURES,
+                value.signatures.len()
+            ));
+        }
         Ok(Self {
             header_hash: value.header_hash.try_into().map_err(|_| "Invalid block body hash")?,
             parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
@@ -695,5 +703,41 @@ impl From<tari_sidechain::ShardGroupAccumulatedData> for proto::types::ShardGrou
             total_exhaust_burn_msb,
             total_exhaust_burn_lsb,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::PrivateKey;
+
+    use super::*;
+
+    fn quorum_certificate(num_signatures: usize) -> proto::types::QuorumCertificate {
+        let signature = proto::types::ValidatorSignature {
+            public_key: CompressedPublicKey::default().to_vec(),
+            signature: Some(proto::types::Signature {
+                public_nonce: CompressedPublicKey::default().to_vec(),
+                signature: PrivateKey::default().to_vec(),
+            }),
+        };
+
+        proto::types::QuorumCertificate {
+            header_hash: vec![0u8; 32],
+            parent_id: vec![0u8; 32],
+            signatures: vec![signature; num_signatures],
+            decision: proto::types::QuorumDecision::Accept as i32,
+        }
+    }
+
+    #[test]
+    fn it_converts_a_qc_at_the_signature_limit() {
+        let qc = QuorumCertificate::try_from(quorum_certificate(MAX_QC_SIGNATURES)).unwrap();
+        assert_eq!(qc.signatures.len(), MAX_QC_SIGNATURES);
+    }
+
+    #[test]
+    fn it_rejects_a_qc_with_too_many_signatures() {
+        let err = QuorumCertificate::try_from(quorum_certificate(MAX_QC_SIGNATURES + 1)).unwrap_err();
+        assert!(err.contains("too many signatures"), "Unexpected error: {err}");
     }
 }
