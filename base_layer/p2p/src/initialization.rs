@@ -31,7 +31,6 @@ use std::{
 use futures::future;
 use log::*;
 use tari_common::{
-    DnsNameServer,
     configuration::{DnsNameServerList, Network},
     exit_codes::{ExitCode, ExitError},
 };
@@ -518,9 +517,12 @@ impl P2pInitializer {
         let mut dns_errors = Vec::new();
         for dns in dns_seed_name_servers {
             info!(target: LOG_TARGET, "Connecting to DNS name server: {dns}");
-            let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
-                (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
-                (_, _) => DnsSeedResolver::connect(dns.clone()),
+            // DNSSEC is validated end-to-end, so it applies to the system name server too - only the transport to the
+            // name server differs between the two.
+            let res = if dns_seeds_use_dnssec {
+                DnsSeedResolver::connect_secure(dns.clone())
+            } else {
+                DnsSeedResolver::connect(dns.clone())
             };
             match res {
                 Ok(resolver) => return Ok(resolver),

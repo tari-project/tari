@@ -21,6 +21,8 @@ update_uris = ["updates.stagenet.taripulse.com"]
 # records. (default = [])
 #update_uris = []
 
+# Update records must pass DNSSEC validation. Records that cannot be proven authentic are discarded.
+# (default = false)
 #use_dnssec = false
 
 #download_base_url = ""
