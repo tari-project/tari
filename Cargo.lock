@@ -7938,8 +7938,10 @@ dependencies = [
 name = "tari_max_size"
 version = "5.5.0-pre.1"
 dependencies = [
+ "bincode",
  "borsh",
  "serde",
+ "serde_json",
  "tari_utilities",
  "thiserror 2.0.18",
 ]

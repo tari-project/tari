@@ -27,14 +27,62 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Serialize};
+use borsh::{
+    BorshDeserialize,
+    BorshSerialize,
+    error::ERROR_ZST_FORBIDDEN,
+    io::{Error, ErrorKind},
+};
+use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::checked_de::{cautious_capacity, read_checked_len};
 
 /// A vector that has a maximum size of `MAX_SIZE`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+///
+/// The bound is enforced by every constructor *and* by deserialization (see the hand written
+/// `BorshDeserialize`/`Deserialize` implementations below), so `len() <= MAX_SIZE` is a true
+/// invariant even for values decoded from untrusted input.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, BorshSerialize)]
 pub struct MaxSizeVec<T, const MAX_SIZE: usize> {
     vec: Vec<T>,
     _marker: PhantomData<T>,
+}
+
+/// Mirror of [`MaxSizeVec`] used only to decode the wire format before the bound is checked.
+/// It must keep the exact same (serde) shape as `MaxSizeVec` so that the serialized
+/// representation is unchanged.
+#[derive(Deserialize)]
+#[serde(rename = "MaxSizeVec")]
+struct MaxSizeVecShadow<T> {
+    vec: Vec<T>,
+    _marker: PhantomData<T>,
+}
+
+impl<'de, T: Deserialize<'de>, const MAX_SIZE: usize> Deserialize<'de> for MaxSizeVec<T, MAX_SIZE> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let shadow = MaxSizeVecShadow::<T>::deserialize(deserializer)?;
+        Self::try_from(shadow.vec).map_err(serde::de::Error::custom)
+    }
+}
+
+impl<T: BorshDeserialize, const MAX_SIZE: usize> BorshDeserialize for MaxSizeVec<T, MAX_SIZE> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        // Matches borsh's own `Vec<T>` implementation, which refuses zero sized types.
+        if size_of::<T>() == 0 {
+            return Err(Error::new(ErrorKind::InvalidData, ERROR_ZST_FORBIDDEN));
+        }
+        // The length is validated before any element is read, so an oversized payload is rejected
+        // up front instead of being decoded and silently accepted.
+        let len = read_checked_len(reader, MAX_SIZE, "MaxSizeVec")?;
+        let mut vec = Vec::with_capacity(cautious_capacity::<T>(len));
+        for _ in 0..len {
+            vec.push(T::deserialize_reader(reader)?);
+        }
+        Ok(Self {
+            vec,
+            _marker: PhantomData,
+        })
+    }
 }
 
 impl<T, const MAX_SIZE: usize> Default for MaxSizeVec<T, MAX_SIZE> {
@@ -197,4 +245,92 @@ impl<T, const MAX_SIZE: usize> FromIterator<T> for MaxSizeVec<T, MAX_SIZE> {
 pub enum MaxSizeVecError {
     #[error("Invalid vector length: expected {expected}, got {actual}")]
     MaxSizeVecLengthError { expected: usize, actual: usize },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAX: usize = 10;
+    type Vec32 = MaxSizeVec<u32, MAX>;
+
+    #[test]
+    fn borsh_round_trips_a_valid_value() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        let encoded = borsh::to_vec(&v).unwrap();
+        assert_eq!(Vec32::try_from_slice(&encoded).unwrap(), v);
+
+        // The encoding is unchanged from the derived implementation, i.e. it is the plain borsh
+        // encoding of the inner `Vec<T>` (`PhantomData` encodes to nothing)
+        assert_eq!(encoded, borsh::to_vec(&vec![1u32, 2, 3]).unwrap());
+    }
+
+    #[test]
+    fn borsh_accepts_exactly_max_and_rejects_max_plus_one() {
+        let at_max = borsh::to_vec(&vec![0u32; MAX]).unwrap();
+        assert_eq!(Vec32::try_from_slice(&at_max).unwrap().len(), MAX);
+
+        let over_max = borsh::to_vec(&vec![0u32; MAX + 1]).unwrap();
+        let err = Vec32::try_from_slice(&over_max).unwrap_err();
+        assert!(err.to_string().contains("exceeds the maximum size"), "{}", err);
+    }
+
+    #[test]
+    fn borsh_rejects_an_oversized_length_prefix_without_reading_the_body() {
+        // A length prefix of 4 Gi elements and no data at all: this must fail on the length check
+        // alone
+        let payload = u32::MAX.to_le_bytes();
+        let err = Vec32::try_from_slice(&payload).unwrap_err();
+        assert!(err.to_string().contains("exceeds the maximum size"), "{}", err);
+    }
+
+    #[test]
+    fn borsh_rejects_a_truncated_body() {
+        let mut payload = borsh::to_vec(&vec![0u32; MAX]).unwrap();
+        payload.pop();
+        assert!(Vec32::try_from_slice(&payload).is_err());
+    }
+
+    #[test]
+    fn borsh_rejects_zero_sized_types() {
+        let payload = borsh::to_vec(&1u32).unwrap();
+        assert!(MaxSizeVec::<(), MAX>::try_from_slice(&payload).is_err());
+    }
+
+    #[test]
+    fn serde_round_trips_a_valid_value_without_changing_the_representation() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, r#"{"vec":[1,2,3],"_marker":null}"#);
+        assert_eq!(serde_json::from_str::<Vec32>(&json).unwrap(), v);
+    }
+
+    #[test]
+    fn bincode_round_trips_a_valid_value_and_rejects_max_plus_one() {
+        // bincode is the compact (non human readable) serde format used for the on-disk chain
+        // storage, so the encoding must be unchanged
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        let encoded = bincode::serialize(&v).unwrap();
+        assert_eq!(encoded, bincode::serialize(&vec![1u32, 2, 3]).unwrap());
+        assert_eq!(bincode::deserialize::<Vec32>(&encoded).unwrap(), v);
+
+        let at_max = bincode::serialize(&vec![0u32; MAX]).unwrap();
+        assert_eq!(bincode::deserialize::<Vec32>(&at_max).unwrap().len(), MAX);
+
+        let over_max = bincode::serialize(&vec![0u32; MAX + 1]).unwrap();
+        let err = bincode::deserialize::<Vec32>(&over_max).unwrap_err();
+        assert!(err.to_string().contains("Invalid vector length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_accepts_exactly_max_and_rejects_max_plus_one() {
+        let at_max = serde_json::to_string(&vec![0u32; MAX]).unwrap();
+        let at_max = format!(r#"{{"vec":{at_max},"_marker":null}}"#);
+        assert_eq!(serde_json::from_str::<Vec32>(&at_max).unwrap().len(), MAX);
+
+        let over_max = serde_json::to_string(&vec![0u32; MAX + 1]).unwrap();
+        let over_max = format!(r#"{{"vec":{over_max},"_marker":null}}"#);
+        let err = serde_json::from_str::<Vec32>(&over_max).unwrap_err();
+        assert!(err.to_string().contains("Invalid vector length"), "{}", err);
+    }
 }

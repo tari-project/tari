@@ -31,29 +31,50 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tari_utilities::{
     ByteArray,
     ByteArrayError,
     hex::{HexError, from_hex, to_hex},
 };
 
-#[derive(
-    Debug,
-    Clone,
-    Hash,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Default,
-    Deserialize,
-    Serialize,
-    BorshSerialize,
-    BorshDeserialize,
-)]
+use crate::checked_de::{read_bytes, read_checked_len};
+
+/// A byte vector that can be at most `MAX` bytes long.
+///
+/// The bound is enforced by every constructor *and* by deserialization (see the hand written
+/// `BorshDeserialize`/`Deserialize` implementations below), so `len() <= MAX` is a true invariant
+/// even for values decoded from untrusted input.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, BorshSerialize)]
 pub struct MaxSizeBytes<const MAX: usize> {
     inner: Vec<u8>,
+}
+
+/// Mirror of [`MaxSizeBytes`] used only to decode the wire format before the bound is checked.
+/// It must keep the exact same (serde) shape as `MaxSizeBytes` so that the serialized
+/// representation is unchanged.
+#[derive(Deserialize)]
+#[serde(rename = "MaxSizeBytes")]
+struct MaxSizeBytesShadow {
+    inner: Vec<u8>,
+}
+
+impl<'de, const MAX: usize> Deserialize<'de> for MaxSizeBytes<MAX> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let shadow = MaxSizeBytesShadow::deserialize(deserializer)?;
+        Self::try_from(shadow.inner).map_err(serde::de::Error::custom)
+    }
+}
+
+impl<const MAX: usize> BorshDeserialize for MaxSizeBytes<MAX> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        // The length is validated before any data is read, so an oversized payload is rejected up
+        // front instead of being decoded and silently accepted.
+        let len = read_checked_len(reader, MAX, "MaxSizeBytes")?;
+        Ok(Self {
+            inner: read_bytes(reader, len)?,
+        })
+    }
 }
 
 impl<const MAX: usize> MaxSizeBytes<MAX> {
@@ -174,5 +195,86 @@ pub enum MaxSizeBytesError {
 impl From<HexError> for MaxSizeBytesError {
     fn from(err: HexError) -> Self {
         MaxSizeBytesError::HexError(err.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAX: usize = 10;
+    type Bytes = MaxSizeBytes<MAX>;
+
+    #[test]
+    fn borsh_round_trips_a_valid_value() {
+        let bytes = Bytes::try_from(vec![1u8, 2, 3]).unwrap();
+        let encoded = borsh::to_vec(&bytes).unwrap();
+        assert_eq!(Bytes::try_from_slice(&encoded).unwrap(), bytes);
+
+        // The encoding is unchanged from the derived implementation, i.e. it is the plain borsh
+        // encoding of the inner `Vec<u8>`
+        assert_eq!(encoded, borsh::to_vec(&vec![1u8, 2, 3]).unwrap());
+    }
+
+    #[test]
+    fn borsh_accepts_exactly_max_and_rejects_max_plus_one() {
+        let at_max = borsh::to_vec(&vec![0u8; MAX]).unwrap();
+        assert_eq!(Bytes::try_from_slice(&at_max).unwrap().len(), MAX);
+
+        let over_max = borsh::to_vec(&vec![0u8; MAX + 1]).unwrap();
+        let err = Bytes::try_from_slice(&over_max).unwrap_err();
+        assert!(err.to_string().contains("exceeds the maximum size"), "{}", err);
+    }
+
+    #[test]
+    fn borsh_rejects_an_oversized_length_prefix_without_reading_the_body() {
+        // A length prefix of 4 GiB and no data at all: this must fail on the length check alone
+        let payload = u32::MAX.to_le_bytes();
+        let err = Bytes::try_from_slice(&payload).unwrap_err();
+        assert!(err.to_string().contains("exceeds the maximum size"), "{}", err);
+    }
+
+    #[test]
+    fn borsh_rejects_a_truncated_body() {
+        let mut payload = borsh::to_vec(&vec![0u8; MAX]).unwrap();
+        payload.pop();
+        assert!(Bytes::try_from_slice(&payload).is_err());
+    }
+
+    #[test]
+    fn serde_round_trips_a_valid_value_without_changing_the_representation() {
+        let bytes = Bytes::try_from(vec![1u8, 2, 3]).unwrap();
+        let json = serde_json::to_string(&bytes).unwrap();
+        assert_eq!(json, r#"{"inner":[1,2,3]}"#);
+        assert_eq!(serde_json::from_str::<Bytes>(&json).unwrap(), bytes);
+    }
+
+    #[test]
+    fn bincode_round_trips_a_valid_value_and_rejects_max_plus_one() {
+        // bincode is the compact (non human readable) serde format used for the on-disk chain
+        // storage, so the encoding must be unchanged
+        let bytes = Bytes::try_from(vec![1u8, 2, 3]).unwrap();
+        let encoded = bincode::serialize(&bytes).unwrap();
+        assert_eq!(encoded, bincode::serialize(&vec![1u8, 2, 3]).unwrap());
+        assert_eq!(bincode::deserialize::<Bytes>(&encoded).unwrap(), bytes);
+
+        let at_max = bincode::serialize(&vec![0u8; MAX]).unwrap();
+        assert_eq!(bincode::deserialize::<Bytes>(&at_max).unwrap().len(), MAX);
+
+        let over_max = bincode::serialize(&vec![0u8; MAX + 1]).unwrap();
+        let err = bincode::deserialize::<Bytes>(&over_max).unwrap_err();
+        assert!(err.to_string().contains("Invalid Bytes length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_accepts_exactly_max_and_rejects_max_plus_one() {
+        let at_max = serde_json::to_string(&vec![0u8; MAX]).unwrap();
+        let at_max = format!(r#"{{"inner":{at_max}}}"#);
+        assert_eq!(serde_json::from_str::<Bytes>(&at_max).unwrap().len(), MAX);
+
+        let over_max = serde_json::to_string(&vec![0u8; MAX + 1]).unwrap();
+        let over_max = format!(r#"{{"inner":{over_max}}}"#);
+        let err = serde_json::from_str::<Bytes>(&over_max).unwrap_err();
+        assert!(err.to_string().contains("Invalid Bytes length"), "{}", err);
     }
 }
