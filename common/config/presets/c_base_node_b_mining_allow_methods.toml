@@ -23,6 +23,7 @@ grpc_server_allow_methods = [
     "get_tip_info",
     "identify",
     #"get_network_status",
+    "get_network_state",
     "list_headers",
     #"get_header_by_hash",
     #"get_blocks",

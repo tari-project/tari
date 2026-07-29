@@ -59,6 +59,7 @@ pub enum GrpcMethod {
     TransactionState,
     Identify,
     GetNetworkStatus,
+    GetNetworkState,
     ListConnectedPeers,
     GetMempoolStats,
     GetActiveValidatorNodes,
@@ -72,7 +73,7 @@ pub enum GrpcMethod {
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 39] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 40] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -103,6 +104,7 @@ impl GrpcMethod {
         GrpcMethod::TransactionState,
         GrpcMethod::Identify,
         GrpcMethod::GetNetworkStatus,
+        GrpcMethod::GetNetworkState,
         GrpcMethod::ListConnectedPeers,
         GrpcMethod::GetMempoolStats,
         GrpcMethod::GetActiveValidatorNodes,
@@ -116,7 +118,7 @@ impl GrpcMethod {
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 39>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 40>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -161,6 +163,7 @@ impl FromStr for GrpcMethod {
             "transaction_state" => Ok(GrpcMethod::TransactionState),
             "identify" => Ok(GrpcMethod::Identify),
             "get_network_status" => Ok(GrpcMethod::GetNetworkStatus),
+            "get_network_state" => Ok(GrpcMethod::GetNetworkState),
             "list_connected_peers" => Ok(GrpcMethod::ListConnectedPeers),
             "get_mempool_stats" => Ok(GrpcMethod::GetMempoolStats),
             "get_active_validator_nodes" => Ok(GrpcMethod::GetActiveValidatorNodes),
@@ -260,6 +263,7 @@ mod tests {
                 GrpcMethod::TransactionState => count += 1,
                 GrpcMethod::Identify => count += 1,
                 GrpcMethod::GetNetworkStatus => count += 1,
+                GrpcMethod::GetNetworkState => count += 1,
                 GrpcMethod::ListConnectedPeers => count += 1,
                 GrpcMethod::GetMempoolStats => count += 1,
                 GrpcMethod::GetActiveValidatorNodes => count += 1,
@@ -272,6 +276,31 @@ mod tests {
             }
         }
         assert_eq!(count, GrpcMethod::ALL_VARIANTS.len());
+    }
+
+    #[test]
+    fn all_variants_are_listed_once() {
+        // `ALL_VARIANTS` is the allow-list used to enable every GRPC method, so a variant that is missing or
+        // duplicated here silently changes what is served.
+        let mut seen = Vec::with_capacity(GrpcMethod::ALL_VARIANTS.len());
+        for method in &GrpcMethod::ALL_VARIANTS {
+            assert!(!seen.contains(method), "'{method}' is listed more than once");
+            seen.push(*method);
+        }
+    }
+
+    #[test]
+    fn it_converts_config_strings_to_enum() {
+        // The config file spells the methods out in snake case; a mismatch here means existing configs mis-parse
+        assert_eq!(
+            GrpcMethod::from_str("get_network_state").unwrap(),
+            GrpcMethod::GetNetworkState
+        );
+        assert_eq!(
+            GrpcMethod::from_str("get_network_status").unwrap(),
+            GrpcMethod::GetNetworkStatus
+        );
+        assert!(GrpcMethod::from_str("get_network_state_").is_err());
     }
 
     #[test]
