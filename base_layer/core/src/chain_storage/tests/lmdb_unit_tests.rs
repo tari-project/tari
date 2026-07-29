@@ -518,63 +518,22 @@ fn generate_reference_lmdb_fixture() {
 // Reference LMDB tests: open the committed binary fixture and assert values
 // ---------------------------------------------------------------------------
 
-/// Ensure a decompressed copy of the reference LMDB fixture is present in a temporary location.
+/// Open the reference LMDB fixture in a temporary directory of its own.
 ///
-/// The committed fixture is `tests/fixtures/reference_lmdb/data.mdb.gz` (~150 KB).  On first
-/// access it is decompressed into the same directory alongside the compressed source.  The
-/// `OnceLock` guarantees this is done at most once per test-process execution; subsequent tests
-/// that call `open_reference_db` find the decompressed file already in place.
+/// The committed fixture is `tests/fixtures/reference_lmdb/data.mdb.gz`. It is decompressed
+/// straight into a fresh temporary directory, which is deleted when the returned database is
+/// dropped; the committed fixture is never modified.
 ///
-/// # Panics
-///
-/// Panics if the committed `.gz` file is missing — which means the fixture has not been
-/// generated yet.  Run `generate_reference_lmdb_fixture` and commit the result.
-fn ensure_reference_fixture_exists() {
-    use std::sync::OnceLock;
-    static ONCE: OnceLock<()> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let fixture_dir = reference_lmdb_dir();
-        let data_mdb = fixture_dir.join("data.mdb");
-
-        if data_mdb.exists() {
-            return; // Already decompressed from a previous test run in this process or on disk
-        }
-
-        let gz_path = fixture_dir.join("data.mdb.gz");
-        assert!(
-            gz_path.exists(),
-            "Reference LMDB fixture not found at {}.\nRun the generator and commit the result:\ncargo test -p \
-             tari_core --lib --features sqlite_bundled -- \
-             chain_storage::tests::lmdb_unit_tests::generate_reference_lmdb_fixture --ignored --nocapture",
-            gz_path.display()
-        );
-
-        // Decompress data.mdb.gz → data.mdb next to the compressed source.
-        let gz_file = fs::File::open(&gz_path).unwrap_or_else(|e| panic!("Failed to open {}: {e}", gz_path.display()));
-        let mut decoder = flate2::read::GzDecoder::new(gz_file);
-        fs::create_dir_all(&fixture_dir).unwrap();
-        let mut out_file =
-            fs::File::create(&data_mdb).unwrap_or_else(|e| panic!("Failed to create {}: {e}", data_mdb.display()));
-        let bytes_written = std::io::copy(&mut decoder, &mut out_file)
-            .unwrap_or_else(|e| panic!("Failed to decompress {}: {e}", gz_path.display()));
-
-        println!(
-            "[reference_lmdb] Decompressed fixture to {} ({} MB)",
-            data_mdb.display(),
-            bytes_written / 1024 / 1024
-        );
-    });
-}
-
-/// Open the reference LMDB fixture (auto-generating it on first run).
-///
-/// `open_blockchain_db_from_path` acquires a write lock, so we first copy the fixture to a
-/// temporary directory. The copy is deleted when the returned database is dropped; the
-/// original fixture on disk is never modified.
+/// The decompressed copy is deliberately *not* shared between tests. Nextest runs every test in
+/// its own process, so the tests below reach this concurrently. An earlier version decompressed
+/// once into the fixture directory behind a `OnceLock` and copied from there, but a `OnceLock`
+/// only serialises within a process: a second process could see the `data.mdb` a first had just
+/// created, copy it while it was still being written, and mmap past the end of the file, which
+/// aborts the test with SIGBUS. Decompressing per test is a few milliseconds and has no shared
+/// state to race on.
 fn open_reference_db() -> BlockchainDatabase<TempDatabase> {
-    ensure_reference_fixture_exists();
     let tmp = tari_test_utils::paths::create_temporary_data_path();
-    copy_dir_recursive(&reference_lmdb_dir(), &tmp);
+    decompress_reference_to(&tmp);
     open_blockchain_db_from_path(&tmp)
 }
 
@@ -838,8 +797,8 @@ mod write_tests {
 
 /// Decompress the committed `reference_lmdb/data.mdb.gz` into `dest_dir/data.mdb`.
 ///
-/// Used by tests that need a stable, writable copy of the reference LMDB independent of
-/// the shared `ensure_reference_fixture_exists` cache.
+/// `dest_dir` must be unique to the calling test - the decompressed fixture is never shared
+/// between tests, so that concurrent test processes cannot observe a half-written copy.
 fn decompress_reference_to(dest_dir: &Path) {
     let gz_path = reference_lmdb_dir().join("data.mdb.gz");
     assert!(
