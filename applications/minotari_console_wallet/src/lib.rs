@@ -64,7 +64,14 @@ use wallet_modes::{WalletMode, command_mode, grpc_mode, recovery_mode, script_mo
 
 pub use crate::config::ApplicationConfig;
 use crate::{
-    init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode},
+    init::{
+        boot_with_password,
+        confirm_direct_only_send,
+        confirm_seed_words,
+        confirm_seed_words_file,
+        prompt_wallet_type,
+        wallet_mode,
+    },
     recovery::prompt_private_key_from_seed_words,
 };
 
@@ -127,6 +134,8 @@ pub fn run_wallet_with_cli(
     );
 
     let password = get_password(config, &cli);
+    // Whether the passphrase was supplied up front, i.e. without the wallet having to prompt for it
+    let password_supplied = password.is_some();
 
     if password.is_none() {
         tari_splash_screen("Console Wallet");
@@ -146,7 +155,19 @@ pub fn run_wallet_with_cli(
     let recovery_seed = get_recovery_seed(boot_mode, &cli, &wallet_type)?;
 
     // get command line password if provided
-    let seed_words_file_name = cli.seed_words_file_name.clone();
+    let seed_words_file_name = match cli.seed_words_file_name.clone() {
+        // The passphrase was not supplied up front, so the user is here interactively; make sure that writing the
+        // seed words to disk in the clear is really what they want.
+        Some(file_name) if !password_supplied => {
+            if confirm_seed_words_file(&file_name)? {
+                Some(file_name)
+            } else {
+                println!("Seed words will not be written to file.");
+                None
+            }
+        },
+        seed_words_file_name => seed_words_file_name,
+    };
 
     let shutdown_signal = shutdown.to_signal();
 
