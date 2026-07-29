@@ -304,7 +304,11 @@ pub fn check_outputs<B: BlockchainBackend>(
 /// signature and script input data) is enforced by the sorted-and-unique consensus check.
 pub fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), ValidationError> {
     let mut seen_inputs = HashSet::with_capacity(body.inputs().len());
-    if !body.inputs().iter().all(|input| seen_inputs.insert(input.output_hash())) {
+    if !body
+        .inputs()
+        .iter()
+        .all(|input| seen_inputs.insert(input.output_hash()))
+    {
         warn!(
             target: LOG_TARGET,
             "AggregateBody validation failed due to double input"
