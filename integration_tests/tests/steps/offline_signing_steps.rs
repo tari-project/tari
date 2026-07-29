@@ -223,6 +223,8 @@ async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut T
         OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
         OsString::from("--network"),
         OsString::from("localnet"),
+        // The signer requires the operator to confirm the transaction summary; there is no operator here
+        OsString::from("--yes"),
     ]))
     .unwrap_or_else(|e| panic!("Failed to sign transaction with standalone offline signer: {e}"));
 
@@ -307,6 +309,8 @@ async fn sign_tampered_payload_fails_integrity_check(world: &mut TariWorld, sign
         OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
         OsString::from("--network"),
         OsString::from("localnet"),
+        // Confirm the summary so that the only thing that can reject this payload is the integrity check
+        OsString::from("--yes"),
     ]));
 
     assert!(
@@ -317,10 +321,71 @@ async fn sign_tampered_payload_fails_integrity_check(world: &mut TariWorld, sign
         !output_file.exists(),
         "Offline signer wrote a signed output for a tampered payload — integrity check was bypassed"
     );
-    println!(
-        "Standalone offline signer correctly rejected the tampered payload: {:?}",
-        result.unwrap_err()
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("integrity"),
+        "Expected a payload integrity error, got: {err:?}"
     );
+    println!("Standalone offline signer correctly rejected the tampered payload: {err:?}");
+}
+
+/// Assert that the offline signer refuses to sign when the operator has not confirmed the transaction summary.
+///
+/// The payload integrity signature is made with the *view* key, which is shareable, so it cannot distinguish a
+/// payload the wallet owner asked for from one forged by any holder of the view key. The operator confirming the
+/// summary is the check that catches that, so the signer must fail closed when it cannot obtain one — here stdin is
+/// not a terminal and `--yes` was not passed.
+#[then(expr = "signing the prepared payload using standalone offline signer {word} without confirmation is refused")]
+async fn sign_without_confirmation_is_refused(world: &mut TariWorld, signer_name: String) {
+    let prepared_json = world
+        .offline_signing_prepared
+        .as_ref()
+        .expect("No prepared transaction found — run the prepare step first")
+        .clone();
+    let keystore_file = world
+        .offline_signer_keystores
+        .get(&signer_name)
+        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"))
+        .clone();
+    let signer_dir = keystore_file
+        .parent()
+        .unwrap_or_else(|| panic!("Keystore file {keystore_file:?} has no parent directory"))
+        .to_path_buf();
+    let input_file = signer_dir.join("offline_signing_unconfirmed_input.json");
+    let output_file = signer_dir.join("offline_signing_unconfirmed_output.json");
+    drop(std::fs::remove_file(&output_file));
+    std::fs::write(&input_file, prepared_json).expect("Failed to write prepared transaction file");
+
+    let result = execute_offline_signer_from_args(os_args([
+        OsString::from("minotari_offline_signer"),
+        OsString::from("--test-keystore-file"),
+        keystore_file.as_os_str().to_os_string(),
+        OsString::from("sign"),
+        OsString::from("--input-file"),
+        input_file.as_os_str().to_os_string(),
+        OsString::from("--output-file"),
+        output_file.as_os_str().to_os_string(),
+        OsString::from("--passphrase"),
+        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+        OsString::from("--network"),
+        OsString::from("localnet"),
+        // Deliberately no --yes
+    ]));
+
+    assert!(
+        result.is_err(),
+        "Expected the standalone offline signer to refuse to sign without operator confirmation, but it succeeded"
+    );
+    assert!(
+        !output_file.exists(),
+        "Offline signer wrote a signed output without operator confirmation"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("could not be confirmed"),
+        "Expected a confirmation error, got: {err:?}"
+    );
+    println!("Standalone offline signer correctly refused to sign without confirmation: {err:?}");
 }
 
 #[when(expr = "I broadcast the signed transaction via wallet {word}")]

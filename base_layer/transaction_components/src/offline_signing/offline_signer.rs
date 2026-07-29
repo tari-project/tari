@@ -101,6 +101,15 @@ fn sign_payload<KM: TransactionKeyManagerInterface>(
 /// wallets share the same view key, so no key needs to be transmitted in the
 /// payload).  The challenge is reconstructed as `H_domain(R || P || canonical)`
 /// and the Schnorr verification is performed.
+///
+/// # Security
+///
+/// The view key is a shareable key, so a party that holds it can forge this signature over
+/// an arbitrary payload.  Passing this check therefore means "the payload was not mangled by
+/// someone without view access", **not** "the payload is what the wallet owner asked for".
+/// Callers that use a spend key MUST additionally have the operator confirm a
+/// [`crate::offline_signing::PayloadSummary`] of the payload.  See the docs on
+/// [`PayloadIntegritySignature`] for the full rationale.
 fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     payload_sig: &PayloadIntegritySignature,

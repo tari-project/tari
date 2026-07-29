@@ -478,10 +478,13 @@ async fn it_rejects_zero_conf_double_spends() {
     let (unmined, _) = blockchain.create_unmined_block(block_spec!("2", parent: "1", transactions: transactions));
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, &unmined).unwrap_err();
-    assert!(matches!(
-        err,
-        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
-    ));
+    // `verify_no_duplicated_inputs_outputs` rejects this first, via `AggregateBody::contains_duplicated_inputs`.
+    // It previously did not: `contains_duplicated_inputs` compares with `==`, and `TransactionInput::eq` used to
+    // include the script signature and input data, so the two competing spends of the same output - which differ in
+    // exactly those fields - compared as unequal and slipped past it. The body was still rejected, but only further
+    // on by the internal validator's sortedness check, as
+    // `AggregatedBodyValidationError::UnsortedOrDuplicateInput`.
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
 }
 
 mod body_only {

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::OsString, fs, path::PathBuf, str::FromStr};
+use std::{ffi::OsString, fs, io::IsTerminal, path::PathBuf, str::FromStr};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
@@ -36,6 +36,7 @@ use tari_transaction_components::{
         wallet_types::{SeedWordsWallet, SpendWallet, WalletType},
     },
     offline_signing::{
+        PayloadSummary,
         models::{PrepareOneSidedTransactionForSigningResult, TransactionResult},
         sign_locked_transaction,
     },
@@ -134,6 +135,15 @@ pub struct SignArgs {
     /// Network to use (mainnet, nextnet, esmeralda, localnet)
     #[clap(short, long, default_value = "mainnet")]
     pub network: String,
+
+    /// Sign without asking the operator to confirm the transaction summary.
+    ///
+    /// SECURITY: the payload integrity signature is produced with the wallet's *view* key, which is shareable by
+    /// design. Anyone holding the view key can forge a payload that redirects the funds and it will still verify as
+    /// authentic. Confirming the printed summary is the only check that catches this, so only use this flag where the
+    /// payload's origin is trusted by other means.
+    #[clap(long, alias = "assume-yes")]
+    pub yes: bool,
 }
 
 impl Cli {
@@ -233,6 +243,45 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
     Ok(())
 }
 
+/// Asks the operator to confirm the transaction before any spend key is used.
+///
+/// SECURITY: this is the authoritative authorisation step for offline signing. The payload integrity signature that
+/// `sign_locked_transaction` verifies is made with the *view* key, which is shareable, so a party holding the view key
+/// can forge a payload that pays itself and it will verify as authentic. Only a human checking the recipient and the
+/// amount catches that, so this must run before signing and must fail closed.
+fn confirm_payload(summary: &PayloadSummary, assume_yes: bool) -> Result<()> {
+    println!();
+    println!("The following transaction is about to be signed with your spend key:");
+    println!();
+    print!("{summary}");
+    println!();
+
+    if assume_yes {
+        println!("Confirmation skipped (--yes).");
+        return Ok(());
+    }
+
+    if !std::io::stdin().is_terminal() {
+        return Err(anyhow!(
+            "Refusing to sign: the transaction summary could not be confirmed because stdin is not a terminal. Run \
+             this command interactively, or pass --yes if the payload's origin is trusted by other means."
+        ));
+    }
+
+    print!("Sign this transaction? [y/N]: ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    if input.trim().to_lowercase() != "y" {
+        return Err(anyhow!(
+            "Aborted: the transaction was not confirmed. Nothing was signed."
+        ));
+    }
+
+    Ok(())
+}
+
 fn sign_transaction(args: SignArgs) -> Result<()> {
     // Check if initialized
     if !keystore::is_initialized() {
@@ -241,10 +290,6 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
 
     // Get passphrase (prompt if not provided)
     let passphrase = args.passphrase;
-
-    // Retrieve keys from keystore
-    let (spend_key, view_key) =
-        keystore::get_keys(&passphrase).map_err(|e| anyhow!("Failed to retrieve keys: {}", e))?;
 
     // Parse the network
     let network = Network::from_str(&args.network).map_err(|_| {
@@ -269,6 +314,14 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
 
     let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
+
+    // Show the operator what is about to be signed and get their confirmation, before any key material is touched
+    let summary = PayloadSummary::from_one_sided(request.tx_id, &request.info);
+    confirm_payload(&summary, args.yes)?;
+
+    // Retrieve keys from keystore
+    let (spend_key, view_key) =
+        keystore::get_keys(&passphrase).map_err(|e| anyhow!("Failed to retrieve keys: {}", e))?;
 
     // Create the key manager with the spend wallet type
     let spend_wallet = SpendWallet::new(spend_key, view_key, None);

@@ -31,14 +31,19 @@ use crate::transaction_components::covenants::token::CovenantToken;
 pub struct CovenantTokenDecoder<'a, R> {
     buf: &'a mut R,
     is_complete: bool,
+    /// How deeply the covenant being decoded is nested inside enclosing covenants. Carried through so that a nested
+    /// `ARG_COVENANT` can refuse to recurse past `MAX_COVENANT_DEPTH`.
+    depth: usize,
 }
 
 impl<'a, R: io::Read> CovenantTokenDecoder<'a, R> {
-    /// Given a read buffer, it creates a new instance of `CovenantTokenDecoder`.
-    pub fn new(buf: &'a mut R) -> Self {
+    /// Given a read buffer, it creates a new instance of `CovenantTokenDecoder` for a covenant nested `depth` levels
+    /// inside enclosing covenants (`0` for a top-level covenant).
+    pub fn new(buf: &'a mut R, depth: usize) -> Self {
         Self {
             buf,
             is_complete: false,
+            depth,
         }
     }
 }
@@ -53,7 +58,7 @@ impl Iterator for CovenantTokenDecoder<'_, &[u8]> {
             return None;
         }
 
-        match CovenantToken::read_from(self.buf) {
+        match CovenantToken::read_from_at_depth(self.buf, self.depth) {
             Ok(Some(token)) => Some(Ok(token)),
             Ok(None) => {
                 self.is_complete = true;
@@ -82,6 +87,12 @@ pub enum CovenantDecodeError {
     ScriptError(#[from] ScriptError),
     #[error("Covenant exceeded maximum bytes")]
     ExceededMaxBytes,
+    #[error("Covenant exceeded the maximum of {max} tokens")]
+    ExceededMaxTokens { max: usize },
+    #[error("Covenant nested more than {max} levels deep")]
+    ExceededMaxDepth { max: usize },
+    #[error("Covenant had {remaining} trailing byte(s) after a complete decode")]
+    TrailingBytes { remaining: usize },
     #[error(transparent)]
     Io(#[from] io::Error),
 }
@@ -146,14 +157,14 @@ mod test {
     #[test]
     fn it_immediately_ends_iterator_given_empty_bytes() {
         let buf = &[] as &[u8; 0];
-        assert!(CovenantTokenDecoder::new(&mut &buf[..]).next().is_none());
+        assert!(CovenantTokenDecoder::new(&mut &buf[..], 0).next().is_none());
     }
 
     #[test]
     fn it_ends_after_an_error() {
         let buf = &[0xffu8];
         let mut reader = &buf[..];
-        let mut decoder = CovenantTokenDecoder::new(&mut reader);
+        let mut decoder = CovenantTokenDecoder::new(&mut reader, 0);
         assert!(matches!(decoder.next(), Some(Err(_))));
         assert!(decoder.next().is_none());
     }
@@ -162,7 +173,7 @@ mod test {
     fn it_returns_an_error_if_arg_expected() {
         let buf = &[ARG_OUTPUT_FIELD];
         let mut reader = &buf[..];
-        let mut decoder = CovenantTokenDecoder::new(&mut reader);
+        let mut decoder = CovenantTokenDecoder::new(&mut reader, 0);
 
         assert!(matches!(
             decoder.next(),
@@ -183,7 +194,7 @@ mod test {
         .write_to(&mut bytes)
         .unwrap();
         let mut buf = bytes.as_slice();
-        let mut decoder = CovenantTokenDecoder::new(&mut buf);
+        let mut decoder = CovenantTokenDecoder::new(&mut buf, 0);
         let token = decoder.next().unwrap().unwrap();
         assert!(matches!(
             token,

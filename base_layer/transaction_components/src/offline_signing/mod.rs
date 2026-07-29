@@ -23,6 +23,7 @@ pub mod marshal_output_pair;
 pub mod models;
 pub mod offline_signer;
 pub mod one_sided_signer;
+pub mod payload_summary;
 
 pub use models::PaymentRecipient;
 pub use offline_signer::{
@@ -33,6 +34,7 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
 };
+pub use payload_summary::{PayloadSummary, RecipientSummary};
 
 #[cfg(test)]
 mod test {

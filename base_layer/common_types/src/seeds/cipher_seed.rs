@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{mem::size_of, str::FromStr};
+use std::{fmt, mem::size_of, str::FromStr};
 
 use blake2::Blake2b;
 use chacha20::{
@@ -120,12 +120,27 @@ hidden_type!(CipherSeedMacKey, SafeArray< u8, CIPHER_SEED_MAC_KEY_BYTES>);
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
     entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
     salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES],
+}
+
+/// `Debug` is implemented by hand rather than derived: the entropy is the wallet master secret, and every key in the
+/// wallet can be re-derived from it. A derived `Debug` would render it in full, and any `{:?}` sink (log lines, error
+/// messages, `Display` impls of enclosing types) would then leak the master seed. The secret fields are rendered the
+/// same way `Hidden` renders its contents so that the redaction is obvious in output.
+impl fmt::Debug for CipherSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CipherSeed")
+            .field("version", &self.version)
+            .field("birthday", &self.birthday)
+            .field("entropy", &format_args!("Hidden<[u8; {CIPHER_SEED_ENTROPY_BYTES}]>"))
+            .field("salt", &format_args!("Hidden<[u8; {CIPHER_SEED_MAIN_SALT_BYTES}]>"))
+            .finish()
+    }
 }
 
 // This is a separate type to make the linter happy
@@ -457,7 +472,7 @@ mod test {
 
     use chrono::{DateTime, TimeZone, Utc};
     use crc32fast::Hasher as CrcHasher;
-    use tari_utilities::{Hidden, SafePassword};
+    use tari_utilities::{Hidden, SafePassword, hex::to_hex};
 
     use super::{BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, SECONDS_PER_DAY};
     use crate::seeds::{
@@ -466,6 +481,7 @@ mod test {
             CIPHER_SEED_CHECKSUM_BYTES,
             CIPHER_SEED_ENTROPY_BYTES,
             CIPHER_SEED_MAC_BYTES,
+            CIPHER_SEED_MAIN_SALT_BYTES,
             CIPHER_SEED_VERSION,
             CipherSeed,
         },
@@ -473,6 +489,34 @@ mod test {
         mnemonic::{Mnemonic, MnemonicLanguage},
         seed_words::{SeedWords, get_birthday_from_unix_epoch_in_seconds},
     };
+
+    #[test]
+    fn test_cipher_seed_debug_does_not_leak_entropy() {
+        let seed = CipherSeed::random();
+        let rendered = format!("{seed:?}");
+
+        // Neither the entropy nor the salt may appear, in hex or in the byte-slice rendering a derived `Debug` uses
+        assert!(
+            !rendered.contains(&to_hex(seed.entropy())),
+            "CipherSeed Debug leaked the entropy: {rendered}"
+        );
+        assert!(
+            !rendered.contains(&format!("{:?}", seed.entropy())),
+            "CipherSeed Debug leaked the entropy: {rendered}"
+        );
+        assert!(
+            !rendered.contains(&format!("{:?}", seed.salt)),
+            "CipherSeed Debug leaked the salt: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_ENTROPY_BYTES}]>")),
+            "entropy was not redacted: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_MAIN_SALT_BYTES}]>")),
+            "salt was not redacted: {rendered}"
+        );
+    }
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
