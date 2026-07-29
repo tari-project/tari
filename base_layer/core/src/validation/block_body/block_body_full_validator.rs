@@ -23,11 +23,7 @@
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock};
-use tari_transaction_components::{
-    aggregated_body::AggregateBody,
-    crypto_factories::CryptoFactories,
-    tari_proof_of_work::PowAlgorithm,
-};
+use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
 use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
@@ -159,13 +155,10 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
     /// Validate a block whose inputs may be compact (as received during block sync).
     ///
     /// The compact inputs are hydrated in place before validation and the resulting fully-hydrated block is returned
-    /// so that it can be stored. The block is consumed and its outputs and kernels are moved (not cloned) into the
-    /// returned block.
-    fn validate_body(&self, backend: &B, block: Block) -> Result<Block, ValidationError> {
-        let sorted_claim = block.body.is_sorted();
-        let (header, mut inputs, outputs, kernels) = block.dissolve();
-        hydrate_compact_inputs(&mut inputs, &outputs, backend)?;
-        let block = Block::new(header, AggregateBody::new(inputs, outputs, kernels, sorted_claim));
+    /// so that it can be stored. The block is consumed and mutated in place, so nothing is cloned into the returned
+    /// block.
+    fn validate_body(&self, backend: &B, mut block: Block) -> Result<Block, ValidationError> {
+        hydrate_compact_inputs(&mut block.body, backend)?;
 
         self.validate(backend, &block, None)?;
 

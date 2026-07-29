@@ -34,7 +34,6 @@ use tari_transaction_components::{
         SpentOutput,
         TransactionError,
         TransactionInput,
-        TransactionOutput,
         ValidatorNodeRegistration,
     },
     validation::helpers::{check_tari_encrypted_data_byte_size, check_tari_script_byte_size},
@@ -116,20 +115,18 @@ impl AggregateBodyChainLinkedValidator {
     }
 }
 
-/// Hydrate any compact inputs in `inputs` in place by resolving the referenced output.
+/// Hydrate any compact inputs in `body` in place by resolving the referenced output.
 ///
 /// A compact ("slim") input only references the output it spends by hash. This resolves that reference against the
-/// database first, and failing that against `outputs` (for an output that is created and spent within the same block),
-/// and populates the input with the full output data. Because the inputs are mutated in place, no cloning of the
-/// outputs or kernels is required.
+/// database first, and failing that against the body's own outputs (for an output that is created and spent within
+/// the same block), and populates the input with the full output data. The inputs are mutated in place, so the body
+/// itself, its outputs and its kernels are never cloned; only an output created and spent in the same block is
+/// cloned, since the block must keep its own copy of it.
 ///
 /// Returns [`ValidationError::UnknownInput`] if a referenced output cannot be found, meaning the block/transaction is
 /// invalid.
-pub fn hydrate_compact_inputs<B: BlockchainBackend>(
-    inputs: &mut [TransactionInput],
-    outputs: &[TransactionOutput],
-    db: &B,
-) -> Result<(), ValidationError> {
+pub fn hydrate_compact_inputs<B: BlockchainBackend>(body: &mut AggregateBody, db: &B) -> Result<(), ValidationError> {
+    let (inputs, outputs) = body.inputs_mut_with_outputs();
     for input in inputs.iter_mut() {
         if !input.is_compact() {
             continue;
@@ -141,10 +138,10 @@ pub fn hydrate_compact_inputs<B: BlockchainBackend>(
             Ok(None) => match outputs.iter().find(|o| o.hash() == input_output_hash) {
                 Some(found) => found.clone(),
                 None => {
+                    // A compact input carries only the output hash, so there is no commitment to log here.
                     debug!(
                         target: LOG_TARGET,
-                        "Input not found in database or block, commitment: {}, hash: {}",
-                        input.commitment()?.to_hex(), input_output_hash,
+                        "Input not found in database or block, output hash: {}", input_output_hash,
                     );
                     return Err(ValidationError::UnknownInput);
                 },
