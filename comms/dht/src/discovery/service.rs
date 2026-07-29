@@ -279,12 +279,11 @@ impl DhtDiscoveryService {
     ) -> Result<T, DhtPeerValidatorError> {
         match result {
             Ok(peer) => Ok(peer),
-            Err(err @ DhtPeerValidatorError::NewAndExistingMismatch { .. }) => Err(err),
-            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
-            Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
+            Err(err) if err.is_ban_offence() => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
                 Err(err)
             },
+            Err(err) => Err(err),
         }
     }
 

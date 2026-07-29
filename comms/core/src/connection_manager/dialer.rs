@@ -235,9 +235,12 @@ where
             Ok((conn, peer_identity)) => {
                 // try save the peer back to the peer manager
                 let peer = dial_state.peer_mut();
-                peer.update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_identity.claim.clone(),
-                });
+                peer.update_addresses(
+                    &peer_identity.permitted_addresses,
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: peer_identity.claim.clone(),
+                    },
+                );
                 peer.supported_protocols = peer_identity.metadata.supported_protocols;
                 peer.user_agent = peer_identity.metadata.user_agent;
 

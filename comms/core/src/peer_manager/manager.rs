@@ -367,11 +367,9 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     let mut addresses = Vec::new();
     for _i in 1..=rand::rng().random_range(1..4) {
         let n = [
-            match rand::rng().random_range(0..3) {
-                0 => rand::rng().random_range(1..10),   // Range excluding 10
-                1 => rand::rng().random_range(11..127), // Range excluding 127
-                _ => rand::rng().random_range(128..255),
-            },
+            // Use a range that is always globally routable according to the
+            // address classifier; internal-address tests add their own cases.
+            rand::rng().random_range(11..100),
             rand::rng().random_range(1..255),
             rand::rng().random_range(1..255),
             rand::rng().random_range(1..255),
