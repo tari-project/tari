@@ -1155,10 +1155,10 @@ mod test {
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         let mut inputs = tx5.body.inputs().clone();
         inputs[0] = tx1.body.inputs()[0].clone();
-        tx5.body = AggregateBody::new(inputs, tx5.body().outputs().clone(), tx5.body().kernels().clone());
+        tx5.body = AggregateBody::new_unsorted(inputs, tx5.body().outputs().clone(), tx5.body().kernels().clone());
         let mut inputs = tx6.body.inputs().clone();
         inputs[0] = tx3.body.inputs()[1].clone();
-        tx6.body = AggregateBody::new(inputs, tx6.body().outputs().clone(), tx6.body().kernels().clone());
+        tx6.body = AggregateBody::new_unsorted(inputs, tx6.body().outputs().clone(), tx6.body().kernels().clone());
         let tx5 = Arc::new(tx5);
         let tx6 = Arc::new(tx6);
 

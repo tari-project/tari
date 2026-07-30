@@ -634,7 +634,7 @@ mod test {
             .unwrap();
         let mut outputs = tx.body.outputs().clone();
         outputs[0].features.maturity = 1;
-        tx.body = AggregateBody::new(tx.body().inputs().clone(), outputs, tx.body().kernels().clone());
+        tx.body = AggregateBody::new_unsorted(tx.body().inputs().clone(), outputs, tx.body().kernels().clone());
         assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
@@ -934,7 +934,7 @@ mod test {
         kernel_1.excess_sig = CompressedSignature::new_from_schnorr(
             &kernel_1.excess_sig.to_schnorr_signature().unwrap() + &kernel_2.excess_sig.to_schnorr_signature().unwrap(),
         );
-        let mut body1 = AggregateBody::new(Vec::new(), vec![coinbase1, coinbase2], vec![kernel_1.clone()]);
+        let mut body1 = AggregateBody::new_unsorted(Vec::new(), vec![coinbase1, coinbase2], vec![kernel_1.clone()]);
         body1.sort();
 
         body1
@@ -998,7 +998,7 @@ mod test {
             .build()
             .unwrap();
 
-        let mut body2 = AggregateBody::new(Vec::new(), body1.outputs().clone(), vec![kernel_new]);
+        let mut body2 = AggregateBody::new_unsorted(Vec::new(), body1.outputs().clone(), vec![kernel_new]);
         body2.sort();
 
         body2
@@ -1116,7 +1116,7 @@ mod test {
             .build()
             .unwrap();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![coinbase1, coinbase2], vec![kernel]);
+        let mut body = AggregateBody::new_unsorted(Vec::new(), vec![coinbase1, coinbase2], vec![kernel]);
         body.sort();
 
         body.check_coinbase_output(

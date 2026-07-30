@@ -233,7 +233,7 @@ impl BlockBuilder {
     pub fn build(self) -> Block {
         let mut block = Block {
             header: self.header,
-            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
+            body: AggregateBody::new_unsorted(self.inputs, self.outputs, self.kernels),
         };
         block.body.sort();
         block

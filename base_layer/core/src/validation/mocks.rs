@@ -73,9 +73,9 @@ impl MockValidator {
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
-    fn validate_body(&self, _: &B, block: &Block) -> Result<Block, ValidationError> {
+    fn validate_body(&self, _: &B, block: Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            Ok(block.clone())
+            Ok(block)
         } else {
             Err(ValidationError::ConsensusError(
                 "This mock validator always returns an error".to_string(),

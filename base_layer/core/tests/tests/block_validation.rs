@@ -319,11 +319,11 @@ async fn inputs_are_not_malleable() {
     inputs[0].input_data = malicious_input.input_data;
     inputs[0].script_signature = malicious_input.script_signature;
 
-    block.body = AggregateBody::new(inputs, block.body.outputs().clone(), block.body.kernels().clone());
+    block.body = AggregateBody::new_unsorted(inputs, block.body.outputs().clone(), block.body.kernels().clone());
 
     let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
     let txn = blockchain.store().db_read_access().unwrap();
-    let err = validator.validate_body(&*txn, &block).unwrap_err();
+    let err = validator.validate_body(&*txn, block.clone()).unwrap_err();
 
     // All validations pass, except the Input MMR.
     unpack_enum!(ValidationError::BlockError(err) = err);
@@ -407,7 +407,8 @@ async fn test_orphan_validator() {
     let (mut template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, None, &key_manager);
     let outputs = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
-    template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
+    template.body =
+        AggregateBody::new_unsorted(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
@@ -456,7 +457,8 @@ async fn test_orphan_validator() {
     // lets break accounting
     let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, None, &key_manager);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
-    template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
+    template.body =
+        AggregateBody::new_unsorted(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 }
@@ -590,7 +592,8 @@ OutputFeatures::default()),
         key_manager_utxo.to_transaction_input(&key_manager).unwrap(),
         key_manager_utxo2.to_transaction_input(&key_manager).unwrap(),
     ];
-    new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
+    new_block.body =
+        AggregateBody::new_unsorted(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     new_block.header.nonce = rand::rng().next_u64();
     let timestamps = db.fetch_block_timestamps(new_block.header.prev_hash).unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
@@ -624,7 +627,8 @@ OutputFeatures::default()),
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
-    new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
+    new_block.body =
+        AggregateBody::new_unsorted(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     new_block.header.nonce = rand::rng().next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
@@ -882,7 +886,7 @@ async fn test_block_sync_body_validator() {
     let err = {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err()
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err()
     };
     assert!(
         matches!(
@@ -901,7 +905,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap();
+        validator.validate_body(&*txn, new_block.clone()).unwrap();
     }
 
     // lets break the block weight
@@ -925,7 +929,7 @@ async fn test_block_sync_body_validator() {
     let err = {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err()
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err()
     };
     assert!(
         matches!(
@@ -944,19 +948,20 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // lets break the sorting
     let (mut template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, None, &key_manager);
     let output = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
-    template.body = AggregateBody::new(template.body.inputs().clone(), output, template.body.kernels().clone());
+    template.body =
+        AggregateBody::new_unsorted(template.body.inputs().clone(), output, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // lets have unknown inputs;
@@ -987,11 +992,12 @@ async fn test_block_sync_body_validator() {
         unblinded_utxo.to_transaction_input(&key_manager).unwrap(),
         unblinded_utxo2.to_transaction_input(&key_manager).unwrap(),
     ];
-    new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
+    new_block.body =
+        AggregateBody::new_unsorted(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // lets check duplicate txos
@@ -1001,11 +1007,12 @@ async fn test_block_sync_body_validator() {
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
-    new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
+    new_block.body =
+        AggregateBody::new_unsorted(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // let break coinbase value
@@ -1027,7 +1034,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // let break coinbase lock height
@@ -1049,19 +1056,20 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap();
+        validator.validate_body(&*txn, new_block.clone()).unwrap();
     }
 
     // lets break accounting
     let (mut template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, None, &key_manager);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
-    template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
+    template.body =
+        AggregateBody::new_unsorted(template.body.inputs().clone(), outputs, template.body.kernels().clone());
     let new_block = db.prepare_new_block(template).unwrap();
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 
     // lets the mmr root
@@ -1071,7 +1079,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, new_block.clone()).unwrap_err();
     }
 }
 

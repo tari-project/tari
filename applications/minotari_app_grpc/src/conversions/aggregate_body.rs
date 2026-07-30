@@ -53,7 +53,7 @@ impl TryFrom<grpc::AggregateBody> for AggregateBody {
         let inputs = try_convert_all(body.inputs).map_err(|err: String| format!("inputs {err}"))?;
         let outputs = try_convert_all(body.outputs).map_err(|err: String| format!("outputs {err}"))?;
         let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {err}"))?;
-        let body = AggregateBody::new(inputs, outputs, kernels);
+        let body = AggregateBody::new_unsorted(inputs, outputs, kernels);
         Ok(body)
     }
 }

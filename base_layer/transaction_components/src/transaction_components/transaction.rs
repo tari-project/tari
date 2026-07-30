@@ -66,7 +66,7 @@ impl Transaction {
     ) -> Self {
         Self {
             offset,
-            body: AggregateBody::new(inputs, outputs, kernels),
+            body: AggregateBody::new_unsorted(inputs, outputs, kernels),
             script_offset,
         }
     }

@@ -73,7 +73,7 @@ impl AggregateBody {
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
-    pub fn new(
+    pub fn new_unsorted(
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
@@ -99,6 +99,15 @@ impl AggregateBody {
             outputs,
             kernels,
         }
+    }
+
+    /// Provide mutable access to the input list alongside read-only access to the output list.
+    ///
+    /// This exists so that compact inputs can be hydrated in place against the outputs created in the same body.
+    /// Hydrating an input does not change its output hash, which is what the input ordering is based on, so the
+    /// `sorted` flag remains valid.
+    pub fn inputs_mut_with_outputs(&mut self) -> (&mut [TransactionInput], &[TransactionOutput]) {
+        (&mut self.inputs, &self.outputs)
     }
 
     /// Provide read-only access to the input list

@@ -621,7 +621,7 @@ mod test {
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
+        let mut body = AggregateBody::new_unsorted(Vec::new(), vec![output1.clone(), output2.clone()], vec![
             kernel1.clone(),
             kernel2.clone(),
         ]);
@@ -633,7 +633,7 @@ mod test {
         body.add_outputs(vec![output3.clone()]);
         assert!(check_total_burned(&body).is_err());
         // Lets try one with a commitment with no kernel
-        let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
+        let body2 = AggregateBody::new_unsorted(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
         assert!(check_total_burned(&body2).is_err());
     }
 
