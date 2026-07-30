@@ -58,7 +58,6 @@ use tari_common::{
 };
 use tari_common_types::seeds::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
-use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
 use wallet_modes::{WalletMode, command_mode, grpc_mode, recovery_mode, script_mode, tui_mode};
 
@@ -133,11 +132,10 @@ pub fn run_wallet_with_cli(
         consts::APP_VERSION
     );
 
-    let password = get_password(config, &cli);
     // Whether the passphrase was supplied up front, i.e. without the wallet having to prompt for it
-    let password_supplied = password.is_some();
+    let password_supplied = password_supplied(config, &cli);
 
-    if password.is_none() {
+    if !password_supplied {
         tari_splash_screen("Console Wallet");
     }
 
@@ -154,7 +152,7 @@ pub fn run_wallet_with_cli(
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli, &wallet_type)?;
 
-    // get command line password if provided
+    // Determine where, if anywhere, the seed words should be written on startup
     let seed_words_file_name = match cli.seed_words_file_name.clone() {
         // The passphrase was not supplied up front, so the user is here interactively; make sure that writing the
         // seed words to disk in the clear is really what they want.
@@ -265,11 +263,10 @@ pub fn run_wallet_with_cli(
     result
 }
 
-fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
-    cli.password
-        .as_ref()
-        .or(config.wallet.password.as_ref())
-        .map(|s| s.to_owned())
+/// Returns `true` if the wallet passphrase was supplied on the command line or in the config file, meaning the wallet
+/// will not have to prompt the user for it.
+fn password_supplied(config: &ApplicationConfig, cli: &Cli) -> bool {
+    cli.password.is_some() || config.wallet.password.is_some()
 }
 
 fn get_recovery_seed(
