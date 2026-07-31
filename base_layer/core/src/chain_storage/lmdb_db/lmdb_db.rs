@@ -2661,6 +2661,23 @@ impl LMDBDatabase {
         // A hash may map to multiple indexes; collect them all so every associated row is pruned.
         let key_entries =
             lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?;
+
+        // The commitment index is pruned even when the hash->index mapping is already gone: a previous partial prune
+        // can leave a stale commitment entry behind, which would otherwise keep resolving to this output hash.
+        if !matches!(output_type, OutputType::Burn) {
+            trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
+            if key_entries.is_empty() {
+                lmdb_delete_if_exists(write_txn, &self.utxo_commitment_index, commitment.as_bytes())?;
+            } else {
+                lmdb_delete(
+                    write_txn,
+                    &self.utxo_commitment_index,
+                    commitment.as_bytes(),
+                    "utxo_commitment_index",
+                )?;
+            }
+        }
+
         if key_entries.is_empty() {
             // The output is already absent. This is expected during horizon sync when a previous attempt
             // pruned this STXO but failed before cleanup could restore it, so the retry finds it gone.
@@ -2670,16 +2687,6 @@ impl LMDBDatabase {
                 output_hash.to_hex()
             );
             return Ok(());
-        }
-
-        if !matches!(output_type, OutputType::Burn) {
-            trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
-            lmdb_delete(
-                write_txn,
-                &self.utxo_commitment_index,
-                commitment.as_bytes(),
-                "utxo_commitment_index",
-            )?;
         }
 
         for key_bytes in key_entries {

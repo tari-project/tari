@@ -537,14 +537,23 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::MinedInfo(output_info))
             },
             NodeCommsRequest::FetchMinedInfoByOutputHash(output_hash) => {
-                // A hash may be indexed under multiple headers; return the entry with the highest-mined output.
-                let result = self
+                // A hash may be indexed under multiple headers; return the entry with the highest-mined output. Entries
+                // without an output (the output was pruned but the spend is still indexed) still carry spent status,
+                // so fall back to the highest-spent one of those rather than reporting nothing.
+                let (mined, spent_only): (Vec<_>, Vec<_>) = self
                     .blockchain_db
                     .fetch_mined_info_by_output_hash(output_hash)
                     .await?
                     .into_iter()
-                    .filter(|info| info.output.is_some())
+                    .partition(|info| info.output.is_some());
+                let result = mined
+                    .into_iter()
                     .max_by_key(|info| info.output.as_ref().map_or(0, |o| o.mined_height))
+                    .or_else(|| {
+                        spent_only
+                            .into_iter()
+                            .max_by_key(|info| info.input.as_ref().map_or(0, |i| i.spent_height))
+                    })
                     .unwrap_or(MinedInfo {
                         input: None,
                         output: None,

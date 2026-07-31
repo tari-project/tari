@@ -189,7 +189,14 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
                     header_height, spent_height
                 )));
             }
-            if let Some(OutputMinedInfo { mined_height, .. }) = db.fetch_outputs(&input_output_hash)?.into_iter().next()
+            // The hash can be indexed under several headers (e.g. across reorg history). The input is valid as long
+            // as it was mined at or before it was spent, so compare against the latest mined height rather than an
+            // arbitrary entry.
+            if let Some(mined_height) = db
+                .fetch_outputs(&input_output_hash)?
+                .into_iter()
+                .map(|OutputMinedInfo { mined_height, .. }| mined_height)
+                .max()
             {
                 if spent_height < mined_height {
                     return Err(ValidationError::InputSpentBeforeMined(format!(

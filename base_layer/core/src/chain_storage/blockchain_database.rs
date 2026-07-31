@@ -1339,15 +1339,15 @@ where B: BlockchainBackend
         db.fetch_chain_metadata()
     }
 
-    /// Returns a copy of the current output mined info. A hash can be indexed under more than one
-    /// header;
+    /// Returns the mined info for every output with this hash, one entry per header it is indexed under. A hash can be
+    /// indexed under more than one header, for example across reorg history.
     pub fn fetch_outputs(&self, output_hash: HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_outputs(&output_hash)
     }
 
-    /// Returns optional input mined info for the given output hash. A hash can be indexed under more
-    /// than one header;
+    /// Returns the mined info for every input spending this output hash, one entry per header it is indexed under. A
+    /// hash can be indexed under more than one header, for example across reorg history.
     pub fn fetch_inputs(&self, output_hash: HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_inputs(&output_hash)

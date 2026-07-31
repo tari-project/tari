@@ -140,10 +140,12 @@ pub fn hydrate_compact_inputs<B: BlockchainBackend>(body: &mut AggregateBody, db
                     if let Some(found) = outputs.iter().find(|o| o.hash() == input_output_hash) {
                         found.clone()
                     } else {
+                        // Only the output hash is available here: this input is compact, so every other
+                        // accessor (including `commitment()`) would fail with `CompactInputMissingData`.
                         debug!(
                             target: LOG_TARGET,
-                            "Input not found in database or block, commitment: {}, hash: {}",
-                            input.commitment()?.to_hex(), input_output_hash,
+                            "Input not found in database or block, hash: {}",
+                            input_output_hash,
                         );
                         return Err(ValidationError::UnknownInput);
                     }

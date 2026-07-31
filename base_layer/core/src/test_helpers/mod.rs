@@ -175,9 +175,14 @@ pub fn create_block<TDB: BlockchainBackend>(
         .unwrap();
     let mut block = apply_mmr_to_block(db, block);
 
-    // Outputs are added to the SMT and spent inputs are removed, so the net size change accounts for both.
-    block.header.output_smt_size =
-        prev_block.header.output_smt_size + block.body.outputs().len() as u64 - block.body.inputs().len() as u64;
+    // Outputs are added to the SMT and spent inputs are removed, so the net size change accounts for both. Saturating
+    // arithmetic keeps this from wrapping when a test builds a block that spends more than the SMT holds, for example
+    // when the coinbase is skipped.
+    block.header.output_smt_size = prev_block
+        .header
+        .output_smt_size
+        .saturating_add(block.body.outputs().len() as u64)
+        .saturating_sub(block.body.inputs().len() as u64);
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)
