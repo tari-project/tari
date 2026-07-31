@@ -132,22 +132,21 @@ pub fn hydrate_compact_inputs<B: BlockchainBackend>(body: &mut AggregateBody, db
             continue;
         }
         let input_output_hash = input.output_hash();
-            let output = match db.fetch_outputs(&input_output_hash) {
-                Ok(val) => match val.into_iter().next() {
-                    Some(output_mined_info) => output_mined_info.output,
-                    None => {
-                        // Input is found in this block
-                        if let Some(found) = body.outputs().iter().find(|o| o.hash() == input_output_hash) {
-                            found.clone()
-                        } else {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Input not found in database or block, commitment: {}, hash: {}",
-                                input.commitment()?.to_hex(), input_output_hash,
-                            );
-                            return Err(ValidationError::UnknownInput);
-                        }
-                    },
+        let output = match db.fetch_outputs(&input_output_hash) {
+            Ok(val) => match val.into_iter().next() {
+                Some(output_mined_info) => output_mined_info.output,
+                None => {
+                    // Input is found in this block
+                    if let Some(found) = outputs.iter().find(|o| o.hash() == input_output_hash) {
+                        found.clone()
+                    } else {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Input not found in database or block, commitment: {}, hash: {}",
+                            input.commitment()?.to_hex(), input_output_hash,
+                        );
+                        return Err(ValidationError::UnknownInput);
+                    }
                 },
             },
             Err(e) => return Err(ValidationError::from(e)),

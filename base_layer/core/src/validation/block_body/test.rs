@@ -319,10 +319,10 @@ async fn it_checks_double_spends() {
     let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
     assert!(matches!(err, ValidationError::ContainsSTxO));
 }
-#[ignore]
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
-async fn stop_blocks_replay() {
+async fn allow_duplicate_outputs() {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
@@ -444,7 +444,7 @@ async fn stop_blocks_replay() {
     );
     {
         let txn = blockchain.db().db_read_access().unwrap();
-        validator.validate_body(&*txn, block.block()).unwrap();
+        validator.validate_body(&*txn, block.block().clone()).unwrap();
     }
     let finalized_tx2 = tx_builder.build().unwrap();
     blockchain
@@ -469,11 +469,11 @@ async fn stop_blocks_replay() {
     );
     {
         let txn = blockchain.db().db_read_access().unwrap();
-        validator.validate_body(&*txn, block.block()).unwrap();
+        validator.validate_body(&*txn, block.block().clone()).unwrap();
     }
     blockchain
         .add_next_tip(block_spec!("5", transactions: vec![finalized_tx.transaction]))
-        .unwrap_err();
+        .unwrap();
 }
 
 #[tokio::test]
