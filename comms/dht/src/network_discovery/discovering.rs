@@ -329,12 +329,26 @@ impl Discovering {
                 warn!(target: LOG_TARGET, "Discovering: Sync peer `{sync_peer}` sent duplicate peer: {err:?}");
                 return Err(err);
             }
-            self.validate_and_add_peer(new_peer).await.inspect_err(|err| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Discovering: Failed to validate and add peer from sync peer `{sync_peer}`: {err:?}"
-                );
-            })?;
+            match self.validate_and_add_peer(new_peer).await {
+                Ok(()) => {},
+                Err(NetworkDiscoveryError::PeerValidationError(err)) => {
+                    // A sync peer merely relays signed claims. Skip a bad or
+                    // unusable claim without truncating the rest of the stream;
+                    // otherwise the same entry can permanently block every
+                    // subsequent peer in each discovery round.
+                    warn!(
+                        target: LOG_TARGET,
+                        "Discovering: Skipping peer relayed by sync peer `{sync_peer}` after validation failed: {err:?}"
+                    );
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Discovering: Failed to add peer from sync peer `{sync_peer}`: {err:?}"
+                    );
+                    return Err(err);
+                },
+            }
         }
 
         Ok(())

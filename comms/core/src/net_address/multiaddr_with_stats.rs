@@ -44,7 +44,7 @@ pub fn is_external_address(address: &Multiaddr) -> bool {
 }
 
 fn is_internal_ipv4(addr: Ipv4Addr) -> bool {
-    let [first_octet, ..] = addr.octets();
+    let [first_octet, second_octet, third_octet, ..] = addr.octets();
     addr.is_unspecified() ||
         addr.is_loopback() ||
         addr.is_private() ||
@@ -52,17 +52,29 @@ fn is_internal_ipv4(addr: Ipv4Addr) -> bool {
         addr.is_multicast() ||
         addr.is_broadcast() ||
         addr.is_documentation() ||
+        // Shared address space (RFC 6598).
+        (first_octet == 100 && (64..=127).contains(&second_octet)) ||
+        // Deprecated 6to4 relay anycast (RFC 7526).
+        (first_octet == 192 && second_octet == 88 && third_octet == 99) ||
+        // Benchmarking networks (RFC 2544).
+        (first_octet == 198 && (18..=19).contains(&second_octet)) ||
         first_octet == 0 ||
         first_octet >= 240
 }
 
 fn is_internal_ipv6(addr: Ipv6Addr) -> bool {
-    let [first_segment, second_segment, ..] = addr.segments();
+    let [first_segment, second_segment, third_segment, fourth_segment, ..] = addr.segments();
     addr.is_unspecified() ||
         addr.is_loopback() ||
         addr.is_unique_local() ||
         addr.is_unicast_link_local() ||
         addr.is_multicast() ||
+        // Discard-only prefix (RFC 6666).
+        (first_segment == 0x0100 && second_segment == 0 && third_segment == 0 && fourth_segment == 0) ||
+        // Teredo (RFC 4380), 6to4 (RFC 3056), and deprecated site-local space.
+        (first_segment == 0x2001 && second_segment == 0) ||
+        first_segment == 0x2002 ||
+        (first_segment & 0xffc0) == 0xfec0 ||
         (first_segment == 0x2001 && second_segment == 0x0db8) ||
         addr.to_ipv4().is_some_and(is_internal_ipv4)
 }
@@ -550,15 +562,24 @@ mod test {
         let internal = [
             "/ip4/0.1.2.3/tcp/8000",
             "/ip4/10.0.0.1/tcp/8000",
+            "/ip4/100.64.0.1/tcp/8000",
+            "/ip4/100.127.255.254/tcp/8000",
             "/ip4/127.0.0.1/tcp/8000",
             "/ip4/169.254.1.1/tcp/8000",
             "/ip4/192.0.2.1/tcp/8000",
+            "/ip4/192.88.99.1/tcp/8000",
+            "/ip4/198.18.0.1/tcp/8000",
+            "/ip4/198.19.255.254/tcp/8000",
             "/ip4/224.0.0.1/tcp/8000",
             "/ip4/240.0.0.1/tcp/8000",
             "/ip4/255.255.255.255/tcp/8000",
             "/ip6/::ffff:127.0.0.1/tcp/8000",
             "/ip6/::192.168.0.1/tcp/8000",
+            "/ip6/100::1/tcp/8000",
+            "/ip6/2001::1/tcp/8000",
             "/ip6/2001:db8::1/tcp/8000",
+            "/ip6/2002:c000:0204::1/tcp/8000",
+            "/ip6/fec0::1/tcp/8000",
             "/ip6/ff02::1/tcp/8000",
             "/dns4/localhost/tcp/8000",
             "/dns4/node.local/tcp/8000",

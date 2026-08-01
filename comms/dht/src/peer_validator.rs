@@ -51,10 +51,11 @@ impl DhtPeerValidatorError {
     /// misconfigured. Dropping that update is sufficient; it is not evidence of
     /// hostile behavior.
     pub fn is_ban_offence(&self) -> bool {
-        !matches!(
-            self,
-            Self::NewAndExistingMismatch { .. } | Self::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. })
-        )
+        match self {
+            Self::ValidatorError(err) => err.is_ban_offence(),
+            Self::IdentityTooManyClaims { .. } => true,
+            Self::NewAndExistingMismatch { .. } => false,
+        }
     }
 }
 
@@ -149,7 +150,7 @@ impl<'a> PeerValidator<'a> {
                 );
                 return Ok(peer);
             }
-            return Err(PeerValidatorError::PeerHasNoAddresses { peer: node_id }.into());
+            return Err(PeerValidatorError::PeerHasNoUsableAddresses { peer: node_id }.into());
         }
 
         Ok(peer)
@@ -195,6 +196,11 @@ mod tests {
     #[test]
     fn peers_without_usable_addresses_are_not_ban_offences() {
         let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses {
+            peer: NodeId::default(),
+        });
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoUsableAddresses {
             peer: NodeId::default(),
         });
         assert!(!error.is_ban_offence());
@@ -304,7 +310,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses { .. })
+            DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoUsableAddresses { .. })
         ));
     }
 

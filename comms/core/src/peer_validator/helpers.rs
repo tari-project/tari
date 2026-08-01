@@ -33,8 +33,11 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::peer_validator";
 
-/// Checks that the given peer addresses are well-formed and valid. If test addresses are not allowed, local, private
-/// and memory addresses are rejected.
+/// Strictly checks that every peer address is well-formed and permitted.
+///
+/// This is an all-or-nothing helper. Signed claims received from peers should
+/// normally use [`validate_and_filter_peer_identity_claim_addresses`] so that
+/// one local address does not discard an otherwise usable claim.
 pub fn validate_addresses(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
     if addresses.is_empty() {
         debug!(target: LOG_TARGET, "validate_addresses - no addresses to validate.");
@@ -65,6 +68,13 @@ pub fn find_most_recent_claim<'a, I: IntoIterator<Item = &'a PeerIdentityClaim>>
     claims.into_iter().max_by_key(|c| c.signature.updated_at())
 }
 
+/// Strictly validates a signature and rejects the entire claim if any address
+/// is disallowed.
+///
+/// Network ingestion paths should normally use
+/// [`validate_and_filter_peer_identity_claim_addresses`] instead. This strict
+/// variant remains available for callers that explicitly require every
+/// advertised address to pass the configured policy.
 pub fn validate_peer_identity_claim(
     config: &PeerValidatorConfig,
     public_key: &CommsPublicKey,
@@ -105,6 +115,11 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
         // transports for the filtering step.
         validate_address(addr, true)?;
     }
+    // Do not skip authentication when every address will be filtered. The
+    // handshake and existing-peer paths may retain an authenticated claim with
+    // an empty permitted set, and accepting it without this check would allow
+    // unsigned identity metadata. DHT message rate limiting bounds the cost of
+    // repeatedly submitting validly structured all-local claims.
     validate_peer_identity_claim_signature(public_key, claim)?;
 
     if config.allow_test_addresses {
