@@ -8,6 +8,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
 
@@ -22,6 +23,77 @@ const LOG_TARGET: &str = "comms::net_address::multiaddr_with_stats";
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 const MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT: u32 = 100;
+
+/// Returns true if an address is suitable for sharing with external peers.
+///
+/// This classification is intentionally separate from structural multiaddress
+/// validation. It excludes local IP ranges, IPv4-mapped local IPv6 addresses,
+/// and DNS namespaces conventionally reserved for local use.
+pub fn is_external_address(address: &Multiaddr) -> bool {
+    let Some(protocol) = address.iter().next() else {
+        return false;
+    };
+
+    match protocol {
+        Protocol::Ip4(ip) => !is_internal_ipv4(ip),
+        Protocol::Ip6(ip) => !is_internal_ipv6(ip),
+        Protocol::Dns4(name) | Protocol::Dns6(name) | Protocol::Dnsaddr(name) => !is_internal_dns_name(name.as_ref()),
+        // Structural validation decides whether other protocols are supported.
+        _ => true,
+    }
+}
+
+fn is_internal_ipv4(addr: Ipv4Addr) -> bool {
+    let [first_octet, second_octet, third_octet, ..] = addr.octets();
+    addr.is_unspecified() ||
+        addr.is_loopback() ||
+        addr.is_private() ||
+        addr.is_link_local() ||
+        addr.is_multicast() ||
+        addr.is_broadcast() ||
+        addr.is_documentation() ||
+        // Shared address space (RFC 6598).
+        (first_octet == 100 && (64..=127).contains(&second_octet)) ||
+        // Deprecated 6to4 relay anycast (RFC 7526).
+        (first_octet == 192 && second_octet == 88 && third_octet == 99) ||
+        // Benchmarking networks (RFC 2544).
+        (first_octet == 198 && (18..=19).contains(&second_octet)) ||
+        first_octet == 0 ||
+        first_octet >= 240
+}
+
+fn is_internal_ipv6(addr: Ipv6Addr) -> bool {
+    let [first_segment, second_segment, third_segment, fourth_segment, ..] = addr.segments();
+    addr.is_unspecified() ||
+        addr.is_loopback() ||
+        addr.is_unique_local() ||
+        addr.is_unicast_link_local() ||
+        addr.is_multicast() ||
+        // Discard-only prefix (RFC 6666).
+        (first_segment == 0x0100 && second_segment == 0 && third_segment == 0 && fourth_segment == 0) ||
+        // Teredo (RFC 4380), 6to4 (RFC 3056), and deprecated site-local space.
+        (first_segment == 0x2001 && second_segment == 0) ||
+        first_segment == 0x2002 ||
+        (first_segment & 0xffc0) == 0xfec0 ||
+        (first_segment == 0x2001 && second_segment == 0x0db8) ||
+        addr.to_ipv4().is_some_and(is_internal_ipv4)
+}
+
+fn is_internal_dns_name(addr: &str) -> bool {
+    let addr = addr.trim_end_matches('.');
+    if let Ok(ip) = addr.parse::<IpAddr>() {
+        return match ip {
+            IpAddr::V4(ip) => is_internal_ipv4(ip),
+            IpAddr::V6(ip) => is_internal_ipv6(ip),
+        };
+    }
+
+    let addr = addr.to_ascii_lowercase();
+    const INTERNAL_DNS_NAMES: &[&str] = &["localhost", "local", "localdomain", "internal", "lan", "home.arpa"];
+    INTERNAL_DNS_NAMES
+        .iter()
+        .any(|name| addr == *name || addr.strip_suffix(name).is_some_and(|prefix| prefix.ends_with('.')))
+}
 
 #[derive(Debug, Eq, Clone, Deserialize, Serialize)]
 pub struct MultiaddrWithStats {
@@ -144,18 +216,10 @@ impl MultiaddrWithStats {
         &self.address
     }
 
-    /// Returns true if the address is an external address, i.e. not a loopback, unspecified or private IP address.
+    /// Returns true if the address is externally routable rather than a local, reserved, documentation or test
+    /// address.
     pub fn is_external(&self) -> bool {
-        if self.address.is_empty() {
-            return false;
-        }
-        let mut protocols = self.address.iter();
-        let internal = match protocols.next() {
-            Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
-            Some(Protocol::Ip6(ip)) => ip.is_loopback() || ip.is_unspecified(),
-            _ => false, // onion3 etc = OK
-        };
-        !internal
+        is_external_address(&self.address)
     }
 
     pub fn offline_at(&self) -> Option<NaiveDateTime> {
@@ -482,6 +546,58 @@ impl PartialEq for PeerAddressSource {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_is_external_address() {
+        let external = [
+            "/ip4/1.1.1.1/tcp/8000",
+            "/ip6/2606:4700:4700::1111/tcp/8000",
+            "/dns4/example.com/tcp/8000",
+            "/dns4/mylocal.com/tcp/8000",
+            "/dns4/internal-node.example.com/tcp/8000",
+            "/dns4/locallake.io/tcp/8000",
+            "/dns4/LOCALHOST.example.com/tcp/8000",
+            "/dns4/example.com./tcp/8000",
+        ];
+        let internal = [
+            "/ip4/0.1.2.3/tcp/8000",
+            "/ip4/10.0.0.1/tcp/8000",
+            "/ip4/100.64.0.1/tcp/8000",
+            "/ip4/100.127.255.254/tcp/8000",
+            "/ip4/127.0.0.1/tcp/8000",
+            "/ip4/169.254.1.1/tcp/8000",
+            "/ip4/192.0.2.1/tcp/8000",
+            "/ip4/192.88.99.1/tcp/8000",
+            "/ip4/198.18.0.1/tcp/8000",
+            "/ip4/198.19.255.254/tcp/8000",
+            "/ip4/224.0.0.1/tcp/8000",
+            "/ip4/240.0.0.1/tcp/8000",
+            "/ip4/255.255.255.255/tcp/8000",
+            "/ip6/::ffff:127.0.0.1/tcp/8000",
+            "/ip6/::192.168.0.1/tcp/8000",
+            "/ip6/100::1/tcp/8000",
+            "/ip6/2001::1/tcp/8000",
+            "/ip6/2001:db8::1/tcp/8000",
+            "/ip6/2002:c000:0204::1/tcp/8000",
+            "/ip6/fec0::1/tcp/8000",
+            "/ip6/ff02::1/tcp/8000",
+            "/dns4/localhost/tcp/8000",
+            "/dns4/node.local/tcp/8000",
+            "/dns4/node.internal./tcp/8000",
+            "/dns4/127.0.0.1/tcp/8000",
+            "/dns6/printer.lan/tcp/8000",
+            "/dnsaddr/home.arpa/tcp/8000",
+        ];
+
+        for address in external {
+            let address = address.parse().unwrap();
+            assert!(is_external_address(&address), "{address} should be external");
+        }
+        for address in internal {
+            let address = address.parse().unwrap();
+            assert!(!is_external_address(&address), "{address} should not be external");
+        }
+    }
 
     #[test]
     fn test_update_latency() {

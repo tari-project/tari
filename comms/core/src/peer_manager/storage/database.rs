@@ -41,7 +41,7 @@ use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_utilities::{hex, hex::Hex};
 
 use crate::{
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
+    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource, is_external_address},
     peer_manager::{
         NodeId,
         Peer,
@@ -50,7 +50,7 @@ use crate::{
         PeerId,
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
-        storage::schema::{multi_addresses, node_identity, peers},
+        storage::schema::{db_metadata, multi_addresses, node_identity, peers},
     },
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
@@ -64,6 +64,13 @@ const LOG_TARGET: &str = "comms::peer_manager::storage::db";
 /// peers. Peers are gossiped far faster than they are re-verified, so without a recency bound the
 /// candidate set is dominated by peers that were reachable once and have long since gone.
 const KNOWN_GOOD_LAST_SEEN_WINDOW: TimeDelta = TimeDelta::hours(1);
+
+/// `db_metadata` key holding the [`ADDRESS_CLASSIFIER_VERSION`] this database was last classified
+/// with.
+const ADDRESS_CLASSIFIER_VERSION_KEY: &str = "address_classifier_version";
+/// Bump this whenever [`is_external_address`] changes, so that stored classifications are recomputed
+/// once on the next start.
+const ADDRESS_CLASSIFIER_VERSION: u32 = 1;
 
 /// This peer's identity information
 #[derive(Clone)]
@@ -92,7 +99,85 @@ impl PeerDatabaseSql {
             },
         };
         PeerDatabaseSql::add_this_peer_node_identity_to_db(&instance)?;
+        PeerDatabaseSql::reclassify_stored_address_externality(&instance)?;
         Ok(instance)
+    }
+
+    /// Recomputes the persisted `is_external` flag for every stored address, once per classifier
+    /// version.
+    ///
+    /// The flag is derived from the address itself, so widening the classifier leaves existing rows
+    /// stale. Rows are only rewritten by the normal update path when a peer publishes a strictly
+    /// newer signed claim, and an address that the peer validator now filters out is never handed to
+    /// that path again - so without this pass a local address stored by an older version would keep
+    /// `is_external = true` indefinitely, and keep being served to other nodes by the queries that
+    /// filter on it.
+    ///
+    /// This is a data migration rather than startup work: the classifier lives in Rust, so it cannot
+    /// run from a migration's `up.sql` the way `2025-07-19-085200_external_flag` did. Once the pass
+    /// has run, the applied [`ADDRESS_CLASSIFIER_VERSION`] is recorded and later starts do nothing
+    /// beyond reading it back.
+    fn reclassify_stored_address_externality(&self) -> Result<(), StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let applied_version = db_metadata::table
+                .filter(db_metadata::key.eq(ADDRESS_CLASSIFIER_VERSION_KEY))
+                .select(db_metadata::value)
+                .first::<String>(conn)
+                .optional()?
+                .and_then(|version| version.parse::<u32>().ok());
+            if applied_version == Some(ADDRESS_CLASSIFIER_VERSION) {
+                return Ok(());
+            }
+
+            let stored = multi_addresses::table
+                .select((
+                    multi_addresses::address_id,
+                    multi_addresses::address,
+                    multi_addresses::is_external,
+                ))
+                .load::<(Option<i32>, String, bool)>(conn)?;
+
+            let mut reclassified = 0usize;
+            for (address_id, address, was_external) in stored {
+                let Some(address_id) = address_id else {
+                    continue;
+                };
+                // An address we can no longer parse can never be dialled, so it is not external.
+                let is_external = Multiaddr::from_str(&address).is_ok_and(|addr| is_external_address(&addr));
+                if is_external == was_external {
+                    continue;
+                }
+
+                diesel::update(multi_addresses::table.filter(multi_addresses::address_id.eq(address_id)))
+                    .set(multi_addresses::is_external.eq(is_external))
+                    .execute(conn)?;
+                trace!(
+                    target: LOG_TARGET,
+                    "Reclassified stored address '{address}' as {}external",
+                    if is_external { "" } else { "not " }
+                );
+                reclassified += 1;
+            }
+
+            if reclassified > 0 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Reclassified {reclassified} stored peer address(es) against address classifier \
+                     v{ADDRESS_CLASSIFIER_VERSION}"
+                );
+            }
+
+            diesel::replace_into(db_metadata::table)
+                .values((
+                    db_metadata::key.eq(ADDRESS_CLASSIFIER_VERSION_KEY),
+                    db_metadata::value.eq(ADDRESS_CLASSIFIER_VERSION.to_string()),
+                ))
+                .execute(conn)?;
+
+            Ok(())
+        })
     }
 
     /// Get this peer's identity
@@ -1604,13 +1689,69 @@ mod tests {
             database::{MIGRATIONS, NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql},
             manager::create_test_peer_with_onion_address,
             storage::{
-                database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
-                schema::{multi_addresses, peers},
+                database::{ADDRESS_CLASSIFIER_VERSION_KEY, duration_to_i64_ms_infallible, u32_to_i32_infallible},
+                schema::{db_metadata, multi_addresses, peers},
             },
         },
         protocol::ProtocolId,
         types::{CommsPublicKey, TransportProtocol},
     };
+
+    #[test]
+    fn test_stored_address_externality_is_reclassified_once_per_classifier_version() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &this_peer).unwrap();
+
+        let external: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let internal: Multiaddr = "/ip4/192.168.1.2/tcp/18189".parse().unwrap();
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peer.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![external.clone(), internal.clone()],
+            &PeerAddressSource::Config,
+        );
+        peers_db.add_or_update_peer(peer).unwrap();
+
+        // Rows written by a version whose classifier disagreed with the current one. They are never
+        // handed back to the update path, so only an explicit pass can fix them.
+        let misclassify = |conn: &mut _| {
+            for (address, is_external) in [(&internal, true), (&external, false)] {
+                diesel::update(multi_addresses::table.filter(multi_addresses::address.eq(address.to_string())))
+                    .set(multi_addresses::is_external.eq(is_external))
+                    .execute(conn)
+                    .unwrap();
+            }
+        };
+        let is_external = |conn: &mut _, address: &Multiaddr| {
+            multi_addresses::table
+                .filter(multi_addresses::address.eq(address.to_string()))
+                .select(multi_addresses::is_external)
+                .first::<bool>(conn)
+                .unwrap()
+        };
+
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        misclassify(&mut conn);
+        // An upgrade from a build that predates the classifier version marker.
+        diesel::delete(db_metadata::table.filter(db_metadata::key.eq(ADDRESS_CLASSIFIER_VERSION_KEY)))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        // Opening the database reclassifies them without waiting for a newer signed claim.
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &this_peer).unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        assert!(is_external(&mut conn, &external));
+        assert!(!is_external(&mut conn, &internal));
+
+        // The applied version is recorded, so a later start does no work at all.
+        misclassify(&mut conn);
+        drop(conn);
+        let peers_db = PeerDatabaseSql::new(db_connection, &this_peer).unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        assert!(!is_external(&mut conn, &external));
+        assert!(is_external(&mut conn, &internal));
+    }
 
     #[test]
     fn test_add_update_peer_with_addresses() {

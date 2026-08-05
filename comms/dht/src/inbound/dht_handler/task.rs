@@ -41,7 +41,7 @@ use crate::{
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
-    peer_validator::{DhtPeerValidatorError, PeerValidator},
+    peer_validator::PeerValidator,
     proto::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
@@ -467,15 +467,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok(r) => Ok(r),
             Err(err) => {
                 match &err {
-                    DhtInboundError::PeerValidatorError(err) => match err {
-                        DhtPeerValidatorError::NewAndExistingMismatch { .. } => {},
-                        err @ DhtPeerValidatorError::ValidatorError(_) |
-                        err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
-                            self.dht
-                                .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
-                                .await;
-                        },
+                    DhtInboundError::PeerValidatorError(err) if err.is_ban_offence() => {
+                        self.dht
+                            .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
+                            .await;
                     },
+                    DhtInboundError::PeerValidatorError(_) => {},
                     err @ DhtInboundError::MessageError(_) | err @ DhtInboundError::InvalidMessageBody => {
                         self.dht
                             .ban_peer(authenticated_pk.clone(), OffenceSeverity::High, err)

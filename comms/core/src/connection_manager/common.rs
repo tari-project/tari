@@ -36,7 +36,7 @@ use crate::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim, PeerManagerError},
-    peer_validator::{PeerValidatorConfig, PeerValidatorError, validate_peer_identity_claim},
+    peer_validator::{PeerValidatorConfig, PeerValidatorError, validate_and_filter_peer_identity_claim_addresses},
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
@@ -48,6 +48,11 @@ const LOG_TARGET: &str = "comms::connection_manager::common";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatedPeerIdentityExchange {
     pub claim: PeerIdentityClaim,
+    /// Addresses from `claim` that this node is permitted to store and dial.
+    ///
+    /// The unmodified claim is retained separately because its signature and
+    /// provenance cover the original address list.
+    pub permitted_addresses: Vec<Multiaddr>,
     pub metadata: PeerIdentityMetadata,
 }
 
@@ -204,10 +209,12 @@ pub(super) fn validate_peer_identity_message(
             .try_into()?,
     };
 
-    validate_peer_identity_claim(config, authenticated_public_key, &peer_identity_claim)?;
+    let permitted_addresses =
+        validate_and_filter_peer_identity_claim_addresses(config, authenticated_public_key, &peer_identity_claim)?;
 
     Ok(ValidatedPeerIdentityExchange {
         claim: peer_identity_claim,
+        permitted_addresses,
         metadata: PeerIdentityMetadata {
             user_agent,
             supported_protocols,
@@ -242,7 +249,7 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 peer.node_id.short_str()
             );
             peer.addresses.add_or_update_addresses(
-                &peer_identity.claim.addresses,
+                &peer_identity.permitted_addresses,
                 &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.claim.clone(),
                 },
@@ -250,7 +257,7 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
 
             // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
             peer.addresses
-                .mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.claim.addresses, latency);
+                .mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.permitted_addresses, latency);
 
             peer.features = peer_identity.claim.features;
             peer.supported_protocols = peer_identity.metadata.supported_protocols.clone();
@@ -265,13 +272,13 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 peer_node_id.short_str()
             );
             let mut addresses = MultiaddressesWithStats::from_addresses_with_source(
-                peer_identity.claim.addresses.clone(),
+                peer_identity.permitted_addresses.clone(),
                 &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.claim.clone(),
                 },
             );
             // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
-            addresses.mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.claim.addresses, latency);
+            addresses.mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.permitted_addresses, latency);
             Peer::new(
                 authenticated_public_key,
                 peer_node_id,
@@ -328,4 +335,94 @@ async fn maybe_ban<T, E: ToString + Into<ConnectionManagerError>>(
     }
 
     Err(err.into())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn identity_message(node_identity: &NodeIdentity) -> PeerIdentityMsg {
+        PeerIdentityMsg {
+            addresses: node_identity
+                .public_addresses()
+                .into_iter()
+                .map(|address| address.to_vec())
+                .collect(),
+            features: node_identity.features().bits(),
+            supported_protocols: vec![],
+            user_agent: "test".to_string(),
+            identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
+        }
+    }
+
+    #[test]
+    fn identity_exchange_filters_local_addresses_after_signature_validation() {
+        let public_address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let private_address: Multiaddr = "/ip4/192.168.1.2/tcp/18189".parse().unwrap();
+        let claimed_addresses = vec![public_address.clone(), private_address.clone()];
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            claimed_addresses.clone(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let config = PeerValidatorConfig {
+            allow_test_addresses: false,
+            ..PeerValidatorConfig::default()
+        };
+
+        let validated =
+            validate_peer_identity_message(&config, node_identity.public_key(), identity_message(&node_identity))
+                .unwrap();
+
+        assert_eq!(validated.claim.addresses, claimed_addresses);
+        assert!(validated.claim.is_valid(node_identity.public_key()).unwrap());
+        assert_eq!(validated.permitted_addresses, vec![public_address.clone()]);
+
+        let peer = create_or_update_peer_from_validated_peer_identity(
+            None,
+            node_identity.public_key().clone(),
+            &validated,
+            Duration::from_millis(1),
+        );
+        assert!(peer.addresses.contains(&public_address));
+        assert!(!peer.addresses.contains(&private_address));
+    }
+
+    #[test]
+    fn identity_exchange_accepts_an_all_local_claim_without_replacing_known_addresses() {
+        let local_address: Multiaddr = "/ip4/127.0.0.1/tcp/18189".parse().unwrap();
+        let known_address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), local_address, PeerFeatures::COMMUNICATION_NODE);
+        let config = PeerValidatorConfig {
+            allow_test_addresses: false,
+            ..PeerValidatorConfig::default()
+        };
+
+        let validated =
+            validate_peer_identity_message(&config, node_identity.public_key(), identity_message(&node_identity))
+                .unwrap();
+        assert!(validated.permitted_addresses.is_empty());
+
+        let known_peer = Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            MultiaddressesWithStats::from_addresses_with_source(
+                vec![known_address.clone()],
+                &PeerAddressSource::Config,
+            ),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            vec![],
+            String::new(),
+        );
+        let peer = create_or_update_peer_from_validated_peer_identity(
+            Some(known_peer),
+            node_identity.public_key().clone(),
+            &validated,
+            Duration::from_millis(1),
+        );
+
+        assert_eq!(peer.addresses.len(), 1);
+        assert!(peer.addresses.contains(&known_address));
+    }
 }
