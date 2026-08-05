@@ -105,6 +105,42 @@ impl ConnectionManagerRequester {
         Ok(())
     }
 
+    /// Queue a dial request, shedding it if the ConnectionManager's request channel is full.
+    ///
+    /// Callers that run *inside* an actor's `select!` handler must use this rather than
+    /// [`Self::send_dial_peer`]. An `.await` on a full channel parks the calling actor entirely —
+    /// for the ConnectivityManager that means every `dial_peer`, `select_connections` and
+    /// `get_active_connections` caller in the node blocks behind it, and block sync stalls with it.
+    /// Dials are best-effort and are retried on the next connection-pool refresh, so shedding under
+    /// load is strictly better than stalling the actor.
+    ///
+    /// Any reply channel carried by the request is answered with the error so the caller is
+    /// released immediately instead of waiting out its own timeout.
+    pub(crate) fn try_send_dial_peer(
+        &mut self,
+        node_id: NodeId,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+    ) -> Result<(), ConnectionManagerError> {
+        let (error, request) = match self
+            .sender
+            .try_send(ConnectionManagerRequest::DialPeer { node_id, reply_tx })
+        {
+            Ok(_) => return Ok(()),
+            Err(mpsc::error::TrySendError::Full(req)) => (ConnectionManagerError::DialQueueFull, req),
+            Err(mpsc::error::TrySendError::Closed(req)) => (ConnectionManagerError::SendToActorFailed, req),
+        };
+
+        if let ConnectionManagerRequest::DialPeer {
+            reply_tx: Some(reply_tx),
+            ..
+        } = request
+        {
+            let _result = reply_tx.send(Err(error.clone()));
+        }
+
+        Err(error)
+    }
+
     /// Return the ListenerInfo for the configured listener once the listener(s) are bound to the socket.
     ///
     /// This is useful when using "assigned port" addresses, such as /ip4/0.0.0.0/tcp/0 or /memory/0 for listening and

@@ -64,6 +64,14 @@ const LOG_TARGET: &str = "comms::connection_manager::manager";
 const EVENT_CHANNEL_SIZE: usize = 32;
 const DIALER_REQUEST_CHANNEL_SIZE: usize = 60;
 
+/// Maximum time the ConnectionManager will wait for space on the dialer's request channel before it
+/// gives up and sheds the request.
+///
+/// Mirrors `CONN_MAN_NOTIFY_TIMEOUT` on the dialer side: neither actor may park indefinitely on the
+/// other's bounded channel. A burst of dial requests travelling down meeting a burst of dial results
+/// travelling up will otherwise fill both channels at once and deadlock the pair permanently.
+const DIALER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Connection events
 #[derive(Debug)]
 pub enum ConnectionManagerEvent {
@@ -397,12 +405,9 @@ where
                 self.dial_peer(node_id, reply_tx).instrument(span).await
             },
             CancelDial(node_id) => {
-                if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to send cancel dial request to dialer: {err}"
-                    );
-                }
+                let _result = self
+                    .send_dialer_request(DialerRequest::CancelPendingDial(node_id))
+                    .await;
             },
             NotifyListening(reply) => match self.listener_info.as_ref() {
                 Some(info) => {
@@ -465,8 +470,7 @@ where
                 if conn.direction().is_inbound() {
                     // Notify the dialer that we have an inbound connection, so that is can resolve any pending dials.
                     let _result = self
-                        .dialer_tx
-                        .send(DialerRequest::NotifyNewInboundConnection(conn.clone()))
+                        .send_dialer_request(DialerRequest::NotifyNewInboundConnection(conn.clone()))
                         .await;
                 }
                 #[cfg(feature = "metrics")]
@@ -489,11 +493,41 @@ where
         }
     }
 
+    /// Hand a request to the dialer without parking the ConnectionManager indefinitely.
+    ///
+    /// See [`DIALER_REQUEST_TIMEOUT`]. On failure the request — and with it any reply channel it
+    /// carries — is dropped, so the caller observes a cancelled reply rather than hanging forever.
     #[inline]
-    async fn send_dialer_request(&mut self, req: DialerRequest) {
-        if let Err(err) = self.dialer_tx.send(req).await {
-            error!(target: LOG_TARGET, "Failed to send request to dialer because '{err}'");
-        }
+    async fn send_dialer_request(&mut self, req: DialerRequest) -> Result<(), ConnectionManagerError> {
+        let req = match self.dialer_tx.try_send(req) {
+            Ok(_) => return Ok(()),
+            Err(mpsc::error::TrySendError::Full(req)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Dialer request channel is full. Waiting up to {DIALER_REQUEST_TIMEOUT:.0?} to send {req:?}"
+                );
+                req
+            },
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to send request to dialer because the channel is closed"
+                );
+                return Err(ConnectionManagerError::SendToActorFailed);
+            },
+        };
+
+        self.dialer_tx
+            .send_timeout(req, DIALER_REQUEST_TIMEOUT)
+            .await
+            .map_err(|err| {
+                error!(
+                    target: LOG_TARGET,
+                    "Shed dialer request after waiting {DIALER_REQUEST_TIMEOUT:.0?}: {err}. The dialer is not draining \
+                     its request channel."
+                );
+                ConnectionManagerError::DialQueueFull
+            })
     }
 
     fn publish_event(&self, event: ConnectionManagerEvent) {
@@ -508,7 +542,10 @@ where
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(Some(peer)) => {
-                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
+                // The reply channel travels inside the request, so a shed request drops it and the
+                // caller sees a cancelled reply — never an indefinite wait.
+                let _result = self
+                    .send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
                     .await;
             },
             Ok(None) => {

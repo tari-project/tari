@@ -72,6 +72,9 @@ local-ip-address = "0.6.5"
 tari_test_utils = { workspace = true }
 tari_comms_rpc_macros = { workspace = true }
 toml = { version = "0.5" }
+# `test-util` enables tokio's paused clock, used by tests that must assert on timeout behaviour
+# without paying for the timeouts in wall-clock time.
+tokio = { workspace = true, features = ["test-util"] }
 
 env_logger = "0.11"
 tempfile = "3.1.0"

@@ -114,15 +114,26 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             if peer.ensure_strong_connection() {
                 continue;
             }
-            match self
-                .connectivity
-                .dial_peer(peer.node_id().clone(), RefKind::Strong)
-                .await
+            // Bounded: this upgrade is an optimisation, not a requirement — attempt_block_sync will
+            // dial the peer itself if no connection is attached. Blocking here would park the state
+            // machine before block sync has logged anything at all, which is exactly what a wedged
+            // ConnectivityManager used to do to the chain tip.
+            match tokio::time::timeout(
+                self.config.rpc_deadline,
+                self.connectivity.dial_peer(peer.node_id().clone(), RefKind::Strong),
+            )
+            .await
             {
-                Ok(conn) => peer.set_connection(conn),
-                Err(e) => debug!(
+                Ok(Ok(conn)) => peer.set_connection(conn),
+                Ok(Err(e)) => debug!(
                     target: LOG_TARGET,
                     "Failed to dial sync peer {} as strong: {e}", peer.node_id()
+                ),
+                Err(_) => warn!(
+                    target: LOG_TARGET,
+                    "Timed out after {:.2?} dialing sync peer {} as strong",
+                    self.config.rpc_deadline,
+                    peer.node_id()
                 ),
             }
         }

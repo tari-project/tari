@@ -49,6 +49,25 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
+/// Maximum time to wait for the ConnectivityManager actor to accept and answer a request that it
+/// serves from its own in-memory state (connection pool, status, allow list, ...).
+///
+/// These requests perform no network I/O, so anything approaching this bound means the actor is not
+/// draining its request channel. Returning an error lets the caller log and degrade instead of
+/// hanging forever behind a wedged actor — which is how a comms-level stall used to take the whole
+/// node down with it (the base node `status` command, DHT peer selection and block sync all wait
+/// here).
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Maximum time to wait for a `DialPeer` request to resolve.
+///
+/// Unlike the state queries above this covers a real dial — transport connect, noise handshake and
+/// identity exchange, retried across every address the peer advertises — so the bound is generous.
+/// It exists to guarantee the caller is eventually released if the actor (or the connection manager
+/// behind it) is wedged, not to bound a healthy dial. Callers that need to give up sooner should
+/// impose their own, shorter deadline.
+const DIAL_PEER_TIMEOUT: Duration = Duration::from_secs(180);
+
 /// Connectivity event broadcast receiver.
 pub type ConnectivityEventRx = broadcast::Receiver<ConnectivityEvent>;
 /// Connectivity event broadcast sender.
@@ -143,6 +162,40 @@ impl ConnectivityRequester {
         self.event_tx.clone()
     }
 
+    /// Send a fire-and-forget request to the actor, bounded by [`REQUEST_TIMEOUT`].
+    async fn send_request(&self, request: ConnectivityRequest) -> Result<(), ConnectivityError> {
+        time::timeout(REQUEST_TIMEOUT, self.sender.send(request))
+            .await
+            .map_err(|_| {
+                warn!(target: LOG_TARGET, "ConnectivityManager did not accept a request within {REQUEST_TIMEOUT:.0?}");
+                ConnectivityError::RequestTimedOut(REQUEST_TIMEOUT)
+            })?
+            .map_err(|_| ConnectivityError::ActorDisconnected)
+    }
+
+    /// Send a request to the actor and await its reply, bounded by [`REQUEST_TIMEOUT`].
+    ///
+    /// Only use this for requests the actor answers from its own state — see [`REQUEST_TIMEOUT`].
+    async fn request<T>(
+        &self,
+        make_request: impl FnOnce(oneshot::Sender<T>) -> ConnectivityRequest,
+    ) -> Result<T, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let request = make_request(reply_tx);
+        time::timeout(REQUEST_TIMEOUT, async {
+            self.sender
+                .send(request)
+                .await
+                .map_err(|_| ConnectivityError::ActorDisconnected)?;
+            reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        })
+        .await
+        .map_err(|_| {
+            warn!(target: LOG_TARGET, "ConnectivityManager did not respond within {REQUEST_TIMEOUT:.0?}");
+            ConnectivityError::RequestTimedOut(REQUEST_TIMEOUT)
+        })?
+    }
+
     /// Dial a single peer, returning a connection of the requested [`RefKind`].
     ///
     /// Pass [`RefKind::Strong`] when the caller needs the connection pinned (reapers will skip
@@ -153,16 +206,29 @@ impl ConnectivityRequester {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
-            self.sender
-                .send(ConnectivityRequest::DialPeer {
-                    node_id: peer.clone(),
-                    ref_kind,
-                    reply_tx: Some(reply_tx),
-                })
-                .await
-                .map_err(|_| ConnectivityError::ActorDisconnected)?;
+            // Bounded by DIAL_PEER_TIMEOUT so a wedged actor cannot park the caller forever.
+            let result = time::timeout(DIAL_PEER_TIMEOUT, async {
+                self.sender
+                    .send(ConnectivityRequest::DialPeer {
+                        node_id: peer.clone(),
+                        ref_kind,
+                        reply_tx: Some(reply_tx),
+                    })
+                    .await
+                    .map_err(|_| ConnectivityError::ActorDisconnected)?;
 
-            match reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)? {
+                reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+            })
+            .await
+            .map_err(|_| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Dial to peer `{peer}` did not resolve within {DIAL_PEER_TIMEOUT:.0?}"
+                );
+                ConnectivityError::DialTimedOut(DIAL_PEER_TIMEOUT)
+            })??;
+
+            match result {
                 Ok(c) => return Ok(c),
                 Err(err @ ConnectionManagerError::DialCancelled) => {
                     num_cancels += 1;
@@ -199,7 +265,7 @@ impl ConnectivityRequester {
     /// `get_connection` with [`RefKind::Strong`] afterwards.
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
-            self.sender.send(ConnectivityRequest::DialPeer {
+            self.send_request(ConnectivityRequest::DialPeer {
                 node_id: peer,
                 ref_kind: RefKind::Weak,
                 reply_tx: None,
@@ -207,7 +273,7 @@ impl ConnectivityRequester {
         }))
         .await
         .into_iter()
-        .try_for_each(|result| result.map_err(|_| ConnectivityError::ActorDisconnected))
+        .try_for_each(|result| result)
     }
 
     /// Queries the ConnectivityManager and returns the matching [PeerConnection](crate::PeerConnection)s.
@@ -215,12 +281,8 @@ impl ConnectivityRequester {
         &mut self,
         selection: ConnectivitySelection,
     ) -> Result<Vec<PeerConnection>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::SelectConnections(selection, reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)?
+        self.request(|reply_tx| ConnectivityRequest::SelectConnections(selection, reply_tx))
+            .await?
     }
 
     /// Get an active connection to the given node id if one exists, as a handle of the
@@ -230,62 +292,34 @@ impl ConnectivityRequester {
         node_id: NodeId,
         ref_kind: RefKind,
     ) -> Result<Option<PeerConnection>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetConnection(node_id, ref_kind, reply_tx))
+        self.request(|reply_tx| ConnectivityRequest::GetConnection(node_id, ref_kind, reply_tx))
             .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Get the peer information from the peer, will return none if the peer is not found
     pub async fn get_peer_info(&self, node_id: NodeId) -> Result<Option<Peer>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetPeerStats(node_id, reply_tx))
+        self.request(|reply_tx| ConnectivityRequest::GetPeerStats(node_id, reply_tx))
             .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Get the current [ConnectivityStatus](self::ConnectivityStatus).
     pub async fn get_connectivity_status(&mut self) -> Result<ConnectivityStatus, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetConnectivityStatus(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetConnectivityStatus).await
     }
 
     /// Get the full connection state that the connectivity actor.
     pub async fn get_all_connection_states(&mut self) -> Result<Vec<PeerConnectionState>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetAllConnectionStates(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetAllConnectionStates).await
     }
 
     /// Get the optional minimize connections setting.
     pub async fn get_minimize_connections_threshold(&mut self) -> Result<Option<usize>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetMinimizeConnectionsThreshold(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetMinimizeConnectionsThreshold).await
     }
 
     /// Get all currently connection [PeerConnection](crate::PeerConnection]s.
     pub async fn get_active_connections(&mut self) -> Result<Vec<PeerConnection>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetActiveConnections(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetActiveConnections).await
     }
 
     /// Ban peer for the given Duration. The ban `reason` is persisted in the peer database for reference.
@@ -295,11 +329,8 @@ impl ConnectivityRequester {
         duration: Duration,
         reason: T,
     ) -> Result<(), ConnectivityError> {
-        self.sender
-            .send(ConnectivityRequest::BanPeer(node_id, duration, reason.into()))
+        self.send_request(ConnectivityRequest::BanPeer(node_id, duration, reason.into()))
             .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        Ok(())
     }
 
     /// Ban the peer indefinitely.
@@ -310,60 +341,34 @@ impl ConnectivityRequester {
 
     /// Adds a peer to an allow list, preventing it from being banned.
     pub async fn add_peer_to_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
-        self.sender
-            .send(ConnectivityRequest::AddPeerToAllowList(node_id))
+        self.send_request(ConnectivityRequest::AddPeerToAllowList(node_id))
             .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        Ok(())
     }
 
     /// Retrieve self's allow list.
     pub async fn get_allow_list(&mut self) -> Result<Vec<NodeId>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetAllowList(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetAllowList).await
     }
 
     /// Retrieve the list of seeds.
     pub async fn get_seeds(&mut self) -> Result<Vec<Peer>, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetSeeds(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetSeeds).await
     }
 
     /// Retrieve self's node identity.
     pub async fn get_node_identity(&mut self) -> Result<NodeIdentity, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::GetNodeIdentity(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::GetNodeIdentity).await
     }
 
     /// Removes a peer from an allow list that prevents it from being banned.
     pub async fn remove_peer_from_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
-        self.sender
-            .send(ConnectivityRequest::RemovePeerFromAllowList(node_id))
+        self.send_request(ConnectivityRequest::RemovePeerFromAllowList(node_id))
             .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        Ok(())
     }
 
     /// Returns a Future that resolves when the connectivity actor has started.
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::WaitStarted(reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+        self.request(ConnectivityRequest::WaitStarted).await
     }
 
     /// Waits for the node to get at least one connection.

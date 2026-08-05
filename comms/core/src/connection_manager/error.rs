@@ -42,6 +42,8 @@ pub enum ConnectionManagerError {
     PeerConnectionError(String),
     #[error("Failed to send request to ConnectionManagerActor. Channel closed.")]
     SendToActorFailed,
+    #[error("Dial request queue is full, the dial was shed")]
+    DialQueueFull,
     #[error("Request was canceled before the response could be sent")]
     ActorRequestCanceled,
     #[error("Failed to connect on all addresses for peer")]
