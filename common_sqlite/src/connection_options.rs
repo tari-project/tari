@@ -81,6 +81,7 @@ impl ConnectionOptions {
 impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionOptions {
     /// Applies PRAGMAs on each acquired connection:
     /// - `PRAGMA busy_timeout`
+    /// - `PRAGMA secure_delete = ON;`
     /// - `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;` (if enabled)
     /// - `PRAGMA foreign_keys = ON;` (if enabled)
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
@@ -89,6 +90,11 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
             if let Some(d) = self.busy_timeout {
                 conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
             }
+
+            // These databases hold key material. Without this, a deleted row is only unlinked from the b-tree and its
+            // plaintext stays legible in the freed page until that page happens to be reused, so anyone reading the
+            // file can still recover it. Overwrite freed content instead.
+            conn.batch_execute("PRAGMA secure_delete = ON;")?;
 
             if self.enable_wal {
                 // Read current mode (cheap, read-only)

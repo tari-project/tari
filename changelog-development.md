@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.6.0-pre.0](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/compare/v5.5.0-pre.1...v5.6.0-pre.0) (2026-07-21)
+
+
+### Features
+
+* peer improvements ([#7927](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/issues/7927)) ([1a41b53](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/commit/1a41b538e6125938515c6f971a360df99eb9629d))
+
+
+### Bug Fixes
+
+* risv builds ([#7928](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/issues/7928)) ([6a1ee9c](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/commit/6a1ee9c81b3f8c92adc079e747d49b346201235f))
+
 ## [5.5.0-pre.1](https://github.com/tari-project/tari/compare/v5.5.0-pre.0...v5.5.0-pre.1) (2026-07-16)
 
 

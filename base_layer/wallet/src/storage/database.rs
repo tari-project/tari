@@ -85,7 +85,9 @@ pub enum DbKey {
     EncryptedMainKey,    // the database encryption key, itself encrypted with the secondary key
     SecondaryKeySalt,    // the salt used (with the user's passphrase) to derive the secondary derivation key
     SecondaryKeyVersion, // the parameter version for the secondary derivation key
-    SecondaryKeyHash,    // a hash commitment to the secondary derivation key
+    // Legacy: a commitment to the secondary derivation key, which was byte-for-byte the secondary key itself. Never
+    // written or trusted any more; retained only so that it can be cleared from pre-existing wallets on unlock.
+    SecondaryKeyHash,
     WalletBirthday,
     LastAccessedNetwork,
     LastAccessedVersion,

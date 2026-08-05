@@ -89,13 +89,8 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 // Authenticated data prefix for main key encryption; append the encryption version later
 const MAIN_KEY_AAD_PREFIX: &str = "wallet_main_key_encryption_v";
 
-// Hash domains for secondary key derivation
+// Hash domain for secondary key derivation
 hash_domain!(SecondaryKeyDomain, "com.tari.base_layer.wallet.secondary_key", 0);
-hash_domain!(
-    SecondaryKeyHashDomain,
-    "com.tari.base_layer.wallet.secondary_key_hash_commitment",
-    0
-);
 
 /// A structure to hold `Argon2` parameter versions, which may change over time and must be supported
 #[derive(Clone)]
@@ -112,9 +107,21 @@ impl Argon2Parameters {
         // Each subsequent version identifier _must_ increase!
         // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
         match id {
-            // Be sure to update the `None` behavior when updating this!
-            None | Some(1) => Ok(Argon2Parameters {
+            // Version 1 stored a plaintext commitment to the secondary key alongside the encrypted main key. That
+            // commitment was computed over the same hash domain and the same input as the key itself, so it _was_ the
+            // key. Version 1 is still readable so that existing wallets can be unlocked and migrated, but is never
+            // written; see `get_db_cipher` and `rekey_main_key`. The `Argon2` parameters are unchanged between the
+            // versions.
+            Some(1) => Ok(Argon2Parameters {
                 id: 1,
+                algorithm: argon2::Algorithm::Argon2id,
+                version: argon2::Version::V0x13,
+                params: argon2::Params::new(46 * 1024, 1, 1, Some(size_of::<Key>()))
+                    .map_err(|e| WalletStorageError::AeadError(e.to_string()))?,
+            }),
+            // Be sure to update the `None` behavior and `CURRENT_SECONDARY_KEY_VERSION` when updating this!
+            None | Some(2) => Ok(Argon2Parameters {
+                id: 2,
                 algorithm: argon2::Algorithm::Argon2id,
                 version: argon2::Version::V0x13,
                 params: argon2::Params::new(46 * 1024, 1, 1, Some(size_of::<Key>()))
@@ -125,19 +132,23 @@ impl Argon2Parameters {
     }
 }
 
+/// The secondary key version written by this implementation; anything older is migrated on unlock
+const CURRENT_SECONDARY_KEY_VERSION: u8 = 2;
+
 /// A structure to hold encryption-related database field data, to make atomic operations cleaner
 pub struct DatabaseEncryptionFields {
     secondary_key_version: u8,   // the encryption parameter version
     secondary_key_salt: String,  // the high-entropy salt used to derive the secondary derivation key
-    secondary_key_hash: Vec<u8>, // a hash commitment to the secondary derivation key
     encrypted_main_key: Vec<u8>, // the main key, encrypted with the secondary key
 }
 impl DatabaseEncryptionFields {
     /// Read and parse field data from the database atomically
+    ///
+    /// Note that the legacy `SecondaryKeyHash` field is deliberately neither read nor trusted. A correct passphrase is
+    /// established by authenticating `encrypted_main_key`, not by comparing against a stored commitment.
     pub fn read(connection: &mut SqliteConnection) -> Result<Option<Self>, WalletStorageError> {
         let mut secondary_key_version: Option<String> = None;
         let mut secondary_key_salt: Option<String> = None;
-        let mut secondary_key_hash: Option<String> = None;
         let mut encrypted_main_key: Option<String> = None;
 
         // Read all fields atomically
@@ -147,8 +158,6 @@ impl DatabaseEncryptionFields {
                     .map_err(|_| Error::RollbackTransaction)?;
                 secondary_key_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, connection)
                     .map_err(|_| Error::RollbackTransaction)?;
-                secondary_key_hash = WalletSettingSql::get(&DbKey::SecondaryKeyHash, connection)
-                    .map_err(|_| Error::RollbackTransaction)?;
                 encrypted_main_key = WalletSettingSql::get(&DbKey::EncryptedMainKey, connection)
                     .map_err(|_| Error::RollbackTransaction)?;
 
@@ -157,33 +166,20 @@ impl DatabaseEncryptionFields {
             .map_err(|_| WalletStorageError::UnexpectedResult("Unable to read key fields from database".into()))?;
 
         // Parse the fields
-        match (
-            secondary_key_version,
-            secondary_key_salt,
-            secondary_key_hash,
-            encrypted_main_key,
-        ) {
+        match (secondary_key_version, secondary_key_salt, encrypted_main_key) {
             // It's fine if none of the fields are set
-            (None, None, None, None) => Ok(None),
+            (None, None, None) => Ok(None),
 
             // If all of the fields are set, they must be parsed as valid
-            (
-                Some(secondary_key_version),
-                Some(secondary_key_salt),
-                Some(secondary_key_hash),
-                Some(encrypted_main_key),
-            ) => {
+            (Some(secondary_key_version), Some(secondary_key_salt), Some(encrypted_main_key)) => {
                 let secondary_key_version = u8::from_str(&secondary_key_version)
                     .map_err(|e| WalletStorageError::BadEncryptionVersion(e.to_string()))?;
-                let secondary_key_hash =
-                    from_hex(&secondary_key_hash).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
                 let encrypted_main_key =
                     from_hex(&encrypted_main_key).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
 
                 Ok(Some(DatabaseEncryptionFields {
                     secondary_key_version,
                     secondary_key_salt,
-                    secondary_key_hash,
                     encrypted_main_key,
                 }))
             },
@@ -196,6 +192,8 @@ impl DatabaseEncryptionFields {
     }
 
     /// Encode and write field data to the database atomically
+    ///
+    /// This also removes any legacy `SecondaryKeyHash` field, which leaked the secondary key in plaintext.
     pub fn write(&self, connection: &mut SqliteConnection) -> Result<(), WalletStorageError> {
         // Because the encoding can't fail, just do it inside the write transaction
         connection
@@ -206,11 +204,10 @@ impl DatabaseEncryptionFields {
                 WalletSettingSql::new(DbKey::SecondaryKeySalt, self.secondary_key_salt.to_string())
                     .set(connection)
                     .map_err(|_| Error::RollbackTransaction)?;
-                WalletSettingSql::new(DbKey::SecondaryKeyHash, self.secondary_key_hash.to_hex())
-                    .set(connection)
-                    .map_err(|_| Error::RollbackTransaction)?;
                 WalletSettingSql::new(DbKey::EncryptedMainKey, self.encrypted_main_key.to_hex())
                     .set(connection)
+                    .map_err(|_| Error::RollbackTransaction)?;
+                WalletSettingSql::clear(&DbKey::SecondaryKeyHash, connection)
                     .map_err(|_| Error::RollbackTransaction)?;
 
                 Ok(())
@@ -561,34 +558,13 @@ impl WalletBackend for WalletSqliteDatabase {
                 let argon2_params = Argon2Parameters::from_version(Some(data.secondary_key_version))?;
 
                 // Derive a secondary key from the existing passphrase and salt
-                let (secondary_key, secondary_key_hash) =
-                    derive_secondary_key(existing, argon2_params.clone(), &data.secondary_key_salt)?;
+                let secondary_key = derive_secondary_key(existing, argon2_params.clone(), &data.secondary_key_salt)?;
 
-                // Attempt to decrypt the encrypted main key
-                if data.secondary_key_hash != secondary_key_hash {
-                    return Err(WalletStorageError::InvalidPassphrase);
-                }
+                // Attempt to decrypt the encrypted main key; an incorrect passphrase fails authentication here
                 let main_key = decrypt_main_key(&secondary_key, &data.encrypted_main_key, argon2_params.id)?;
 
-                // Now use the most recent version
-                let new_argon2_params = Argon2Parameters::from_version(None)?;
-
-                // Derive a new secondary key from the new passphrase and a fresh salt
-                let new_secondary_key_salt = SaltString::generate().to_string();
-                let (new_secondary_key, new_secondary_key_hash) =
-                    derive_secondary_key(new, new_argon2_params.clone(), &new_secondary_key_salt)?;
-
-                // Encrypt the main key with the new secondary key
-                let new_encrypted_main_key = encrypt_main_key(&new_secondary_key, &main_key, new_argon2_params.id)?;
-
-                // Store the new key-related fields
-                DatabaseEncryptionFields {
-                    secondary_key_version: new_argon2_params.id,
-                    secondary_key_salt: new_secondary_key_salt,
-                    secondary_key_hash: new_secondary_key_hash,
-                    encrypted_main_key: new_encrypted_main_key,
-                }
-                .write(&mut conn)?;
+                // Re-encrypt the main key against the new passphrase, using the most recent version
+                rekey_main_key(&main_key, new, &mut conn)?;
             },
 
             // If any key-related is not present, this is an invalid state
@@ -648,12 +624,15 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 }
 
-/// Derive a secondary database key and associated commitment
+/// Derive the secondary database key from a passphrase and salt
+///
+/// No commitment to this key is ever stored. Passphrase correctness is established by authenticating the encrypted
+/// main key under its AEAD tag, which reveals nothing to an attacker holding only the database file.
 fn derive_secondary_key(
     passphrase: &SafePassword,
     params: Argon2Parameters,
     salt: &String,
-) -> Result<(WalletSecondaryEncryptionKey, Vec<u8>), WalletStorageError> {
+) -> Result<WalletSecondaryEncryptionKey, WalletStorageError> {
     // Produce the secondary derivation key from the passphrase and salt
     let mut secondary_derivation_key = WalletSecondaryDerivationKey::from(SafeArray::default());
     argon2::Argon2::new(params.algorithm, params.version, params.params)
@@ -670,14 +649,7 @@ fn derive_secondary_key(
         .chain(secondary_derivation_key.reveal())
         .finalize_into(GenericArray::from_mut_slice(secondary_key.reveal_mut()));
 
-    // Produce the associated commitment
-    let secondary_key_hash = DomainSeparatedHasher::<Blake2b<U32>, SecondaryKeyDomain>::new()
-        .chain(secondary_derivation_key.reveal())
-        .finalize()
-        .as_ref()
-        .to_vec();
-
-    Ok((secondary_key, secondary_key_hash))
+    Ok(secondary_key)
 }
 
 /// Encrypt the main database key using the secondary key
@@ -717,6 +689,52 @@ fn decrypt_main_key(
     ))
 }
 
+/// Rewrite the database file so that content freed by earlier writes is no longer legible in it
+///
+/// `PRAGMA secure_delete` only zeroes content freed while it is in effect, so it does nothing about pages already
+/// orphaned by a previous version of this software. Deleting the legacy commitment row is therefore not enough on its
+/// own: the key stays readable in the file until the page is reused. `VACUUM` rebuilds the database from its live
+/// content and truncates the rest, and the checkpoint clears any page images the write-ahead log still holds.
+///
+/// This scrubs the file we are given. It cannot reach copies of it: backups, cloud-synced replicas and prior snapshots
+/// of a version 1 wallet still disclose the key, which is why migration alone is not remediation.
+fn scrub_freed_pages(conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
+    use diesel::connection::SimpleConnection;
+
+    // Neither statement may run inside a transaction
+    conn.batch_execute("VACUUM;")?;
+    conn.batch_execute("PRAGMA wal_checkpoint(TRUNCATE);")?;
+
+    Ok(())
+}
+
+/// Encrypt the main key against a passphrase using the most recent parameters, and store the key-related fields
+///
+/// This is the only path that writes encryption fields, so every write lands at `CURRENT_SECONDARY_KEY_VERSION` with a
+/// fresh salt and clears any legacy commitment.
+fn rekey_main_key(
+    main_key: &WalletMainEncryptionKey,
+    passphrase: &SafePassword,
+    conn: &mut SqliteConnection,
+) -> Result<(), WalletStorageError> {
+    // Use the most recent `Argon2` parameters
+    let argon2_params = Argon2Parameters::from_version(None)?;
+
+    // Derive the secondary key from the passphrase and a high-entropy salt
+    let secondary_key_salt = SaltString::generate().to_string();
+    let secondary_key = derive_secondary_key(passphrase, argon2_params.clone(), &secondary_key_salt)?;
+
+    // Use the secondary key to encrypt the main key
+    let encrypted_main_key = encrypt_main_key(&secondary_key, main_key, argon2_params.id)?;
+
+    DatabaseEncryptionFields {
+        secondary_key_version: argon2_params.id,
+        secondary_key_salt,
+        encrypted_main_key,
+    }
+    .write(conn)
+}
+
 /// Prepare the database encryption cipher
 fn get_db_cipher(
     database_connection: &WalletDbConnection,
@@ -732,25 +750,8 @@ fn get_db_cipher(
             let mut main_key = WalletMainEncryptionKey::from(vec![0u8; size_of::<Key>()]);
             rand::rng().fill_bytes(main_key.reveal_mut());
 
-            // Use the most recent `Argon2` parameters
-            let argon2_params = Argon2Parameters::from_version(None)?;
-
-            // Derive the secondary key from the user's passphrase and a high-entropy salt
-            let secondary_key_salt = SaltString::generate().to_string();
-            let (secondary_key, secondary_key_hash) =
-                derive_secondary_key(passphrase, argon2_params.clone(), &secondary_key_salt)?;
-
-            // Use the secondary key to encrypt the main key
-            let encrypted_main_key = encrypt_main_key(&secondary_key, &main_key, argon2_params.id)?;
-
-            // Store the key-related fields
-            DatabaseEncryptionFields {
-                secondary_key_version: argon2_params.id,
-                secondary_key_salt,
-                secondary_key_hash,
-                encrypted_main_key,
-            }
-            .write(&mut conn)?;
+            // Encrypt it against the user's passphrase and store the key-related fields
+            rekey_main_key(&main_key, passphrase, &mut conn)?;
 
             // Return the unencrypted main key
             main_key
@@ -762,14 +763,29 @@ fn get_db_cipher(
             let argon2_params = Argon2Parameters::from_version(Some(data.secondary_key_version))?;
 
             // Derive the secondary key from the user's passphrase and salt
-            let (secondary_key, secondary_key_hash) =
-                derive_secondary_key(passphrase, argon2_params, &data.secondary_key_salt)?;
+            let secondary_key = derive_secondary_key(passphrase, argon2_params, &data.secondary_key_salt)?;
 
-            // Attempt to decrypt and return the encrypted main key
-            if data.secondary_key_hash != secondary_key_hash {
-                return Err(WalletStorageError::InvalidPassphrase);
+            // Attempt to decrypt the encrypted main key; an incorrect passphrase fails authentication here
+            let main_key = decrypt_main_key(&secondary_key, &data.encrypted_main_key, data.secondary_key_version)?;
+
+            // Wallets written before `CURRENT_SECONDARY_KEY_VERSION` stored a plaintext commitment that was byte-for-
+            // byte the secondary key. Now that we hold the main key, re-encrypt it under a fresh salt at the current
+            // version, which also drops the leaked commitment. The main key itself is unchanged, so everything already
+            // encrypted under it stays readable.
+            if data.secondary_key_version < CURRENT_SECONDARY_KEY_VERSION {
+                warn!(
+                    target: LOG_TARGET,
+                    "Wallet database uses secondary key version {}; migrating to version {}. The previous file leaked \
+                     the secondary key at rest and must be treated as compromised: change the wallet passphrase and, \
+                     if the file may have been exposed, move funds to a freshly seeded wallet.",
+                    data.secondary_key_version,
+                    CURRENT_SECONDARY_KEY_VERSION,
+                );
+                rekey_main_key(&main_key, passphrase, &mut conn)?;
+                scrub_freed_pages(&mut conn)?;
             }
-            decrypt_main_key(&secondary_key, &data.encrypted_main_key, data.secondary_key_version)?
+
+            main_key
         },
 
         // We couldn't get valid key-related data
@@ -934,6 +950,7 @@ mod test {
     };
     use tempfile::tempdir;
 
+    use super::*;
     use crate::{
         storage::{
             database::{DbKey, DbValue, WalletBackend},
@@ -942,6 +959,16 @@ mod test {
         },
         utxo_scanner_service::service::ScannedBlock,
     };
+    // Search the database file, and the journal files that shadow it, for a literal. Checking that a row is absent
+    // from a query proves only that it was unlinked from the b-tree; the bytes can still be sitting in a freed page.
+    fn db_files_contain(db_path: &str, needle: &str) -> bool {
+        ["", "-wal", "-journal"].iter().any(|suffix| {
+            std::fs::read(format!("{db_path}{suffix}"))
+                .map(|bytes| String::from_utf8_lossy(&bytes).contains(needle))
+                .unwrap_or(false)
+        })
+    }
+
     #[test]
     fn test_passphrase() {
         // Set up a database
@@ -990,7 +1017,7 @@ mod test {
 
     #[test]
     #[allow(unused_must_use)]
-    fn test_malleated_secondary_key_hash() {
+    fn test_malleated_encrypted_main_key() {
         // Set up a database
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
@@ -1004,13 +1031,194 @@ mod test {
         // Loading the wallet should succeed
         assert!(WalletSqliteDatabase::new(connection.clone(), "passphrase".to_string().into()).is_ok());
 
-        // Manipulate the secondary key hash; this is a (poor) proxy for an AEAD attack
-        let evil_secondary_key_hash = vec![0u8; 32];
-        WalletSettingSql::new(DbKey::SecondaryKeyHash, evil_secondary_key_hash.to_hex())
-            .set(&mut connection.get_pooled_connection().unwrap());
+        // Manipulate the encrypted main key, which is what authenticates the passphrase
+        let mut conn = connection.get_pooled_connection().unwrap();
+        let mut encrypted_main_key = from_hex(
+            &WalletSettingSql::get(&DbKey::EncryptedMainKey, &mut conn)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        encrypted_main_key[0] ^= 1;
+        WalletSettingSql::new(DbKey::EncryptedMainKey, encrypted_main_key.to_hex()).set(&mut conn);
 
-        // Loading the wallet should fail
+        // Loading the wallet should fail on the AEAD tag
         assert!(WalletSqliteDatabase::new(connection, "passphrase".to_string().into()).is_err());
+    }
+
+    // A wallet must not store anything that a passive reader of the database file can turn into the secondary key.
+    // Version 1 committed to the secondary key using the same hash domain and input as the key itself, so the stored
+    // commitment _was_ the key: reading the file was enough to decrypt the main key and recover the master seed.
+    #[test]
+    fn test_no_secondary_key_material_at_rest() {
+        use tari_utilities::hex::Hex;
+
+        use crate::storage::sqlite_db::wallet::{Argon2Parameters, derive_secondary_key};
+
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{db_folder}/{db_name}");
+        let connection = run_migration_and_create_sqlite_connection(db_path.clone(), 16).unwrap();
+
+        let passphrase = "passphrase".to_string();
+        WalletSqliteDatabase::new(connection.clone(), passphrase.clone().into()).unwrap();
+
+        let mut conn = connection.get_pooled_connection().unwrap();
+
+        // No commitment is stored at all
+        assert!(
+            WalletSettingSql::get(&DbKey::SecondaryKeyHash, &mut conn)
+                .unwrap()
+                .is_none()
+        );
+
+        // Reconstruct the secondary key the way a legitimate unlock would, then confirm that it appears nowhere in the
+        // database. This is the property the vulnerability violated.
+        let version = u8::from_str(
+            &WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &mut conn)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &mut conn)
+            .unwrap()
+            .unwrap();
+        let params = Argon2Parameters::from_version(Some(version)).unwrap();
+        let secondary_key = derive_secondary_key(&passphrase.into(), params, &salt).unwrap();
+        let secondary_key_hex = secondary_key.reveal().to_vec().to_hex();
+
+        let settings: Vec<WalletSettingSql> = wallet_settings::table.load(&mut conn).unwrap();
+        assert!(!settings.is_empty());
+        for setting in settings {
+            assert!(
+                !setting.value.contains(&secondary_key_hex),
+                "setting '{}' leaks the secondary key",
+                setting.key
+            );
+        }
+
+        // Not just absent from the rows: absent from the bytes
+        assert!(
+            !db_files_contain(&db_path, &secondary_key_hex),
+            "the secondary key is legible in the database file"
+        );
+    }
+
+    // An existing version 1 wallet must still unlock, and must be re-keyed on the spot so that the leaked commitment is
+    // removed from the file. The main key must survive, or every value already encrypted under it becomes unreadable.
+    #[test]
+    fn test_legacy_v1_wallet_is_migrated_on_unlock() {
+        use diesel::connection::SimpleConnection;
+        use tari_utilities::hex::Hex;
+
+        use crate::storage::sqlite_db::wallet::{
+            Argon2Parameters,
+            CURRENT_SECONDARY_KEY_VERSION,
+            WalletMainEncryptionKey,
+            decrypt_main_key,
+            derive_secondary_key,
+            encrypt_main_key,
+        };
+
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{db_folder}/{db_name}");
+        let connection = run_migration_and_create_sqlite_connection(db_path.clone(), 16).unwrap();
+        let mut conn = connection.get_pooled_connection().unwrap();
+
+        let passphrase = "passphrase".to_string();
+
+        // Emulate a file written by the vulnerable version, which had no `secure_delete`
+        conn.batch_execute("PRAGMA secure_delete = OFF;").unwrap();
+
+        // Hand-build a version 1 record, exactly as the vulnerable implementation wrote it
+        let mut main_key = WalletMainEncryptionKey::from(vec![0u8; 32]);
+        rand::rng().fill_bytes(main_key.reveal_mut());
+        let v1_params = Argon2Parameters::from_version(Some(1)).unwrap();
+        let v1_salt = SaltString::generate().to_string();
+        let v1_secondary_key = derive_secondary_key(&passphrase.clone().into(), v1_params, &v1_salt).unwrap();
+        let v1_encrypted_main_key = encrypt_main_key(&v1_secondary_key, &main_key, 1).unwrap();
+
+        // The version 1 "commitment" was byte-for-byte the secondary key
+        let v1_commitment = v1_secondary_key.reveal().to_vec();
+        WalletSettingSql::new(DbKey::SecondaryKeyVersion, "1".to_string())
+            .set(&mut conn)
+            .unwrap();
+        WalletSettingSql::new(DbKey::SecondaryKeySalt, v1_salt)
+            .set(&mut conn)
+            .unwrap();
+        WalletSettingSql::new(DbKey::SecondaryKeyHash, v1_commitment.to_hex())
+            .set(&mut conn)
+            .unwrap();
+        WalletSettingSql::new(DbKey::EncryptedMainKey, v1_encrypted_main_key.to_hex())
+            .set(&mut conn)
+            .unwrap();
+
+        // Churn the settings table so that the b-tree page holding the commitment is copied and then orphaned, which
+        // is what an ordinary wallet's history does. Stale copies of the commitment now sit in the free list, where
+        // deleting the live row will not reach them.
+        conn.batch_execute(
+            "INSERT INTO wallet_settings (key, value) SELECT 'filler_' || value, hex(randomblob(64)) FROM (WITH \
+             RECURSIVE c(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM c WHERE value < 800) SELECT value FROM \
+             c); DELETE FROM wallet_settings WHERE key LIKE 'filler_%';",
+        )
+        .unwrap();
+        assert!(
+            db_files_contain(&db_path, &v1_commitment.to_hex()),
+            "test setup failed to leave the commitment in a freed page"
+        );
+
+        // The wrong passphrase must not unlock, and must not migrate anything
+        assert!(WalletSqliteDatabase::new(connection.clone(), "evil passphrase".to_string().into()).is_err());
+        assert_eq!(
+            WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &mut conn).unwrap(),
+            Some("1".to_string())
+        );
+
+        // The correct passphrase unlocks the legacy wallet
+        assert!(WalletSqliteDatabase::new(connection.clone(), passphrase.clone().into()).is_ok());
+
+        // ...and the legacy commitment is gone, at the current version. Deleting the row is not sufficient on its own:
+        // the freed page keeps the key legible until it is overwritten, so assert against the file, not the b-tree.
+        assert!(
+            WalletSettingSql::get(&DbKey::SecondaryKeyHash, &mut conn)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !db_files_contain(&db_path, &v1_commitment.to_hex()),
+            "the leaked commitment is still legible in the database file after migration"
+        );
+        assert_eq!(
+            WalletSettingSql::get(&DbKey::SecondaryKeyVersion, &mut conn).unwrap(),
+            Some(CURRENT_SECONDARY_KEY_VERSION.to_string())
+        );
+
+        // The main key is unchanged, so data encrypted under it is still readable
+        let new_salt = WalletSettingSql::get(&DbKey::SecondaryKeySalt, &mut conn)
+            .unwrap()
+            .unwrap();
+        let new_encrypted_main_key = from_hex(
+            &WalletSettingSql::get(&DbKey::EncryptedMainKey, &mut conn)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let new_params = Argon2Parameters::from_version(Some(CURRENT_SECONDARY_KEY_VERSION)).unwrap();
+        let new_secondary_key = derive_secondary_key(&passphrase.clone().into(), new_params, &new_salt).unwrap();
+        let migrated_main_key = decrypt_main_key(
+            &new_secondary_key,
+            &new_encrypted_main_key,
+            CURRENT_SECONDARY_KEY_VERSION,
+        )
+        .unwrap();
+        assert_eq!(migrated_main_key.reveal(), main_key.reveal());
+
+        // The migrated wallet still opens, and still rejects the wrong passphrase
+        assert!(WalletSqliteDatabase::new(connection.clone(), passphrase.into()).is_ok());
+        assert!(WalletSqliteDatabase::new(connection, "evil passphrase".to_string().into()).is_err());
     }
 
     #[test]
