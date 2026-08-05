@@ -47,5 +47,12 @@ table! {
     }
 }
 
+table! {
+    db_metadata (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+
 allow_tables_to_appear_in_same_query!(peers, multi_addresses);
 joinable!(multi_addresses -> peers (peer_id));

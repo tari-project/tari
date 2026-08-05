@@ -33,25 +33,6 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::peer_validator";
 
-/// Strictly checks that every peer address is well-formed and permitted.
-///
-/// This is an all-or-nothing helper. Signed claims received from peers should
-/// normally use [`validate_and_filter_peer_identity_claim_addresses`] so that
-/// one local address does not discard an otherwise usable claim.
-pub fn validate_addresses(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
-    if addresses.is_empty() {
-        debug!(target: LOG_TARGET, "validate_addresses - no addresses to validate.");
-        return Ok(());
-    }
-
-    validate_address_count(config, addresses)?;
-    for addr in addresses {
-        validate_address(addr, config.allow_test_addresses)?;
-    }
-
-    Ok(())
-}
-
 fn validate_address_count(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
     if addresses.len() > config.max_permitted_peer_addresses_per_claim {
         return Err(PeerValidatorError::PeerIdentityTooManyAddresses {
@@ -66,22 +47,6 @@ pub fn find_most_recent_claim<'a, I: IntoIterator<Item = &'a PeerIdentityClaim>>
     claims: I,
 ) -> Option<&'a PeerIdentityClaim> {
     claims.into_iter().max_by_key(|c| c.signature.updated_at())
-}
-
-/// Strictly validates a signature and rejects the entire claim if any address
-/// is disallowed.
-///
-/// Network ingestion paths should normally use
-/// [`validate_and_filter_peer_identity_claim_addresses`] instead. This strict
-/// variant remains available for callers that explicitly require every
-/// advertised address to pass the configured policy.
-pub fn validate_peer_identity_claim(
-    config: &PeerValidatorConfig,
-    public_key: &CommsPublicKey,
-    claim: &PeerIdentityClaim,
-) -> Result<(), PeerValidatorError> {
-    validate_addresses(config, &claim.addresses)?;
-    validate_peer_identity_claim_signature(public_key, claim)
 }
 
 fn validate_peer_identity_claim_signature(
