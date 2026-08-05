@@ -442,10 +442,13 @@ impl ConnectivityManagerActor {
                     (other, _) => other,
                 };
 
-                if let Err(err) = self.connection_manager.send_dial_peer(node_id, wrapped_reply_tx).await {
-                    error!(
+                // Non-blocking: this runs inside the actor's `select!` handler, so awaiting space on
+                // the connection manager's request channel would park the whole ConnectivityManager
+                // and every caller queued behind it. See `try_send_dial_peer`.
+                if let Err(err) = self.connection_manager.try_send_dial_peer(node_id, wrapped_reply_tx) {
+                    warn!(
                         target: LOG_TARGET,
-                        "Failed to send dial request to connection manager: {err:?}"
+                        "Shed dial request to connection manager: {err}"
                     );
                 }
             },

@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{
     FutureExt,
@@ -68,6 +72,17 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
+
+/// Maximum time the dialer will wait for space on the ConnectionManager's event channel before it
+/// gives up and drops the event.
+///
+/// This wait MUST be bounded. The ConnectionManager can itself be parked awaiting space on the
+/// dialer's request channel (see `send_dialer_request`), and if both actors park on each other's
+/// full channel neither `select!` can drain the other: the dialer stops accepting dial requests,
+/// the ConnectionManager stops draining dial results, and the node stays isolated until it is
+/// restarted. Bounding the wait guarantees the dialer returns to its select loop and drains
+/// `request_rx`, which is what lets the ConnectionManager make progress again.
+const CONN_MAN_NOTIFY_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
 type DialFuturesUnordered = FuturesUnordered<
@@ -292,12 +307,45 @@ where
         self.cancel_dial(&node_id);
     }
 
+    /// Publish an event to the ConnectionManager without parking the dialer indefinitely.
+    ///
+    /// The fast path is a non-blocking `try_send`. If the ConnectionManager's event channel is full
+    /// we fall back to a *bounded* wait rather than an unbounded one — see
+    /// [`CONN_MAN_NOTIFY_TIMEOUT`] for why that bound is load-bearing.
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
-        log_if_error!(
-            target: LOG_TARGET,
-            self.conn_man_notifier.send(event).await,
-            "Failed to publish event because '{error}'",
-        );
+        let event = match self.conn_man_notifier.try_send(event) {
+            Ok(_) => return,
+            Err(mpsc::error::TrySendError::Full(event)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "ConnectionManager event channel is full. Waiting up to {CONN_MAN_NOTIFY_TIMEOUT:.0?} to publish \
+                     '{event}'"
+                );
+                event
+            },
+            Err(mpsc::error::TrySendError::Closed(event)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Not publishing event '{event}' because the ConnectionManager has shut down"
+                );
+                return;
+            },
+        };
+
+        if let Err(err) = self
+            .conn_man_notifier
+            .send_timeout(event, CONN_MAN_NOTIFY_TIMEOUT)
+            .await
+        {
+            // Dropping the event leaves the ConnectivityManager's pool out of step with reality for
+            // this peer, which is bad — but it is recoverable on the next pool refresh, whereas
+            // blocking here is not recoverable at all.
+            error!(
+                target: LOG_TARGET,
+                "Dropped ConnectionManager event after waiting {CONN_MAN_NOTIFY_TIMEOUT:.0?}: {err}. The \
+                 ConnectionManager is not draining its event channel."
+            );
+        }
     }
 
     fn reply_to_pending_requests(

@@ -278,15 +278,18 @@ impl ProactiveDialer {
                 peer.node_id.short_str()
             );
 
-            // Use the connection manager's dial request (fire and forget)
-            match self.connection_manager.send_dial_peer(peer.node_id.clone(), None).await {
+            // Fire and forget, and deliberately non-blocking: this loop runs inside the
+            // ConnectivityManager's `select!` handler, so awaiting space on the connection manager's
+            // request channel would park the whole actor. Proactive dials are speculative — a peer
+            // shed here is simply retried on the next refresh.
+            match self.connection_manager.try_send_dial_peer(peer.node_id.clone(), None) {
                 Ok(_) => {
                     successful_dials += 1;
                 },
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "({}) Failed to send dial request for peer {}: {:?}",
+                        "({}) Failed to send dial request for peer {}: {}",
                         task_id,
                         peer.node_id.short_str(),
                         err

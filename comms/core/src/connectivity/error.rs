@@ -45,6 +45,10 @@ pub enum ConnectivityError {
     DialCancelled,
     #[error("Client cancelled: '{0}'")]
     ClientCancelled(String),
+    #[error("Timed out after {0:.0?} waiting for the ConnectivityManager to respond")]
+    RequestTimedOut(std::time::Duration),
+    #[error("Dial request timed out after {0:.0?}")]
+    DialTimedOut(std::time::Duration),
 }
 
 impl From<ConnectionManagerError> for ConnectivityError {

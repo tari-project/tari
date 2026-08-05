@@ -445,3 +445,69 @@ async fn excluded_no() {
     shutdown.trigger();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn dialer_does_not_wedge_when_connection_manager_stops_draining_events() {
+    // Regression test for the ConnectionManager <-> Dialer deadlock.
+    //
+    // The dialer publishes a PeerConnectFailed event for every failed dial. If that publish is
+    // allowed to block indefinitely on a full event channel, the dialer stops draining its own
+    // request channel — and the ConnectionManager, which is the only consumer of the event channel,
+    // is itself blocked pushing into that request channel. Neither select! can drain the other and
+    // the node stays isolated until it is restarted.
+    //
+    // Here we emulate a ConnectionManager that has stopped consuming events by never reading from
+    // event_rx, and assert the dialer keeps servicing dial requests regardless.
+    const NUM_DIALS: usize = 10;
+
+    // Capacity 1 stands in for the real (32-deep) event channel; it fills on the first dial result.
+    let (event_tx, _event_rx) = mpsc::channel(1);
+    let mut shutdown = Shutdown::new();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config = NoiseConfig::new(node_identity.clone());
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
+    let (request_tx, request_rx) = mpsc::channel(NUM_DIALS);
+
+    let dialer = Dialer::new(
+        ConnectionManagerConfig::default(),
+        node_identity.clone(),
+        peer_manager,
+        MemoryTransport,
+        noise_config,
+        ConstantBackoff::new(Duration::from_millis(1)),
+        request_rx,
+        event_tx,
+        shutdown.to_signal(),
+    );
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    // Every one of these peers advertises a memory address nothing is listening on, so each dial
+    // fails and produces exactly the event that used to wedge the dialer.
+    let mut replies = Vec::with_capacity(NUM_DIALS);
+    for i in 0..NUM_DIALS {
+        let mut peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        peer.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![format!("/memory/{}", 60000 + i).parse().unwrap()],
+            &PeerAddressSource::Config,
+        );
+        let (reply_tx, reply_rx) = oneshot::channel();
+        request_tx
+            .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+            .await
+            .unwrap();
+        replies.push(reply_rx);
+    }
+
+    // Before the fix the dialer parked on the second event publish and these never resolved.
+    for (i, reply_rx) in replies.into_iter().enumerate() {
+        let result = timeout(Duration::from_secs(60), reply_rx)
+            .await
+            .unwrap_or_else(|_| panic!("dialer stopped servicing requests at dial {i}"))
+            .unwrap();
+        assert!(result.is_err(), "expected dial {i} to an unbound address to fail");
+    }
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
