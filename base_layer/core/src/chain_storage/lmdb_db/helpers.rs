@@ -79,3 +79,11 @@ where T: DeserializeOwned {
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))
 }
+
+/// As [`deserialize`], but does not log on failure. Use this where a decode failure is an expected,
+/// handled outcome (e.g. probing which of several on-disk formats a value is stored in) rather than
+/// an error; the caller is responsible for logging if the failure turns out to matter.
+pub fn try_deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
+where T: DeserializeOwned {
+    bincode::deserialize(buf_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))
+}
