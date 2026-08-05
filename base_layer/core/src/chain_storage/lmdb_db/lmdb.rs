@@ -341,6 +341,96 @@ where
     Ok(result)
 }
 
+/// Retrieves a value that may have been stored either as a single `V` (the legacy format) or as a
+/// `Vec<V>` (the current format that allows multiple values to share one key). Every stored entry is
+/// returned; an empty vector means the key was absent.
+///
+/// The current `Vec<V>` format MUST be attempted first, and this ordering is load-bearing: bincode
+/// does not reject trailing bytes, so a real `Vec<V>` would also decode (incorrectly) as a single `V`
+/// — only the reverse is impossible. Legacy single entries cannot be misinterpreted as a vector: a
+/// single entry's bytes always begin with the entry's own (fixed) byte length, which is far larger
+/// than the small element count that prefixes a real vector, so the vector decode runs out of bytes
+/// and fails deterministically before any large allocation is attempted. When the `Vec<V>` decode
+/// fails the bytes are interpreted as a single legacy `V`.
+pub fn lmdb_get_single_or_vec<K, V>(
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+    key: &K,
+) -> Result<Vec<V>, ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: DeserializeOwned,
+{
+    let access = txn.access();
+    let bytes: &[u8] = match access.get::<K, [u8]>(db, key).to_opt() {
+        Ok(None) => return Ok(Vec::new()),
+        Ok(Some(b)) => b,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
+            return Err(ChainStorageError::AccessError(e.to_string()));
+        },
+    };
+    // Current format: a vector of entries.
+    if let Ok(entries) = deserialize::<Vec<V>>(bytes) {
+        return Ok(entries);
+    }
+    // Legacy format: a single entry stored directly.
+    let entry = deserialize::<V>(bytes).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not deserialize single-or-vec value from lmdb: {e:?}");
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+    Ok(vec![entry])
+}
+
+/// Writes index entries back in their canonical form: a single entry is stored directly (byte-for-byte
+/// identical to the legacy single-entry format), multiple entries are stored as a `Vec`, and an empty
+/// set deletes the key (tolerating an already-absent key). Keeping the one-entry case in the legacy
+/// format means the on-disk layout — and therefore existing databases — are unchanged unless a key
+/// genuinely holds more than one index. [`lmdb_get_single_or_vec`] reads either form transparently.
+pub fn lmdb_write_index_entries<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    entries: &[V],
+    table_name: &'static str,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize,
+{
+    match entries {
+        [] => match lmdb_delete(txn, db, key, table_name) {
+            Ok(()) | Err(ChainStorageError::ValueNotFound { .. }) => Ok(()),
+            Err(e) => Err(e),
+        },
+        [single] => lmdb_replace(txn, db, key, single, None),
+        many => lmdb_replace(txn, db, key, &many, None),
+    }
+}
+
+/// Appends `value` to the entries stored at `key`, rather than overwriting any existing entry.
+/// Existing data is read with [`lmdb_get_single_or_vec`] so both the legacy single-entry and the
+/// vector formats are handled, and the result is written back via [`lmdb_write_index_entries`]
+/// (single entries stay in the legacy format, multiples become a `Vec`). Values already present are
+/// not duplicated.
+pub fn lmdb_insert_into_vec<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    value: V,
+    table_name: &'static str,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize + DeserializeOwned + PartialEq,
+{
+    let mut entries = lmdb_get_single_or_vec::<K, V>(txn, db, key)?;
+    if !entries.contains(&value) {
+        entries.push(value);
+    }
+    lmdb_write_index_entries(txn, db, key, &entries, table_name)
+}
+
 /// Retrieves the last value stored in the database
 pub fn lmdb_last<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Option<V>, ChainStorageError>
 where V: DeserializeOwned {
@@ -579,4 +669,226 @@ pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, Ch
         num_deleted += 1;
     }
     Ok(num_deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chain_storage::{lmdb_db::helpers::serialize, tests::temp_db::TempLmdbDatabase};
+
+    // A 64-byte composite-key-like value (mirrors header_hash || output_hash entries).
+    fn comp_key(seed: u8) -> Vec<u8> {
+        (0..64u8).map(|b| b.wrapping_add(seed)).collect()
+    }
+
+    #[test]
+    fn reads_legacy_single_entry_as_vec() {
+        let db = TempLmdbDatabase::new();
+        let value = comp_key(0);
+        {
+            let txn = db.write_transaction();
+            // Store in the legacy single-entry format (a bare `Vec<u8>`).
+            lmdb_replace(&txn, db.default_db(), b"k".as_slice(), &value, None).unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+        assert_eq!(entries, vec![value]);
+    }
+
+    #[test]
+    fn reads_current_vec_format() {
+        let db = TempLmdbDatabase::new();
+        let values = vec![comp_key(0), comp_key(1)];
+        {
+            let txn = db.write_transaction();
+            lmdb_replace(&txn, db.default_db(), b"k".as_slice(), &values, None).unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+        assert_eq!(entries, values);
+    }
+
+    #[test]
+    fn absent_key_returns_empty_vec() {
+        let db = TempLmdbDatabase::new();
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"missing".as_slice()).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn insert_into_vec_appends_without_overwriting() {
+        let db = TempLmdbDatabase::new();
+        let (a, b, c) = (comp_key(0), comp_key(1), comp_key(2));
+        {
+            let txn = db.write_transaction();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), a.clone(), "t").unwrap();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), b.clone(), "t").unwrap();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), c.clone(), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+        assert_eq!(entries, vec![a, b, c]);
+    }
+
+    #[test]
+    fn insert_into_vec_dedups_existing_value() {
+        let db = TempLmdbDatabase::new();
+        let a = comp_key(0);
+        {
+            let txn = db.write_transaction();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), a.clone(), "t").unwrap();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), a.clone(), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+        assert_eq!(entries, vec![a]);
+    }
+
+    #[test]
+    fn insert_into_vec_upgrades_legacy_single_entry() {
+        let db = TempLmdbDatabase::new();
+        let (legacy, appended) = (comp_key(0), comp_key(1));
+        {
+            // Seed a legacy single entry, then append via the vec helper.
+            let txn = db.write_transaction();
+            lmdb_replace(&txn, db.default_db(), b"k".as_slice(), &legacy, None).unwrap();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), appended.clone(), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        let entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+        assert_eq!(entries, vec![legacy, appended]);
+    }
+
+    #[test]
+    fn legacy_bytes_never_decode_as_vec() {
+        // Guards the disambiguation invariant the read helper relies on: a 64-byte legacy entry
+        // (outer length prefix = 64) can never be misread as a vector of entries.
+        let legacy = serialize(&comp_key(7), None).unwrap();
+        assert!(deserialize::<Vec<Vec<u8>>>(&legacy).is_err());
+        assert_eq!(deserialize::<Vec<u8>>(&legacy).unwrap(), comp_key(7));
+    }
+
+    /// Reads the raw stored bytes for `key` (no format interpretation).
+    fn raw_bytes(db: &TempLmdbDatabase, key: &[u8]) -> Vec<u8> {
+        let txn = db.read_transaction();
+        let access = txn.access();
+        access.get::<[u8], [u8]>(db.default_db(), key).unwrap().to_vec()
+    }
+
+    #[test]
+    fn single_entry_is_stored_in_legacy_format_multiple_as_vec() {
+        let db = TempLmdbDatabase::new();
+        let (a, b) = (comp_key(0), comp_key(1));
+        {
+            let txn = db.write_transaction();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), a.clone(), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        // One entry must be byte-for-byte identical to the legacy single-entry encoding, so existing
+        // databases are not rewritten for the common one-index case.
+        assert_eq!(raw_bytes(&db, b"k"), serialize(&a, None).unwrap());
+        {
+            let txn = db.write_transaction();
+            lmdb_insert_into_vec(&txn, db.default_db(), b"k".as_slice(), b.clone(), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        // Two entries switch to the vector encoding.
+        assert_eq!(raw_bytes(&db, b"k"), serialize(&vec![a, b], None).unwrap());
+    }
+
+    #[test]
+    fn write_index_entries_canonicalises_and_deletes() {
+        let db = TempLmdbDatabase::new();
+        let (a, b) = (comp_key(0), comp_key(1));
+        // Two stays a vec; two -> one downgrades to legacy; one -> zero deletes the key.
+        {
+            let txn = db.write_transaction();
+            lmdb_write_index_entries(&txn, db.default_db(), b"k".as_slice(), &[a.clone(), b.clone()], "t").unwrap();
+            txn.commit().unwrap();
+        }
+        assert_eq!(raw_bytes(&db, b"k"), serialize(&vec![a.clone(), b], None).unwrap());
+        {
+            let txn = db.write_transaction();
+            lmdb_write_index_entries(&txn, db.default_db(), b"k".as_slice(), std::slice::from_ref(&a), "t").unwrap();
+            txn.commit().unwrap();
+        }
+        assert_eq!(raw_bytes(&db, b"k"), serialize(&a, None).unwrap());
+        {
+            let txn = db.write_transaction();
+            lmdb_write_index_entries::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice(), &[], "t").unwrap();
+            txn.commit().unwrap();
+        }
+        let txn = db.read_transaction();
+        assert!(
+            lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice())
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn write_index_entries_tolerates_deleting_absent_key() {
+        let db = TempLmdbDatabase::new();
+        let txn = db.write_transaction();
+        // Deleting (empty entries) a key that was never written must not error.
+        lmdb_write_index_entries::<_, Vec<u8>>(&txn, db.default_db(), b"missing".as_slice(), &[], "t").unwrap();
+    }
+
+    // A 64-byte composite key: header_hash[0..32] || output_hash[32..64].
+    fn entry_for_header(header: u8, output: u8) -> Vec<u8> {
+        let mut v = vec![header; 32];
+        v.extend_from_slice(&[output; 32]);
+        v
+    }
+
+    /// Mirrors `remove_index_entry_for_header`: retain entries whose 32-byte header prefix differs,
+    /// then write canonically. Verifies removal targets only the matching entry and the key is deleted
+    /// only when the last entry is gone — and that removing an absent header is a no-op.
+    #[test]
+    fn removing_by_header_prefix_removes_only_match_and_deletes_when_empty() {
+        let db = TempLmdbDatabase::new();
+        let (a, b) = (entry_for_header(1, 9), entry_for_header(2, 9));
+        let remove_header = |header: u8| {
+            let txn = db.write_transaction();
+            let mut entries = lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap();
+            entries.retain(|e| e.get(0..32) != Some(&[header; 32][..]));
+            lmdb_write_index_entries(&txn, db.default_db(), b"k".as_slice(), &entries, "t").unwrap();
+            txn.commit().unwrap();
+        };
+        {
+            let txn = db.write_transaction();
+            lmdb_write_index_entries(&txn, db.default_db(), b"k".as_slice(), &[a.clone(), b.clone()], "t").unwrap();
+            txn.commit().unwrap();
+        }
+        // Removing a header that is not present leaves both entries untouched.
+        remove_header(7);
+        {
+            let txn = db.read_transaction();
+            assert_eq!(
+                lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice()).unwrap(),
+                vec![a.clone(), b.clone()]
+            );
+        }
+        // Removing header 1 leaves only entry b (now stored in the legacy single format).
+        remove_header(1);
+        assert_eq!(raw_bytes(&db, b"k"), serialize(&b, None).unwrap());
+        // Removing header 2 empties the vector and deletes the key.
+        remove_header(2);
+        {
+            let txn = db.read_transaction();
+            assert!(
+                lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, db.default_db(), b"k".as_slice())
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        // Removing again on the now-absent key must not error.
+        remove_header(2);
+    }
 }

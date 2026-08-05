@@ -175,7 +175,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             return Ok(());
         }
 
-        let output = db.fetch_output(&utxo_hash)?;
+        // Diagnostic logging only; any of the (content-identical) entries for this hash is fine.
+        let output = db.fetch_outputs(&utxo_hash)?.into_iter().next();
         warn!(
             target: LOG_TARGET,
             "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
@@ -191,13 +192,13 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
-    if db.fetch_output(&output_hash)?.is_some() {
+    if !db.fetch_outputs(&output_hash)?.is_empty() {
         warn!(
             target: LOG_TARGET,
             "Validation failed due to already spent input: {input}"
         );
-        // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
-        // been Some
+        // The commitment is not in the unspent set (checked above) but the output exists in the index,
+        // so it must already be spent.
         return Err(ValidationError::ContainsSTxO);
     }
 

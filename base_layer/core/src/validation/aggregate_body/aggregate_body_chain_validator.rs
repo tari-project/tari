@@ -132,18 +132,23 @@ pub fn hydrate_compact_inputs<B: BlockchainBackend>(body: &mut AggregateBody, db
             continue;
         }
         let input_output_hash = input.output_hash();
-        let output = match db.fetch_output(&input_output_hash) {
-            Ok(Some(output_mined_info)) => output_mined_info.output,
-            // Input may spend an output created in this same block
-            Ok(None) => match outputs.iter().find(|o| o.hash() == input_output_hash) {
-                Some(found) => found.clone(),
+        let output = match db.fetch_outputs(&input_output_hash) {
+            Ok(val) => match val.into_iter().next() {
+                Some(output_mined_info) => output_mined_info.output,
                 None => {
-                    // A compact input carries only the output hash, so there is no commitment to log here.
-                    debug!(
-                        target: LOG_TARGET,
-                        "Input not found in database or block, output hash: {}", input_output_hash,
-                    );
-                    return Err(ValidationError::UnknownInput);
+                    // Input is found in this block
+                    if let Some(found) = outputs.iter().find(|o| o.hash() == input_output_hash) {
+                        found.clone()
+                    } else {
+                        // Only the output hash is available here: this input is compact, so every other
+                        // accessor (including `commitment()`) would fail with `CompactInputMissingData`.
+                        debug!(
+                            target: LOG_TARGET,
+                            "Input not found in database or block, hash: {}",
+                            input_output_hash,
+                        );
+                        return Err(ValidationError::UnknownInput);
+                    }
                 },
             },
             Err(e) => return Err(ValidationError::from(e)),

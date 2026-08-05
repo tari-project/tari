@@ -385,12 +385,12 @@ impl BlockchainBackend for TempDatabase {
             .fetch_outputs_in_block_with_spend_state(header_hash, spend_status_at_header)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_output(output_hash)
+    fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_outputs(output_hash)
     }
 
-    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_input(output_hash)
+    fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_inputs(output_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -407,7 +407,7 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_mined_info_by_payref(payref)
     }
 
-    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError> {
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<Vec<MinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_mined_info_by_output_hash(output_hash)
     }
 

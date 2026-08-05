@@ -1339,16 +1339,18 @@ where B: BlockchainBackend
         db.fetch_chain_metadata()
     }
 
-    /// Returns a copy of the current output mined info
-    pub fn fetch_output(&self, output_hash: HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    /// Returns the mined info for every output with this hash, one entry per header it is indexed under. A hash can be
+    /// indexed under more than one header, for example across reorg history.
+    pub fn fetch_outputs(&self, output_hash: HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_output(&output_hash)
+        db.fetch_outputs(&output_hash)
     }
 
-    /// Returns optional input mined info for the given output hash
-    pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+    /// Returns the mined info for every input spending this output hash, one entry per header it is indexed under. A
+    /// hash can be indexed under more than one header, for example across reorg history.
+    pub fn fetch_inputs(&self, output_hash: HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_input(&output_hash)
+        db.fetch_inputs(&output_hash)
     }
 
     /// Returns the mined info for the given payment reference
@@ -1357,8 +1359,11 @@ where B: BlockchainBackend
         db.fetch_mined_info_by_payref(&payref)
     }
 
-    /// Returns the mined info for the given output hash
-    pub fn fetch_mined_info_by_output_hash(&self, output_hash: HashOutput) -> Result<MinedInfo, ChainStorageError> {
+    /// Returns the mined info for the given output hash, one entry per header it is indexed under.
+    pub fn fetch_mined_info_by_output_hash(
+        &self,
+        output_hash: HashOutput,
+    ) -> Result<Vec<MinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_mined_info_by_output_hash(&output_hash)
     }
@@ -1384,7 +1389,10 @@ where B: BlockchainBackend
         let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            let output = db.fetch_output(&hash)?;
+            // Take the last-mined entry if the hash is indexed under several headers.
+            let mut outputs = db.fetch_outputs(&hash)?;
+            outputs.sort_by_key(|o| o.mined_height);
+            let output = outputs.into_iter().next_back();
 
             trace!(
                 target: LOG_TARGET,
@@ -1426,8 +1434,10 @@ where B: BlockchainBackend
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            let output = db.fetch_output(&hash)?;
-            result.push(output);
+            // Take the last-mined entry if the hash is indexed under several headers.
+            let mut outputs = db.fetch_outputs(&hash)?;
+            outputs.sort_by_key(|o| o.mined_height);
+            result.push(outputs.into_iter().next_back());
         }
         Ok(result)
     }
@@ -1440,8 +1450,10 @@ where B: BlockchainBackend
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            let input = db.fetch_input(&hash)?;
-            result.push(input);
+            // Take the last-spent entry if the hash is indexed under several headers.
+            let mut inputs = db.fetch_inputs(&hash)?;
+            inputs.sort_by_key(|i| i.spent_height);
+            result.push(inputs.into_iter().next_back());
         }
         Ok(result)
     }
@@ -2797,7 +2809,12 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
             if compact {
                 return Ok(compact_input);
             }
-            let utxo_mined_info = match db.fetch_output(&compact_input.output_hash()) {
+            // Only the output's contents are used to hydrate the input, and those are identical for
+            // every index entry of the same output hash, so taking any entry is equivalent.
+            let utxo_mined_info = match db
+                .fetch_outputs(&compact_input.output_hash())
+                .map(|o| o.into_iter().next())
+            {
                 Ok(Some(o)) => o,
                 Ok(None) => {
                     return Err(ChainStorageError::InvalidBlock(
@@ -2859,9 +2876,15 @@ fn fetch_block_by_utxo_commitment<T: BlockchainBackend>(
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
     match output {
-        Some(hash) => match db.fetch_output(&hash)? {
-            Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
-            None => Ok(None),
+        // The hash came from the commitment index; if it is indexed under several headers, take the
+        // last-mined entry.
+        Some(hash) => {
+            let mut outputs = db.fetch_outputs(&hash)?;
+            outputs.sort_by_key(|o| o.mined_height);
+            match outputs.into_iter().next_back() {
+                Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
+                None => Ok(None),
+            }
         },
         None => Ok(None),
     }

@@ -532,9 +532,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
                 continue;
             }
-            let spent = self.db.fetch_inputs_mined_info(vec![output.hash()]).await?;
-            if let Some(Some(spent_status)) = spent.first() &&
-                spent_status.spent_height == 0
+            let mined_infos = self.db.fetch_mined_info_by_output_hash(output.hash()).await?;
+            if let Some(spent_status) = mined_infos
+                .iter()
+                .filter_map(|info| info.input.as_ref())
+                .find(|input| input.spent_height == 0)
             {
                 debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
                 continue;
@@ -982,7 +984,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 }
                                 state_tree_updates.insert(key, None);
 
-                                let output_info = self.db().fetch_output(output_hash).await?.ok_or_else(|| {
+                                let mut outputs = self.db().fetch_outputs(output_hash).await?;
+                                outputs.sort_by_key(|o| o.mined_height);
+                                let output_info = outputs.into_iter().next_back().ok_or_else(|| {
                                     HorizonSyncError::IncorrectResponse(
                                         "Could not fetch full output for spent commitment".into(),
                                     )
@@ -1375,7 +1379,7 @@ mod tests {
         let outputs = db.fetch_outputs_in_block(*block2.hash()).unwrap();
         let output_hash = outputs.first().expect("block 2 must have outputs").hash();
         assert!(
-            db.fetch_output(output_hash).unwrap().is_some(),
+            !db.fetch_outputs(output_hash).unwrap().is_empty(),
             "output must exist before cleanup"
         );
 
@@ -1386,7 +1390,7 @@ mod tests {
         sync.clean_up_stale_synced_outputs(1).await.unwrap();
 
         assert!(
-            db_clone.fetch_output(output_hash).unwrap().is_none(),
+            db_clone.fetch_outputs(output_hash).unwrap().is_empty(),
             "output above start_height must be pruned"
         );
     }

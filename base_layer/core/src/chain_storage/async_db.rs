@@ -168,9 +168,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- TXO --------------------------------------------//
 
-    make_async_fn!(fetch_output(output_hash: HashOutput) -> Option<OutputMinedInfo>, "fetch_output");
+    make_async_fn!(fetch_outputs(output_hash: HashOutput) -> Vec<OutputMinedInfo>, "fetch_outputs");
 
-    make_async_fn!(fetch_input(output_hash: HashOutput) -> Option<InputMinedInfo>, "fetch_input");
+    make_async_fn!(fetch_inputs(output_hash: HashOutput) -> Vec<InputMinedInfo>, "fetch_inputs");
 
     make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
 
@@ -306,7 +306,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
 
-    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
+    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> Vec<MinedInfo>, "fetch_mined_info_by_output_hash");
 
     make_async_fn!(request_accumulated_data_check(auto_correct: bool, breathing_time_ms: u64) -> (), "request_accumulated_data_check");
 

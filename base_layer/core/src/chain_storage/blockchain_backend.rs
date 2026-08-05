@@ -121,11 +121,17 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
-    /// Returns optional output mined info for the given output hash
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
+    /// Returns the mined info for every output indexed under the given output hash. A hash may be
+    /// indexed under more than one header (e.g. across reorgs), so callers that need a specific block
+    /// should filter the result by `header_hash`; an output is unique within a single block. An empty
+    /// vector means the output was not found.
+    fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError>;
 
-    /// Returns optional input mined info for the given output hash
-    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
+    /// Returns the mined info for every input indexed under the given output hash. A hash may be
+    /// indexed under more than one header (e.g. across reorgs), so callers that need a specific block
+    /// should filter the result by `header_hash`; an input is unique within a single block. An empty
+    /// vector means the input was not found.
+    fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
     /// set, otherwise None is returned.
@@ -137,8 +143,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Fetch mined info by PayRef (Payment Reference)
     fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError>;
 
-    /// Fetch mined info by output hash
-    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError>;
+    /// Fetch mined info for every index entry under the given output hash. A hash may be indexed under
+    /// more than one header (e.g. across reorgs), so this returns one entry per header.
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<Vec<MinedInfo>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;

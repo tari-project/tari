@@ -213,13 +213,16 @@ use crate::{
                 lmdb_first_after,
                 lmdb_get,
                 lmdb_get_multiple,
+                lmdb_get_single_or_vec,
                 lmdb_get_typed,
                 lmdb_insert,
                 lmdb_insert_dup,
+                lmdb_insert_into_vec,
                 lmdb_insert_typed,
                 lmdb_last,
                 lmdb_len,
                 lmdb_replace,
+                lmdb_write_index_entries,
             },
             row_data::block_header_accumulated_data::{
                 LmdbRowBlockHeaderAccumulatedDataV1,
@@ -1299,11 +1302,13 @@ impl LMDBDatabase {
             )?;
         }
 
-        lmdb_insert(
+        // Append to the index vector rather than overwriting: the same output hash can be associated
+        // with more than one header (e.g. across reorgs), so a key may map to multiple indexes.
+        lmdb_insert_into_vec(
             txn,
             &self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(output_key.clone().convert_to_comp_key().to_vec()),
+            output_key.clone().convert_to_comp_key().to_vec(),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
@@ -1410,7 +1415,12 @@ impl LMDBDatabase {
     ) -> Result<TransactionInput, ChainStorageError> {
         let input_with_output_data = match input.spent_output {
             SpentOutput::OutputData { .. } => input,
-            SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
+            // Only the output's contents are used here, and those are identical for every index entry of
+            // the same output hash (the hash commits to the contents), so taking any entry is equivalent.
+            SpentOutput::OutputHash(output_hash) => match self
+                .fetch_outputs_in_txn(txn, output_hash.as_slice())
+                .map(|outputs| outputs.into_iter().next())
+            {
                 Ok(Some(utxo_mined_info)) => TransactionInput {
                     version: input.version,
                     spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
@@ -1461,11 +1471,13 @@ impl LMDBDatabase {
         let hash = input_with_output_data.canonical_hash();
         let output_hash = input_with_output_data.output_hash();
         let key = InputKey::new(header_hash, &hash)?;
-        lmdb_insert(
+        // Append to the index vector rather than overwriting: the same output hash can be spent in
+        // more than one header context (e.g. across reorgs), so a key may map to multiple indexes.
+        lmdb_insert_into_vec(
             txn,
             &self.deleted_txo_hash_to_header_index,
             output_hash.as_slice(),
-            &(key.clone().convert_to_comp_key().to_vec()),
+            key.clone().convert_to_comp_key().to_vec(),
             "deleted_txo_hash_to_header_index",
         )?;
 
@@ -1748,7 +1760,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
+        self.tip_delete_block_inputs_outputs(write_txn, block_hash, height)?;
 
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -1756,7 +1768,7 @@ impl LMDBDatabase {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn delete_block_inputs_outputs(
+    fn tip_delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
@@ -1778,10 +1790,11 @@ impl LMDBDatabase {
             let output_hash = utxo.hash;
             let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
             trace!(target: LOG_TARGET, "Deleting UTXO `{output_hash}` with payref `{payref}`");
-            lmdb_delete(
+            self.remove_index_entry_for_header(
                 txn,
                 &self.txos_hash_to_index_db,
                 utxo.hash.as_slice(),
+                block_hash,
                 "txos_hash_to_index_db",
             )?;
             match lmdb_delete(
@@ -1875,10 +1888,11 @@ impl LMDBDatabase {
             // If input spends an output in this block, don't add it to the utxo set
             let output_hash = row.input.output_hash();
 
-            lmdb_delete(
+            self.remove_index_entry_for_header(
                 txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
+                block_hash,
                 "deleted_txo_hash_to_header_index",
             )?;
             if output_rows.iter().any(|(_, r)| r.hash == output_hash) {
@@ -1887,13 +1901,15 @@ impl LMDBDatabase {
 
             let mut input = row.input.clone();
 
-            let utxo_mined_info = self.fetch_output_in_txn(txn, output_hash.as_slice())?.ok_or_else(|| {
-                ChainStorageError::ValueNotFound {
+            let utxo_mined_info = self
+                .fetch_outputs_in_txn(txn, output_hash.as_slice())?
+                .into_iter()
+                .last()
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "UTXO",
                     field: "hash",
                     value: output_hash.to_hex(),
-                }
-            })?;
+                })?;
 
             let smt_key = KeyHash(
                 utxo_mined_info
@@ -2531,6 +2547,28 @@ impl LMDBDatabase {
         Ok(FixedHash::from(buffer))
     }
 
+    /// Removes the index entry (or entries) belonging to `header_hash` from the vector stored at
+    /// `lmdb_key`, leaving any entries for other headers intact, and deletes the key entirely only once
+    /// no entries remain. Each stored entry is a composite key prefixed with its 32-byte header hash,
+    /// so entries are matched on that prefix. Both the legacy single-entry and the current vector
+    /// storage formats are handled, and an already-absent key is tolerated (treated as a no-op) so the
+    /// operation is idempotent across retried reorgs/prunes.
+    fn remove_index_entry_for_header(
+        &self,
+        txn: &WriteTransaction<'_>,
+        db: &DatabaseRef,
+        lmdb_key: &[u8],
+        header_hash: &HashOutput,
+        table_name: &'static str,
+    ) -> Result<(), ChainStorageError> {
+        let mut entries = lmdb_get_single_or_vec::<_, Vec<u8>>(txn, db, lmdb_key)?;
+        // Keep only the entries belonging to other headers.
+        entries.retain(|entry| entry.get(0..32) != Some(header_hash.as_slice()));
+        // Write back canonically: removing the last entry deletes the key (tolerating an already-absent
+        // key), dropping to a single entry restores the legacy single-entry format.
+        lmdb_write_index_entries(txn, db, lmdb_key, &entries, table_name)
+    }
+
     fn delete_payref_index_entry(
         &self,
         write_txn: &WriteTransaction<'_>,
@@ -2575,9 +2613,10 @@ impl LMDBDatabase {
                 )?;
             }
             let output_hash = input.output_hash();
-            // From 'utxos_db::utxos_db'
-            if let Some(key_bytes) =
-                lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+            // A hash may map to multiple indexes (one per header). Prune the row for each, and remove
+            // only that header's index entry, deleting the index key once its last entry is gone.
+            for key_bytes in
+                lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
             {
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
                 let key = OutputKey::new(&header_hash, &output_hash)?;
@@ -2585,23 +2624,27 @@ impl LMDBDatabase {
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
 
                 self.delete_payref_index_entry(write_txn, &header_hash, &output_hash)?;
-            };
-            // From 'txos_hash_to_index_db::utxos_db'
-            trace!(
-                target: LOG_TARGET,
-                "Pruning output from 'txos_hash_to_index_db': key '{}'",
-                output_hash.to_hex()
-            );
-            lmdb_delete(
-                write_txn,
-                &self.txos_hash_to_index_db,
-                output_hash.as_slice(),
-                LMDB_DB_UTXOS,
-            )?;
-            lmdb_delete_if_exists(
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Pruning index entry from 'txos_hash_to_index_db': key '{}', header '{}'",
+                    output_hash.to_hex(),
+                    header_hash.to_hex(),
+                );
+                self.remove_index_entry_for_header(
+                    write_txn,
+                    &self.txos_hash_to_index_db,
+                    output_hash.as_slice(),
+                    &header_hash,
+                    "txos_hash_to_index_db",
+                )?;
+            }
+            self.remove_index_entry_for_header(
                 write_txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
+                block_hash,
+                "deleted_txo_hash_to_header_index",
             )?;
         }
 
@@ -2615,45 +2658,53 @@ impl LMDBDatabase {
         commitment: &CompressedCommitment,
         output_type: OutputType,
     ) -> Result<(), ChainStorageError> {
-        match lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
-            Some(key_bytes) => {
-                if !matches!(output_type, OutputType::Burn) {
-                    trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
-                    lmdb_delete(
-                        write_txn,
-                        &self.utxo_commitment_index,
-                        commitment.as_bytes(),
-                        "utxo_commitment_index",
-                    )?;
-                }
-                trace!(target: LOG_TARGET, "Pruning output from 'txos_hash_to_index_db': key '{}'", output_hash.to_hex());
+        // A hash may map to multiple indexes; collect them all so every associated row is pruned.
+        let key_entries =
+            lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?;
+
+        // The commitment index is pruned even when the hash->index mapping is already gone: a previous partial prune
+        // can leave a stale commitment entry behind, which would otherwise keep resolving to this output hash.
+        if !matches!(output_type, OutputType::Burn) {
+            trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
+            if key_entries.is_empty() {
+                lmdb_delete_if_exists(write_txn, &self.utxo_commitment_index, commitment.as_bytes())?;
+            } else {
                 lmdb_delete(
                     write_txn,
-                    &self.txos_hash_to_index_db,
-                    output_hash.as_slice(),
-                    LMDB_DB_UTXOS,
+                    &self.utxo_commitment_index,
+                    commitment.as_bytes(),
+                    "utxo_commitment_index",
                 )?;
-                lmdb_delete_if_exists(
-                    write_txn,
-                    &self.deleted_txo_hash_to_header_index,
-                    output_hash.as_slice(),
-                )?;
+            }
+        }
 
-                let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
-                let key = OutputKey::new(&header_hash, output_hash)?;
-                trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
-                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
-                self.delete_payref_index_entry(write_txn, &header_hash, output_hash)?;
-            },
-            None => {
-                // The output is already absent. This is expected during horizon sync when a previous attempt
-                // pruned this STXO but failed before cleanup could restore it, so the retry finds it gone.
-                debug!(
-                    target: LOG_TARGET,
-                    "prune_output_from_all_dbs: output {} not found, skipping (already pruned)",
-                    output_hash.to_hex()
-                );
-            },
+        if key_entries.is_empty() {
+            // The output is already absent. This is expected during horizon sync when a previous attempt
+            // pruned this STXO but failed before cleanup could restore it, so the retry finds it gone.
+            debug!(
+                target: LOG_TARGET,
+                "prune_output_from_all_dbs: output {} not found, skipping (already pruned)",
+                output_hash.to_hex()
+            );
+            return Ok(());
+        }
+
+        for key_bytes in key_entries {
+            let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
+            let key = OutputKey::new(&header_hash, output_hash)?;
+            trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
+            lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
+            self.delete_payref_index_entry(write_txn, &header_hash, output_hash)?;
+
+            // Remove only this header's index entry; the key is deleted once its last entry is gone.
+            trace!(target: LOG_TARGET, "Pruning index entry from 'txos_hash_to_index_db': key '{}', header '{}'", output_hash.to_hex(), header_hash.to_hex());
+            self.remove_index_entry_for_header(
+                write_txn,
+                &self.txos_hash_to_index_db,
+                output_hash.as_slice(),
+                &header_hash,
+                "txos_hash_to_index_db",
+            )?;
         }
 
         Ok(())
@@ -2828,58 +2879,64 @@ impl LMDBDatabase {
         )
     }
 
-    fn fetch_output_in_txn(
+    /// Fetches every output indexed under `output_hash`. A hash may map to multiple indexes (e.g. the
+    /// same output mined under different headers across reorgs), so this returns one entry per index
+    /// that still resolves to a row in `utxos_db`, in index order. An empty vector means no output was
+    /// found.
+    fn fetch_outputs_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &[u8],
-    ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
-            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
-                Some(TransactionOutputRowData {
+    ) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
+        let mut outputs = Vec::new();
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
+            if let Some(TransactionOutputRowData {
+                output: o,
+                mined_height,
+                header_hash,
+                mined_timestamp,
+                ..
+            }) = lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)?
+            {
+                outputs.push(OutputMinedInfo {
                     output: o,
                     mined_height,
                     header_hash,
                     mined_timestamp,
-                    ..
-                }) => Ok(Some(OutputMinedInfo {
-                    output: o,
-                    mined_height,
-                    header_hash,
-                    mined_timestamp,
-                })),
-
-                _ => Ok(None),
+                });
             }
-        } else {
-            Ok(None)
         }
+        Ok(outputs)
     }
 
-    fn fetch_input_in_txn(
+    /// Fetches every input indexed under `output_hash`. A hash may map to multiple indexes (e.g. the
+    /// same output spent under different headers across reorgs), so this returns one entry per index
+    /// that still resolves to a row in `inputs_db`, in index order. An empty vector means no input was
+    /// found.
+    fn fetch_inputs_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &[u8],
-    ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
-            match lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)? {
-                Some(TransactionInputRowData {
+    ) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
+        let mut inputs = Vec::new();
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
+            if let Some(TransactionInputRowData {
+                input: i,
+                spent_height: height,
+                header_hash,
+                spent_timestamp,
+                ..
+            }) = lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)?
+            {
+                inputs.push(InputMinedInfo {
                     input: i,
                     spent_height: height,
                     header_hash,
                     spent_timestamp,
-                    ..
-                }) => Ok(Some(InputMinedInfo {
-                    input: i,
-                    spent_height: height,
-                    header_hash,
-                    spent_timestamp,
-                })),
-
-                _ => Ok(None),
+                });
             }
-        } else {
-            Ok(None)
         }
+        Ok(inputs)
     }
 
     // Fetch mined info by PayRef (Payment Reference)
@@ -2890,7 +2947,22 @@ impl LMDBDatabase {
     ) -> Result<MinedInfo, ChainStorageError> {
         // If we find the output hash for the given PayRef, we can fetch the mined info
         if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
-            return self.fetch_mined_info_by_output_hash_in_txn(txn, &output_hash);
+            // A hash may be mined under multiple headers; the PayRef (= H(header_hash || output_hash))
+            // identifies a single header, so return the entry whose output produces this PayRef.
+            let mined_info = self
+                .fetch_mined_info_by_output_hash_in_txn(txn, &output_hash)?
+                .into_iter()
+                .find(|info| {
+                    info.output
+                        .as_ref()
+                        .is_some_and(|o| generate_payment_reference(&o.header_hash, &output_hash) == *payref)
+                })
+                .unwrap_or(MinedInfo {
+                    input: None,
+                    output: None,
+                });
+
+            return Ok(mined_info);
         }
 
         // If we don't find the output hash, we check if the PayRef index is rebuilt
@@ -2927,19 +2999,29 @@ impl LMDBDatabase {
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &HashOutput,
-    ) -> Result<MinedInfo, ChainStorageError> {
-        let mut mined_info = MinedInfo {
-            input: None,
-            output: None,
-        };
-        if let Ok(Some(output_mined_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
-            mined_info.output = Some(output_mined_info);
+    ) -> Result<Vec<MinedInfo>, ChainStorageError> {
+        let mut results = Vec::new();
+        let mut output_mined_info = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
+        output_mined_info.sort_by_key(|o| o.mined_height);
+        let mut inputs_mined_info = self.fetch_inputs_in_txn(txn, output_hash.as_slice())?;
+        // sort desc so that pop() yields the inputs in ascending spent_height order
+        inputs_mined_info.sort_by_key(|i| core::cmp::Reverse(i.spent_height));
+        for output in output_mined_info {
+            let input = inputs_mined_info.pop();
+            results.push(MinedInfo {
+                input,
+                output: Some(output),
+            });
         }
-        if let Ok(Some(input_mined_info)) = self.fetch_input_in_txn(txn, output_hash.as_slice()) {
-            mined_info.input = Some(input_mined_info);
+        // Any inputs without a matching output (e.g. the output has been pruned) are still reported.
+        for input in inputs_mined_info.into_iter().rev() {
+            results.push(MinedInfo {
+                input: Some(input),
+                output: None,
+            });
         }
 
-        Ok(mined_info)
+        Ok(results)
     }
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
@@ -2957,13 +3039,18 @@ impl LMDBDatabase {
                 field: "commitment",
                 value: commitment.to_hex(),
             })?;
-        let output =
-            self.fetch_output_in_txn(txn, output_hash.as_slice())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "UTXO (in fetch_utxo_by_commitment)",
-                    field: "hash",
-                    value: output_hash.to_string(),
-                })?;
+        // The commitment is unique in the UTXO set; if several index entries exist (e.g. across
+        // reorgs), take the last mined one.
+        let mut outputs = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
+        outputs.sort_by_key(|o| o.mined_height);
+        let output = outputs
+            .into_iter()
+            .next_back()
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_utxo_by_commitment)",
+                field: "hash",
+                value: output_hash.to_string(),
+            })?;
 
         Ok(output)
     }
@@ -3408,19 +3495,17 @@ impl BlockchainBackend for LMDBDatabase {
                     })?;
             for output in &mut outputs {
                 let hash = output.0.hash();
-                if let Some(key) =
-                    lmdb_get::<_, Vec<u8>>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
+                // A hash may map to multiple spend indexes; the output is spent-at-header if any of
+                // them was spent at or before the target header height.
+                for key in
+                    lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
                 {
-                    let input = lmdb_get::<_, TransactionInputRowData>(&txn, &self.inputs_db, &key)?.ok_or(
-                        ChainStorageError::ValueNotFound {
-                            entity: "input",
-                            field: "hash",
-                            value: header_hash.to_hex(),
-                        },
-                    )?;
-                    if input.spent_height <= header_height {
+                    if let Some(input) = lmdb_get::<_, TransactionInputRowData>(&txn, &self.inputs_db, &key)? &&
+                        input.spent_height <= header_height
+                    {
                         // we know its spend at the header height specified as optional in the fn
                         output.1 = true;
+                        break;
                     }
                 }
             }
@@ -3429,14 +3514,14 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(outputs)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_output_in_txn(&txn, output_hash.as_slice())
+        self.fetch_outputs_in_txn(&txn, output_hash.as_slice())
     }
 
-    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+    fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, output_hash.as_slice())
+        self.fetch_inputs_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -3452,7 +3537,7 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_mined_info_by_payref_in_txn(&txn, payref)
     }
 
-    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError> {
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<Vec<MinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         self.fetch_mined_info_by_output_hash_in_txn(&txn, output_hash)
     }
@@ -4347,8 +4432,12 @@ impl BlockchainBackend for LMDBDatabase {
                 field: "commitment",
                 value: vn.commitment.to_hex(),
             })?;
-        let output = self
-            .fetch_output(&hash)?
+        // The commitment is unique in the UTXO set; if several index entries exist, take the last mined.
+        let mut outputs = self.fetch_outputs(&hash)?;
+        outputs.sort_by_key(|o| o.mined_height);
+        let output = outputs
+            .into_iter()
+            .next_back()
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "UTXO (in fetch_unspent_output_hash_by_commitment)",
                 field: "hash",
@@ -5486,7 +5575,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
 ///
 /// Walks the index in fixed-size chunks rather than buffering the whole snapshot up front, then
 /// resolves and hashes each chunk inline before pulling the next one. lmdb-zero only permits one
-/// live `ConstAccessor` per transaction, so the cursor and the per-output `fetch_output_in_txn`
+/// live `ConstAccessor` per transaction, so the cursor and the per-output `fetch_outputs_in_txn`
 /// lookups cannot share an accessor — closing the cursor after each chunk releases it without
 /// closing the read transaction, and `MDB_SET_RANGE` on the next iteration restores cursor
 /// position past the last drained key.
@@ -5568,8 +5657,12 @@ fn collect_jmt_migration_entries(db: &LMDBDatabase) -> Result<Vec<(KeyHash, Vec<
         };
 
         for (commitment, output_hash) in &chunk {
-            let utxo_info = db
-                .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
+            // The commitment is unique in the UTXO set; if several entries exist, take the last mined.
+            let mut outputs = db.fetch_outputs_in_txn(&read_txn, output_hash.as_slice())?;
+            outputs.sort_by_key(|o| o.mined_height);
+            let utxo_info = outputs
+                .into_iter()
+                .next_back()
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "TransactionOutput",
                     field: "output_hash",

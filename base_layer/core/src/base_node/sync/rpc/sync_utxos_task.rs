@@ -147,10 +147,10 @@ where B: BlockchainBackend + 'static
                 let output_hash = output.hash();
                 if self
                     .db
-                    .fetch_output(output_hash)
+                    .fetch_outputs(output_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?
-                    .is_none()
+                    .is_empty()
                 {
                     trace!(
                         target: LOG_TARGET,
@@ -241,42 +241,34 @@ where B: BlockchainBackend + 'static
 
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
             for input in inputs_in_block {
-                let output_from_current_tranche = if let Some(mined_info) = self
+                // The spent output may be indexed under several headers; take the last-mined entry.
+                let mut mined_infos = self
                     .db
-                    .fetch_output(input.output_hash())
+                    .fetch_outputs(input.output_hash())
                     .await
-                    .rpc_status_internal_error(LOG_TARGET)?
+                    .rpc_status_internal_error(LOG_TARGET)?;
+                mined_infos.sort_by_key(|o| o.mined_height);
+                let mined_info = mined_infos.into_iter().next_back();
+                if let Some(info) = &mined_info &&
+                    info.mined_height >= start_header.height
                 {
-                    mined_info.mined_height >= start_header.height
-                } else {
-                    false
-                };
-
-                if output_from_current_tranche {
                     trace!(target: LOG_TARGET, "Spent TXO (hash '{}') not sent to peer", input.output_hash().to_hex());
-                } else {
-                    let input_commitment = match self.db.fetch_output(input.output_hash()).await {
-                        Ok(Some(o)) => o.output.commitment,
-                        Ok(None) => {
-                            return Err(RpcStatus::general(&format!(
-                                "Mined info for input '{}' not found",
-                                input.output_hash().to_hex()
-                            )));
-                        },
-                        Err(e) => {
-                            return Err(RpcStatus::general(&format!(
-                                "Input '{}' not found ({})",
-                                input.output_hash().to_hex(),
-                                e
-                            )));
-                        },
-                    };
-                    trace!(target: LOG_TARGET, "Spent TXO (commitment '{}') to peer", input_commitment.to_hex());
-                    inputs.push(Ok(SyncUtxosResponse {
-                        txo: Some(Txo::Commitment(input_commitment.as_bytes().to_vec())),
-                        mined_header: current_header_hash.to_vec(),
-                    }));
+                    continue;
                 }
+                let input_commitment = match mined_info {
+                    Some(o) => o.output.commitment,
+                    None => {
+                        return Err(RpcStatus::general(&format!(
+                            "Mined info for input '{}' not found",
+                            input.output_hash().to_hex()
+                        )));
+                    },
+                };
+                trace!(target: LOG_TARGET, "Spent TXO (commitment '{}') to peer", input_commitment.to_hex());
+                inputs.push(Ok(SyncUtxosResponse {
+                    txo: Some(Txo::Commitment(input_commitment.as_bytes().to_vec())),
+                    mined_header: current_header_hash.to_vec(),
+                }));
             }
             debug!(
                 target: LOG_TARGET,
