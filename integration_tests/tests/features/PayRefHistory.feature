@@ -58,6 +58,11 @@ Feature: PayRef History
     When I wait for wallet WALLET_A to have at least 1002000 uT
     When I send an interactive transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     Then wallet WALLET_A detects all transactions are at least Broadcast
+    # MINER2 mines on its own base node, so "Broadcast" (accepted by NODE's mempool) does not mean
+    # MINER2's node has the transaction yet. Without this wait the block template can be built
+    # before the transaction propagates, the block is mined without it, and since no further blocks
+    # are mined until it is seen as mined, the next step hangs until timeout.
+    Then I wait until base node MINER2 has 1 unconfirmed transactions in its mempool
     When mining node MINER2 mines 1 blocks
     Then all nodes are at height 5
     Then wallet WALLET_A detects all transactions are at least Mined_or_OneSidedUnconfirmed
