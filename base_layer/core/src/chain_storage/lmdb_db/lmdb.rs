@@ -45,7 +45,7 @@ use crate::chain_storage::{
     error::ChainStorageError,
     lmdb_db::{
         cursors::KeyPrefixCursor,
-        helpers::{deserialize, serialize},
+        helpers::{deserialize, serialize, try_deserialize},
         lmdb_db::TypedDatabaseRef,
     },
 };
@@ -370,8 +370,9 @@ where
             return Err(ChainStorageError::AccessError(e.to_string()));
         },
     };
-    // Current format: a vector of entries.
-    if let Ok(entries) = deserialize::<Vec<V>>(bytes) {
+    // Current format: a vector of entries. This decode is expected to fail for every value still in
+    // the legacy format, so it must not log — hence `try_deserialize` rather than `deserialize`.
+    if let Ok(entries) = try_deserialize::<Vec<V>>(bytes) {
         return Ok(entries);
     }
     // Legacy format: a single entry stored directly.
@@ -770,7 +771,7 @@ mod tests {
         // Guards the disambiguation invariant the read helper relies on: a 64-byte legacy entry
         // (outer length prefix = 64) can never be misread as a vector of entries.
         let legacy = serialize(&comp_key(7), None).unwrap();
-        assert!(deserialize::<Vec<Vec<u8>>>(&legacy).is_err());
+        assert!(try_deserialize::<Vec<Vec<u8>>>(&legacy).is_err());
         assert_eq!(deserialize::<Vec<u8>>(&legacy).unwrap(), comp_key(7));
     }
 
