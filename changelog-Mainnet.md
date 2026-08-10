@@ -1,6 +1,31 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-# Changelog
+# Changelog## [5.6.0](https://github.com/tari-project/tari/compare/v5.5.0...v5.6.0) (2026-08-05)
+
+### Features
+* peer improvements ([#7927](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/issues/7927)) ([1a41b53](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/commit/1a41b538e6125938515c6f971a360df99eb9629d))
+* extra warning for printing seed words ([#7948](https://github.com/tari-project/tari/issues/7948)) ([3882c24](https://github.com/tari-project/tari/commit/3882c245a98e288c6f21b1338c1b3ad9e83c7cba))
+* optimize clones during validation ([#7923](https://github.com/tari-project/tari/issues/7923)) ([4cf88a7](https://github.com/tari-project/tari/commit/4cf88a79c352423c1c2286a070f466843e46f02f))
+
+
+### Bug Fixes
+
+* actually perform DNSSEC validation on DNS seed records ([#7941](https://github.com/tari-project/tari/issues/7941)) ([eb0998a](https://github.com/tari-project/tari/commit/eb0998aa72d5d98685cb1724ad7eb1bb56f5f915))
+* bound the number of signatures in a sidechain quorum certificate ([#7944](https://github.com/tari-project/tari/issues/7944)) ([876e0cb](https://github.com/tari-project/tari/commit/876e0cba5707e36c5a6e6aee7b72bf03eb9b7dfa))
+* enforce MAX_SIZE invariant when deserializing bounded types ([#7942](https://github.com/tari-project/tari/issues/7942)) ([49992d4](https://github.com/tari-project/tari/commit/49992d43c1439a34f5c7148c3f555cda27e6e811))
+* ensure requests are clamped to max number ([#7938](https://github.com/tari-project/tari/issues/7938)) ([7362479](https://github.com/tari-project/tari/commit/736247902c6f141e6995c24a9f92d0e8cb0f7db0))
+* env leaking in logs ([#7929](https://github.com/tari-project/tari/issues/7929)) ([292f675](https://github.com/tari-project/tari/commit/292f67527fb792f62d01b055e1524ca80f8d468f))
+* file permissions ([#7931](https://github.com/tari-project/tari/issues/7931)) ([be124c3](https://github.com/tari-project/tari/commit/be124c3ed056304e490d70282b2198b51fc29435))
+* gate grpc get_network_state behind the method allow-list ([#7939](https://github.com/tari-project/tari/issues/7939)) ([ffdb193](https://github.com/tari-project/tari/commit/ffdb193a5ccfb51c3ef8625eabb5b2738f645034))
+* grpc auth max length ([#7934](https://github.com/tari-project/tari/issues/7934)) ([57baf9b](https://github.com/tari-project/tari/commit/57baf9b307d8f8e35257955056b4b09eab60b2e6))
+* idle rpc timeout ([#7937](https://github.com/tari-project/tari/issues/7937)) ([31fb18b](https://github.com/tari-project/tari/commit/31fb18b72ecb2e0aa7ff285cbf3ebaafbe8a138a))
+* leger logs ([#7932](https://github.com/tari-project/tari/issues/7932)) ([10226da](https://github.com/tari-project/tari/commit/10226dab0ecb2dd0eab505358800777d3dc80d8d))
+* libtor ports and passwords ([#7933](https://github.com/tari-project/tari/issues/7933)) ([9c98e5f](https://github.com/tari-project/tari/commit/9c98e5fae4050e9d9e08985b8e7454893abd3664))
+* protect the paper wallet import temporary database ([#7945](https://github.com/tari-project/tari/issues/7945)) ([24f9255](https://github.com/tari-project/tari/commit/24f9255ea0cce85eb505d6d6ff54b1bbd95d2361))
+* tari transaction component security hardening ([#7940](https://github.com/tari-project/tari/issues/7940)) ([725748d](https://github.com/tari-project/tari/commit/725748d2e687955948d32ef357b52d43b1e9f87c))
+* validate pre-mine session ID before using it as a path ([#7943](https://github.com/tari-project/tari/issues/7943)) ([26d253e](https://github.com/tari-project/tari/commit/26d253e9b8a5c7f32702936b62bd86aa7bf9a69f))
+* risv builds ([#7928](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/issues/7928)) ([6a1ee9c](https://github.com/tari-project/tari-ghsa-wh49-x9c8-7jc8/commit/6a1ee9c81b3f8c92adc079e747d49b346201235f))
+
 ## [5.5.0](https://github.com/tari-project/tari/compare/v5.4.0...v5.5.0) (2026-07-16)
 
 ### ⚠ BREAKING CHANGES
