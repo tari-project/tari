@@ -56,8 +56,9 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
 /// The total number of times a transaction is submitted to the mempool (the initial submission plus resubmissions)
-/// before it is cancelled. Only submissions that fall within `transaction_mempool_resubmission_window` of each other
-/// count towards this total; a rejection long after the previous attempt starts the count afresh.
+/// before it is cancelled. This is a hard limit for the lifetime of the protocol; the count is never reset, so a
+/// transaction that the mempool keeps dropping is always cancelled after this many attempts. Resubmissions are spaced
+/// at least `transaction_mempool_resubmission_window` apart.
 const MAX_MEMPOOL_SUBMISSION_ATTEMPTS: usize = 5;
 
 pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
@@ -65,7 +66,7 @@ pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity, TKeyManag
     mode: TxBroadcastMode,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     timeout_update_receiver: watch::Receiver<Duration>,
-    last_rejection: Option<Instant>,
+    last_resubmission: Option<Instant>,
     resubmission_attempts: usize,
 }
 
@@ -86,7 +87,7 @@ where
             mode: TxBroadcastMode::TransactionSubmission,
             resources,
             timeout_update_receiver,
-            last_rejection: None,
+            last_resubmission: None,
             resubmission_attempts: 0,
         }
     }
@@ -331,13 +332,19 @@ where
             );
             Ok(true)
         } else if response.location != TxLocation::InMempool {
-            // A rejection that arrives long after the previous submission is not evidence of a persistent problem, so
-            // the attempt count starts afresh.
+            // Resubmissions are spaced at least a resubmission window apart; until that window has elapsed we keep
+            // querying the base node in case the transaction shows up on its own.
             if self
-                .last_rejection
-                .is_none_or(|last| last.elapsed() > self.resources.config.transaction_mempool_resubmission_window)
+                .last_resubmission
+                .is_some_and(|last| last.elapsed() <= self.resources.config.transaction_mempool_resubmission_window)
             {
-                self.resubmission_attempts = 0;
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) not found in mempool, waiting out the resubmission window before \
+                     resubmitting",
+                    self.tx_id
+                );
+                return Ok(false);
             }
 
             if self.resubmission_attempts < MAX_MEMPOOL_SUBMISSION_ATTEMPTS - 1 {
@@ -351,7 +358,7 @@ where
                     MAX_MEMPOOL_SUBMISSION_ATTEMPTS
                 );
                 self.mode = TxBroadcastMode::TransactionSubmission;
-                self.last_rejection = Some(Instant::now());
+                self.last_resubmission = Some(Instant::now());
                 Ok(false)
             } else {
                 let reason =
