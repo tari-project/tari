@@ -34,7 +34,7 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
 };
-pub use payload_summary::{PayloadSummary, RecipientSummary};
+pub use payload_summary::{OutputSummary, PayloadSummary, RecipientSummary};
 
 #[cfg(test)]
 mod test {

@@ -748,9 +748,6 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
-        for output in &self.custom_outputs {
-            core_tx_builder.add_output(output.output.to_transaction_output()?);
-        }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
             Self::update_encrypted_data_and_metadata_sig(
@@ -810,6 +807,7 @@ where KM: TransactionKeyManagerInterface
 
         for output in &mut self.custom_outputs {
             Self::update_encrypted_data_and_metadata_sig(&self.key_manager, output, total_fee, None)?;
+            core_tx_builder.add_output(output.output.to_transaction_output()?);
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
