@@ -23,7 +23,10 @@
 use std::sync::{LazyLock, Mutex};
 
 use log::debug;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    script_offset_policy::validate_script_offset_key_identities,
+};
 use rand::Rng;
 use semver::Version;
 use tari_common::configuration::Network;
@@ -346,6 +349,11 @@ pub fn ledger_get_script_offset(
         sender_offset_indexes
     );
     verify_ledger_application()?;
+
+    // The device enforces this too - it has to, since it cannot trust us - but failing here gives a legible error
+    // instead of a bare `BadBranchKey` status word, and stops a wallet-side bug from ever reaching the device.
+    validate_script_offset_key_identities(sender_offset_indexes, script_key_indexes)
+        .map_err(|e| LedgerDeviceError::InvalidScriptOffsetRequest(e.to_string()))?;
 
     // 1. data sizes
     let mut instructions: Vec<u8> = Vec::new();

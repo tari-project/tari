@@ -1,9 +1,17 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::vec::Vec;
-
 use ledger_device_sdk::io::Comm;
+use minotari_ledger_wallet_common::{
+    common_types::AppSW as AppSWMapping,
+    script_offset_policy::{
+        ChunkKind,
+        ScriptOffsetPolicyError,
+        ScriptOffsetRequestGuard,
+        ScriptOffsetRole,
+        ScriptOffsetTotals,
+    },
+};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -11,21 +19,19 @@ use crate::{
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
+    MAX_PAYLOADS,
     RESPONSE_VERSION,
     STATIC_SPEND_INDEX,
 };
 
-const MIN_UNIQUE_KEYS: usize = 2;
-
+/// Which keys a request may reference, and whether it is complete, is decided by
+/// [`minotari_ledger_wallet_common::script_offset_policy`]; this handler only derives and sums. Keeping the two apart
+/// means the rules protecting the spend key are exercised by ordinary unit tests rather than only on a device.
 pub struct ScriptOffsetCtx {
     sender_offset_sum: RistrettoSecretKey,
     script_private_key_sum: RistrettoSecretKey,
     account: u64,
-    total_offset_indexes: u64,
-    total_script_indexes: u64,
-    total_derived_offset_keys: u64,
-    total_derived_script_keys: u64,
-    unique_keys: Vec<RistrettoSecretKey>,
+    guard: ScriptOffsetRequestGuard,
 }
 
 // Implement constructor for TxInfo with default values
@@ -35,11 +41,7 @@ impl ScriptOffsetCtx {
             sender_offset_sum: RistrettoSecretKey::default(),
             script_private_key_sum: RistrettoSecretKey::default(),
             account: 0,
-            total_offset_indexes: 0,
-            total_script_indexes: 0,
-            total_derived_offset_keys: 0,
-            total_derived_script_keys: 0,
-            unique_keys: Vec::new(),
+            guard: ScriptOffsetRequestGuard::new(),
         }
     }
 
@@ -48,17 +50,18 @@ impl ScriptOffsetCtx {
         self.sender_offset_sum = RistrettoSecretKey::default();
         self.script_private_key_sum = RistrettoSecretKey::default();
         self.account = 0;
-        self.total_offset_indexes = 0;
-        self.total_script_indexes = 0;
-        self.total_derived_offset_keys = 0;
-        self.total_derived_script_keys = 0;
-        self.unique_keys = Vec::new();
+        self.guard.reset();
     }
+}
 
-    fn add_unique_key(&mut self, secret_key: RistrettoSecretKey) {
-        if !self.unique_keys.contains(&secret_key) {
-            self.unique_keys.push(secret_key);
-        }
+/// Abandon the request and report the violation. Nothing accumulated so far may survive into the next request.
+fn reject(offset_ctx: &mut ScriptOffsetCtx, e: ScriptOffsetPolicyError) -> AppSW {
+    let sw = e.app_sw();
+    offset_ctx.reset();
+    match sw {
+        AppSWMapping::BadBranchKey => AppSW::BadBranchKey,
+        AppSWMapping::ScriptOffsetNotUnique => AppSW::ScriptOffsetNotUnique,
+        _ => AppSW::WrongApduLength,
     }
 }
 
@@ -73,37 +76,57 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) -> Result<()
 
     let mut total_offset_keys = [0u8; 8];
     total_offset_keys.clone_from_slice(&data[8..16]);
-    offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
 
     let mut total_script_indexes = [0u8; 8];
     total_script_indexes.clone_from_slice(&data[16..24]);
-    offset_ctx.total_script_indexes = u64::from_le_bytes(total_script_indexes);
 
     let mut total_derived_offset_keys = [0u8; 8];
     total_derived_offset_keys.clone_from_slice(&data[24..32]);
-    offset_ctx.total_derived_offset_keys = u64::from_le_bytes(total_derived_offset_keys);
 
     let mut total_derived_script_keys = [0u8; 8];
     total_derived_script_keys.clone_from_slice(&data[32..40]);
-    offset_ctx.total_derived_script_keys = u64::from_le_bytes(total_derived_script_keys);
+
+    let totals = ScriptOffsetTotals {
+        sender_offset_indexes: u64::from_le_bytes(total_offset_keys),
+        script_key_indexes: u64::from_le_bytes(total_script_indexes),
+        derived_sender_offsets: u64::from_le_bytes(total_derived_offset_keys),
+        derived_script_keys: u64::from_le_bytes(total_derived_script_keys),
+    };
+    if let Err(e) = offset_ctx.guard.begin(totals, u64::from(MAX_PAYLOADS)) {
+        return Err(reject(offset_ctx, e));
+    }
 
     Ok(())
 }
 
-fn extract_branch_and_index(data: &[u8]) -> Result<(KeyType, u64), AppSW> {
+fn extract_branch_and_index(data: &[u8]) -> Result<(u8, u64), AppSW> {
     if data.len() != 16 {
         return Err(AppSW::WrongApduLength);
     }
     let mut branch_bytes = [0u8; 8];
     branch_bytes.clone_from_slice(&data[0..8]);
-    let branch_int = u64::from_le_bytes(branch_bytes);
-    let branch = KeyType::from_branch_key(branch_int)?;
+    let branch = u8::try_from(u64::from_le_bytes(branch_bytes)).map_err(|_| AppSW::BadBranchKey)?;
 
     let mut index_bytes = [0u8; 8];
     index_bytes.clone_from_slice(&data[8..16]);
     let index = u64::from_le_bytes(index_bytes);
 
     Ok((branch, index))
+}
+
+/// Derive an indexed key, having first established that the host is allowed to reference it in this role.
+fn indexed_key(
+    offset_ctx: &mut ScriptOffsetCtx,
+    data: &[u8],
+    role: ScriptOffsetRole,
+) -> Result<RistrettoSecretKey, AppSW> {
+    let (branch_byte, index) = extract_branch_and_index(data)?;
+    let branch = match offset_ctx.guard.record_indexed_key(branch_byte, index, role) {
+        Ok(branch) => branch,
+        Err(e) => return Err(reject(offset_ctx, e)),
+    };
+
+    derive_from_bip32_key(offset_ctx.account, index, KeyType::from_branch(branch))
 }
 
 fn derive_key_from_alpha(
@@ -117,7 +140,7 @@ fn derive_key_from_alpha(
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
     let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
-    offset_ctx.add_unique_key(alpha.clone());
+    offset_ctx.guard.record_alpha();
 
     alpha_hasher(alpha, blinding_factor)
 }
@@ -138,61 +161,56 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // 2. partial_script_offset
-    if chunk_number == 1 {
-        // Initialize 'script_private_key_sum' with 'partial_script_offset'
-        let partial_script_offset: RistrettoSecretKey =
-            get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
-        offset_ctx.script_private_key_sum = partial_script_offset;
+    let chunk = u64::from(chunk_number);
+    let kind = match offset_ctx.guard.classify_chunk(chunk) {
+        Ok(kind) => kind,
+        Err(e) => return Err(reject(offset_ctx, e)),
+    };
 
-        return Ok(());
-    }
+    match kind {
+        // 2. partial_script_offset
+        ChunkKind::PartialOffset => {
+            // Initialize 'script_private_key_sum' with 'partial_script_offset'
+            let partial_script_offset: RistrettoSecretKey =
+                get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+            offset_ctx.script_private_key_sum = partial_script_offset;
 
-    let payload_offset = 2;
-    let end_offset_indexes = payload_offset + offset_ctx.total_offset_indexes;
+            return Ok(());
+        },
 
-    // 3. Indexed Sender offset
-    if (payload_offset..end_offset_indexes).contains(&(chunk_number as u64)) {
-        let (branch, index) = extract_branch_and_index(data)?;
-        let offset = derive_from_bip32_key(offset_ctx.account, index, branch)?;
+        // 3. Indexed Sender offset
+        ChunkKind::SenderOffsetIndex => {
+            let offset = indexed_key(offset_ctx, data, ScriptOffsetRole::SenderOffset)?;
+            offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + offset;
+        },
 
-        offset_ctx.add_unique_key(offset.clone());
-        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + offset;
-    }
+        // 4. Indexed Script key
+        ChunkKind::ScriptKeyIndex => {
+            let script_key = indexed_key(offset_ctx, data, ScriptOffsetRole::ScriptKey)?;
+            offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + script_key;
+        },
 
-    // 4. Indexed Script key
-    let end_script_indexes = end_offset_indexes + offset_ctx.total_script_indexes;
-    if (end_offset_indexes..end_script_indexes).contains(&(chunk_number as u64)) {
-        let (branch, index) = extract_branch_and_index(data)?;
-        let script_key = derive_from_bip32_key(offset_ctx.account, index, branch)?;
+        // 5. Derived sender offsets key
+        ChunkKind::DerivedSenderOffset => {
+            let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
+            offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + k;
+        },
 
-        offset_ctx.add_unique_key(script_key.clone());
-        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + script_key;
-    }
-
-    // 5. Derived sender offsets key
-    let end_derived_offset_keys = end_script_indexes + offset_ctx.total_derived_offset_keys;
-    if (end_script_indexes..end_derived_offset_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
-
-        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + k;
-    }
-
-    // 6. Derived script key
-    let end_derived_script_keys = end_derived_offset_keys + offset_ctx.total_derived_script_keys;
-    if (end_derived_offset_keys..end_derived_script_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
-
-        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k
+        // 6. Derived script key
+        ChunkKind::DerivedScriptKey => {
+            let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
+            offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k;
+        },
     }
 
     if more {
         return Ok(());
     }
 
-    // Guard against attacks to extract the spending private key
-    if offset_ctx.unique_keys.len() < MIN_UNIQUE_KEYS {
-        return Err(AppSW::ScriptOffsetNotUnique);
+    // Guard against attacks to extract the spending private key: the request must be complete, and the offset must
+    // be a function of more than one Ledger key.
+    if let Err(e) = offset_ctx.guard.finish(chunk) {
+        return Err(reject(offset_ctx, e));
     }
 
     let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;

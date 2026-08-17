@@ -56,6 +56,9 @@ pub enum LedgerDeviceError {
     NotSupported,
     #[error("User cancelled the transaction")]
     UserCancelled,
+    /// The script offset request references keys the device will not accept
+    #[error("Invalid script offset request: {0}")]
+    InvalidScriptOffsetRequest(String),
 }
 
 impl From<ByteArrayError> for LedgerDeviceError {
