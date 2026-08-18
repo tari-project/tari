@@ -748,9 +748,6 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
-        for output in &self.custom_outputs {
-            core_tx_builder.add_output(output.output.to_transaction_output()?);
-        }
         let mut sent_outputs = Vec::new();
         for recipient in &mut self.recipient_outputs {
             Self::update_encrypted_data_and_metadata_sig(
@@ -810,6 +807,7 @@ where KM: TransactionKeyManagerInterface
 
         for output in &mut self.custom_outputs {
             Self::update_encrypted_data_and_metadata_sig(&self.key_manager, output, total_fee, None)?;
+            core_tx_builder.add_output(output.output.to_transaction_output()?);
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -977,6 +975,7 @@ where KM: TransactionKeyManagerInterface
             transaction: tx,
             payment_id,
             change: change_output.map(|o| o.output),
+            custom_outputs: self.custom_outputs.into_iter().map(|o| o.output).collect(),
             sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
             sent_output_hashes: sent_hashes,
@@ -1176,6 +1175,75 @@ mod test {
         let _err = builder.build().unwrap_err();
         // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
         // assert_eq!(err, TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
+    }
+
+    /// A custom output can be rewritten during the build — the encrypted data records the final fee, and the metadata
+    /// signature is remade to match — so the transaction body carries a different output to the one handed in.
+    /// `FinalizedTransaction::custom_outputs` must expose the published version, because a caller that stores its own
+    /// pre-build copy would record a hash that is not on chain and lose track of the output.
+    #[test]
+    fn it_returns_custom_outputs_as_they_were_published() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+
+        // A memo whose recorded fee is wrong, which is what makes the builder rewrite the output
+        let mut payment_id = MemoField::new_address_and_data(
+            TariAddress::default(),
+            MicroMinotari(999999),
+            true,
+            TxType::PaymentToSelf,
+            Vec::new(),
+        )
+        .unwrap();
+        payment_id.set_fee(MicroMinotari(999999));
+
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    payment_id,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+        let handed_in = output.clone();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(5))
+            .with_input(input)
+            .unwrap()
+            .with_output(output, p.sender_offset_key_id.clone(), None)
+            .unwrap();
+
+        let finalized = builder.build().unwrap();
+        let published = finalized.custom_outputs.first().expect("the custom output is returned");
+
+        // The rewrite happened, so the copy the caller handed in is already out of date
+        assert_ne!(
+            published.output_hash(),
+            handed_in.output_hash(),
+            "this test is only meaningful when the builder rewrites the output"
+        );
+        // ...and what is returned is what went into the transaction
+        assert!(
+            finalized
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .any(|o| o.hash() == published.output_hash()),
+            "the returned output must be the one in the body"
+        );
+        assert_eq!(
+            published.commitment(),
+            handed_in.commitment(),
+            "the commitment is unchanged, so callers can match the two up"
+        );
     }
 
     #[test]

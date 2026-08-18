@@ -34,7 +34,7 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
 };
-pub use payload_summary::{PayloadSummary, RecipientSummary};
+pub use payload_summary::{OutputSummary, PayloadSummary, RecipientSummary};
 
 #[cfg(test)]
 mod test {
@@ -208,6 +208,129 @@ mod test {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    /// A payload carrying a directly-specified output must sign into a *valid* transaction.
+    ///
+    /// The output arrives with a metadata signature made against a sender offset key the signer does not hold, so the
+    /// signer replaces both the key and the signature. Without that, the output travels into the body still signed
+    /// against the discarded key and the whole transaction is unbroadcastable. The output here is built the way a
+    /// wallet builds one — a genuine signature, not a placeholder — because a placeholder takes a different branch in
+    /// the builder and would hide the defect.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn offline_sign_with_a_custom_output_is_valid() {
+        use crate::{
+            offline_signing::PayloadSummary,
+            test_helpers::{TestParams, create_wallet_output_with_data},
+        };
+
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(50000), 0, &alice_view_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+
+        // A fully formed output, signed against a sender offset key that the offline signer will replace
+        let custom_value = MicroMinotari(6000);
+        let custom_output = create_wallet_output_with_data(
+            push_pubkey_script(&bob_key_manager.get_spend_key().pub_key),
+            OutputFeatures::default(),
+            &TestParams::new(&alice_view_key_manager),
+            custom_value,
+            &alice_view_key_manager,
+        )
+        .unwrap();
+        assert_ne!(
+            custom_output.metadata_signature(),
+            &Default::default(),
+            "the output must carry a real signature, or the builder takes its placeholder branch"
+        );
+        let custom_sender_offset = alice_view_key_manager.get_random_key(None, None).unwrap();
+        tx_builder
+            .with_output(custom_output, custom_sender_offset.key_id, None)
+            .unwrap();
+
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let amount = MicroMinotari(5000);
+        let recipients = [PaymentRecipient {
+            amount,
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+
+        let init = prepare_one_sided_transaction_for_signing(
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+        assert_eq!(init.info.outputs.len(), 1);
+
+        // The summary the operator approves must account for the custom output
+        let summary = PayloadSummary::from_one_sided(init.tx_id, &init.info);
+        assert_eq!(summary.total_output_amount, custom_value);
+        assert_eq!(summary.total_spend(), amount + custom_value);
+
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
+
+        let tx = signed.signed_transaction.transaction.clone();
+        // recipient + custom output + change
+        assert_eq!(tx.body.outputs().len(), 3);
+        for output in tx.body.outputs() {
+            output.verify_metadata_signature().unwrap();
+        }
+        let fee = tx.body.kernels()[0].fee;
+        assert_eq!(
+            signed.signed_transaction.change_output.clone().unwrap().value(),
+            MicroMinotari(50000) - amount - custom_value - fee
+        );
+
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        validator.validate(&tx, None, None, u64::MAX).unwrap();
     }
 
     #[test]

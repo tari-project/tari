@@ -51,6 +51,12 @@ pub struct FinalizedTransaction {
     pub payment_id: MemoField,
     pub change: Option<WalletOutput>,
     pub sent_outputs: Vec<OutputPair>,
+    /// The outputs supplied via [`crate::TransactionBuilder::with_output`], as they appear in `transaction`.
+    ///
+    /// Building can rewrite these — the encrypted data carries the final fee, and the metadata signature is remade
+    /// when it does — so a caller that stores its own pre-build copy will record a hash that does not match the UTXO
+    /// on chain. Store these instead.
+    pub custom_outputs: Vec<WalletOutput>,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of outputs received from others (excluding change)
