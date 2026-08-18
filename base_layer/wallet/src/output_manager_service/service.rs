@@ -64,6 +64,7 @@ use tari_transaction_components::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
+    transaction_builder::FinalizedTransaction,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
@@ -1715,6 +1716,7 @@ where
         let mut outputs = vec![output];
 
         let finalized = tx_builder.build()?;
+        refresh_custom_outputs_after_build(&mut outputs, &finalized);
 
         let fee = finalized.fee;
         if let Some(change) = finalized.change {
@@ -2516,6 +2518,7 @@ where
         }
 
         let finalized = tx_builder.build()?;
+        refresh_custom_outputs_after_build(&mut dest_outputs, &finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2683,6 +2686,7 @@ where
         let has_leftover_change = change > MicroMinotari::zero();
 
         let finalized = tx_builder.build()?;
+        refresh_custom_outputs_after_build(&mut dest_outputs, &finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2880,6 +2884,8 @@ where
         tx_builder.with_output(output.wallet_output.clone(), sender_offset_key_id, None)?;
 
         let finalized = tx_builder.build()?;
+        let mut outputs = vec![output];
+        refresh_custom_outputs_after_build(&mut outputs, &finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2896,7 +2902,7 @@ where
         // encumbering transaction
         self.resources
             .db
-            .encumber_outputs(tx_id, src_outputs.clone(), vec![output])?;
+            .encumber_outputs(tx_id, src_outputs.clone(), outputs)?;
         self.confirm_encumberance(tx_id, None, Vec::new())?;
 
         trace!(
@@ -3352,6 +3358,40 @@ fn get_multi_sig_script_components(
         Err(OutputManagerError::ServiceError(format!(
             "Invalid script (TxId: {tx_id})"
         )))
+    }
+}
+
+/// Replaces the wallet's copies of builder-supplied outputs with the versions that were actually published.
+///
+/// `TransactionBuilder::build` can rewrite an output added with `with_output`: the encrypted data carries the final
+/// fee, and the metadata signature is remade when it does. A copy taken before the build then holds a stale hash and
+/// encrypted data, and since txo validation looks outputs up by hash, storing that copy would leave the wallet
+/// hunting for a UTXO the chain does not have and drop the output from the balance. The commitment survives the
+/// rewrite, so it identifies which stored output each published one belongs to.
+fn refresh_custom_outputs_after_build(stored: &mut [DbWalletOutput], finalized: &FinalizedTransaction) {
+    for output in stored.iter_mut() {
+        let Some(published) = finalized
+            .custom_outputs
+            .iter()
+            .find(|o| o.commitment() == &output.commitment)
+        else {
+            continue;
+        };
+        if published.output_hash() == output.hash {
+            continue;
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Output '{}' was rewritten during build; storing the published version",
+            output.commitment.to_hex()
+        );
+        *output = DbWalletOutput::from_wallet_output(
+            published.clone(),
+            Some(output.spending_priority.clone()),
+            output.source,
+            output.received_in_tx_id,
+            output.spent_in_tx_id,
+        );
     }
 }
 

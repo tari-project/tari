@@ -42,8 +42,10 @@ use tari_script::TariScript;
 
 use crate::{
     MicroMinotari,
+    fee::Fee,
     offline_signing::models::{OneSidedMultisigTransactionInfo, OneSidedTransactionInfo},
     transaction_components::{MemoField, OutputFeatures},
+    weight::TransactionWeight,
 };
 
 /// A single recipient line in a [`PayloadSummary`].
@@ -187,6 +189,40 @@ impl PayloadSummary {
         }
     }
 
+    /// A lower bound on what a rate-based payload will be charged, or `None` when the fee is already fixed.
+    ///
+    /// Calculated from the current weight parameters, counting one kernel, the payload's inputs, and one output per
+    /// recipient and directly-specified output plus a change output, with no allowance for features or scripts data.
+    /// The real fee can only be larger. It is a floor for warning on, not a figure to present as the fee: see
+    /// [`Self::fee_is_fixed`] for why no exact number exists at this point.
+    pub fn minimum_fee(&self) -> Option<MicroMinotari> {
+        if self.fee_is_fixed() {
+            return None;
+        }
+        // One output per payee, plus change
+        let num_outputs = self
+            .recipients
+            .len()
+            .saturating_add(self.outputs.len())
+            .saturating_add(1);
+        Some(Fee::new(TransactionWeight::latest()).calculate(self.fee_per_gram, 1, self.num_inputs, num_outputs, 0))
+    }
+
+    /// Whether the inputs can still cover the spend once the fee is taken.
+    ///
+    /// [`Self::change`] is computed before the fee when the payload only sets a rate, so on its own it will report a
+    /// healthy change figure for a payload that cannot actually be signed. This compares it against
+    /// [`Self::minimum_fee`] so that shortfall is caught rather than shown as change.
+    pub fn inputs_cover_the_fee(&self) -> bool {
+        let Some(change) = self.change() else {
+            return false;
+        };
+        match self.minimum_fee() {
+            Some(minimum) => change >= minimum,
+            None => true,
+        }
+    }
+
     /// The change that should return to the sender. `None` if the inputs do not cover the spend, which is itself a
     /// reason to refuse to sign.
     ///
@@ -265,9 +301,18 @@ impl Display for PayloadSummary {
                     self.fee_per_gram
                 )?;
                 writeln!(f, "Total spend    : {} plus the fee", self.total_spend())?;
-                match self.change() {
-                    Some(change) => writeln!(f, "Change         : {change} less the fee")?,
-                    None => writeln!(f, "Change         : INPUTS DO NOT COVER THE SPEND")?,
+                match (self.change(), self.minimum_fee()) {
+                    // The change is computed before the fee, so a payload can cover its outputs and still not cover
+                    // the fee. Saying so is the whole point of this screen; showing the leftover as change is not.
+                    (Some(change), Some(minimum)) if change < minimum => writeln!(
+                        f,
+                        "Change         : INPUTS DO NOT COVER THE SPEND ONCE THE FEE IS TAKEN (at least {minimum})"
+                    )?,
+                    (Some(change), Some(minimum)) => {
+                        writeln!(f, "Change         : {change} less the fee (at least {minimum})")?
+                    },
+                    (Some(change), None) => writeln!(f, "Change         : {change} less the fee")?,
+                    (None, _) => writeln!(f, "Change         : INPUTS DO NOT COVER THE SPEND")?,
                 }
             },
         }
@@ -471,6 +516,56 @@ mod test {
             Some(MicroMinotari::from(1_000_000) - expected_spend),
             "the change shown must be what is left after every value-bearing field"
         );
+    }
+
+    /// A payload whose inputs cover the outputs but not the fee cannot be signed, and must not be rendered as though
+    /// it leaves change behind.
+    #[test]
+    fn it_warns_when_the_inputs_will_not_cover_the_fee() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = |value: u64| {
+            WalletOutput::new(
+                Default::default(),
+                MicroMinotari::from(value),
+                TariKeyId::Zero,
+                OutputFeatures::default(),
+                push_pubkey_script(&key_manager.get_spend_key().pub_key),
+                ExecutionStack::default(),
+                TariKeyId::Zero,
+                Default::default(),
+                Default::default(),
+                0,
+                Covenant::default(),
+                EncryptedData::default(),
+                MicroMinotari::zero(),
+                MemoField::new_empty(),
+                &key_manager,
+            )
+            .unwrap()
+        };
+
+        let mut info = info(&[1000]);
+        // Covers the recipient with a single µT to spare, nowhere near the fee at 20 µT/gram
+        info.inputs = vec![input(1001)];
+
+        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let minimum = summary.minimum_fee().expect("a rate-based payload has a fee floor");
+        assert!(minimum > MicroMinotari::from(1));
+        assert_eq!(summary.change(), Some(MicroMinotari::from(1)), "change before the fee");
+        assert!(!summary.inputs_cover_the_fee());
+
+        let rendered = summary.to_string();
+        assert!(
+            rendered.contains("INPUTS DO NOT COVER THE SPEND ONCE THE FEE IS TAKEN"),
+            "the shortfall must be called out rather than shown as change:\n{rendered}"
+        );
+
+        // With enough to cover it, the bound is shown alongside the change instead
+        info.inputs = vec![input(1_000_000)];
+        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        assert!(summary.inputs_cover_the_fee());
+        let rendered = summary.to_string();
+        assert!(rendered.contains("less the fee (at least"), "{rendered}");
     }
 
     #[test]
