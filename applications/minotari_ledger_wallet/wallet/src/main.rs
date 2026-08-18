@@ -47,6 +47,7 @@ use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
     Instruction as InstructionMapping,
     LedgerKeyBranch as BranchMapping,
+    MAX_PAYLOADS,
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -102,7 +103,6 @@ pub enum Instruction {
 const P2_MORE: u8 = 0x01;
 const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
-const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]

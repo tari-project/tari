@@ -183,7 +183,7 @@ fn main() {
     let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
         derived_script_keys.push(get_random_nonce());
-        script_key_indexes.push((LedgerKeyBranch::Spend, rand::rng().next_u64()));
+        script_key_indexes.push((LedgerKeyBranch::PreMine, rand::rng().next_u64()));
         derived_sender_offsets.push(get_random_nonce());
         sender_offset_indexes.push((LedgerKeyBranch::OneSidedSenderOffset, rand::rng().next_u64()));
     }

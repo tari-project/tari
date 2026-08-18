@@ -10,6 +10,10 @@ use core::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::utils;
+/// Largest chunk number a chunked APDU may carry in its `p1` field, and so the largest chunk index a multi-chunk
+/// request can address. Shared so the host bounds a request exactly as the device does.
+pub const MAX_PAYLOADS: u8 = 250;
+
 /// Ledger application status words.
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]

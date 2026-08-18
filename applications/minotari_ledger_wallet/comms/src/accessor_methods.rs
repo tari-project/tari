@@ -24,8 +24,8 @@ use std::sync::{LazyLock, Mutex};
 
 use log::debug;
 use minotari_ledger_wallet_common::{
-    common_types::{AppSW, Instruction, LedgerKeyBranch},
-    script_offset_policy::validate_script_offset_key_identities,
+    common_types::{AppSW, Instruction, LedgerKeyBranch, MAX_PAYLOADS},
+    script_offset_policy::validate_script_offset_request,
 };
 use rand::Rng;
 use semver::Version;
@@ -351,9 +351,18 @@ pub fn ledger_get_script_offset(
     verify_ledger_application()?;
 
     // The device enforces this too - it has to, since it cannot trust us - but failing here gives a legible error
-    // instead of a bare `BadBranchKey` status word, and stops a wallet-side bug from ever reaching the device.
-    validate_script_offset_key_identities(sender_offset_indexes, script_key_indexes)
-        .map_err(|e| LedgerDeviceError::InvalidScriptOffsetRequest(e.to_string()))?;
+    // instead of a bare status word, and stops a wallet-side bug from ever reaching the device. This runs the same
+    // guard the device does, over the whole request, so nothing gets past here only to be refused on-device.
+    let derived_sender_offset_bytes: Vec<&[u8]> = derived_sender_offsets.iter().map(|k| k.as_bytes()).collect();
+    let derived_script_key_bytes: Vec<&[u8]> = derived_script_keys.iter().map(|k| k.as_bytes()).collect();
+    validate_script_offset_request(
+        sender_offset_indexes,
+        script_key_indexes,
+        &derived_sender_offset_bytes,
+        &derived_script_key_bytes,
+        u64::from(MAX_PAYLOADS),
+    )
+    .map_err(|e| LedgerDeviceError::InvalidScriptOffsetRequest(e.to_string()))?;
 
     // 1. data sizes
     let mut instructions: Vec<u8> = Vec::new();

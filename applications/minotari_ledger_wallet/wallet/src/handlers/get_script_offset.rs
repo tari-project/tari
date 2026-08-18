@@ -3,7 +3,7 @@
 
 use ledger_device_sdk::io::Comm;
 use minotari_ledger_wallet_common::{
-    common_types::AppSW as AppSWMapping,
+    common_types::{AppSW as AppSWMapping, MAX_PAYLOADS},
     script_offset_policy::{
         ChunkKind,
         ScriptOffsetPolicyError,
@@ -19,7 +19,6 @@ use crate::{
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
-    MAX_PAYLOADS,
     RESPONSE_VERSION,
     STATIC_SPEND_INDEX,
 };
@@ -54,11 +53,9 @@ impl ScriptOffsetCtx {
     }
 }
 
-/// Abandon the request and report the violation. Nothing accumulated so far may survive into the next request.
-fn reject(offset_ctx: &mut ScriptOffsetCtx, e: ScriptOffsetPolicyError) -> AppSW {
-    let sw = e.app_sw();
-    offset_ctx.reset();
-    match sw {
+/// The status word the device reports for a policy violation.
+fn reject(e: &ScriptOffsetPolicyError) -> AppSW {
+    match e.app_sw() {
         AppSWMapping::BadBranchKey => AppSW::BadBranchKey,
         AppSWMapping::ScriptOffsetNotUnique => AppSW::ScriptOffsetNotUnique,
         _ => AppSW::WrongApduLength,
@@ -92,9 +89,7 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) -> Result<()
         derived_sender_offsets: u64::from_le_bytes(total_derived_offset_keys),
         derived_script_keys: u64::from_le_bytes(total_derived_script_keys),
     };
-    if let Err(e) = offset_ctx.guard.begin(totals, u64::from(MAX_PAYLOADS)) {
-        return Err(reject(offset_ctx, e));
-    }
+    offset_ctx.guard.begin(totals, u64::from(MAX_PAYLOADS)).map_err(|e| reject(&e))?;
 
     Ok(())
 }
@@ -121,31 +116,51 @@ fn indexed_key(
     role: ScriptOffsetRole,
 ) -> Result<RistrettoSecretKey, AppSW> {
     let (branch_byte, index) = extract_branch_and_index(data)?;
-    let branch = match offset_ctx.guard.record_indexed_key(branch_byte, index, role) {
-        Ok(branch) => branch,
-        Err(e) => return Err(reject(offset_ctx, e)),
-    };
+    let branch = offset_ctx
+        .guard
+        .record_indexed_key(branch_byte, index, role)
+        .map_err(|e| reject(&e))?;
 
     derive_from_bip32_key(offset_ctx.account, index, KeyType::from_branch(branch))
 }
 
 fn derive_key_from_alpha(
-    account: u64,
     data: &[u8],
     offset_ctx: &mut ScriptOffsetCtx,
+    role: ScriptOffsetRole,
 ) -> Result<RistrettoSecretKey, AppSW> {
     if data.len() != 32 {
         return Err(AppSW::WrongApduLength);
     }
-    let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
-    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+    // Record before deriving: the blinding factor is the only thing that distinguishes one derived key from another,
+    // and reusing it across the two sides cancels the spend key out of the offset.
+    offset_ctx
+        .guard
+        .record_derived_key(&data[0..32], role)
+        .map_err(|e| reject(&e))?;
 
-    offset_ctx.guard.record_alpha();
+    let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_SPEND_INDEX, KeyType::Spend)?;
+    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
     alpha_hasher(alpha, blinding_factor)
 }
 
 pub fn handler_get_script_offset(
+    comm: &mut Comm,
+    chunk_number: u8,
+    more: bool,
+    offset_ctx: &mut ScriptOffsetCtx,
+) -> Result<(), AppSW> {
+    // Any failure abandons the whole request. A malformed chunk must not simply be dropped: the surrounding chunks
+    // would still accumulate, and the host would be answered on a sum made only of the terms it chose to deliver.
+    let result = accumulate_chunk(comm, chunk_number, more, offset_ctx);
+    if result.is_err() {
+        offset_ctx.reset();
+    }
+    result
+}
+
+fn accumulate_chunk(
     comm: &mut Comm,
     chunk_number: u8,
     more: bool,
@@ -162,20 +177,18 @@ pub fn handler_get_script_offset(
     }
 
     let chunk = u64::from(chunk_number);
-    let kind = match offset_ctx.guard.classify_chunk(chunk) {
-        Ok(kind) => kind,
-        Err(e) => return Err(reject(offset_ctx, e)),
-    };
+    let kind = offset_ctx.guard.classify_chunk(chunk).map_err(|e| reject(&e))?;
 
     match kind {
         // 2. partial_script_offset
         ChunkKind::PartialOffset => {
+            if data.len() != 32 {
+                return Err(AppSW::WrongApduLength);
+            }
             // Initialize 'script_private_key_sum' with 'partial_script_offset'
             let partial_script_offset: RistrettoSecretKey =
                 get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
             offset_ctx.script_private_key_sum = partial_script_offset;
-
-            return Ok(());
         },
 
         // 3. Indexed Sender offset
@@ -192,13 +205,13 @@ pub fn handler_get_script_offset(
 
         // 5. Derived sender offsets key
         ChunkKind::DerivedSenderOffset => {
-            let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
+            let k = derive_key_from_alpha(data, offset_ctx, ScriptOffsetRole::SenderOffset)?;
             offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + k;
         },
 
         // 6. Derived script key
         ChunkKind::DerivedScriptKey => {
-            let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
+            let k = derive_key_from_alpha(data, offset_ctx, ScriptOffsetRole::ScriptKey)?;
             offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k;
         },
     }
@@ -209,9 +222,7 @@ pub fn handler_get_script_offset(
 
     // Guard against attacks to extract the spending private key: the request must be complete, and the offset must
     // be a function of more than one Ledger key.
-    if let Err(e) = offset_ctx.guard.finish(chunk) {
-        return Err(reject(offset_ctx, e));
-    }
+    offset_ctx.guard.finish(chunk).map_err(|e| reject(&e))?;
 
     let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
 
