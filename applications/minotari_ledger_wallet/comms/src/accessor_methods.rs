@@ -353,13 +353,11 @@ pub fn ledger_get_script_offset(
     // The device enforces this too - it has to, since it cannot trust us - but failing here gives a legible error
     // instead of a bare status word, and stops a wallet-side bug from ever reaching the device. This runs the same
     // guard the device does, over the whole request, so nothing gets past here only to be refused on-device.
-    let derived_sender_offset_bytes: Vec<&[u8]> = derived_sender_offsets.iter().map(|k| k.as_bytes()).collect();
-    let derived_script_key_bytes: Vec<&[u8]> = derived_script_keys.iter().map(|k| k.as_bytes()).collect();
     validate_script_offset_request(
         sender_offset_indexes,
         script_key_indexes,
-        &derived_sender_offset_bytes,
-        &derived_script_key_bytes,
+        derived_sender_offsets.len() as u64,
+        derived_script_keys.len() as u64,
         u64::from(MAX_PAYLOADS),
     )
     .map_err(|e| LedgerDeviceError::InvalidScriptOffsetRequest(e.to_string()))?;

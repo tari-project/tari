@@ -29,15 +29,35 @@
 //! present. Counting presence rather than coefficient would let a host cancel `α` against itself and read the one
 //! remaining key straight out of the response.
 //!
+//! This is also why the blinding factors themselves are never retained: `H(b)` is host-known either way, so repeating
+//! one only shifts a known quantity and changes `α`'s coefficient, both of which the count already handles. Only the
+//! two counts and the identity list are held, bounding the guard's heap at `MAX_PAYLOADS` identities - independent of
+//! a transaction's input count, and well under what the previous scalar-based accounting used.
+//!
 //! Rules 1 and 2 are expressed over key *identities* rather than over derived scalars: what matters is what the host
 //! asked for, not what the device happened to derive.
 //!
-//! # Residual risk
+//! # What these rules do not do
 //!
-//! These rules bound which linear combinations the host may request; they do not stop it from asking for many. The
-//! device answers each request statelessly and without user interaction, so two requests differing by one term still
-//! reveal that term by subtraction. Closing that off needs the offset to be bound to a transaction the device has
-//! seen and the user has approved, which is a protocol change rather than a validation change.
+//! They bound which linear combinations the host may request. They do not bound how many it may request, and no
+//! version of them can: the response is arithmetic on a host-chosen linear combination, so enough equations solve it.
+//! Two requests differing by one indexed key reveal that key by subtraction; a third brings the spend key's
+//! coefficient into play and reveals `α`. Per-request validation cannot close that, and this module should not be
+//! read as claiming otherwise.
+//!
+//! Restricting the request *shape* does not close it either, though it is worth understanding why. If every request
+//! had to be "n derived keys plus exactly one indexed key", the achievable responses would all have the form
+//! `α - k_a`, and no combination of them separates `α` from any `k_a`. But varying either count breaks that: two
+//! requests differing only in `n` yield `α` directly, and a transaction's key counts vary with its inputs and
+//! outputs, so no fixed shape can be imposed.
+//!
+//! What the device does instead is refuse to be an *unattended* oracle: returning an offset requires the user to
+//! approve it, so an extraction needs several approvals in a row with no transaction to justify them. That makes the
+//! attack attended and conspicuous rather than impossible.
+//!
+//! The durable fix is to bind the offset to a transaction the device has parsed and the user has reviewed, so the
+//! host cannot choose the combination at all. That is a protocol change, not a validation change, and it is not what
+//! this module does.
 
 use alloc::{fmt, vec::Vec};
 
@@ -104,10 +124,6 @@ pub enum ScriptOffsetPolicyError {
     },
     /// The same key identity was referenced more than once in the request.
     DuplicateKeyIdentity { branch: LedgerKeyBranch, index: u64 },
-    /// The same derived-key blinding factor was supplied more than once in the request.
-    DuplicateBlindingFactor,
-    /// A derived-key blinding factor was not a 32 byte scalar.
-    MalformedBlindingFactor,
     /// The branch byte does not name a known branch.
     UnknownBranch { branch: u8 },
     /// The declared sizes do not describe a request that can be sent.
@@ -128,9 +144,7 @@ impl ScriptOffsetPolicyError {
                 AppSW::BadBranchKey
             },
             ScriptOffsetPolicyError::DuplicateKeyIdentity { .. } |
-            ScriptOffsetPolicyError::DuplicateBlindingFactor |
             ScriptOffsetPolicyError::NotEnoughUniqueKeys { .. } => AppSW::ScriptOffsetNotUnique,
-            ScriptOffsetPolicyError::MalformedBlindingFactor => AppSW::WrongApduLength,
             ScriptOffsetPolicyError::RequestTooLarge |
             ScriptOffsetPolicyError::UnexpectedChunk { .. } |
             ScriptOffsetPolicyError::IncompleteRequest { .. } => AppSW::WrongApduLength,
@@ -146,12 +160,6 @@ impl fmt::Display for ScriptOffsetPolicyError {
             },
             ScriptOffsetPolicyError::DuplicateKeyIdentity { branch, index } => {
                 write!(f, "Key identity '{branch}/{index}' was referenced more than once")
-            },
-            ScriptOffsetPolicyError::DuplicateBlindingFactor => {
-                write!(f, "A derived key blinding factor was supplied more than once")
-            },
-            ScriptOffsetPolicyError::MalformedBlindingFactor => {
-                write!(f, "A derived key blinding factor was not a 32 byte scalar")
             },
             ScriptOffsetPolicyError::UnknownBranch { branch } => write!(f, "Unknown key branch '{branch}'"),
             ScriptOffsetPolicyError::RequestTooLarge => write!(f, "Script offset request declares too many chunks"),
@@ -205,15 +213,15 @@ pub fn branch_is_valid_for_role(branch: LedgerKeyBranch, role: ScriptOffsetRole)
 pub fn validate_script_offset_request(
     sender_offset_indexes: &[(LedgerKeyBranch, u64)],
     script_key_indexes: &[(LedgerKeyBranch, u64)],
-    derived_sender_offsets: &[&[u8]],
-    derived_script_keys: &[&[u8]],
+    derived_sender_offsets: u64,
+    derived_script_keys: u64,
     max_chunk: u64,
 ) -> Result<(), ScriptOffsetPolicyError> {
     let totals = ScriptOffsetTotals {
         sender_offset_indexes: sender_offset_indexes.len() as u64,
         script_key_indexes: script_key_indexes.len() as u64,
-        derived_sender_offsets: derived_sender_offsets.len() as u64,
-        derived_script_keys: derived_script_keys.len() as u64,
+        derived_sender_offsets,
+        derived_script_keys,
     };
 
     let mut guard = ScriptOffsetRequestGuard::new();
@@ -232,15 +240,15 @@ pub fn validate_script_offset_request(
         guard.classify_chunk(chunk)?;
         guard.record_indexed_key(branch.as_byte(), *index, ScriptOffsetRole::ScriptKey)?;
     }
-    for blinding_factor in derived_sender_offsets {
+    for _ in 0..derived_sender_offsets {
         chunk += 1;
         guard.classify_chunk(chunk)?;
-        guard.record_derived_key(blinding_factor, ScriptOffsetRole::SenderOffset)?;
+        guard.record_derived_key(ScriptOffsetRole::SenderOffset);
     }
-    for blinding_factor in derived_script_keys {
+    for _ in 0..derived_script_keys {
         chunk += 1;
         guard.classify_chunk(chunk)?;
-        guard.record_derived_key(blinding_factor, ScriptOffsetRole::ScriptKey)?;
+        guard.record_derived_key(ScriptOffsetRole::ScriptKey);
     }
 
     guard.finish(chunk)
@@ -258,13 +266,15 @@ pub struct ScriptOffsetRequestGuard {
     /// subtraction. Tracking identities rather than derived scalars is what makes a key referenced from both sides
     /// detectable: such a key cancels out of the offset while still looking like extra entropy.
     key_identities: Vec<(u8, u64)>,
-    /// Blinding factors of the derived keys the host has supplied, on either side. Each derived key contributes
-    /// `H(blinding factor) + α`, and `H(..)` is host-computable, so the same factor on both sides cancels the spend
-    /// key against itself just as surely as a repeated identity cancels an indexed key.
-    derived_blinding_factors: Vec<[u8; 32]>,
     /// How many derived keys landed on each side. The spend key's coefficient in the response is the difference
     /// between the two, so these have to be counted separately rather than collapsed into a "spend key was used"
     /// flag - see the module docs.
+    ///
+    /// Only the counts are held, never the blinding factors themselves. A repeated blinding factor changes nothing
+    /// that matters: `H(b)` is a host-known constant either way, so a repeat only shifts a known quantity and adjusts
+    /// the spend key's coefficient, both of which [`Self::unique_key_count`] already accounts for. Retaining the
+    /// factors to reject repeats would cost 32 bytes per derived key of the device's small heap - scaling with the
+    /// transaction's input count - to enforce a rule that buys no safety.
     derived_script_keys: usize,
     derived_sender_offsets: usize,
     /// Next chunk number expected.
@@ -371,28 +381,15 @@ impl ScriptOffsetRequestGuard {
         Ok(branch)
     }
 
-    /// Record a derived key the host has asked for, enforcing that its blinding factor is not reused.
+    /// Record a derived key the host has asked for.
     ///
-    /// Every derived key is `H(blinding_factor) + α` for the one spend key `α`, so these are not tracked as distinct
-    /// secrets; what matters is which side each landed on.
-    pub fn record_derived_key(
-        &mut self,
-        blinding_factor: &[u8],
-        role: ScriptOffsetRole,
-    ) -> Result<(), ScriptOffsetPolicyError> {
-        let blinding_factor: [u8; 32] = blinding_factor
-            .try_into()
-            .map_err(|_| ScriptOffsetPolicyError::MalformedBlindingFactor)?;
-        if self.derived_blinding_factors.contains(&blinding_factor) {
-            return Err(ScriptOffsetPolicyError::DuplicateBlindingFactor);
-        }
-        self.derived_blinding_factors.push(blinding_factor);
-
+    /// Every derived key is `H(blinding_factor) + α` for the one spend key `α`, so these are not distinct secrets;
+    /// all that matters is which side each landed on, because that is what sets `α`'s coefficient.
+    pub fn record_derived_key(&mut self, role: ScriptOffsetRole) {
         match role {
             ScriptOffsetRole::SenderOffset => self.derived_sender_offsets += 1,
             ScriptOffsetRole::ScriptKey => self.derived_script_keys += 1,
         }
-        Ok(())
     }
 
     /// How many secrets the response would actually be a function of.
@@ -451,41 +448,28 @@ mod test {
         LedgerKeyBranch::Spend,
     ];
 
-    /// A distinct 32 byte blinding factor.
-    fn bf(seed: u8) -> [u8; 32] {
-        [seed; 32]
-    }
-
-    /// `n` distinct blinding factors, starting at `first`.
-    fn bfs(first: u8, n: u8) -> Vec<[u8; 32]> {
-        (0..n).map(|i| bf(first + i)).collect()
-    }
-
     /// Replay a complete request through the guard exactly as the device handler drives it, and report whether the
     /// device would have returned an offset.
     fn run_request(
         sender: &[(LedgerKeyBranch, u64)],
         script: &[(LedgerKeyBranch, u64)],
-        derived_sender: &[[u8; 32]],
-        derived_script: &[[u8; 32]],
+        derived_sender: u64,
+        derived_script: u64,
     ) -> Result<(), ScriptOffsetPolicyError> {
         let mut guard = ScriptOffsetRequestGuard::new();
         guard.begin(
             ScriptOffsetTotals {
                 sender_offset_indexes: sender.len() as u64,
                 script_key_indexes: script.len() as u64,
-                derived_sender_offsets: derived_sender.len() as u64,
-                derived_script_keys: derived_script.len() as u64,
+                derived_sender_offsets: derived_sender,
+                derived_script_keys: derived_script,
             },
             MAX_CHUNK,
         )?;
 
-        let last =
-            1 + sender.len() as u64 + script.len() as u64 + derived_sender.len() as u64 + derived_script.len() as u64;
+        let last = 1 + sender.len() as u64 + script.len() as u64 + derived_sender + derived_script;
         let mut sender_keys = sender.iter();
         let mut script_keys = script.iter();
-        let mut sender_factors = derived_sender.iter();
-        let mut script_factors = derived_script.iter();
         for chunk in 1..=last {
             match guard.classify_chunk(chunk)? {
                 ChunkKind::PartialOffset => {},
@@ -497,14 +481,8 @@ mod test {
                     let (branch, index) = script_keys.next().expect("script key for chunk");
                     guard.record_indexed_key(branch.as_byte(), *index, ScriptOffsetRole::ScriptKey)?;
                 },
-                ChunkKind::DerivedSenderOffset => {
-                    let factor = sender_factors.next().expect("blinding factor for chunk");
-                    guard.record_derived_key(factor, ScriptOffsetRole::SenderOffset)?;
-                },
-                ChunkKind::DerivedScriptKey => {
-                    let factor = script_factors.next().expect("blinding factor for chunk");
-                    guard.record_derived_key(factor, ScriptOffsetRole::ScriptKey)?;
-                },
+                ChunkKind::DerivedSenderOffset => guard.record_derived_key(ScriptOffsetRole::SenderOffset),
+                ChunkKind::DerivedScriptKey => guard.record_derived_key(ScriptOffsetRole::ScriptKey),
             }
         }
         guard.finish(last)
@@ -519,7 +497,7 @@ mod test {
     fn ordinary_transaction_is_accepted() {
         // One sender offset key from the one-sided branch, script keys travelling as derived keys.
         assert_eq!(
-            run_request(&[(LedgerKeyBranch::OneSidedSenderOffset, 7)], &[], &[], &bfs(0x40, 1)),
+            run_request(&[(LedgerKeyBranch::OneSidedSenderOffset, 7)], &[], 0, 1),
             Ok(())
         );
     }
@@ -530,12 +508,7 @@ mod test {
         // key, which must not be mistaken for the request leaning on a single key over and over.
         for inputs in 1..8 {
             assert_eq!(
-                run_request(
-                    &[(LedgerKeyBranch::OneSidedSenderOffset, 1)],
-                    &[],
-                    &[],
-                    &bfs(0x40, inputs)
-                ),
+                run_request(&[(LedgerKeyBranch::OneSidedSenderOffset, 1)], &[], 0, inputs),
                 Ok(()),
                 "a {inputs}-input transaction must be signable"
             );
@@ -549,18 +522,13 @@ mod test {
             (LedgerKeyBranch::OneSidedSenderOffset, 2),
             (LedgerKeyBranch::Random, 1),
         ];
-        assert_eq!(run_request(&sender, &[], &[], &bfs(0x40, 2)), Ok(()));
+        assert_eq!(run_request(&sender, &[], 0, 2), Ok(()));
     }
 
     #[test]
     fn pre_mine_spend_is_accepted() {
         assert_eq!(
-            run_request(
-                &[(LedgerKeyBranch::Random, 99)],
-                &[(LedgerKeyBranch::PreMine, 3)],
-                &[],
-                &[]
-            ),
+            run_request(&[(LedgerKeyBranch::Random, 99)], &[(LedgerKeyBranch::PreMine, 3)], 0, 0),
             Ok(())
         );
     }
@@ -578,7 +546,7 @@ mod test {
         ];
         let script = [(LedgerKeyBranch::Spend, 43)];
         assert_eq!(
-            run_request(&sender, &script, &[], &[]),
+            run_request(&sender, &script, 0, 0),
             Err(ScriptOffsetPolicyError::BranchNotAllowedForRole {
                 branch: LedgerKeyBranch::Spend,
                 role: ScriptOffsetRole::SenderOffset,
@@ -589,7 +557,7 @@ mod test {
     #[test]
     fn advisory_negative_control_still_rejected() {
         // The advisory's baseline: the target key on its own. Rejected before the fix too, and still rejected.
-        assert!(run_request(&[(LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)], &[], &[], &[]).is_err());
+        assert!(run_request(&[(LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)], &[], 0, 0).is_err());
     }
 
     #[test]
@@ -603,19 +571,19 @@ mod test {
 
         // Reachable from neither side, at any index, however much legitimate-looking company it is given.
         let target = (LedgerKeyBranch::Spend, STATIC_SPEND_INDEX);
-        assert!(run_request(&[target], &[], &[], &[]).is_err());
-        assert!(run_request(&[], &[target], &[], &[]).is_err());
+        assert!(run_request(&[target], &[], 0, 0).is_err());
+        assert!(run_request(&[], &[target], 0, 0).is_err());
         assert!(
             run_request(
                 &[target, (LedgerKeyBranch::Random, 0)],
                 &[(LedgerKeyBranch::PreMine, 1)],
-                &[],
-                &[]
+                0,
+                0
             )
             .is_err()
         );
-        assert!(run_request(&[(LedgerKeyBranch::Random, 0), target], &[], &[], &bfs(0x40, 2)).is_err());
-        assert!(run_request(&[(LedgerKeyBranch::Spend, 0)], &[], &[], &bfs(0x40, 1)).is_err());
+        assert!(run_request(&[(LedgerKeyBranch::Random, 0), target], &[], 0, 2).is_err());
+        assert!(run_request(&[(LedgerKeyBranch::Spend, 0)], &[], 0, 1).is_err());
     }
 
     #[test]
@@ -623,7 +591,7 @@ mod test {
         for role in [ScriptOffsetRole::SenderOffset, ScriptOffsetRole::ScriptKey] {
             assert!(!branch_is_valid_for_role(LedgerKeyBranch::MetadataEphemeralNonce, role));
         }
-        assert!(run_request(&[(LedgerKeyBranch::MetadataEphemeralNonce, 1)], &[], &[], &bfs(0x40, 1)).is_err());
+        assert!(run_request(&[(LedgerKeyBranch::MetadataEphemeralNonce, 1)], &[], 0, 1).is_err());
     }
 
     #[test]
@@ -658,11 +626,11 @@ mod test {
     #[test]
     fn a_single_key_request_is_rejected() {
         assert_eq!(
-            run_request(&[(LedgerKeyBranch::Random, 42)], &[], &[], &[]),
+            run_request(&[(LedgerKeyBranch::Random, 42)], &[], 0, 0),
             Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 })
         );
         assert_eq!(
-            run_request(&[], &[(LedgerKeyBranch::PreMine, 1)], &[], &[]),
+            run_request(&[], &[(LedgerKeyBranch::PreMine, 1)], 0, 0),
             Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 })
         );
     }
@@ -673,13 +641,13 @@ mod test {
         // Ledger secret no matter how long it is.
         for derived in 1..6 {
             assert_eq!(
-                run_request(&[], &[], &[], &bfs(0x40, derived)),
+                run_request(&[], &[], 0, derived),
                 Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 }),
                 "{derived} derived script keys still only draw on the spend key"
             );
         }
         assert_eq!(
-            run_request(&[], &[], &bfs(0x10, 2), &bfs(0x40, 3)),
+            run_request(&[], &[], 2, 3),
             Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 })
         );
     }
@@ -688,23 +656,22 @@ mod test {
     // MIN_UNIQUE_KEYS on a presence flag while the response reduced to one indexed key in the clear.
     #[test]
     fn balanced_derived_keys_cancel_the_spend_key_and_hide_nothing() {
-        // Same blinding factor on both sides: the two derived terms are literally identical and cancel.
+        // One derived key a side leaves the spend key with a zero coefficient, so the response reduces to
+        // `partial + known - k` for the single indexed key. True whether or not the blinding factors match, which is
+        // why rejecting repeated blinding factors would not have been enough on its own.
         assert_eq!(
-            run_request(&[], &[(LedgerKeyBranch::PreMine, 3)], &[bf(0x10)], &[bf(0x10)]),
-            Err(ScriptOffsetPolicyError::DuplicateBlindingFactor)
+            run_request(&[], &[(LedgerKeyBranch::PreMine, 3)], 1, 1),
+            Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 })
         );
-
-        // Different blinding factors, but still one derived key a side: `H(b1) - H(b2)` is host-known and the spend
-        // key still cancels, so the response is `partial + known - k`. Deduping factors alone would miss this.
         assert_eq!(
-            run_request(&[(LedgerKeyBranch::Random, 9)], &[], &[bf(0x10)], &[bf(0x40)]),
+            run_request(&[(LedgerKeyBranch::Random, 9)], &[], 1, 1),
             Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 })
         );
 
         // Any equal split cancels, however many keys are involved.
         for n in 1..5 {
             assert_eq!(
-                run_request(&[(LedgerKeyBranch::Random, 9)], &[], &bfs(0x10, n), &bfs(0x40, n)),
+                run_request(&[(LedgerKeyBranch::Random, 9)], &[], n, n),
                 Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 1 }),
                 "{n} derived keys a side must cancel the spend key"
             );
@@ -715,37 +682,22 @@ mod test {
     fn unbalanced_derived_keys_keep_the_spend_key_in_play() {
         // One more derived key on one side than the other leaves the spend key with a non-zero coefficient, so the
         // response genuinely hides two secrets and may be returned.
-        assert_eq!(
-            run_request(&[(LedgerKeyBranch::Random, 9)], &[], &bfs(0x10, 2), &bfs(0x40, 3)),
-            Ok(())
-        );
-        assert_eq!(
-            run_request(&[(LedgerKeyBranch::Random, 9)], &[], &bfs(0x10, 3), &bfs(0x40, 2)),
-            Ok(())
-        );
+        assert_eq!(run_request(&[(LedgerKeyBranch::Random, 9)], &[], 2, 3), Ok(()));
+        assert_eq!(run_request(&[(LedgerKeyBranch::Random, 9)], &[], 3, 2), Ok(()));
     }
 
+    /// Derived keys are not held in memory, only counted, so the guard's heap does not grow with a transaction's
+    /// input count. A request may declare as many derived keys as the chunk limit allows.
     #[test]
-    fn a_blinding_factor_may_not_be_reused_on_one_side() {
-        assert_eq!(
-            run_request(&[(LedgerKeyBranch::Random, 9)], &[], &[], &[bf(0x40), bf(0x40)]),
-            Err(ScriptOffsetPolicyError::DuplicateBlindingFactor)
-        );
-    }
-
-    #[test]
-    fn a_malformed_blinding_factor_is_rejected() {
-        let mut guard = ScriptOffsetRequestGuard::new();
-        assert_eq!(
-            guard.record_derived_key(&[0u8; 31], ScriptOffsetRole::ScriptKey),
-            Err(ScriptOffsetPolicyError::MalformedBlindingFactor)
-        );
+    fn derived_keys_cost_no_storage_and_scale_to_the_chunk_limit() {
+        let derived = MAX_CHUNK - 2;
+        assert_eq!(run_request(&[(LedgerKeyBranch::Random, 9)], &[], 0, derived), Ok(()));
     }
 
     #[test]
     fn an_empty_request_is_rejected() {
         assert_eq!(
-            run_request(&[], &[], &[], &[]),
+            run_request(&[], &[], 0, 0),
             Err(ScriptOffsetPolicyError::NotEnoughUniqueKeys { unique: 0 })
         );
     }
@@ -757,8 +709,8 @@ mod test {
             run_request(
                 &[(LedgerKeyBranch::Random, 4), (LedgerKeyBranch::Random, 4)],
                 &[(LedgerKeyBranch::PreMine, 1)],
-                &[],
-                &[]
+                0,
+                0
             ),
             Err(ScriptOffsetPolicyError::DuplicateKeyIdentity {
                 branch: LedgerKeyBranch::Random,
@@ -773,12 +725,7 @@ mod test {
         // whichever side is wrong fails the role rule first. The identity check behind it is defence in depth for if
         // that allow-list ever widens.
         assert!(matches!(
-            run_request(
-                &[(LedgerKeyBranch::PreMine, 5)],
-                &[(LedgerKeyBranch::PreMine, 5)],
-                &[],
-                &[]
-            ),
+            run_request(&[(LedgerKeyBranch::PreMine, 5)], &[(LedgerKeyBranch::PreMine, 5)], 0, 0),
             Err(ScriptOffsetPolicyError::BranchNotAllowedForRole { .. })
         ));
 
@@ -801,8 +748,8 @@ mod test {
             run_request(
                 &[(LedgerKeyBranch::OneSidedSenderOffset, 5), (LedgerKeyBranch::Random, 5)],
                 &[(LedgerKeyBranch::PreMine, 5)],
-                &[],
-                &[]
+                0,
+                0
             ),
             Ok(())
         );
@@ -971,9 +918,7 @@ mod test {
         guard
             .record_indexed_key(LedgerKeyBranch::Random.as_byte(), 1, ScriptOffsetRole::SenderOffset)
             .unwrap();
-        guard
-            .record_derived_key(&bf(0x40), ScriptOffsetRole::ScriptKey)
-            .unwrap();
+        guard.record_derived_key(ScriptOffsetRole::ScriptKey);
         assert_eq!(guard.unique_key_count(), 2);
 
         guard.reset();
@@ -1001,23 +946,16 @@ mod test {
     // ---------------------------------------------------------------------------------------------------------
 
     /// A request shape: indexed sender offsets, indexed script keys, derived sender offsets, derived script keys.
-    type Case<'a> = (
-        &'a [(LedgerKeyBranch, u64)],
-        &'a [(LedgerKeyBranch, u64)],
-        Vec<[u8; 32]>,
-        Vec<[u8; 32]>,
-    );
+    type Case<'a> = (&'a [(LedgerKeyBranch, u64)], &'a [(LedgerKeyBranch, u64)], u64, u64);
 
     /// The host pre-check, over the same request shape `run_request` replays.
     fn run_host_check(
         sender: &[(LedgerKeyBranch, u64)],
         script: &[(LedgerKeyBranch, u64)],
-        derived_sender: &[[u8; 32]],
-        derived_script: &[[u8; 32]],
+        derived_sender: u64,
+        derived_script: u64,
     ) -> Result<(), ScriptOffsetPolicyError> {
-        let ds: Vec<&[u8]> = derived_sender.iter().map(|f| f.as_slice()).collect();
-        let dk: Vec<&[u8]> = derived_script.iter().map(|f| f.as_slice()).collect();
-        validate_script_offset_request(sender, script, &ds, &dk, MAX_CHUNK)
+        validate_script_offset_request(sender, script, derived_sender, derived_script, MAX_CHUNK)
     }
 
     /// The host pre-check exists so nothing gets past it only to be refused on-device. Hold the two to the same
@@ -1036,20 +974,20 @@ mod test {
 
         let cases: [Case<'_>; 8] = [
             // Legitimate shapes.
-            (&one_sided, &[], vec![], bfs(0x40, 1)),
-            (&one_sided, &[], vec![], bfs(0x40, 5)),
-            (&pre_mine_sender, &pre_mine_script, vec![], vec![]),
+            (&one_sided, &[], 0, 1),
+            (&one_sided, &[], 0, 5),
+            (&pre_mine_sender, &pre_mine_script, 0, 0),
             // Refused shapes: the advisory, a lone key, derived-only, balanced derived keys, a repeated identity.
-            (&advisory_sender, &advisory_script, vec![], vec![]),
-            (&one_sided, &[], vec![], vec![]),
-            (&[], &[], vec![], bfs(0x40, 3)),
-            (&pre_mine_script, &[], bfs(0x10, 1), bfs(0x40, 1)),
-            (&repeated, &[], vec![], bfs(0x40, 1)),
+            (&advisory_sender, &advisory_script, 0, 0),
+            (&one_sided, &[], 0, 0),
+            (&[], &[], 0, 3),
+            (&pre_mine_script, &[], 1, 1),
+            (&repeated, &[], 0, 1),
         ];
 
         for (sender, script, derived_sender, derived_script) in cases {
-            let device = run_request(sender, script, &derived_sender, &derived_script);
-            let host = run_host_check(sender, script, &derived_sender, &derived_script);
+            let device = run_request(sender, script, derived_sender, derived_script);
+            let host = run_host_check(sender, script, derived_sender, derived_script);
             assert_eq!(
                 device, host,
                 "host and device disagree on sender={sender:?} script={script:?}"
@@ -1061,7 +999,7 @@ mod test {
     fn host_side_check_enforces_the_chunk_limit() {
         let sender: Vec<(LedgerKeyBranch, u64)> = (0..MAX_CHUNK).map(|i| (LedgerKeyBranch::Random, i)).collect();
         assert_eq!(
-            run_host_check(&sender, &[], &[], &[]),
+            run_host_check(&sender, &[], 0, 0),
             Err(ScriptOffsetPolicyError::RequestTooLarge)
         );
     }

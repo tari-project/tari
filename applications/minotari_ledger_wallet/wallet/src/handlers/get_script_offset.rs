@@ -1,7 +1,18 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use alloc::format;
+
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use include_gif::include_gif;
 use ledger_device_sdk::io::Comm;
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use ledger_device_sdk::nbgl::{Field, NbglGlyph, NbglReview};
+#[cfg(not(any(target_os = "stax", target_os = "flex")))]
+use ledger_device_sdk::ui::{
+    bitmaps::{CROSSMARK, EYE, VALIDATE_14},
+    gadgets::{Field, MultiFieldReview},
+};
 use minotari_ledger_wallet_common::{
     common_types::{AppSW as AppSWMapping, MAX_PAYLOADS},
     script_offset_policy::{
@@ -132,17 +143,71 @@ fn derive_key_from_alpha(
     if data.len() != 32 {
         return Err(AppSW::WrongApduLength);
     }
-    // Record before deriving: the blinding factor is the only thing that distinguishes one derived key from another,
-    // and reusing it across the two sides cancels the spend key out of the offset.
-    offset_ctx
-        .guard
-        .record_derived_key(&data[0..32], role)
-        .map_err(|e| reject(&e))?;
+    // Which side this landed on is what sets the spend key's coefficient in the response, so it has to be recorded
+    // even though every derived key folds in the same spend key.
+    offset_ctx.guard.record_derived_key(role);
 
     let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_SPEND_INDEX, KeyType::Spend)?;
     let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
     alpha_hasher(alpha, blinding_factor)
+}
+
+/// Ask the user to approve returning a script offset.
+///
+/// The rules in [`minotari_ledger_wallet_common::script_offset_policy`] make any *single* response safe, but the
+/// device answers statelessly: a host that can ask repeatedly still recovers individual keys, and eventually the
+/// spend key, by differencing responses that vary by one term. No amount of per-request validation closes that -
+/// arithmetic on a host-chosen linear combination is solvable given enough equations.
+///
+/// What does close it is refusing to be an unattended oracle. A genuine transaction needs exactly one script offset,
+/// so this costs one approval per spend; an extraction attempt needs several in a row, with no transaction under way
+/// for them to belong to.
+///
+/// This is a mitigation, not a proof: it makes extraction attended and conspicuous rather than impossible. Binding
+/// the offset to a transaction the device has parsed and the user has reviewed is the durable fix.
+fn confirm_with_user(offset_ctx: &ScriptOffsetCtx) -> Result<(), AppSW> {
+    let keys = format!("{}", offset_ctx.guard.unique_key_count());
+    let account = format!("{}", offset_ctx.account);
+    let fields = [
+        Field {
+            name: "Account",
+            value: &account,
+        },
+        Field {
+            name: "Keys",
+            value: &keys,
+        },
+    ];
+    let fields_array = fields.as_slice();
+
+    #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+    {
+        let review = MultiFieldReview::new(
+            fields_array,
+            &["Script offset"],
+            Some(&EYE),
+            "Approve",
+            Some(&VALIDATE_14),
+            "Reject",
+            Some(&CROSSMARK),
+        );
+        if !review.show() {
+            return Err(AppSW::UserCancelled);
+        }
+    }
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    {
+        const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+        let review: NbglReview = NbglReview::new()
+            .titles("Review script offset", "", "Approve script offset")
+            .glyph(&TARI);
+        if !review.show(fields_array) {
+            return Err(AppSW::UserCancelled);
+        }
+    }
+
+    Ok(())
 }
 
 pub fn handler_get_script_offset(
@@ -223,6 +288,8 @@ fn accumulate_chunk(
     // Guard against attacks to extract the spending private key: the request must be complete, and the offset must
     // be a function of more than one Ledger key.
     offset_ctx.guard.finish(chunk).map_err(|e| reject(&e))?;
+
+    confirm_with_user(offset_ctx)?;
 
     let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
 
