@@ -55,12 +55,19 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
+/// The total number of times a transaction is submitted to the mempool (the initial submission plus resubmissions)
+/// before it is cancelled. This is a hard limit for the lifetime of the protocol; the count is never reset, so a
+/// transaction that the mempool keeps dropping is always cancelled after this many attempts. Resubmissions are spaced
+/// at least `transaction_mempool_resubmission_window` apart.
+const MAX_MEMPOOL_SUBMISSION_ATTEMPTS: usize = 5;
+
 pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     tx_id: TxId,
     mode: TxBroadcastMode,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     timeout_update_receiver: watch::Receiver<Duration>,
-    last_rejection: Option<Instant>,
+    last_resubmission: Option<Instant>,
+    resubmission_attempts: usize,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -80,7 +87,8 @@ where
             mode: TxBroadcastMode::TransactionSubmission,
             resources,
             timeout_update_receiver,
-            last_rejection: None,
+            last_resubmission: None,
+            resubmission_attempts: 0,
         }
     }
 
@@ -324,24 +332,42 @@ where
             );
             Ok(true)
         } else if response.location != TxLocation::InMempool {
-            if self.last_rejection.is_none() ||
-                self.last_rejection.unwrap().elapsed() >
-                    self.resources.config.transaction_mempool_resubmission_window
+            // Resubmissions are spaced at least a resubmission window apart; until that window has elapsed we keep
+            // querying the base node in case the transaction shows up on its own.
+            if self
+                .last_resubmission
+                .is_some_and(|last| last.elapsed() <= self.resources.config.transaction_mempool_resubmission_window)
             {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) not found in mempool, waiting out the resubmission window before \
+                     resubmitting",
+                    self.tx_id
+                );
+                return Ok(false);
+            }
+
+            if self.resubmission_attempts < MAX_MEMPOOL_SUBMISSION_ATTEMPTS - 1 {
+                self.resubmission_attempts += 1;
                 info!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) not found in mempool, attempting to resubmit transaction", self.tx_id
+                    "Transaction (TxId: {}) not found in mempool, attempting to resubmit transaction (submission \
+                     attempt {} of {})",
+                    self.tx_id,
+                    self.resubmission_attempts + 1,
+                    MAX_MEMPOOL_SUBMISSION_ATTEMPTS
                 );
                 self.mode = TxBroadcastMode::TransactionSubmission;
-                self.last_rejection = Some(Instant::now());
+                self.last_resubmission = Some(Instant::now());
                 Ok(false)
             } else {
-                let reason = "rejected by the mempool after second submission attempt".to_string();
+                let reason =
+                    format!("rejected by the mempool after {MAX_MEMPOOL_SUBMISSION_ATTEMPTS} submission attempts");
                 error!(target: LOG_TARGET,
                     "Transaction (TxId: {}) has been {}, cancelling transaction",
                     self.tx_id, reason,
                 );
-                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction, None)
+                self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction, Some(reason.clone()))
                     .await;
 
                 let _size = self

@@ -64,7 +64,9 @@ pub struct TransactionServiceConfig {
     /// This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy
     /// console wallet doing thousands of bulk payments or used for stress testing needs a fairly big size.
     pub transaction_event_channel_size: usize,
-    /// This is the timeout period that will be used to re-submit transactions not found in the mempool
+    /// This is the minimum period between re-submissions of a transaction that is not found in the mempool. A
+    /// transaction is submitted at most 5 times in total (the initial submission plus 4 re-submissions) before it is
+    /// cancelled as invalid.
     #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
     /// Directory where burn proof files are written after a burn transaction completes. The L2 wallet daemon reads

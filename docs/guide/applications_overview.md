@@ -385,7 +385,8 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.transactions.transaction_routing_mechanism=<mechanism>` - Routing mechanism (DirectOnly, StoreAndForwardOnly,
   DirectAndStoreAndForward)
 - `wallet.transactions.transaction_event_channel_size=<size>` - Event channel size (default: 25,000)
-- `wallet.transactions.transaction_mempool_resubmission_window=<seconds>` - Mempool resubmission window (default: 600)
+- `wallet.transactions.transaction_mempool_resubmission_window=<seconds>` - Minimum period between re-submissions of a
+  transaction not found in the mempool; a transaction is submitted at most 5 times before being cancelled (default: 600)
 
 **Output Manager Configuration**:
 
