@@ -31,12 +31,16 @@ pub use sha3x_pow::sha3x_difficulty;
 
 /// Crates for proof of work target_difficulty
 mod target_difficulty;
-pub use target_difficulty::AchievedTargetDifficulty;
+pub use target_difficulty::{AchievedTargetDifficulty, AdjustedTarget};
+
+/// Exponential same-algorithm proof of work backoff (TIP-RFC-MT-0004)
+pub mod pow_backoff;
+pub use pow_backoff::{MAX_BACKOFF_RUN_LOOKBACK, MAX_POW_BACKOFF_MODIFIER, PowBackoffTracker};
 
 /// Crates for proof of work target_difficulty_window
 mod target_difficulty_window;
 
-pub use target_difficulty_window::TargetDifficultyWindow;
+pub use target_difficulty_window::{TargetDifficultyWindow, adjust as adjust_target};
 
 /// Crates for proof of work lwma_diff
 pub mod lwma_diff;

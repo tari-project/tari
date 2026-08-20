@@ -52,6 +52,7 @@ use tari_common_types::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
+    consensus::ConsensusConstantsBuilder,
     tari_amount::MicroMinotari,
     transaction_components::{
         OutputFeatures,
@@ -448,12 +449,10 @@ impl AppStateInner {
     }
 
     pub fn get_transaction_weight(&self) -> TransactionWeight {
-        *self
-            .wallet
-            .network
-            .create_consensus_constants()
-            .last()
-            .unwrap()
+        // Via the builder so that entries gated on an unscheduled activation height are skipped: taking the last
+        // entry raw would hand out fork rules that are not live on this network.
+        *ConsensusConstantsBuilder::new(self.wallet.network.as_network())
+            .build()
             .transaction_weight_params()
     }
 

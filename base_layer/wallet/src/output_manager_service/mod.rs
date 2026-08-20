@@ -45,7 +45,7 @@ use tari_service_framework::{
     reply_channel,
 };
 use tari_transaction_components::{
-    consensus::NetworkConsensus,
+    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
     crypto_factories::CryptoFactories,
     key_manager::SecretTransactionKeyManagerInterface,
     transaction_components::MAX_TRANSACTION_INPUTS,
@@ -133,7 +133,9 @@ where
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = self.network.create_consensus_constants().pop().unwrap();
+        // Via the builder so that entries gated on an unscheduled activation height are skipped: taking the last
+        // entry raw would hand out fork rules that are not live on this network.
+        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();

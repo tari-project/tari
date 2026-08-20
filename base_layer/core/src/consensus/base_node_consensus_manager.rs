@@ -204,20 +204,21 @@ impl BaseNodeConsensusManager {
         //                                     | 10080 -> 15120 - 1 | (360) |
         //                                                          | 15120 -> | (180) |
 
+        // `get_maturity_tranches` maps the consensus constants vector one to one and in order, so the index of the
+        // active constants entry is also the index of the active tranche. Going through
+        // `ConsensusConstants::active_index_at_height` keeps this on the single authoritative definition of "active"
+        // rather than adding another lookup that has to be kept in step, and it is exact where searching the tranche
+        // vector by value was not: two constants entries can produce identical `MaturityTranche` values.
         let maturity_tranches = self.get_maturity_tranches();
-
+        let last_effective_index =
+            ConsensusConstants::active_index_at_height(self.consensus_constants_vec(), height)
+                .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
         let last_effective_tranche = maturity_tranches
-            .iter()
-            .filter(|v| v.effective_from_height <= height)
-            .max_by_key(|v| v.effective_from_height)
+            .get(last_effective_index)
             .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
-        let last_effective_index = maturity_tranches
-            .iter()
-            .position(|v| v == last_effective_tranche)
-            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?;
         let previous_effective_tranch = maturity_tranches
             .get(last_effective_index.saturating_sub(1))
-            .expect("Index should exist")
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?
             .clone();
 
         // We have to adjust the matured rewards at height to account for the effective from height of the last

@@ -25,12 +25,12 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
-use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::AchievedTargetDifficulty,
+    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget},
     validation::error::ValidationError,
 };
 /// A validator that determines if a block body is valid, assuming that the header has already been
@@ -69,7 +69,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         header: &BlockHeader,
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
-        target_difficulty: Option<Difficulty>,
+        target_difficulty: Option<AdjustedTarget>,
         vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }

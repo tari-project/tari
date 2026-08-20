@@ -27,14 +27,14 @@ use tari_common_types::types::FixedHash;
 use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError};
 use tari_transaction_components::{
     consensus::ConsensusConstants,
-    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError, ProofOfWork},
+    tari_proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::BaseNodeConsensusManager,
-    proof_of_work::AchievedTargetDifficulty,
+    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget},
     validation::{
         DifficultyCalculator,
         HeaderChainLinkedValidator,
@@ -69,7 +69,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         header: &BlockHeader,
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
-        target_difficulty: Option<Difficulty>,
+        target_difficulty: Option<AdjustedTarget>,
         vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);

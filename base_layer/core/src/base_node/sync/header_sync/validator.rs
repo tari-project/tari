@@ -142,11 +142,13 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
         let state = self.state();
 
+        // The unadjusted target accumulates into the total accumulated difficulty and feeds the LWMA window; the
+        // adjusted target is the bar this header's proof of work must clear (TIP-RFC-MT-0004).
         let target_difficulty = state
             .target_difficulties
             .get(header.pow_algo())
             .map_err(BlockHeaderSyncError::TargetDifficultiesError)?
-            .calculate(
+            .calculate_pair(
                 constants.min_pow_difficulty(header.pow_algo()),
                 constants.max_pow_difficulty(header.pow_algo()),
             );
@@ -223,7 +225,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         // Add a "more recent" datapoint onto the target difficulty
         state
             .target_difficulties
-            .add_back(&header, target_difficulty)
+            .add_back(&header, target_difficulty.base, &constants)
             .map_err(ChainStorageError::UnexpectedResult)?;
 
         let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(&state.previous_accum)

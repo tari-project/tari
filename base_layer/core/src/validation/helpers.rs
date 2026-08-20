@@ -32,7 +32,7 @@ use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, Bloc
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
-    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    tari_proof_of_work::{PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
 
@@ -41,6 +41,7 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
         AchievedTargetDifficulty,
+        AdjustedTarget,
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
@@ -131,7 +132,7 @@ pub fn check_header_timestamp_greater_than_median(
 }
 pub fn check_target_difficulty(
     block_header: &BlockHeader,
-    target: Difficulty,
+    target: AdjustedTarget,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
     consensus: &BaseNodeConsensusManager,
@@ -149,19 +150,23 @@ pub fn check_target_difficulty(
             cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
         },
     };
-    match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
+    match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
             warn!(
                 target: LOG_TARGET,
-                "Proof of work for {} at height {} was below the target difficulty. Achieved: {}, Target: {}",
+                "Proof of work for {} at height {} was below the target difficulty. Achieved: {}, Target: {} (adjusted: {})",
                 block_header.hash().to_hex(),
                 block_header.height,
                 achieved,
-                target
+                target.base,
+                target.adjusted
             );
             Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow {
+                    achieved,
+                    target: target.adjusted,
+                }),
             ))
         },
     }

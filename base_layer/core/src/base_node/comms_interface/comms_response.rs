@@ -33,16 +33,18 @@ use tari_common_types::{
 use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_transaction_components::{
     MicroMinotari,
-    tari_proof_of_work::Difficulty,
     transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
 };
 
-use crate::chain_storage::{
-    InputMinedInfo,
-    MinedInfo,
-    OutputMinedInfo,
-    TemplateRegistrationEntry,
-    ValidatorNodeRegistrationInfo,
+use crate::{
+    chain_storage::{
+        InputMinedInfo,
+        MinedInfo,
+        OutputMinedInfo,
+        TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
+    },
+    proof_of_work::AdjustedTarget,
 };
 /// API Response enum
 #[allow(clippy::large_enum_variant)]
@@ -62,7 +64,7 @@ pub enum NodeCommsResponse {
         error: Option<String>,
         block: Option<Block>,
     },
-    TargetDifficulty(Difficulty),
+    TargetDifficulty(AdjustedTarget),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
     FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),

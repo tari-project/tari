@@ -315,6 +315,7 @@ async fn chain_balance_validation() {
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )
     .unwrap();
@@ -378,6 +379,7 @@ async fn chain_balance_validation() {
     header2.output_smt_size = header2.output_smt_size.saturating_add(1);
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )
@@ -562,6 +564,7 @@ async fn chain_balance_validation_burned() {
     header1.output_smt_size += 2;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )
