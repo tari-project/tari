@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.0](https://github.com/tari-project/tari/compare/v5.6.0-pre.1...v5.7.0-pre.0) (2026-08-21)
+
+
+### Features
+
+* improve wallet tx resubmit ([#7954](https://github.com/tari-project/tari/issues/7954)) ([701b3a6](https://github.com/tari-project/tari/commit/701b3a6992be1a38e89674afa1dbcb604f0b47b7))
+
+
+### Bug Fixes
+
+* **comms:** filter private DHT peer addresses ([#7946](https://github.com/tari-project/tari/issues/7946)) ([1f8706e](https://github.com/tari-project/tari/commit/1f8706e05f17ed60af798738b5dc8e0a9223e18e))
+* deserialze ([#7951](https://github.com/tari-project/tari/issues/7951)) ([871471b](https://github.com/tari-project/tari/commit/871471b5dc6b5f6f6c96fdf8cfddbff69d52c273))
+* improve connection dials ([#7950](https://github.com/tari-project/tari/issues/7950)) ([5e58f1f](https://github.com/tari-project/tari/commit/5e58f1f9fcd0245e9c8e530961ecc8182db9248c))
+* offline details ([#7955](https://github.com/tari-project/tari/issues/7955)) ([afa1e44](https://github.com/tari-project/tari/commit/afa1e448fff09ebaa0e1192ee2406e4b76e18a95))
+* overflow base node rpc ([#7961](https://github.com/tari-project/tari/issues/7961)) ([43310ec](https://github.com/tari-project/tari/commit/43310ec8488ed535d628a122534e4bf4a5568851))
+* premine spend in wallet ([#7962](https://github.com/tari-project/tari/issues/7962)) ([1d5f6a7](https://github.com/tari-project/tari/commit/1d5f6a700c7f997a704dbfd3987d8759abaa3b33))
+* prune vs archival inconsistancies ([#7949](https://github.com/tari-project/tari/issues/7949)) ([76036ac](https://github.com/tari-project/tari/commit/76036aca0b31eb6084e36d342069834aed55bcb2))
+
 ## [5.6.0-pre.1](https://github.com/tari-project/tari/compare/v5.6.0-pre.0...v5.6.0-pre.1) (2026-08-05)
 
 
