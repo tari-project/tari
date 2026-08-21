@@ -430,6 +430,8 @@ impl WalletOutput {
 
     /// It creates a transaction input given an updated multi-party script public keys and nonces. The inputs
     /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
         aggregated_script_signature_public_nonces: &CompressedPublicKey,
@@ -543,10 +545,12 @@ impl WalletOutput {
     }
 
     pub fn features_and_scripts_byte_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self
+            .features
+            .get_serialized_size()?
+            .saturating_add(self.script.get_serialized_size()?)
+            .saturating_add(self.covenant.get_serialized_size()?)
+            .saturating_add(self.encrypted_data.get_payment_id_size()))
     }
 
     /// Is this a burned output kernel?

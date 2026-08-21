@@ -103,7 +103,7 @@ impl DualAddress {
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
         let length = emoji.chars().count();
-        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_ENCRYPTED_DATA_SIZE))
             .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
@@ -165,7 +165,7 @@ impl DualAddress {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
-        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_ENCRYPTED_DATA_SIZE))
             .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
@@ -184,7 +184,11 @@ impl DualAddress {
             CompressedPublicKey::from_canonical_bytes(bytes.get(34..66).ok_or(TariAddressError::InvalidSize)?)
                 .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         let memo_field_payment_id =
-            MaxSizeBytes::from_bytes_truncate(bytes.get(66..length - 1).ok_or(TariAddressError::InvalidSize)?);
+            MaxSizeBytes::from_bytes_truncate(
+                bytes
+                    .get(66..length.saturating_sub(1))
+                    .ok_or(TariAddressError::InvalidSize)?,
+            );
         Ok(Self {
             network,
             features,
@@ -196,7 +200,7 @@ impl DualAddress {
 
     /// Convert Tari Address to bytes
     pub fn to_vec(&self) -> Vec<u8> {
-        let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE + self.memo_field_payment_id.len();
+        let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(self.memo_field_payment_id.len());
         let mut buf = vec![0; length];
         *buf.get_mut(0).expect("Index should exist") = self.network.as_byte();
         *buf.get_mut(1).expect("Index should exist") = self.features.0;
@@ -206,11 +210,11 @@ impl DualAddress {
         buf.get_mut(34..66)
             .expect("Index should exist")
             .copy_from_slice(self.public_spend_key.as_bytes());
-        buf.get_mut(66..(length - 1))
+        buf.get_mut(66..length.saturating_sub(1))
             .expect("Index should exist")
             .copy_from_slice(self.memo_field_payment_id.as_bytes());
-        let checksum = compute_checksum(buf.get(0..(length - 1)).expect("Index should exist"));
-        *buf.get_mut(length - 1).expect("Index should exist") = checksum;
+        let checksum = compute_checksum(buf.get(0..length.saturating_sub(1)).expect("Index should exist"));
+        *buf.get_mut(length.saturating_sub(1)).expect("Index should exist") = checksum;
         buf
     }
 

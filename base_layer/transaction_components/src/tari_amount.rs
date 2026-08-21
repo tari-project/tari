@@ -100,6 +100,11 @@ newtype_ops! { [MicroMinotari] {add sub mul div} {:=} Self &Self }
 newtype_ops! { [MicroMinotari] {mul div rem} {:=} Self u64 }
 newtype_ops! { [MicroMinotari] {mul div rem} {:=} &Self u64 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl Mul<MicroMinotari> for u64 {
     type Output = MicroMinotari;
 
@@ -164,10 +169,9 @@ impl AsRef<MicroMinotari> for MicroMinotari {
     }
 }
 
-#[allow(clippy::identity_op)]
 impl Display for MicroMinotari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        if *self < 1 * T {
+        if *self < T {
             write!(f, "{} µT", self.as_u64())
         } else {
             Minotari::from(*self).fmt(f)
@@ -245,6 +249,11 @@ impl Sum<MicroMinotari> for MicroMinotari {
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl Add<Minotari> for MicroMinotari {
     type Output = Self;
 
@@ -253,6 +262,11 @@ impl Add<Minotari> for MicroMinotari {
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl Sub<Minotari> for MicroMinotari {
     type Output = Self;
 
@@ -319,6 +333,11 @@ impl From<MicroMinotari> for Minotari {
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl From<u64> for Minotari {
     fn from(v: u64) -> Self {
         Self((v * 1_000_000).into())
@@ -338,7 +357,11 @@ impl TryFrom<Decimal> for Minotari {
         } else if v.scale() > 6 {
             Err(MicroMinotariError::ParseError(format!("too many decimals ({v})")))
         } else {
-            let (micro_tari, _, _) = (v * 1_000_000u64).trunc(0).into_parts();
+            let (micro_tari, _, _) = v
+                .checked_mul(Decimal::from(1_000_000u64))
+                .ok_or(DecimalConvertError::Overflow)?
+                .trunc(0)
+                .into_parts();
             let micro_tari = micro_tari.try_into().map_err(|_| DecimalConvertError::Overflow)?;
             Ok(Self(MicroMinotari(micro_tari)))
         }
@@ -364,10 +387,17 @@ impl Display for Minotari {
         let d1 = Decimal::from(self.0.as_u64());
         let d2 = Decimal::try_from(1_000_000f64).expect("will succeed");
         let precision = f.precision().unwrap_or(6);
-        write!(f, "{1:.*} T", precision, d1 / d2)
+        // `d2` is a non-zero constant, so this division cannot fail.
+        let value = d1.checked_div(d2).unwrap_or_default();
+        write!(f, "{1:.*} T", precision, value)
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl Mul<u64> for Minotari {
     type Output = Self;
 
@@ -376,12 +406,22 @@ impl Mul<u64> for Minotari {
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl MulAssign<u64> for Minotari {
     fn mul_assign(&mut self, rhs: u64) {
         self.0 *= rhs;
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl Div<u64> for Minotari {
     type Output = Self;
 
@@ -390,6 +430,11 @@ impl Div<u64> for Minotari {
     }
 }
 
+// These operator impls deliberately keep Rust's native overflow behaviour: the release profile
+// sets `overflow-checks = true` precisely so that bad amount arithmetic panics instead of
+// silently producing a wrong value. Callers that need to handle overflow use the
+// `checked_add`/`checked_sub`/`checked_mul` helpers on `MicroMinotari`.
+#[allow(clippy::arithmetic_side_effects)]
 impl DivAssign<u64> for Minotari {
     fn div_assign(&mut self, rhs: u64) {
         self.0 /= rhs;

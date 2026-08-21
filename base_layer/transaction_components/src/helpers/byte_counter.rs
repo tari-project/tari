@@ -40,7 +40,7 @@ impl ByteCounter {
 impl io::Write for ByteCounter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len = buf.len();
-        self.count += len;
+        self.count = self.count.saturating_add(len);
         Ok(len)
     }
 

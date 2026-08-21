@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};

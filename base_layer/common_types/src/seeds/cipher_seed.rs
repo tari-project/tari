@@ -151,7 +151,9 @@ impl CipherSeed {
     /// Generate a new seed
     pub fn random() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+        let birthday_genesis_date = UNIX_EPOCH
+            .checked_add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH))
+            .unwrap_or(UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
             .unwrap_or_default() // default to the epoch on error
@@ -221,7 +223,9 @@ impl CipherSeed {
 
         // Assemble the final seed: version, main salt, secret data, checksum
         let mut encrypted_seed =
-            Vec::<u8>::with_capacity(1 + CIPHER_SEED_MAIN_SALT_BYTES + secret_data.len() + CIPHER_SEED_CHECKSUM_BYTES);
+            Vec::<u8>::with_capacity(CIPHER_SEED_MAIN_SALT_BYTES.saturating_add(secret_data.len()).saturating_add(
+                CIPHER_SEED_CHECKSUM_BYTES.saturating_add(1),
+            ));
         encrypted_seed.push(CIPHER_SEED_VERSION);
         encrypted_seed.extend(secret_data.iter());
         encrypted_seed.extend(self.salt.iter());

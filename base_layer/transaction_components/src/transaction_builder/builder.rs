@@ -274,22 +274,22 @@ where KM: TransactionKeyManagerInterface
 
     fn get_total_features_and_scripts_size_for_outputs(&self) -> Result<usize, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let mut size = 0;
+        let mut size = 0usize;
         for o in &self.custom_outputs {
-            size += fee_weighting.weighting().round_up_features_and_scripts_size(
+            size = size.saturating_add(fee_weighting.weighting().round_up_features_and_scripts_size(
                 o.output
                     .features_and_scripts_byte_size()
                     .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-            );
+            ));
         }
         for recipient in &self.recipient_outputs {
-            size += fee_weighting.weighting().round_up_features_and_scripts_size(
+            size = size.saturating_add(fee_weighting.weighting().round_up_features_and_scripts_size(
                 recipient
                     .output
                     .output
                     .features_and_scripts_byte_size()
                     .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-            );
+            ));
         }
         Ok(size)
     }
@@ -324,7 +324,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     pub fn get_fee_estimate_without_change(&self) -> Result<MicroMinotari, TransactionBuilderError> {
-        let num_outputs = self.custom_outputs.len() + self.recipient_outputs.len();
+        let num_outputs = self.custom_outputs.len().saturating_add(self.recipient_outputs.len());
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         Ok(match self.fee_per_gram {
@@ -356,7 +356,7 @@ where KM: TransactionKeyManagerInterface
         if self.inputs.len() > MAX_TRANSACTION_INPUTS {
             return Err(TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
         }
-        if self.recipient_outputs.len() + self.custom_outputs.len() > MAX_TRANSACTION_OUTPUTS {
+        if self.recipient_outputs.len().saturating_add(self.custom_outputs.len()) > MAX_TRANSACTION_OUTPUTS {
             return Err(TransactionBuilderError::ExceedsMaxOutputs(MAX_TRANSACTION_OUTPUTS));
         }
         Ok(())
@@ -382,11 +382,11 @@ where KM: TransactionKeyManagerInterface
                     acc.checked_add(x)
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
-        total_sent += self
+        total_sent = self
             .recipient_outputs
             .iter()
             .map(|o| o.output.output.value())
-            .try_fold(MicroMinotari::zero(), |acc, x| {
+            .try_fold(total_sent, |acc, x| {
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
             })?;
@@ -399,11 +399,13 @@ where KM: TransactionKeyManagerInterface
             .unwrap_or(0);
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
-            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-            temp_script
-                .get_serialized_size()
-                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-            change_payment_id_size;
+            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?
+            .saturating_add(
+                temp_script
+                    .get_serialized_size()
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+            )
+            .saturating_add(change_payment_id_size);
         let change_features_and_scripts_size = fee_weighting
             .weighting()
             .round_up_features_and_scripts_size(change_features_and_scripts_size);
@@ -431,9 +433,9 @@ where KM: TransactionKeyManagerInterface
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => (fee_without_change + remainder_without_change, None),
-                    Some(MicroMinotari(0)) => (fee_without_change + remainder_without_change, None),
-                    Some(v) => (fee_without_change + change_fee, self.build_change(v)?),
+                    // Not enough to cover the change output, so the remainder is added to the fee
+                    None | Some(MicroMinotari(0)) => (add_fee(fee_without_change, remainder_without_change)?, None),
+                    Some(v) => (add_fee(fee_without_change, change_fee)?, self.build_change(v)?),
                 }
             },
         };
@@ -585,6 +587,8 @@ where KM: TransactionKeyManagerInterface
         )))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn calculate_total_nonce_and_total_public_excess(
         &self,
         change: &Option<OutputPair>,
@@ -730,6 +734,8 @@ where KM: TransactionKeyManagerInterface
 
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
@@ -1044,6 +1050,12 @@ impl<KM> Debug for TransactionBuilder<KM> {
             f,
         )
     }
+}
+
+/// Adds two fee amounts, returning an overflow error rather than wrapping.
+fn add_fee(fee: MicroMinotari, extra: MicroMinotari) -> Result<MicroMinotari, TransactionBuilderError> {
+    fee.checked_add(extra)
+        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
 }
 
 #[cfg(test)]

@@ -45,7 +45,10 @@ pub fn node_index(leaf_index: LeafIndex) -> usize {
     if leaf_index.0 == 0 {
         return 0;
     }
-    2 * leaf_index.0 - leaf_index.0.count_ones() as usize
+    leaf_index
+        .0
+        .saturating_mul(2)
+        .saturating_sub(leaf_index.0.count_ones() as usize)
 }
 
 /// Returns the leaf index derived from the MMR node index.
@@ -70,13 +73,13 @@ pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
     }
     let mut peak_size = ALL_ONES >> size.leading_zeros();
     let mut num_left = size;
-    let mut sum_prev_peaks = 0;
+    let mut sum_prev_peaks = 0usize;
     let mut peaks = vec![];
     while peak_size != 0 {
         if num_left >= peak_size {
-            peaks.push(sum_prev_peaks + peak_size - 1);
-            sum_prev_peaks += peak_size;
-            num_left -= peak_size;
+            peaks.push(sum_prev_peaks.saturating_add(peak_size).saturating_sub(1));
+            sum_prev_peaks = sum_prev_peaks.saturating_add(peak_size);
+            num_left = num_left.saturating_sub(peak_size);
         }
         peak_size >>= 1;
     }
@@ -100,6 +103,9 @@ pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
 
 /// Calculates the positions of the (parent, sibling) of the node at the provided position.
 /// Returns an error if the pos provided would result in an underflow or overflow.
+// The arithmetic below is deliberately widened to `i128` so that it cannot over/underflow for any
+// `usize` input; the results are range-checked by the `try_into` calls.
+#[allow(clippy::arithmetic_side_effects)]
 pub fn family(pos: usize) -> Result<(usize, usize), MerkleMountainRangeError> {
     let (peak_map, height) = peak_map_height(pos);
     let peak = 1 << height;
@@ -134,11 +140,11 @@ pub fn family_branch(pos: usize, last_pos: usize) -> Vec<(usize, usize)> {
     let mut sibling;
     while current < last_pos {
         if (peak_map & peak) == 0 {
-            current += 2 * peak;
-            sibling = current - 1;
+            current = current.saturating_add(peak.saturating_mul(2));
+            sibling = current.saturating_sub(1);
         } else {
-            current += 1;
-            sibling = current - 2 * peak;
+            current = current.saturating_add(1);
+            sibling = current.saturating_sub(peak.saturating_mul(2));
         };
         if current > last_pos {
             break;
@@ -175,7 +181,7 @@ pub fn peak_map_height(mut pos: usize) -> (usize, usize) {
     while peak_size != 0 {
         bitmap <<= 1;
         if pos >= peak_size {
-            pos -= peak_size;
+            pos = pos.saturating_sub(peak_size);
             bitmap |= 1;
         }
         peak_size >>= 1;
@@ -213,8 +219,8 @@ pub fn checked_n_leaves(size: usize) -> Option<usize> {
     let mut size_left = size;
     while peak_size != 0 {
         if size_left >= peak_size {
-            nleaves += (peak_size + 1) >> 1;
-            size_left -= peak_size;
+            nleaves = nleaves.saturating_add(peak_size.saturating_add(1) >> 1);
+            size_left = size_left.saturating_sub(peak_size);
         }
         peak_size >>= 1;
     }
@@ -222,7 +228,7 @@ pub fn checked_n_leaves(size: usize) -> Option<usize> {
     if size_left == 0 {
         Some(nleaves)
     } else {
-        Some(nleaves + 1)
+        Some(nleaves.saturating_add(1))
     }
 }
 

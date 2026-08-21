@@ -275,7 +275,8 @@ impl ExecutionStack {
         if stack_size < num_items {
             Err(ScriptError::StackUnderflow)
         } else {
-            let at = stack_size - num_items;
+            // The guard above guarantees `stack_size >= num_items`.
+            let at = stack_size.saturating_sub(num_items);
             let items = self.items.split_off(at);
 
             Ok(items)
@@ -318,14 +319,15 @@ impl ExecutionStack {
     /// Pushes the top stack element down `depth` positions
     pub(crate) fn push_down(&mut self, depth: usize) -> Result<(), ScriptError> {
         let n = self.size();
-        if n < depth + 1 {
+        if n <= depth {
             return Err(ScriptError::StackUnderflow);
         }
         if depth == 0 {
             return Ok(());
         }
         let top = self.pop().unwrap();
-        self.items.insert(n - depth - 1, top);
+        // The guard above guarantees `n > depth`, so this cannot underflow.
+        self.items.insert(n.saturating_sub(depth).saturating_sub(1), top);
         Ok(())
     }
 }
@@ -350,27 +352,27 @@ fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
     use StackItem::*;
     match item {
         Number(_) => {
-            let n = n + 1;
+            let n = n.saturating_add(1);
             [n, h, c, p, s, z]
         },
         Hash(_) => {
-            let h = h + 1;
+            let h = h.saturating_add(1);
             [n, h, c, p, s, z]
         },
         Commitment(_) => {
-            let c = c + 1;
+            let c = c.saturating_add(1);
             [n, h, c, p, s, z]
         },
         PublicKey(_) => {
-            let p = p + 1;
+            let p = p.saturating_add(1);
             [n, h, c, p, s, z]
         },
         Signature(_) => {
-            let s = s + 1;
+            let s = s.saturating_add(1);
             [n, h, c, p, s, z]
         },
         Scalar(_) => {
-            let z = z + 1;
+            let z = z.saturating_add(1);
             [n, h, c, p, s, z]
         },
     }

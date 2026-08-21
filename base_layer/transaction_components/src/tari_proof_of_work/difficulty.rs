@@ -80,7 +80,8 @@ impl Difficulty {
         if scalar == U256::zero() {
             return Err(DifficultyError::DivideByZero);
         }
-        let result = U256::MAX / scalar;
+        // `scalar` is checked to be non-zero above.
+        let result = U256::MAX.checked_div(scalar).ok_or(DifficultyError::DivideByZero)?;
         let result = result.min(u64::MAX.into());
         Difficulty::from_u64(result.low_u64())
     }

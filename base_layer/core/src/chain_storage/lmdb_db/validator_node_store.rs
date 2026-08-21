@@ -856,6 +856,8 @@ fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
     use lmdb_zero::db;
     use tari_common_types::types::CompressedCommitment;

@@ -124,7 +124,7 @@ impl<D: Deref<Target = [u8]>> Command<D> {
         let mut commands = vec![];
 
         for (i, chunk) in data.iter().enumerate() {
-            if i + 1 == num_chunks {
+            if i.saturating_add(1) == num_chunks {
                 more = 0;
             } else {
                 more = 1;

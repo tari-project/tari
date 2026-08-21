@@ -216,7 +216,7 @@ impl SparseMerkleProofExt {
         let actual_root_hash = self
             .siblings
             .iter()
-            .zip(element_key.iter_bits().rev().skip(256 - self.siblings.len()))
+            .zip(element_key.iter_bits().rev().skip(256usize.saturating_sub(self.siblings.len())))
             .fold(current_hash, |hash, (sibling_node, bit)| {
                 if bit {
                     SparseMerkleInternalNode::new(sibling_node.hash(), hash).hash()
@@ -420,14 +420,14 @@ impl<'a> LeafKeyBitIterator<'a> {
     fn new(leaf_key: LeafKeyRef<'a>) -> Self {
         LeafKeyBitIterator {
             leaf_key_bytes: leaf_key.bytes,
-            pos: (0..leaf_key.bytes.len() * 8),
+            pos: (0..leaf_key.bytes.len().saturating_mul(8)),
         }
     }
 
     /// Returns the `index`-th bit in the bytes.
     fn get_bit(&self, index: usize) -> Option<bool> {
         let pos = index / 8;
-        let bit = 7 - index % 8;
+        let bit = 7usize.saturating_sub(index % 8);
         Some((self.leaf_key_bytes.get(pos)? >> bit) & 1 != 0)
     }
 }
@@ -559,7 +559,7 @@ impl FromIterator<Nibble> for NibblePath {
 impl NibblePath {
     /// Creates a new `NibblePath` from a vector of bytes assuming each byte has 2 nibbles.
     pub fn new_even(bytes: Vec<u8>) -> Self {
-        let num_nibbles = bytes.len() * 2;
+        let num_nibbles = bytes.len().saturating_mul(2);
         NibblePath { num_nibbles, bytes }
     }
 
@@ -570,7 +570,7 @@ impl NibblePath {
             0,
             "Last nibble must be 0."
         );
-        let num_nibbles = bytes.len() * 2 - 1;
+        let num_nibbles = bytes.len().saturating_mul(2).saturating_sub(1);
         NibblePath { num_nibbles, bytes }
     }
 
@@ -581,7 +581,7 @@ impl NibblePath {
         } else {
             *self.bytes.get_mut(self.num_nibbles / 2).expect("Should exist") |= u8::from(nibble);
         }
-        self.num_nibbles += 1;
+        self.num_nibbles = self.num_nibbles.saturating_add(1);
     }
 
     /// Pops a nibble from the end of the nibble path.
@@ -596,7 +596,7 @@ impl NibblePath {
             self.bytes.pop().map(|byte| Nibble::from(byte >> 4))
         };
         if poped_nibble.is_some() {
-            self.num_nibbles -= 1;
+            self.num_nibbles = self.num_nibbles.saturating_sub(1);
         }
         poped_nibble
     }
@@ -614,11 +614,11 @@ impl NibblePath {
 
     /// Get the i-th bit.
     fn get_bit(&self, i: usize) -> Option<bool> {
-        if i < self.num_nibbles * 4 {
+        if i < self.num_nibbles.saturating_mul(4) {
             return None;
         }
         let pos = i / 8;
-        let bit = 7 - i % 8;
+        let bit = 7usize.saturating_sub(i % 8);
         Some(((self.bytes.get(pos)? >> bit) & 1) != 0)
     }
 
@@ -633,7 +633,7 @@ impl NibblePath {
     pub fn bits(&self) -> NibbleBitIterator<'_> {
         NibbleBitIterator {
             nibble_path: self,
-            pos: (0..self.num_nibbles * 4),
+            pos: (0..self.num_nibbles.saturating_mul(4)),
         }
     }
 
@@ -771,7 +771,7 @@ impl<'a> NibbleIterator<'a> {
     pub fn bits(&self) -> NibbleBitIterator<'a> {
         NibbleBitIterator {
             nibble_path: self.nibble_path,
-            pos: (self.pos.start * 4..self.pos.end * 4),
+            pos: (self.pos.start.saturating_mul(4)..self.pos.end.saturating_mul(4)),
         }
     }
 
@@ -784,7 +784,7 @@ impl<'a> NibbleIterator<'a> {
     /// Get the number of nibbles that this iterator covers.
     pub fn num_nibbles(&self) -> usize {
         assert!(self.start <= self.pos.end); // invariant
-        self.pos.end - self.start
+        self.pos.end.saturating_sub(self.start)
     }
 
     /// Return `true` if the iteration is over.
@@ -1038,11 +1038,11 @@ impl InternalNode {
     /// Given a range [start, start + width), returns the sub-bitmap of that range.
     fn range_bitmaps(start: u8, width: u8, bitmaps: (u16, u16)) -> (u16, u16) {
         assert!(start < 16 && width.count_ones() == 1 && start.is_multiple_of(width));
-        assert!(width <= 16 && (start + width) <= 16);
+        assert!(width <= 16 && start.saturating_add(width) <= 16);
         // A range with `start == 8` and `width == 4` will generate a mask 0b0000111100000000.
         // use as converting to smaller integer types when 'width == 16'
         #[allow(clippy::cast_possible_truncation)]
-        let mask = (((1u32 << width) - 1) << start) as u16;
+        let mask = ((1u32 << width).saturating_sub(1) << start) as u16;
         (bitmaps.0 & mask, bitmaps.1 & mask)
     }
 
@@ -1063,7 +1063,7 @@ impl InternalNode {
         } else {
             let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
             let right_child = self.merkle_hash(
-                start + width / 2,
+                start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
             );
@@ -1106,7 +1106,7 @@ impl InternalNode {
         } else {
             let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
             let right_child = self.merkle_hash(
-                start + width / 2,
+                start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
             );

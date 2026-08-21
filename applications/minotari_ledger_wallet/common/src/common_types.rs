@@ -53,7 +53,12 @@ impl TryFrom<u16> for AppSW {
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6e04 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
-            _ => Err(String::from("Invalid value for AppSW (") + utils::u16_to_string(value).as_str() + ")"),
+            _ => {
+                let mut msg = String::from("Invalid value for AppSW (");
+                msg.push_str(utils::u16_to_string(value).as_str());
+                msg.push(')');
+                Err(msg)
+            },
         }
     }
 }

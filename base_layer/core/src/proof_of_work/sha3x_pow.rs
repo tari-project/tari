@@ -54,6 +54,8 @@ fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u
 
 #[cfg(test)]
 pub mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use chrono::{DateTime, NaiveDate, Utc};
     use tari_node_components::blocks::BlockHeader;
     use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};

@@ -79,7 +79,7 @@ impl ArrayLike for PrunedHashSet {
     type Value = Hash;
 
     fn len(&self) -> Result<usize, Self::Error> {
-        Ok(self.base_offset + self.hashes.len())
+        Ok(self.base_offset.saturating_add(self.hashes.len()))
     }
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
@@ -88,7 +88,7 @@ impl ArrayLike for PrunedHashSet {
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         self.hashes.push(item);
-        Ok(self.len()? - 1)
+        Ok(self.len()?.saturating_sub(1))
     }
 
     // fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
@@ -110,7 +110,7 @@ impl ArrayLike for PrunedHashSet {
                 Err(_) => None,
             };
         }
-        self.hashes.get(index - self.base_offset)
+        self.hashes.get(index.saturating_sub(self.base_offset))
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

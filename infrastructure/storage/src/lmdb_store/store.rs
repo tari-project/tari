@@ -97,9 +97,9 @@ impl LMDBConfig {
         compaction_min_free_bytes: u64,
     ) -> Self {
         Self {
-            init_size_bytes: init_size_mb * BYTES_PER_MB,
-            grow_size_bytes: grow_size_mb * BYTES_PER_MB,
-            resize_threshold_bytes: resize_threshold_mb * BYTES_PER_MB,
+            init_size_bytes: init_size_mb.saturating_mul(BYTES_PER_MB),
+            grow_size_bytes: grow_size_mb.saturating_mul(BYTES_PER_MB),
+            resize_threshold_bytes: resize_threshold_mb.saturating_mul(BYTES_PER_MB),
             no_read_ahead,
             compaction_min_free_bytes,
         }
@@ -239,7 +239,10 @@ impl LMDBBuilder {
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
             path,
             env.info()?.mapsize / BYTES_PER_MB,
-            (env.info()?.mapsize - env.stat()?.psize as usize * env.info()?.last_pgno) / BYTES_PER_MB,
+            env.info()?
+                .mapsize
+                .saturating_sub((env.stat()?.psize as usize).saturating_mul(env.info()?.last_pgno)) /
+                BYTES_PER_MB,
         );
 
         let mut databases: HashMap<String, LMDBDatabase> = HashMap::new();
@@ -472,7 +475,7 @@ impl LMDBStore {
         increase_threshold_by: Option<usize>,
     ) -> Result<(), LMDBError> {
         let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(env)?;
-        if size_left_bytes <= config.resize_threshold_bytes + increase_threshold_by.unwrap_or_default() {
+        if size_left_bytes <= config.resize_threshold_bytes.saturating_add(increase_threshold_by.unwrap_or_default()) {
             debug!(
                 target: LOG_TARGET,
                 "Resize required: mapsize: {} MB, used: {} MB, remaining: {} MB",
@@ -495,8 +498,8 @@ impl LMDBStore {
     pub fn get_stats(env: &Environment) -> Result<(usize, usize, usize), LMDBError> {
         let env_info = env.info()?;
         let stat = env.stat()?;
-        let size_used_bytes = stat.psize as usize * env_info.last_pgno;
-        let size_left_bytes = env_info.mapsize - size_used_bytes;
+        let size_used_bytes = (stat.psize as usize).saturating_mul(env_info.last_pgno);
+        let size_left_bytes = env_info.mapsize.saturating_sub(size_used_bytes);
 
         Ok((env_info.mapsize, size_used_bytes, size_left_bytes))
     }
@@ -517,7 +520,11 @@ impl LMDBStore {
         let env_info = env.info()?;
         let current_mapsize = env_info.mapsize;
         unsafe {
-            env.set_mapsize(current_mapsize + config.grow_size_bytes + increase_threshold_by.unwrap_or_default())?;
+            env.set_mapsize(
+                current_mapsize
+                    .saturating_add(config.grow_size_bytes)
+                    .saturating_add(increase_threshold_by.unwrap_or_default()),
+            )?;
         }
         let env_info = env.info()?;
         let new_mapsize = env_info.mapsize;
@@ -527,7 +534,10 @@ impl LMDBStore {
             env.path()?.to_str()?,
             current_mapsize / BYTES_PER_MB,
             new_mapsize / BYTES_PER_MB,
-            (config.grow_size_bytes + increase_threshold_by.unwrap_or_default()) / BYTES_PER_MB,
+            config
+                .grow_size_bytes
+                .saturating_add(increase_threshold_by.unwrap_or_default()) /
+                BYTES_PER_MB,
             start.elapsed()
         );
 
@@ -552,7 +562,12 @@ impl LMDBDatabase {
         V: Serialize,
     {
         // Resize this many times before assuming something is not right (up to 1 GB)
-        let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
+        // A zero grow size would never make progress, so fall back to a single attempt.
+        let max_resizes = 1024usize
+            .saturating_mul(BYTES_PER_MB)
+            .checked_div(self.env_config.grow_size_bytes())
+            .unwrap_or(1)
+            .max(1);
         let value = LMDBWriteTransaction::convert_value(value)?;
         for i in 0..max_resizes {
             match self.write(key, &value) {
@@ -561,7 +576,7 @@ impl LMDBDatabase {
                     info!(
                         target: LOG_TARGET,
                         "Database resize required (resized {} time(s) in this transaction)",
-                        i + 1
+                        i.saturating_add(1)
                     );
                     unsafe {
                         LMDBStore::resize(&self.env, &self.env_config, Some(value.len()))?;

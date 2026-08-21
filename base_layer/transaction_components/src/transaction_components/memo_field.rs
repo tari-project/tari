@@ -202,7 +202,11 @@ impl MemoField {
     /// Calculates the actual size that would be used by an AddressAndData PaymentId
     /// This includes the recursive size of any PaymentIds contained within the address
     fn calculate_address_and_data_size(address: &TariAddress, payment_id_len: usize) -> usize {
-        let base_size = 1 + 1 + address.get_size() + MemoField::SIZE_META_DATA + 1 + payment_id_len;
+        let base_size = address
+            .get_size()
+            .saturating_add(MemoField::SIZE_META_DATA)
+            .saturating_add(payment_id_len)
+            .saturating_add(3);
         std::cmp::max(base_size, PADDING_SIZE)
     }
 
@@ -213,14 +217,12 @@ impl MemoField {
         sent_output_hashes_len: usize,
         payment_id_len: usize,
     ) -> usize {
-        let base_size = 1 +
-            1 +
-            address.get_size() +
-            MemoField::SIZE_VALUE_AND_META_DATA +
-            1 +
-            (sent_output_hashes_len * FixedHash::byte_size()) +
-            1 +
-            payment_id_len;
+        let base_size = address
+            .get_size()
+            .saturating_add(MemoField::SIZE_VALUE_AND_META_DATA)
+            .saturating_add(sent_output_hashes_len.saturating_mul(FixedHash::byte_size()))
+            .saturating_add(payment_id_len)
+            .saturating_add(4);
         std::cmp::max(base_size, PADDING_SIZE)
     }
 
@@ -242,7 +244,9 @@ impl MemoField {
                 total_size,
                 sender_address.get_size(),
                 payment_id.len(),
-                total_size - sender_address.get_size() - payment_id.len()
+                total_size
+                    .saturating_sub(sender_address.get_size())
+                    .saturating_sub(payment_id.len())
             ));
         }
 
@@ -277,12 +281,12 @@ impl MemoField {
                 MAX_ENCRYPTED_DATA_SIZE,
                 total_size,
                 recipient_address.get_size(),
-                sent_output_hashes.len() * FixedHash::byte_size(),
+                sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
                 payment_id.len(),
-                total_size -
-                    recipient_address.get_size() -
-                    (sent_output_hashes.len() * FixedHash::byte_size()) -
-                    payment_id.len()
+                total_size
+                    .saturating_sub(recipient_address.get_size())
+                    .saturating_sub(sent_output_hashes.len().saturating_mul(FixedHash::byte_size()))
+                    .saturating_sub(payment_id.len())
             ));
         }
 
@@ -307,7 +311,7 @@ impl MemoField {
 
     pub fn new_raw(data: Vec<u8>) -> Result<Self, String> {
         // Raw Memo: 1 byte for tag + data.len() bytes for data
-        let total_size = 1 + data.len();
+        let total_size = data.len().saturating_add(1);
 
         if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
@@ -333,7 +337,7 @@ impl MemoField {
     /// Helper function to create a validated `MemoField::Open` from user data and transaction type
     pub fn new_open(payment_id: Vec<u8>, tx_type: TxType) -> Result<Self, String> {
         // Open Memo: 1 byte for tag + payment_id.len() bytes + 1 byte for tx_type
-        let total_size = 1 + payment_id.len() + 1;
+        let total_size = payment_id.len().saturating_add(2);
 
         if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
@@ -379,7 +383,7 @@ impl MemoField {
             // - 1 byte for the PTag (enum discriminator)
             // - payment_id.len() bytes for the variable-length payment ID
             // - 1 byte for the TxType (transaction type as u8)
-            InnerMemoField::Open { payment_id, .. } => 1 + payment_id.len() + 1,
+            InnerMemoField::Open { payment_id, .. } => payment_id.len().saturating_add(2),
 
             InnerMemoField::AddressAndData {
                 sender_address,
@@ -393,7 +397,11 @@ impl MemoField {
                 // - MemoField::SIZE_META_DATA bytes for metadata (5 bytes: 1 byte TxType + 4 bytes fee as u32)
                 // - 1 byte for payment_id length
                 // - payment_id.len() bytes for the variable-length payment ID
-                let len = 1 + 1 + sender_address.get_size() + MemoField::SIZE_META_DATA + 1 + payment_id.len();
+                let len = sender_address
+                    .get_size()
+                    .saturating_add(MemoField::SIZE_META_DATA)
+                    .saturating_add(payment_id.len())
+                    .saturating_add(3);
                 // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
                 std::cmp::max(len, PADDING_SIZE)
             },
@@ -414,14 +422,12 @@ impl MemoField {
                 // - (sent_output_hashes.len() * FixedHash::byte_size()) bytes for output hashes (32 bytes per hash)
                 // - 1 byte for payment_id length
                 // - payment_id.len() bytes for the variable-length payment ID
-                let len = 1 +
-                    1 +
-                    recipient_address.get_size() +
-                    MemoField::SIZE_VALUE_AND_META_DATA +
-                    1 +
-                    (sent_output_hashes.len() * FixedHash::byte_size()) +
-                    1 +
-                    payment_id.len();
+                let len = recipient_address
+                    .get_size()
+                    .saturating_add(MemoField::SIZE_VALUE_AND_META_DATA)
+                    .saturating_add(sent_output_hashes.len().saturating_mul(FixedHash::byte_size()))
+                    .saturating_add(payment_id.len())
+                    .saturating_add(4);
                 // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
                 if len < PADDING_SIZE { PADDING_SIZE } else { len }
             },
@@ -430,7 +436,7 @@ impl MemoField {
                 // Raw payment ID:
                 // - 1 byte for the PTag (enum discriminator)
                 // - bytes.len() bytes for the raw data
-                1 + bytes.len()
+                bytes.len().saturating_add(1)
             },
         }
     }
@@ -495,12 +501,12 @@ impl MemoField {
                     MAX_ENCRYPTED_DATA_SIZE,
                     total_size,
                     address.get_size(),
-                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
                     payment_id.len(),
-                    total_size -
-                        address.get_size() -
-                        (sent_output_hashes.len() * FixedHash::byte_size()) -
-                        payment_id.len()
+                    total_size
+                        .saturating_sub(address.get_size())
+                        .saturating_sub(sent_output_hashes.len().saturating_mul(FixedHash::byte_size()))
+                        .saturating_sub(payment_id.len())
                 ));
             }
 
@@ -533,12 +539,12 @@ impl MemoField {
                     MAX_ENCRYPTED_DATA_SIZE,
                     total_size,
                     recipient_address.get_size(),
-                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
                     payment_id.len(),
-                    total_size -
-                        recipient_address.get_size() -
-                        (sent_output_hashes.len() * FixedHash::byte_size()) -
-                        payment_id.len()
+                    total_size
+                        .saturating_sub(recipient_address.get_size())
+                        .saturating_sub(sent_output_hashes.len().saturating_mul(FixedHash::byte_size()))
+                        .saturating_sub(payment_id.len())
                 ));
             }
 
@@ -579,12 +585,12 @@ impl MemoField {
                     MAX_ENCRYPTED_DATA_SIZE,
                     total_size,
                     recipient_address.get_size(),
-                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
                     payment_id.len(),
-                    total_size -
-                        recipient_address.get_size() -
-                        (sent_output_hashes.len() * FixedHash::byte_size()) -
-                        payment_id.len()
+                    total_size
+                        .saturating_sub(recipient_address.get_size())
+                        .saturating_sub(sent_output_hashes.len().saturating_mul(FixedHash::byte_size()))
+                        .saturating_sub(payment_id.len())
                 ));
             }
 
@@ -638,7 +644,7 @@ impl MemoField {
                 let mut bytes = Vec::with_capacity(5);
                 // Zero out-of-bound values
                 // - Use 4 bytes for 'fee', max value: 4,294,967,295
-                let fee = if fee.as_u64() > 2u64.pow(32) - 1 {
+                let fee = if fee.as_u64() > u64::from(u32::MAX) {
                     0
                 } else {
                     fee.as_u64()
@@ -855,7 +861,7 @@ impl MemoField {
             // legacy support for AddressAndDataV1
             if p_tag == PTag::AddressAndDataV1 {
                 let payment_id = bytes
-                    .get(MemoField::SIZE_VALUE_AND_META_DATA + size..)
+                    .get(MemoField::SIZE_VALUE_AND_META_DATA.saturating_add(size)..)
                     .expect("Already checked")
                     .to_vec();
                 return Ok(MemoField {
@@ -872,7 +878,7 @@ impl MemoField {
             // legacy support for TransactionInfoV1
             if p_tag == PTag::TransactionInfoV1 {
                 let payment_id = bytes
-                    .get(MemoField::SIZE_VALUE_AND_META_DATA + size..)
+                    .get(MemoField::SIZE_VALUE_AND_META_DATA.saturating_add(size)..)
                     .expect("Already checked")
                     .to_vec();
                 return Ok(MemoField {
@@ -909,20 +915,23 @@ impl MemoField {
             .ok_or("Address bytes does not have size encoded")? as usize;
         let address = TariAddress::from_bytes(
             bytes
-                .get(metadata_end_index + 1..metadata_end_index + 1 + address_size)
+                .get(
+                    metadata_end_index.saturating_add(1)..
+                        metadata_end_index.saturating_add(1).saturating_add(address_size),
+                )
                 .ok_or("Not enough bytes for TariAddress")?,
         )
         .map_err(|_| "Invalid TariAddress in bytes".to_string())?;
         let payment_id_length = *bytes
-            .get(metadata_end_index + 1 + address_size)
+            .get(metadata_end_index.saturating_add(1).saturating_add(address_size))
             .ok_or("Payment ID bytes does not have length encoded")? as usize;
-        let payment_id_start = metadata_end_index + 1 + address_size + 1;
+        let payment_id_start = metadata_end_index.saturating_add(2).saturating_add(address_size);
         let payment_id = bytes
-            .get(payment_id_start..payment_id_start + payment_id_length)
+            .get(payment_id_start..payment_id_start.saturating_add(payment_id_length))
             .ok_or("Not enough bytes for payment ID")?;
 
         if p_tag == PTag::AddressAndData {
-            if !Self::check_padding(bytes, payment_id_start + payment_id_length) {
+            if !Self::check_padding(bytes, payment_id_start.saturating_add(payment_id_length)) {
                 return Err("Invalid padding for AddressAndData".to_string());
             }
             return Ok(MemoField {
@@ -941,13 +950,14 @@ impl MemoField {
         let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
         let mut sent_output_hashes = Vec::new();
         let sent_output_hashes_length = *bytes
-            .get(payment_id_start + payment_id_length)
+            .get(payment_id_start.saturating_add(payment_id_length))
             .ok_or("Sent output hashes bytes does not have length encoded")?
             as usize;
-        let sent_output_hashes_start = payment_id_start + payment_id_length + 1;
+        let sent_output_hashes_start = payment_id_start.saturating_add(payment_id_length).saturating_add(1);
         for hash_num in 0..sent_output_hashes_length {
-            let hash_start = sent_output_hashes_start + (hash_num * FixedHash::byte_size());
-            let hash_end = hash_start + FixedHash::byte_size();
+            let hash_start =
+                sent_output_hashes_start.saturating_add(hash_num.saturating_mul(FixedHash::byte_size()));
+            let hash_end = hash_start.saturating_add(FixedHash::byte_size());
             let hash = bytes
                 .get(hash_start..hash_end)
                 .ok_or("Not enough bytes for sent output hash")?;
@@ -956,7 +966,7 @@ impl MemoField {
         }
         if !Self::check_padding(
             bytes,
-            sent_output_hashes_start + (sent_output_hashes_length * FixedHash::byte_size()),
+            sent_output_hashes_start.saturating_add(sent_output_hashes_length.saturating_mul(FixedHash::byte_size())),
         ) {
             return Err("Invalid padding for TransactionInfo".to_string());
         }
@@ -996,15 +1006,12 @@ impl MemoField {
         }
         // Now we have to try and brute force a match here
         let mut offset = 0;
-        while (TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset) <= bytes.len() {
-            if let Ok(address) = TariAddress::from_bytes(
-                bytes
-                    .get(..(TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset))
-                    .expect("Already checked"),
-            ) {
-                return Ok((address, TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset));
+        while TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(offset) <= bytes.len() {
+            let end = TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(offset);
+            if let Ok(address) = TariAddress::from_bytes(bytes.get(..end).expect("Already checked")) {
+                return Ok((address, end));
             }
-            offset += 1;
+            offset = offset.saturating_add(1);
         }
         if let Ok(address) =
             TariAddress::from_bytes(bytes.get(..TARI_ADDRESS_INTERNAL_SINGLE_SIZE).expect("Already checked"))
@@ -1954,7 +1961,7 @@ mod test {
                 let mut bytes = Vec::with_capacity(5);
                 // Zero out-of-bound values
                 // - Use 4 bytes for 'fee', max value: 4,294,967,295
-                let fee = if fee.as_u64() > 2u64.pow(32) - 1 {
+                let fee = if fee.as_u64() > u64::from(u32::MAX) {
                     0
                 } else {
                     fee.as_u64()
@@ -2079,7 +2086,7 @@ mod test {
                     let mut bytes = Vec::with_capacity(5);
                     // Zero out-of-bound values
                     // - Use 4 bytes for 'fee', max value: 4,294,967,295
-                    let fee = if fee.as_u64() > 2u64.pow(32) - 1 {
+                    let fee = if fee.as_u64() > u64::from(u32::MAX) {
                         0
                     } else {
                         fee.as_u64()

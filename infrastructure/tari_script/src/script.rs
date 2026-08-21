@@ -538,6 +538,9 @@ impl TariScript {
         }
     }
 
+    // The `+` operators below are Ristretto group additions on commitments and public keys,
+    // which cannot overflow. Integer addition here is already checked.
+    #[allow(clippy::arithmetic_side_effects)]
     fn handle_op_add(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
         use StackItem::{Commitment, Number, PublicKey};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
@@ -559,6 +562,9 @@ impl TariScript {
         }
     }
 
+    // The `-` operator below is a Ristretto group subtraction on commitments, which cannot
+    // overflow. Integer subtraction here is already checked.
+    #[allow(clippy::arithmetic_side_effects)]
     fn handle_op_sub(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
         use StackItem::{Commitment, Number};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
@@ -619,6 +625,8 @@ impl TariScript {
     /// * The list may contain duplicate keys, but each occurrence of a public key may be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
     /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
+    // `agg_pub_key + ristretto_key` is a Ristretto group addition, which cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn check_multisig(
         &self,
         stack: &mut ExecutionStack,

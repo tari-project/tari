@@ -118,7 +118,10 @@ fn does_require_new_shard_key(public_key: &CompressedPublicKey, epoch: VnEpoch, 
     let pk = U256::from_big_endian(public_key.as_bytes());
     let epoch = U256::from(epoch.as_u64());
     let interval = U256::from(interval.as_u64());
-    (pk + epoch) % interval == U256::zero()
+    // A zero interval would be a misconfigured consensus constant.
+    pk.checked_add(epoch)
+        .and_then(|v| v.checked_rem(interval))
+        .is_some_and(|v| v == U256::zero())
 }
 
 fn generate_shard_key(public_key: &CompressedPublicKey, entropy: &[u8; 32]) -> [u8; 32] {

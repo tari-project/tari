@@ -184,7 +184,7 @@ impl TransactionOutput {
                     format!(
                         "Some({}..{})",
                         &proof_hex[0..16],
-                        &proof_hex[proof_hex.len() - 16..proof_hex.len()]
+                        &proof_hex[proof_hex.len().saturating_sub(16)..proof_hex.len()]
                     )
                 } else {
                     "Some(".to_owned() + &proof_hex + ")"
@@ -263,6 +263,8 @@ impl TransactionOutput {
     // As an alternate range proof check, the value of the commitment with a deterministic ephemeral_commitment nonce
     // `r_a` of zero can optionally be bound into the metadata signature. This is a much faster check than the full
     // range proof verification.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn revealed_value_range_proof_check(&self) -> Result<(), RangeProofError> {
         if self.features.range_proof_type != RangeProofType::RevealedValue {
             return Err(RangeProofError::InvalidRangeProof {
@@ -480,10 +482,12 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self
+            .features
+            .get_serialized_size()?
+            .saturating_add(self.script.get_serialized_size()?)
+            .saturating_add(self.covenant.get_serialized_size()?)
+            .saturating_add(self.encrypted_data.get_payment_id_size()))
     }
 }
 

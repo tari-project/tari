@@ -79,7 +79,7 @@ impl<T: Clone + PartialEq> ArrayLike for Vec<T> {
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
         Vec::push(self, item);
-        Ok(self.len() - 1)
+        Ok(self.len().saturating_sub(1))
     }
 
     fn get(&self, index: usize) -> Option<Self::Value> {

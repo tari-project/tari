@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedSignature, PrivateKey};

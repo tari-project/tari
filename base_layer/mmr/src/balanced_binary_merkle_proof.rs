@@ -78,9 +78,9 @@ where D: Digest
         let mut path = Vec::new();
         while index > 0 {
             // Parent at (i - 1) / 2
-            let parent = (index - 1) >> 1;
+            let parent = index.saturating_sub(1) >> 1;
             // The children are 2i + 1 and 2i + 2, so together are 4i + 3. We subtract one, we get the other.
-            let sibling = 4 * parent + 3 - index;
+            let sibling = parent.saturating_mul(4).saturating_add(3).saturating_sub(index);
             let hash = tree
                 .get_hash(sibling)
                 .cloned()
@@ -157,7 +157,7 @@ where D: Digest
             for (index, proof) in proofs.iter().enumerate() {
                 // If this path was already joined ignore it.
                 if !join_indices.get(index).expect("Index should expect") && proof.path.len() > height as usize {
-                    let parent = (indices.get(index).expect("Index should expect") - 1) >> 1;
+                    let parent = indices.get(index).expect("Index should expect").saturating_sub(1) >> 1;
                     if let Some(other_proof_idx) = hash_map.insert(parent, index) {
                         *join_indices.get_mut(index).expect("Index should expect") = true;
                         // The other proof doesn't need a hash, it needs an index to this hash
@@ -172,7 +172,7 @@ where D: Digest
                             MergedBalancedBinaryMerkleIndexOrHash::Hash(
                                 proof
                                     .path
-                                    .get(proof.path.len() - 1 - height as usize)
+                                    .get(proof.path.len().saturating_sub(1).saturating_sub(height as usize))
                                     .expect("Should exist")
                                     .clone(),
                             ),
@@ -260,14 +260,14 @@ where D: Digest
                 }
                 // Parent
                 *self.node_indices.get_mut(index).expect("Should exist") =
-                    (*self.node_indices.get(index).expect("Should exist") - 1) >> 1;
+                    self.node_indices.get(index).expect("Should exist").saturating_sub(1) >> 1;
             }
             if !dangling_paths.is_empty() {
                 // Something path ended, but it's not joined with any other path.
                 return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
             }
         }
-        if consumed.len() + 1 < self.paths.len() {
+        if consumed.len().saturating_add(1) < self.paths.len() {
             // If the proof is valid then all but one paths will be consumed by other paths.
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }

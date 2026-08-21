@@ -136,6 +136,8 @@ impl Display for PrioritizedTransaction {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use tari_transaction_components::{
         key_manager::KeyManager,
         tari_amount::{MicroMinotari, T, uT},

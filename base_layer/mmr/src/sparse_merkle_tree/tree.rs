@@ -112,7 +112,7 @@ impl<H: Digest<OutputSize = U32>> TerminalBranch<'_, H> {
             },
             Leaf(_) => {
                 let old_leaf = mem::replace(terminal, Node::Empty(EmptyNode {})).to_leaf()?;
-                let branch = old_leaf.build_tree(height + 1, leaf)?;
+                let branch = old_leaf.build_tree(height.saturating_add(1), leaf)?;
                 *terminal = Node::Branch(branch);
                 Ok(UpdateResult::Inserted)
             },
@@ -153,10 +153,12 @@ impl<H: Digest<OutputSize = U32>> TerminalBranch<'_, H> {
             // The last branch has two non-empty nodes by definition, so it's always F.
             .skip(1)
             .take_while(|b| **b)
-            .count() +
-            1; // Account for the last branch
+            .count()
+            .saturating_add(1); // Account for the last branch
         let parent = self.parent.as_branch_mut().ok_or(SMTError::UnexpectedNodeType)?;
-        let depth = (parent.height() + 1)
+        let depth = parent
+            .height()
+            .saturating_add(1)
             .checked_sub(branches_to_prune)
             .ok_or_else(|| SMTError::InvalidBranch("Logic error: Trying to prune beyond root".into()))?;
         let terminal = parent.child_mut(!self.direction);
@@ -215,12 +217,12 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
                     .clone();
                 let (orphan, depth) = path.prune()?;
                 self.attach_orphan_at_depth(key, depth, orphan)?;
-                self.size -= 1;
+                self.size = self.size.saturating_sub(1);
                 DeleteResult::Deleted(deleted)
             },
             PathClassifier::NonTerminalBranch => {
                 let deleted_hash = path.delete()?;
-                self.size -= 1;
+                self.size = self.size.saturating_sub(1);
                 // Traverse the tree again, marking the path as stale
                 let _node = self.find_terminal_branch(key, true)?;
                 DeleteResult::Deleted(deleted_hash)
@@ -242,7 +244,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         let new_leaf = LeafNode::new(key.into(), value);
         if self.is_empty() {
             self.root = Node::Leaf(new_leaf);
-            self.size += 1;
+            self.size = self.size.saturating_add(1);
             return Ok(UpdateResult::Inserted);
         }
         if self.root.is_leaf() {
@@ -252,7 +254,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         let mut terminal_node = self.find_terminal_branch(new_leaf.key(), true)?;
         let result = terminal_node.insert_or_update_leaf(new_leaf)?;
         if let UpdateResult::Inserted = result {
-            self.size += 1
+            self.size = self.size.saturating_add(1)
         }
         Ok(result)
     }
@@ -386,7 +388,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         if leaf.key() == key {
             let leaf = mem::replace(&mut self.root, Node::Empty(EmptyNode {}));
             let leaf_hash = leaf.to_leaf()?.to_value_hash();
-            self.size -= 1;
+            self.size = self.size.saturating_sub(1);
             Ok(DeleteResult::Deleted(leaf_hash))
         } else {
             Ok(DeleteResult::KeyNotFound)
@@ -403,7 +405,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         let old_root = mem::replace(&mut self.root, Empty(EmptyNode {})).to_leaf()?;
         let root = old_root.build_tree(0, new_leaf)?;
         self.root = Branch(root);
-        self.size += 1;
+        self.size = self.size.saturating_add(1);
         Ok(UpdateResult::Inserted)
     }
 

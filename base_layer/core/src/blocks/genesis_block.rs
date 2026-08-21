@@ -412,6 +412,8 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 // Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};

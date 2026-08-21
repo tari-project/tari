@@ -55,7 +55,8 @@ pub(crate) fn read_bytes<R: Read>(reader: &mut R, len: usize) -> Result<Vec<u8>>
             .read_exact(dst)
             .map_err(|_| Error::new(ErrorKind::InvalidData, ERROR_UNEXPECTED_LENGTH_OF_INPUT))?;
         buf.extend_from_slice(dst);
-        remaining -= take;
+        // `take` is `remaining.min(CHUNK)`, so this can never underflow.
+        remaining = remaining.saturating_sub(take);
     }
     Ok(buf)
 }
@@ -65,6 +66,9 @@ pub(crate) fn read_bytes<R: Read>(reader: &mut R, len: usize) -> Result<Vec<u8>>
 /// Mirrors borsh's own (private) `hint::cautious`: the length is attacker controlled, so only a
 /// bounded amount is allocated up front and the collection grows as elements are actually read.
 pub(crate) fn cautious_capacity<T>(len: usize) -> usize {
+    const MAX_PREALLOC_BYTES: usize = 4096;
+    // `size_of` is zero for ZSTs, so clamp the divisor away from zero before dividing.
     let el_size = core::mem::size_of::<T>().max(1);
-    len.min((4096 / el_size).max(1))
+    let max_elements = MAX_PREALLOC_BYTES.checked_div(el_size).unwrap_or(1).max(1);
+    len.min(max_elements)
 }

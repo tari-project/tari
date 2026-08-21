@@ -22,6 +22,8 @@
 
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::sync::Arc;
 
 use blake2::Blake2b;

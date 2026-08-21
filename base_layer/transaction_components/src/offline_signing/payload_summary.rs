@@ -246,7 +246,7 @@ impl Display for PayloadSummary {
         )?;
         writeln!(f, "Recipients     : {}", self.recipients.len())?;
         for (i, recipient) in self.recipients.iter().enumerate() {
-            writeln!(f, "  [{}] amount  : {}", i + 1, recipient.amount)?;
+            writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), recipient.amount)?;
             // Both forms are shown so the operator can check the address against whichever one they were given
             writeln!(f, "      address : {}", recipient.address.to_base58())?;
             writeln!(f, "      emoji   : {}", recipient.address)?;
@@ -263,7 +263,7 @@ impl Display for PayloadSummary {
                 self.outputs.len()
             )?;
             for (i, output) in self.outputs.iter().enumerate() {
-                writeln!(f, "  [{}] amount  : {}", i + 1, output.amount)?;
+                writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), output.amount)?;
                 // There is no address to show: whoever can satisfy this script owns the funds
                 writeln!(f, "      script  : {}", output.script)?;
                 writeln!(
@@ -279,7 +279,7 @@ impl Display for PayloadSummary {
         if let Some(party_number) = self.multisig_party_number {
             writeln!(f, "Multisig party : {party_number}")?;
             for (i, pk) in self.multisig_public_keys.iter().enumerate() {
-                writeln!(f, "  [{}] key     : {}", i + 1, pk)?;
+                writeln!(f, "  [{}] key     : {}", i.saturating_add(1), pk)?;
             }
         }
         // The fee is only a number if the payload fixes one. Otherwise it is a rate, and the amount it works out to

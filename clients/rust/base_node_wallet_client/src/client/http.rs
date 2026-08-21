@@ -352,7 +352,7 @@ impl BaseNodeWalletClient for Client {
                 }
 
                 if has_next_page {
-                    page += 1;
+                    page = page.saturating_add(1);
                 }
             }
         });

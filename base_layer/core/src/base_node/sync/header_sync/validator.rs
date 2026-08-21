@@ -292,6 +292,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;

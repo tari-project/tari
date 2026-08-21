@@ -1,6 +1,8 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     collections::HashMap,
     convert::identity,

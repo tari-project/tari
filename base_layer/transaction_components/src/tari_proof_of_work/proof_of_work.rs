@@ -67,7 +67,7 @@ impl ProofOfWork {
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     #[allow(deprecated)]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.pow_data.len() + 1);
+        let mut buf = Vec::with_capacity(self.pow_data.len().saturating_add(1));
         buf.put_u8(self.pow_algo as u8);
         buf.put_slice(&self.pow_data);
         buf
