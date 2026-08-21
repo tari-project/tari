@@ -20,8 +20,63 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::tari_address::TariAddress;
+use tari_script::TariScript;
+
 use super::{MicroMinotari, weight::TransactionWeight};
-use crate::aggregated_body::AggregateBody;
+use crate::{
+    aggregated_body::AggregateBody,
+    helpers::borsh::SerializedSize,
+    transaction_builder::TransactionBuilderError,
+    transaction_components::{
+        OutputFeatures,
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+    },
+};
+
+/// Builds the memo that a single recipient output carries in its encrypted data on the paths that attach an
+/// address to the caller's payment id.
+///
+/// Those paths have to measure the memo before they know the fee, but the memo takes the fee as an argument. The
+/// fee is packed into a fixed-width field, so its value cannot change the memo's size: measure a copy built with a
+/// zero fee, then build the real memo with the final fee through this same constructor, so that the memo that was
+/// measured and the memo that ends up in the output cannot drift apart.
+pub fn addressed_output_memo(
+    payment_id: MemoField,
+    address: TariAddress,
+    fee: MicroMinotari,
+    tx_type: TxType,
+) -> Result<MemoField, TransactionBuilderError> {
+    payment_id
+        .add_sender_address(address, true, fee, Some(tx_type))
+        .map_err(TransactionBuilderError::InvalidMemo)
+}
+
+/// The rounded-up features-and-scripts byte size that the transaction builder will charge for a single output
+/// carrying `memo`.
+///
+/// `TransactionOutput::get_features_and_scripts_size` counts the memo bytes held in the output's encrypted data
+/// alongside the features, script and covenant, so a fee estimate that leaves the memo out is short. A transaction
+/// that spends a whole input with no change output has nothing to absorb the difference and fails to build at all,
+/// so every fee estimate should come from here rather than summing the terms by hand at the call site.
+pub fn recipient_output_features_and_scripts_size(
+    weighting: &TransactionWeight,
+    features: &OutputFeatures,
+    script: &TariScript,
+    covenant: &Covenant,
+    memo: &MemoField,
+) -> Result<usize, TransactionBuilderError> {
+    let to_err = |e: std::io::Error| TransactionBuilderError::InvalidSerializedSize(e.to_string());
+    Ok(weighting.round_up_features_and_scripts_size(
+        features
+            .get_serialized_size()
+            .map_err(to_err)?
+            .saturating_add(script.get_serialized_size().map_err(to_err)?)
+            .saturating_add(covenant.get_serialized_size().map_err(to_err)?)
+            .saturating_add(memo.get_size()),
+    ))
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Fee(TransactionWeight);

@@ -42,8 +42,7 @@ use crate::{
     TransactionBuilder,
     TransactionBuilderError,
     consensus::ConsensusConstants,
-    fee::Fee,
-    helpers::borsh::SerializedSize,
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     multisig::script::{derive_multisig_ephemeral_pubkeys, get_multi_sig_script_components},
     transaction_builder::FinalizedTransaction,
@@ -227,28 +226,29 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let fee_per_gram = MicroMinotari::from(1);
         let script = push_pubkey_script(&Default::default());
 
-        let features_and_scripts_byte_size = consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                OutputFeatures::default()
-                    .get_serialized_size()
-                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?
-                    .saturating_add(
-                        script
-                            .get_serialized_size()
-                            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-                    )
-                    .saturating_add(
-                        Covenant::default()
-                            .get_serialized_size()
-                            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-                    ),
-            );
+        // The whole input goes to a single recipient output with no change output, and that output carries the memo
+        // built below in its encrypted data, which the builder charges for. The real memo cannot be built yet
+        // because it records the fee being calculated here, so measure a copy built with a zero fee - see
+        // `addressed_output_memo`. Leaving the memo out is not a rounding nit: the build cannot balance at all.
+        let measured_memo = addressed_output_memo(
+            MemoField::default(),
+            recipient.clone(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
+        )?;
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            &OutputFeatures::default(),
+            &script,
+            &Covenant::default(),
+            &measured_memo,
+        )?;
 
         let fee: MicroMinotari = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
-        let payment_id =
-            MemoField::new_address_and_data(recipient.clone(), fee_per_gram, true, TxType::PaymentToOther, vec![])
-                .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
+        // Record the actual fee, not the fee-per-gram: this memo is handed to the recipient and shown to the user as
+        // what the transaction cost, and `TransactionBuilder::build` rewrites any memo whose recorded fee does not
+        // match the fee it settled on.
+        let payment_id = addressed_output_memo(MemoField::default(), recipient.clone(), fee, TxType::PaymentToOther)?;
 
         if fee > amount {
             return Err(TransactionError::BuilderError(format!(
@@ -276,5 +276,94 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         };
 
         Ok((tx, payment_id, total_amount))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+    use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, Opcode, TariScript};
+
+    use crate::{
+        MicroMinotari,
+        key_manager::{KeyManager, TransactionKeyManagerInterface},
+        multisig::session::MultisigSession,
+        test_helpers::create_consensus_manager,
+        transaction_components::{OutputFeatures, WalletOutputBuilder, memo_field::MemoField},
+    };
+
+    /// `spend_multisig_utxo` hands the whole input to a single recipient with no change output, and that output
+    /// carries an `AddressAndData` memo (padded to a 130 byte minimum) in its encrypted data, which the transaction
+    /// builder charges for. An estimate that leaves the memo out cannot be balanced at all, so the call fails
+    /// outright; this drives the real call and checks the fee it settled on.
+    #[test]
+    fn spend_multisig_utxo_fee_estimate_counts_the_output_memo() {
+        let rules = create_consensus_manager();
+        let consensus_constants = rules.consensus_constants(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient_key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            recipient_key_manager.get_view_key().pub_key,
+            recipient_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        // A 1-of-1 multisig output, the script shape `get_multi_sig_script_components` looks for.
+        let amount = MicroMinotari(100_000);
+        let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let party_key = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let script = TariScript::new(vec![
+            Opcode::CheckMultiSigVerify(1, 1, vec![party_key.pub_key], Box::new([0u8; 32])),
+            Opcode::PushPubKey(Box::new(script_key.pub_key.clone())),
+        ])
+        .unwrap();
+        let input = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+            .with_script(script)
+            .with_features(OutputFeatures::default())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .unwrap()
+            .with_script_key(script_key.key_id)
+            .with_sender_offset_public_key(sender_offset.pub_key.clone())
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(&key_manager)
+            .unwrap();
+
+        let session = MultisigSession::new(key_manager);
+        let (finalized, memo, total_amount) = session
+            .spend_multisig_utxo(
+                vec![CompressedCheckSigSchnorrSignature::default()],
+                recipient,
+                input,
+                consensus_constants,
+            )
+            .unwrap();
+
+        // The whole input is spent, so what the recipient does not get is exactly the fee the builder charged.
+        assert_eq!(
+            amount - total_amount,
+            finalized.fee,
+            "the up-front fee estimate must be exactly what the transaction builder charges"
+        );
+        // The memo really is the padded `AddressAndData` shape that has to be paid for.
+        assert!(
+            memo.get_size() >= 130,
+            "expected a padded AddressAndData memo, got {} bytes",
+            memo.get_size()
+        );
+        // And it records the fee actually charged, not the fee-per-gram, so the recipient is told what the
+        // transaction really cost.
+        assert_eq!(memo.get_fee(), Some(finalized.fee));
+        assert_eq!(
+            finalized.transaction.body.outputs().len(),
+            1,
+            "there must be no change output"
+        );
     }
 }

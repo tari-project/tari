@@ -52,14 +52,17 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
+    types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
-use tari_script::{TariScript, inputs, script};
+use tari_crypto::keys::SecretKey as SecretKeyTrait;
+use tari_script::{ExecutionStack, TariScript, inputs, push_pubkey_script, script};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
+    TransactionBuilder,
+    TransactionBuilderError,
     crypto_factories::CryptoFactories,
-    fee::Fee,
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, T, uT},
@@ -67,8 +70,10 @@ use tari_transaction_components::{
     transaction_components::{
         MemoField,
         OutputFeatures,
+        RangeProofType,
         TransactionOutput,
         WalletOutput,
+        WalletOutputBuilder,
         covenants::Covenant,
         memo_field::TxType,
     },
@@ -105,6 +110,80 @@ fn output_to_self_features_and_scripts_size_byte_size() -> std::io::Result<usize
             TariScript::default().get_serialized_size()? +
             PAYMENT_ID_SIZE,
     ))
+}
+
+/// The fee `OutputManagerService::fee_estimate` quotes when the wallet is short of funds: one input, no change, and
+/// `num_outputs` recipient outputs each carrying the same `AddressAndData` memo the funded path quotes for.
+///
+/// `Fee::calculate` adds the features-and-scripts term once, so the per-output size is multiplied by the number of
+/// outputs, exactly as the funded selection above it does.
+///
+/// `include_memo` exists so a test can show that the memo is actually being paid for: the quote built without it is
+/// strictly cheaper, and an estimate that stopped counting the memo would collapse the two together.
+fn insufficient_funds_fee_estimate(
+    fee_per_gram: MicroMinotari,
+    num_outputs: usize,
+    include_memo: bool,
+) -> MicroMinotari {
+    let constants = create_consensus_constants(0);
+    let memo = if include_memo {
+        addressed_output_memo(
+            MemoField::default(),
+            TariAddress::default(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
+        )
+        .unwrap()
+    } else {
+        MemoField::default()
+    };
+    let size = recipient_output_features_and_scripts_size(
+        constants.transaction_weight_params(),
+        &OutputFeatures::default(),
+        &TariScript::default(),
+        &Covenant::new(),
+        &memo,
+    )
+    .unwrap();
+    Fee::new(*constants.transaction_weight_params()).calculate(
+        fee_per_gram,
+        1,
+        1,
+        num_outputs,
+        size.saturating_mul(num_outputs),
+    )
+}
+
+/// Asserts that an insufficient-funds fee quote prices the same output shape as the funded path: every output paid
+/// for, memo included. A user who tops up to exactly the quoted amount has to be able to send.
+///
+/// The two inequalities are the load-bearing part - they are anchored in `Fee::calculate`'s own terms rather than in
+/// the estimate being checked, so they still fail if the estimate stops counting the memo or stops counting it once
+/// per output. The final equality only pins the exact number.
+fn assert_insufficient_funds_quote(quoted: MicroMinotari, fee_per_gram: MicroMinotari, num_outputs: usize) {
+    assert!(
+        quoted > insufficient_funds_fee_estimate(fee_per_gram, num_outputs, false),
+        "the insufficient-funds quote must pay for the recipient memo, got {quoted}"
+    );
+    if num_outputs > 1 {
+        // Every extra output costs its own features, script and memo on top of its weight. If the quote charged
+        // the features-and-scripts bytes only once, the gap between it and the single-output quote would be
+        // exactly the weight of the extra outputs and nothing more.
+        let constants = create_consensus_constants(0);
+        let single_output = insufficient_funds_fee_estimate(fee_per_gram, 1, true);
+        let extra_output_weight_only = Fee::new(*constants.transaction_weight_params()).calculate(
+            fee_per_gram,
+            0,
+            0,
+            num_outputs.saturating_sub(1),
+            0,
+        );
+        assert!(
+            quoted > single_output + extra_output_weight_only,
+            "the insufficient-funds quote must pay for all {num_outputs} outputs' features and memos, got {quoted}"
+        );
+    }
+    assert_eq!(quoted, insufficient_funds_fee_estimate(fee_per_gram, num_outputs, true));
 }
 
 struct TestOmsService {
@@ -322,7 +401,7 @@ async fn fee_estimate() {
         )
         .await
         .unwrap();
-    assert_eq!(fee.0, MicroMinotari::from(375));
+    assert_insufficient_funds_quote(fee.0, fee_per_gram, 1);
 }
 
 #[allow(clippy::identity_op)]
@@ -408,14 +487,14 @@ async fn test_utxo_selection_no_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee.0, MicroMinotari::from(256));
+    assert_insufficient_funds_quote(fee.0, fee_per_gram, 2);
 
     let broke_amount = spendable_amount + MicroMinotari::from(2000);
     let fee = oms
         .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee.0, MicroMinotari::from(256));
+    assert_insufficient_funds_quote(fee.0, fee_per_gram, 2);
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -512,7 +591,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee.0, MicroMinotari::from(256));
+    assert_insufficient_funds_quote(fee.0, fee_per_gram, 2);
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -2207,4 +2286,255 @@ async fn recovered_output_key_not_in_keychain() {
         matches!(result.as_deref(), Ok([])),
         "It should not reach an error condition or return an output"
     );
+}
+
+/// Builds and finalizes the transaction shape shared by the wallet's "spend the whole input to a single recipient"
+/// paths: one input, one recipient output holding the whole input minus an up-front fee estimate, and no change
+/// output. Returns the fee the transaction builder actually charged.
+///
+/// With no change output there is nothing to absorb a bad estimate: if `amount` leaves less than the builder
+/// charges, the build fails outright.
+async fn build_whole_input_spend(
+    key_manager: &MemoryKeyManager,
+    input: WalletOutput,
+    fee_per_gram: MicroMinotari,
+    output_features: OutputFeatures,
+    amount: MicroMinotari,
+    output_memo: MemoField,
+) -> Result<MicroMinotari, TransactionBuilderError> {
+    let mut builder =
+        TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+    builder
+        .with_lock_height(0)
+        .with_fee_per_gram(fee_per_gram)
+        .with_prevent_fee_gt_amount(false)
+        .with_input(input)
+        .unwrap();
+
+    let recipient_address = random_dual_address();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+    let encryption_key = key_manager.get_random_key(None, None).unwrap();
+    let (commitment_mask, _script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let script = push_pubkey_script(
+        &key_manager
+            .stealth_address_script_spending_key(&commitment_mask.key_id, recipient_address.public_spend_key())
+            .unwrap(),
+    );
+    let output = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+        .with_features(output_features)
+        .with_script(script)
+        .encrypt_data_for_recovery(key_manager, Some(&encryption_key.key_id), output_memo)
+        .unwrap()
+        .with_input_data(ExecutionStack::default())
+        .with_sender_offset_public_key(sender_offset.pub_key.clone())
+        .with_script_key(TariKeyId::Zero)
+        .with_minimum_value_promise(MicroMinotari::zero())
+        .sign_metadata_signature_user_verified(key_manager, &sender_offset.key_id, &recipient_address)
+        .unwrap()
+        .try_build(key_manager)
+        .unwrap();
+    builder
+        .add_recipient(
+            recipient_address,
+            output,
+            Some(sender_offset.key_id),
+            Some(encryption_key.key_id),
+        )
+        .unwrap();
+
+    builder.build().map(|finalized| finalized.fee)
+}
+
+fn random_dual_address() -> TariAddress {
+    let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    TariAddress::new_dual_address_with_default_features(view_key, spend_key, Network::LocalNet).unwrap()
+}
+
+/// The production estimate under test: every whole-input spend path routes its recipient output through
+/// `recipient_output_features_and_scripts_size`. Deliberately no arithmetic here - re-deriving the size in the
+/// test file is what let the original bug through, since the test would then agree with itself.
+fn production_estimate(
+    output_features: &OutputFeatures,
+    memo: &MemoField,
+    fee_per_gram: MicroMinotari,
+) -> MicroMinotari {
+    let constants = create_consensus_constants(0);
+    let size = recipient_output_features_and_scripts_size(
+        constants.transaction_weight_params(),
+        output_features,
+        &script!(PushPubKey(Box::default())).unwrap(),
+        &Covenant::default(),
+        memo,
+    )
+    .unwrap();
+    Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 1, 1, size)
+}
+
+async fn spendable_input(key_manager: &MemoryKeyManager, value: MicroMinotari) -> WalletOutput {
+    make_input(
+        &mut rand::rng(),
+        value,
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    )
+}
+
+/// Drives the production fee estimate for a whole-input spend against a real `TransactionBuilder`:
+/// - the estimate for `memo` must be exactly the fee the builder charges, and
+/// - an estimate made for an empty memo must be too small to build at all.
+///
+/// The second half is what makes the first half meaningful: it fails if the estimate ever stops counting the memo.
+async fn assert_estimate_matches_and_memo_is_load_bearing(
+    key_manager: &MemoryKeyManager,
+    value: MicroMinotari,
+    fee_per_gram: MicroMinotari,
+    output_features: OutputFeatures,
+    memo: MemoField,
+) {
+    let expected_fee = production_estimate(&output_features, &memo, fee_per_gram);
+    let fee = build_whole_input_spend(
+        key_manager,
+        spendable_input(key_manager, value).await,
+        fee_per_gram,
+        output_features.clone(),
+        value - expected_fee,
+        memo.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        fee, expected_fee,
+        "the production estimate must be exactly what the transaction builder charges"
+    );
+
+    // Dropping the memo from the estimate is not a rounding nit: the transaction cannot be balanced at all.
+    let short_fee = production_estimate(&output_features, &MemoField::default(), fee_per_gram);
+    assert!(
+        short_fee < expected_fee,
+        "the estimate must count the memo bytes, {short_fee} vs {expected_fee}"
+    );
+    let err = build_whole_input_spend(
+        key_manager,
+        spendable_input(key_manager, value).await,
+        fee_per_gram,
+        output_features,
+        value - short_fee,
+        memo,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, TransactionBuilderError::SpendingMoreThanAvailable { .. }),
+        "expected the build to fail outright, got {err:?}"
+    );
+}
+
+/// Covers `OutputManagerService::encumber_aggregate_utxo`, whose recipient output carries the caller supplied
+/// payment id (`--payment-id`) in its encrypted data.
+///
+/// The path itself cannot be driven from a unit test - it derives the pre-mine script key from a
+/// `TariKeyId::LedgerKey` and needs a Ledger device - so this exercises the estimate the path now calls,
+/// `recipient_output_features_and_scripts_size`, against a real transaction of the same shape.
+#[tokio::test]
+async fn encumber_aggregate_utxo_fee_estimate_counts_the_output_memo() {
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let payment_id = MemoField::new_open(vec![7u8; 64], TxType::PaymentToOther).unwrap();
+    let output_features = OutputFeatures {
+        maturity: 5,
+        range_proof_type: RangeProofType::BulletProofPlus,
+        ..Default::default()
+    };
+    assert_estimate_matches_and_memo_is_load_bearing(
+        &key_manager,
+        MicroMinotari::from(2_000_000),
+        MicroMinotari::from(7),
+        output_features,
+        payment_id,
+    )
+    .await;
+}
+
+/// Covers `OutputManagerService::spend_backup_pre_mine_utxo`, whose recipient output memo is the caller's payment
+/// id with the wallet's address attached - an `AddressAndData` memo padded to a 130 byte minimum, so omitting it
+/// from the estimate is short by several grams.
+///
+/// The memo cannot be built before the fee is known because it carries the fee, so the service measures a copy
+/// built with a zero fee. This exercises both production pieces: `addressed_output_memo` (the constructor used for
+/// the measured copy and for the real output) and the estimate that consumes it. Like the aggregate path, the real
+/// path needs a Ledger device, so the transaction shape is reproduced here.
+#[tokio::test]
+async fn spend_backup_pre_mine_utxo_fee_estimate_counts_the_output_memo() {
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let value = MicroMinotari::from(2_000_000);
+    let fee_per_gram = MicroMinotari::from(7);
+    let wallet_address = random_dual_address();
+    // `OutputManagerRequest::SpendBackupPreMineUtxo` builds this from the hash of the output being spent. (The
+    // pre-mine index that picks the script key is a different memo, the one decrypted from the input.)
+    let payment_id = MemoField::new_open(vec![9u8; 32], TxType::PaymentToOther).unwrap();
+    let output_features = OutputFeatures {
+        maturity: 0,
+        range_proof_type: RangeProofType::BulletProofPlus,
+        ..Default::default()
+    };
+
+    let measured_memo = addressed_output_memo(
+        payment_id.clone(),
+        wallet_address.clone(),
+        MicroMinotari::zero(),
+        TxType::PaymentToOther,
+    )
+    .unwrap();
+    let expected_fee = production_estimate(&output_features, &measured_memo, fee_per_gram);
+    let real_memo = addressed_output_memo(payment_id, wallet_address, expected_fee, TxType::PaymentToOther).unwrap();
+    assert_eq!(
+        measured_memo.get_size(),
+        real_memo.get_size(),
+        "the fee is a fixed width field, so measuring the memo with a zero fee must be safe"
+    );
+
+    assert_estimate_matches_and_memo_is_load_bearing(&key_manager, value, fee_per_gram, output_features, real_memo)
+        .await;
+}
+
+/// Covers the `PrepareWithdrawMultisigTransaction` estimate in the transaction service, which spends a whole
+/// multisig input to a single recipient with no change output. Its output memo is the recipient address attached
+/// to an empty payment id, again padded to the 130 byte `AddressAndData` minimum.
+///
+/// The path needs collected multisig signatures over a real UTXO, so as above this exercises the production
+/// estimate and memo constructor it uses against a real transaction of the same shape.
+/// `MultisigSession::spend_multisig_utxo` builds a bit-for-bit identical estimate; it is driven end to end by
+/// `multisig::session::test::spend_multisig_utxo_fee_estimate_counts_the_output_memo`.
+#[tokio::test]
+async fn multisig_withdraw_fee_estimate_counts_the_output_memo() {
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let fee_per_gram = MicroMinotari::from(1);
+    let recipient_address = random_dual_address();
+    let output_features = OutputFeatures::default();
+
+    let measured_memo = addressed_output_memo(
+        MemoField::default(),
+        recipient_address.clone(),
+        MicroMinotari::zero(),
+        TxType::PaymentToOther,
+    )
+    .unwrap();
+    let expected_fee = production_estimate(&output_features, &measured_memo, fee_per_gram);
+    let real_memo = addressed_output_memo(
+        MemoField::default(),
+        recipient_address,
+        expected_fee,
+        TxType::PaymentToOther,
+    )
+    .unwrap();
+    assert_eq!(measured_memo.get_size(), real_memo.get_size());
+
+    assert_estimate_matches_and_memo_is_load_bearing(
+        &key_manager,
+        MicroMinotari::from(2_000_000),
+        fee_per_gram,
+        output_features,
+        real_memo,
+    )
+    .await;
 }
