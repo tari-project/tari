@@ -61,8 +61,7 @@ use tari_transaction_components::{
     TransactionBuilderError,
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
-    fee::Fee,
-    helpers::borsh::SerializedSize,
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
     transaction_builder::FinalizedTransaction,
     transaction_components::{
@@ -142,25 +141,6 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     >,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
-}
-
-/// Sums the serialized sizes that make up an output's "features and scripts" byte size.
-///
-/// Every term is the serialized size of a bounded, fixed-shape struct, so the sum cannot realistically
-/// overflow; saturating addition keeps that explicit without introducing an unreachable error path.
-fn sum_features_and_scripts_size(
-    features: &OutputFeatures,
-    script: &TariScript,
-    covenant: &Covenant,
-    memo_size: usize,
-) -> Result<usize, OutputManagerError> {
-    let to_err = |e: std::io::Error| OutputManagerError::ConversionError(e.to_string());
-    Ok(features
-        .get_serialized_size()
-        .map_err(to_err)?
-        .saturating_add(script.get_serialized_size().map_err(to_err)?)
-        .saturating_add(covenant.get_serialized_size().map_err(to_err)?)
-        .saturating_add(memo_size))
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -393,6 +373,7 @@ where
                 fee,
                 script,
                 covenant,
+                memo,
             } => self
                 .prepare_range_limited_coin_join_transaction_to_send(
                     tx_id,
@@ -401,6 +382,7 @@ where
                     *output_features,
                     script,
                     covenant,
+                    memo,
                 )
                 .await
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
@@ -904,35 +886,21 @@ where
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {amount}. Fee per gram: {fee_per_gram}. Num kernels: {num_kernels}. Num outputs: {num_outputs}"
         );
-        let recipient_memo = MemoField::new_address_and_data(
+        // Every recipient output will carry a memo of this shape, and the transaction builder charges for it.
+        let recipient_memo = addressed_output_memo(
+            MemoField::default(),
             TariAddress::default(),
-            0.into(),
-            true,
+            MicroMinotari::zero(),
             TxType::PaymentToOther,
-            Vec::new(),
-        )
-        .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
+        )?;
         // We assume that default OutputFeatures and PushPubKey TariScript is used
-        let features_and_scripts_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                OutputFeatures::default()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    .saturating_add(
-                        TariScript::default()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                    )
-                    .saturating_add(
-                        Covenant::new()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                    )
-                    .saturating_add(recipient_memo.get_size()),
-            );
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &OutputFeatures::default(),
+            &TariScript::default(),
+            &Covenant::new(),
+            &recipient_memo,
+        )?;
 
         let utxo_selection = match self.select_utxos(
             amount,
@@ -948,19 +916,21 @@ where
                     target: LOG_TARGET,
                     "We dont have enough funds available to make a fee estimate, so we estimate 1 input, no change"
                 );
+                // Quote the same output shape as the main path above - `recipient_memo` and all. Quoting a
+                // memo-less output here would hand back a cheaper fee for the very same transaction purely
+                // because the wallet is currently short of funds, and a user who topped up to exactly that
+                // quote still could not send.
                 let fee_calc = self.get_fee_calc();
-                let output_features_estimate = OutputFeatures::default();
-
-                let default_features_and_scripts_size =
-                    fee_calc
-                        .weighting()
-                        .round_up_features_and_scripts_size(sum_features_and_scripts_size(
-                            &output_features_estimate,
-                            &TariScript::default(),
-                            &Covenant::new(),
-                            0,
-                        )?);
-                let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
+                // `Fee::calculate` multiplies the kernel, input and output counts but adds the
+                // features-and-scripts term exactly once, so the caller passes the total across every output -
+                // as the selection above does.
+                let fee = fee_calc.calculate(
+                    fee_per_gram,
+                    1,
+                    1,
+                    num_outputs,
+                    features_and_scripts_byte_size.saturating_mul(num_outputs),
+                );
                 return Ok((fee, 1, false));
             },
             Err(e) => Err(e),
@@ -993,16 +963,13 @@ where
             target: LOG_TARGET,
             "Preparing to send transaction - TxId: {tx_id}, amount: {amount}, fee per gram: {fee_per_gram}, selection: {selection_criteria}"
         );
-        let features_and_scripts_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
-                &recipient_output_features,
-                &recipient_script,
-                &recipient_covenant,
-                recipient_memo_field.get_size(),
-            )?);
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &recipient_output_features,
+            &recipient_script,
+            &recipient_covenant,
+            &recipient_memo_field,
+        )?;
 
         let input_selection = self.select_utxos(
             amount,
@@ -1052,6 +1019,7 @@ where
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
+        recipient_memo: MemoField,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         let target_minimum_amount = selection_criteria
             .clone()
@@ -1066,16 +1034,16 @@ where
             "Preparing to send range limited coin join transaction - TxId: {tx_id}, target_minimum_amount: \
             {target_minimum_amount}, fee: {fee}, selection: {selection_criteria}"
         );
-        let features_and_scripts_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
-                &recipient_output_features,
-                &recipient_script,
-                &recipient_covenant,
-                0,
-            )?);
+        // Every recipient output carries `recipient_memo` in its encrypted data, and this size is multiplied by the
+        // number of outputs when the inputs are selected, so leaving the memo out under-pays by several grams per
+        // output. `send_range_limited_coin_join` measures the memo with a zero fee - see `addressed_output_memo`.
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &recipient_output_features,
+            &recipient_script,
+            &recipient_covenant,
+            &recipient_memo,
+        )?;
 
         let input_selection = self
             .select_utxos_for_range_limited_coin_join(selection_criteria, fee, features_and_scripts_byte_size)
@@ -1252,15 +1220,15 @@ where
         // we assign a temp script to calculate all the sizes for now, we override this with the stealth one later if
         // needed
         let temp_script = script!(PushPubKey(Box::new(recipient_address.public_spend_key().clone())))?;
-        let metadata_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                output_features.get_serialized_size()? +
-                    temp_script.get_serialized_size()? +
-                    Covenant::default().get_serialized_size()?,
-            );
+        // `tx_payment_id` is what the recipient output stores in its encrypted data below, so it is what the
+        // transaction builder will charge for. There is no change output here to absorb a mismatch.
+        let metadata_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &output_features,
+            &temp_script,
+            &Covenant::default(),
+            &tx_payment_id,
+        )?;
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value().saturating_sub(fee);
@@ -1527,15 +1495,22 @@ where
             ..Default::default()
         };
         let temp_script = script!(PushPubKey(Box::default()))?;
-        let metadata_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                output_features.get_serialized_size()? +
-                    temp_script.get_serialized_size()? +
-                    Covenant::default().get_serialized_size()?,
-            );
+        // The single recipient output (there is no change output) stores the memo built below in its encrypted
+        // data, and the transaction builder charges for it. The real memo cannot be built yet because it carries
+        // the fee we are about to calculate, so measure a copy built with a zero fee - see `addressed_output_memo`.
+        let measured_memo = addressed_output_memo(
+            payment_id.clone(),
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
+        )?;
+        let metadata_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &output_features,
+            &temp_script,
+            &Covenant::default(),
+            &measured_memo,
+        )?;
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value().saturating_sub(fee);
@@ -1594,14 +1569,12 @@ where
             .key_manager
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = payment_id
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                fee,
-                Some(TxType::PaymentToOther),
-            )
-            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+        let payment_id = addressed_output_memo(
+            payment_id,
+            self.resources.one_sided_tari_address.clone(),
+            fee,
+            TxType::PaymentToOther,
+        )?;
 
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(output_features
@@ -1671,16 +1644,13 @@ where
             Vec::new(),
         )
         .map_err(|e| OutputManagerError::ServiceError(format!("Failed to create MemoField: {}", e)))?;
-        let features_and_scripts_byte_size = self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
-                &output_features,
-                &TariScript::default(),
-                &covenant,
-                own_memo.get_size(),
-            )?);
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &output_features,
+            &TariScript::default(),
+            &covenant,
+            &own_memo,
+        )?;
 
         let input_selection = self.select_utxos(
             amount,
@@ -1883,15 +1853,13 @@ where
         )
         .map_err(TransactionBuilderError::InvalidMemo)?;
         let output_features_estimate = OutputFeatures::default();
-        let default_features_and_scripts_size =
-            fee_calc
-                .weighting()
-                .round_up_features_and_scripts_size(sum_features_and_scripts_size(
-                    &output_features_estimate,
-                    &TariScript::default(),
-                    &Covenant::new(),
-                    change_memo.get_size(),
-                )?);
+        let default_features_and_scripts_size = recipient_output_features_and_scripts_size(
+            fee_calc.weighting(),
+            &output_features_estimate,
+            &TariScript::default(),
+            &Covenant::new(),
+            &change_memo,
+        )?;
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
         let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size);
@@ -2262,20 +2230,13 @@ where
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
-        Ok(self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                TariScript::default()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    .saturating_add(
-                        OutputFeatures::default()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                    ),
-            ))
+        Ok(recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &OutputFeatures::default(),
+            &TariScript::default(),
+            &Covenant::default(),
+            &MemoField::default(),
+        )?)
     }
 
     /// Returns the rounded-up features-and-scripts size for a self-spend output that will include a payment_id in its
@@ -2291,20 +2252,13 @@ where
                 Some(TxType::PaymentToSelf),
             )
             .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
-        let base_size = TariScript::default()
-            .get_serialized_size()
-            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-            .saturating_add(
-                OutputFeatures::default()
-                    .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-            )
-            .saturating_add(address_and_data.get_size());
-        Ok(self
-            .resources
-            .consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(base_size))
+        Ok(recipient_output_features_and_scripts_size(
+            self.resources.consensus_constants.transaction_weight_params(),
+            &OutputFeatures::default(),
+            &TariScript::default(),
+            &Covenant::default(),
+            &address_and_data,
+        )?)
     }
 
     pub async fn preview_coin_join_with_commitments(

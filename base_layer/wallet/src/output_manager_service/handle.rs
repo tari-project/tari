@@ -112,6 +112,7 @@ pub enum OutputManagerRequest {
         fee: FeeType,
         script: TariScript,
         covenant: Covenant,
+        memo: MemoField,
     },
     CreatePayToSelfTransaction {
         amount: MicroMinotari,
@@ -651,6 +652,7 @@ where KM: LegacyTransactionKeyManagerInterface
         fee: FeeType,
         script: TariScript,
         covenant: Covenant,
+        memo: MemoField,
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
@@ -661,6 +663,7 @@ where KM: LegacyTransactionKeyManagerInterface
                 fee,
                 script,
                 covenant,
+                memo,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??

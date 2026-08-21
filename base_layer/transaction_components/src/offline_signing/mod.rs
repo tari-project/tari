@@ -58,8 +58,7 @@ mod test {
         MicroMinotari,
         TransactionBuilder,
         crypto_factories::CryptoFactories,
-        fee::Fee,
-        helpers::borsh::SerializedSize,
+        fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
         key_manager::{
             KeyManager,
             SerializedKeyString,
@@ -846,15 +845,32 @@ mod test {
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
         let script = push_pubkey_script(&Default::default());
 
-        let features_and_scripts_byte_size = consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                output_features.get_serialized_size().unwrap() +
-                    script.get_serialized_size().unwrap() +
-                    Covenant::default().get_serialized_size().unwrap(),
-            );
+        // Mirror what `MultisigSession::spend_multisig_utxo` and `PrepareWithdrawMultisigTransaction` do: the whole
+        // input goes to one recipient output with no change, and that output carries an `AddressAndData` memo which
+        // the builder charges for. The memo records the fee being calculated here, so measure a zero-fee copy first.
+        let measured_memo = addressed_output_memo(
+            MemoField::default(),
+            bob_address.clone(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
+        )
+        .unwrap();
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            &output_features,
+            &script,
+            &Covenant::default(),
+            &measured_memo,
+        )
+        .unwrap();
 
         let fee: MicroMinotari = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+        let output_payment_id =
+            addressed_output_memo(MemoField::default(), bob_address.clone(), fee, TxType::PaymentToOther).unwrap();
+        assert!(
+            output_payment_id.get_size() > payment_id.get_size(),
+            "the output memo must be non-empty, otherwise this test cannot tell whether the estimate counts it"
+        );
 
         let total_amount = amount.checked_sub(fee).unwrap();
         assert_eq!(alice_address, alice_address_s);
@@ -862,7 +878,7 @@ mod test {
             TxId::new_random(),
             tx_builder,
             total_amount,
-            payment_id,
+            output_payment_id,
             output_features,
             alice_address,
             bob_address,

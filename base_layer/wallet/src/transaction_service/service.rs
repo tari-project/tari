@@ -78,7 +78,7 @@ use tari_transaction_components::{
     TransactionBuilderError,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    fee::Fee,
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
@@ -628,23 +628,23 @@ where
                     let script = push_pubkey_script(&Default::default());
 
                     let output_features = OutputFeatures::default();
-                    let features_and_scripts_byte_size = consensus_constants
-                        .transaction_weight_params()
-                        .round_up_features_and_scripts_size(
-                            output_features
-                                .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                                .saturating_add(
-                                    script
-                                        .get_serialized_size()
-                                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                                )
-                                .saturating_add(
-                                    Covenant::default()
-                                        .get_serialized_size()
-                                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                                ),
-                        );
+                    // The whole input goes to a single recipient output with no change output, and that output
+                    // carries the memo built below in its encrypted data. The memo cannot be built yet because it
+                    // carries the fee we are about to calculate, so measure a copy built with a zero fee - see
+                    // `addressed_output_memo`. Leaving the memo out here cannot be balanced by the builder at all.
+                    let measured_memo = addressed_output_memo(
+                        MemoField::default(),
+                        request.recipient_address.clone(),
+                        MicroMinotari::zero(),
+                        TxType::PaymentToOther,
+                    )?;
+                    let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+                        consensus_constants.transaction_weight_params(),
+                        &output_features,
+                        &script,
+                        &Covenant::default(),
+                        &measured_memo,
+                    )?;
 
                     let fee: MicroMinotari =
                         fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
@@ -663,14 +663,12 @@ where
                     tx_builder.with_fee_per_gram(fee_per_gram);
                     tx_builder.with_lock_height(0);
 
-                    let payment_id = MemoField::new_address_and_data(
+                    let payment_id = addressed_output_memo(
+                        MemoField::default(),
                         request.recipient_address.clone(),
                         fee,
-                        true,
                         TxType::PaymentToOther,
-                        vec![],
-                    )
-                    .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+                    )?;
                     let tx_id = TxId::new_random();
                     let response = prepare_withdraw_multisig_transaction(
                         tx_id,
@@ -2525,6 +2523,15 @@ where
         // Prepare sender part of the transaction
         let script = push_pubkey_script(&Default::default());
         let covenant = Covenant::default();
+        // Every recipient output below carries this memo in its encrypted data, so the input selection has to be
+        // charged for it. The real memo carries the fee, which is not known until the inputs are selected, so a
+        // zero-fee copy is measured here - see `addressed_output_memo`.
+        let measured_memo = addressed_output_memo(
+            payment_id.clone(),
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            TxType::CoinJoin,
+        )?;
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -2535,6 +2542,7 @@ where
                 fee,
                 script,
                 covenant,
+                measured_memo,
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -2546,14 +2554,12 @@ where
             dest_address.to_hex(), tx_builder.get_total_input_value()?
         );
 
-        let payment_id = payment_id
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                fee_estimate,
-                Some(TxType::CoinJoin),
-            )
-            .map_err(TransactionServiceError::InvalidPaymentId)?;
+        let payment_id = addressed_output_memo(
+            payment_id,
+            self.resources.one_sided_tari_address.clone(),
+            fee_estimate,
+            TxType::CoinJoin,
+        )?;
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
