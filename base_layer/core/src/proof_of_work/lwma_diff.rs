@@ -53,10 +53,11 @@ impl LinearWeightedMovingAverage {
             ));
         }
         Ok(Self {
-            target_difficulties: VecDeque::with_capacity(block_window + 1),
+            target_difficulties: VecDeque::with_capacity(block_window.saturating_add(1)),
             block_window,
             target_time: u128::from(target_time),
-            max_block_time: target_time * LWMA_MAX_BLOCK_TIME_RATIO,
+            // The `checked_mul` guard above proves this cannot overflow.
+            max_block_time: target_time.saturating_mul(LWMA_MAX_BLOCK_TIME_RATIO),
         })
     }
 
@@ -75,16 +76,18 @@ impl LinearWeightedMovingAverage {
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
-        let n = (self.target_difficulties.len() - 1) as u128;
+        // The guard above proves the length is at least 2.
+        let n = self.target_difficulties.len().saturating_sub(1) as u128;
 
         let mut weighted_times: u128 = 0;
         let difficulty_sum = self
             .target_difficulties
             .iter()
             .skip(1)
-            .fold(0u128, |difficulty, (_, d)| difficulty + u128::from(d.as_u64()));
+            .fold(0u128, |difficulty, (_, d)| difficulty.saturating_add(u128::from(d.as_u64())));
 
-        let ave_difficulty = difficulty_sum / n;
+        // `n >= 1` because the length is at least 2.
+        let ave_difficulty = difficulty_sum.checked_div(n)?;
 
         let &(mut previous_timestamp, _) = self.target_difficulties.front().expect("Already checked");
         let mut this_timestamp;
@@ -108,11 +111,12 @@ impl LinearWeightedMovingAverage {
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times += u128::from(solve_time * (i + 1) as u64);
+            weighted_times = weighted_times.saturating_add(u128::from(solve_time.saturating_mul(i.saturating_add(1) as u64)));
         }
         // k is the sum of weights (1+2+..+n) * target_time
-        let k = n * (n + 1) * self.target_time / 2;
-        let target = u64::try_from(ave_difficulty * k / weighted_times).unwrap_or(u64::MAX);
+        let k = n.saturating_mul(n.saturating_add(1)).saturating_mul(self.target_time) / 2;
+        // Each solve time is at least 1, so `weighted_times` is non-zero.
+        let target = u64::try_from(ave_difficulty.saturating_mul(k).checked_div(weighted_times)?).unwrap_or(u64::MAX);
         trace!(
             target: LOG_TARGET,
             "DiffCalc; t={}; bw={}; n={}; ts[0]={}; ts[n]={}; weighted_ts={}; k={}; diff[0]={}; diff[n]={}; \
@@ -139,7 +143,7 @@ impl LinearWeightedMovingAverage {
 
     /// Indicates if the `LinearWeightedMovingAverage` is full
     pub fn is_full(&self) -> bool {
-        self.num_samples() == self.block_window() + 1
+        self.num_samples() == self.block_window().saturating_add(1)
     }
 
     /// Returns the number of samples in the `LinearWeightedMovingAverage`
@@ -185,7 +189,8 @@ impl LinearWeightedMovingAverage {
             ));
         }
         self.target_time = u128::from(target_time);
-        self.max_block_time = target_time * LWMA_MAX_BLOCK_TIME_RATIO;
+        // The `checked_mul` guard above proves this cannot overflow.
+        self.max_block_time = target_time.saturating_mul(LWMA_MAX_BLOCK_TIME_RATIO);
         Ok(())
     }
 }

@@ -241,7 +241,7 @@ impl<'a, const SECTIONS: usize> Iterator for SectionIter<'a, SECTIONS> {
 
         let lower = self.pointer;
         let upper = self.pointer + cur_section;
-        self.current += 1;
+        self.current = self.current.saturating_add(1);
         self.pointer = upper;
 
         if upper > self.slice.len() {

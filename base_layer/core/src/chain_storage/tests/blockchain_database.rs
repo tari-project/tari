@@ -550,8 +550,8 @@ mod clear_all_pending_headers {
         let headers = (0..5)
             .map(|_| {
                 let mut header = BlockHeader::from_previous(prev_header.header());
-                header.kernel_mmr_size += 1;
-                header.output_smt_size += 1;
+                header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
+                header.output_smt_size = header.output_smt_size.saturating_add(1);
                 let accum = BlockHeaderAccumulatedDataBuilder::from_previous(&prev_accum)
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(

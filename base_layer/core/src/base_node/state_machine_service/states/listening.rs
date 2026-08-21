@@ -486,7 +486,7 @@ impl Listening {
             return;
         }
 
-        state.ahead_of_peers_counter += 1;
+        state.ahead_of_peers_counter = state.ahead_of_peers_counter.saturating_add(1);
         if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
             self.set_synced_response(shared);
             info!(target: LOG_TARGET, "Initial sync achieved");
@@ -515,7 +515,7 @@ impl Listening {
             sync_peers,
         } = sync_mode
         {
-            state.initial_sync_counter += 1;
+            state.initial_sync_counter = state.initial_sync_counter.saturating_add(1);
             self.initial_delay_count = state.initial_sync_counter;
             for peer in sync_peers {
                 let node_id = peer.node_id().to_string();

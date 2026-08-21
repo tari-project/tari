@@ -379,7 +379,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
     ) -> Result<usize, ChainStorageError> {
-        let mut count = 0;
+        let mut count = 0usize;
 
         {
             let mut cursor = self.validator_store_cursor()?;
@@ -401,7 +401,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     break;
                 }
 
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 
@@ -437,7 +437,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 // No further entries for this epoch
                 continue;
             }
-            count += 1;
+            count = count.saturating_add(1);
         }
 
         Ok(count)
@@ -752,7 +752,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         }
 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
-        let mut exit_count = 0;
+        let mut exit_count = 0usize;
         let mut exit_epoch = epoch;
         while let Some(key) = cursor.next_key()? {
             trace!(target: LOG_TARGET, "exit queue key: {key}");
@@ -777,7 +777,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 })?;
 
             if rec_epoch == exit_epoch.as_u64() {
-                exit_count += 1;
+                exit_count = exit_count.saturating_add(1);
                 if exit_count >= max_exits {
                     // Scan to the next epoch
                     exit_epoch += VnEpoch(1);

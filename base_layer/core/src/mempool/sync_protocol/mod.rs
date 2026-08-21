@@ -542,7 +542,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
-        let mut num_recv = 0;
+        let mut num_recv = 0usize;
         while let Some(result) = self.framed.next().await {
             let bytes = result?;
             let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
@@ -555,7 +555,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             match item.transaction {
                 Some(txn) => {
                     self.validate_and_insert_transaction(txn).await?;
-                    num_recv += 1;
+                    num_recv = num_recv.saturating_add(1);
                 },
                 None => {
                     debug!(

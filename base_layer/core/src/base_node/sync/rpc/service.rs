@@ -549,7 +549,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     },
                 }
 
-                current_height += 1;
+                current_height = current_height.saturating_add(1);
 
                 if current_height <= end_height {
                     let res = db

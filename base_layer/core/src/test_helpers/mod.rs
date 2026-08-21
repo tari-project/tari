@@ -220,7 +220,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
         if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
         }
-        block.header.nonce += 1;
+        block.header.nonce = block.header.nonce.saturating_add(1);
     }
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }

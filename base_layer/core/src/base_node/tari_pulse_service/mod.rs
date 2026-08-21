@@ -174,7 +174,7 @@ impl TariPulseService {
                     });
                 }
                 _ = dns_check_interval.tick() => {
-                    count += 1;
+                    count = count.saturating_add(1);
                     trace!(target: LOG_TARGET, "DNS Checkpoint interval tick: {count}");
                     let passed_checkpoints = {
                         match self.passed_checkpoints(&mut base_node_service).await {

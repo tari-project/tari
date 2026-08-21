@@ -285,7 +285,7 @@ impl UnconfirmedPool {
             } else {
                 transactions_to_remove_and_recheck.append(&mut potential_transactions_to_remove_and_recheck);
                 // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
-                curr_skip_count += 1;
+                curr_skip_count = curr_skip_count.saturating_add(1);
                 if curr_skip_count >= self.config.weight_tx_skip_count {
                     break;
                 }
@@ -372,7 +372,7 @@ impl UnconfirmedPool {
                     selected_txs.extend(candidate_transactions_to_select);
                 }
             } else {
-                *curr_skip_count += 1;
+                *curr_skip_count = curr_skip_count.saturating_add(1);
                 if *curr_skip_count >= self.config.weight_tx_skip_count {
                     break;
                 }
@@ -790,7 +790,7 @@ impl UnconfirmedPool {
                 }
 
                 let total_tx_fee = tx.transaction.body.get_total_fee()?;
-                offset += 1;
+                offset = offset.saturating_add(1);
                 let fee_per_gram = total_tx_fee / weight;
                 min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
                 max_fee_per_gram = max_fee_per_gram.max(fee_per_gram);
@@ -1245,7 +1245,7 @@ mod test {
                 for key in keys_by_output {
                     let found_tx = &unconfirmed_pool.tx_by_key.get(key).unwrap().transaction;
                     if *found_tx == txn {
-                        found += 1;
+                        found = found.saturating_add(1);
                     }
                 }
                 assert_eq!(found, 1);

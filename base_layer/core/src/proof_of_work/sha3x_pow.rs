@@ -70,7 +70,7 @@ pub mod test {
         header.nonce = 0;
         // We're mining over here!
         while sha3x_difficulty(header).unwrap() < target_difficulty {
-            header.nonce += 1;
+            header.nonce = header.nonce.saturating_add(1);
         }
         header.nonce
     }

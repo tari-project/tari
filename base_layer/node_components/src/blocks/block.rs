@@ -87,7 +87,10 @@ impl Block {
 
     /// This function will calculate the total fees contained in a block
     pub fn calculate_fees(&self) -> MicroMinotari {
-        self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
+        self.body
+            .kernels()
+            .iter()
+            .fold(MicroMinotari::zero(), |sum, x| sum.saturating_add(x.fee))
     }
 
     /// Run through the outputs of the block and check that
@@ -204,12 +207,15 @@ impl BlockBuilder {
     }
 
     /// This functions adds the provided transaction to the block, modifying the header MMR counts and offsets
+    // `total_kernel_offset`/`total_script_offset` are Ristretto scalars: the `+` below is group
+    // arithmetic, not integer arithmetic.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn add_transaction(mut self, tx: Transaction) -> Self {
         let (inputs, outputs, kernels) = tx.body.dissolve();
         self = self.add_inputs(inputs);
-        self.header.output_smt_size += outputs.len() as u64;
+        self.header.output_smt_size = self.header.output_smt_size.saturating_add(outputs.len() as u64);
         self = self.add_outputs(outputs);
-        self.header.kernel_mmr_size += kernels.len() as u64;
+        self.header.kernel_mmr_size = self.header.kernel_mmr_size.saturating_add(kernels.len() as u64);
         self = self.add_kernels(kernels);
         self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;

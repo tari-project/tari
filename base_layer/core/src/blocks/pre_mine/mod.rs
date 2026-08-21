@@ -594,11 +594,14 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                             return Err(format!("Minotari calculation overflow in {apportionment:?}"));
                         }
                         if upfront_release.percentage > 0 {
-                            let upfront_tokens = tokens_value * upfront_release.percentage / 100;
-                            tokens_value -= upfront_tokens;
-                            let value_per_round = upfront_tokens / upfront_release.number_of_tokens;
-                            let mut assigned_tokens = 0;
-                            for _ in 0..upfront_release.number_of_tokens - 1 {
+                            // The `checked_mul` guard above proves the multiplication cannot overflow.
+                            let upfront_tokens = tokens_value.saturating_mul(upfront_release.percentage) / 100;
+                            tokens_value = tokens_value.saturating_sub(upfront_tokens);
+                            let value_per_round = upfront_tokens
+                                .checked_div(upfront_release.number_of_tokens)
+                                .ok_or_else(|| format!("Zero number_of_tokens in {apportionment:?}"))?;
+                            let mut assigned_tokens = 0u64;
+                            for _ in 0..upfront_release.number_of_tokens.saturating_sub(1) {
                                 values_with_maturity.push(PreMineItem {
                                     value: MicroMinotari::from(value_per_round),
                                     maturity: 0,
@@ -606,10 +609,10 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                                     fail_safe_height: schedule.expected_payout_period_blocks,
                                     beneficiary: apportionment.beneficiary.clone(),
                                 });
-                                assigned_tokens += value_per_round;
+                                assigned_tokens = assigned_tokens.saturating_add(value_per_round);
                             }
                             values_with_maturity.push(PreMineItem {
-                                value: MicroMinotari::from(upfront_tokens - assigned_tokens),
+                                value: MicroMinotari::from(upfront_tokens.saturating_sub(assigned_tokens)),
                                 maturity: 0,
                                 original_maturity: 0,
                                 fail_safe_height: schedule.expected_payout_period_blocks,
@@ -619,12 +622,14 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     },
                     ReleaseStrategy::Custom(upfront_release) => {
                         for release in upfront_release {
-                            tokens_value -= release.value.uT().as_u64();
+                            tokens_value = tokens_value.saturating_sub(release.value.uT().as_u64());
                             values_with_maturity.push(PreMineItem {
                                 value: release.value.uT(),
                                 maturity: release.maturity,
                                 original_maturity: release.maturity,
-                                fail_safe_height: release.maturity + schedule.expected_payout_period_blocks,
+                                fail_safe_height: release
+                                    .maturity
+                                    .saturating_add(schedule.expected_payout_period_blocks),
                                 beneficiary: apportionment.beneficiary.clone(),
                             });
                         }
@@ -635,13 +640,16 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                                 taken_from_period: release.taken_from_period,
                                 value: release.value,
                             });
-                            let original_maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY +
-                                release.taken_from_period * blocks_per_month;
+                            let original_maturity = schedule
+                                .initial_lockup_days
+                                .saturating_mul(BLOCKS_PER_DAY)
+                                .saturating_add(release.taken_from_period.saturating_mul(blocks_per_month));
                             values_with_maturity.push(PreMineItem {
                                 value: release.value.uT(),
                                 maturity: release.maturity,
                                 original_maturity,
-                                fail_safe_height: original_maturity + schedule.expected_payout_period_blocks,
+                                fail_safe_height: original_maturity
+                                    .saturating_add(schedule.expected_payout_period_blocks),
                                 beneficiary: apportionment.beneficiary.clone(),
                             });
                         }
@@ -673,12 +681,17 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
             }
 
             // Monthly release
-            let monthly_tokens = tokens_value / schedule.monthly_fraction_denominator;
-            let mut total_tokens = 0;
-            let mut maturity = 0;
-            for i in 0..schedule.monthly_fraction_denominator - 1 {
-                total_tokens += monthly_tokens;
-                maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY + i * blocks_per_month;
+            let monthly_tokens = tokens_value
+                .checked_div(schedule.monthly_fraction_denominator)
+                .ok_or_else(|| format!("Zero monthly_fraction_denominator in {apportionment:?}"))?;
+            let mut total_tokens = 0u64;
+            let mut maturity = 0u64;
+            for i in 0..schedule.monthly_fraction_denominator.saturating_sub(1) {
+                total_tokens = total_tokens.saturating_add(monthly_tokens);
+                maturity = schedule
+                    .initial_lockup_days
+                    .saturating_mul(BLOCKS_PER_DAY)
+                    .saturating_add(i.saturating_mul(blocks_per_month));
                 let adjusted_monthly_tokens =
                     if let Some(payout) = early_payouts_summed.iter().find(|item| item.taken_from_period == i) {
                         if payout.value.uT().as_u64() >= monthly_tokens {
@@ -690,7 +703,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                                 payout.value.uT()
                             ));
                         }
-                        monthly_tokens - payout.value.uT().as_u64()
+                        monthly_tokens.saturating_sub(payout.value.uT().as_u64())
                     } else {
                         monthly_tokens
                     };
@@ -698,34 +711,34 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     value: MicroMinotari::from(adjusted_monthly_tokens),
                     maturity,
                     original_maturity: maturity,
-                    fail_safe_height: maturity + schedule.expected_payout_period_blocks,
+                    fail_safe_height: maturity.saturating_add(schedule.expected_payout_period_blocks),
                     beneficiary: apportionment.beneficiary.clone(),
                 });
             }
-            let last_tokens = tokens_value - total_tokens;
+            let last_tokens = tokens_value.saturating_sub(total_tokens);
             let adjusted_last_tokens = if let Some(payout) = early_payouts_summed
                 .iter()
-                .find(|item| item.taken_from_period == schedule.monthly_fraction_denominator - 1)
+                .find(|item| item.taken_from_period == schedule.monthly_fraction_denominator.saturating_sub(1))
             {
                 if payout.value.uT().as_u64() >= last_tokens {
                     return Err(format!(
                         "upfront 'FromCadence' payout exceeds allocated monthly payout {}, allocated: {}, early \
                          payout {}",
-                        schedule.monthly_fraction_denominator - 1,
+                        schedule.monthly_fraction_denominator.saturating_sub(1),
                         MicroMinotari::from(last_tokens),
                         payout.value.uT()
                     ));
                 }
-                last_tokens - payout.value.uT().as_u64()
+                last_tokens.saturating_sub(payout.value.uT().as_u64())
             } else {
                 last_tokens
             };
-            maturity += blocks_per_month;
+            maturity = maturity.saturating_add(blocks_per_month);
             values_with_maturity.push(PreMineItem {
                 value: MicroMinotari::from(adjusted_last_tokens),
                 maturity,
                 original_maturity: maturity,
-                fail_safe_height: maturity + schedule.expected_payout_period_blocks,
+                fail_safe_height: maturity.saturating_add(schedule.expected_payout_period_blocks),
                 beneficiary: apportionment.beneficiary.clone(),
             });
         }
@@ -755,7 +768,9 @@ fn get_signature_threshold(number_of_keys: usize) -> Result<u8, String> {
     if number_of_keys < 2 {
         return Err("Invalid number of parties, must be > 1".to_string());
     }
-    u8::try_from(number_of_keys / 2 + 1).map_err(|e| e.to_string())
+    u8::try_from(number_of_keys / 2)
+        .map(|v| v.saturating_add(1))
+        .map_err(|e| e.to_string())
 }
 
 /// Verify that the script keys for the given index match the expected keys
@@ -803,6 +818,8 @@ pub fn verify_script_keys_for_index(
 
 /// Create pre-mine genesis block info with the given pre-mine items and party public keys
 #[allow(clippy::too_many_lines)]
+// Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 pub fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
     threshold_spend_keys: &[Vec<CompressedPublicKey>],

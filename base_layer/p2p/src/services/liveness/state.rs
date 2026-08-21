@@ -91,19 +91,19 @@ impl LivenessState {
     }
 
     pub fn inc_pings_sent(&mut self) {
-        self.pings_sent += 1;
+        self.pings_sent = self.pings_sent.saturating_add(1);
     }
 
     pub fn inc_pongs_sent(&mut self) {
-        self.pongs_sent += 1;
+        self.pongs_sent = self.pongs_sent.saturating_add(1);
     }
 
     pub fn inc_pings_received(&mut self) {
-        self.pings_received += 1;
+        self.pings_received = self.pings_received.saturating_add(1);
     }
 
     pub fn inc_pongs_received(&mut self) {
-        self.pongs_received += 1;
+        self.pongs_received = self.pongs_received.saturating_add(1);
     }
 
     pub fn pings_received(&self) -> usize {
@@ -153,7 +153,7 @@ impl LivenessState {
             self.failed_pings
                 .entry(node_id)
                 .and_modify(|v| {
-                    *v += 1;
+                    *v = v.saturating_add(1);
                 })
                 .or_insert(1);
         }
@@ -209,10 +209,15 @@ impl LivenessState {
             .map(|latency| latency.calc_average())
             .fold(Option::<Duration>::None, |acc, latency| {
                 let current = acc.unwrap_or_default();
-                Some(current + latency)
+                Some(current.saturating_add(latency))
             })
             // num_peers in map will always be > 0
-            .map(|latency| Duration::from_millis(u64::try_from(latency.as_millis()).unwrap() / num_peers as u64))
+            .and_then(|latency| {
+                u64::try_from(latency.as_millis())
+                    .ok()?
+                    .checked_div(num_peers as u64)
+                    .map(Duration::from_millis)
+            })
     }
 
     pub fn failed_pings_iter(&self) -> impl Iterator<Item = (&NodeId, &usize)> {

@@ -151,8 +151,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
     async fn synchronize_inner(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
-        let mut sync_round = 0;
-        let mut latency_increases_counter = 0;
+        let mut sync_round = 0usize;
+        let mut latency_increases_counter = 0usize;
         loop {
             match self.attempt_block_sync(max_latency).await {
                 Ok(_) => return Ok(()),
@@ -165,7 +165,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         max_latency,
                         self.sync_peers.len()
                     );
-                    latency_increases_counter += 1;
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
                     }
@@ -177,7 +177,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     }
                 },
                 Err(err @ BlockSyncError::SyncRoundFailed) => {
-                    sync_round += 1;
+                    sync_round = sync_round.saturating_add(1);
                     warn!(target: LOG_TARGET, "{err} ({sync_round})");
                     continue;
                 },
@@ -290,7 +290,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                             .await;
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
+                        latency_counter = latency_counter.saturating_add(1);
                     } else {
                         self.remove_sync_peer(&node_id);
                     }

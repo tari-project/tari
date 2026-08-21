@@ -192,7 +192,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn synchronize_inner(&mut self, to_header: &BlockHeader) -> Result<(), HorizonSyncError> {
-        let mut latency_increases_counter = 0;
+        let mut latency_increases_counter = 0usize;
         loop {
             match self.sync(to_header).await {
                 Ok(()) => return Ok(()),
@@ -212,7 +212,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         return Err(err);
                     }
                     self.max_latency += self.config.max_latency_increase;
-                    latency_increases_counter += 1;
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
                     }
@@ -248,7 +248,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             .await;
                     }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
+                        latency_counter = latency_counter.saturating_add(1);
                     } else {
                         self.remove_sync_peer(&node_id);
                     }
@@ -471,10 +471,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut current_height = start_height;
         let mut txn = self.db.write_transaction();
         let mut state_tree_updates = BTreeMap::<FixedHash, Option<FixedHash>>::new();
-        let mut reporting_counter = 0;
+        let mut reporting_counter = 0usize;
         debug!(target: LOG_TARGET, "Cleaning up failed output sync, {}->{}", current_height, stop_height);
         while let Some(current_header) = self.db.fetch_header(current_height).await? {
-            reporting_counter += 1;
+            reporting_counter = reporting_counter.saturating_add(1);
             if reporting_counter % 1000 == 0 {
                 debug!(target: LOG_TARGET, "Cleaning up failed output sync, progress: {}->{}",current_height, stop_height);
             }
@@ -508,7 +508,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     warn!(target: LOG_TARGET, "Could not clean up failed output sync, error fetching outputs: {}", e);
                 },
             }
-            current_height += 1;
+            current_height = current_height.saturating_add(1);
         }
         debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, proceeding to reinsert genesis outputs", stop_height);
         // Restore genesis-block outputs that an earlier horizon sync spent: `prune_output_from_all_dbs`
@@ -708,7 +708,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     current_header = db.fetch_chain_header(current_header.height() + 1).await?;
                 }
             }
-            mmr_position += 1;
+            mmr_position = mmr_position.saturating_add(1);
 
             sync_peer.set_latency(latency);
             sync_peer.add_sample(last_sync_timer.elapsed());
@@ -862,7 +862,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             // stream has been received and the SMT root verified.
             let mut state_tree_updates = BTreeMap::<FixedHash, Option<FixedHash>>::new();
             let mut inputs_to_delete = Vec::new();
-            let mut batch_op_counter = 0;
+            let mut batch_op_counter = 0usize;
             let mut last_mined_header: Option<FixedHash> = None;
             let mut current_header_hash = tranche_start_header.hash();
             let mut current_header = self
@@ -916,7 +916,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         }
                         let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
                         if !output.is_burned() {
-                            utxo_counter += 1;
+                            utxo_counter = utxo_counter.saturating_add(1);
                             let output_hash = output.hash();
                             trace!(
                                 target: LOG_TARGET,
@@ -952,11 +952,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 current_header.height,
                                 current_header.timestamp.as_u64(),
                             );
-                            batch_op_counter += 1;
+                            batch_op_counter = batch_op_counter.saturating_add(1);
                         }
                     },
                     Txo::Commitment(commitment_bytes) => {
-                        stxo_counter += 1;
+                        stxo_counter = stxo_counter.saturating_add(1);
 
                         let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes.as_slice())?;
                         match self
@@ -1002,7 +1002,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     },
                 }
 
-                items_processed += 1;
+                items_processed = items_processed.saturating_add(1);
                 if items_processed.is_multiple_of(PROGRESS_REPORT_INTERVAL) {
                     let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
                         current: current_header.height,

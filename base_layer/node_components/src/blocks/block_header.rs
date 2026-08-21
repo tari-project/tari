@@ -161,7 +161,7 @@ impl BlockHeader {
         let prev_hash = prev.hash();
         BlockHeader {
             version: prev.version,
-            height: prev.height + 1,
+            height: prev.height.saturating_add(1),
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
@@ -222,7 +222,7 @@ impl BlockHeader {
                 Some(t) => t,
                 None => 0.into(),
             };
-            let n = headers.len() - 1;
+            let n = headers.len().saturating_sub(1);
             let avg = dt.as_u64() as f64 / n as f64;
 
             (max, min, avg)

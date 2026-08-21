@@ -64,7 +64,7 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
             inputs.push(input);
         } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
             block.body.add_kernel(kernel);
-            block.header.kernel_mmr_size += 1;
+            block.header.kernel_mmr_size = block.header.kernel_mmr_size.saturating_add(1);
         } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
             block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
         } else {

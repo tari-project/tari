@@ -60,6 +60,10 @@ impl VnEpoch {
     pub fn saturating_sub(self, other: VnEpoch) -> VnEpoch {
         VnEpoch(self.0.saturating_sub(other.0))
     }
+
+    pub fn saturating_add(self, other: VnEpoch) -> VnEpoch {
+        VnEpoch(self.0.saturating_add(other.0))
+    }
 }
 
 newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }

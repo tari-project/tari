@@ -116,7 +116,8 @@ where
 
         let mut ping_tick = match self.config.auto_ping_interval {
             Some(interval) => {
-                let mut interval = time::interval_at((Instant::now() + interval).into(), interval);
+                let start_at = Instant::now().checked_add(interval).unwrap_or_else(Instant::now);
+                let mut interval = time::interval_at(start_at.into(), interval);
                 interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
                 Either::Left(wrappers::IntervalStream::new(interval))
             },

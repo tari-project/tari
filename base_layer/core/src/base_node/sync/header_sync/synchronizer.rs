@@ -163,7 +163,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn synchronize_inner(&mut self) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
-        let mut latency_increases_counter = 0;
+        let mut latency_increases_counter = 0usize;
         loop {
             match self.try_sync_from_all_peers(max_latency).await {
                 Ok((peer, sync_result)) => break Ok((peer, sync_result)),
@@ -173,7 +173,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         return Err(err);
                     }
                     max_latency += self.config.max_latency_increase;
-                    latency_increases_counter += 1;
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
                     }
@@ -211,7 +211,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
+                        latency_counter = latency_counter.saturating_add(1);
                     } else {
                         self.remove_sync_peer(&node_id);
                     }
@@ -406,9 +406,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let max_chain_split_iters = max_reorg_depth_allowed.saturating_div(NUM_CHAIN_SPLIT_HEADERS);
 
         let mut offset = 0;
-        let mut iter_count = 0;
+        let mut iter_count = 0usize;
         loop {
-            iter_count += 1;
+            iter_count = iter_count.saturating_add(1);
             if iter_count > max_chain_split_iters {
                 warn!(
                     target: LOG_TARGET,

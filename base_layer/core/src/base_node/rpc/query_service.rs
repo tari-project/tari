@@ -219,7 +219,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let mut utxos = vec![];
         let next_page_start_height = start_header.height.saturating_add(request.limit);
         let mut current_header = start_header;
-        let mut fetched_chunks = 0;
+        let mut fetched_chunks = 0u64;
         let spending_end_header_hash = self
             .db
             .fetch_header(
@@ -308,7 +308,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
-                fetched_chunks += 1;
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
             // We might still have inputs left to send if they are more than the outputs
             for input_chunk in inputs.chunks(self.max_utxo_chunk_size) {
@@ -320,7 +320,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
-                fetched_chunks += 1;
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
 
             if current_header.height >= tip_header.header().height {
