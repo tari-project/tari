@@ -304,7 +304,9 @@ where B: BlockchainBackend + 'static
                 // the current value, so we read it first and only then wait for the *next* change - an update landing
                 // between the read and the wait cannot be missed.
                 let mut last_seen_rx = self.mempool_last_seen.clone();
-                let deadline = Instant::now() + self.mempool_sync_timeout;
+                let deadline = Instant::now()
+            .checked_add(self.mempool_sync_timeout)
+            .unwrap_or_else(Instant::now);
 
                 let best_block_header;
                 let is_mempool_synced;
@@ -591,7 +593,7 @@ where B: BlockchainBackend + 'static
                     epoch,
                 );
 
-                let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
+                let mut node_changes = Vec::with_capacity(added_validators.len().saturating_add(exit_validators.len()));
 
                 node_changes.extend(added_validators.into_iter().map(|vn| ValidatorNodeChange::Add {
                     registration: vn.original_registration.into(),
@@ -1196,7 +1198,7 @@ where B: BlockchainBackend + 'static
             metrics::accumulated_difficulty_as_f64().set(0.0);
             return Ok(());
         }
-        let height = tip - DIFF_INDICATOR_LAG;
+        let height = tip.saturating_sub(DIFF_INDICATOR_LAG);
         let chain_header = self.blockchain_db.fetch_chain_header(height).await?;
 
         // Compute indicators in millibits as `log₂(value) * 1000` to make huge numbers fathomable in a time-series

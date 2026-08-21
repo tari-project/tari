@@ -193,7 +193,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             if let Some(vn) = vn {
                 break (exit_key, vn);
             }
-            epoch += VnEpoch(1);
+            epoch = epoch.saturating_add(VnEpoch(1));
         };
 
         lmdb_delete(
@@ -335,7 +335,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         validators_per_epoch: usize,
     ) -> Result<VnEpoch, ChainStorageError> {
         // Node activates earliest in the next epoch
-        let mut activation_epoch = current_epoch + VnEpoch(1);
+        let mut activation_epoch = current_epoch.saturating_add(VnEpoch(1));
         // If there are less than the initial validators, we activate all new validators in the next epoch
         let len = lmdb_len(self.txn, &self.db_validator_nodes)?;
         if len < initial_validators {
@@ -368,7 +368,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             if num_queued < validators_per_epoch {
                 break;
             }
-            activation_epoch += VnEpoch(1);
+            activation_epoch = activation_epoch.saturating_add(VnEpoch(1));
         }
 
         Ok(activation_epoch)
@@ -780,7 +780,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 exit_count = exit_count.saturating_add(1);
                 if exit_count >= max_exits {
                     // Scan to the next epoch
-                    exit_epoch += VnEpoch(1);
+                    exit_epoch = exit_epoch.saturating_add(VnEpoch(1));
                     cursor.seek_range(&create_exit_queue_prefix_key(sidechain_pk, exit_epoch))?;
                     exit_count = 0;
                 }

@@ -158,7 +158,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 Ok(_) => return Ok(()),
                 Err(err @ BlockSyncError::AllSyncPeersExceedLatency) => {
                     warn!(target: LOG_TARGET, "{err}");
-                    max_latency += self.config.max_latency_increase;
+                    max_latency = max_latency.saturating_add(self.config.max_latency_increase);
                     warn!(
                         target: LOG_TARGET,
                         "Retrying block sync with increased max latency {:.2?} with {} sync peers",

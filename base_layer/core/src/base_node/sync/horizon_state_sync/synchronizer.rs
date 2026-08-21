@@ -211,7 +211,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     if self.sync_peers.len() < 2 {
                         return Err(err);
                     }
-                    self.max_latency += self.config.max_latency_increase;
+                    self.max_latency = self.max_latency.saturating_add(self.config.max_latency_increase);
                     latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
@@ -391,7 +391,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         };
         if stored_checkpoint.sync_target_hash == sync_to_header.hash() {
             info!(target: LOG_TARGET, "Resuming output sync from checkpoint at height {}, target unchanged", stored_checkpoint.checkpoint_height);
-            return Ok((stored_checkpoint.checkpoint_height + 1, sync_to_header.clone()));
+            return Ok((
+                stored_checkpoint.checkpoint_height.saturating_add(1),
+                sync_to_header.clone(),
+            ));
         }
         // we have a checkpoint, its target is not the syncing target, so we have two choices, delete it and start over,
         // or sync to a lower height.
@@ -412,7 +415,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         {
             // we can sync to the checkpoint height first, and then do block sync from there
             debug!(target: LOG_TARGET, "New target is greater than stored checkpoint, but within 50_000 blocks, resuming output sync from checkpoint");
-            return Ok((stored_checkpoint.checkpoint_height + 1, checkpoint_sync_to_header));
+            return Ok((
+                stored_checkpoint.checkpoint_height.saturating_add(1),
+                checkpoint_sync_to_header,
+            ));
         }
         debug!(target: LOG_TARGET, "New target is too far away, starting over");
         self.db
@@ -475,7 +481,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Cleaning up failed output sync, {}->{}", current_height, stop_height);
         while let Some(current_header) = self.db.fetch_header(current_height).await? {
             reporting_counter = reporting_counter.saturating_add(1);
-            if reporting_counter % 1000 == 0 {
+            if reporting_counter.is_multiple_of(1000) {
                 debug!(target: LOG_TARGET, "Cleaning up failed output sync, progress: {}->{}",current_height, stop_height);
             }
 
@@ -700,12 +706,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     target: LOG_TARGET,
                     "Committed {} kernel(s), ({}/{}) {} remaining",
                     num_kernels,
-                    mmr_position + 1,
+                    mmr_position.saturating_add(1),
                     end,
-                    end.saturating_sub(mmr_position + 1)
+                    end.saturating_sub(mmr_position.saturating_add(1))
                 );
                 if mmr_position < end.saturating_sub(1) {
-                    current_header = db.fetch_chain_header(current_header.height() + 1).await?;
+                    current_header = db
+                    .fetch_chain_header(current_header.height().saturating_add(1))
+                    .await?;
                 }
             }
             mmr_position = mmr_position.saturating_add(1);
@@ -834,7 +842,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 "Syncing output tranche heights {}-{} ({} blocks) from peer {}",
                 tranche_start_height,
                 tranche_end_height,
-                tranche_end_height.saturating_sub(tranche_start_height) + 1,
+                tranche_end_height.saturating_sub(tranche_start_height).saturating_add(1),
                 sync_peer.node_id(),
             );
 
@@ -1023,7 +1031,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.height,
                         tranche_start_height,
                         tranche_end_height,
-                        utxo_counter + stxo_counter,
+                        utxo_counter.saturating_add(stxo_counter),
                     );
                 }
 
@@ -1086,9 +1094,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 stxo_counter,
             );
 
-            total_utxo_counter += utxo_counter;
-            total_stxo_counter += stxo_counter;
-            tranche_start_height = tranche_end_height + 1;
+            total_utxo_counter = total_utxo_counter.saturating_add(utxo_counter);
+            total_stxo_counter = total_stxo_counter.saturating_add(stxo_counter);
+            tranche_start_height = tranche_end_height.saturating_add(1);
         }
 
         if let Err(e) = db.verify_horizon_sync_output_root(to_header.output_mr).await {
@@ -1172,6 +1180,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     /// (UTXO sum, Kernel sum)
+    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn calculate_commitment_sums(
         &mut self,
         header: &ChainHeader,

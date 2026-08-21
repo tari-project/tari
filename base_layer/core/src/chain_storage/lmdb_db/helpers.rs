@@ -51,7 +51,7 @@ where T: Serialize + ?Sized {
         ChainStorageError::AccessError(e.to_string())
     })?;
     if buf.len() >= BYTES_PER_MB {
-        let serialize_time = start.elapsed() - check_time;
+        let serialize_time = start.elapsed().saturating_sub(check_time);
         trace!(
             "lmdb_replace - {} MB, serialize check in {:.2?}, serialize in {:.2?}",
             buf.len() / BYTES_PER_MB,

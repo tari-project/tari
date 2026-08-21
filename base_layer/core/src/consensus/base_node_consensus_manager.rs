@@ -184,12 +184,16 @@ impl BaseNodeConsensusManager {
 
     /// Get the total pre-mine that is still time-locked at the specified height
     pub fn time_locked_pre_mine(&self, height: u64) -> Result<MicroMinotari, String> {
-        Ok(self.total_pre_mine_in_genesis_block() - self.pre_mine_spendable_at_height(height)?)
+        Ok(self
+            .total_pre_mine_in_genesis_block()
+            .saturating_sub(self.pre_mine_spendable_at_height(height)?))
     }
 
     /// Get the total mined block rewards at the specified height (excluding pre-mine)
     pub fn block_rewards_mined_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
-        Ok(self.get_total_emission_at(height) - self.consensus_constants(height).pre_mine_value())
+        Ok(self
+            .get_total_emission_at(height)
+            .saturating_sub(self.consensus_constants(height).pre_mine_value()))
     }
 
     /// Get the total spendable block rewards circulation at the specified height (excluding pre-mine)
@@ -220,7 +224,10 @@ impl BaseNodeConsensusManager {
         // effective tranche
         let emission_schedule = self.emission_schedule();
         let matured_rewards_at_height = if last_effective_tranche.maturity < previous_effective_tranch.maturity &&
-            height < last_effective_tranche.effective_from_height + previous_effective_tranch.maturity
+            height <
+                last_effective_tranche
+                    .effective_from_height
+                    .saturating_add(previous_effective_tranch.maturity)
         {
             emission_schedule
                 .supply_at_block(height.saturating_sub(previous_effective_tranch.maturity))

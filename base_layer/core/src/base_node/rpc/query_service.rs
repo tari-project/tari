@@ -197,11 +197,14 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
         // we can cache all wallet's queries
-        let increase = ((start_header.height + WALLET_MAX_BLOCKS_PER_REQUEST) / WALLET_MAX_BLOCKS_PER_REQUEST) *
-            WALLET_MAX_BLOCKS_PER_REQUEST;
+        let increase = (start_header.height.saturating_add(WALLET_MAX_BLOCKS_PER_REQUEST) /
+            WALLET_MAX_BLOCKS_PER_REQUEST)
+            .saturating_mul(WALLET_MAX_BLOCKS_PER_REQUEST);
         let end_height = cmp::min(tip_header.header().height, increase);
         // pagination
-        let start_header_height = start_header.height + (request.page * request.limit);
+        let start_header_height = start_header
+            .height
+            .saturating_add(request.page.saturating_mul(request.limit));
         if start_header_height > tip_header.header().height {
             return Err(Error::HeaderHeightMismatch {
                 start_height: start_header.height,
@@ -354,18 +357,17 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 has_next_page = false;
                 break;
             }
-            if current_header.height + 1 > end_height {
+            let next_height = current_header.height.saturating_add(1);
+            if next_height > end_height {
                 next_header_to_request = current_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break; // Stop if we reach the end height
             }
             current_header =
                 self.db
-                    .fetch_header(current_header.height + 1)
+                    .fetch_header(next_height)
                     .await?
-                    .ok_or_else(|| Error::HeaderNotFound {
-                        height: current_header.height + 1,
-                    })?;
+                    .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
 
             if current_header.height == next_page_start_height {
                 // we are on the limit, stop here
@@ -420,7 +422,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let mut right_height = tip_header.height();
 
         while left_height <= right_height {
-            let mut mid_height = (left_height + right_height) / 2;
+            let mut mid_height = left_height.saturating_add(right_height) / 2;
 
             if mid_height == 0 {
                 return Ok(0u64);
@@ -437,16 +439,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
                 .ok_or_else(|| Error::HeaderNotFound { height: mid_height })?;
             let before_mid_header = self
                 .db
-                .fetch_header(mid_height - 1)
+                .fetch_header(mid_height.saturating_sub(1))
                 .await?
-                .ok_or_else(|| Error::HeaderNotFound { height: mid_height - 1 })?;
+                .ok_or_else(|| Error::HeaderNotFound {
+                    height: mid_height.saturating_sub(1),
+                })?;
             trace!(
                 target: LOG_TARGET,
                 "requested_epoch_time: {}, left: {}, mid: {}/{} ({}/{}), right: {}",
                 epoch_time,
                 left_height,
                 mid_height,
-                mid_height-1,
+                mid_height.saturating_sub(1),
                 mid_header.timestamp.as_u64(),
                 before_mid_header.timestamp.as_u64(),
                 right_height

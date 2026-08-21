@@ -128,10 +128,10 @@ fn sanity_check_timestamp_count(
 }
 
 fn check_height(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
-    if header.height != prev_header.height + 1 {
+    if header.height != prev_header.height.saturating_add(1) {
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidHeight {
-                expected: prev_header.height + 1,
+                expected: prev_header.height.saturating_add(1),
                 actual: header.height,
             },
         ));
@@ -241,10 +241,10 @@ fn check_pow_data_inner(
         PowAlgorithm::Cuckaroo => {
             let cycle_length = cuckaroo_cycle_length as usize;
             let edge_bits = cuckaroo_edge_bits as usize;
-            let total_packed_size = cycle_length * edge_bits;
+            let total_packed_size = cycle_length.saturating_mul(edge_bits);
             let remainder = total_packed_size % 8;
             let total_bytes = if remainder != 0 {
-                total_packed_size / 8 + 1
+                (total_packed_size / 8).saturating_add(1)
             } else {
                 total_packed_size / 8
             };
@@ -259,9 +259,9 @@ fn check_pow_data_inner(
 
             if remainder != 0 {
                 // Ensure that the last byte is not padded with zeros
-                let last_byte = *pow.pow_data.get(total_bytes - 1).expect("Already checked");
+                let last_byte = *pow.pow_data.get(total_bytes.saturating_sub(1)).expect("Already checked");
 
-                let padding_mask = (1 << remainder) - 1;
+                let padding_mask = (1u8 << remainder).saturating_sub(1);
                 let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded
 
                 if last_byte & mask != 0 {

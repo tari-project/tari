@@ -277,7 +277,7 @@ where B: BlockchainBackend + 'static
                 current_header_hash
             );
 
-            let mut txos = Vec::with_capacity(outputs.len() + inputs.len());
+            let mut txos = Vec::with_capacity(outputs.len().saturating_add(inputs.len()));
             txos.append(&mut outputs);
             txos.append(&mut inputs);
             if start_header == current_header {
@@ -304,20 +304,21 @@ where B: BlockchainBackend + 'static
                 timer.elapsed()
             );
 
-            if current_header.height + 1 > end_header.height {
+            let next_height = current_header.height.saturating_add(1);
+            if next_height > end_header.height {
                 reached_end = true;
                 break;
             }
 
             current_header = self
                 .db
-                .fetch_header(current_header.height + 1)
+                .fetch_header(next_height)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::general(&format!(
                         "Potential data consistency issue: header {} not found",
-                        current_header.height + 1
+                        next_height
                     ))
                 })?;
         }

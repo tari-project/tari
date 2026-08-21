@@ -333,16 +333,19 @@ pub fn log2_u512(value_u512: &U512) -> Option<f64> {
 //   - exp2 = floor(log2(value)) (u32)
 //   - sig53 = top 53 bits (u64)
 #[allow(clippy::cast_possible_truncation)]
+// The `total_bits > 53` branch guard proves both shift amounts are in range; the shifts are on
+// `U512`, whose operators clippy treats as arithmetic.
+#[allow(clippy::arithmetic_side_effects)]
 fn u512_into_parts(value_u512: &U512) -> (u32, u64) {
     let total_bits: u32 = value_u512.bits() as u32; // total bits
 
     // Build exact 53-bit significand with MSB at bit 52 into u64
     let sig53: u64 = if total_bits > 53 {
         // Keep only the top 53 bits
-        (value_u512 >> (total_bits - 53)).as_u64()
+        (value_u512 >> total_bits.saturating_sub(53)).as_u64()
     } else {
         // Move the most significant bit to position 52
-        (value_u512 << (53 - total_bits)).as_u64()
+        (value_u512 << 53u32.saturating_sub(total_bits)).as_u64()
     };
     debug_assert!(((1u64 << 52)..(1u64 << 53)).contains(&sig53));
     (total_bits, sig53)
@@ -358,7 +361,10 @@ pub fn u512_exp2_sig53(value: &U512) -> Option<(i64, i64)> {
         return None;
     }
     let (total_bits, sig53) = u512_into_parts(value);
-    Some((i64::from(total_bits) - 1, i64::try_from(sig53).unwrap_or(i64::MAX)))
+    Some((
+        i64::from(total_bits).saturating_sub(1),
+        i64::try_from(sig53).unwrap_or(i64::MAX),
+    ))
 }
 
 /// Approximate a U512 as f64 using a 53-bit significand and exponent as `(sig53 / 2^52) * 2^exp2`.
@@ -376,7 +382,7 @@ pub fn approximate_u512_with_f64(value: &U512) -> Option<f64> {
     // This is not exact (limited by f64), but should be within a tiny relative error.
     const TWO_P52: f64 = 4503599627370496.0; // 2^52
     // Build 2^exp2 by setting the exponent (bias 1023), mantissa 0
-    let two_pow_exp2 = f64::from_bits(((exp2 + 1023) as u64) << 52);
+    let two_pow_exp2 = f64::from_bits((exp2.saturating_add(1023) as u64) << 52);
     Some((sig53 as f64 / TWO_P52) * two_pow_exp2)
 }
 
@@ -397,15 +403,15 @@ pub fn log2_u128(value_u128: u128) -> Option<f64> {
     if value_u128 == 0 {
         return None;
     }
-    let total_bits: u32 = 128 - value_u128.leading_zeros(); // In the range 1..=128
+    let total_bits: u32 = 128u32.saturating_sub(value_u128.leading_zeros()); // In the range 1..=128
 
     // Build exact 53-bit significand with MSB at bit 52 into u64
     let sig53: u64 = if total_bits > 53 {
         // Keep only the top 53 bits
-        (value_u128 >> (total_bits - 53)) as u64
+        (value_u128 >> total_bits.saturating_sub(53)) as u64
     } else {
         // Move the most significant bit to position 52
-        (value_u128 << (53 - total_bits)) as u64
+        (value_u128 << 53u32.saturating_sub(total_bits)) as u64
     };
     debug_assert!(((1u64 << 52)..(1u64 << 53)).contains(&sig53));
 

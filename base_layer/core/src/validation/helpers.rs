@@ -74,7 +74,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         trace!(
             target: LOG_TARGET,
             "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps.get(mid_index - 1).expect("Already checked"),
+            timestamps.get(mid_index.saturating_sub(1)).expect("Already checked"),
             timestamps.get(mid_index).expect("Already checked"),
         );
         // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
@@ -82,8 +82,15 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
-                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
+                u128::from(
+                    timestamps
+                        .get(mid_index.saturating_sub(1))
+                        .expect("Already checked")
+                        .as_u64(),
+                )
+                .saturating_add(u128::from(
+                    timestamps.get(mid_index).expect("Already checked").as_u64(),
+                )) /
                     2,
             )
             .unwrap_or(u64::MAX),
@@ -344,7 +351,8 @@ pub fn check_eviction_proof<B: BlockchainBackend>(
             shard_group
         )));
     }
-    let quorum_threshold = committee_size - (committee_size - 1) / 3;
+    // The `committee_size == 0` guard above proves neither of these can underflow.
+    let quorum_threshold = committee_size.saturating_sub(committee_size.saturating_sub(1) / 3);
 
     let sidechain_pk = sidechain_features.sidechain_public_key();
 

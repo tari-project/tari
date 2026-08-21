@@ -416,7 +416,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             target: LOG_TARGET,
             "Found {} mined and {} unmined UTXO(s)",
             num_mined,
-            mined_info_resp.len() - num_mined
+            mined_info_resp.len().saturating_sub(num_mined)
         );
         let metadata = self
             .db
@@ -600,7 +600,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         );
 
         while left_height <= right_height {
-            let mut mid_height = (left_height + right_height) / 2;
+            let mut mid_height = left_height.saturating_add(right_height) / 2;
 
             if mid_height == 0 {
                 return Ok(Response::new(0u64));
@@ -620,11 +620,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 })?;
             let before_mid_header = self
                 .db()
-                .fetch_header(mid_height - 1)
+                .fetch_header(mid_height.saturating_sub(1))
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height - 1))
+                    RpcStatus::not_found(&format!(
+                        "Header not found during search at height {}",
+                        mid_height.saturating_sub(1)
+                    ))
                 })?;
             trace!(
                 target: LOG_TARGET,
@@ -632,7 +635,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 requested_epoch_time,
                 left_height,
                 mid_height,
-                mid_height-1,
+                mid_height.saturating_sub(1),
                 mid_header.timestamp.as_u64(),
                 before_mid_header.timestamp.as_u64(),
                 right_height

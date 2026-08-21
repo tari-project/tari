@@ -54,6 +54,8 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
+// Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut outputs = Vec::new();
     let mut inputs = Vec::new();
@@ -71,8 +73,11 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
             panic!("Error: Could not deserialize line: {line} in file: {file}");
         }
     }
-    block.header.output_smt_size += outputs.len() as u64;
-    block.header.output_smt_size -= inputs.len() as u64;
+    block.header.output_smt_size = block
+        .header
+        .output_smt_size
+        .saturating_add(outputs.len() as u64)
+        .saturating_sub(inputs.len() as u64);
     block.body.add_outputs(outputs);
     block.body.add_inputs(inputs);
     block.body.sort();
@@ -120,7 +125,7 @@ fn get_stagenet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
     get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
@@ -172,7 +177,7 @@ fn get_nextnet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
     get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
@@ -227,7 +232,7 @@ fn get_mainnet_genesis_block_raw() -> Block {
     if gen_block_payload.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            gen_block_payload.len() - PowData::default().max_size()
+            gen_block_payload.len().saturating_sub(PowData::default().max_size())
         );
     }
     let mut block = get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(gen_block_payload));
@@ -279,7 +284,7 @@ fn get_igor_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
     get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
@@ -332,7 +337,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
     get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
@@ -364,7 +369,7 @@ fn get_localnet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
     get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))

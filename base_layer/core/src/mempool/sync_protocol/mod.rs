@@ -219,7 +219,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 }
             },
             BlockSyncComplete(tip, starting_sync_height) => {
-                let added = tip.height() - starting_sync_height;
+                let added = tip.height().saturating_sub(*starting_sync_height);
                 if added < self.config.block_sync_trigger as u64 {
                     return;
                 }

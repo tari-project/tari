@@ -53,6 +53,8 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
 }
 
 impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValidator<B> {
+    // Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn validate(
         &self,
         backend: &B,

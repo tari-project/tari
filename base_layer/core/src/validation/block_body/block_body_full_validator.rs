@@ -173,9 +173,9 @@ fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<()
             block_hash: block.header.prev_hash.to_hex(),
         });
     }
-    if block.header.height != metadata.best_block_height() + 1 {
+    if block.header.height != metadata.best_block_height().saturating_add(1) {
         return Err(ValidationError::IncorrectHeight {
-            expected: metadata.best_block_height() + 1,
+            expected: metadata.best_block_height().saturating_add(1),
             block_height: block.header.height,
         });
     }

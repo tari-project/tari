@@ -172,7 +172,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     if self.sync_peers.len() < 2 {
                         return Err(err);
                     }
-                    max_latency += self.config.max_latency_increase;
+                    max_latency = max_latency.saturating_add(self.config.max_latency_increase);
                     latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
@@ -414,7 +414,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                    NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -427,7 +427,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Determining if chain splits between {} and {} headers back from the tip (peer: `{}`, {} hashes sent)",
                 offset,
-                offset + NUM_CHAIN_SPLIT_HEADERS,
+                offset.saturating_add(NUM_CHAIN_SPLIT_HEADERS),
                 peer_node_id,
                 block_hashes.len()
             );
@@ -438,7 +438,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                    NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -458,12 +458,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             target: LOG_TARGET,
                             "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                             peer_node_id,
-                            NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                            NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                         );
                         return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
                     }
                     // Chain split not found, let's go further back
-                    offset = NUM_CHAIN_SPLIT_HEADERS * iter_count;
+                    offset = NUM_CHAIN_SPLIT_HEADERS.saturating_mul(iter_count);
                     continue;
                 },
                 Err(err) => {

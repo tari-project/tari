@@ -40,6 +40,8 @@ use tari_utilities::{ByteArray, hex::Hex};
 pub struct FeePriority(Vec<u8>);
 
 impl FeePriority {
+    // Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn new(transaction: &Transaction, insert_epoch: u64, weight: u64) -> Result<Self, TransactionError> {
         let fee_per_byte = transaction
             .body
@@ -52,7 +54,7 @@ impl FeePriority {
         // to right and the unconfirmed pool expects the lowest priority to be sorted lowest to highest in the
         // BTreeMap
         let fee_priority = fee_per_byte.to_be_bytes();
-        let age_priority = (u64::MAX - insert_epoch).to_be_bytes();
+        let age_priority = u64::MAX.saturating_sub(insert_epoch).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority

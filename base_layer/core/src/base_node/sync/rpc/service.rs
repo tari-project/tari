@@ -135,7 +135,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
 
-        let start_height = start_header.height + 1;
+        let start_height = start_header.height.saturating_add(1);
         if start_height < metadata.pruned_height() {
             return Err(RpcStatus::bad_request(&format!(
                 "Requested full block body at height {}, however this node has an effective pruned height of {}",
@@ -176,7 +176,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let (tx, rx) = mpsc::channel(BATCH_SIZE);
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
-        let iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, BATCH_SIZE)
+        let iter = NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), BATCH_SIZE)
             .map_err(|e| RpcStatus::bad_request(&e))?;
         task::spawn(
             async move {
@@ -534,9 +534,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             target: LOG_TARGET,
                             "Streaming kernels {} to {}",
                             current_mmr_position,
-                            current_mmr_position + kernels.len() as u64
+                            current_mmr_position.saturating_add(kernels.len() as u64)
                         );
-                        current_mmr_position += kernels.len() as u64;
+                        current_mmr_position = current_mmr_position.saturating_add(kernels.len() as u64);
                         let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
                         if utils::mpsc::send_all(&tx, kernels).await.is_err() {

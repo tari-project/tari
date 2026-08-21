@@ -114,7 +114,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 Some(MetadataValue::JMTVersion(v)) => Some(v),
                 _ => None,
             };
-            let expected = current.map(|v| v + 1).unwrap_or(0);
+            let expected = current.map(|v| v.saturating_add(1)).unwrap_or(0);
             if written_version != expected {
                 warn!(
                     target: LOG_TARGET,

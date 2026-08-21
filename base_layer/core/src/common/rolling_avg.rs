@@ -56,7 +56,10 @@ impl RollingAverageTime {
 
         let total_time = self.samples.iter().sum::<Duration>();
         Some(Duration::from_nanos(
-            u64::try_from(total_time.as_nanos()).unwrap_or(u64::MAX) / self.samples.len() as u64,
+            u64::try_from(total_time.as_nanos())
+                .unwrap_or(u64::MAX)
+                .checked_div(self.samples.len() as u64)
+                .unwrap_or(0),
         ))
     }
 
