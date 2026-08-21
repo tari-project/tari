@@ -15,6 +15,11 @@ borsh = { version = "1.5.7", default-features = false }
 digest = { version = "0.10", default-features = false }
 include_gif = "1.2"
 ledger_device_sdk = "=1.35.0"
+# Pinned: ledger_secure_sdk_sys 1.16.4 compiles the C SDK with -fstack-protector-strong and
+# relies on --wrap=__stack_chk_fail in its own device linker specs. The ledger-app-builder
+# image used by CI links with its own spec, which has no --wrap, so newlib's real
+# __stack_chk_fail is pulled in and drags in unresolvable _exit/_write/_kill/_getpid stubs.
+ledger_secure_sdk_sys = "=1.16.3"
 rand_core = { version = "0.6.3", default-features = false }
 zeroize = { version = "1", default-features = false }
 curve25519-dalek = { version = "4", default-features = false, features = [ "alloc", "rand_core", "precomputed-tables", "zeroize"] }
