@@ -453,16 +453,16 @@ fn determine_component(path: &Path, base_dir: &Path) -> String {
 }
 
 fn get_directory_size(dir: &Path) -> Result<u64> {
-    let mut total_size = 0;
+    let mut total_size = 0u64;
 
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
 
         if path.is_file() {
-            total_size += path.metadata()?.len();
+            total_size = total_size.saturating_add(path.metadata()?.len());
         } else if path.is_dir() {
-            total_size += get_directory_size(&path)?;
+            total_size = total_size.saturating_add(get_directory_size(&path)?);
         } else { // clippy
         }
     }
@@ -504,8 +504,11 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) &&
             let Ok(db_stat) = ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database))
         {
-            let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-            let total_size = total_pages * page_size;
+            let total_pages = db_stat
+                .leaf_pages
+                .saturating_add(db_stat.branch_pages)
+                .saturating_add(db_stat.overflow_pages);
+            let total_size = total_pages.saturating_mul(page_size);
             let avg_size = total_size.checked_div(db_stat.entries).unwrap_or(0);
 
             databases.push(DatabaseStats {
@@ -566,7 +569,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut tables = Vec::new();
-    let mut total_rows = 0;
+    let mut total_rows = 0u64;
 
     for table_name in table_names {
         // Skip SQLite internal tables
@@ -585,11 +588,11 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
             // Use rough estimation: file_size * (table_rows / total_db_rows_estimate)
             // This is not perfect but gives a reasonable approximation
             let size_per_row = if row_count > 0 {
-                file_size / page_count.max(1)
+                file_size.checked_div(page_count.max(1)).unwrap_or(0)
             } else {
                 0
             };
-            row_count * size_per_row
+            row_count.saturating_mul(size_per_row)
         } else {
             0
         };
@@ -603,7 +606,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
             avg_row_size,
         });
 
-        total_rows += row_count;
+        total_rows = total_rows.saturating_add(row_count);
     }
 
     // Sort tables by row count (descending)
@@ -617,7 +620,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
     let avg_rows_per_table = if tables.is_empty() {
         0
     } else {
-        total_rows / tables.len() as u64
+        total_rows.checked_div(tables.len() as u64).unwrap_or(0)
     };
 
     let summary = SqliteSummary {

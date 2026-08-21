@@ -757,7 +757,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Sorting::Desc => {
                     let from = match tip.overflowing_sub(num_headers) {
                         (_, true) => 0,
-                        (res, false) => res + 1,
+                        (res, false) => res.saturating_add(1),
                     };
                     (from..=tip, true)
                 },
@@ -768,7 +768,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
                         (_, true) => 0,
-                        (res, false) => res + 1,
+                        (res, false) => res.saturating_add(1),
                     };
                     (from..=from_height, true)
                 },
@@ -1174,6 +1174,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar and signature arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn get_new_block_template_with_coinbases(
         &self,
         request: Request<tari_rpc::GetNewBlockTemplateWithCoinbasesRequest>,
@@ -1274,19 +1276,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut total_shares = 0u128;
         for coinbase in &coinbases {
-            total_shares += u128::from(coinbase.value);
+            total_shares = total_shares.saturating_add(u128::from(coinbase.value));
         }
         let mut cur_share_sum = 0u128;
         let mut prev_coinbase_value = 0u128;
         for coinbase in &mut coinbases {
-            cur_share_sum += u128::from(coinbase.value);
+            cur_share_sum = cur_share_sum.saturating_add(u128::from(coinbase.value));
             coinbase.value = u64::try_from(
                 (cur_share_sum.saturating_mul(reward))
                     .checked_div(total_shares)
                     .ok_or_else(|| {
                         obscure_error_if_true(report_error_flag, Status::internal("total shares are zero".to_string()))
-                    })? -
-                    prev_coinbase_value,
+                    })?
+                    .saturating_sub(prev_coinbase_value),
             )
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1294,7 +1296,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Single coinbase fees exceeded u64".to_string()),
                 )
             })?;
-            prev_coinbase_value += u128::from(coinbase.value);
+            prev_coinbase_value = prev_coinbase_value.saturating_add(u128::from(coinbase.value));
         }
 
         let key_manager = KeyManager::new_random().map_err(|e| {
@@ -1469,6 +1471,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar and signature arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn get_new_block_with_coinbases(
         &self,
         request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
@@ -1528,7 +1532,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut amount = 0u64;
         for coinbase in &coinbases {
-            amount += coinbase.value;
+            amount = amount.saturating_add(coinbase.value);
         }
 
         if amount != reward.as_u64() {
@@ -3044,7 +3048,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let start_height = start_header.height();
         let end_height = start_height
-            .checked_add(request.count - 1)
+            .checked_add(request.count.saturating_sub(1))
             .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
 
         task::spawn(async move {

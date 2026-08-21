@@ -79,7 +79,7 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
         if switchboard.1 == u16::MAX {
             switchboard.1 = 1;
         } else {
-            switchboard.1 += 1;
+            switchboard.1 = switchboard.1.saturating_add(1);
         }
 
         if !switchboard.0.contains_key(&port) {
@@ -200,7 +200,7 @@ impl MemoryListener {
                 if switchboard.1 == u16::MAX {
                     switchboard.1 = 1;
                 } else {
-                    switchboard.1 += 1;
+                    switchboard.1 = switchboard.1.saturating_add(1);
                 }
 
                 if !switchboard.0.contains_key(&port) {
@@ -417,7 +417,7 @@ impl AsyncRead for MemorySocket {
             }
         }
 
-        let mut bytes_read = 0;
+        let mut bytes_read = 0usize;
 
         loop {
             // If we're already filled up the buffer then we can return
@@ -437,7 +437,7 @@ impl AsyncRead for MemorySocket {
                         current_buffer.advance(bytes_to_read);
                         trace!("reading {bytes_to_read} bytes");
 
-                        bytes_read += bytes_to_read;
+                        bytes_read = bytes_read.saturating_add(bytes_to_read);
                     }
                 },
 

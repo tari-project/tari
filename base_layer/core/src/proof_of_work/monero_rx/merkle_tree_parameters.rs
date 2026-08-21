@@ -71,7 +71,13 @@ impl MerkleTreeParameters {
         let mut n_bits = encode_aux_chain_count(self.number_of_chains);
         let mut nonce_bits = encode_aux_nonce(self.aux_nonce);
         // this wont underflow as max size will be size_bits(3) + n_bits(8) + nonce_bits(32) = 43
-        let mut zero_bits = vec![0; 64 - size_bits.len() - n_bits.len() - nonce_bits.len()];
+        let mut zero_bits = vec![
+            0;
+            64usize
+                .saturating_sub(size_bits.len())
+                .saturating_sub(n_bits.len())
+                .saturating_sub(nonce_bits.len())
+        ];
         zero_bits.append(&mut nonce_bits);
         zero_bits.append(&mut n_bits);
         zero_bits.append(&mut size_bits);
@@ -99,7 +105,7 @@ fn encode_bits(num: u8) -> Vec<u8> {
 }
 
 fn get_aux_chain_count(num: u64, bits: u8) -> u8 {
-    let end = 3 + bits;
+    let end = bits.saturating_add(3);
     let bits_num: Vec<u8> = (3..=end).rev().map(|n| ((num >> n) & 1) as u8).collect();
     (bits_num.iter().fold(0, |result, &bit| (result << 1) ^ bit)).saturating_add(1)
 }
@@ -112,14 +118,14 @@ fn encode_aux_chain_count(num: u8) -> Vec<u8> {
     }
     let size = u8::try_from(num.leading_zeros())
         .expect("This cant fail, u8 can only have 8 leading 0's which will fit in 255");
-    let bit_length = 8 - size;
+    let bit_length = 8u8.saturating_sub(size);
     (0..bit_length).rev().map(|n| (num >> n) & 1).collect()
 }
 
 fn get_aux_nonce(num: u64, bits: u8) -> u32 {
     // 0,1,2 is storing bits, then amount of bits, then start at next bit to read
-    let start = 3 + bits + 1;
-    let end = start + 32;
+    let start = bits.saturating_add(4);
+    let end = start.saturating_add(32);
     let bits_num: Vec<u32> = (start..=end).rev().map(|n| ((num >> n) & 1) as u32).collect();
     bits_num.iter().fold(0, |result, &bit| (result << 1) ^ bit)
 }

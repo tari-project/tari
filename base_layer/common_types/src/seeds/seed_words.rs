@@ -12,7 +12,10 @@ use crate::seeds::{cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, error::Mnemoni
 /// for wallet synchronization, it is necessary we are compatible with block timestamps (calculated
 /// from unix epoch). This function adds this functionality
 pub fn get_birthday_from_unix_epoch_in_seconds(birthday: u16, to_days: u16) -> u64 {
-    u64::from(birthday.saturating_sub(to_days)) * 24 * 60 * 60 + BIRTHDAY_GENESIS_FROM_UNIX_EPOCH
+    const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+    u64::from(birthday.saturating_sub(to_days))
+        .saturating_mul(SECONDS_PER_DAY)
+        .saturating_add(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH)
 }
 
 #[derive(Debug, Clone)]

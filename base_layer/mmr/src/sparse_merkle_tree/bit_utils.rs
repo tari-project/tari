@@ -8,7 +8,7 @@ use crate::sparse_merkle_tree::{NodeKey, SMTError};
 /// Gets the bit at an offset from the most significant bit. Does NOT perform range checking
 #[inline]
 pub(crate) fn get_bit(data: &[u8], position: usize) -> Option<usize> {
-    if (*data.get(position / 8)? as usize) & (1 << (8 - 1 - (position % 8))) > 0 {
+    if (*data.get(position / 8)? as usize) & (1 << 7usize.saturating_sub(position % 8)) > 0 {
         return Some(1);
     }
     Some(0)
@@ -24,18 +24,18 @@ pub(crate) fn count_common_prefix(a: &NodeKey, b: &NodeKey) -> usize {
     let a = a.as_slice();
     let b = b.as_slice();
     while offset < n && a.get(offset).expect("Index should exist") == b.get(offset).expect("Index should exist") {
-        offset += 1;
+        offset = offset.saturating_add(1);
     }
     if offset == n {
-        return offset * 8;
+        return offset.saturating_mul(8);
     }
     let mut i = 0;
     while get_bit(a.get(offset..=offset).expect("Index should exist"), i) ==
         get_bit(b.get(offset..=offset).expect("Index should exist"), i)
     {
-        i += 1;
+        i = i.saturating_add(1);
     }
-    offset * 8 + i
+    offset.saturating_mul(8).saturating_add(i)
 }
 
 /// For branch nodes, the key is the first `height` bits of all descendant node keys. This function calculates the

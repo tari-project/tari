@@ -55,7 +55,7 @@ impl Fee {
 
     pub fn calculate_body(&self, fee_per_gram: MicroMinotari, body: &AggregateBody) -> std::io::Result<MicroMinotari> {
         let weight = self.weighting().calculate_body(body)?;
-        Ok(MicroMinotari::from(weight) * fee_per_gram)
+        Ok(MicroMinotari::from(weight.saturating_mul(fee_per_gram.as_u64())))
     }
 
     pub fn weighting(&self) -> &TransactionWeight {

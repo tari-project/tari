@@ -30,12 +30,12 @@
 /// ```
 pub fn format_currency(value: &str, separator: char) -> String {
     let full_len = value.len();
-    let mut buffer = String::with_capacity(full_len / 3 + full_len);
+    let mut buffer = String::with_capacity((full_len / 3).saturating_add(full_len));
     let mut iter = value.splitn(2, '.');
     let whole = iter.next().unwrap_or("");
     for (i, c) in whole.chars().enumerate() {
         buffer.push(c);
-        let idx = whole.len() - i - 1;
+        let idx = whole.len().saturating_sub(i).saturating_sub(1);
         if idx > 0 && idx.is_multiple_of(3) {
             buffer.push(separator);
         }

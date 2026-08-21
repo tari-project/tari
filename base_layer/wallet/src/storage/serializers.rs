@@ -23,14 +23,14 @@ pub fn bincode_decode<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, 
 }
 
 pub fn encode_signature(sig: &CompressedSignature) -> Result<Vec<u8>, WalletStorageError> {
-    let mut bytes = Vec::with_capacity(CompressedPublicKey::key_length() + PrivateKey::key_length());
+    let mut bytes = Vec::with_capacity(CompressedPublicKey::key_length().saturating_add(PrivateKey::key_length()));
     bytes.extend_from_slice(sig.get_compressed_public_nonce().as_bytes());
     bytes.extend_from_slice(sig.get_signature().as_bytes());
     Ok(bytes)
 }
 
 pub fn decode_signature(data: &[u8]) -> Result<CompressedSignature, WalletStorageError> {
-    let expected_len = CompressedPublicKey::key_length() + PrivateKey::key_length();
+    let expected_len = CompressedPublicKey::key_length().saturating_add(PrivateKey::key_length());
     if data.len() != expected_len {
         return Err(WalletStorageError::ConversionError(format!(
             "Invalid signature length: expected {}, got {}",

@@ -202,7 +202,9 @@ where
             let mut next_header;
             // Keep going backwards until we find a header that is known to the base node
             loop {
-                next_header = wallet_service_client.get_header_by_height(height + 1).await?;
+                next_header = wallet_service_client
+                    .get_header_by_height(height.saturating_add(1))
+                    .await?;
                 if next_header.is_some() {
                     break;
                 }
@@ -303,9 +305,9 @@ where
                     tip_hash,
                 )
                 .await?;
-            scanned_blocks += scan_result.blocks_scanned;
-            total_num_recovered += scan_result.total_num_recovered;
-            total_value_recovered += scan_result.total_value_recovered;
+            scanned_blocks = scanned_blocks.saturating_add(scan_result.blocks_scanned);
+            total_num_recovered = total_num_recovered.saturating_add(scan_result.total_num_recovered);
+            total_value_recovered = total_value_recovered.saturating_add(scan_result.total_value_recovered);
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
@@ -467,7 +469,7 @@ where
                                 response.height
                             ));
                         }
-                        if response.height > previous_block.height + 1 {
+                        if response.height > previous_block.height.saturating_add(1) {
                             // Missing block(s) detected between previous_block and response height - fork block
                             // re-validation forced.
                             return Err(anyhow!(
@@ -488,13 +490,13 @@ where
                             ));
                         }
                     }
-                    blocks_scanned += 1;
+                    blocks_scanned = blocks_scanned.saturating_add(1);
                     let current_height = response.height;
                     let current_header_hash = response.header_hash;
                     let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
                         .unwrap_or(DateTime::<Utc>::MIN_UTC);
                     let outputs = response.outputs;
-                    total_scanned += outputs.len();
+                    total_scanned = total_scanned.saturating_add(outputs.len());
 
                     let found_outputs = self.search_for_owned_outputs(outputs)?;
 
@@ -528,8 +530,8 @@ where
                         let (num_recovered, amount) = self
                             .import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
                             .await?;
-                        total_num_recovered += num_recovered;
-                        total_value_recovered += amount;
+                        total_num_recovered = total_num_recovered.saturating_add(num_recovered);
+                        total_value_recovered = total_value_recovered.saturating_add(amount);
                     }
 
                     let block_hash: FixedHash = current_header_hash.try_into()?;
@@ -779,7 +781,7 @@ where
             {
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
-                    total_amount += wo.value();
+                    total_amount = total_amount.saturating_add(wo.value());
                 },
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                     TransactionStorageError::DuplicateOutput,

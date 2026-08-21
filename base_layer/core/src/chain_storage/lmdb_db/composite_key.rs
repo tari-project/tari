@@ -90,7 +90,7 @@ impl<const L: usize> CompositeKey<L> {
 
     pub fn push<T: AsRef<[u8]>>(&mut self, bytes: T) -> bool {
         let b = bytes.as_ref();
-        let new_len = self.len + b.len();
+        let new_len = self.len.saturating_add(b.len());
         if new_len > L {
             return false;
         }
@@ -111,7 +111,7 @@ impl<const L: usize> CompositeKey<L> {
         let mut buf = [0u8; 8];
         buf.copy_from_slice(
             self.bytes
-                .get(offset..offset + 8)
+                .get(offset..offset.saturating_add(8))
                 .ok_or(ChainStorageError::CompositeKeyLengthExceeded)?,
         );
         Ok(u64::from_be_bytes(buf))
@@ -240,8 +240,8 @@ impl<'a, const SECTIONS: usize> Iterator for SectionIter<'a, SECTIONS> {
         let cur_section = *self.sections.get(self.current)?;
 
         let lower = self.pointer;
-        let upper = self.pointer + cur_section;
-        self.current += 1;
+        let upper = self.pointer.saturating_add(cur_section);
+        self.current = self.current.saturating_add(1);
         self.pointer = upper;
 
         if upper > self.slice.len() {

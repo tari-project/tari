@@ -69,7 +69,7 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
             .write()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
             .push(item);
-        Ok(self.len()? - 1)
+        Ok(self.len()?.saturating_sub(1))
     }
 
     fn get(&self, index: usize) -> Option<Self::Value> {

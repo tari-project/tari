@@ -60,6 +60,7 @@ const SIZE_NONCE: usize = size_of::<XNonce>();
 pub const SIZE_VALUE: usize = size_of::<u64>();
 const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
+const SIZE_TAG_AND_NONCE: usize = SIZE_TAG + SIZE_NONCE;
 pub const SIZE_U256: usize = size_of::<U256>();
 pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
 pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
@@ -89,7 +90,8 @@ impl EncryptedData {
         memo: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
-        let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + memo.get_size()]);
+        let plaintext_size = SIZE_VALUE.saturating_add(SIZE_MASK).saturating_add(memo.get_size());
+        let mut bytes = Zeroizing::new(vec![0; plaintext_size]);
         bytes
             .get_mut(..SIZE_VALUE)
             .expect("Already checked")
@@ -114,12 +116,12 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + memo.get_size()];
+        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo.get_size())];
         data.get_mut(..SIZE_TAG).expect("Already checked").copy_from_slice(&tag);
         data.get_mut(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
             .expect("Already checked")
             .copy_from_slice(&nonce);
-        data.get_mut(SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + memo.get_size())
+        data.get_mut(SIZE_TAG_AND_NONCE..SIZE_TAG_AND_NONCE.saturating_add(plaintext_size))
             .expect("Already checked")
             .copy_from_slice(bytes.as_slice());
         Ok(Self {
@@ -233,7 +235,8 @@ impl EncryptedData {
                 format!(
                     "Some({}..{})",
                     &encrypted_data_hex[0..DISPLAY_CUTOFF],
-                    &encrypted_data_hex[encrypted_data_hex.len() - DISPLAY_CUTOFF..encrypted_data_hex.len()]
+                    &encrypted_data_hex
+                        [encrypted_data_hex.len().saturating_sub(DISPLAY_CUTOFF)..encrypted_data_hex.len()]
                 )
             } else {
                 encrypted_data_hex

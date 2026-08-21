@@ -134,13 +134,13 @@ where
 
     /// Generate next deterministic private key derived from master key
     pub fn next_key(&mut self) -> Result<DerivedKey, ByteArrayError> {
-        self.primary_key_index += 1;
+        self.primary_key_index = self.primary_key_index.saturating_add(1);
         self.derive_key(self.primary_key_index)
     }
 
     /// Generate next deterministic private key derived from master key
     pub fn increment_key_index(&mut self, increment: u64) -> u64 {
-        self.primary_key_index += increment;
+        self.primary_key_index = self.primary_key_index.saturating_add(increment);
         self.primary_key_index
     }
 

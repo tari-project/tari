@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
@@ -143,8 +143,8 @@ where
         let invalid_outputs = self
             .db
             .fetch_invalid_outputs(
-                (Utc::now() -
-                    Duration::seconds(
+                Utc::now()
+                    .checked_sub_signed(Duration::seconds(
                         self.config
                             .num_of_seconds_to_revalidate_invalid_utxos
                             .try_into()
@@ -152,7 +152,8 @@ where
                                 OutputManagerProtocolError::new(self.operation_id, OutputManagerError::InvalidConfig)
                             })?,
                     ))
-                .timestamp(),
+                    .unwrap_or(DateTime::<Utc>::MIN_UTC)
+                    .timestamp(),
                 &self.key_manager,
             )
             .for_protocol(self.operation_id)?;

@@ -63,7 +63,7 @@ fn get_message_padding_length(message_length: usize) -> usize {
     if message_length.is_multiple_of(MESSAGE_BASE_LENGTH) {
         0
     } else {
-        MESSAGE_BASE_LENGTH - (message_length % MESSAGE_BASE_LENGTH)
+        MESSAGE_BASE_LENGTH.saturating_sub(message_length % MESSAGE_BASE_LENGTH)
     }
 }
 
@@ -82,7 +82,7 @@ fn pad_message_to_base_length_multiple(
             DhtEncryptError::PaddingError("Message length shorter than the additional_prefix_space".to_string())
         })?);
 
-    message.resize(message.len() + padding_length, 0);
+    message.resize(message.len().saturating_add(padding_length), 0);
 
     Ok(padding_length)
 }
@@ -164,7 +164,7 @@ pub fn decrypt_message(
     let nonce = Nonce::from_slice(&[0u8; size_of::<Nonce>()]);
 
     // Split off the tag
-    let tag = buffer.split_off(buffer.len() - size_of::<Tag>()).freeze();
+    let tag = buffer.split_off(buffer.len().saturating_sub(size_of::<Tag>())).freeze();
 
     // Decrypt with authentication
     let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(message_key.reveal()));
@@ -210,7 +210,11 @@ fn encode_with_prepended_length<T: prost::Message>(
     additional_prefix_space: usize,
 ) -> Result<BytesMut, DhtEncryptError> {
     let len = msg.encoded_len();
-    let mut buf = BytesMut::with_capacity(size_of::<u32>() + additional_prefix_space + len);
+    let mut buf = BytesMut::with_capacity(
+        size_of::<u32>()
+            .saturating_add(additional_prefix_space)
+            .saturating_add(len),
+    );
     buf.extend(std::iter::repeat_n(0, additional_prefix_space));
     let len_u32 = u32::try_from(len).map_err(|_| DhtEncryptError::InvalidMessageBody)?;
     buf.put_u32_le(len_u32);

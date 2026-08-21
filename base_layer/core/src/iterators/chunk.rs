@@ -108,12 +108,12 @@ macro_rules! non_overlapping_iter_impl {
                         if self.current == next {
                             return None;
                         }
-                        let chunk = (self.current, next - 1);
+                        let chunk = (self.current, next.saturating_sub(1));
                         self.current = next;
                         Some(chunk)
                     },
                     None => {
-                        let chunk = (self.current, <$ty>::MAX - 1);
+                        let chunk = (self.current, <$ty>::MAX.saturating_sub(1));
                         self.current = <$ty>::MAX;
                         Some(chunk)
                     },
@@ -136,24 +136,29 @@ macro_rules! non_overlapping_iter_impl {
                 };
                 // Is this the first iteration?
                 if self.end == self.current_end {
-                    let rem = (self.end - self.current) % size;
+                    // The `self.size == 0` guard above proves `size` is non-zero.
+                    let rem = self
+                        .end
+                        .saturating_sub(self.current)
+                        .checked_rem(size)
+                        .unwrap_or(0);
 
                     // Would there be an overflow (if iterating from the forward to back)
                     if rem > 0 && self.current_end.saturating_sub(rem).checked_add(size).is_none() {
                         self.current_end = self.current_end.saturating_sub(rem);
-                        let chunk = (self.current_end, <$ty>::MAX - 1);
+                        let chunk = (self.current_end, <$ty>::MAX.saturating_sub(1));
                         return Some(chunk);
                     }
 
                     if rem > 0 {
-                        self.current_end = self.end - rem;
-                        let chunk = (self.current_end, self.end - 1);
+                        self.current_end = self.end.saturating_sub(rem);
+                        let chunk = (self.current_end, self.end.saturating_sub(1));
                         return Some(chunk);
                     }
                 }
 
                 let next = self.current_end.saturating_sub(size);
-                let chunk = (next, self.current_end - 1);
+                let chunk = (next, self.current_end.saturating_sub(1));
                 self.current_end = next;
                 Some(chunk)
             }

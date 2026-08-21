@@ -190,19 +190,25 @@ impl ProactiveDialer {
         let mut managed_and_excluded = managed.clone();
         managed_and_excluded.append(&mut excluded_peers.to_vec());
 
-        // Get available dial candidates
+        // Get available dial candidates; 3x more than needed so there is room for health scoring
+        let candidate_target = count.saturating_mul(3);
         let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3), true, true) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed_and_excluded, Some(candidate_target), true, true)
             .await?;
-        if candidates.len() < count * 3 {
+        if candidates.len() < candidate_target {
             // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
             let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
             to_be_excluded.append(&mut managed);
             // Now also allow selection from previously failed peers
             let mut random = self
                 .peer_manager
-                .get_available_dial_candidates(&to_be_excluded, Some(count * 3 - candidates.len()), false, true)
+                .get_available_dial_candidates(
+                    &to_be_excluded,
+                    Some(candidate_target.saturating_sub(candidates.len())),
+                    false,
+                    true,
+                )
                 .await?;
             candidates.append(&mut random);
         }
@@ -268,7 +274,7 @@ impl ProactiveDialer {
             return 0;
         }
 
-        let mut successful_dials = 0;
+        let mut successful_dials = 0usize;
 
         for peer in peers {
             debug!(
@@ -284,7 +290,7 @@ impl ProactiveDialer {
             // shed here is simply retried on the next refresh.
             match self.connection_manager.try_send_dial_peer(peer.node_id.clone(), None) {
                 Ok(_) => {
-                    successful_dials += 1;
+                    successful_dials = successful_dials.saturating_add(1);
                 },
                 Err(err) => {
                     warn!(

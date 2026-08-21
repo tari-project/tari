@@ -32,7 +32,8 @@ pub fn generate_peer_key() -> PeerId {
 
 /// Generates a random peer key that is guaranteed to be positive '< i64::MAX'.
 pub fn generate_peer_id_as_i64() -> i64 {
-    i64::try_from(generate_peer_key() % u64::try_from(i64::MAX).expect("infallible")).expect("infallible")
+    let modulus = u64::try_from(i64::MAX).expect("infallible");
+    i64::try_from(generate_peer_key().checked_rem(modulus).unwrap_or(0)).expect("infallible")
 }
 
 /// Converts a positive i64 to a PeerId. This is infallible as the value is guaranteed to be positive.

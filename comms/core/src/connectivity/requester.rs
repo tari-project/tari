@@ -203,7 +203,7 @@ impl ConnectivityRequester {
     /// for opportunistic users (metadata service, gossip, etc.) that can tolerate the
     /// connection being torn down by the reaper.
     pub async fn dial_peer(&self, peer: NodeId, ref_kind: RefKind) -> Result<PeerConnection, ConnectivityError> {
-        let mut num_cancels = 0;
+        let mut num_cancels = 0usize;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
             // Bounded by DIAL_PEER_TIMEOUT so a wedged actor cannot park the caller forever.
@@ -231,7 +231,7 @@ impl ConnectivityRequester {
             match result {
                 Ok(c) => return Ok(c),
                 Err(err @ ConnectionManagerError::DialCancelled) => {
-                    num_cancels += 1;
+                    num_cancels = num_cancels.saturating_add(1);
                     // Due to simultaneous dialing, it's possible for the dial to be cancelled. However, typically if
                     // dial is called again right after, the resolved connection will be returned.
                     if num_cancels == 1 {

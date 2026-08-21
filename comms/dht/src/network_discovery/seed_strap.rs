@@ -154,9 +154,9 @@ impl SeedStrap {
         }
 
         let seed_node_ids_set: HashSet<NodeId> = seed_peers_available.iter().map(|p| p.node_id.clone()).collect();
-        let mut total_peers_added_this_round = 0;
-        let mut total_duplicates_this_round = 0;
-        let mut attempted_seed_contacts = 0;
+        let mut total_peers_added_this_round = 0usize;
+        let mut total_duplicates_this_round = 0usize;
+        let mut attempted_seed_contacts = 0usize;
         let mut successful_seed_contacts = 0usize;
 
         let num_seeds_to_try = cmp::min(
@@ -189,7 +189,7 @@ impl SeedStrap {
         // Get peers from seeds concurrently
         let mut task_stream = FuturesUnordered::new();
         for (idx, seed_peer_candidate) in candidates.into_iter().enumerate() {
-            attempted_seed_contacts += 1;
+            attempted_seed_contacts = attempted_seed_contacts.saturating_add(1);
             let seed_node_ids_set_clone = seed_node_ids_set.clone();
             let context_clone = self.context.clone();
             let dial_peer_timeout = self.config().network_discovery.bootstrap_dial_peer_timeout;
@@ -216,12 +216,12 @@ impl SeedStrap {
             task_stream.push(handle);
         }
 
-        let mut seeds_communicated_with = 0;
+        let mut seeds_communicated_with = 0usize;
         while let Some(result) = task_stream.next().await {
             let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
                 Ok((peers, n_new, n_dup, communicated)) => {
                     if communicated {
-                        seeds_communicated_with += 1;
+                        seeds_communicated_with = seeds_communicated_with.saturating_add(1);
                     }
                     (peers, n_new, n_dup, false)
                 },
@@ -234,7 +234,7 @@ impl SeedStrap {
             if spawn_another_task || peers_from_seed.is_empty() {
                 // Add a new task to the stream if the previous one failed
                 if let Some(seed_peer_candidate) = seed_peers_iter.next().cloned() {
-                    attempted_seed_contacts += 1;
+                    attempted_seed_contacts = attempted_seed_contacts.saturating_add(1);
                     let seed_node_ids_set_clone = seed_node_ids_set.clone();
                     let context_clone = self.context.clone();
                     let dial_timeout = self.config().network_discovery.bootstrap_dial_peer_timeout;
@@ -264,12 +264,12 @@ impl SeedStrap {
                 continue;
             } else {
                 // This seed successfully provided peers
-                round_info.num_succeeded += 1;
-                successful_seed_contacts += 1;
+                round_info.num_succeeded = round_info.num_succeeded.saturating_add(1);
+                successful_seed_contacts = successful_seed_contacts.saturating_add(1);
             }
 
-            total_peers_added_this_round += new_peers_this_seed;
-            total_duplicates_this_round += duplicates_this_seed;
+            total_peers_added_this_round = total_peers_added_this_round.saturating_add(new_peers_this_seed);
+            total_duplicates_this_round = total_duplicates_this_round.saturating_add(duplicates_this_seed);
 
             // Exit condition
             if self.early_exit_conditions_met(total_peers_added_this_round, successful_seed_contacts) {
@@ -402,7 +402,7 @@ async fn get_peers(
         info!(
             target: LOG_TARGET,
             "SeedStrap: Attempt {}/{}: Skipping self as seed peer candidate (node_id: {}).",
-            idx + 1,
+            idx.saturating_add(1),
             num_seeds_this_round,
             seed_peer_node_id_str
         );
@@ -412,7 +412,7 @@ async fn get_peers(
     debug!(
         target: LOG_TARGET,
         "SeedStrap: Attempt {}/{}: Attempting to connect to seed peer '{}' to get their peer list",
-        idx + 1,
+        idx.saturating_add(1),
         num_seeds_this_round,
         seed_peer_node_id_str
     );
@@ -433,7 +433,7 @@ async fn get_peers(
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: Attempt {}/{}: Failed to dial seed peer '{}': {}.",
-                    idx + 1,
+                    idx.saturating_add(1),
                     num_seeds_this_round,
                     seed_peer_node_id_str,
                     e
@@ -488,7 +488,7 @@ async fn get_peers(
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: Attempt {}/{}: Failed to fetch peers from seed peer '{}': {}. Disconnecting and continuing.",
-                    idx + 1,
+                    idx.saturating_add(1),
                     num_seeds_this_round,
                     seed_peer_node_id_str,
                     e
@@ -512,7 +512,7 @@ async fn get_peers(
         info!(
             target: LOG_TARGET,
             "SeedStrap: Attempt {}/{}: Seed peer '{}' returned an empty peer list. Disconnecting.",
-            idx + 1,
+            idx.saturating_add(1),
             num_seeds_this_round,
             seed_peer_node_id_str
         );
@@ -526,14 +526,14 @@ async fn get_peers(
         seed_peer_node_id_str
     );
 
-    let mut new_peers_this_seed = 0;
-    let mut duplicates_this_seed = 0;
+    let mut new_peers_this_seed = 0usize;
+    let mut duplicates_this_seed = 0usize;
 
     let peers_count = peers_from_seed.len();
     debug!(
         target: LOG_TARGET,
         "SeedStrap: Attempt {}/{}: Beginning to process {} peers from seed peer '{}'",
-        idx + 1,
+        idx.saturating_add(1),
         num_seeds_this_round,
         peers_count,
         seed_peer_node_id_str
@@ -547,7 +547,7 @@ async fn get_peers(
                     target: LOG_TARGET,
                     "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data received, skipping: {}",
                     seed_peer_node_id_str,
-                    peer_idx_loop + 1,
+                    peer_idx_loop.saturating_add(1),
                     peers_count,
                     e
                 );
@@ -560,13 +560,13 @@ async fn get_peers(
             target: LOG_TARGET,
             "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Processing candidate NodeId = {}",
             seed_peer_node_id_str,
-            peer_idx_loop + 1,
+            peer_idx_loop.saturating_add(1),
             peers_count,
             candidate_node_id
         );
 
         if new_peer_candidate.public_key == *context.node_identity.public_key() {
-            trace!(target: LOG_TARGET, "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping self.", seed_peer_node_id_str, peer_idx_loop+1, peers_count);
+            trace!(target: LOG_TARGET, "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping self.", seed_peer_node_id_str, peer_idx_loop.saturating_add(1), peers_count);
             continue;
         }
 
@@ -575,7 +575,7 @@ async fn get_peers(
                 target: LOG_TARGET,
                 "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping known seed peer {}.",
                 seed_peer_node_id_str,
-                peer_idx_loop + 1,
+                peer_idx_loop.saturating_add(1),
                 peers_count,
                 candidate_node_id
             );
@@ -592,7 +592,11 @@ async fn get_peers(
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: (Seed '{}', Peer Candidate {}/{}): Error searching for existing peer candidate {} by public key: {}. Skipping.",
-                    seed_peer_node_id_str, peer_idx_loop + 1, peers_count, candidate_node_id, e
+                    seed_peer_node_id_str,
+                                peer_idx_loop.saturating_add(1),
+                                peers_count,
+                                candidate_node_id,
+                                e
                 );
                 continue;
             },
@@ -607,7 +611,7 @@ async fn get_peers(
                     target: LOG_TARGET,
                     "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Peer {} from seed '{}' is valid. New: {}. Adding to peer manager.",
                     seed_peer_node_id_str,
-                    peer_idx_loop + 1,
+                    peer_idx_loop.saturating_add(1),
                     peers_count,
                     valid_peer.node_id,
                     seed_peer_node_id_str,
@@ -617,9 +621,9 @@ async fn get_peers(
                 match context.peer_manager.add_or_update_peer(valid_peer).await {
                     Ok(_) => {
                         if is_new_peer {
-                            new_peers_this_seed += 1;
+                            new_peers_this_seed = new_peers_this_seed.saturating_add(1);
                         } else {
-                            duplicates_this_seed += 1;
+                            duplicates_this_seed = duplicates_this_seed.saturating_add(1);
                         }
                     },
                     Err(e) => {
@@ -627,7 +631,7 @@ async fn get_peers(
                             target: LOG_TARGET,
                             "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Failed to add validated peer {}: {}",
                             seed_peer_node_id_str,
-                            peer_idx_loop + 1,
+                            peer_idx_loop.saturating_add(1),
                             peers_count,
                             candidate_node_id,
                             e
@@ -640,7 +644,7 @@ async fn get_peers(
                     target: LOG_TARGET,
                     "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data for {} received from seed peer '{}': {}",
                     seed_peer_node_id_str,
-                    peer_idx_loop + 1,
+                    peer_idx_loop.saturating_add(1),
                     peers_count,
                     candidate_node_id,
                     seed_peer_node_id_str,
@@ -654,7 +658,7 @@ async fn get_peers(
         target: LOG_TARGET,
         "SeedStrap: Attempt {}/{}: Finished processing peers from seed '{}'. New peers from this seed: {}. \
         Duplicates from this seed: {}.",
-        idx + 1,
+        idx.saturating_add(1),
         num_seeds_this_round,
         seed_peer_node_id_str,
         new_peers_this_seed,
@@ -790,8 +794,8 @@ where
     S: StreamExt<Item = Result<crate::proto::rpc::GetPeersResponse, tari_comms::protocol::rpc::RpcStatus>> + Unpin,
 {
     let mut peers_from_seed = Vec::new();
-    let mut stream_items_processed_total = 0; // Total items received from stream
-    let mut stream_items_with_peers = 0; // Items that actually contained peer data
+    let mut stream_items_processed_total = 0usize; // Total items received from stream
+    let mut stream_items_with_peers = 0usize; // Items that actually contained peer data
 
     debug!(
         target: LOG_TARGET,
@@ -823,17 +827,17 @@ where
             Ok(item_result) => {
                 match item_result {
                     Some(Ok(crate::proto::rpc::GetPeersResponse { peer })) => {
-                        stream_items_processed_total += 1;
+                        stream_items_processed_total = stream_items_processed_total.saturating_add(1);
                         if let Some(peer_info_proto) = peer {
                             debug!(
                                 target: LOG_TARGET,
                                 "SeedStrap: Stream item #{} (peer item #{}) from seed '{}' contains a peer",
                                 stream_items_processed_total,
-                                stream_items_with_peers + 1, // +1 because this one is a peer
+                                stream_items_with_peers.saturating_add(1), // +1 because this one is a peer
                                 seed_node_id_str
                             );
                             peers_from_seed.push(peer_info_proto);
-                            stream_items_with_peers += 1;
+                            stream_items_with_peers = stream_items_with_peers.saturating_add(1);
                         } else {
                             debug!(
                                 target: LOG_TARGET,
@@ -843,7 +847,7 @@ where
                         }
                     },
                     Some(Err(e)) => {
-                        stream_items_processed_total += 1;
+                        stream_items_processed_total = stream_items_processed_total.saturating_add(1);
                         warn!(
                             target: LOG_TARGET,
                             "SeedStrap: Error in stream item #{stream_items_processed_total} from seed '{seed_node_id_str}': {e}. Breaking from peer stream collection.",

@@ -274,7 +274,7 @@ impl ReorgPool {
 
     fn get_next_key(&mut self) -> usize {
         let key = self.key_counter;
-        self.key_counter = (self.key_counter + 1) % usize::MAX;
+        self.key_counter = self.key_counter.wrapping_add(1) % usize::MAX;
         key
     }
 
@@ -324,7 +324,7 @@ impl ReorgPool {
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
                 new,
                 old,
-                (((old - new) as f32 / old as f32) * 100.0).round() as usize
+                ((old.saturating_sub(new) as f32 / old as f32) * 100.0).round() as usize
             );
         }
     }

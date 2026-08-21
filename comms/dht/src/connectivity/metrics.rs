@@ -77,7 +77,7 @@ impl MetricsState {
                 debug!(
                     target: LOG_TARGET,
                     "Received {} messages in {:.0?} from `{}`",
-                    ts.count() + 1,
+                    ts.count().saturating_add(1),
                     ts.timespan().expect("Time series did not contain a data point"),
                     node_id,
                 );
@@ -101,7 +101,7 @@ impl MetricsState {
     }
 
     pub fn message_received_get_nodes_exceeding(&self, counts: usize, timespan: Duration) -> Vec<(NodeId, f32)> {
-        let since = Instant::now() - timespan;
+        let since = Instant::now().checked_sub(timespan).unwrap_or_else(Instant::now);
         self.messages_recv
             .iter()
             .filter_map(|(node_id, t)| {
@@ -115,7 +115,7 @@ impl MetricsState {
     }
 
     pub fn message_received_get_total_count_in_timespan(&self, timespan: Duration) -> usize {
-        let since = Instant::now() - timespan;
+        let since = Instant::now().checked_sub(timespan).unwrap_or_else(Instant::now);
         self.all_messages_recv.count_since(since)
     }
 }

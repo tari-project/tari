@@ -565,10 +565,10 @@ impl AutoDiscoveryRegistry {
     pub async fn record_usage(&self, tool_name: &str, success: bool, error: Option<String>) {
         if let Some(status) = self.tool_status.write().await.get_mut(tool_name) {
             status.last_used = Some(std::time::SystemTime::now());
-            status.usage_count += 1;
+            status.usage_count = status.usage_count.saturating_add(1);
 
             if !success {
-                status.error_count += 1;
+                status.error_count = status.error_count.saturating_add(1);
                 status.last_error = error;
             }
         }

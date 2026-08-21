@@ -355,7 +355,7 @@ impl NodeMcpServer {
             }
 
             tokio::time::sleep(Duration::from_secs(5)).await;
-            attempts += 1;
+            attempts = attempts.saturating_add(1);
         }
 
         launcher_handle.abort();

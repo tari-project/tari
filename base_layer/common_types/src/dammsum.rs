@@ -90,7 +90,7 @@ pub fn validate_checksum(data: &[u8]) -> Result<&[u8], ChecksumError> {
 
     // It's sufficient to check the entire slice against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(data.get(..data.len() - 1).expect("Length is checked")),
+        0u8 => Ok(data.get(..data.len().saturating_sub(1)).expect("Length is checked")),
         _ => Err(ChecksumError::InvalidChecksum),
     }
 }

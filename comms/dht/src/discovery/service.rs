@@ -214,7 +214,7 @@ impl DhtDiscoveryService {
                             target: LOG_TARGET,
                             "Received discovery response from peer {}. Discovery completed in {}s",
                             peer.node_id,
-                            (Instant::now() - start_ts).as_secs_f32()
+                            start_ts.elapsed().as_secs_f32()
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
@@ -235,7 +235,7 @@ impl DhtDiscoveryService {
                             "Failed to validate and add peer from discovery response from peer. {:?} Discovery \
                              completed in {}s",
                             err,
-                            (Instant::now() - start_ts).as_secs_f32()
+                            start_ts.elapsed().as_secs_f32()
                         );
                     },
                 }
@@ -316,7 +316,7 @@ impl DhtDiscoveryService {
         trace!(
             target: LOG_TARGET,
             "{} inflight request(s) cleared",
-            inflight_count - self.inflight_discoveries.len()
+            inflight_count.saturating_sub(self.inflight_discoveries.len())
         );
 
         // Add the new inflight request.

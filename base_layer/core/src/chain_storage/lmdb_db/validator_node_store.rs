@@ -193,7 +193,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             if let Some(vn) = vn {
                 break (exit_key, vn);
             }
-            epoch += VnEpoch(1);
+            epoch = epoch.saturating_add(VnEpoch(1));
         };
 
         lmdb_delete(
@@ -335,7 +335,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         validators_per_epoch: usize,
     ) -> Result<VnEpoch, ChainStorageError> {
         // Node activates earliest in the next epoch
-        let mut activation_epoch = current_epoch + VnEpoch(1);
+        let mut activation_epoch = current_epoch.saturating_add(VnEpoch(1));
         // If there are less than the initial validators, we activate all new validators in the next epoch
         let len = lmdb_len(self.txn, &self.db_validator_nodes)?;
         if len < initial_validators {
@@ -368,7 +368,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             if num_queued < validators_per_epoch {
                 break;
             }
-            activation_epoch += VnEpoch(1);
+            activation_epoch = activation_epoch.saturating_add(VnEpoch(1));
         }
 
         Ok(activation_epoch)
@@ -379,7 +379,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
     ) -> Result<usize, ChainStorageError> {
-        let mut count = 0;
+        let mut count = 0usize;
 
         {
             let mut cursor = self.validator_store_cursor()?;
@@ -401,7 +401,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     break;
                 }
 
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 
@@ -437,7 +437,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 // No further entries for this epoch
                 continue;
             }
-            count += 1;
+            count = count.saturating_add(1);
         }
 
         Ok(count)
@@ -752,7 +752,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         }
 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
-        let mut exit_count = 0;
+        let mut exit_count = 0usize;
         let mut exit_epoch = epoch;
         while let Some(key) = cursor.next_key()? {
             trace!(target: LOG_TARGET, "exit queue key: {key}");
@@ -777,10 +777,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 })?;
 
             if rec_epoch == exit_epoch.as_u64() {
-                exit_count += 1;
+                exit_count = exit_count.saturating_add(1);
                 if exit_count >= max_exits {
                     // Scan to the next epoch
-                    exit_epoch += VnEpoch(1);
+                    exit_epoch = exit_epoch.saturating_add(VnEpoch(1));
                     cursor.seek_range(&create_exit_queue_prefix_key(sidechain_pk, exit_epoch))?;
                     exit_count = 0;
                 }
@@ -856,6 +856,8 @@ fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
     use lmdb_zero::db;
     use tari_common_types::types::CompressedCommitment;

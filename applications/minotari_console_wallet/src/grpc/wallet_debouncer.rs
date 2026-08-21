@@ -104,8 +104,9 @@ where KeyManagerInterface: LegacyTransactionKeyManagerInterface
             wallet,
             shutdown_signal,
             event_monitor_started: Arc::new(AtomicBool::new(false)),
-            last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
-                                                                               * check */
+            last_scan_activity: Arc::new(AtomicU64::new(scanned_height.saturating_add(1))), /* Add 1 to pass initial
+                                                                                             * connectivity
+                                                                                             * check */
             connection_status: Arc::new(Mutex::new(OnlineStatus::Connecting)),
         }
     }

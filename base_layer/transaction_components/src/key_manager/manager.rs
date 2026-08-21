@@ -165,6 +165,8 @@ impl KeyManager {
         })
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn add_offset_to_key(
         &self,
         private_key_id: &TariKeyId,
@@ -275,6 +277,8 @@ impl KeyManager {
         ))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn ledger_get_script_offset_wrapper(
         &self,
         script_key_ids: &[TariKeyId],
@@ -542,6 +546,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         })
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         match key_id {
             TariKeyId::Derived { key } => {
@@ -705,6 +711,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(Some(script_key_id))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
@@ -852,6 +860,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(ComAndPubSignature::new_from_capk_signature(script_signature))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_partial_txo_kernel_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -893,6 +903,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(CompressedSignature::new_from_schnorr(signature))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_txo_kernel_signature_excess_with_offset(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1014,6 +1026,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(true)
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
@@ -1037,6 +1051,8 @@ impl TransactionKeyManagerInterface for KeyManager {
     }
 
     // Creates a metadata signature for the output without requiring manual user verification on a ledger device
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1335,6 +1351,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(TariKeyAndId { pub_key, key_id })
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn compute_stealth_claim_public_key(
         &self,
         sender_offset_key_id: &TariKeyId,
@@ -1348,6 +1366,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(CompressedPublicKey::new_from_pk(stealth_public))
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1365,6 +1385,8 @@ impl TransactionKeyManagerInterface for KeyManager {
 }
 
 impl SecretTransactionKeyManagerInterface for KeyManager {
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerError> {
         match key_id {
             TariKeyId::Zero => Ok(PrivateKey::default()),

@@ -51,7 +51,7 @@ impl CommandContext {
 
             for (i, reorg) in reorgs.iter().enumerate() {
                 table.add_row(row![
-                    i + 1,
+                    i.saturating_add(1),
                     format!("#{} ({})", reorg.new_height, reorg.new_hash.to_hex()),
                     format!("#{} ({})", reorg.prev_height, reorg.prev_hash.to_hex()),
                     format!("{} added, {} removed", reorg.num_blocks_added, reorg.num_blocks_removed),

@@ -114,7 +114,7 @@ trait MerkleProofDigest<H: Digest<OutputSize = U32>> {
         let hash = self.siblings().iter().zip(dirs).rev().enumerate().fold(
             leaf_hash,
             |current, (i, (sibling_hash, direction))| {
-                let height = n - i - 1;
+                let height = n.saturating_sub(i).saturating_sub(1);
                 match direction {
                     TraverseDirection::Left => BranchNode::<H>::branch_hash(
                         height,

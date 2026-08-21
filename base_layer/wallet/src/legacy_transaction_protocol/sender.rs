@@ -270,7 +270,7 @@ impl SenderTransactionProtocol {
                     .map(|output| output.output.value())
                     .unwrap_or(MicroMinotari::zero());
                 for output in &info.outputs {
-                    amount += output.output.value()
+                    amount = amount.saturating_add(output.output.value())
                 }
                 Ok(amount)
             },

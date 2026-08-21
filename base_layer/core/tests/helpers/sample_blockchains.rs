@@ -22,6 +22,8 @@
 //
 
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},

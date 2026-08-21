@@ -64,16 +64,26 @@ pub fn slice_to_boxed_message(slice: &[u8]) -> Box<Message> {
     Box::new(slice_to_message(slice))
 }
 
+/// Returns the bytes following an opcode byte and the `size`-byte varint that succeeds it.
+fn bytes_after_varint(bytes: &[u8], size: usize) -> Result<&[u8], ScriptError> {
+    bytes
+        .get(size.checked_add(1).ok_or(ScriptError::InvalidData)?..)
+        .ok_or(ScriptError::InvalidData)
+}
+
 /// Convert a slice into a vector of Public Keys.
 pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<CompressedKey<RistrettoPublicKey>>, ScriptError> {
-    if slice.len() < num * PUBLIC_KEY_LENGTH {
+    let required_len = num.checked_mul(PUBLIC_KEY_LENGTH).ok_or(ScriptError::InvalidData)?;
+    if slice.len() < required_len {
         return Err(ScriptError::InvalidData);
     }
 
     let public_keys = slice
-        .chunks_exact(PUBLIC_KEY_LENGTH)
+        .as_chunks::<PUBLIC_KEY_LENGTH>()
+        .0
+        .iter()
         .take(num)
-        .map(CompressedKey::from_canonical_bytes)
+        .map(|chunk| CompressedKey::from_canonical_bytes(chunk))
         .collect::<Result<Vec<CompressedKey<RistrettoPublicKey>>, ByteArrayError>>()?;
 
     Ok(public_keys)
@@ -351,17 +361,11 @@ impl Opcode {
         match *code {
             OP_CHECK_HEIGHT_VERIFY => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeightVerify(height),
-                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
-                ))
+                Ok((CheckHeightVerify(height), bytes_after_varint(bytes, size)?))
             },
             OP_CHECK_HEIGHT => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeight(height),
-                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
-                ))
+                Ok((CheckHeight(height), bytes_after_varint(bytes, size)?))
             },
             OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, scrubbed_bytes)),
             OP_COMPARE_HEIGHT => Ok((CompareHeight, scrubbed_bytes)),
@@ -374,7 +378,7 @@ impl Opcode {
             },
             OP_PUSH_INT => {
                 let (n, size) = i64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((PushInt(n), bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?))
+                Ok((PushInt(n), bytes_after_varint(bytes, size)?))
             },
             OP_PUSH_PUBKEY => {
                 let p = CompressedKey::from_canonical_bytes(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
@@ -450,8 +454,11 @@ impl Opcode {
         let m = bytes.get(1).ok_or(ScriptError::InvalidData)?;
         let n = bytes.get(2).ok_or(ScriptError::InvalidData)?;
         let num = *n as usize;
-        let len = 3 + num * PUBLIC_KEY_LENGTH;
-        let end = len + MESSAGE_LENGTH;
+        let len = num
+            .checked_mul(PUBLIC_KEY_LENGTH)
+            .and_then(|v| v.checked_add(3))
+            .ok_or(ScriptError::InvalidData)?;
+        let end = len.checked_add(MESSAGE_LENGTH).ok_or(ScriptError::InvalidData)?;
         let keys = slice_to_vec_pubkeys(bytes.get(3..len).ok_or(ScriptError::InvalidData)?, num)?;
         let msg = slice_to_boxed_message(bytes.get(len..end).ok_or(ScriptError::InvalidData)?);
 

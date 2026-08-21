@@ -239,6 +239,8 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), AggregatedBo
 ///
 /// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
 /// block balances, or zero for transaction balances)
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn validate_kernel_sum(
     body: &AggregateBody,
     offset_and_reward: CompressedCommitment,
@@ -263,6 +265,8 @@ fn validate_kernel_sum(
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn sum_kernels(
     body: &AggregateBody,
     offset_with_fee: CompressedCommitment,
@@ -284,6 +288,8 @@ fn sum_kernels(
 }
 
 /// Calculate the sum of the outputs - inputs
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn sum_commitments(body: &AggregateBody) -> Result<CompressedCommitment, AggregatedBodyValidationError> {
     let mut sum_inputs = UncompressedCommitment::default();
     for inputs in body.inputs() {
@@ -308,6 +314,8 @@ fn validate_range_proofs(
 }
 
 /// this will validate the script and script offset of the aggregate body.
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn validate_script_and_script_offset(
     body: &AggregateBody,
     script_offset: CompressedPublicKey,

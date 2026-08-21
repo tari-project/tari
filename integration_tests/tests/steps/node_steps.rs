@@ -22,6 +22,8 @@
 
 #![allow(clippy::indexing_slicing)]
 #![allow(clippy::cast_possible_truncation)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,

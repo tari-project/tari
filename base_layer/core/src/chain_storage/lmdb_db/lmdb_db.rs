@@ -536,7 +536,7 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
         .map_err(|e| ChainStorageError::AccessError(format!("Could not read LMDB env stat: {e}")))?;
     let psize = u64::from(env_stat.psize);
     // (last_pgno + 1) * psize is the high-water-mark bytes the env has allocated inside data.mdb.
-    let total_used_pages = env_info.last_pgno as u64 + 1;
+    let total_used_pages = (env_info.last_pgno as u64).saturating_add(1);
 
     let read_txn = db.read_transaction()?;
     let mut live_pages: u64 = 0;
@@ -544,7 +544,10 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
         let stat = read_txn
             .db_stat(db_handle)
             .map_err(|e| ChainStorageError::AccessError(format!("Could not read db_stat for `{name}`: {e}")))?;
-        live_pages += stat.branch_pages as u64 + stat.leaf_pages as u64 + stat.overflow_pages as u64;
+        live_pages = live_pages
+            .saturating_add(stat.branch_pages as u64)
+            .saturating_add(stat.leaf_pages as u64)
+            .saturating_add(stat.overflow_pages as u64);
     }
     // Two fixed meta pages always exist in any LMDB env.
     const META_PAGES: u64 = 2;
@@ -555,8 +558,8 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
     info!(
         target: LOG_TARGET,
         "[COMPACTION]  free={} MB, thresholds={} MB  -> compact={}",
-        free_bytes / mb,
-        min_free_bytes / mb,
+        free_bytes.checked_div(mb).unwrap_or(0),
+        min_free_bytes.checked_div(mb).unwrap_or(0),
         trigger
     );
     Ok(trigger)
@@ -612,7 +615,7 @@ fn compact_and_reopen_lmdb_database(
     let original_size = fs::metadata(&original_data)
         .map_err(|e| ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display())))?
         .len();
-    let pre_size_mb = original_size / BYTES_PER_MB as u64;
+    let pre_size_mb = original_size.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
     info!(
         target: LOG_TARGET,
         "[MIGRATIONS] Pre-compaction data.mdb size: {pre_size_mb} MB"
@@ -627,7 +630,7 @@ fn compact_and_reopen_lmdb_database(
     match fs2::available_space(&env_path) {
         Ok(available) if available < original_size => {
             let _unused = fs::remove_dir_all(&compact_dir);
-            let available_mb = available / BYTES_PER_MB as u64;
+            let available_mb = available.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
             warn!(
                 target: LOG_TARGET,
                 "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, \
@@ -674,7 +677,7 @@ fn compact_and_reopen_lmdb_database(
             return Ok(db);
         },
     };
-    let post_size_mb = compacted_size / BYTES_PER_MB as u64;
+    let post_size_mb = compacted_size.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
     info!(
         target: LOG_TARGET,
         "[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",
@@ -1000,7 +1003,13 @@ impl LMDBDatabase {
         let number_of_operations = txn.operations().len();
         let write_txn = self.write_transaction()?;
         for (i, op) in txn.operations().iter().enumerate() {
-            trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
+            trace!(
+                target: LOG_TARGET,
+                "[apply_db_transaction] WriteOperation: {} ({} of {})",
+                op,
+                i.saturating_add(1),
+                number_of_operations
+            );
             match op {
                 InsertOrphanBlock(block) => self.insert_orphan_block(&write_txn, block)?,
                 InsertChainHeader { header } => {
@@ -1840,7 +1849,7 @@ impl LMDBDatabase {
                         // Nothing to do
                     },
                     SideChainFeatureData::EvictionProof(evict) => {
-                        let next_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
+                        let next_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
                         self.validator_node_store(txn).undo_exit(
                             sidechain_features.sidechain_public_key(),
                             next_epoch,
@@ -1849,7 +1858,7 @@ impl LMDBDatabase {
                     },
                     SideChainFeatureData::ValidatorNodeExit(vn_exit) => {
                         // The exit must be on or after the next epoch
-                        let min_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
+                        let min_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
                         self.validator_node_store(txn).undo_exit(
                             sidechain_features.sidechain_public_key(),
                             min_epoch,
@@ -1936,7 +1945,7 @@ impl LMDBDatabase {
         }
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
 
@@ -2077,6 +2086,8 @@ impl LMDBDatabase {
 
     // Break function up into smaller pieces
     #[allow(clippy::too_many_lines)]
+    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn insert_tip_block_body(
         &self,
         txn: &WriteTransaction<'_>,
@@ -2085,7 +2096,10 @@ impl LMDBDatabase {
     ) -> Result<(), ChainStorageError> {
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
-        if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
+        if self
+            .fetch_block_accumulated_data(txn, header.height.saturating_add(1))?
+            .is_some()
+        {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to insert block at height {} while next block already exists",
                 header.height
@@ -2116,6 +2130,7 @@ impl LMDBDatabase {
                 block_hash.to_hex()
             )));
         }
+        let prev_height = header.height.saturating_sub(1);
         // We make this 1 to circumvent networks thats dont have genesis funds, as they will only have a jmt root from
         // height 1
         if header.height > 1 {
@@ -2127,10 +2142,10 @@ impl LMDBDatabase {
             let root = output_smt
                 .get_root_hash(current_jmt_version)
                 .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-            let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &(header.height - 1)).or_not_found(
+            let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &prev_height).or_not_found(
                 "BlockHeader",
                 "height",
-                (header.height - 1).to_string(),
+                prev_height.to_string(),
             )?;
             if prev_header.output_mr.as_slice() != root.0.as_slice() {
                 return Err(ChainStorageError::InvalidOperation(format!(
@@ -2148,11 +2163,11 @@ impl LMDBDatabase {
         let data = if header.height == 0 {
             BlockAccumulatedData::default()
         } else {
-            self.fetch_block_accumulated_data(txn, header.height - 1)?
+            self.fetch_block_accumulated_data(txn, prev_height)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "BlockAccumulatedData",
                     field: "height",
-                    value: (header.height - 1).to_string(),
+                    value: prev_height.to_string(),
                 })?
         };
 
@@ -2176,7 +2191,7 @@ impl LMDBDatabase {
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
 
-        let mut batch = Vec::with_capacity(outputs.len() + inputs.len());
+        let mut batch = Vec::with_capacity(outputs.len().saturating_add(inputs.len()));
         for output in outputs {
             trace!(
                 target: LOG_TARGET,
@@ -2239,7 +2254,7 @@ impl LMDBDatabase {
         }
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
         let (root, ops) = output_smt
@@ -2341,7 +2356,9 @@ impl LMDBDatabase {
                 let store = self.validator_node_store(txn);
                 let evict_node = proof.node_to_evict();
                 let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+                let next_epoch = constants
+                    .block_height_to_epoch(header.height)
+                    .saturating_add(VnEpoch(1));
                 let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
                 info!(
                     target: LOG_TARGET,
@@ -2363,7 +2380,9 @@ impl LMDBDatabase {
                     sidechain_pk.map(|pk| pk.to_hex()),
                 );
                 let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+                let next_epoch = constants
+                    .block_height_to_epoch(header.height)
+                    .saturating_add(VnEpoch(1));
                 let exit_epoch = store.get_next_exit_epoch(
                     sidechain_pk,
                     next_epoch,
@@ -2731,7 +2750,7 @@ impl LMDBDatabase {
 
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(write_txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
         let (_root, ops) = output_smt
@@ -3145,7 +3164,11 @@ impl BlockchainBackend for LMDBDatabase {
 
         let mark = Instant::now();
         // Resize this many times before assuming something is not right (up to 1 GB)
-        let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
+        let max_resizes = 1024usize
+            .saturating_mul(BYTES_PER_MB)
+            .checked_div(self.env_config.grow_size_bytes())
+            .unwrap_or(1)
+            .max(1);
         for i in 0..max_resizes {
             let num_operations = txn.operations().len();
             match self.apply_db_transaction(&txn) {
@@ -3163,7 +3186,7 @@ impl BlockchainBackend for LMDBDatabase {
                     info!(
                         target: LOG_TARGET,
                         "Database resize required (resized {} time(s) in this transaction)",
-                        i + 1
+                        i.saturating_add(1)
                     );
                     // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe too
                     // however we happen to know that `LmdbDatabase` is wrapped in an exclusive write lock in
@@ -3179,7 +3202,7 @@ impl BlockchainBackend for LMDBDatabase {
                             info!(
                                 target: LOG_TARGET,
                                 "Database resize required (resized {} time(s) in this transaction)",
-                                i + 1
+                                i.saturating_add(1)
                             );
                             // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe
                             // too however we happen to know that `LmdbDatabase` is wrapped
@@ -3344,7 +3367,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
         // is an index starting from 0
-        let mmr_position = mmr_position + 1;
+        let mmr_position = mmr_position.saturating_add(1);
 
         let height = lmdb_first_after::<_, u64>(&txn, &self.kernel_mmr_size_index, &mmr_position.to_be_bytes())?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -4179,13 +4202,13 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(0);
         }
 
-        let start = metadata.best_block_height() + 1;
+        let start = metadata.best_block_height().saturating_add(1);
         let end = last_header.height;
 
-        let mut num_deleted = 0;
+        let mut num_deleted = 0usize;
         for h in (start..=end).rev() {
             self.delete_header(&txn, h)?;
-            num_deleted += 1;
+            num_deleted = num_deleted.saturating_add(1);
         }
         txn.commit()?;
         Ok(num_deleted)
@@ -5383,7 +5406,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 
         // Let's update the migration version
         {
-            let migrated_to_version = migrate_from_version + 1;
+            let migrated_to_version = migrate_from_version.saturating_add(1);
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {migrate_from_version} to version {migrated_to_version}"
@@ -5703,7 +5726,13 @@ fn flush_migration_node_batch_chunked(
     chunk_size: usize,
     total_entries: u64,
 ) -> Result<(), ChainStorageError> {
-    let max_resizes = max(8, 1024 * BYTES_PER_MB / db.env_config.grow_size_bytes());
+    let max_resizes = max(
+        8,
+        1024usize
+            .saturating_mul(BYTES_PER_MB)
+            .checked_div(db.env_config.grow_size_bytes())
+            .unwrap_or(1),
+    );
     let mut resize_attempts = 0usize;
 
     let total_nodes = node_batch.nodes().len();
@@ -5737,7 +5766,7 @@ fn flush_migration_node_batch_chunked(
             |txn, key, node| lmdb_replace(txn, &db.jmt_node_data, key, *node, None),
         )?;
 
-        written_nodes += chunk.len();
+        written_nodes = written_nodes.saturating_add(chunk.len());
         info!(
             target: LOG_TARGET,
             "[MIGRATIONS] v6: Wrote {written_nodes}/{total_nodes} JMT nodes"
@@ -5773,7 +5802,7 @@ fn flush_migration_node_batch_chunked(
             },
         )?;
 
-        written_values += chunk.len();
+        written_values = written_values.saturating_add(chunk.len());
         let progress = (written_values as u64).min(total_entries);
         db.update_stats_progress(progress);
         info!(
@@ -5821,7 +5850,7 @@ where
             None => match write_txn.commit() {
                 Ok(()) => return Ok(()),
                 Err(lmdb_zero::Error::Code(code)) if code == lmdb_zero::error::MAP_FULL => {
-                    *resize_attempts += 1;
+                    *resize_attempts = resize_attempts.saturating_add(1);
                     if *resize_attempts >= max_resizes {
                         return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
                     }
@@ -5842,7 +5871,7 @@ where
             },
             Some(ChainStorageError::DbResizeRequired(size_hint)) => {
                 drop(write_txn);
-                *resize_attempts += 1;
+                *resize_attempts = resize_attempts.saturating_add(1);
                 if *resize_attempts >= max_resizes {
                     return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
                 }

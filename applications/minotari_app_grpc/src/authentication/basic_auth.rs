@@ -215,6 +215,8 @@ pub enum BasicAuthError {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use std::time::Instant;
 
     use super::*;

@@ -176,8 +176,8 @@ impl CircuitBreaker {
         // Check if we should reject the request
         if self.should_reject_request().await {
             let mut metrics = self.metrics.write().unwrap();
-            metrics.rejected_requests += 1;
-            metrics.total_requests += 1;
+            metrics.rejected_requests = metrics.rejected_requests.saturating_add(1);
+            metrics.total_requests = metrics.total_requests.saturating_add(1);
 
             return Err(McpError::service_unavailable(format!(
                 "Circuit breaker is OPEN for service: {} (failure rate: {:.1}%)",
@@ -242,8 +242,8 @@ impl CircuitBreaker {
     /// Record a successful request
     async fn record_success(&self) {
         let mut metrics = self.metrics.write().unwrap();
-        metrics.total_requests += 1;
-        metrics.successful_requests += 1;
+        metrics.total_requests = metrics.total_requests.saturating_add(1);
+        metrics.successful_requests = metrics.successful_requests.saturating_add(1);
 
         match metrics.state {
             CircuitBreakerState::Closed => {
@@ -251,7 +251,7 @@ impl CircuitBreaker {
                 metrics.failure_count = 0;
             },
             CircuitBreakerState::HalfOpen => {
-                metrics.success_count += 1;
+                metrics.success_count = metrics.success_count.saturating_add(1);
                 if metrics.success_count >= self.config.success_threshold {
                     log::info!(
                         "Circuit breaker transitioning to CLOSED for service: {}",
@@ -276,8 +276,8 @@ impl CircuitBreaker {
     /// Record a failed request
     async fn record_failure(&self) {
         let mut metrics = self.metrics.write().unwrap();
-        metrics.total_requests += 1;
-        metrics.failure_count += 1;
+        metrics.total_requests = metrics.total_requests.saturating_add(1);
+        metrics.failure_count = metrics.failure_count.saturating_add(1);
         metrics.last_failure_time = Some(Instant::now());
 
         match metrics.state {
@@ -377,7 +377,7 @@ impl ManagedConnection {
         }
         {
             let mut use_count = self.use_count.write().unwrap();
-            *use_count += 1;
+            *use_count = use_count.saturating_add(1);
         }
     }
 

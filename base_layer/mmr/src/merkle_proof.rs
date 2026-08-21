@@ -136,7 +136,7 @@ impl MerkleProof {
         // Get the peaks of the merkle trees, which are bagged together to form the root
         // For the proof, we must leave out the local root for the candidate node
         let peaks = find_peaks(mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
-        let mut peak_hashes = Vec::with_capacity(peaks.len() - 1);
+        let mut peak_hashes = Vec::with_capacity(peaks.len().saturating_sub(1));
         for peak_index in peaks {
             if peak_index != peak_pos {
                 let hash = mmr
@@ -187,7 +187,7 @@ impl MerkleProof {
     fn check_root<D: Digest>(&self, hash: &HashSlice, pos: usize, peaks: &[usize]) -> Result<Hash, MerkleProofError> {
         // The peak hash list provided in the proof does not include the local peak determined from the candidate
         // node, so len(peak) must be len(self.peaks) + 1.
-        if peaks.len() != self.peaks.len() + 1 {
+        if peaks.len() != self.peaks.len().saturating_add(1) {
             return Err(MerkleProofError::IncorrectPeakMap);
         }
         let hasher = D::new();

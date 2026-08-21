@@ -13,7 +13,7 @@ pub fn u16_to_string(number: u16) -> String {
 
     if number == 0 {
         *buffer.get_mut(pos).expect("There should be an index at 0") = b'0';
-        pos += 1;
+        pos = pos.saturating_add(1);
     } else {
         let mut num = number;
 
@@ -21,16 +21,16 @@ pub fn u16_to_string(number: u16) -> String {
         let mut num_digits = 0;
 
         while num > 0 {
-            *digits.get_mut(num_digits).expect("There should be an index") = b'0' + (num % 10) as u8;
+            *digits.get_mut(num_digits).expect("There should be an index") = b'0'.saturating_add((num % 10) as u8);
             num /= 10;
-            num_digits += 1;
+            num_digits = num_digits.saturating_add(1);
         }
 
         while num_digits > 0 {
-            num_digits -= 1;
+            num_digits = num_digits.saturating_sub(1);
             *buffer.get_mut(pos).expect("There should be an index") =
                 *digits.get(num_digits).expect("There should be an index");
-            pos += 1;
+            pos = pos.saturating_add(1);
         }
     }
 
@@ -78,7 +78,7 @@ pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Resu
 
     // Payment ID data is between spend key and checksum
     let payment_id_start = 66;
-    let payment_id_end = address_bytes.len() - 1; // Exclude checksum
+    let payment_id_end = address_bytes.len().saturating_sub(1); // Exclude checksum
     Ok(address_bytes
         .get(payment_id_start..payment_id_end)
         .expect("Length is checked")
@@ -104,7 +104,7 @@ fn validate_checksum(data: &[u8]) -> Result<&[u8], String> {
 
     // It's sufficient to check the entire slice against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(data.get(..data.len() - 1).expect("Length is checked")),
+        0u8 => Ok(data.get(..data.len().saturating_sub(1)).expect("Length is checked")),
         _ => Err("ChecksumError::InvalidChecksum".to_string()),
     }
 }
@@ -145,6 +145,8 @@ fn mask() -> u8 {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
     use alloc::vec;
 

@@ -1829,7 +1829,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             target: LOG_TARGET,
                             "GetCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
-                            i + 1,
+                            i.saturating_add(1),
                             transactions.len()
                         );
                     },
@@ -1968,8 +1968,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
 
             // Update for next iteration
-            current_offset += current_limit;
-            remaining -= current_limit;
+            current_offset = current_offset.saturating_add(current_limit);
+            remaining = remaining.saturating_sub(current_limit);
         }
 
         debug!(
@@ -2139,7 +2139,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     // Stream the transaction
                     match sender.send(Ok(response)).await {
                         Ok(_) => {
-                            total_sent += 1;
+                            total_sent = total_sent.saturating_add(1);
                             trace!(
                                 target: LOG_TARGET,
                                 "GetAllCompletedTransactionsStreaming: Sent transaction TxId: {} ({} of {})",
@@ -2159,7 +2159,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
 
                 // Update for next iteration
-                current_offset += current_limit;
+                current_offset = current_offset.saturating_add(current_limit);
                 remaining = remaining.saturating_sub(current_limit);
 
                 trace!(
@@ -4143,7 +4143,12 @@ fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -
     while latencies.len() > AVG_LATENCIES_CAPACITY {
         latencies.pop_back();
     }
-    latencies.iter().sum::<u64>() / max(latencies.len() as u64, 1)
+    latencies
+        .iter()
+        .copied()
+        .fold(0u64, u64::saturating_add)
+        .checked_div(max(latencies.len() as u64, 1))
+        .unwrap_or(0)
 }
 
 async fn handle_completed_tx(
@@ -4479,7 +4484,10 @@ fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<ta
     let all_artefacts = input_artefacts.into_iter().chain(output_artefacts).collect::<Vec<_>>();
 
     let mut output_commitments_info = Vec::with_capacity(
-        txn.sent_output_hashes.len() + txn.received_output_hashes.len() + txn.change_output_hashes.len(),
+        txn.sent_output_hashes
+            .len()
+            .saturating_add(txn.received_output_hashes.len())
+            .saturating_add(txn.change_output_hashes.len()),
     );
     for hash in &txn.sent_output_hashes {
         output_commitments_info.push(tari_rpc::CommitmentInfo {

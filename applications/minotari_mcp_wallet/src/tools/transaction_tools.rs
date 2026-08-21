@@ -338,7 +338,7 @@ impl McpTool for GetCompletedTransactionsTool {
                         },
                     },
                 }));
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 
@@ -868,7 +868,7 @@ impl McpTool for TransactionAnalysisTool {
             if let Some(transaction) = tx_response.transaction {
                 if transaction.timestamp >= cutoff_timestamp {
                     transactions.push(transaction);
-                    count += 1;
+                    count = count.saturating_add(1);
                 }
             }
         }

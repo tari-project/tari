@@ -130,7 +130,7 @@ impl DhtConnectivity {
         metrics_collector: MetricsCollectorHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
-        let pool_size = config.num_neighbouring_nodes + config.num_random_nodes;
+        let pool_size = config.num_neighbouring_nodes.saturating_add(config.num_random_nodes);
         Self {
             random_pool: Vec::with_capacity(pool_size),
             pending_dials: HashMap::with_capacity(pool_size),
@@ -261,7 +261,10 @@ impl DhtConnectivity {
     }
 
     fn log_status(&self) {
-        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         let (pool_connected, pool_pending) = self
             .random_pool
             .iter()
@@ -367,15 +370,20 @@ impl DhtConnectivity {
     }
 
     async fn refresh_entire_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         // we have no peers, so we need to get peers, so lets double our chances of dialing twice the number we want, we
         // can close them later on And we only select known healty ones
         debug!(
             target: LOG_TARGET,
             "We have no connections asking for {} nodes",
-            pool_size * 2,
+            pool_size.saturating_mul(2),
         );
-        let new_peers = self.fetch_random_peers(pool_size * 2, &Vec::new(), true).await?;
+        let new_peers = self
+            .fetch_random_peers(pool_size.saturating_mul(2), &Vec::new(), true)
+            .await?;
         debug!(
             target: LOG_TARGET,
             "Refreshing peer pool (#new = {})",
@@ -409,7 +417,10 @@ impl DhtConnectivity {
     }
 
     async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         // Topping the pool back up is cheap (it dials only what is actually missing) and must happen
         // on every tick, otherwise a pool that loses peers stays short until the next refresh
         // interval — hours away. Only the churn is bound to `random_pool_refresh_interval`, and
@@ -423,7 +434,10 @@ impl DhtConnectivity {
 
     #[allow(clippy::too_many_lines)]
     async fn refresh_random_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
 
         // Churn deliberately drops healthy peers to explore new ones, so it may only run once per
         // refresh cycle. This function also runs on every `ConnectivityStateOnline` event (every few
@@ -474,7 +488,7 @@ impl DhtConnectivity {
 
         // We add at most `churn_rate`% new peers per refresh (or at least 1), and only start
         // churning healthy peers once the pool has more connected peers than the churn floor.
-        let max_churn = cmp::max(pool_size * self.config.connectivity.churn_rate / 100, 1);
+        let max_churn = cmp::max(pool_size.saturating_mul(self.config.connectivity.churn_rate) / 100, 1);
         let keep_size = pool_size.saturating_sub(max_churn);
         // The pool is only healthy enough to churn/explore once we hold more than the churn floor
         // of connected peers. Below that we are short on peers.
@@ -547,7 +561,7 @@ impl DhtConnectivity {
             // recover to a healthy state or discover new peers.
             let mut peers = self.fetch_random_peers(needed, &exclude, true).await?;
             if peers.len() < needed {
-                let remaining = needed - peers.len();
+                let remaining = needed.saturating_sub(peers.len());
                 debug!(
                     target: LOG_TARGET,
                     "Only {} known-good peer(s) available, falling back to {remaining} any-status peer(s)",
@@ -658,7 +672,10 @@ impl DhtConnectivity {
             return Ok(());
         }
 
-        let pool_size = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
@@ -740,7 +757,10 @@ impl DhtConnectivity {
         peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id) && !strongly_held.contains(&p.node_id));
 
         // Remove all above threshold connections
-        let threshold = self.config.num_neighbouring_nodes + self.config.num_random_nodes;
+        let threshold = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         for peer in peers_by_distance.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,

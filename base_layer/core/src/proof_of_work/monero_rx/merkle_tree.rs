@@ -94,7 +94,7 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
             let mut buf = vec![Hash::null(); cnt];
 
             // c is the number of elements between the number of hashes and the next power of 2.
-            let c = 2 * cnt - hashes.len();
+            let c = cnt.saturating_mul(2).saturating_sub(hashes.len());
 
             buf.get_mut(..c)
                 .expect("Cannot fail")
@@ -105,9 +105,9 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
             for b in buf.get_mut(c..cnt).expect("Cannot fail") {
                 *b = cn_fast_hash2(
                     hashes.get(i).expect("Cannot fail"),
-                    hashes.get(i + 1).expect("Cannot fail"),
+                    hashes.get(i.saturating_add(1)).expect("Cannot fail"),
                 );
-                i += 2;
+                i = i.saturating_add(2);
             }
 
             if i != hashes.len() {
@@ -120,9 +120,11 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
                 cnt >>= 1;
                 let mut i = 0;
                 for j in 0..cnt {
-                    *buf.get_mut(j).expect("Cannot fail") =
-                        cn_fast_hash2(buf.get(i).expect("Cannot fail"), buf.get(i + 1).expect("Cannot fail"));
-                    i += 2;
+                    *buf.get_mut(j).expect("Cannot fail") = cn_fast_hash2(
+                        buf.get(i).expect("Cannot fail"),
+                        buf.get(i.saturating_add(1)).expect("Cannot fail"),
+                    );
+                    i = i.saturating_add(2);
                 }
             }
 
@@ -220,7 +222,7 @@ impl MerkleProof {
         let mut root = *hash;
         let depth = self.branch.len();
         for d in 0..depth {
-            if (self.path_bitmap >> (depth - d - 1)) & 1 > 0 {
+            if (self.path_bitmap >> depth.saturating_sub(d).saturating_sub(1)) & 1 > 0 {
                 root = cn_fast_hash2(self.branch.get(d).expect("Should exist"), &root);
             } else {
                 root = cn_fast_hash2(&root, self.branch.get(d).expect("Should exist"));
@@ -235,15 +237,15 @@ impl MerkleProof {
             return 0;
         }
 
-        let mut depth = 0;
+        let mut depth = 0usize;
         let mut k = 1;
 
         while k < aux_chain_count {
-            depth += 1;
+            depth = depth.saturating_add(1);
             k <<= 1;
         }
 
-        k -= aux_chain_count;
+        k = k.saturating_sub(aux_chain_count);
 
         let mut pos = 0;
         let mut path = self.path_bitmap;
@@ -257,7 +259,7 @@ impl MerkleProof {
             return pos;
         }
 
-        (((pos - k) << 1) | (path & 1)) + k
+        ((pos.saturating_sub(k) << 1) | (path & 1)).saturating_add(k)
     }
 }
 
@@ -295,7 +297,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 
             let mut ints = vec![Hash::null(); count];
 
-            let c = 2 * count - len;
+            let c = count.saturating_mul(2).saturating_sub(len);
             ints.get_mut(..c)
                 .expect("Already checked")
                 .copy_from_slice(hashes.get(..c).expect("Already checked"));
@@ -305,36 +307,38 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
             let mut i = c;
             for (j, val) in ints.iter_mut().enumerate().take(count).skip(c) {
                 // Left or right
-                if idx == i || idx == i + 1 {
-                    let ii = if idx == i { i + 1 } else { i };
+                let next = i.saturating_add(1);
+                if idx == i || idx == next {
+                    let ii = if idx == i { next } else { i };
                     branch.push(*hashes.get(ii).expect("Already checked"));
                     path = (path << 1) | u32::from(idx != i);
                     idx = j;
                 }
                 *val = cn_fast_hash2(
                     hashes.get(i).expect("Already checked"),
-                    hashes.get(i + 1).expect("Already checked"),
+                    hashes.get(next).expect("Already checked"),
                 );
-                i += 2;
+                i = i.saturating_add(2);
             }
 
             debug_assert_eq!(i, len);
 
             while count > 2 {
                 count >>= 1;
-                let mut i = 0;
+                let mut i = 0usize;
                 for j in 0..count {
-                    if idx == i || idx == i + 1 {
-                        let ii = if idx == i { i + 1 } else { i };
+                    let next = i.saturating_add(1);
+                    if idx == i || idx == next {
+                        let ii = if idx == i { next } else { i };
                         branch.push(*ints.get(ii).expect("Already checked"));
                         path = (path << 1) | u32::from(idx != i);
                         idx = j;
                     }
                     *ints.get_mut(j).expect("Already checked") = cn_fast_hash2(
                         ints.get(i).expect("Already checked"),
-                        ints.get(i + 1).expect("Already checked"),
+                        ints.get(next).expect("Already checked"),
                     );
-                    i += 2;
+                    i = i.saturating_add(2);
                 }
             }
 

@@ -101,7 +101,7 @@ impl<'t> Table<'t, '_> {
         let rows_len = self.rows.len();
         for (i, row) in self.rows.iter().enumerate() {
             self.render_row(row, out)?;
-            if i < rows_len - 1 {
+            if i < rows_len.saturating_sub(1) {
                 out.write_all(b"\n")?;
             }
         }
@@ -114,11 +114,11 @@ impl<'t> Table<'t, '_> {
             let s = string.to_string();
             let width = self.col_width(i);
             let pad_left = if i == 0 { "" } else { " " };
-            let pad_right = " ".repeat(width - s.len() + 1);
+            let pad_right = " ".repeat(width.saturating_sub(s.len()).saturating_add(1));
             out.write_all(pad_left.as_bytes())?;
             out.write_all(s.as_bytes())?;
             out.write_all(pad_right.as_bytes())?;
-            if i < row_len - 1 {
+            if i < row_len.saturating_sub(1) {
                 out.write_all(self.delim_str.as_bytes())?;
             }
         }
@@ -134,7 +134,7 @@ impl<'t> Table<'t, '_> {
                 let sep = "-".repeat(width);
                 out.write_all(sep.as_bytes())?;
                 out.write_all(" ".as_bytes())?;
-                if i < rows_len - 1 {
+                if i < rows_len.saturating_sub(1) {
                     out.write_all(self.delim_str.as_bytes())?;
                 }
             }

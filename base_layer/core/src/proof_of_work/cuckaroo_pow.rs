@@ -95,9 +95,9 @@ pub fn cuckaroo_result(
     let pow = header.pow.to_bytes();
     let required_cycle_length = NonZeroUsize::try_from(required_cycle_length as usize)
         .map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
-    let packed_size = required_cycle_length.get() * edge_bits as usize;
+    let packed_size = required_cycle_length.get().saturating_mul(edge_bits as usize);
     let packed_bytes = packed_size.div_ceil(8);
-    if pow.is_empty() || pow.len() < 1 + packed_bytes {
+    if pow.is_empty() || pow.len() < packed_bytes.saturating_add(1) {
         return Err(CuckarooVerificationError::PowDataTooShort);
     }
     // First byte must be 3 for Cuckaroo
@@ -121,7 +121,7 @@ fn cuckaroo_result_inner(
     required_cycle_length: NonZeroUsize,
     edge_bits: u8,
 ) -> Result<Vec<u8>, CuckarooVerificationError> {
-    let packed_size = required_cycle_length.get() * edge_bits as usize;
+    let packed_size = required_cycle_length.get().saturating_mul(edge_bits as usize);
     let packed_bytes = packed_size.div_ceil(8);
 
     let blob = determine_sip_hash(header_before_nonce, nonce);
@@ -186,6 +186,8 @@ fn cuckaroo_result_inner(
 
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
+// Test-only helper: an overflow panic here is the desired failure mode.
+#[allow(clippy::arithmetic_side_effects)]
 fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
     let mut target = vec![0u8; (uncompressed.len() * bit_width as usize).div_ceil(8)];
     let mut compressed = target.as_mut_slice();
@@ -214,21 +216,21 @@ fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
 
 fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Vec<u64>, CuckarooVerificationError> {
     let mut nonces = Vec::with_capacity(expected_length);
-    let node_mask = (1u64 << edge_bits) - 1;
+    let node_mask = (1u64 << edge_bits).saturating_sub(1);
     let mut mini_buffer = 0u64;
-    let mut remaining = 64;
+    let mut remaining = 64u8;
     let bytes = pow.iter().copied();
     for byte in bytes {
-        mini_buffer |= u64::from(byte) << (64 - remaining);
-        remaining -= 8;
-        while remaining <= 64 - edge_bits {
+        mini_buffer |= u64::from(byte) << 64u8.saturating_sub(remaining);
+        remaining = remaining.saturating_sub(8);
+        while remaining <= 64u8.saturating_sub(edge_bits) {
             let nonce = mini_buffer & node_mask;
             if nonce > node_mask {
                 return Err(CuckarooVerificationError::NonceTooLarge);
             }
             nonces.push(nonce);
             mini_buffer >>= edge_bits;
-            remaining += edge_bits;
+            remaining = remaining.saturating_add(edge_bits);
         }
     }
 
@@ -257,13 +259,15 @@ fn generate_edges(
     cycle_length: NonZeroUsize,
     nonces: &[u64],
 ) -> Result<Vec<(u64, u64)>, CuckarooVerificationError> {
-    let node_mask = (1u64 << edge_bits) - 1;
+    let node_mask = (1u64 << edge_bits).saturating_sub(1);
     let mut uvs = Vec::with_capacity(cycle_length.get());
     for i in 0..cycle_length.get() {
         if *nonces.get(i).expect("Already checked") > node_mask {
             return Err(CuckarooVerificationError::NonceTooLarge);
         }
-        if i > 0 && *nonces.get(i).expect("Already checked") <= *nonces.get(i - 1).expect("Already checked") {
+        if i > 0 &&
+            *nonces.get(i).expect("Already checked") <= *nonces.get(i.saturating_sub(1)).expect("Already checked")
+        {
             return Err(CuckarooVerificationError::NoncesNotAscending);
         }
 

@@ -54,7 +54,7 @@ pub fn check_proof_elements(
                 }
 
                 if proven_3_chain < 3 {
-                    proven_3_chain += 1;
+                    proven_3_chain = proven_3_chain.saturating_add(1);
                     debug!(target: LOG_TARGET, "3-chain rule: {proven_3_chain} of 3 proven");
                 }
 

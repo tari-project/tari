@@ -65,14 +65,18 @@ where D: Digest
             };
         }
         // The size of the tree of `n` leaves is `2*n - 1` where the leaves are at the end of the array.
-        let mut hashes = Vec::with_capacity(2 * leaves_cnt - 1);
-        hashes.extend(vec![vec![0; 32]; leaves_cnt - 1]);
+        let mut hashes = Vec::with_capacity(leaves_cnt.saturating_mul(2).saturating_sub(1));
+        hashes.extend(vec![vec![0; 32]; leaves_cnt.saturating_sub(1)]);
         hashes.extend(leaves);
         // Now we compute the hashes from bottom to up of the tree.
-        for i in (0..leaves_cnt - 1).rev() {
+        for i in (0..leaves_cnt.saturating_sub(1)).rev() {
             *hashes.get_mut(i).expect("Should exist") = hash_together::<D>(
-                hashes.get(2 * i + 1).expect("Index should exist"),
-                hashes.get(2 * i + 2).expect("Index should exist"),
+                hashes
+                    .get(i.saturating_mul(2).saturating_add(1))
+                    .expect("Index should exist"),
+                hashes
+                    .get(i.saturating_mul(2).saturating_add(2))
+                    .expect("Index should exist"),
             );
         }
         Self {
@@ -95,7 +99,7 @@ where D: Digest
         if self.hashes.is_empty() {
             return 0;
         }
-        ((self.hashes.len() - 1) >> 1) + 1
+        ((self.hashes.len().saturating_sub(1)) >> 1).saturating_add(1)
     }
 
     /// Returns the number of nodes in the tree.
@@ -112,7 +116,7 @@ where D: Digest
     }
 
     pub(crate) fn get_node_index(&self, leaf_index: usize) -> usize {
-        leaf_index + (self.hashes.len() >> 1)
+        leaf_index.saturating_add(self.hashes.len() >> 1)
     }
 
     pub fn find_leaf_index_for_hash(&self, hash: &Hash) -> Result<u32, BalancedBinaryMerkleTreeError> {
@@ -125,7 +129,7 @@ where D: Digest
             // The hash provided was not for leaf, but for node.
             Err(BalancedBinaryMerkleTreeError::LeafNotFound)
         } else {
-            Ok(cast_to_u32(pos - (self.hashes.len() >> 1))?)
+            Ok(cast_to_u32(pos.saturating_sub(self.hashes.len() >> 1))?)
         }
     }
 }

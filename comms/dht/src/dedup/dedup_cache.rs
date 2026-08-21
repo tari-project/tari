@@ -93,7 +93,7 @@ impl DedupCacheDatabase {
             .first::<i64>(&mut conn)?;
         // Hysteresis added to minimize database impact
         if msg_count > capacity {
-            let remove_count = msg_count - capacity;
+            let remove_count = msg_count.saturating_sub(capacity);
             num_removed = diesel::sql_query(
                 "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT $1)",
             )
@@ -129,6 +129,8 @@ impl DedupCacheDatabase {
                     diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
                         .set((
                             dedup_cache::sender_public_key.eq(&public_key),
+                            // Diesel column expression: builds SQL, not integer arithmetic
+                            #[allow(clippy::arithmetic_side_effects)]
                             dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
                             dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
                         ))

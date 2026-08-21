@@ -156,7 +156,7 @@ impl OutboundMessaging {
                         target: LOG_TARGET,
                         "Error establishing messaging protocol: {}. Retrying...", err
                     );
-                    attempts += 1;
+                    attempts = attempts.saturating_add(1);
                 },
             }
         };
@@ -314,13 +314,13 @@ impl OutboundMessaging {
         // The stream ended, perhaps due to a disconnect, but there could be more messages left on the queue. Collect
         // any messages and queue them up for retry. If we cannot reconnect to the peer, the queued messages will be
         // dropped.
-        let mut retried_messages_count = 0;
+        let mut retried_messages_count = 0usize;
         while let Some(msg) = messages_rx.recv().await {
             if self.retry_queue_tx.send(msg).is_err() {
                 // The messaging protocol has shut down, so let's exit too
                 break;
             }
-            retried_messages_count += 1;
+            retried_messages_count = retried_messages_count.saturating_add(1);
         }
 
         if retried_messages_count > 0 {

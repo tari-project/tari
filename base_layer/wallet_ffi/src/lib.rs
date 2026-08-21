@@ -1224,7 +1224,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
             *error_out = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
             return 0;
         }
-        let len = byte_vector_get_length(ptr, error_out) as c_int - 1; // clamp to length
+        let len = (byte_vector_get_length(ptr, error_out) as c_int).saturating_sub(1); // clamp to length
         if len < 0 || position > len as c_uint {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return 0;
@@ -2615,7 +2615,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
             *error_out = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
             return ptr::null_mut();
         }
-        let len = unblinded_outputs_get_length(outputs, error_out) as c_int - 1;
+        let len = (unblinded_outputs_get_length(outputs, error_out) as c_int).saturating_sub(1);
         if len < 0 || position > len as c_uint {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
@@ -3729,7 +3729,7 @@ pub unsafe extern "C" fn seed_words_get_at(
         } else {
             let mut word = CString::new("").expect("Blank CString will not fail.");
             let len = (*seed_words).0.len(); // clamp to length
-            if (*seed_words).0.is_empty() || position > (len - 1) as u32 {
+            if (*seed_words).0.is_empty() || position > len.saturating_sub(1) as u32 {
                 *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             } else if let Ok(v) = CString::new(
                 (*seed_words)
@@ -3973,7 +3973,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
             *error_out = LibWalletError::from(InterfaceError::NullError("transactions".to_string())).code;
             return ptr::null_mut();
         }
-        let len = completed_transactions_get_length(transactions, error_out) as c_int - 1;
+        let len = (completed_transactions_get_length(transactions, error_out) as c_int).saturating_sub(1);
         if len < 0 || position > len as c_uint {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
@@ -4073,7 +4073,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
             *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
             return ptr::null_mut();
         }
-        let len = pending_outbound_transactions_get_length(transactions, error_out) as c_int - 1;
+        let len = (pending_outbound_transactions_get_length(transactions, error_out) as c_int).saturating_sub(1);
         if len < 0 || position > len as c_uint {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
@@ -4172,7 +4172,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
             *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
             return ptr::null_mut();
         }
-        let len = pending_inbound_transactions_get_length(transactions, error_out) as c_int - 1;
+        let len = (pending_inbound_transactions_get_length(transactions, error_out) as c_int).saturating_sub(1);
         if len < 0 || position > len as c_uint {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
@@ -5852,12 +5852,12 @@ unsafe fn init_logging(
                 pattern = format!("{}{}", path.clone(), "{}");
             } else {
                 pattern = split_str[0].to_string();
-                for part in split_str.iter().take(split_str.len() - 1).skip(1) {
+                for part in split_str.iter().take(split_str.len().saturating_sub(1)).skip(1) {
                     pattern = format!("{pattern}.{part}");
                 }
 
                 pattern = format!("{}{}", pattern, ".{}.");
-                pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
+                pattern = format!("{}{}", pattern, split_str[split_str.len().saturating_sub(1)]);
             }
             let roller = FixedWindowRoller::builder()
                 .build(pattern.as_str(), num_rolling_log_files)
@@ -9210,7 +9210,7 @@ pub unsafe extern "C" fn emoji_set_get_at(
             *error_out = LibWalletError::from(InterfaceError::NullError("emoji_set".to_string())).code;
             return ptr::null_mut();
         }
-        let last_index = emoji_set_get_length(emoji_set, error_out) - 1;
+        let last_index = emoji_set_get_length(emoji_set, error_out).saturating_sub(1);
         if position > last_index {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
@@ -9415,7 +9415,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
         if *error_out != 0 {
             return ptr::null_mut();
         }
-        if len == 0 || position > len - 1 {
+        if len == 0 || position > len.saturating_sub(1) {
             *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             return ptr::null_mut();
         }

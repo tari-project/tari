@@ -34,7 +34,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     consensus::network::NetworkConsensus,
-    tari_amount::{MicroMinotari, uT},
+    tari_amount::MicroMinotari,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         OutputFeaturesVersion,
@@ -419,7 +419,12 @@ impl ConsensusConstants {
 
     /// Returns the current epoch from the given height
     pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
-        VnEpoch(height / self.vn_epoch_length)
+        // Every network's consensus constants define a non-zero epoch length.
+        VnEpoch(
+            height
+                .checked_div(self.vn_epoch_length)
+                .expect("vn_epoch_length must be non-zero"),
+        )
     }
 
     /// Returns the block height of the start of the given epoch
@@ -493,7 +498,7 @@ impl ConsensusConstants {
             max_block_transaction_weight: ConsensusConstants::MAINNET_MAX_WEIGHT_V1,
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
-            emission_initial: 18_462_816_327 * uT,
+            emission_initial: MicroMinotari::from(18_462_816_327u64),
             emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 1000,
             tail_epoch_length: 100,
@@ -528,17 +533,23 @@ impl ConsensusConstants {
     pub fn igor() -> Vec<Self> {
         // `igor` is a test network, so calculating these constants are allowed rather than being hardcoded.
         let randomx_split: u64 = 50;
-        let sha3x_split: u64 = 100 - randomx_split;
-        let randomx_target_time = 20;
-        let sha3x_target_time = randomx_target_time * (100 - sha3x_split) / sha3x_split;
-        let target_time: u64 = (randomx_target_time * sha3x_target_time) / (randomx_target_time + sha3x_target_time);
-        let difficulty_block_window = 90;
-        let future_time_limit = target_time * difficulty_block_window / 20;
+        let sha3x_split: u64 = 100u64.saturating_sub(randomx_split);
+        let randomx_target_time: u64 = 20;
+        let sha3x_target_time = randomx_target_time
+            .saturating_mul(100u64.saturating_sub(sha3x_split))
+            .checked_div(sha3x_split)
+            .expect("sha3x_split is non-zero");
+        let target_time: u64 = randomx_target_time
+            .saturating_mul(sha3x_target_time)
+            .checked_div(randomx_target_time.saturating_add(sha3x_target_time))
+            .expect("target times are non-zero");
+        let difficulty_block_window: u64 = 90;
+        let future_time_limit = target_time.saturating_mul(difficulty_block_window) / 20;
 
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             // (target_time x 200_000/3) ... for easy testing
-            min_difficulty: Difficulty::from_u64(sha3x_target_time * 67_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(sha3x_target_time.saturating_mul(67_000)).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: sha3x_target_time,
         });
@@ -562,7 +573,7 @@ impl ConsensusConstants {
             max_block_transaction_weight: 127_795,
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
+            emission_initial: MicroMinotari::from(5_538_846_115u64),
             emission_decay: EMISSION_DECAY.to_vec(),
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,

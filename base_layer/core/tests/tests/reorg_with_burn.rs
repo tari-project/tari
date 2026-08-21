@@ -7,6 +7,8 @@
 // re-applies the original chain. Both assert the SMT round-trips without the
 // "Deleting block, new smt root did not match expected smt root" error.
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::sync::{Arc, Mutex};
 
 use tari_common::configuration::Network;

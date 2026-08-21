@@ -70,32 +70,32 @@ impl<'a> Initializing<'a> {
             },
         };
 
-        let mut total_peers = 0;
-        let mut seed_peers = 0;
-        let mut banned_peers = 0;
-        let mut deleted_peers = 0;
-        let mut offline_peers = 0;
-        let mut failed_address_peers = 0;
-        let mut non_communication_node_peers = 0;
-        let mut suitable_peers = 0;
+        let mut total_peers = 0usize;
+        let mut seed_peers = 0usize;
+        let mut banned_peers = 0usize;
+        let mut deleted_peers = 0usize;
+        let mut offline_peers = 0usize;
+        let mut failed_address_peers = 0usize;
+        let mut non_communication_node_peers = 0usize;
+        let mut suitable_peers = 0usize;
 
         for peer in &all_peers {
-            total_peers += 1;
+            total_peers = total_peers.saturating_add(1);
 
             if peer.is_seed() {
-                seed_peers += 1;
+                seed_peers = seed_peers.saturating_add(1);
             } else if peer.is_banned() {
-                banned_peers += 1;
+                banned_peers = banned_peers.saturating_add(1);
             } else if peer.deleted_at.is_some() {
-                deleted_peers += 1;
+                deleted_peers = deleted_peers.saturating_add(1);
             } else if peer.is_offline() {
-                offline_peers += 1;
+                offline_peers = offline_peers.saturating_add(1);
             } else if peer.all_addresses_failed() {
-                failed_address_peers += 1;
+                failed_address_peers = failed_address_peers.saturating_add(1);
             } else if peer.features != PeerFeatures::COMMUNICATION_NODE {
-                non_communication_node_peers += 1;
+                non_communication_node_peers = non_communication_node_peers.saturating_add(1);
             } else {
-                suitable_peers += 1;
+                suitable_peers = suitable_peers.saturating_add(1);
             }
         }
 

@@ -76,7 +76,11 @@ pub fn tari_rx_vm_key_height(height: u64) -> u64 {
     if height <= TARI_RX_VM_KEY_BLOCK_SWAP + TARI_RX_VM_KEY_REORG_SAFETY_NUMBER {
         0
     } else {
-        (height - TARI_RX_VM_KEY_REORG_SAFETY_NUMBER - 1) & !(TARI_RX_VM_KEY_BLOCK_SWAP - 1)
+        // The guard above proves neither subtraction can underflow.
+        height
+            .saturating_sub(TARI_RX_VM_KEY_REORG_SAFETY_NUMBER)
+            .saturating_sub(1) &
+            !TARI_RX_VM_KEY_BLOCK_SWAP.saturating_sub(1)
     }
 }
 

@@ -272,7 +272,10 @@ impl UnconfirmedPool {
                             .or_insert_with(|| vec![tx_key]);
                     }
                 }
-                let fee_per_byte = total_transaction_fees.saturating_mul(1000) / total_transaction_weight;
+                let fee_per_byte = total_transaction_fees
+                    .saturating_mul(1000)
+                    .checked_div(total_transaction_weight)
+                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 complete_transaction_branch.insert(
                     *tx_key,
                     (
@@ -285,7 +288,7 @@ impl UnconfirmedPool {
             } else {
                 transactions_to_remove_and_recheck.append(&mut potential_transactions_to_remove_and_recheck);
                 // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
-                curr_skip_count += 1;
+                curr_skip_count = curr_skip_count.saturating_add(1);
                 if curr_skip_count >= self.config.weight_tx_skip_count {
                     break;
                 }
@@ -340,7 +343,10 @@ impl UnconfirmedPool {
                 let (_, total_transaction_weight, total_transaction_fees) = complete_transaction_branch
                     .get(&tx_key)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-                let fee_per_byte = total_transaction_fees.saturating_mul(1000) / *total_transaction_weight;
+                let fee_per_byte = total_transaction_fees
+                    .saturating_mul(1000)
+                    .checked_div(*total_transaction_weight)
+                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }
@@ -372,7 +378,7 @@ impl UnconfirmedPool {
                     selected_txs.extend(candidate_transactions_to_select);
                 }
             } else {
-                *curr_skip_count += 1;
+                *curr_skip_count = curr_skip_count.saturating_add(1);
                 if *curr_skip_count >= self.config.weight_tx_skip_count {
                     break;
                 }
@@ -790,8 +796,10 @@ impl UnconfirmedPool {
                 }
 
                 let total_tx_fee = tx.transaction.body.get_total_fee()?;
-                offset += 1;
-                let fee_per_gram = total_tx_fee / weight;
+                offset = offset.saturating_add(1);
+                let fee_per_gram = total_tx_fee
+                    .checked_div(MicroMinotari::from(weight))
+                    .unwrap_or_default();
                 min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
                 max_fee_per_gram = max_fee_per_gram.max(fee_per_gram);
                 total_fees = total_fees
@@ -811,7 +819,11 @@ impl UnconfirmedPool {
             let stat = FeePerGramStat {
                 order: start as u64,
                 min_fee_per_gram,
-                avg_fee_per_gram: total_fees / total_weight,
+                // The `total_weight == 0` guard above proves this cannot divide by zero.
+                // The `total_weight == 0` guard above proves this cannot divide by zero.
+                avg_fee_per_gram: total_fees
+                    .checked_div(MicroMinotari::from(total_weight))
+                    .unwrap_or_default(),
                 max_fee_per_gram,
             };
             stats.push(stat);
@@ -840,7 +852,7 @@ impl UnconfirmedPool {
 
     fn get_next_key(&mut self) -> usize {
         let key = self.key_counter;
-        self.key_counter = (self.key_counter + 1) % usize::MAX;
+        self.key_counter = self.key_counter.wrapping_add(1) % usize::MAX;
         key
     }
 
@@ -858,7 +870,7 @@ impl UnconfirmedPool {
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
                 new,
                 old,
-                (old - new).saturating_mul(100) / old
+                old.saturating_sub(new).saturating_mul(100).checked_div(old).unwrap_or(0)
             );
         }
     }
@@ -1245,7 +1257,7 @@ mod test {
                 for key in keys_by_output {
                     let found_tx = &unconfirmed_pool.tx_by_key.get(key).unwrap().transaction;
                     if *found_tx == txn {
-                        found += 1;
+                        found = found.saturating_add(1);
                     }
                 }
                 assert_eq!(found, 1);

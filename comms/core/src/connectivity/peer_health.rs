@@ -107,7 +107,7 @@ impl PeerHealthMetrics {
     /// Record a failed connection attempt
     pub fn record_failure(&mut self, failure_threshold: usize) {
         self.last_attempt = Some(Instant::now());
-        self.consecutive_failures += 1;
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         self.add_attempt(ConnectionAttemptResult::Failure);
 
         // Transition to open state if threshold exceeded
@@ -141,7 +141,7 @@ impl PeerHealthMetrics {
 
     /// Calculate success rate within the given time window
     pub fn success_rate(&self, window: Duration) -> f32 {
-        let cutoff = Instant::now() - window;
+        let cutoff = Instant::now().checked_sub(window).unwrap_or_else(Instant::now);
 
         let recent_attempts: Vec<_> = self
             .connection_attempts
@@ -192,7 +192,7 @@ impl PeerHealthMetrics {
 
     /// Clean up old connection attempts outside the window
     pub fn cleanup_old_attempts(&mut self, window: Duration) {
-        let cutoff = Instant::now() - window;
+        let cutoff = Instant::now().checked_sub(window).unwrap_or_else(Instant::now);
         while let Some(front) = self.connection_attempts.front() {
             if front.timestamp <= cutoff {
                 self.connection_attempts.pop_front();

@@ -59,7 +59,7 @@ pub async fn block_heights(
         let tip = metadata.best_block_height();
         // Avoid overflow
         let height_from_tip = cmp::min(tip, from_tip);
-        let start = cmp::max(tip - height_from_tip, 0);
+        let start = tip.saturating_sub(height_from_tip);
         Ok((start, tip))
     } else {
         Err(Status::invalid_argument("Invalid arguments provided"))
@@ -69,9 +69,9 @@ pub async fn block_heights(
 pub fn block_size(block: &HistoricalBlock) -> u64 {
     let body = &block.block().body;
 
-    let input_size = body.inputs().len() as u64 * BLOCK_INPUT_SIZE;
-    let output_size = body.outputs().len() as u64 * BLOCK_OUTPUT_SIZE;
-    input_size + output_size
+    let input_size = (body.inputs().len() as u64).saturating_mul(BLOCK_INPUT_SIZE);
+    let output_size = (body.outputs().len() as u64).saturating_mul(BLOCK_OUTPUT_SIZE);
+    input_size.saturating_add(output_size)
 }
 
 pub fn block_fees(block: &HistoricalBlock) -> u64 {

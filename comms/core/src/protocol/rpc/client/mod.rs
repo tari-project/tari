@@ -325,7 +325,7 @@ pub struct RpcClientConfig {
 impl RpcClientConfig {
     /// Returns the timeout including the configured grace period
     pub fn timeout_with_grace_period(&self) -> Option<Duration> {
-        self.deadline.map(|d| d + self.deadline_grace_period)
+        self.deadline.map(|d| d.saturating_add(self.deadline_grace_period))
     }
 
     /// Returns the handshake timeout
@@ -778,7 +778,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
                     if let Some(t) = time_to_first_msg {
-                        let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
+                        let _ = self
+                            .last_request_latency_tx
+                            .send(Some(partial_latency.saturating_add(t)));
                     }
                     trace!(
                         target: LOG_TARGET,
@@ -902,7 +904,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let protocol_name = self.protocol_name().to_string();
 
         let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
-        let mut num_ignored = 0;
+        let mut num_ignored = 0usize;
         let resp = loop {
             match reader.read_response().await {
                 Ok(resp) => {
@@ -925,7 +927,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         target: LOG_TARGET,
                         "Possible delayed response received for previous request {actual}"
                     );
-                    num_ignored += 1;
+                    num_ignored = num_ignored.saturating_add(1);
 
                     // Be lenient for a number of messages that may have been buffered to come through for the previous
                     // request.
@@ -948,8 +950,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         // We dont want request id of zero because that is the default for varint on protobuf, so it is possible for the
         // entire message to be zero bytes (WriteZero IO error)
         if next_id == 0 {
-            next_id += 1;
-            self.next_request_id += 1;
+            next_id = next_id.wrapping_add(1);
+            self.next_request_id = self.next_request_id.wrapping_add(1);
         }
         next_id
     }

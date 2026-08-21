@@ -243,7 +243,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
                 key,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -292,7 +292,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_mined_unspent_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -321,7 +321,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_invalid_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -347,7 +347,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_many_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -372,7 +372,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_unspent_mined_unconfirmed_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -433,7 +433,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - write {}: lock {} + db_op {} = {} ms",
                 msg,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -463,7 +463,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_pending_incoming_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -551,7 +551,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - set_received_outputs_mined_height_and_statuses: lock {} + db_op {} = {} ms \
                 ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 updates.len()
             );
@@ -582,7 +582,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_outputs_to_unmined_and_invalid: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 hashes.len()
             );
@@ -651,7 +651,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -688,7 +688,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_outputs_to_be_revalidated: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -757,7 +757,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - update_last_validation_timestamps: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 commitments.len(),
             );
@@ -832,7 +832,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - mark_outputs_as_spent: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 updates.len()
             );
@@ -890,7 +890,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - mark_outputs_as_unspent: lock {} + db_op {} = {} ms (Unspent {}, UnspentMinedUnconfirmed {})",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 confirmed_hashes.len(), unconfirmed_hashes.len()
             );
@@ -967,7 +967,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     "sqlite profile - short_term_encumber_outputs (TxId: {}): lock {} + db_op {} = {} ms",
                     tx_id,
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -1021,7 +1021,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - confirm_encumbered_outputs (TxId: {}): lock {} + db_op {} = {} ms",
                 tx_id,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1055,7 +1055,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - clear_short_term_encumberances: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1076,7 +1076,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_mined_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1100,7 +1100,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_spent_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1124,7 +1124,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_balance: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1147,7 +1147,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - count_outputs_in_ranges: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1169,7 +1169,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_balance_payment_id: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1243,7 +1243,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - cancel_pending_or_completed_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1279,7 +1279,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - update_output_metadata_signature: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1313,7 +1313,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - revalidate_unspent_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1337,7 +1337,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1360,7 +1360,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - add_unvalidated_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1385,7 +1385,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             target: LOG_TARGET,
             "sqlite profile - get_range_limited_outputs_for_spending: lock {} + db_op {} = {} ms",
             acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().saturating_sub(acquire_lock).as_millis(),
             start.elapsed().as_millis()
         );
         Ok((
@@ -1417,7 +1417,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_unspent_outputs_for_spending: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
             Ok::<_, OutputManagerStorageError>(outputs)

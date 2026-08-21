@@ -154,7 +154,7 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
         PayRefDisplayFormat::Full => hex,
         PayRefDisplayFormat::Shortened => {
             if hex.len() >= 16 {
-                format!("{}...{}", &hex[0..8], &hex[hex.len() - 8..])
+                format!("{}...{}", &hex[0..8], &hex[hex.len().saturating_sub(8)..])
             } else {
                 hex
             }
@@ -165,8 +165,8 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
         } => {
             let prefix = *prefix_chars as usize;
             let suffix = *suffix_chars as usize;
-            if hex.len() >= (prefix + suffix) {
-                format!("{}...{}", &hex[0..prefix], &hex[hex.len() - suffix..])
+            if hex.len() >= prefix.saturating_add(suffix) {
+                format!("{}...{}", &hex[0..prefix], &hex[hex.len().saturating_sub(suffix)..])
             } else {
                 hex
             }

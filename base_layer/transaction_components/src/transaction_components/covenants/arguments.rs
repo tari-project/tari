@@ -101,7 +101,7 @@ impl CovenantArg {
                 // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe.
                 // The depth is incremented so that the recursion this introduces stays bounded: the size limit alone
                 // still allows well over a thousand levels of nesting in a single message.
-                let covenant = Covenant::from_bytes_at_depth(&mut buf.as_bytes(), depth + 1)?;
+                let covenant = Covenant::from_bytes_at_depth(&mut buf.as_bytes(), depth.saturating_add(1))?;
                 Ok(CovenantArg::Covenant(covenant))
             },
             ARG_OUTPUT_TYPE => {

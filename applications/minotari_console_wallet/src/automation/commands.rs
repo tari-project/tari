@@ -90,7 +90,7 @@ use tari_transaction_components::{
         TransactionResult,
     },
     rpc::models::TxLocation,
-    tari_amount::{MicroMinotari, Minotari, uT},
+    tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -227,6 +227,8 @@ async fn spend_backup_pre_mine_utxo(
 }
 
 /// finalises an already encumbered a n-of-m transaction
+// Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 async fn finalise_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     tx_id: u64,
@@ -267,7 +269,13 @@ pub async fn init_sha_atomic_swap(
     payment_id: MemoField,
 ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
+        .send_sha_atomic_swap_transaction(
+            dest_address,
+            amount,
+            selection_criteria,
+            MicroMinotari::from(fee_per_gram),
+            payment_id,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -350,7 +358,7 @@ pub async fn send_one_sided_to_stealth_address(
             amount,
             selection_criteria,
             OutputFeatures::default(),
-            fee_per_gram * uT,
+            MicroMinotari::from(fee_per_gram),
             payment_id,
         )
         .await
@@ -407,7 +415,7 @@ pub async fn make_it_rain(
                 start_time,
                 payment_id.payment_id_as_string()
             );
-            (start_time - now).num_milliseconds() as u64
+            start_time.signed_duration_since(now).num_milliseconds() as u64
         } else {
             0
         };
@@ -441,25 +449,26 @@ pub async fn make_it_rain(
                 debug!(
                     target: LOG_TARGET,
                     "make-it-rain starting {} of {} {} transactions",
-                    i + 1,
+                    i.saturating_add(1),
                     num_txs,
                     transaction_type
                 );
                 let loop_started_at = Instant::now();
                 let tx_service = wallet_transaction_service.clone();
                 // Transaction details
-                let amount = start_amount + increase_amount * (i as u64);
+                let amount = start_amount.saturating_add(increase_amount.saturating_mul(MicroMinotari::from(i as u64)));
 
                 // Manage transaction submission rate
-                let actual_ms = (Utc::now() - started_at).num_milliseconds();
+                let actual_ms = Utc::now().signed_duration_since(started_at).num_milliseconds();
                 let target_ms = (i as f64 * (1000.0 / transactions_per_second)) as i64;
                 trace!(
                     target: LOG_TARGET,
                     "make-it-rain {i}: target {target_ms:?} ms vs. actual {actual_ms:?} ms"
                 );
-                if target_ms - actual_ms > 0 {
+                let remaining_ms = target_ms.saturating_sub(actual_ms);
+                if remaining_ms > 0 {
                     // Maximum delay between Txs set to 120 s
-                    let delay_ms = Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64);
+                    let delay_ms = Duration::from_millis(remaining_ms.min(120_000i64) as u64);
                     trace!(
                         target: LOG_TARGET,
                         "make-it-rain {i}: delaying for {delay_ms:?} ms"
@@ -491,7 +500,7 @@ pub async fn make_it_rain(
 
                     if let Err(e) = sender_clone
                         .send(TransactionSendStats {
-                            i: i + 1,
+                            i: i.saturating_add(1),
                             tx_id,
                             delayed_for: delayed_for.duration_since(loop_started_at),
                             submit_time: submit_time.duration_since(spawn_start),
@@ -643,6 +652,8 @@ pub async fn monitor_transactions(
 }
 
 #[allow(clippy::too_many_lines)]
+// Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<CliCommands>,
@@ -664,7 +675,7 @@ pub async fn command_runner(
 
     #[allow(clippy::enum_glob_use)]
     for (idx, parsed) in commands.into_iter().enumerate() {
-        println!("\n{}. {:?}\n", idx + 1, parsed);
+        println!("\n{}. {:?}\n", idx.saturating_add(1), parsed);
         use crate::cli::CliCommands::*;
         match parsed {
             GetBalance => match output_service.clone().get_balance().await {
@@ -923,7 +934,7 @@ pub async fn command_runner(
                 for (i, recipient_info) in session_info.recipient_info.iter().enumerate() {
                     println!(
                         "  Start processing {} of {} transactions, current wallet {}",
-                        i + 1,
+                        i.saturating_add(1),
                         session_info.recipient_info.len(),
                         recipient_info.recipient_address
                     );
@@ -989,7 +1000,7 @@ pub async fn command_runner(
                     });
                     println!(
                         "    Processed {} of {} transactions",
-                        i + 1,
+                        i.saturating_add(1),
                         session_info.recipient_info.len()
                     );
 
@@ -1275,7 +1286,11 @@ pub async fn command_runner(
                             break;
                         },
                     }
-                    println!("  Processed {} of {} transactions", i + 1, party_info_per_index.len());
+                    println!(
+                        "  Processed {} of {} transactions",
+                        i.saturating_add(1),
+                        party_info_per_index.len()
+                    );
                 }
                 if error {
                     break;
@@ -1547,7 +1562,7 @@ pub async fn command_runner(
 
                     println!(
                         "  Processed {} of {} transactions",
-                        i + 1,
+                        i.saturating_add(1),
                         leader_info_indexed.outputs_for_parties.len()
                     );
                 }
@@ -1709,7 +1724,7 @@ pub async fn command_runner(
 
                     // Collect all inputs, outputs and kernels that should go into the genesis block
                     println!();
-                    println!("  Processed {} of {}", i + 1, party_info_per_index.len());
+                    println!("  Processed {} of {}", i.saturating_add(1), party_info_per_index.len());
                 }
                 if error {
                     break;
@@ -1889,7 +1904,7 @@ pub async fn command_runner(
                             println!(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}, Commitment: {}, \
                                  isMultisig: {}",
-                                i + 1,
+                                i.saturating_add(1),
                                 utxo.0.value,
                                 if args.with_private_keys {
                                     utxo.0.commitment_mask_key.to_hex()
@@ -1959,7 +1974,7 @@ pub async fn command_runner(
                         for (i, utxo) in unblinded_utxos.iter().enumerate() {
                             println!(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
-                                i + 1,
+                                i.saturating_add(1),
                                 utxo.0.value,
                                 if args.with_private_keys {
                                     utxo.0.commitment_mask_key.to_hex()
@@ -2122,7 +2137,7 @@ pub async fn command_runner(
                     },
                     args.epoch,
                     UtxoSelectionCriteria::default(),
-                    config.fee_per_gram * uT,
+                    MicroMinotari::from(config.fee_per_gram),
                     memo,
                 )
                 .await?;
@@ -2374,7 +2389,7 @@ pub async fn command_runner(
                             wallet
                                 .get_wallet_one_sided_address()
                                 .map_err(|e| CommandError::General(e.to_string()))?,
-                            config.fee_per_gram * uT,
+                            MicroMinotari::from(config.fee_per_gram),
                         )
                         .await
                         .map_err(CommandError::TransactionServiceError)
@@ -2429,15 +2444,15 @@ pub async fn command_runner(
                                 if completed_tx.mined_in_block.is_some() {
                                     println!("\nReceived PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_received_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                     println!("\nSent PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_sent_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                     println!("\nChange PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_change_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                 } else {
                                     println!("Payrefs: Transaction not mined yet.");
@@ -2501,7 +2516,7 @@ pub async fn command_runner(
                         println!("{}", "=".repeat(80));
 
                         for (i, tx) in txs.iter().enumerate() {
-                            println!("{}. Transaction ID: {}", i + 1, tx.tx_id);
+                            println!("{}. Transaction ID: {}", i.saturating_add(1), tx.tx_id);
                             println!("   Amount: {}", tx.amount);
                             println!("   Direction: {:?}", tx.direction);
                             println!("   Status: {:?}", tx.status);
@@ -2514,15 +2529,15 @@ pub async fn command_runner(
                             if tx.mined_in_block.is_some() {
                                 println!("\nReceived PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_received_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                                 println!("\nSent PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_sent_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                                 println!("\nChange PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_change_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                             } else {
                                 println!("Payrefs: Transaction not mined yet.");
@@ -2623,7 +2638,7 @@ pub async fn command_runner(
                         args.amount,
                         UtxoSelectionCriteria::default(),
                         OutputFeatures::default(),
-                        config.fee_per_gram * uT,
+                        MicroMinotari::from(config.fee_per_gram),
                         memo,
                     )
                     .await
@@ -2932,7 +2947,7 @@ pub async fn command_runner(
                                 input_outputs.len()
                             );
                             for (i, output) in input_outputs.iter().enumerate() {
-                                println!("\nInput #{}", i + 1);
+                                println!("\nInput #{}", i.saturating_add(1));
                                 println!("{:#?}", output);
                             }
 
@@ -2941,7 +2956,7 @@ pub async fn command_runner(
                                 received_outputs.len()
                             );
                             for (i, output) in received_outputs.iter().enumerate() {
-                                println!("\nOutput #{}", i + 1);
+                                println!("\nOutput #{}", i.saturating_add(1));
                                 println!("{:#?}", output);
                             }
                         },
@@ -3628,7 +3643,7 @@ fn verify_no_duplicate_indexes(recipient_info: &[CliRecipientInfo]) -> Result<()
     } else {
         Err(format!(
             "{}",
-            max(all_indexes_len, all_indexes.len()) - min(all_indexes_len, all_indexes.len())
+            max(all_indexes_len, all_indexes.len()).saturating_sub(min(all_indexes_len, all_indexes.len()))
         ))
     }
 }
@@ -3697,7 +3712,7 @@ fn write_utxos_to_csv_file(
         writeln!(
             csv_file,
             r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
-            i + 1,
+            i.saturating_add(1),
             utxo.version.as_u8(),
             utxo.value.0,
             if with_private_keys { utxo.commitment_mask_key.to_hex() } else { "*hidden*".to_string() },
@@ -3729,7 +3744,7 @@ fn write_utxos_to_csv_file(
         debug!(
             target: LOG_TARGET,
             "UTXO {} exported: {:?}",
-            i + 1,
+            i.saturating_add(1),
             utxo
         );
     }

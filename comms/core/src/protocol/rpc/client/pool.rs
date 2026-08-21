@@ -244,7 +244,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
         debug!(
             target: LOG_TARGET,
             "Pruned {} client(s) (total connections: {})",
-            initial_len - self.clients.len(),
+            initial_len.saturating_sub(self.clients.len()),
             self.clients.len()
         )
     }
@@ -269,7 +269,7 @@ impl<T> RpcClientLease<T> {
 
     /// Returns the number of active leases for this client
     pub(super) fn lease_count(&self) -> usize {
-        Arc::strong_count(&self.rc) - 1
+        Arc::strong_count(&self.rc).saturating_sub(1)
     }
 }
 

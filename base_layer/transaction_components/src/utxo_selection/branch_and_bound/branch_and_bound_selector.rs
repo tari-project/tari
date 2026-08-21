@@ -110,7 +110,7 @@ impl UtxoSectionParams {
     }
 
     fn change_cost(&self) -> MicroMinotari {
-        self.fee_per_input + self.change_fee
+        self.fee_per_input.saturating_add(self.change_fee)
     }
 }
 
@@ -141,7 +141,7 @@ where T: UtxoValue
             current_value: MicroMinotari::from(0),
             waste: params.output_fee,
             final_fee: params.output_fee,
-            final_target: params.target_amount + params.output_fee,
+            final_target: params.target_amount.saturating_add(params.output_fee),
             has_change: false,
             params,
             allow_dust_waste,
@@ -163,10 +163,10 @@ where T: UtxoValue
                 .ok_or_else(|| format!("UTXO with value {} not found in available UTXOs", utxo.value()))?;
             new_blank.add_utxo_sorted(index);
             // Update current_value, waste, and target_amount for each pre-selected UTXO
-            new_blank.current_value += utxo.value();
-            new_blank.waste += new_blank.params.fee_per_input;
-            new_blank.final_target += new_blank.params.fee_per_input;
-            new_blank.final_fee += new_blank.params.fee_per_input;
+            new_blank.current_value = new_blank.current_value.saturating_add(utxo.value());
+            new_blank.waste = new_blank.waste.saturating_add(new_blank.params.fee_per_input);
+            new_blank.final_target = new_blank.final_target.saturating_add(new_blank.params.fee_per_input);
+            new_blank.final_fee = new_blank.final_fee.saturating_add(new_blank.params.fee_per_input);
         }
 
         Ok(new_blank)
@@ -211,17 +211,18 @@ where T: UtxoValue
         best_result: &mut Option<SelectionState<T>>,
     ) -> usize {
         self.add_utxo_sorted(index_to_add);
-        self.current_value += self
-            .available_utxos
-            .get(index_to_add)
-            .expect("utxo_index out of bounds")
-            .value();
-        self.waste += self.params.fee_per_input;
-        self.final_target += self.params.fee_per_input;
-        self.final_fee += self.params.fee_per_input;
+        self.current_value = self.current_value.saturating_add(
+            self.available_utxos
+                .get(index_to_add)
+                .expect("utxo_index out of bounds")
+                .value(),
+        );
+        self.waste = self.waste.saturating_add(self.params.fee_per_input);
+        self.final_target = self.final_target.saturating_add(self.params.fee_per_input);
+        self.final_fee = self.final_fee.saturating_add(self.params.fee_per_input);
 
         let done = self.check_current_state(best_result);
-        let mut iterations = current_iterations + 1;
+        let mut iterations = current_iterations.saturating_add(1);
         if done {
             // we found a solution, so stop here
             return iterations;
@@ -233,13 +234,13 @@ where T: UtxoValue
         }
         if let Some(best) = best_result {
             // we are already worse off than the best here, stop right here
-            if self.waste + self.params.fee_per_input >= best.waste {
+            if self.waste.saturating_add(self.params.fee_per_input) >= best.waste {
                 // no need to continue searching this branch
                 return iterations;
             }
         }
 
-        for i in index_to_add + 1..self.available_utxos.len() {
+        for i in index_to_add.saturating_add(1)..self.available_utxos.len() {
             if self.selected_utxos.contains(&i) {
                 continue;
             }
@@ -263,9 +264,9 @@ where T: UtxoValue
             }
             // not perfect, lets handle change
             let change_waste = self.params.change_cost();
-            if current_value > target + change_waste {
+            if current_value > target.saturating_add(change_waste) {
                 // we have enough to pay for change, so lets stop here
-                self.final_fee += self.params.change_fee;
+                self.final_fee = self.final_fee.saturating_add(self.params.change_fee);
                 self.has_change = true;
                 self.compare_to_best(best_result, change_waste);
                 return true;
@@ -275,7 +276,7 @@ where T: UtxoValue
             // cost
             if self.allow_dust_waste {
                 let extra_waste = self.current_value.saturating_sub(target); // we know its bigger than target
-                self.final_fee += extra_waste;
+                self.final_fee = self.final_fee.saturating_add(extra_waste);
                 self.compare_to_best(best_result, extra_waste);
                 if extra_waste < self.params.fee_per_input {
                     // the waste is less than the cost of adding another input, so no use in adding another input
@@ -283,7 +284,7 @@ where T: UtxoValue
                 }
                 // we are going to try another solution branch to see if we can do better so lets remove that extra fee
                 // again
-                self.final_fee -= extra_waste;
+                self.final_fee = self.final_fee.saturating_sub(extra_waste);
             }
         }
         false
@@ -294,13 +295,13 @@ where T: UtxoValue
             Some(best) => {
                 if self.is_better_than(best, extra_waste) {
                     let mut new_state = self.clone();
-                    new_state.waste += extra_waste;
+                    new_state.waste = new_state.waste.saturating_add(extra_waste);
                     *best_result = Some(new_state);
                 }
             },
             None => {
                 let mut new_state = self.clone();
-                new_state.waste += extra_waste;
+                new_state.waste = new_state.waste.saturating_add(extra_waste);
                 *best_result = Some(new_state);
             },
         }
@@ -310,7 +311,7 @@ where T: UtxoValue
     /// 1. Least waste
     /// 2. If waste is equal, highest selected value (current_value) - gives highest change output
     fn is_better_than(&self, best: &SelectionState<T>, extra_waste: MicroMinotari) -> bool {
-        let self_waste = self.waste + extra_waste;
+        let self_waste = self.waste.saturating_add(extra_waste);
         match self_waste.cmp(&best.waste) {
             std::cmp::Ordering::Less => true,
             std::cmp::Ordering::Greater => false,

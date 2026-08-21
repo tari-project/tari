@@ -277,7 +277,7 @@ impl MempoolStorage {
                 .insert(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))?;
             if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs += 1;
+                num_invalid_txs = num_invalid_txs.saturating_add(1);
             }
         }
 
@@ -291,7 +291,7 @@ impl MempoolStorage {
                 .insert(tx)
                 .map_err(|e| MempoolError::InternalError(e.to_string()))?;
             if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs += 1;
+                num_invalid_txs = num_invalid_txs.saturating_add(1);
             }
         }
 

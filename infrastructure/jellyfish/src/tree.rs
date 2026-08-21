@@ -351,7 +351,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 version,
                 kvs.get(left..=right)
                     .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
-                depth + 1,
+                depth.saturating_add(1),
                 hash_cache,
                 batch,
             )?,
@@ -360,7 +360,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 version,
                 kvs.get(left..=right)
                     .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
-                depth + 1,
+                depth.saturating_add(1),
                 hash_cache,
                 batch,
             )?,
@@ -417,7 +417,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                         existing_leaf_node.clone(),
                         kvs.get(left..=right)
                             .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
-                        depth + 1,
+                        depth.saturating_add(1),
                         hash_cache,
                         batch,
                     )?
@@ -427,7 +427,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                         version,
                         kvs.get(left..=right)
                             .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
-                        depth + 1,
+                        depth.saturating_add(1),
                         hash_cache,
                         batch,
                     )?
@@ -507,7 +507,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     version,
                     kvs.get(left..=right)
                         .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
-                    depth + 1,
+                    depth.saturating_add(1),
                     hash_cache,
                     batch,
                 )? {
@@ -698,17 +698,17 @@ impl<P> Iterator for NibbleRangeIterator<'_, P> {
         let left = self.pos;
         if self.pos < self.sorted_kvs.len() {
             let cur_nibble = self.sorted_kvs.get(left)?.0.get_nibble(self.nibble_idx);
-            let (mut i, mut j) = (left, self.sorted_kvs.len() - 1);
+            let (mut i, mut j) = (left, self.sorted_kvs.len().saturating_sub(1));
             // Find the last index of the cur_nibble.
             while i < j {
-                let mid = j - (j - i) / 2;
+                let mid = j.saturating_sub(j.saturating_sub(i) / 2);
                 if self.sorted_kvs.get(mid)?.0.get_nibble(self.nibble_idx) > cur_nibble {
-                    j = mid - 1;
+                    j = mid.saturating_sub(1);
                 } else {
                     i = mid;
                 }
             }
-            self.pos = i + 1;
+            self.pos = i.saturating_add(1);
             Some((left, i))
         } else {
             None
@@ -735,11 +735,11 @@ impl<P: Clone> TreeUpdateBatch<P> {
     }
 
     fn inc_num_new_leaves(&mut self) {
-        self.num_new_leaves += 1;
+        self.num_new_leaves = self.num_new_leaves.saturating_add(1);
     }
 
     fn inc_num_stale_leaves(&mut self) {
-        self.num_stale_leaves += 1;
+        self.num_stale_leaves = self.num_stale_leaves.saturating_add(1);
     }
 
     pub fn put_node(&mut self, node_key: NodeKey, node: Node<P>) {

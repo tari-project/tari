@@ -41,7 +41,7 @@ pub async fn execute<TBackend, TConnectivity>(
             // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
             error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
             tokio::time::sleep(RETRY_DELAY).await;
-            attempt += 1;
+            attempt = attempt.saturating_add(1);
             if attempt > MAX_ATTEMPTS {
                 error!(
                     target: LOG_TARGET,

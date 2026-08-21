@@ -26,7 +26,9 @@ curve25519-dalek = { version = "4", default-features = false, features = [ "allo
 subtle = { version = "2.5.0", default-features = false }
 
 [package.metadata.cargo-machete]
-ignored = []
+# `ledger_secure_sdk_sys` is not referenced in code; it is declared above purely to pin the
+# version resolved for `ledger_device_sdk`'s transitive dependency on it.
+ignored = ["ledger_secure_sdk_sys"]
 
 [profile.release]
 opt-level = 'z'

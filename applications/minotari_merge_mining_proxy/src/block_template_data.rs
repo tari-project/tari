@@ -93,7 +93,9 @@ impl BlockTemplateRepository {
         #[cfg(test)]
         let threshold = Utc::now();
         #[cfg(not(test))]
-        let threshold = Utc::now() - Duration::minutes(20);
+        let threshold = Utc::now()
+            .checked_sub_signed(Duration::minutes(20))
+            .unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 

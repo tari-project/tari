@@ -28,7 +28,7 @@ pub struct AtomicRefCounterGuard(Arc<()>);
 impl AtomicRefCounterGuard {
     pub fn get(&self) -> usize {
         // Subtract one to account for the initial CounterGuard reference
-        Arc::strong_count(&self.0) - 1
+        Arc::strong_count(&self.0).saturating_sub(1)
     }
 }
 

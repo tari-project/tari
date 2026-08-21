@@ -185,6 +185,8 @@ pub fn verify_header(
     Ok(monero_data)
 }
 
+// Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn check_aux_chains(
     monero_data: &MoneroPowData,
     merge_mining_params: VarInt,

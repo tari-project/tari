@@ -330,7 +330,7 @@ impl ProcessLauncher {
                     Ok(None) => {
                         // Still running, continue waiting
                         tokio::time::sleep(Duration::from_millis(500)).await;
-                        attempts += 1;
+                        attempts = attempts.saturating_add(1);
                     },
                     Err(e) => {
                         log::warn!("Error checking process status: {e}");

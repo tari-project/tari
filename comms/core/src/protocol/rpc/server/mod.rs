@@ -415,7 +415,7 @@ where
                         Ok(session_info.len())
                     } else if self.config.cull_oldest_peer_rpc_connection_on_full {
                         // Remove the oldest session(s) until we have space for a new one
-                        let num_to_remove = session_info.len() - max + 1;
+                        let num_to_remove = session_info.len().saturating_sub(max).saturating_add(1);
                         for _ in 0..num_to_remove {
                             let info = session_info.remove(0);
                             info!(target: LOG_TARGET, "Culling oldest RPC session for peer `{node_id}`");
@@ -442,10 +442,10 @@ where
     }
 
     fn close_all_sessions(&mut self, node_id: &NodeId) -> usize {
-        let mut count = 0;
+        let mut count = 0usize;
         if let Some(session_info) = self.sessions.get_mut(node_id) {
             for info in session_info.iter_mut() {
-                count += 1;
+                count = count.saturating_add(1);
                 info!(target: LOG_TARGET, "Closing RPC session {} for peer `{}`", info.stream_id, node_id);
                 let _ = info.peer_watch.send(());
             }
@@ -723,7 +723,9 @@ where
                                 if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
                             );
                             if let Some(timeout) = idle_timeout {
-                                idle_sleep.as_mut().reset(time::Instant::now() + timeout);
+                                idle_sleep.as_mut().reset(
+                                    time::Instant::now().checked_add(timeout).unwrap_or_else(time::Instant::now),
+                                );
                             }
                         },
                         Some(Err(err)) => {

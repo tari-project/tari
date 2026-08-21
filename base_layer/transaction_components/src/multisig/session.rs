@@ -232,13 +232,17 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .round_up_features_and_scripts_size(
                 OutputFeatures::default()
                     .get_serialized_size()
-                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-                    script
-                        .get_serialized_size()
-                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
-                    Covenant::default()
-                        .get_serialized_size()
-                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?
+                    .saturating_add(
+                        script
+                            .get_serialized_size()
+                            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                    )
+                    .saturating_add(
+                        Covenant::default()
+                            .get_serialized_size()
+                            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                    ),
             );
 
         let fee: MicroMinotari = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);

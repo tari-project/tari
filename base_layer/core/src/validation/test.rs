@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
 use std::{cmp, sync::Arc};
 
@@ -308,8 +310,8 @@ async fn chain_balance_validation() {
         .unwrap();
 
     let mut header1 = BlockHeader::from_previous(genesis.header());
-    header1.kernel_mmr_size += 1;
-    header1.output_smt_size += 1;
+    header1.kernel_mmr_size = header1.kernel_mmr_size.saturating_add(1);
+    header1.output_smt_size = header1.output_smt_size.saturating_add(1);
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -372,8 +374,8 @@ async fn chain_balance_validation() {
         .unwrap();
 
     let mut header2 = BlockHeader::from_previous(header1.header());
-    header2.kernel_mmr_size += 1;
-    header2.output_smt_size += 1;
+    header2.kernel_mmr_size = header2.kernel_mmr_size.saturating_add(1);
+    header2.output_smt_size = header2.output_smt_size.saturating_add(1);
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -391,7 +393,7 @@ async fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment.to_commitment().unwrap() + &utxo_sum;
     kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     txn.insert_utxo(coinbase, *header2.hash(), 2, 0);
-    mmr_position += 1;
+    mmr_position = mmr_position.saturating_add(1);
     txn.insert_kernel(kernel, *header2.hash(), mmr_position);
 
     db.commit(txn).unwrap();

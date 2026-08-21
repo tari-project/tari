@@ -57,7 +57,7 @@ impl Starting {
         tokio::pin!(bootstrap_timeout);
         let mut timeout = bootstrap_timeout.fuse();
         // Check for any recent DHT bootstrap events
-        let mut bootstrap_events_found = 0;
+        let mut bootstrap_events_found = 0usize;
         loop {
             if shared.is_primary_bootstrap_complete {
                 info!(target: LOG_TARGET, "[BN STARTING] Primary bootstrap already complete - skipping DHT event processing");
@@ -67,7 +67,7 @@ impl Starting {
                 result = dht_events.recv() => {
                     match result {
                         Ok(event_arc) => {
-                            bootstrap_events_found += 1;
+                            bootstrap_events_found = bootstrap_events_found.saturating_add(1);
                             let event = event_arc.deref();
                             match event {
                                 DhtEvent::BootstrapMethodDetermined(method) => {
@@ -106,13 +106,13 @@ impl Starting {
 
         info!(target: LOG_TARGET, "[BN STARTING] Processed {} DHT bootstrap events. Primary bootstrap complete: {}", bootstrap_events_found, shared.is_primary_bootstrap_complete);
 
-        let mut network_silence_count = 0;
+        let mut network_silence_count = 0usize;
         loop {
             tokio::select! {
                 metadata_result = shared.metadata_event_stream.recv() => {
                     match metadata_result.as_ref().map(|v| v.deref()) {
                         Ok(ChainMetadataEvent::NetworkSilence) => {
-                            network_silence_count += 1;
+                            network_silence_count = network_silence_count.saturating_add(1);
                             debug!(target: LOG_TARGET, "NetworkSilence event received ({network_silence_count})");
                             if network_silence_count >= 3 {
                                 return StateEvent::Initialized(true);

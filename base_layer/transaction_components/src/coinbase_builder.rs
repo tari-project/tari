@@ -35,7 +35,7 @@ use crate::{
         emission::{Emission, EmissionSchedule},
     },
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage, error::KeyManagerError},
-    tari_amount::{MicroMinotari, uT},
+    tari_amount::MicroMinotari,
     transaction_components::{
         CoinBaseExtra,
         CoreTransactionBuilder,
@@ -238,7 +238,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
-        let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
+        let total_reward = block_reward
+            .checked_add(self.fees.ok_or(CoinbaseBuildError::MissingFees)?)
+            .ok_or_else(|| CoinbaseBuildError::BuildError("Coinbase reward plus fees overflows".to_string()))?;
         let commitment_mask_key_id = self.commitment_mask_key_id.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_key_id = self.script_key_id.ok_or(CoinbaseBuildError::MissingScriptKey)?;
         let encryption_key_id = self.encryption_key_id.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
@@ -272,8 +274,11 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let excess = CompressedCommitment::from_compressed_key(public_commitment_mask_key);
         // generate tx details
         let value: u64 = total_reward.into();
-        let output_features =
-            OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra, range_proof_type);
+        let output_features = OutputFeatures::create_coinbase(
+            height.saturating_add(constants.coinbase_min_maturity()),
+            self.extra,
+            range_proof_type,
+        );
         let encrypted_data = self.key_manager.encrypt_data_for_recovery(
             &commitment_mask_key_id,
             Some(&encryption_key_id),
@@ -327,7 +332,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .to_transaction_output()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
-            .with_fee(0 * uT)
+            .with_fee(MicroMinotari::zero())
             .with_features(kernel_features)
             .with_lock_height(0)
             .with_excess(&excess)

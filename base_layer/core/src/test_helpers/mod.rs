@@ -22,6 +22,8 @@
 
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::sync::Arc;
 
 use blake2::Blake2b;
@@ -218,7 +220,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
         if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
         }
-        block.header.nonce += 1;
+        block.header.nonce = block.header.nonce.saturating_add(1);
     }
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }

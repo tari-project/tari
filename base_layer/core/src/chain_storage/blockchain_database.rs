@@ -299,6 +299,8 @@ where B: BlockchainBackend
         Ok(blockchain_db)
     }
 
+    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn start(&self) -> Result<(), ChainStorageError> {
         let (is_empty, config) = {
             let db = self.db_read_access()?;
@@ -465,7 +467,10 @@ where B: BlockchainBackend
                     if blocks_remaining <= BACKGROUND_PRUNING_THRESHOLD {
                         return Ok(true);
                     }
-                    let chunk_end = (metadata.pruned_height() + BACKGROUND_PRUNING_CHUNK_SIZE).min(target);
+                    let chunk_end = metadata
+                        .pruned_height()
+                        .saturating_add(BACKGROUND_PRUNING_CHUNK_SIZE)
+                        .min(target);
                     prune_to_height(&mut *db, chunk_end)?;
                     info!(
                         target: LOG_TARGET,
@@ -935,7 +940,7 @@ where B: BlockchainBackend
                             let db_rw_lock = db_rw_lock.clone();
                             let res = tokio::task::spawn_blocking(move || {
                                 if let Ok(mut db) = db_rw_lock.write() {
-                                    rewind_to_height(&mut *db, height - 1)
+                                    rewind_to_height(&mut *db, height.saturating_sub(1))
                                 } else {
                                     Err(ChainStorageError::AccessError(
                                         "Write lock on blockchain backend failed".into(),
@@ -948,7 +953,7 @@ where B: BlockchainBackend
                                     info!(target: LOG_TARGET,
                                         "[Blockchain check] Rewound the blockchain to height {} after unrecoverable \
                                         corruption at height {}.",
-                                        height - 1, height
+                                        height.saturating_sub(1), height
                                     );
                                 },
                                 Ok(Err(e)) => {
@@ -968,7 +973,7 @@ where B: BlockchainBackend
                             info!(
                                 target: LOG_TARGET,
                                 "[Blockchain check] Autocorrect flag is disabled - manually rewind to height {}",
-                                height - 1,
+                                height.saturating_sub(1),
                             );
                         }
                         clear_flags(
@@ -1564,7 +1569,7 @@ where B: BlockchainBackend
                                 arg: "count",
                                 message: "count + block height will overflow u64".into(),
                             })?;
-                    let headers = fetch_headers(&*db, header.height + 1, end_height)?;
+                    let headers = fetch_headers(&*db, header.height.saturating_add(1), end_height)?;
                     return Ok(Some((i, headers)));
                 },
                 None => continue,
@@ -1720,7 +1725,7 @@ where B: BlockchainBackend
                 return Ok(Vec::new());
             },
         };
-        let start = end_height.saturating_sub(n as u64 - 1);
+        let start = end_height.saturating_sub((n as u64).saturating_sub(1));
         let headers = fetch_headers(&*db, start, end_height)?;
         Ok(headers.into_iter().map(|h| h.hash()).rev().collect())
     }
@@ -1819,7 +1824,7 @@ where B: BlockchainBackend
 
         body.sort();
         let mut header = BlockHeader::from(header);
-        let prev_block_height = header.height - 1;
+        let prev_block_height = header.height.saturating_sub(1);
         let min_height = header.height.saturating_sub(
             self.consensus_manager
                 .consensus_constants(header.height)
@@ -1828,13 +1833,13 @@ where B: BlockchainBackend
 
         let db = self.db_read_access()?;
         let tip_header = db.fetch_tip_header()?;
-        if header.height != tip_header.height() + 1 {
+        if header.height != tip_header.height().saturating_add(1) {
             return Err(ChainStorageError::InvalidArguments {
                 func: "prepare_new_block",
                 arg: "template",
                 message: format!(
                     "Expected new block template height to be {} but was {}",
-                    tip_header.height() + 1,
+                    tip_header.height().saturating_add(1),
                     header.height
                 ),
             });
@@ -1991,7 +1996,7 @@ where B: BlockchainBackend
             "[add_block] acquired write access db lock for block #{} '{}' in {:.2?}",
             new_height,
             block_hash.to_hex(),
-            after_lock - before_lock,
+            after_lock.saturating_sub(before_lock),
         );
 
         // If this is true, we already got the header in our database due to header-sync, between us starting the
@@ -2051,7 +2056,7 @@ where B: BlockchainBackend
         debug!(
             target: LOG_TARGET,
             "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}",
-            new_height, timer.elapsed() - after_lock, block_add_result
+            new_height, timer.elapsed().saturating_sub(after_lock), block_add_result
         );
         Ok(block_add_result)
     }
@@ -2483,7 +2488,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
-    let mut batch = Vec::with_capacity(body.outputs().len() + body.inputs().len());
+    let mut batch = Vec::with_capacity(body.outputs().len().saturating_add(body.inputs().len()));
     for output in body.outputs() {
         if output.features.is_coinbase() {
             block_output_mmr.push(output.hash().to_vec())?;
@@ -2528,11 +2533,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let block_output_mr = block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?;
 
     let (output_smt_root, changes) = output_smt
-        .put_value_set(batch, current_version + 1)
+        .put_value_set(batch, current_version.saturating_add(1))
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
     let mut size = tip_header.output_smt_size;
-    size += changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64;
+    size = size.saturating_add(changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64);
     size = size.saturating_sub(changes.node_stats.first().map(|s| s.stale_leaves).unwrap_or(0) as u64);
 
     let mmr_roots = MmrRoots {
@@ -2679,7 +2684,7 @@ pub fn fetch_chain_headers<T: BlockchainBackend>(
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    let mut headers = Vec::with_capacity(end_inclusive.saturating_sub(start) as usize);
     for h in start..=end_inclusive {
         match db.fetch_chain_header_by_height(h) {
             Ok(header) => {
@@ -2776,7 +2781,7 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     // The block may be in the chained orphan pool or in the main chain
     let mut header = db.fetch_chain_header_in_all_chains(current_block_hash)?;
     let mut target_difficulties = consensus_manager
-        .new_target_difficulty(pow_algo, header.height() + 1)
+        .new_target_difficulty(pow_algo, header.height().saturating_add(1))
         .map_err(ChainStorageError::UnexpectedResult)?;
     if header.header().pow.pow_algo == pow_algo {
         target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
@@ -2841,7 +2846,11 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
         height,
         mark.elapsed()
     );
-    Ok(HistoricalBlock::new(block, tip_height - height + 1, accumulated_data))
+    Ok(HistoricalBlock::new(
+        block,
+        tip_height.saturating_sub(height).saturating_add(1),
+        accumulated_data,
+    ))
 }
 
 fn fetch_blocks<T: BlockchainBackend>(
@@ -2946,13 +2955,13 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             target: LOG_TARGET,
             "Rewinding headers from height {} to {}",
             last_header_height,
-            last_header_height - steps_back
+            last_header_height.saturating_sub(steps_back)
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
     let mut txn = DbTransaction::new();
     for h in 0..steps_back {
-        let height = last_header_height - h;
+        let height = last_header_height.saturating_sub(h);
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
@@ -2999,12 +3008,13 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             db.update_stats_progress(h);
         }
         let mut txn = DbTransaction::new();
-        info!(target: LOG_TARGET, "Deleting block {}", last_block_height - h,);
-        let block = fetch_block(db, last_block_height - h, false)?;
+        let block_height = last_block_height.saturating_sub(h);
+        info!(target: LOG_TARGET, "Deleting block {block_height}");
+        let block = fetch_block(db, block_height, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
         let block_hash = *block.hash();
         txn.delete_tip_block(block_hash);
-        txn.delete_header(last_block_height - h);
+        txn.delete_header(block_height);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
             // can't recover from this apart from resync from another peer. Failure here
@@ -3015,10 +3025,11 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         removed_blocks.push(block);
         // Set best block to one before, to keep DB consistent, or, if we reached pruned horizon, set best block to 0 as
         // we have run out of headers.
-        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
+        let is_last_step = h.saturating_add(1) == steps_back;
+        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && is_last_step {
             0
         } else {
-            last_block_height - h - 1
+            block_height.saturating_sub(1)
         })?;
         let metadata = db.fetch_chain_metadata()?;
         let expected_block_hash = *metadata.best_block_hash();
@@ -3031,7 +3042,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         );
         // When rewinding past the pruning horizon to height 0, reset pruned_height in the same
         // transaction to maintain the invariant that pruned_height <= best_block_height.
-        if prune_past_horizon && h + 1 == steps_back {
+        if prune_past_horizon && is_last_step {
             txn.set_pruned_height(0);
         }
         if h == 0 {
@@ -3056,8 +3067,8 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         // We also delete headers above the target height since they belong to the old chain and will be
         // replaced during re-sync. The header at target_height is preserved as it is the chain split point.
         // We don't have these complete blocks, so we don't push them to the removed blocks.
-        for h in 0..(last_block_height - steps_back) {
-            let height = last_block_height - h - steps_back;
+        for h in 0..last_block_height.saturating_sub(steps_back) {
+            let height = last_block_height.saturating_sub(h).saturating_sub(steps_back);
             debug!(
                 target: LOG_TARGET,
                 "Deleting pruned block data at height {}",
@@ -3118,7 +3129,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
         height,
         after_orphans,
-        timer.elapsed() - after_orphans,
+        timer.elapsed().saturating_sub(after_orphans),
         hash.to_hex(),
     );
     res
@@ -3162,7 +3173,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             }
             // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
             // remaining blocks as well.
-            for block in new_chain_from_fork.iter().skip(i + 1) {
+            for block in new_chain_from_fork.iter().skip(i.saturating_add(1)) {
                 txn.delete_orphan(*block.hash());
             }
             backend.write(txn)?;
@@ -3770,7 +3781,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
     );
 
     let mut txn = DbTransaction::new();
-    for block_to_prune in (last_pruned + 1)..=target_horizon_height {
+    for block_to_prune in last_pruned.saturating_add(1)..=target_horizon_height {
         let header = db.fetch_chain_header_by_height(block_to_prune)?;
         // Note, this could actually be done in one step instead of each block, since deleted is
         // accumulated
@@ -4029,7 +4040,7 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
             "Block at height {height} has invalid previous hash"
         )));
     }
-    if this_block_header.height != prev_chain_header.height() + 1 {
+    if this_block_header.height != prev_chain_header.height().saturating_add(1) {
         return Err(ChainStorageError::CorruptedDatabase(format!(
             "Block at height {height} does not follow previous header height"
         )));
@@ -4080,6 +4091,8 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
     use std::{collections::HashMap, sync};
 

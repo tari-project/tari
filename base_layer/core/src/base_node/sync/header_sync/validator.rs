@@ -292,6 +292,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
@@ -327,8 +329,8 @@ mod test {
             let mut header = BlockHeader::from_previous(tip.header());
             header.version = cm.consensus_constants(header.height).blockchain_version().into();
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
-            header.kernel_mmr_size += 1;
-            header.output_smt_size += 1;
+            header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
+            header.output_smt_size = header.output_smt_size.saturating_add(1);
             let acc_data = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
 
             let chain_header = ChainHeader::try_construct(header.clone(), acc_data.clone()).unwrap();

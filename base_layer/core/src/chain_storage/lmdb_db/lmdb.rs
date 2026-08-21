@@ -611,13 +611,13 @@ where V: DeserializeOwned {
 pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result<(u64, u64, u64), ChainStorageError> {
     let access = txn.access();
     let mut cursor = txn.cursor(db)?;
-    let mut num_entries = 0;
-    let mut total_key_size = 0;
-    let mut total_value_size = 0;
+    let mut num_entries = 0u64;
+    let mut total_key_size = 0u64;
+    let mut total_value_size = 0u64;
     while let Some((key, value)) = cursor.next::<[u8], [u8]>(&access).to_opt()? {
-        num_entries += 1;
-        total_key_size += key.len() as u64;
-        total_value_size += value.len() as u64;
+        num_entries = num_entries.saturating_add(1);
+        total_key_size = total_key_size.saturating_add(key.len() as u64);
+        total_value_size = total_value_size.saturating_add(value.len() as u64);
     }
     Ok((num_entries, total_key_size, total_value_size))
 }
@@ -635,13 +635,13 @@ where
 {
     let mut cursor = txn.cursor(db)?;
     let mut access = txn.access();
-    let mut num_deleted = 0;
+    let mut num_deleted = 0usize;
     while let Some((k, v)) = cursor.next::<K, [u8]>(&access).to_opt()? {
         match deserialize(v) {
             Ok(v) => match predicate(k, v) {
                 Some(true) => {
                     cursor.del(&mut access, del::Flags::empty())?;
-                    num_deleted += 1;
+                    num_deleted = num_deleted.saturating_add(1);
                 },
                 Some(false) => continue,
                 None => {
@@ -664,10 +664,10 @@ where
 pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
     let mut cursor = txn.cursor(db)?;
     let mut access = txn.access();
-    let mut num_deleted = 0;
+    let mut num_deleted = 0usize;
     while cursor.next::<[u8], [u8]>(&access).to_opt()?.is_some() {
         cursor.del(&mut access, del::Flags::empty())?;
-        num_deleted += 1;
+        num_deleted = num_deleted.saturating_add(1);
     }
     Ok(num_deleted)
 }

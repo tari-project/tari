@@ -125,8 +125,8 @@ impl HealthResult {
         self.status = HealthStatus::NotServing;
         self.last_check = Utc::now();
         self.response_time = response_time;
-        self.failure_count += 1;
-        self.consecutive_failures += 1;
+        self.failure_count = self.failure_count.saturating_add(1);
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         self.last_error = Some(error);
     }
 
