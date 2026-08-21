@@ -56,7 +56,7 @@ where
 
     /// Run the outbound pipeline.
     pub async fn run(mut self) {
-        let mut current_id = 0;
+        let mut current_id = 0u64;
 
         while let Some(msg) = self.config.in_receiver.recv().await {
             // Pipeline IN received a message. Spawn a new task for the pipeline
@@ -70,13 +70,13 @@ where
                     Level::Trace
                 },
                 "Outbound pipeline usage: {}/{}",
-                max_available - num_available,
+                max_available.saturating_sub(num_available),
                 max_available
             );
 
             let pipeline = self.config.pipeline.clone();
             let id = current_id;
-            current_id = (current_id + 1) % u64::MAX;
+            current_id = current_id.wrapping_add(1) % u64::MAX;
             self.executor
                 .spawn(async move {
                     let timer = Instant::now();

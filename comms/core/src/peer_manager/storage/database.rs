@@ -158,7 +158,7 @@ impl PeerDatabaseSql {
                     "Reclassified stored address '{address}' as {}external",
                     if is_external { "" } else { "not " }
                 );
-                reclassified += 1;
+                reclassified = reclassified.saturating_add(1);
             }
 
             if reclassified > 0 {
@@ -1197,9 +1197,11 @@ impl PeerDatabaseSql {
         }
 
         if let Some(threshold) = stale_peer_threshold {
-            let threshold = min(threshold, Duration::from_secs(i64::MAX.unsigned_abs() - 1));
-            let stale_threshold =
-                chrono::Utc::now().naive_utc() - chrono::Duration::from_std(threshold).unwrap_or(TimeDelta::MAX);
+            let threshold = min(threshold, Duration::from_secs(i64::MAX.unsigned_abs().saturating_sub(1)));
+            let stale_threshold = chrono::Utc::now()
+                .naive_utc()
+                .checked_sub_signed(chrono::Duration::from_std(threshold).unwrap_or(TimeDelta::MAX))
+                .unwrap_or(chrono::NaiveDateTime::MIN);
             query = query.filter(
                 multi_addresses::last_seen
                     // Never tried to connect
@@ -1334,7 +1336,10 @@ impl PeerDatabaseSql {
                 // network it costs a slow rendezvous that fails, crowding out a live peer. Callers
                 // that cannot fill `n` from this set fall back to a relaxed query, so narrowing it
                 // costs nothing when few recent peers are known.
-                let cutoff = chrono::Utc::now().naive_utc() - KNOWN_GOOD_LAST_SEEN_WINDOW;
+                let cutoff = chrono::Utc::now()
+                    .naive_utc()
+                    .checked_sub_signed(KNOWN_GOOD_LAST_SEEN_WINDOW)
+                    .unwrap_or(chrono::NaiveDateTime::MIN);
                 query = query.filter(multi_addresses::last_seen.gt(cutoff));
             }
             if let Some(flags) = peer_flags {

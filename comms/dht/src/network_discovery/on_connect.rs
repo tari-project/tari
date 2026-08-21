@@ -147,7 +147,7 @@ impl OnConnect {
         let mut peer_stream = peer_stream.take(NUM_FETCH_PEERS as usize);
 
         let sync_peer = conn.peer_node_id();
-        let mut num_added = 0;
+        let mut num_added = 0usize;
         while let Some(resp) = peer_stream.next().await {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
@@ -157,7 +157,7 @@ impl OnConnect {
                             Ok(new_peer) => {
                                 if new_peer {
                                     debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
-                                    num_added += 1;
+                                    num_added = num_added.saturating_add(1);
                                 }
                             },
                             Err(e) => {

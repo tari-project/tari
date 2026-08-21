@@ -310,7 +310,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     }
                 }
 
-                let expires = Utc::now() + self.message_validity_window;
+                let expires = Utc::now()
+            .checked_add_signed(self.message_validity_window)
+            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
 
                 match self
                     .generate_send_messages(
@@ -476,6 +478,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn process_encryption(
         &self,
         encryption: &OutboundEncryption,

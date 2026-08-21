@@ -110,7 +110,10 @@ impl IdentitySignature {
             return Ok(false);
         }
         // Do not accept timestamp more than 1 day in the future
-        if self.updated_at > Utc::now() + chrono::Duration::days(1) {
+        let max_updated_at = Utc::now()
+            .checked_add_signed(chrono::Duration::days(1))
+            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
+        if self.updated_at > max_updated_at {
             return Ok(false);
         }
 

@@ -179,7 +179,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 },
             }
 
-            round += 1;
+            round = round.saturating_add(1);
         }
 
         Err(ProtocolError::ProtocolInboundNegotiationFailed)

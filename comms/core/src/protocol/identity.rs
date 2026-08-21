@@ -146,7 +146,7 @@ async fn write_protocol_frame<S: AsyncWrite + Unpin>(
     trace!(
         target: LOG_TARGET,
         "Writing {} bytes",
-        len_bytes.len() + msg_bytes.len() + 1
+        len_bytes.len().saturating_add(msg_bytes.len()).saturating_add(1)
     );
     socket.write_all(&version_bytes[..]).await?;
     socket.write_all(&len_bytes[..]).await?;

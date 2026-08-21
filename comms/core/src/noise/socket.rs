@@ -192,13 +192,13 @@ where
         trace!(
             target: LOG_TARGET,
             "poll_write_all: wrote {}/{} bytes",
-            *offset + n,
+            offset.saturating_add(n),
             buf.len()
         );
         if n == 0 {
             return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
         }
-        *offset += n;
+        *offset = offset.saturating_add(n);
         assert!(*offset <= buf.len());
 
         if *offset == buf.len() {
@@ -261,13 +261,13 @@ where
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
-            *offset + n,
+            offset.saturating_add(n),
             buf.len()
         );
         if n == 0 {
             return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()));
         }
-        *offset += n;
+        *offset = offset.saturating_add(n);
         assert!(*offset <= buf.len());
 
         if *offset == buf.len() {
@@ -348,8 +348,9 @@ where TSocket: AsyncRead + Unpin
                     decrypted_len,
                     ref mut offset,
                 } => {
-                    let num_bytes_to_copy = cmp::min(decrypted_len - *offset, buf.len());
-                    let bytes_to_copy = match self.buffers.read_decrypted.get(*offset..(*offset + num_bytes_to_copy)) {
+                    let num_bytes_to_copy = cmp::min(decrypted_len.saturating_sub(*offset), buf.len());
+                    let copy_end = offset.saturating_add(num_bytes_to_copy);
+                    let bytes_to_copy = match self.buffers.read_decrypted.get(*offset..copy_end) {
                         Some(bytes) => bytes,
                         None => {
                             return Poll::Ready(Err(io::Error::new(
@@ -364,10 +365,10 @@ where TSocket: AsyncRead + Unpin
                     trace!(
                         target: LOG_TARGET,
                         "CopyDecryptedFrame: copied {}/{} bytes",
-                        *offset + num_bytes_to_copy,
+                        copy_end,
                         decrypted_len
                     );
-                    *offset += num_bytes_to_copy;
+                    *offset = copy_end;
                     if *offset == decrypted_len {
                         self.read_state = ReadState::Init;
                     }
@@ -419,7 +420,8 @@ where TSocket: AsyncWrite + Unpin
                 },
                 WriteState::BufferData { ref mut offset } => {
                     let bytes_buffered = if let Some(buf) = buf {
-                        let num_bytes_to_copy = ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH - *offset, buf.len());
+                        let num_bytes_to_copy =
+                            ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH.saturating_sub(*offset), buf.len());
                         let bytes = match buf.get(..num_bytes_to_copy) {
                             Some(bytes) => bytes,
                             None => {
@@ -431,7 +433,7 @@ where TSocket: AsyncWrite + Unpin
                         };
                         self.buffers
                             .write_decrypted
-                            .get_mut(*offset..(*offset + num_bytes_to_copy))
+                            .get_mut(*offset..offset.saturating_add(num_bytes_to_copy))
                             .expect("this is checked")
                             .copy_from_slice(bytes);
                         trace!(
@@ -440,7 +442,7 @@ where TSocket: AsyncWrite + Unpin
                             num_bytes_to_copy,
                             buf.len()
                         );
-                        *offset += num_bytes_to_copy;
+                        *offset = offset.saturating_add(num_bytes_to_copy);
                         Some(num_bytes_to_copy)
                     } else {
                         None

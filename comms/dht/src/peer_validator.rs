@@ -120,14 +120,14 @@ impl<'a> PeerValidator<'a> {
             )
         });
 
-        let mut accepted_address_count = 0;
+        let mut accepted_address_count = 0usize;
         for claim in new_peer.claims {
             let valid_addresses = peer_validator::validate_and_filter_peer_identity_claim_addresses(
                 &self.config.peer_validator_config,
                 &new_peer.public_key,
                 &claim,
             )?;
-            accepted_address_count += valid_addresses.len();
+            accepted_address_count = accepted_address_count.saturating_add(valid_addresses.len());
             peer.update_addresses(&valid_addresses, &PeerAddressSource::FromDiscovery {
                 peer_identity_claim: claim.clone(),
             });

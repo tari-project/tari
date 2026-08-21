@@ -96,7 +96,7 @@ impl MessageSendStates {
             return (Vec::new(), Vec::new());
         }
         let total = self.len();
-        let mut count = 0;
+        let mut count = 0usize;
 
         let mut unordered = self.into_futures_unordered();
         let mut succeeded = Vec::new();
@@ -104,7 +104,7 @@ impl MessageSendStates {
         while let Some((tag, result)) = unordered.next().await {
             match result {
                 Ok(_) => {
-                    count += 1;
+                    count = count.saturating_add(1);
                     succeeded.push(tag);
                 },
                 Err(_) => {
@@ -146,7 +146,7 @@ impl MessageSendStates {
         }
 
         let start = Instant::now();
-        let mut count = 0;
+        let mut count = 0usize;
         let mut unordered = self.into_futures_unordered();
         let mut succeeded = Vec::new();
         let mut failed = Vec::new();
@@ -155,7 +155,7 @@ impl MessageSendStates {
                 Ok(Some((tag, result))) => {
                     match result {
                         Ok(_) => {
-                            count += 1;
+                            count = count.saturating_add(1);
                             succeeded.push(tag);
                         },
                         Err(_) => {

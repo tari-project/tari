@@ -243,15 +243,15 @@ impl MultiaddrWithStats {
         self.last_failed_reason = None;
 
         self.avg_latency = Some(
-            ((self
-                .avg_latency
+            self.avg_latency
                 .unwrap_or_default()
-                .saturating_mul(self.latency_sample_count))
-            .saturating_add(latency_measurement)) /
-                (self.latency_sample_count + 1),
+                .saturating_mul(self.latency_sample_count)
+                .saturating_add(latency_measurement)
+                .checked_div(self.latency_sample_count.saturating_add(1))
+                .unwrap_or(latency_measurement),
         );
         if self.latency_sample_count < MAX_LATENCY_SAMPLE_COUNT {
-            self.latency_sample_count += 1;
+            self.latency_sample_count = self.latency_sample_count.saturating_add(1);
         }
 
         self.update_quality_score();
@@ -267,12 +267,15 @@ impl MultiaddrWithStats {
         self.last_failed_reason = None;
 
         self.avg_initial_dial_time = Some(
-            ((self.avg_initial_dial_time.unwrap_or_default() * self.initial_dial_time_sample_count) +
-                initial_dial_time) /
-                (self.initial_dial_time_sample_count + 1),
+            self.avg_initial_dial_time
+                .unwrap_or_default()
+                .saturating_mul(self.initial_dial_time_sample_count)
+                .saturating_add(initial_dial_time)
+                .checked_div(self.initial_dial_time_sample_count.saturating_add(1))
+                .unwrap_or(initial_dial_time),
         );
         if self.initial_dial_time_sample_count < MAX_INITIAL_DIAL_TIME_SAMPLE_COUNT {
-            self.initial_dial_time_sample_count += 1;
+            self.initial_dial_time_sample_count = self.initial_dial_time_sample_count.saturating_add(1);
         }
         self.update_quality_score();
     }
@@ -311,7 +314,7 @@ impl MultiaddrWithStats {
 
     /// Mark that a connection could not be established with this net address
     pub fn mark_failed_connection_attempt(&mut self, error_string: String) -> &mut Self {
-        self.connection_attempts += 1;
+        self.connection_attempts = self.connection_attempts.saturating_add(1);
         self.last_failed_reason = Some(error_string);
         self.update_quality_score();
         self
@@ -346,7 +349,7 @@ impl MultiaddrWithStats {
         }
 
         // The starting score
-        let mut score_self = 800;
+        let mut score_self = 800i32;
 
         // Latency score:
         // - If there is no average yet, add '100' points
@@ -357,9 +360,9 @@ impl MultiaddrWithStats {
         if let Some(val) = self.avg_latency {
             // Explicitly truncate the latency to avoid casting problems
             let avg_latency_millis = i32::try_from(val.as_millis()).unwrap_or(i32::MAX);
-            score_self += cmp::max(0, 100i32.saturating_sub(avg_latency_millis / 100));
+            score_self = score_self.saturating_add(cmp::max(0, 100i32.saturating_sub(avg_latency_millis / 100)));
         } else {
-            score_self += 100;
+            score_self = score_self.saturating_add(100);
         }
 
         // Last seen score:
@@ -371,12 +374,12 @@ impl MultiaddrWithStats {
         //   - less than 1s, add '100' points
         let last_seen_seconds: i32 = self
             .last_seen
-            .map(|x| Utc::now().naive_utc() - x)
+            .map(|x| Utc::now().naive_utc().signed_duration_since(x))
             .map(|x| x.num_seconds())
             .unwrap_or(i64::MAX / 2)
             .try_into()
             .unwrap_or(i32::MAX);
-        score_self += cmp::max(-700, 100i32.saturating_sub(last_seen_seconds));
+        score_self = score_self.saturating_add(cmp::max(-700, 100i32.saturating_sub(last_seen_seconds)));
 
         // Any failure to connect results in a score of '0' points
         if self.last_failed_reason.is_some() {

@@ -1175,7 +1175,7 @@ impl ConnectivityManagerActor {
         }) as i64;
 
         metrics::connections(ConnectionDirection::Inbound).set(num_inbound);
-        metrics::connections(ConnectionDirection::Outbound).set(total - num_inbound);
+        metrics::connections(ConnectionDirection::Outbound).set(total.saturating_sub(num_inbound));
 
         let uptime = self
             .uptime

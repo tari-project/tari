@@ -130,7 +130,7 @@ impl Discovering {
                     debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{peer_node_id}`" );
 
                     if self.request_from_peers(conn).await.is_ok() {
-                        self.stats.num_succeeded += 1;
+                        self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
                     }
                 },
                 Err(err) => {
@@ -310,12 +310,12 @@ impl Discovering {
             sync_peer
         );
         let mut stream = self.get_stream(client, sync_peer).await?;
-        let mut counter = 0;
-        let mut hostile_claims = 0;
+        let mut counter = 0u32;
+        let mut hostile_claims = 0usize;
         #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
         while let Some(resp) = self.get_peer_response(&mut stream, sync_peer).await? {
-            counter += 1;
+            counter = counter.saturating_add(1);
             if counter > self.params.num_peers_to_request {
                 warn!(target: LOG_TARGET, "Discovering: Sync peer `{sync_peer}` sent more peers than we requested.");
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
@@ -358,7 +358,7 @@ impl Discovering {
                     // block every subsequent peer in each discovery round.
                     Some(is_offence) => {
                         if is_offence {
-                            hostile_claims += 1;
+                            hostile_claims = hostile_claims.saturating_add(1);
                         }
                         warn!(
                             target: LOG_TARGET,
@@ -405,9 +405,9 @@ impl Discovering {
         match peer_validator.validate_peer(new_peer, maybe_existing_peer) {
             Ok(valid_peer) => {
                 if peer_exists {
-                    self.stats.num_duplicate_peers += 1;
+                    self.stats.num_duplicate_peers = self.stats.num_duplicate_peers.saturating_add(1);
                 } else {
-                    self.stats.num_new_peers += 1;
+                    self.stats.num_new_peers = self.stats.num_new_peers.saturating_add(1);
                 }
                 self.add_peer(valid_peer).await?;
                 Ok(())

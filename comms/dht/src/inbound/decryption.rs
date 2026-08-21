@@ -187,6 +187,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn validate_and_decrypt_message(
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
