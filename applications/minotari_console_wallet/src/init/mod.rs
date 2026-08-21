@@ -108,7 +108,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
     loop {
         // Prompt the user for a passphrase and confirm it, up to the defined limit
         // This ensures an unlucky user doesn't get stuck
-        let mut tries = 0;
+        let mut tries = 0u8;
         let mut passphrase = SafePassword::from(""); // initial value for scope
         loop {
             passphrase = prompt_password(prompt)?;
@@ -120,7 +120,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
             }
 
             // If they don't match, keep prompting until we hit the sanity limit
-            tries += 1;
+            tries = tries.saturating_add(1);
             if tries == PASSPHRASE_SANITY_LIMIT {
                 return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
             }

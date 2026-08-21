@@ -84,7 +84,9 @@ impl LinearWeightedMovingAverage {
             .target_difficulties
             .iter()
             .skip(1)
-            .fold(0u128, |difficulty, (_, d)| difficulty.saturating_add(u128::from(d.as_u64())));
+            .fold(0u128, |difficulty, (_, d)| {
+                difficulty.saturating_add(u128::from(d.as_u64()))
+            });
 
         // `n >= 1` because the length is at least 2.
         let ave_difficulty = difficulty_sum.checked_div(n)?;
@@ -111,7 +113,8 @@ impl LinearWeightedMovingAverage {
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times = weighted_times.saturating_add(u128::from(solve_time.saturating_mul(i.saturating_add(1) as u64)));
+            weighted_times =
+                weighted_times.saturating_add(u128::from(solve_time.saturating_mul(i.saturating_add(1) as u64)));
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n.saturating_mul(n.saturating_add(1)).saturating_mul(self.target_time) / 2;

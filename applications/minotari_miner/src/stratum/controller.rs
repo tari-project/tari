@@ -310,7 +310,7 @@ impl Controller {
     pub fn run(mut self) {
         let server_read_interval = Duration::from_secs(1);
         let server_retry_interval = Duration::from_secs(5);
-        let mut next_server_read = Instant::now() + server_read_interval;
+        let mut next_server_read = deadline_after(server_read_interval);
         let mut next_server_retry = Instant::now();
         // Request the first job template
         thread::sleep(Duration::from_secs(1));
@@ -335,7 +335,7 @@ impl Controller {
                         let status = format!("Connection Status: Connected to server at {}.", self.server_url);
                         info!(target: LOG_TARGET, "{status}");
                     }
-                    next_server_retry = Instant::now() + server_retry_interval;
+                    next_server_retry = deadline_after(server_retry_interval);
                     if self.stream.is_none() {
                         thread::sleep(std::time::Duration::from_secs(1));
                         continue;
@@ -393,7 +393,7 @@ impl Controller {
                             continue;
                         },
                     }
-                    next_server_read = Instant::now() + server_read_interval;
+                    next_server_read = deadline_after(server_read_interval);
                 }
             }
 
@@ -418,4 +418,9 @@ impl Controller {
             thread::sleep(Duration::from_millis(10));
         } // loop
     }
+}
+
+/// Returns the instant `interval` from now, clamped to now if the clock would overflow.
+fn deadline_after(interval: Duration) -> Instant {
+    Instant::now().checked_add(interval).unwrap_or_else(Instant::now)
 }

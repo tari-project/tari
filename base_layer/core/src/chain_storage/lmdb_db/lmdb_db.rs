@@ -2356,7 +2356,9 @@ impl LMDBDatabase {
                 let store = self.validator_node_store(txn);
                 let evict_node = proof.node_to_evict();
                 let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height).saturating_add(VnEpoch(1));
+                let next_epoch = constants
+                    .block_height_to_epoch(header.height)
+                    .saturating_add(VnEpoch(1));
                 let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
                 info!(
                     target: LOG_TARGET,
@@ -2378,7 +2380,9 @@ impl LMDBDatabase {
                     sidechain_pk.map(|pk| pk.to_hex()),
                 );
                 let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height).saturating_add(VnEpoch(1));
+                let next_epoch = constants
+                    .block_height_to_epoch(header.height)
+                    .saturating_add(VnEpoch(1));
                 let exit_epoch = store.get_next_exit_epoch(
                     sidechain_pk,
                     next_epoch,

@@ -178,7 +178,7 @@ impl McpTool for GetMempoolTransactionsTool {
                 });
 
                 transactions.push(tx_info);
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 
@@ -359,7 +359,7 @@ impl McpTool for AnalyzeMempoolTool {
                     weight_distribution.push(tx_weight);
                     total_fees += tx_fee;
                     total_weight += tx_weight;
-                    tx_count += 1;
+                    tx_count = tx_count.saturating_add(1);
                 }
             }
         }

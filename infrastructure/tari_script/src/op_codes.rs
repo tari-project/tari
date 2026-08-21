@@ -359,17 +359,11 @@ impl Opcode {
         match *code {
             OP_CHECK_HEIGHT_VERIFY => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeightVerify(height),
-                    bytes_after_varint(bytes, size)?,
-                ))
+                Ok((CheckHeightVerify(height), bytes_after_varint(bytes, size)?))
             },
             OP_CHECK_HEIGHT => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeight(height),
-                    bytes_after_varint(bytes, size)?,
-                ))
+                Ok((CheckHeight(height), bytes_after_varint(bytes, size)?))
             },
             OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, scrubbed_bytes)),
             OP_COMPARE_HEIGHT => Ok((CompareHeight, scrubbed_bytes)),

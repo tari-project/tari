@@ -82,7 +82,10 @@ impl CommandContext {
         );
 
         let start_height = cmp::max(start_height, 1);
-        let mut prev_header = self.blockchain_db.fetch_chain_header(start_height - 1).await?;
+        let mut prev_header = self
+            .blockchain_db
+            .fetch_chain_header(start_height.saturating_sub(1))
+            .await?;
 
         let mut buff = Vec::new();
         writeln!(
@@ -121,7 +124,8 @@ impl CommandContext {
                 .calculate(min, max);
             let existing_target_difficulty = header.accumulated_data().target_difficulty;
             let achieved = header.accumulated_data().achieved_difficulty;
-            let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
+            let solve_time = (header.header().timestamp.as_u64() as i64)
+                .saturating_sub(prev_header.header().timestamp.as_u64() as i64);
             let normalized_solve_time = cmp::min(
                 u64::try_from(cmp::max(solve_time, 1)).unwrap(),
                 LinearWeightedMovingAverage::max_block_time(
@@ -178,7 +182,7 @@ impl CommandContext {
 
             print!("{height}");
             io::stdout().flush().await?;
-            print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            print!("\x1B[{}D\x1B[K", height.saturating_add(1).to_string().chars().count());
             prev_header = header;
         }
         println!("Complete");

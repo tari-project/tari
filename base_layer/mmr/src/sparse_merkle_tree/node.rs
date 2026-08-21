@@ -365,9 +365,15 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
             Ok(root)
         } else {
             let (left, right) = if get_bit(self.key.as_slice(), height) == Some(0) {
-                (Branch(self.build_tree(height.saturating_add(1), sibling)?), Empty(EmptyNode {}))
+                (
+                    Branch(self.build_tree(height.saturating_add(1), sibling)?),
+                    Empty(EmptyNode {}),
+                )
             } else {
-                (Empty(EmptyNode {}), Branch(self.build_tree(height.saturating_add(1), sibling)?))
+                (
+                    Empty(EmptyNode {}),
+                    Branch(self.build_tree(height.saturating_add(1), sibling)?),
+                )
             };
             let root = BranchNode::new(height, root_key, left, right)?;
             Ok(root)

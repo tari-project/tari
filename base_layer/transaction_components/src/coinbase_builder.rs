@@ -274,12 +274,11 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let excess = CompressedCommitment::from_compressed_key(public_commitment_mask_key);
         // generate tx details
         let value: u64 = total_reward.into();
-        let output_features =
-            OutputFeatures::create_coinbase(
-                height.saturating_add(constants.coinbase_min_maturity()),
-                self.extra,
-                range_proof_type,
-            );
+        let output_features = OutputFeatures::create_coinbase(
+            height.saturating_add(constants.coinbase_min_maturity()),
+            self.extra,
+            range_proof_type,
+        );
         let encrypted_data = self.key_manager.encrypt_data_for_recovery(
             &commitment_mask_key_id,
             Some(&encryption_key_id),

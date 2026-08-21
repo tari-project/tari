@@ -119,7 +119,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         }
 
         // Wait for the liveness test to complete
-        let mut count = 0;
+        let mut count = 0usize;
         loop {
             tokio::select! {
                 _ = rx.changed() => {
@@ -155,7 +155,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                 },
 
                 _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                    count += 1;
+                    count = count.saturating_add(1);
                     if count >= 180 {
                         if let Some(true) = args.exit {
                             println!(" >> The liveness test failed to complete and base node will now exit\n");

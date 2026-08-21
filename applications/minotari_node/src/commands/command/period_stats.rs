@@ -62,7 +62,7 @@ impl CommandContext {
         // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
         let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
 
-        let mut period_ticker_start = period_ticker_end - period;
+        let mut period_ticker_start = period_ticker_end.saturating_sub(period);
         let mut period_tx_count = 0;
         let mut period_block_count = 0;
         let mut period_hash = 0.0;
@@ -81,13 +81,13 @@ impl CommandContext {
 
             let prev_block = self
                 .node_service
-                .get_block(height - 1, true)
+                .get_block(height.saturating_sub(1), true)
                 .await?
                 .ok_or_else(|| anyhow!("Error in db, block not found at height {}", height))?;
 
-            height -= 1;
+            height = height.saturating_sub(1);
             if block.header().timestamp.as_u64() > period_ticker_end {
-                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+                print!("\x1B[{}D\x1B[K", height.saturating_add(1).to_string().chars().count());
                 continue;
             };
             while block.header().timestamp.as_u64() < period_ticker_start {
@@ -103,24 +103,28 @@ impl CommandContext {
                 period_hash = 0.0;
                 period_difficulty = 0;
                 period_solvetime = 0;
-                period_ticker_end -= period;
-                period_ticker_start -= period;
+                period_ticker_end = period_ticker_end.saturating_sub(period);
+                period_ticker_start = period_ticker_start.saturating_sub(period);
             }
-            period_tx_count += block.block().body.kernels().len() - 1;
-            period_block_count += 1;
+            period_tx_count = period_tx_count.saturating_add(block.block().body.kernels().len().saturating_sub(1));
+            period_block_count = period_block_count.saturating_add(1);
             let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
                 1
             } else {
-                block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()
+                block
+                    .header()
+                    .timestamp
+                    .as_u64()
+                    .saturating_sub(prev_block.header().timestamp.as_u64())
             };
             let diff = block.accumulated_data().target_difficulty.as_u64();
-            period_difficulty += diff;
-            period_solvetime += st;
+            period_difficulty = period_difficulty.saturating_add(diff);
+            period_solvetime = period_solvetime.saturating_add(st);
             period_hash += diff as f64 / st as f64 / 1_000_000.0;
             if period_ticker_end <= period_end {
                 break;
             }
-            print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            print!("\x1B[{}D\x1B[K", height.saturating_add(1).to_string().chars().count());
         }
         println!("Complete");
         println!("Results of tx count, hash rate estimation, target difficulty, solvetime, block count");

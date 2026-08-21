@@ -205,7 +205,8 @@ impl AggregateBody {
         // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
             for i in 1..self.inputs().len() {
-                if self.inputs().get(i).expect("Already checked") == self.inputs().get(i.saturating_sub(1)).expect("Already checked")
+                if self.inputs().get(i).expect("Already checked") ==
+                    self.inputs().get(i.saturating_sub(1)).expect("Already checked")
                 {
                     return true;
                 }

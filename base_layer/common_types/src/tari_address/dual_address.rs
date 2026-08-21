@@ -183,12 +183,11 @@ impl DualAddress {
         let public_spend_key =
             CompressedPublicKey::from_canonical_bytes(bytes.get(34..66).ok_or(TariAddressError::InvalidSize)?)
                 .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let memo_field_payment_id =
-            MaxSizeBytes::from_bytes_truncate(
-                bytes
-                    .get(66..length.saturating_sub(1))
-                    .ok_or(TariAddressError::InvalidSize)?,
-            );
+        let memo_field_payment_id = MaxSizeBytes::from_bytes_truncate(
+            bytes
+                .get(66..length.saturating_sub(1))
+                .ok_or(TariAddressError::InvalidSize)?,
+        );
         Ok(Self {
             network,
             features,

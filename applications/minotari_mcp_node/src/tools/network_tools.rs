@@ -335,7 +335,7 @@ impl McpTool for GetAllPeersTool {
                 });
 
                 all_peers.push(peer_info);
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
 

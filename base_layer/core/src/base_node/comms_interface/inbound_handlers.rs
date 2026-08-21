@@ -305,8 +305,8 @@ where B: BlockchainBackend + 'static
                 // between the read and the wait cannot be missed.
                 let mut last_seen_rx = self.mempool_last_seen.clone();
                 let deadline = Instant::now()
-            .checked_add(self.mempool_sync_timeout)
-            .unwrap_or_else(Instant::now);
+                    .checked_add(self.mempool_sync_timeout)
+                    .unwrap_or_else(Instant::now);
 
                 let best_block_header;
                 let is_mempool_synced;

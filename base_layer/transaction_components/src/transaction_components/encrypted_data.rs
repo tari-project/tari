@@ -235,7 +235,8 @@ impl EncryptedData {
                 format!(
                     "Some({}..{})",
                     &encrypted_data_hex[0..DISPLAY_CUTOFF],
-                    &encrypted_data_hex[encrypted_data_hex.len().saturating_sub(DISPLAY_CUTOFF)..encrypted_data_hex.len()]
+                    &encrypted_data_hex
+                        [encrypted_data_hex.len().saturating_sub(DISPLAY_CUTOFF)..encrypted_data_hex.len()]
                 )
             } else {
                 encrypted_data_hex

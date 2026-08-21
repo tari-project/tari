@@ -311,8 +311,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 }
 
                 let expires = Utc::now()
-            .checked_add_signed(self.message_validity_window)
-            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
+                    .checked_add_signed(self.message_validity_window)
+                    .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
 
                 match self
                     .generate_send_messages(

@@ -778,7 +778,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
                     if let Some(t) = time_to_first_msg {
-                        let _ = self.last_request_latency_tx.send(Some(partial_latency.saturating_add(t)));
+                        let _ = self
+                            .last_request_latency_tx
+                            .send(Some(partial_latency.saturating_add(t)));
                     }
                     trace!(
                         target: LOG_TARGET,

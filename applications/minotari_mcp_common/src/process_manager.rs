@@ -164,7 +164,7 @@ impl ProcessSupervisor {
             }
 
             // Handle restart logic
-            restart_attempts += 1;
+            restart_attempts = restart_attempts.saturating_add(1);
             if restart_attempts > self.max_restart_attempts {
                 log::error!("Maximum restart attempts reached, giving up");
                 drop(
@@ -224,7 +224,7 @@ impl ProcessSupervisor {
                 }
             }
 
-            attempts += 1;
+            attempts = attempts.saturating_add(1);
         }
 
         Err(McpError::server_error(

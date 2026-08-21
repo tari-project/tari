@@ -88,9 +88,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
                         .expect("Already checked")
                         .as_u64(),
                 )
-                .saturating_add(u128::from(
-                    timestamps.get(mid_index).expect("Already checked").as_u64(),
-                )) /
+                .saturating_add(u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
                     2,
             )
             .unwrap_or(u64::MAX),

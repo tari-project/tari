@@ -951,14 +951,15 @@ where
                 let fee_calc = self.get_fee_calc();
                 let output_features_estimate = OutputFeatures::default();
 
-                let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
-                    sum_features_and_scripts_size(
-                        &output_features_estimate,
-                        &TariScript::default(),
-                        &Covenant::new(),
-                        0,
-                    )?,
-                );
+                let default_features_and_scripts_size =
+                    fee_calc
+                        .weighting()
+                        .round_up_features_and_scripts_size(sum_features_and_scripts_size(
+                            &output_features_estimate,
+                            &TariScript::default(),
+                            &Covenant::new(),
+                            0,
+                        )?);
                 let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
                 return Ok((fee, 1, false));
             },
@@ -996,14 +997,12 @@ where
             .resources
             .consensus_constants
             .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                sum_features_and_scripts_size(
-                    &recipient_output_features,
-                    &recipient_script,
-                    &recipient_covenant,
-                    recipient_memo_field.get_size(),
-                )?,
-            );
+            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
+                &recipient_output_features,
+                &recipient_script,
+                &recipient_covenant,
+                recipient_memo_field.get_size(),
+            )?);
 
         let input_selection = self.select_utxos(
             amount,
@@ -1071,9 +1070,12 @@ where
             .resources
             .consensus_constants
             .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                sum_features_and_scripts_size(&recipient_output_features, &recipient_script, &recipient_covenant, 0)?,
-            );
+            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
+                &recipient_output_features,
+                &recipient_script,
+                &recipient_covenant,
+                0,
+            )?);
 
         let input_selection = self
             .select_utxos_for_range_limited_coin_join(selection_criteria, fee, features_and_scripts_byte_size)
@@ -1673,9 +1675,12 @@ where
             .resources
             .consensus_constants
             .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                sum_features_and_scripts_size(&output_features, &TariScript::default(), &covenant, own_memo.get_size())?,
-            );
+            .round_up_features_and_scripts_size(sum_features_and_scripts_size(
+                &output_features,
+                &TariScript::default(),
+                &covenant,
+                own_memo.get_size(),
+            )?);
 
         let input_selection = self.select_utxos(
             amount,
@@ -1817,7 +1822,9 @@ where
         let tip_height = self.resources.db.get_last_scanned_height()?;
 
         let balance = self.get_balance(tip_height)?;
-        let potential_balance = balance.available_balance.saturating_add(balance.pending_incoming_balance);
+        let potential_balance = balance
+            .available_balance
+            .saturating_add(balance.pending_incoming_balance);
         if balance.available_balance < amount && potential_balance >= amount {
             return Err(OutputManagerError::FundsPending);
         }
@@ -1876,14 +1883,15 @@ where
         )
         .map_err(TransactionBuilderError::InvalidMemo)?;
         let output_features_estimate = OutputFeatures::default();
-        let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
-            sum_features_and_scripts_size(
-                &output_features_estimate,
-                &TariScript::default(),
-                &Covenant::new(),
-                change_memo.get_size(),
-            )?,
-        );
+        let default_features_and_scripts_size =
+            fee_calc
+                .weighting()
+                .round_up_features_and_scripts_size(sum_features_and_scripts_size(
+                    &output_features_estimate,
+                    &TariScript::default(),
+                    &Covenant::new(),
+                    change_memo.get_size(),
+                )?);
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
         let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size);
@@ -2081,7 +2089,7 @@ where
                                 .checked_div(range_limit_criteria.target_minimum_amount)
                                 .unwrap_or(0),
                         )
-                            .unwrap_or(usize::MAX)
+                        .unwrap_or(usize::MAX)
                     } else {
                         return Err(OutputManagerError::RangeLimitError {
                             reason: format!(
@@ -2185,8 +2193,7 @@ where
             });
         }
 
-        if total_value.saturating_sub(fee_without_change) < MicroMinotari(range_limit_criteria.target_minimum_amount)
-        {
+        if total_value.saturating_sub(fee_without_change) < MicroMinotari(range_limit_criteria.target_minimum_amount) {
             return Err(OutputManagerError::RangeLimitError {
                 reason: format!(
                     "Total available in range less fee exceeds target value: {} vs. {}",
@@ -2312,9 +2319,9 @@ where
             &self.resources.key_manager,
         )?;
 
-        let accumulated_amount = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc.saturating_add(x.wallet_output.value()));
+        let accumulated_amount = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
+            acc.saturating_add(x.wallet_output.value())
+        });
 
         let payment_id =
             MemoField::new_open_from_string(&format!("Coin join {} outputs", src_outputs.len()), TxType::CoinJoin)
@@ -2364,9 +2371,9 @@ where
             output_features_and_scripts_size.saturating_mul(number_of_splits),
         );
 
-        let accumulated_amount = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc.saturating_add(x.wallet_output.value()));
+        let accumulated_amount = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
+            acc.saturating_add(x.wallet_output.value())
+        });
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
         // The `number_of_splits == 0` guard above proves the divisor is non-zero.
@@ -2468,9 +2475,9 @@ where
         let mut dest_outputs = Vec::with_capacity(number_of_splits.saturating_add(1));
 
         // accumulated value amount from given source outputs
-        let accumulated_amount_with_fee = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc.saturating_add(x.wallet_output.value()));
+        let accumulated_amount_with_fee = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
+            acc.saturating_add(x.wallet_output.value())
+        });
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -2603,13 +2610,12 @@ where
         }
 
         let mut dest_outputs = Vec::with_capacity(number_of_splits.saturating_add(1));
-        let total_split_amount =
-            MicroMinotari::from(amount_per_split.as_u64().saturating_mul(number_of_splits as u64));
+        let total_split_amount = MicroMinotari::from(amount_per_split.as_u64().saturating_mul(number_of_splits as u64));
 
         // accumulated value amount from given source outputs
-        let accumulated_amount = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc.saturating_add(x.wallet_output.value()));
+        let accumulated_amount = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
+            acc.saturating_add(x.wallet_output.value())
+        });
 
         if total_split_amount >= accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
@@ -2862,9 +2868,9 @@ where
             &self.resources.key_manager,
         )?;
 
-        let accumulated_amount_with_fee = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc.saturating_add(x.wallet_output.value()));
+        let accumulated_amount_with_fee = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
+            acc.saturating_add(x.wallet_output.value())
+        });
 
         let fee =
             self.get_fee_calc()

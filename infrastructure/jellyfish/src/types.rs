@@ -216,7 +216,12 @@ impl SparseMerkleProofExt {
         let actual_root_hash = self
             .siblings
             .iter()
-            .zip(element_key.iter_bits().rev().skip(256usize.saturating_sub(self.siblings.len())))
+            .zip(
+                element_key
+                    .iter_bits()
+                    .rev()
+                    .skip(256usize.saturating_sub(self.siblings.len())),
+            )
             .fold(current_hash, |hash, (sibling_node, bit)| {
                 if bit {
                     SparseMerkleInternalNode::new(sibling_node.hash(), hash).hash()

@@ -134,7 +134,7 @@ pub mod test {
                 hasher.header.nonce,
                 core_header.nonce
             );
-            core_header.nonce += 1;
+            core_header.nonce = core_header.nonce.saturating_add(1);
             hasher.inc_nonce();
         }
     }

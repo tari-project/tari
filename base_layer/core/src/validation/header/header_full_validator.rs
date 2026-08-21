@@ -259,7 +259,10 @@ fn check_pow_data_inner(
 
             if remainder != 0 {
                 // Ensure that the last byte is not padded with zeros
-                let last_byte = *pow.pow_data.get(total_bytes.saturating_sub(1)).expect("Already checked");
+                let last_byte = *pow
+                    .pow_data
+                    .get(total_bytes.saturating_sub(1))
+                    .expect("Already checked");
 
                 let padding_mask = (1u8 << remainder).saturating_sub(1);
                 let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded

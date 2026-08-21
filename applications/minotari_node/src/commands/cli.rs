@@ -31,9 +31,9 @@ fn box_line(length: usize, is_top: bool) -> String {
         return String::new();
     }
     if is_top {
-        format!("{}{}{}", "┌", "─".repeat(length - 2), "┐")
+        format!("{}{}{}", "┌", "─".repeat(length.saturating_sub(2)), "┐")
     } else {
-        format!("{}{}{}", "└", "─".repeat(length - 2), "┘")
+        format!("{}{}{}", "└", "─".repeat(length.saturating_sub(2)), "┘")
     }
 }
 
@@ -42,19 +42,16 @@ fn box_separator(length: usize) -> String {
     if length < 2 {
         return String::new();
     }
-    format!("{}{}{}", "├", "─".repeat(length - 2), "┤")
+    format!("{}{}{}", "├", "─".repeat(length.saturating_sub(2)), "┤")
 }
 
 /// returns a line in the box, with box borders at the beginning and end, contents centered.
 fn box_data(data: String, target_length: usize) -> String {
-    let padding = if ((target_length - 2) / 2) > (data.chars().count() / 2) {
-        ((target_length - 2) / 2) - (data.chars().count() / 2)
-    } else {
-        0
-    };
+    let half_width = target_length.saturating_sub(2) / 2;
+    let padding = half_width.saturating_sub(data.chars().count() / 2);
     let mut s = format!("{}{}{}{}", " ".repeat(padding), data, " ".repeat(padding), "│");
     // for integer rounding error, usually only 1 char, to ensure border lines up
-    while s.chars().count() < target_length - 1 {
+    while s.chars().count() < target_length.saturating_sub(1) {
         s = format!("{}{}", " ", s);
     }
     format!("{}{}", "│", s)
@@ -74,7 +71,7 @@ fn box_tabular_data_rows(
         let mut s = " ".repeat(spacing);
         for string in items {
             if &string.chars().count() < max_cell_length {
-                let padding = (max_cell_length / 2) - (&string.chars().count() / 2);
+                let padding = (max_cell_length / 2).saturating_sub(string.chars().count() / 2);
                 s = format!(
                     "{}{}{}{}{}",
                     s,
@@ -97,7 +94,7 @@ fn multiline_find_display_length(lines: &str) -> usize {
     if let Some(line) = lines.lines().max_by(|x, y| x.chars().count().cmp(&y.chars().count())) {
         result = line.len();
         result /= 2;
-        result -= result / 10;
+        result = result.saturating_sub(result / 10);
     }
     result
 }
@@ -119,13 +116,13 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
         for item in chunk {
             cells.push(item.clone());
             cell_sizes.push(item.chars().count());
-            row_cell_count += 1;
+            row_cell_count = row_cell_count.saturating_add(1);
         }
         if row_cell_count < chunk_size {
             while row_cell_count < chunk_size {
                 cells.push(" ".to_string());
                 cell_sizes.push(1);
-                row_cell_count += 1;
+                row_cell_count = row_cell_count.saturating_add(1);
             }
         } else {
             row_cell_count = 0;

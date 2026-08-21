@@ -210,8 +210,11 @@ fn encode_with_prepended_length<T: prost::Message>(
     additional_prefix_space: usize,
 ) -> Result<BytesMut, DhtEncryptError> {
     let len = msg.encoded_len();
-    let mut buf =
-        BytesMut::with_capacity(size_of::<u32>().saturating_add(additional_prefix_space).saturating_add(len));
+    let mut buf = BytesMut::with_capacity(
+        size_of::<u32>()
+            .saturating_add(additional_prefix_space)
+            .saturating_add(len),
+    );
     buf.extend(std::iter::repeat_n(0, additional_prefix_space));
     let len_u32 = u32::try_from(len).map_err(|_| DhtEncryptError::InvalidMessageBody)?;
     buf.put_u32_le(len_u32);

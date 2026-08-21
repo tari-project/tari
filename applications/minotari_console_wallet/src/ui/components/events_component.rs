@@ -46,14 +46,18 @@ impl<B: Backend> Component<B> for EventsComponent {
         if index == 0 {
             self.table_state.select(None);
         } else {
-            self.table_state.select(Some(index - 1));
+            self.table_state.select(Some(index.saturating_sub(1)));
         }
     }
 
     fn on_down(&mut self, app_state: &mut AppState) {
-        let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
+        let index = self
+            .table_state
+            .selected()
+            .map(|s| s.saturating_add(1))
+            .unwrap_or_default();
         let events = app_state.get_all_events();
-        if index > events.len() - 1 {
+        if index > events.len().saturating_sub(1) {
             self.table_state.select(None);
         } else {
             self.table_state.select(Some(index));

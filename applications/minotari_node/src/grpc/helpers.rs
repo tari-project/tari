@@ -27,7 +27,11 @@ pub fn median(mut list: Vec<u64>) -> Option<f64> {
     list.sort_unstable();
     let mid_index = list.len() / 2;
     let median = if list.len().is_multiple_of(2) {
-        (*list.get(mid_index - 1).expect("Cannot fail") + *list.get(mid_index).expect("Cannot fail")) as f64 / 2.0
+        (list
+            .get(mid_index.saturating_sub(1))
+            .expect("Cannot fail")
+            .saturating_add(*list.get(mid_index).expect("Cannot fail"))) as f64 /
+            2.0
     } else {
         *list.get(mid_index).expect("Cannot fail") as f64
     };
@@ -38,8 +42,8 @@ pub fn mean(list: Vec<u64>) -> Option<f64> {
     if list.is_empty() {
         return None;
     }
-    let mut count = 0;
-    let total = list.iter().inspect(|_| count += 1).sum::<u64>();
+    let count = u32::try_from(list.len()).unwrap_or(u32::MAX);
+    let total = list.iter().copied().fold(0u64, u64::saturating_add);
     Some(total as f64 / f64::from(count))
 }
 

@@ -475,7 +475,11 @@ impl LMDBStore {
         increase_threshold_by: Option<usize>,
     ) -> Result<(), LMDBError> {
         let (mapsize, size_used_bytes, size_left_bytes) = LMDBStore::get_stats(env)?;
-        if size_left_bytes <= config.resize_threshold_bytes.saturating_add(increase_threshold_by.unwrap_or_default()) {
+        if size_left_bytes <=
+            config
+                .resize_threshold_bytes
+                .saturating_add(increase_threshold_by.unwrap_or_default())
+        {
             debug!(
                 target: LOG_TARGET,
                 "Resize required: mapsize: {} MB, used: {} MB, remaining: {} MB",

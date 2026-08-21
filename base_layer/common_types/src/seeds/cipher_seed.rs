@@ -222,10 +222,11 @@ impl CipherSeed {
         Self::apply_stream_cipher(&mut secret_data, &encryption_key, self.salt.as_ref())?;
 
         // Assemble the final seed: version, main salt, secret data, checksum
-        let mut encrypted_seed =
-            Vec::<u8>::with_capacity(CIPHER_SEED_MAIN_SALT_BYTES.saturating_add(secret_data.len()).saturating_add(
-                CIPHER_SEED_CHECKSUM_BYTES.saturating_add(1),
-            ));
+        let mut encrypted_seed = Vec::<u8>::with_capacity(
+            CIPHER_SEED_MAIN_SALT_BYTES
+                .saturating_add(secret_data.len())
+                .saturating_add(CIPHER_SEED_CHECKSUM_BYTES.saturating_add(1)),
+        );
         encrypted_seed.push(CIPHER_SEED_VERSION);
         encrypted_seed.extend(secret_data.iter());
         encrypted_seed.extend(self.salt.iter());

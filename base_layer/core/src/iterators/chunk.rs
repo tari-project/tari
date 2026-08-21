@@ -137,7 +137,11 @@ macro_rules! non_overlapping_iter_impl {
                 // Is this the first iteration?
                 if self.end == self.current_end {
                     // The `self.size == 0` guard above proves `size` is non-zero.
-                    let rem = self.end.saturating_sub(self.current).checked_rem(size).unwrap_or(0);
+                    let rem = self
+                        .end
+                        .saturating_sub(self.current)
+                        .checked_rem(size)
+                        .unwrap_or(0);
 
                     // Would there be an overflow (if iterating from the forward to back)
                     if rem > 0 && self.current_end.saturating_sub(rem).checked_add(size).is_none() {

@@ -261,7 +261,10 @@ impl DhtConnectivity {
     }
 
     fn log_status(&self) {
-        let pool_size = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         let (pool_connected, pool_pending) = self
             .random_pool
             .iter()
@@ -367,7 +370,10 @@ impl DhtConnectivity {
     }
 
     async fn refresh_entire_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         // we have no peers, so we need to get peers, so lets double our chances of dialing twice the number we want, we
         // can close them later on And we only select known healty ones
         debug!(
@@ -411,7 +417,10 @@ impl DhtConnectivity {
     }
 
     async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         // Topping the pool back up is cheap (it dials only what is actually missing) and must happen
         // on every tick, otherwise a pool that loses peers stays short until the next refresh
         // interval — hours away. Only the churn is bound to `random_pool_refresh_interval`, and
@@ -425,7 +434,10 @@ impl DhtConnectivity {
 
     #[allow(clippy::too_many_lines)]
     async fn refresh_random_pool(&mut self) -> Result<(), DhtConnectivityError> {
-        let pool_size = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
 
         // Churn deliberately drops healthy peers to explore new ones, so it may only run once per
         // refresh cycle. This function also runs on every `ConnectivityStateOnline` event (every few
@@ -660,7 +672,10 @@ impl DhtConnectivity {
             return Ok(());
         }
 
-        let pool_size = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let pool_size = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
@@ -742,7 +757,10 @@ impl DhtConnectivity {
         peers_by_distance.retain(|p| !peer_allow_list.contains(&p.node_id) && !strongly_held.contains(&p.node_id));
 
         // Remove all above threshold connections
-        let threshold = self.config.num_neighbouring_nodes.saturating_add(self.config.num_random_nodes);
+        let threshold = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
         for peer in peers_by_distance.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,

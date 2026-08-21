@@ -155,7 +155,11 @@ impl EmissionSchedule {
                 return None;
             }
             // Every character is checked to be an ASCII digit above, so this cannot underflow.
-            let arr = n.chars().skip(2).map(|i| (i as u8).saturating_sub(b'0')).collect::<Vec<u8>>();
+            let arr = n
+                .chars()
+                .skip(2)
+                .map(|i| (i as u8).saturating_sub(b'0'))
+                .collect::<Vec<u8>>();
             Some(arr)
         }
         // Multiply a vector of decimal fractional digits by 2. The bool indicates whether the result was greater than
@@ -166,12 +170,12 @@ impl EmissionSchedule {
             for i in 0..len {
                 let index = len.saturating_sub(1).saturating_sub(i);
                 let carry = (*num.get(index).expect("should exists") >= 5).into();
-                *num.get_mut(index).expect("Should exists") =
-                    num.get(index)
-                        .expect("should exists")
-                        .saturating_mul(2)
-                        .rem_euclid(10)
-                        .saturating_add(carry_last);
+                *num.get_mut(index).expect("Should exists") = num
+                    .get(index)
+                    .expect("should exists")
+                    .saturating_mul(2)
+                    .rem_euclid(10)
+                    .saturating_add(carry_last);
                 carry_last = carry;
             }
             carry_last > 0

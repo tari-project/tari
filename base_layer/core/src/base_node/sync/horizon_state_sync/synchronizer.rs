@@ -711,9 +711,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     end.saturating_sub(mmr_position.saturating_add(1))
                 );
                 if mmr_position < end.saturating_sub(1) {
-                    current_header = db
-                    .fetch_chain_header(current_header.height().saturating_add(1))
-                    .await?;
+                    current_header = db.fetch_chain_header(current_header.height().saturating_add(1)).await?;
                 }
             }
             mmr_position = mmr_position.saturating_add(1);

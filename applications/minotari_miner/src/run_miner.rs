@@ -224,7 +224,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 Ok(submitted) => {
                     info!(target: LOG_TARGET, "💰 Found block");
                     if submitted {
-                        blocks_found += 1;
+                        blocks_found = blocks_found.saturating_add(1);
                     }
                     if let Some(max_blocks) = cli.miner_max_blocks &&
                         blocks_found >= max_blocks

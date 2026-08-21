@@ -120,8 +120,10 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
                 cnt >>= 1;
                 let mut i = 0;
                 for j in 0..cnt {
-                    *buf.get_mut(j).expect("Cannot fail") =
-                        cn_fast_hash2(buf.get(i).expect("Cannot fail"), buf.get(i.saturating_add(1)).expect("Cannot fail"));
+                    *buf.get_mut(j).expect("Cannot fail") = cn_fast_hash2(
+                        buf.get(i).expect("Cannot fail"),
+                        buf.get(i.saturating_add(1)).expect("Cannot fail"),
+                    );
                     i = i.saturating_add(2);
                 }
             }

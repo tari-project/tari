@@ -634,8 +634,16 @@ where
                             output_features
                                 .get_serialized_size()
                                 .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                                .saturating_add(script.get_serialized_size().map_err(|e| OutputManagerError::ConversionError(e.to_string()))?)
-                                .saturating_add(Covenant::default().get_serialized_size().map_err(|e| OutputManagerError::ConversionError(e.to_string()))?),
+                                .saturating_add(
+                                    script
+                                        .get_serialized_size()
+                                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                                )
+                                .saturating_add(
+                                    Covenant::default()
+                                        .get_serialized_size()
+                                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                                ),
                         );
 
                     let fee: MicroMinotari =
@@ -2550,25 +2558,22 @@ where
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
-        let number_of_outputs =
-            usize::try_from(
-                amount_without_fee
-                    .as_u64()
-                    .checked_div(range_limit_criteria.target_minimum_amount)
-                    .unwrap_or(0),
-            )
-                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
-                .max(1);
+        let number_of_outputs = usize::try_from(
+            amount_without_fee
+                .as_u64()
+                .checked_div(range_limit_criteria.target_minimum_amount)
+                .unwrap_or(0),
+        )
+        .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+        .max(1);
         let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
         // Note: 'amount_without_fee >= target_minimum_amount' is checked during
         //       'prepare_range_limited_coin_join_transaction_to_send'
-        let residual = amount_without_fee
-            .as_u64()
-            .saturating_sub(
-                range_limit_criteria
-                    .target_minimum_amount
-                    .saturating_mul(number_of_outputs as u64),
-            );
+        let residual = amount_without_fee.as_u64().saturating_sub(
+            range_limit_criteria
+                .target_minimum_amount
+                .saturating_mul(number_of_outputs as u64),
+        );
         let first = values.get_mut(0).expect("index exists");
         first.0 = first.0.saturating_add(residual);
 

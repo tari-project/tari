@@ -1197,7 +1197,10 @@ impl PeerDatabaseSql {
         }
 
         if let Some(threshold) = stale_peer_threshold {
-            let threshold = min(threshold, Duration::from_secs(i64::MAX.unsigned_abs().saturating_sub(1)));
+            let threshold = min(
+                threshold,
+                Duration::from_secs(i64::MAX.unsigned_abs().saturating_sub(1)),
+            );
             let stale_threshold = chrono::Utc::now()
                 .naive_utc()
                 .checked_sub_signed(chrono::Duration::from_std(threshold).unwrap_or(TimeDelta::MAX))

@@ -363,11 +363,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break; // Stop if we reach the end height
             }
-            current_header =
-                self.db
-                    .fetch_header(next_height)
-                    .await?
-                    .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+            current_header = self
+                .db
+                .fetch_header(next_height)
+                .await?
+                .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
 
             if current_header.height == next_page_start_height {
                 // we are on the limit, stop here

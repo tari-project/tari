@@ -955,8 +955,7 @@ impl MemoField {
             as usize;
         let sent_output_hashes_start = payment_id_start.saturating_add(payment_id_length).saturating_add(1);
         for hash_num in 0..sent_output_hashes_length {
-            let hash_start =
-                sent_output_hashes_start.saturating_add(hash_num.saturating_mul(FixedHash::byte_size()));
+            let hash_start = sent_output_hashes_start.saturating_add(hash_num.saturating_mul(FixedHash::byte_size()));
             let hash_end = hash_start.saturating_add(FixedHash::byte_size());
             let hash = bytes
                 .get(hash_start..hash_end)

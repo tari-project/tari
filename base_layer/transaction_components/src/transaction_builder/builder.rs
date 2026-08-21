@@ -276,20 +276,24 @@ where KM: TransactionKeyManagerInterface
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let mut size = 0usize;
         for o in &self.custom_outputs {
-            size = size.saturating_add(fee_weighting.weighting().round_up_features_and_scripts_size(
-                o.output
-                    .features_and_scripts_byte_size()
-                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-            ));
+            size = size.saturating_add(
+                fee_weighting.weighting().round_up_features_and_scripts_size(
+                    o.output
+                        .features_and_scripts_byte_size()
+                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                ),
+            );
         }
         for recipient in &self.recipient_outputs {
-            size = size.saturating_add(fee_weighting.weighting().round_up_features_and_scripts_size(
-                recipient
-                    .output
-                    .output
-                    .features_and_scripts_byte_size()
-                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-            ));
+            size = size.saturating_add(
+                fee_weighting.weighting().round_up_features_and_scripts_size(
+                    recipient
+                        .output
+                        .output
+                        .features_and_scripts_byte_size()
+                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+                ),
+            );
         }
         Ok(size)
     }

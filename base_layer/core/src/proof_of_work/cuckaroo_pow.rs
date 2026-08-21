@@ -265,7 +265,9 @@ fn generate_edges(
         if *nonces.get(i).expect("Already checked") > node_mask {
             return Err(CuckarooVerificationError::NonceTooLarge);
         }
-        if i > 0 && *nonces.get(i).expect("Already checked") <= *nonces.get(i.saturating_sub(1)).expect("Already checked") {
+        if i > 0 &&
+            *nonces.get(i).expect("Already checked") <= *nonces.get(i.saturating_sub(1)).expect("Already checked")
+        {
             return Err(CuckarooVerificationError::NoncesNotAscending);
         }
 
