@@ -148,6 +148,11 @@ impl MicroMinotari {
         self.as_u64().saturating_add(v.as_ref().as_u64()).into()
     }
 
+    pub fn saturating_mul<T>(&self, v: T) -> MicroMinotari
+    where T: AsRef<MicroMinotari> {
+        self.as_u64().saturating_mul(v.as_ref().as_u64()).into()
+    }
+
     #[inline]
     pub fn as_u64(&self) -> u64 {
         self.0

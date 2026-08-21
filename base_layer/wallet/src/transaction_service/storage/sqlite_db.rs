@@ -368,7 +368,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
                 key,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -413,7 +413,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 "sqlite profile - contains '{}': lock {} + db_op {} = {} ms",
                 key,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -443,7 +443,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 "sqlite profile - write '{}': lock {} + db_op {} = {} ms",
                 key_text,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -464,7 +464,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - transaction_exists: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -489,7 +489,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - update_completed_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -512,7 +512,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -535,7 +535,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
                      ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -549,7 +549,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
                      ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -632,7 +632,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - complete_outbound_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -672,7 +672,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - complete_inbound_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -715,7 +715,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - broadcast_completed_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -745,7 +745,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -779,7 +779,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_pending_transaction_cancellation_status: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -808,7 +808,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_completed_transaction_cancellation_status: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -838,7 +838,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - mark_direct_send_success: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -862,7 +862,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - increment_send_count: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -924,7 +924,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     target: LOG_TARGET,
                     "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -954,7 +954,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_last_mined_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -977,7 +977,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_unconfirmed_transactions_info: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1009,7 +1009,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_transactions_to_be_broadcast: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1040,7 +1040,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1077,7 +1077,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1107,7 +1107,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_transaction_as_unmined: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1130,7 +1130,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_pending_inbound_transaction_sender_info: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1538,7 +1538,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - process_reorg: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1604,7 +1604,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - check_lock_height_status: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1757,7 +1757,7 @@ impl InboundTransactionSql {
                     .load::<i32>(conn)?
                     .first()
                 {
-                    value + 1
+                    value.saturating_add(1)
                 } else {
                     return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                 },
@@ -2028,7 +2028,7 @@ impl OutboundTransactionSql {
                         .load::<i32>(conn)?
                         .first()
                     {
-                        value + 1
+                        value.saturating_add(1)
                     } else {
                         return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                     },
@@ -2407,7 +2407,7 @@ impl CompletedTransactionSql {
                         .load::<i32>(conn)?
                         .first()
                     {
-                        value + 1
+                        value.saturating_add(1)
                     } else {
                         return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                     },

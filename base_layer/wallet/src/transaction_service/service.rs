@@ -633,13 +633,9 @@ where
                         .round_up_features_and_scripts_size(
                             output_features
                                 .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                                script
-                                    .get_serialized_size()
-                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                                Covenant::default()
-                                    .get_serialized_size()
-                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
+                                .saturating_add(script.get_serialized_size().map_err(|e| OutputManagerError::ConversionError(e.to_string()))?)
+                                .saturating_add(Covenant::default().get_serialized_size().map_err(|e| OutputManagerError::ConversionError(e.to_string()))?),
                         );
 
                     let fee: MicroMinotari =
@@ -2026,6 +2022,8 @@ where
 
     /// Creates an encumbered uninitialized transaction
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar arithmetic on keys and offsets, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub async fn finalized_aggregate_encumbed_tx(
         &mut self,
         tx_id: TxId,
@@ -2195,7 +2193,8 @@ where
 
         let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
 
-        let height = tip_height + (24 * 30);
+        const BLOCKS_PER_DAY: u64 = 24 * 30;
+        let height = tip_height.saturating_add(BLOCKS_PER_DAY);
 
         // lets create the HTLC script
         let script = script!(
@@ -2552,7 +2551,12 @@ where
 
         // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
         let number_of_outputs =
-            usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
+            usize::try_from(
+                amount_without_fee
+                    .as_u64()
+                    .checked_div(range_limit_criteria.target_minimum_amount)
+                    .unwrap_or(0),
+            )
                 .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
                 .max(1);
         let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
@@ -2560,8 +2564,13 @@ where
         //       'prepare_range_limited_coin_join_transaction_to_send'
         let residual = amount_without_fee
             .as_u64()
-            .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
-        values.get_mut(0).expect("index exists").0 += residual;
+            .saturating_sub(
+                range_limit_criteria
+                    .target_minimum_amount
+                    .saturating_mul(number_of_outputs as u64),
+            );
+        let first = values.get_mut(0).expect("index exists");
+        first.0 = first.0.saturating_add(residual);
 
         for value in values {
             tx_builder.add_stealth_recipient(
@@ -2911,14 +2920,18 @@ where
                 .round_up_features_and_scripts_size(
                     OutputFeatures::default()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        TariScript::default()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        Covenant::new()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        memo.get_size(),
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
+                        .saturating_add(
+                            TariScript::default()
+                                .get_serialized_size()
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        )
+                        .saturating_add(
+                            Covenant::new()
+                                .get_serialized_size()
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        )
+                        .saturating_add(memo.get_size()),
                 );
             let fee_calc = Fee::new(
                 *self
@@ -2928,8 +2941,7 @@ where
                     .transaction_weight_params(),
             );
             let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, features_and_scripts_byte_size);
-            total_send += *amount;
-            total_send += default_output_fee;
+            total_send = total_send.saturating_add(*amount).saturating_add(default_output_fee);
         }
 
         // Prepare sender part of the transaction
@@ -3971,7 +3983,7 @@ where
                 );
                 TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
             })?;
-            let mut num_resets = 0;
+            let mut num_resets = 0usize;
             'outer: loop {
                 let local_run = protocol.clone();
                 let exec_fut = local_run.execute();
@@ -3984,7 +3996,7 @@ where
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
-                                num_resets += 1;
+                                num_resets = num_resets.saturating_add(1);
                                 // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
                                 if num_resets < 1{
                                     continue 'outer;
@@ -4303,7 +4315,7 @@ where
         let payment_id = original_transaction.payment_id.clone();
 
         let original_inputs = original_transaction.get_input_commitments_from_completed_transaction()?;
-        let fee = original_transaction.fee + fee_increase;
+        let fee = original_transaction.fee.saturating_add(fee_increase);
 
         // Calculate transaction weight and fee_per_gram from total fee using original transaction
         let num_inputs = original_inputs.len();
@@ -4393,7 +4405,7 @@ where
         for output in all_outputs {
             match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
                 Ok((amount, _, _)) => {
-                    total_amount += amount;
+                    total_amount = total_amount.saturating_add(amount);
                     spendable_outputs.push(output.commitment().clone());
                 },
                 Err(_) => {

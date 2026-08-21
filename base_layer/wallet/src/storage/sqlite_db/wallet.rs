@@ -356,7 +356,7 @@ impl WalletSqliteDatabase {
                         target: LOG_TARGET,
                         "sqlite profile - insert_key_value_pair 'ClientKeyValue': lock {} + db_op {} = {} ms",
                         acquire_lock.as_millis(),
-                        (start.elapsed() - acquire_lock).as_millis(),
+                        start.elapsed().saturating_sub(acquire_lock).as_millis(),
                         start.elapsed().as_millis()
                     );
                 }
@@ -395,7 +395,7 @@ impl WalletSqliteDatabase {
                 "sqlite profile - insert_key_value_pair '{}': lock {} + db_op {} = {} ms",
                 kvp_text,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -436,7 +436,7 @@ impl WalletSqliteDatabase {
                 "sqlite profile - remove_key '{}': lock {} + db_op {} = {} &ms",
                 k.to_key_string(),
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -489,7 +489,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
                 key.to_key_string(),
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }

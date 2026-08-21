@@ -370,13 +370,16 @@ impl CompletedTransaction {
         })?;
 
         // Calculate average size per output from original transaction
-        let avg_features_and_scripts_size_per_output = total_features_and_scripts_size / original_outputs.len();
+        // `original_outputs` is non-empty here, so this cannot divide by zero.
+        let avg_features_and_scripts_size_per_output = total_features_and_scripts_size
+            .checked_div(original_outputs.len())
+            .unwrap_or(0);
 
         // Apply rounding and multiply by number of outputs for new transaction
         let features_and_scripts_size = fee_calculator
             .weighting()
-            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output) *
-            num_outputs;
+            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output)
+            .saturating_mul(num_outputs);
 
         // Use the Fee struct's weighting calculation to get transaction weight in grams
         let weight_in_grams = fee_calculator.weighting().calculate(

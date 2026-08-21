@@ -513,7 +513,7 @@ impl OutputSql {
         }
 
         // Otherwise, we need additional outputs
-        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT) - must_include_outputs.len() as i64;
+        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT).saturating_sub(must_include_outputs.len() as i64);
         let mut final_outputs = must_include_outputs;
 
         if remaining_limit > 0 {

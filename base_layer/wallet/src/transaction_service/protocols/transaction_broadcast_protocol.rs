@@ -348,13 +348,13 @@ where
             }
 
             if self.resubmission_attempts < MAX_MEMPOOL_SUBMISSION_ATTEMPTS - 1 {
-                self.resubmission_attempts += 1;
+                self.resubmission_attempts = self.resubmission_attempts.saturating_add(1);
                 info!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) not found in mempool, attempting to resubmit transaction (submission \
                      attempt {} of {})",
                     self.tx_id,
-                    self.resubmission_attempts + 1,
+                    self.resubmission_attempts.saturating_add(1),
                     MAX_MEMPOOL_SUBMISSION_ATTEMPTS
                 );
                 self.mode = TxBroadcastMode::TransactionSubmission;

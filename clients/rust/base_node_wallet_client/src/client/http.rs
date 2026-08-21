@@ -316,7 +316,7 @@ impl BaseNodeWalletClient for Client {
 
         let limit = 25;
         tokio::spawn(async move {
-            let mut page = 0;
+            let mut page = 0u32;
             let mut has_next_page = true;
             while has_next_page {
                 if shutdown.is_triggered() {
