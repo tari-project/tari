@@ -96,8 +96,10 @@ fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
 
 fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
     bytes
-        .chunks_exact(32)
-        .filter_map(|chunk| FixedHash::try_from(chunk).ok())
+        .as_chunks::<32>()
+        .0
+        .iter()
+        .map(|chunk| FixedHash::from(*chunk))
         .collect()
 }
 
