@@ -259,11 +259,18 @@ struct TariVector *create_tari_vector(enum TariTypeTag tag);
 /**
  * Appending a given value to the back of the vector.
  *
+ * The vector must have been created by `create_tari_vector()` with a `Text` or `Commitment` tag.
+ * The string is copied, so the caller keeps ownership of `s`. On any error the vector is left
+ * completely unchanged and remains safe to use and to destroy.
+ *
  * ## Arguments
- * `s` - An item to push.
+ * `tv` - The pointer to a `TariVector`.
+ * `s` - An item to push, a NUL-terminated UTF-8 string.
+ * `error_ptr` - Pointer to an int which will be modified to an error code should one occur, may
+ * not be null. Functions as an out parameter.
  *
  * ## Returns
- *
+ * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
  * `destroy_tari_vector()` must be called to free the allocated memory.
@@ -271,7 +278,41 @@ struct TariVector *create_tari_vector(enum TariTypeTag tag);
 void tari_vector_push_string(struct TariVector *tv, const char *s, int32_t *error_ptr);
 
 /**
+ * Appending a given value to the back of a `TariVector` of `u64`s.
+ *
+ * The vector must have been created by `create_tari_vector()` with the `U64` tag. This is the only
+ * way to build the `states` filter that `wallet_get_utxos()` takes - hand-building the struct and
+ * its payload in C is not supported, because `destroy_tari_vector()` frees the payload with the
+ * Rust global allocator. On any error the vector is left completely unchanged and remains safe to
+ * use and to destroy.
+ *
+ * ## Arguments
+ * `tv` - The pointer to a `TariVector`.
+ * `value` - The value to push.
+ * `error_ptr` - Pointer to an int which will be modified to an error code should one occur, may
+ * not be null. Functions as an out parameter.
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * `destroy_tari_vector()` must be called to free the allocated memory.
+ */
+void tari_vector_push_u64(struct TariVector *tv, uint64_t value, int32_t *error_ptr);
+
+/**
  * Frees memory allocated for `TariVector`.
+ *
+ * This reclaims the header, the backing allocation and, for the tags that own heap data per
+ * element (`Text`, `Commitment` and `Utxo`), every element as well.
+ *
+ * BREAKING CHANGE: up to and including v5.7.0-pre.0 this function freed only the header - the
+ * payload and every element leaked. As of this version it frees all of it, including the five C
+ * strings inside each `TariUtxo` of a `Utxo` vector. A caller that worked around the old leak by
+ * freeing those itself (e.g. `string_destroy(utxo.commitment)` after indexing `v->ptr` directly,
+ * or `string_destroy()` on the elements of a `Text`/`Commitment` vector) must stop doing so, or it
+ * will double free. The copies returned by the `tari_utxo_get_*()` accessors are unaffected: those
+ * are still owned by the caller and must still be released with `string_destroy()`.
  *
  * ## Arguments
  * `v` - The pointer to `TariVector`
@@ -280,7 +321,8 @@ void tari_vector_push_string(struct TariVector *tv, const char *s, int32_t *erro
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * None
+ * `v` must either be null or a `TariVector` handed out by this library that has not been destroyed
+ * yet, and whose payload has not been freed by the caller. It must not be used afterwards.
  */
 void destroy_tari_vector(struct TariVector *v);
 
@@ -3002,6 +3044,10 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * * `page` - Page offset,
  * * `page_size` - A number of items per page,
  * * `sorting` - An enum representing desired sorting,
+ * * `states` - An optional (may be null) `TariVector` tagged as `TariTypeTag::U64` holding the output statuses to
+ *   filter by. Build it with `create_tari_vector(U64)` and `tari_vector_push_u64()` - a hand-built struct or payload
+ *   cannot be freed by `destroy_tari_vector()`. It is only read, never consumed: the caller keeps ownership and must
+ *   free it with `destroy_tari_vector()`.
  * * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
  *   result.
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.

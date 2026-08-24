@@ -55,6 +55,10 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
     error_out: *mut c_int,
 ) -> c_ulonglong {
     unsafe {
+        if error_out.is_null() {
+            return 0;
+        }
+
         let mut error = 0;
         ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -83,6 +87,10 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState, error_out: *mut c_int) -> c_ulonglong {
     unsafe {
+        if error_out.is_null() {
+            return 0;
+        }
+
         let mut error = 0;
         ptr::swap(error_out, &mut error as *mut c_int);
 

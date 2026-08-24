@@ -314,6 +314,24 @@ pub struct TariUtxo {
     pub mined_in_block: *const c_char,
 }
 
+/// Builds a C string from `s`, substituting U+FFFD for any interior NUL byte.
+///
+/// A C string cannot carry a NUL, but a `String` can, and not every string this crate hands to the
+/// FFI is under our control: the user data of a payment id is written by whoever sent the
+/// transaction and is stored unfiltered (see `MemoField::from_bytes()`), then decoded with
+/// `String::from_utf8_lossy()`, which passes a `0x00` byte straight through because NUL is valid
+/// UTF-8. `CString::new()` therefore fails on it, and an `.expect()` there would unwind out of an
+/// `extern "C"` function - an unconditional process abort that a remote sender could trigger at
+/// will, on every subsequent call.
+///
+/// Substituting is preferred over truncating at the first NUL: the string has already been through
+/// a lossy decode that replaces everything undecodable with U+FFFD, so this keeps that convention
+/// and, unlike truncation, does not silently discard the rest of the payment id.
+fn c_string_lossy<S: AsRef<str>>(s: S) -> CString {
+    let s = s.as_ref();
+    CString::new(s).unwrap_or_else(|_| CString::new(s.replace('\0', "\u{FFFD}")).unwrap_or_default())
+}
+
 impl From<DbWalletOutput> for TariUtxo {
     fn from(x: DbWalletOutput) -> Self {
         Self {
@@ -331,12 +349,10 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            raw_payment_id: CString::new(format!("{}", x.payment_id))
-                .expect("failed to obtain string from a payment id")
-                .into_raw(),
-            user_payment_id: CString::new(x.payment_id.payment_id_as_string())
-                .expect("failed to obtain string from a payment id")
-                .into_raw(),
+            // NOTE: the payment id is sender-controlled and may contain an interior NUL, so it must
+            // go through the lossy conversion rather than being unwrapped.
+            raw_payment_id: c_string_lossy(format!("{}", x.payment_id)).into_raw(),
+            user_payment_id: c_string_lossy(x.payment_id.payment_id_as_string()).into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
                 .expect("failed to obtain hex from a hash")
                 .into_raw(),
@@ -355,96 +371,131 @@ pub struct TariVector {
     pub ptr: *mut c_void,
 }
 
+/// Decomposes a `Vec<T>` into the `(len, cap, ptr)` triple stored by a `TariVector`, leaking the
+/// allocation to the caller.
+///
+/// The element type `T` is what determines the layout that `destroy_tari_vector()` must later
+/// deallocate with, so it has to stay in lock step with the `TariTypeTag` the pointer is stored
+/// under:
+///
+/// | `TariTypeTag`             | element type    |
+/// |---------------------------|-----------------|
+/// | `Text` / `Commitment`     | `*mut c_char`   |
+/// | `Utxo`                    | `TariUtxo`      |
+/// | `U64`                     | `u64`           |
+/// | `I64`                     | `i64`           |
+fn vec_into_raw_parts<T>(v: Vec<T>) -> (usize, usize, *mut c_void) {
+    let mut v = ManuallyDrop::new(v);
+    (v.len(), v.capacity(), v.as_mut_ptr() as *mut c_void)
+}
+
+/// Converts a collection of strings into the `(len, cap, ptr)` triple of a `TariVector` of C
+/// strings. Each element is an owned `CString` pointer that `destroy_tari_vector()` reclaims.
+///
+/// Interior NUL bytes are substituted rather than panicking across the FFI boundary, see
+/// [`c_string_lossy`].
+fn strings_into_raw_parts<S: AsRef<str>>(v: Vec<S>) -> (usize, usize, *mut c_void) {
+    vec_into_raw_parts(
+        v.into_iter()
+            .map(|x| c_string_lossy(x).into_raw())
+            .collect::<Vec<*mut c_char>>(),
+    )
+}
+
 impl From<Vec<i64>> for TariVector {
     fn from(v: Vec<i64>) -> Self {
-        let mut v = ManuallyDrop::new(v);
+        let (len, cap, ptr) = vec_into_raw_parts(v);
 
         Self {
             tag: TariTypeTag::I64,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 impl From<Vec<u64>> for TariVector {
     fn from(v: Vec<u64>) -> Self {
-        let mut v = ManuallyDrop::new(v);
+        let (len, cap, ptr) = vec_into_raw_parts(v);
 
         Self {
             tag: TariTypeTag::U64,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 impl From<Vec<String>> for TariVector {
     fn from(v: Vec<String>) -> Self {
-        let mut v = ManuallyDrop::new(
-            v.into_iter()
-                .map(|x| CString::new(x.as_str()).unwrap().into_raw())
-                .collect::<Vec<*mut c_char>>(),
-        );
+        let (len, cap, ptr) = strings_into_raw_parts(v);
 
         Self {
             tag: TariTypeTag::Text,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 impl From<Vec<CompressedCommitment>> for TariVector {
     fn from(v: Vec<CompressedCommitment>) -> Self {
-        let mut v = ManuallyDrop::new(
-            v.into_iter()
-                .map(|x| CString::new(x.to_hex().as_str()).unwrap().into_raw())
-                .collect::<Vec<*mut c_char>>(),
-        );
+        let (len, cap, ptr) = strings_into_raw_parts(v.into_iter().map(|x| x.to_hex()).collect_vec());
 
         Self {
             tag: TariTypeTag::Commitment,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 impl From<Vec<DbWalletOutput>> for TariVector {
     fn from(v: Vec<DbWalletOutput>) -> TariVector {
-        let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
+        let (len, cap, ptr) = vec_into_raw_parts(v.into_iter().map(TariUtxo::from).collect_vec());
 
         Self {
             tag: TariTypeTag::Utxo,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 impl From<Vec<OutputStatus>> for TariVector {
     fn from(v: Vec<OutputStatus>) -> TariVector {
-        let mut v = ManuallyDrop::new(v.into_iter().map(|x| x as i32 as u64).collect_vec());
+        let (len, cap, ptr) = vec_into_raw_parts(v.into_iter().map(|x| x as i32 as u64).collect_vec());
 
         Self {
             tag: TariTypeTag::U64,
-            len: v.len(),
-            cap: v.capacity(),
-            ptr: v.as_mut_ptr() as *mut c_void,
+            len,
+            cap,
+            ptr,
         }
     }
 }
 
 #[allow(dead_code)]
 impl TariVector {
-    fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
-        if self.tag != TariTypeTag::Text {
+    /// `true` if the payload is one C string (`*mut c_char`) per element.
+    fn is_string_like(&self) -> bool {
+        matches!(self.tag, TariTypeTag::Text | TariTypeTag::Commitment)
+    }
+
+    /// Borrows the payload as a slice of C string pointers. The `TariVector` retains ownership of
+    /// both the backing allocation and every element, so the caller must not free anything.
+    ///
+    /// # Safety
+    /// `self` must describe a live allocation of `self.len` initialised `*mut c_char` elements, as
+    /// produced by `create_tari_vector()`, `tari_vector_push_string()` or the `From` impls above.
+    /// The returned slice must not outlive that allocation.
+    unsafe fn as_c_string_slice(&self) -> Result<&[*mut c_char], InterfaceError> {
+        if !self.is_string_like() {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting String, got {}",
                 self.tag
@@ -457,21 +508,48 @@ impl TariVector {
             )));
         }
 
-        Ok(unsafe {
-            Vec::from_raw_parts(self.ptr as *mut *mut c_char, self.len, self.cap)
-                .into_iter()
-                .map(|x| {
-                    CStr::from_ptr(x)
-                        .to_str()
-                        .expect("failed to convert from a vector of strings")
-                        .to_string()
-                })
-                .collect()
-        })
+        // SAFETY: the tag check above guarantees the elements are `*mut c_char`, and the caller
+        // guarantees `ptr`/`len` describe a live, initialised allocation of that element type. The
+        // slice only borrows, so the vector keeps ownership of the buffer and of every element.
+        Ok(unsafe { slice::from_raw_parts(self.ptr as *const *mut c_char, self.len) })
     }
 
-    fn to_commitment_vec(&self) -> Result<Vec<CompressedCommitment>, InterfaceError> {
-        self.to_string_vec()?
+    /// Copies the payload out as owned Rust strings, leaving the `TariVector` untouched.
+    ///
+    /// # Safety
+    /// See [`TariVector::as_c_string_slice`]; every element must additionally point at a
+    /// NUL-terminated string that stays alive for the duration of the call.
+    unsafe fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
+        // SAFETY: forwarded to the caller of this function by its own safety contract.
+        let elements = unsafe { self.as_c_string_slice() }?;
+
+        elements
+            .iter()
+            .map(|&x| {
+                if x.is_null() {
+                    return Err(InterfaceError::NullError(String::from(
+                        "tari vector of strings has a null element",
+                    )));
+                }
+
+                // SAFETY: `x` is a non-null, NUL-terminated string owned by this vector (see the
+                // safety contract above). `to_str()` only borrows it and the result is copied, so
+                // nothing escapes the borrow.
+                unsafe { CStr::from_ptr(x) }
+                    .to_str()
+                    .map(str::to_string)
+                    .map_err(|e| InterfaceError::PointerError(format!("invalid utf-8 in vector of strings: {e}")))
+            })
+            .collect()
+    }
+
+    /// Copies the payload out as commitments, leaving the `TariVector` untouched.
+    ///
+    /// # Safety
+    /// See [`TariVector::to_string_vec`].
+    unsafe fn to_commitment_vec(&self) -> Result<Vec<CompressedCommitment>, InterfaceError> {
+        // SAFETY: forwarded to the caller of this function by its own safety contract.
+        unsafe { self.to_string_vec() }?
             .into_iter()
             .map(|x| {
                 CompressedCommitment::from_hex(x.as_str())
@@ -480,8 +558,39 @@ impl TariVector {
             .try_collect::<CompressedCommitment, Vec<CompressedCommitment>, InterfaceError>()
     }
 
+    /// Borrows the payload as a slice of `u64`s.
+    ///
+    /// # Safety
+    /// `self` must describe a live allocation of `self.len` initialised `u64` elements, as produced
+    /// by `From<Vec<u64>>`. The returned slice must not outlive it.
+    unsafe fn as_u64_slice(&self) -> Result<&[u64], InterfaceError> {
+        if self.tag != TariTypeTag::U64 {
+            return Err(InterfaceError::InvalidArgument(format!(
+                "expecting U64, got {}",
+                self.tag
+            )));
+        }
+
+        if self.ptr.is_null() {
+            return Err(InterfaceError::NullError(String::from(
+                "tari vector of u64 has null pointer",
+            )));
+        }
+
+        // SAFETY: the tag check above guarantees the elements are `u64`, and the caller guarantees
+        // `ptr`/`len` describe a live, initialised allocation of that element type. The slice only
+        // borrows, so the vector keeps ownership of the buffer.
+        Ok(unsafe { slice::from_raw_parts(self.ptr as *const u64, self.len) })
+    }
+
+    /// Borrows the payload as a slice of UTXOs. The `TariVector` retains ownership, so the caller
+    /// must neither free the elements nor the strings they point at.
+    ///
+    /// # Safety
+    /// `self` must describe a live allocation of `self.len` initialised `TariUtxo` elements, as
+    /// produced by `From<Vec<DbWalletOutput>>`. The returned slice must not outlive it.
     #[allow(dead_code)]
-    pub fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
+    pub unsafe fn as_utxo_slice(&self) -> Result<&[TariUtxo], InterfaceError> {
         if self.tag != TariTypeTag::Utxo {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting Utxo, got {}",
@@ -495,7 +604,9 @@ impl TariVector {
             )));
         }
 
-        Ok(unsafe { Vec::from_raw_parts(self.ptr as *mut TariUtxo, self.len, self.cap) })
+        // SAFETY: the tag check above guarantees the elements are `TariUtxo`, and the caller
+        // guarantees `ptr`/`len` describe a live, initialised allocation of that element type.
+        Ok(unsafe { slice::from_raw_parts(self.ptr as *const TariUtxo, self.len) })
     }
 }
 
@@ -511,22 +622,32 @@ impl TariVector {
 /// `destroy_tari_vector()` must be called to free the allocated memory.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector {
-    let mut v = ManuallyDrop::new(Vec::with_capacity(2));
-    Box::into_raw(Box::new(TariVector {
-        tag,
-        len: v.len(),
-        cap: v.capacity(),
-        ptr: v.as_mut_ptr(),
-    }))
+    // The backing allocation must be made with the element type that matches `tag`, otherwise
+    // `destroy_tari_vector()` would hand the allocator back the wrong layout.
+    let (len, cap, ptr) = match tag {
+        TariTypeTag::Text | TariTypeTag::Commitment => vec_into_raw_parts(Vec::<*mut c_char>::with_capacity(2)),
+        TariTypeTag::Utxo => vec_into_raw_parts(Vec::<TariUtxo>::with_capacity(2)),
+        TariTypeTag::U64 => vec_into_raw_parts(Vec::<u64>::with_capacity(2)),
+        TariTypeTag::I64 => vec_into_raw_parts(Vec::<i64>::with_capacity(2)),
+    };
+
+    Box::into_raw(Box::new(TariVector { tag, len, cap, ptr }))
 }
 
 /// Appending a given value to the back of the vector.
 ///
+/// The vector must have been created by `create_tari_vector()` with a `Text` or `Commitment` tag.
+/// The string is copied, so the caller keeps ownership of `s`. On any error the vector is left
+/// completely unchanged and remains safe to use and to destroy.
+///
 /// ## Arguments
-/// `s` - An item to push.
+/// `tv` - The pointer to a `TariVector`.
+/// `s` - An item to push, a NUL-terminated UTF-8 string.
+/// `error_ptr` - Pointer to an int which will be modified to an error code should one occur, may
+/// not be null. Functions as an out parameter.
 ///
 /// ## Returns
-///
+/// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
 /// `destroy_tari_vector()` must be called to free the allocated memory.
@@ -549,34 +670,42 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
             return;
         }
 
-        // unpacking into native vector
-        let mut v = match (*tv).to_string_vec() {
-            Ok(v) => v,
-            Err(e) => {
-                error!(target: LOG_TARGET, "{e:#?}");
-                *error_ptr = LibWalletError::from(e).code;
-                return;
-            },
-        };
+        // Everything that can fail is checked *before* the backing allocation is touched, so that a
+        // rejected push cannot leave the caller with a half-updated (or dangling) header.
+        if !(*tv).is_string_like() {
+            let e = InterfaceError::InvalidArgument(format!("expecting String, got {}", (*tv).tag));
+            error!(target: LOG_TARGET, "{e:#?}");
+            *error_ptr = LibWalletError::from(e).code;
+            return;
+        }
+        if (*tv).ptr.is_null() {
+            error!(target: LOG_TARGET, "tari vector has a null payload pointer");
+            *error_ptr = LibWalletError::from(InterfaceError::NullError("vector".to_string())).code;
+            return;
+        }
 
-        let s = match CStr::from_ptr(s).to_str() {
-            Ok(cs) => cs.to_string(),
-            Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert `s` into native string {e:#?}");
-                *error_ptr = LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code;
-                return;
-            },
-        };
+        // SAFETY: `s` is non-null and, per this function's contract, points at a NUL-terminated
+        // string that is alive for the duration of the call. The `CStr` only borrows it.
+        let item = CStr::from_ptr(s);
+        if let Err(e) = item.to_str() {
+            error!(target: LOG_TARGET, "failed to convert `s` into native string {e:#?}");
+            *error_ptr = LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code;
+            return;
+        }
+        // A copy, so the caller keeps ownership of `s`. It cannot contain an interior NUL because it
+        // came from a `CStr`, so this allocation can never fail to be a valid C string.
+        let item = item.to_owned();
+
+        // SAFETY: the checks above establish that the payload is a non-null `Vec<*mut c_char>`
+        // allocation of `len`/`cap` elements owned by this vector, which is exactly what
+        // `from_raw_parts` requires. Wrapping it in `ManuallyDrop` and republishing the (possibly
+        // reallocated) parts below transfers ownership straight back to `tv`, so the buffer is
+        // never freed here and the header never keeps a stale pointer.
+        let mut v = ManuallyDrop::new(Vec::from_raw_parts((*tv).ptr as *mut *mut c_char, (*tv).len, (*tv).cap));
 
         // appending new value
         // NOTE: relying on native vector's re-allocation
-        v.push(s);
-
-        let mut v = ManuallyDrop::new(
-            v.into_iter()
-                .map(|x| CString::new(x.as_str()).unwrap().into_raw())
-                .collect::<Vec<*mut c_char>>(),
-        );
+        v.push(item.into_raw());
 
         (*tv).len = v.len();
         (*tv).cap = v.capacity();
@@ -584,7 +713,109 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     }
 }
 
+/// Appending a given value to the back of a `TariVector` of `u64`s.
+///
+/// The vector must have been created by `create_tari_vector()` with the `U64` tag. This is the only
+/// way to build the `states` filter that `wallet_get_utxos()` takes - hand-building the struct and
+/// its payload in C is not supported, because `destroy_tari_vector()` frees the payload with the
+/// Rust global allocator. On any error the vector is left completely unchanged and remains safe to
+/// use and to destroy.
+///
+/// ## Arguments
+/// `tv` - The pointer to a `TariVector`.
+/// `value` - The value to push.
+/// `error_ptr` - Pointer to an int which will be modified to an error code should one occur, may
+/// not be null. Functions as an out parameter.
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// `destroy_tari_vector()` must be called to free the allocated memory.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tari_vector_push_u64(tv: *mut TariVector, value: u64, error_ptr: *mut i32) {
+    unsafe {
+        if error_ptr.is_null() {
+            return;
+        }
+        *error_ptr = 0;
+
+        if tv.is_null() {
+            error!(target: LOG_TARGET, "tari vector pointer is null");
+            *error_ptr = LibWalletError::from(InterfaceError::NullError("vector".to_string())).code;
+            return;
+        }
+
+        // Everything that can fail is checked *before* the backing allocation is touched, so that a
+        // rejected push cannot leave the caller with a half-updated (or dangling) header.
+        if (*tv).tag != TariTypeTag::U64 {
+            let e = InterfaceError::InvalidArgument(format!("expecting U64, got {}", (*tv).tag));
+            error!(target: LOG_TARGET, "{e:#?}");
+            *error_ptr = LibWalletError::from(e).code;
+            return;
+        }
+        if (*tv).ptr.is_null() {
+            error!(target: LOG_TARGET, "tari vector has a null payload pointer");
+            *error_ptr = LibWalletError::from(InterfaceError::NullError("vector".to_string())).code;
+            return;
+        }
+
+        // SAFETY: the checks above establish that the payload is a non-null `Vec<u64>` allocation of
+        // `len`/`cap` elements owned by this vector, which is exactly what `from_raw_parts`
+        // requires. Wrapping it in `ManuallyDrop` and republishing the (possibly reallocated) parts
+        // below transfers ownership straight back to `tv`, so the buffer is never freed here and the
+        // header never keeps a stale pointer.
+        let mut v = ManuallyDrop::new(Vec::from_raw_parts((*tv).ptr as *mut u64, (*tv).len, (*tv).cap));
+
+        // appending new value
+        // NOTE: relying on native vector's re-allocation
+        v.push(value);
+
+        (*tv).len = v.len();
+        (*tv).cap = v.capacity();
+        (*tv).ptr = v.as_mut_ptr() as *mut c_void;
+    }
+}
+
+/// Frees the C string behind `ptr`, if any.
+///
+/// # Safety
+/// `ptr` must either be null or have been produced by `CString::into_raw()` and not been freed yet.
+unsafe fn destroy_c_string(ptr: *const c_char) {
+    if !ptr.is_null() {
+        // SAFETY: guaranteed by this function's contract.
+        drop(unsafe { CString::from_raw(ptr as *mut c_char) });
+    }
+}
+
+/// Frees the C strings owned by a `TariUtxo`.
+///
+/// # Safety
+/// Every string field of `utxo` must either be null or have been produced by `CString::into_raw()`
+/// and not been freed yet. `utxo` itself is not freed.
+unsafe fn destroy_tari_utxo_contents(utxo: &TariUtxo) {
+    // SAFETY: guaranteed by this function's contract.
+    unsafe {
+        destroy_c_string(utxo.commitment);
+        destroy_c_string(utxo.coinbase_extra);
+        destroy_c_string(utxo.raw_payment_id);
+        destroy_c_string(utxo.user_payment_id);
+        destroy_c_string(utxo.mined_in_block);
+    }
+}
+
 /// Frees memory allocated for `TariVector`.
+///
+/// This reclaims the header, the backing allocation and, for the tags that own heap data per
+/// element (`Text`, `Commitment` and `Utxo`), every element as well.
+///
+/// BREAKING CHANGE: up to and including v5.7.0-pre.0 this function freed only the header - the
+/// payload and every element leaked. As of this version it frees all of it, including the five C
+/// strings inside each `TariUtxo` of a `Utxo` vector. A caller that worked around the old leak by
+/// freeing those itself (e.g. `string_destroy(utxo.commitment)` after indexing `v->ptr` directly,
+/// or `string_destroy()` on the elements of a `Text`/`Commitment` vector) must stop doing so, or it
+/// will double free. The copies returned by the `tari_utxo_get_*()` accessors are unaffected: those
+/// are still owned by the caller and must still be released with `string_destroy()`.
 ///
 /// ## Arguments
 /// `v` - The pointer to `TariVector`
@@ -593,13 +824,40 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// None
+/// `v` must either be null or a `TariVector` handed out by this library that has not been destroyed
+/// yet, and whose payload has not been freed by the caller. It must not be used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn destroy_tari_vector(v: *mut TariVector) {
     unsafe {
-        if !v.is_null() {
-            let x = Box::from_raw(v);
-            let _ = x.ptr;
+        if v.is_null() {
+            return;
+        }
+
+        // SAFETY: per this function's contract `v` came from `Box::into_raw()` and has not been
+        // destroyed yet, so reclaiming the header here is sound.
+        let x = Box::from_raw(v);
+        if x.ptr.is_null() {
+            return;
+        }
+
+        // SAFETY: the payload was allocated as a `Vec` of the element type that matches the tag (see
+        // `vec_into_raw_parts()`), so rebuilding it with that same element type - and only that one
+        // - hands the allocator back the layout it originally handed out. Each arm drops the
+        // reconstructed vector exactly once, and any heap data owned by the elements is released
+        // first.
+        match x.tag {
+            TariTypeTag::Text | TariTypeTag::Commitment => {
+                for s in Vec::from_raw_parts(x.ptr as *mut *mut c_char, x.len, x.cap) {
+                    destroy_c_string(s);
+                }
+            },
+            TariTypeTag::Utxo => {
+                for utxo in Vec::from_raw_parts(x.ptr as *mut TariUtxo, x.len, x.cap) {
+                    destroy_tari_utxo_contents(&utxo);
+                }
+            },
+            TariTypeTag::U64 => drop(Vec::from_raw_parts(x.ptr as *mut u64, x.len, x.cap)),
+            TariTypeTag::I64 => drop(Vec::from_raw_parts(x.ptr as *mut i64, x.len, x.cap)),
         }
     }
 }
@@ -3298,6 +3556,10 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
 
         if encrypted_data.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("encrypted_data".to_string())).code;
+        } else if commitment_bytes.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("commitment_bytes".to_string())).code;
+        } else if wallet.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         } else {
             match CompressedCommitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
                 Ok(commitment) => {
@@ -3783,6 +4045,7 @@ pub unsafe extern "C" fn seed_words_push_word(
 
         if seed_words.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code;
+            return SeedWordPushResult::InvalidObject as u8;
         }
 
         let word_string;
@@ -6514,6 +6777,10 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// * `page` - Page offset,
 /// * `page_size` - A number of items per page,
 /// * `sorting` - An enum representing desired sorting,
+/// * `states` - An optional (may be null) `TariVector` tagged as `TariTypeTag::U64` holding the output statuses to
+///   filter by. Build it with `create_tari_vector(U64)` and `tari_vector_push_u64()` - a hand-built struct or payload
+///   cannot be freed by `destroy_tari_vector()`. It is only read, never consumed: the caller keeps ownership and must
+///   free it with `destroy_tari_vector()`.
 /// * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
 ///   result.
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
@@ -6540,6 +6807,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
     error_ptr: *mut i32,
 ) -> *mut TariVector {
     unsafe {
+        if error_ptr.is_null() {
+            return ptr::null_mut();
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6553,15 +6824,38 @@ pub unsafe extern "C" fn wallet_get_utxos(
         let page_size = i64::from_usize(page_size).unwrap_or(i64::MAX);
         let dust_threshold = i64::from_u64(dust_threshold).unwrap_or(0);
 
-        let status = {
-            if states.is_null() {
-                vec![]
-            } else {
-                Vec::from_raw_parts((*states).ptr as *mut u64, (*states).len, (*states).cap)
-                    .into_iter()
-                    .map(|x| OutputStatus::try_from(x as i32).unwrap())
-                    .collect_vec()
+        // NOTE: `states` is borrowed, never consumed - it stays owned by the caller, who is
+        // responsible for destroying it with `destroy_tari_vector()`.
+        let status = if states.is_null() {
+            vec![]
+        } else {
+            let raw = match (*states).as_u64_slice() {
+                Ok(raw) => raw,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "failed to read the output states vector: {e:?}");
+                    ptr::replace(error_ptr, LibWalletError::from(e).code);
+                    return ptr::null_mut();
+                },
+            };
+
+            let mut status = Vec::with_capacity(raw.len());
+            for x in raw {
+                match i32::try_from(*x).ok().and_then(|x| OutputStatus::try_from(x).ok()) {
+                    Some(s) => status.push(s),
+                    None => {
+                        error!(target: LOG_TARGET, "`{x}` is not a valid output status");
+                        ptr::replace(
+                            error_ptr,
+                            LibWalletError::from(InterfaceError::InvalidArgument(format!(
+                                "`{x}` is not a valid output status"
+                            )))
+                            .code,
+                        );
+                        return ptr::null_mut();
+                    },
+                }
             }
+            status
         };
 
         use SortDirection::{Asc, Desc};
@@ -6637,6 +6931,10 @@ pub unsafe extern "C" fn wallet_get_utxos(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr: *mut i32) -> *mut TariVector {
     unsafe {
+        if error_ptr.is_null() {
+            return ptr::null_mut();
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6706,6 +7004,10 @@ pub unsafe extern "C" fn wallet_coin_split(
     error_ptr: *mut i32,
 ) -> u64 {
     unsafe {
+        if error_ptr.is_null() {
+            return 0;
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6791,6 +7093,10 @@ pub unsafe extern "C" fn wallet_coin_join(
     error_ptr: *mut i32,
 ) -> u64 {
     unsafe {
+        if error_ptr.is_null() {
+            return 0;
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6869,6 +7175,10 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
     error_ptr: *mut i32,
 ) -> *mut TariCoinPreview {
     unsafe {
+        if error_ptr.is_null() {
+            return ptr::null_mut();
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6904,15 +7214,12 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         ) {
             Ok((expected_outputs, fee)) => {
                 ptr::replace(error_ptr, 0);
-                let mut expected_outputs = ManuallyDrop::new(expected_outputs);
+                // Converted to plain `u64`s so that the allocation `destroy_tari_vector()` frees was
+                // made with the element type the `U64` tag advertises.
+                let expected_outputs = expected_outputs.iter().map(|v| v.as_u64()).collect::<Vec<u64>>();
 
                 Box::into_raw(Box::new(TariCoinPreview {
-                    expected_outputs: Box::into_raw(Box::new(TariVector {
-                        tag: TariTypeTag::U64,
-                        len: expected_outputs.len(),
-                        cap: expected_outputs.capacity(),
-                        ptr: expected_outputs.as_mut_ptr() as *mut c_void,
-                    })),
+                    expected_outputs: Box::into_raw(Box::new(TariVector::from(expected_outputs))),
                     fee: fee.as_u64(),
                 }))
             },
@@ -6953,6 +7260,10 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
     error_ptr: *mut i32,
 ) -> *mut TariCoinPreview {
     unsafe {
+        if error_ptr.is_null() {
+            return ptr::null_mut();
+        }
+
         if wallet.is_null() {
             error!(target: LOG_TARGET, "wallet pointer is null");
             ptr::replace(
@@ -6990,15 +7301,12 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
             )) {
             Ok((expected_outputs, fee)) => {
                 ptr::replace(error_ptr, 0);
-                let mut expected_outputs = ManuallyDrop::new(expected_outputs);
+                // Converted to plain `u64`s so that the allocation `destroy_tari_vector()` frees was
+                // made with the element type the `U64` tag advertises.
+                let expected_outputs = expected_outputs.iter().map(|v| v.as_u64()).collect::<Vec<u64>>();
 
                 Box::into_raw(Box::new(TariCoinPreview {
-                    expected_outputs: Box::into_raw(Box::new(TariVector {
-                        tag: TariTypeTag::U64,
-                        len: expected_outputs.len(),
-                        cap: expected_outputs.capacity(),
-                        ptr: expected_outputs.as_mut_ptr() as *mut c_void,
-                    })),
+                    expected_outputs: Box::into_raw(Box::new(TariVector::from(expected_outputs))),
                     fee: fee.as_u64(),
                 }))
             },
@@ -7660,7 +7968,8 @@ pub unsafe extern "C" fn wallet_set_num_confirmations_required(
         *error_out = 0;
 
         if wallet.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code
+            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+            return;
         }
 
         match (*wallet)
@@ -8893,10 +9202,7 @@ pub unsafe extern "C" fn wallet_get_value(
                         LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::ValuesNotFound)).code;
                     ptr::null_mut()
                 },
-                Some(value) => {
-                    let v = CString::new(value).expect("Should be able to make a CString");
-                    CString::into_raw(v)
-                },
+                Some(value) => CString::into_raw(c_string_lossy(value)),
             },
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -11322,6 +11628,7 @@ mod test {
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
+            destroy_tari_vector(commitments);
 
             let outputs = wallet_get_all_utxos(alice_wallet, error_ptr);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
@@ -11575,6 +11882,8 @@ mod test {
             let commitments = Box::into_raw(Box::new(TariVector::from(payload)));
             let preview = wallet_preview_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
+            // The vector is only borrowed by the FFI call, so it is still ours to destroy.
+            destroy_tari_vector(commitments);
 
             // ----------------------------------------------------------------------------
             // join
@@ -11653,21 +11962,17 @@ mod test {
                 .collect::<Vec<MicroMinotari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
-            let expected_output_values: Vec<u64> = Vec::from_raw_parts(
-                (*(*preview).expected_outputs).ptr as *mut u64,
+            // Borrowed - the preview still owns this buffer and frees it in
+            // `destroy_tari_coin_preview()` below.
+            let expected_output_values: &[u64] = slice::from_raw_parts(
+                (*(*preview).expected_outputs).ptr as *const u64,
                 (*(*preview).expected_outputs).len,
-                (*(*preview).expected_outputs).cap,
             );
 
-            let outputs = wallet_get_utxos(
-                alice_wallet,
-                0,
-                20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
-                0,
-                error_ptr,
-            );
+            let states = Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent])));
+            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, states, 0, error_ptr);
+            // `wallet_get_utxos()` only borrows the states vector, the caller still owns it.
+            destroy_tari_vector(states);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
@@ -11684,15 +11989,10 @@ mod test {
             assert_eq!(pre_join_total_amount - post_join_total_amount, (*preview).fee);
 
             // Verify payment ID is correctly set and can be accessed via the FFI
-            let outputs = wallet_get_utxos(
-                alice_wallet,
-                0,
-                20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived]))),
-                0,
-                error_ptr,
-            );
+            let states = Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived])));
+            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, states, 0, error_ptr);
+            // `wallet_get_utxos()` only borrows the states vector, the caller still owns it.
+            destroy_tari_vector(states);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
                 let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
@@ -11905,21 +12205,17 @@ mod test {
                 .collect::<Vec<_>>();
 
             let post_split_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
-            let expected_output_values: Vec<u64> = Vec::from_raw_parts(
-                (*(*preview).expected_outputs).ptr as *mut u64,
+            // Borrowed - the preview still owns this buffer and frees it in
+            // `destroy_tari_coin_preview()` below.
+            let expected_output_values: &[u64] = slice::from_raw_parts(
+                (*(*preview).expected_outputs).ptr as *const u64,
                 (*(*preview).expected_outputs).len,
-                (*(*preview).expected_outputs).cap,
             );
 
-            let outputs = wallet_get_utxos(
-                alice_wallet,
-                0,
-                20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
-                0,
-                error_ptr,
-            );
+            let states = Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent])));
+            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, states, 0, error_ptr);
+            // `wallet_get_utxos()` only borrows the states vector, the caller still owns it.
+            destroy_tari_vector(states);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
@@ -11942,15 +12238,10 @@ mod test {
             assert_eq!(pre_split_total_amount - post_split_total_amount, (*preview).fee);
 
             // Verify payment ID is correctly set and can be accessed via the FFI
-            let outputs = wallet_get_utxos(
-                alice_wallet,
-                0,
-                20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived]))),
-                0,
-                error_ptr,
-            );
+            let states = Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived])));
+            let outputs = wallet_get_utxos(alice_wallet, 0, 20, TariUtxoSort::ValueAsc, states, 0, error_ptr);
+            // `wallet_get_utxos()` only borrows the states vector, the caller still owns it.
+            destroy_tari_vector(states);
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
                 let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
@@ -12060,6 +12351,15 @@ mod test {
         }
     }
 
+    /// Pushes `s` onto `tv`, freeing the temporary C string afterwards - `tari_vector_push_string()`
+    /// copies its argument, so the caller keeps ownership of it.
+    unsafe fn push_string(tv: *mut TariVector, s: &str, error: &mut c_int) {
+        unsafe {
+            let s = CString::new(s).unwrap();
+            tari_vector_push_string(tv, s.as_ptr(), error as *mut c_int);
+        }
+    }
+
     #[test]
     fn test_tari_vector() {
         let mut error = 0;
@@ -12069,38 +12369,358 @@ mod test {
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 0);
             assert_eq!((*tv).cap, 2);
+            assert!(!(*tv).ptr.is_null());
+            assert_eq!((*tv).to_string_vec().unwrap(), Vec::<String>::new());
 
-            tari_vector_push_string(
-                tv,
-                CString::new("test string 1").unwrap().into_raw() as *const c_char,
-                &mut error as *mut c_int,
-            );
+            push_string(tv, "test string 1", &mut error);
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 1);
-            assert_eq!((*tv).cap, 12);
+            assert!((*tv).cap >= 1);
 
-            tari_vector_push_string(
-                tv,
-                CString::new("test string 2").unwrap().into_raw() as *const c_char,
-                &mut error as *mut c_int,
-            );
+            push_string(tv, "test string 2", &mut error);
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 2);
-            assert_eq!((*tv).cap, 12);
+            assert!((*tv).cap >= 2);
 
-            tari_vector_push_string(
-                tv,
-                CString::new("test string 3").unwrap().into_raw() as *const c_char,
-                &mut error as *mut c_int,
-            );
+            push_string(tv, "test string 3", &mut error);
             assert_eq!(error, 0);
             assert_eq!((*tv).tag, TariTypeTag::Text);
             assert_eq!((*tv).len, 3);
-            assert_eq!((*tv).cap, 12);
+            assert!((*tv).cap >= 3);
+
+            // The pushed values must be readable back, in order, without disturbing the vector.
+            assert_eq!((*tv).to_string_vec().unwrap(), vec![
+                "test string 1".to_string(),
+                "test string 2".to_string(),
+                "test string 3".to_string(),
+            ]);
+            assert_eq!((*tv).len, 3);
 
             destroy_tari_vector(tv);
+        }
+    }
+
+    /// Reading a `TariVector` must borrow it, never consume it, so the same vector can be handed to
+    /// the FFI more than once (e.g. `wallet_preview_coin_join()` followed by `wallet_coin_join()`).
+    #[test]
+    fn test_tari_vector_survives_repeated_reads() {
+        let mut error = 0;
+
+        unsafe {
+            let tv = create_tari_vector(TariTypeTag::Text);
+            push_string(tv, "one", &mut error);
+            push_string(tv, "two", &mut error);
+            assert_eq!(error, 0);
+
+            let (len, cap, ptr) = ((*tv).len, (*tv).cap, (*tv).ptr);
+            let expected = vec!["one".to_string(), "two".to_string()];
+
+            // Two consuming-looking calls in a row: the header and the payload must be untouched.
+            assert_eq!((*tv).to_string_vec().unwrap(), expected);
+            assert_eq!((*tv).to_string_vec().unwrap(), expected);
+            assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, ptr));
+
+            // ...and the vector is still usable afterwards.
+            push_string(tv, "three", &mut error);
+            assert_eq!(error, 0);
+            assert_eq!((*tv).len, 3);
+
+            destroy_tari_vector(tv);
+        }
+    }
+
+    /// The same, through the commitment conversion used by the coin split/join and send entry points.
+    #[test]
+    fn test_tari_vector_commitments_survive_repeated_reads() {
+        let mut error = 0;
+
+        unsafe {
+            let commitments = (0..3)
+                .map(|_| {
+                    let (_, key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+                    CompressedCommitment::from_compressed_key(key)
+                })
+                .collect::<Vec<_>>();
+
+            let tv = create_tari_vector(TariTypeTag::Commitment);
+            for c in &commitments {
+                push_string(tv, c.to_hex().as_str(), &mut error);
+                assert_eq!(error, 0);
+            }
+
+            assert_eq!((*tv).to_commitment_vec().unwrap(), commitments);
+            assert_eq!((*tv).to_commitment_vec().unwrap(), commitments);
+            assert_eq!((*tv).len, 3);
+
+            destroy_tari_vector(tv);
+        }
+    }
+
+    /// A rejected push must leave the vector fully valid and completely unchanged.
+    #[test]
+    fn test_tari_vector_push_string_errors_leave_vector_intact() {
+        let mut error = 0;
+
+        unsafe {
+            let tv = create_tari_vector(TariTypeTag::Text);
+            push_string(tv, "good", &mut error);
+            assert_eq!(error, 0);
+
+            let (len, cap, ptr) = ((*tv).len, (*tv).cap, (*tv).ptr);
+
+            // invalid utf-8
+            let invalid = CString::new(vec![0x66u8, 0xff, 0xfe]).unwrap();
+            tari_vector_push_string(tv, invalid.as_ptr(), &mut error as *mut c_int);
+            assert_ne!(error, 0);
+            assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, ptr));
+            assert_eq!((*tv).to_string_vec().unwrap(), vec!["good".to_string()]);
+
+            // null string
+            tari_vector_push_string(tv, ptr::null(), &mut error as *mut c_int);
+            assert_ne!(error, 0);
+            assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, ptr));
+
+            // the vector is still usable after the failed pushes
+            push_string(tv, "still works", &mut error);
+            assert_eq!(error, 0);
+            assert_eq!((*tv).to_string_vec().unwrap(), vec![
+                "good".to_string(),
+                "still works".to_string()
+            ]);
+
+            destroy_tari_vector(tv);
+
+            // a null vector, and a null error pointer, are both no-ops
+            error = 0;
+            let s = CString::new("x").unwrap();
+            tari_vector_push_string(ptr::null_mut(), s.as_ptr(), &mut error as *mut c_int);
+            assert_ne!(error, 0);
+            tari_vector_push_string(ptr::null_mut(), s.as_ptr(), ptr::null_mut());
+        }
+    }
+
+    /// Pushing a string onto a non-string vector must be rejected without touching the payload.
+    #[test]
+    fn test_tari_vector_push_string_wrong_tag() {
+        let mut error = 0;
+
+        unsafe {
+            for tag in [TariTypeTag::U64, TariTypeTag::I64, TariTypeTag::Utxo] {
+                let tv = create_tari_vector(tag);
+                let (len, cap, ptr) = ((*tv).len, (*tv).cap, (*tv).ptr);
+
+                push_string(tv, "nope", &mut error);
+                assert_ne!(error, 0, "{tag} should reject a string push");
+                assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, ptr));
+
+                destroy_tari_vector(tv);
+            }
+        }
+    }
+
+    /// `tari_vector_push_u64()` is the only supported way to build the `states` filter that
+    /// `wallet_get_utxos()` takes, so it has to behave exactly like its string counterpart.
+    #[test]
+    fn test_tari_vector_push_u64() {
+        let mut error = 0;
+
+        unsafe {
+            let tv = create_tari_vector(TariTypeTag::U64);
+            assert_eq!((*tv).tag, TariTypeTag::U64);
+            assert_eq!((*tv).len, 0);
+            assert_eq!((*tv).as_u64_slice().unwrap(), &[] as &[u64]);
+
+            for (i, value) in [7u64, 0, u64::MAX, 42].into_iter().enumerate() {
+                tari_vector_push_u64(tv, value, &mut error as *mut c_int);
+                assert_eq!(error, 0);
+                assert_eq!((*tv).len, i + 1);
+            }
+
+            // push/read round trip, in order, without disturbing the vector
+            assert_eq!((*tv).as_u64_slice().unwrap(), &[7, 0, u64::MAX, 42]);
+            assert_eq!((*tv).as_u64_slice().unwrap(), &[7, 0, u64::MAX, 42]);
+            assert_eq!((*tv).len, 4);
+
+            // a string push must be rejected on a `U64` vector, and vice versa
+            let (len, cap, payload) = ((*tv).len, (*tv).cap, (*tv).ptr);
+            push_string(tv, "nope", &mut error);
+            assert_ne!(error, 0);
+            assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, payload));
+
+            destroy_tari_vector(tv);
+
+            // wrong tag leaves the vector unchanged
+            for tag in [
+                TariTypeTag::Text,
+                TariTypeTag::Commitment,
+                TariTypeTag::I64,
+                TariTypeTag::Utxo,
+            ] {
+                let tv = create_tari_vector(tag);
+                let (len, cap, payload) = ((*tv).len, (*tv).cap, (*tv).ptr);
+
+                tari_vector_push_u64(tv, 1, &mut error as *mut c_int);
+                assert_ne!(error, 0, "{tag} should reject a u64 push");
+                assert_eq!(((*tv).len, (*tv).cap, (*tv).ptr), (len, cap, payload));
+
+                destroy_tari_vector(tv);
+            }
+
+            // a null vector, and a null error pointer, are both handled
+            error = 0;
+            tari_vector_push_u64(ptr::null_mut(), 1, &mut error as *mut c_int);
+            assert_ne!(error, 0);
+            tari_vector_push_u64(ptr::null_mut(), 1, ptr::null_mut());
+        }
+    }
+
+    /// A sender-controlled payment id may contain an interior NUL, which `CString::new()` rejects.
+    /// It must be substituted, never unwrapped - an unwind out of `extern "C"` aborts the process.
+    #[test]
+    fn test_c_string_lossy_handles_interior_nul() {
+        // NUL is valid UTF-8, so it survives the `String::from_utf8_lossy()` that produces the
+        // user data of a payment id.
+        let payment_id = String::from_utf8_lossy(&[b'h', b'i', 0x00, b'!']).to_string();
+        assert!(CString::new(payment_id.clone()).is_err());
+
+        let sanitised = c_string_lossy(&payment_id);
+        assert_eq!(sanitised.to_str().unwrap(), "hi\u{FFFD}!");
+
+        // the common case is untouched, and the empty case is valid
+        assert_eq!(c_string_lossy("plain").to_str().unwrap(), "plain");
+        assert_eq!(c_string_lossy("").to_str().unwrap(), "");
+
+        // and a vector built from such strings is still well formed
+        unsafe {
+            let tv = Box::into_raw(Box::new(TariVector::from(vec![payment_id, "ok".to_string()])));
+            assert_eq!((*tv).len, 2);
+            assert_eq!((*tv).to_string_vec().unwrap(), vec![
+                "hi\u{FFFD}!".to_string(),
+                "ok".to_string()
+            ]);
+            destroy_tari_vector(tv);
+        }
+    }
+
+    /// Every tag must round-trip through `destroy_tari_vector()`, including the empty case. Run
+    /// under a leak checker or ASAN this is what proves the payload and the elements are reclaimed.
+    #[test]
+    fn test_destroy_tari_vector_round_trip() {
+        unsafe {
+            // empty, freshly created, for every tag
+            for tag in [
+                TariTypeTag::Text,
+                TariTypeTag::Commitment,
+                TariTypeTag::Utxo,
+                TariTypeTag::U64,
+                TariTypeTag::I64,
+            ] {
+                let tv = create_tari_vector(tag);
+                assert_eq!((*tv).len, 0);
+                destroy_tari_vector(tv);
+            }
+
+            // a null vector is a no-op
+            destroy_tari_vector(ptr::null_mut());
+
+            // destroy round trip after pushes, for both push entry points
+            let mut error = 0;
+            let tv = create_tari_vector(TariTypeTag::U64);
+            for value in 0..8u64 {
+                tari_vector_push_u64(tv, value, &mut error as *mut c_int);
+                assert_eq!(error, 0);
+            }
+            assert_eq!((*tv).len, 8);
+            destroy_tari_vector(tv);
+
+            let tv = create_tari_vector(TariTypeTag::Text);
+            for value in 0..8u64 {
+                push_string(tv, value.to_string().as_str(), &mut error);
+                assert_eq!(error, 0);
+            }
+            assert_eq!((*tv).len, 8);
+            destroy_tari_vector(tv);
+
+            // zero-capacity vectors built from empty native vectors
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(Vec::<u64>::new()))));
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(Vec::<i64>::new()))));
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(Vec::<String>::new()))));
+
+            // populated, one per `From` impl
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(vec![1u64, 2, 3]))));
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(vec![-1i64, 2, -3]))));
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(vec![
+                "a".to_string(),
+                "b".to_string(),
+            ]))));
+            destroy_tari_vector(Box::into_raw(Box::new(TariVector::from(vec![
+                OutputStatus::Unspent,
+                OutputStatus::Spent,
+            ]))));
+
+            let commitments = (0..3)
+                .map(|_| {
+                    let (_, key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+                    CompressedCommitment::from_compressed_key(key)
+                })
+                .collect::<Vec<_>>();
+            let tv = Box::into_raw(Box::new(TariVector::from(commitments.clone())));
+            assert_eq!((*tv).tag, TariTypeTag::Commitment);
+            assert_eq!((*tv).to_commitment_vec().unwrap(), commitments);
+            destroy_tari_vector(tv);
+
+            // a `Utxo` vector owns a `TariUtxo` per element, each of which owns five C strings
+            let mut utxos = vec![TariUtxo {
+                commitment: CString::new("aa").unwrap().into_raw(),
+                value: 1,
+                mined_height: 2,
+                mined_timestamp: 3,
+                lock_height: 4,
+                status: 0,
+                coinbase_extra: CString::new("bb").unwrap().into_raw(),
+                raw_payment_id: CString::new("cc").unwrap().into_raw(),
+                user_payment_id: CString::new("dd").unwrap().into_raw(),
+                mined_in_block: CString::new("ee").unwrap().into_raw(),
+            }];
+            let (len, cap, payload) = vec_into_raw_parts(std::mem::take(&mut utxos));
+            let tv = Box::into_raw(Box::new(TariVector {
+                tag: TariTypeTag::Utxo,
+                len,
+                cap,
+                ptr: payload,
+            }));
+            assert_eq!((*tv).as_utxo_slice().unwrap().len(), 1);
+            destroy_tari_vector(tv);
+
+            // a coin preview owns its expected-outputs vector
+            destroy_tari_coin_preview(Box::into_raw(Box::new(TariCoinPreview {
+                expected_outputs: Box::into_raw(Box::new(TariVector::from(vec![10u64, 20]))),
+                fee: 5,
+            })));
+            destroy_tari_coin_preview(ptr::null_mut());
+        }
+    }
+
+    /// A null `seed_words` handle must be reported and returned on, not dereferenced.
+    #[test]
+    fn test_seed_words_push_word_null_seed_words() {
+        let mut error = 0;
+
+        unsafe {
+            let word = CString::new("abandon").unwrap();
+            let result = seed_words_push_word(ptr::null_mut(), word.as_ptr(), ptr::null(), &mut error as *mut c_int);
+
+            assert_eq!(result, SeedWordPushResult::InvalidObject as u8);
+            assert_eq!(
+                error,
+                LibWalletError::from(InterfaceError::NullError("seed words".to_string())).code
+            );
+
+            // a null error pointer is reported through the return value only
+            let result = seed_words_push_word(ptr::null_mut(), word.as_ptr(), ptr::null(), ptr::null_mut());
+            assert_eq!(result, SeedWordPushResult::InvalidErrorPointer as u8);
         }
     }
 
@@ -12430,8 +13050,9 @@ mod test {
             assert!(tx_id_2 > 0);
 
             let outputs_vec = wallet_get_all_utxos(wallet_ptr, error_ptr);
-            let outputs = (*outputs_vec).to_utxo_vec().unwrap();
+            let outputs = (*outputs_vec).as_utxo_slice().unwrap();
             assert_eq!(outputs.len(), 2);
+            destroy_tari_vector(outputs_vec);
 
             let unspent_outputs_ptr = wallet_get_unspent_outputs(wallet_ptr, error_ptr);
             let unblinded_output_ptr_1 = unblinded_outputs_get_at(unspent_outputs_ptr, 0, error_ptr);
