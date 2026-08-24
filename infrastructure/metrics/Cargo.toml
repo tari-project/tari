@@ -20,7 +20,9 @@ tokio = { workspace = true, optional = true, features = [
     "time",
     "rt-multi-thread",
 ] }
-warp = { version = "0.3.1", optional = true, default-features = false }
+warp = { version = "0.4.3", optional = true, default-features = false, features = [
+    "server",
+] }
 thiserror = { workspace = true }
 anyhow = { workspace = true, optional = true }
 
