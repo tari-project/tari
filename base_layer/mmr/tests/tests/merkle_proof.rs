@@ -95,6 +95,131 @@ fn for_leaf_node() {
     )
 }
 
+/// A proof whose sibling path has been truncated must be rejected with an error, not panic. The truncated path
+/// terminates the walk at a position that is not a canonical peak, so the peak hashes given in the proof are not
+/// enough to hash the peaks together.
+#[test]
+fn truncated_path_is_rejected() {
+    let mmr = create_mmr(4);
+    let root = mmr.get_merkle_root().unwrap();
+    let hash = int_to_hash(0);
+
+    let proof = MerkleProof::for_node(&mmr, 0).unwrap();
+    assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, 0).is_ok());
+
+    let mut truncated = proof;
+    truncated.path.pop();
+    assert_eq!(
+        truncated.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
+        Err(MerkleProofError::IncorrectPeakMap)
+    );
+}
+
+/// A proof with extra siblings appended to the path must be rejected with an error, not panic. The walk continues
+/// past the local peak, ending up outside of the MMR.
+#[test]
+fn padded_path_is_rejected() {
+    let mmr = create_mmr(4);
+    let root = mmr.get_merkle_root().unwrap();
+    let hash = int_to_hash(0);
+
+    let mut padded = MerkleProof::for_node(&mmr, 0).unwrap();
+    padded.path.push(int_to_hash(1024));
+    assert_eq!(
+        padded.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
+        Err(MerkleProofError::Unexpected)
+    );
+}
+
+/// A hand-crafted proof that claims an MMR size but provides no path and no peaks at all must be rejected with an
+/// error, not panic.
+#[test]
+fn empty_hand_crafted_proof_is_rejected() {
+    let mmr = create_mmr(2);
+    let root = mmr.get_merkle_root().unwrap();
+    let hash = int_to_hash(0);
+
+    let proof = MerkleProof {
+        mmr_size: 3,
+        path: Vec::new(),
+        peaks: Vec::new(),
+    };
+    assert_eq!(
+        proof.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
+        Err(MerkleProofError::IncorrectPeakMap)
+    );
+}
+
+/// Neither truncating nor padding the sibling path of an otherwise valid proof may panic, and no mangled proof may
+/// verify.
+#[test]
+fn mangled_proofs_never_panic_or_verify() {
+    for size in 1..24 {
+        let mmr = create_mmr(size);
+        let root = mmr.get_merkle_root().unwrap();
+        let mut hash_value = 0usize;
+        for pos in 0..mmr.len().unwrap() {
+            if !is_leaf(pos) {
+                continue;
+            }
+            let hash = int_to_hash(hash_value);
+            hash_value += 1;
+            let proof = MerkleProof::for_node(&mmr, pos).unwrap();
+            // The proof we are about to mangle must itself be valid, otherwise the assertions below prove nothing
+            assert!(proof.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_ok());
+
+            // Truncate the path, one sibling at a time
+            for n in 0..proof.path.len() {
+                let mut mangled = proof.clone();
+                mangled.path.truncate(n);
+                assert!(mangled.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_err());
+            }
+
+            // Pad the path with junk siblings
+            for n in 1..4 {
+                let mut mangled = proof.clone();
+                for i in 0..n {
+                    mangled.path.push(int_to_hash(1024 + i));
+                }
+                assert!(mangled.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_err());
+            }
+
+            // Drop the peak hashes
+            if !proof.peaks.is_empty() {
+                let mut mangled = proof.clone();
+                mangled.peaks.clear();
+                assert!(mangled.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_err());
+            }
+
+            // Add a junk peak hash
+            let mut mangled = proof.clone();
+            mangled.peaks.push(int_to_hash(2048));
+            assert!(mangled.verify::<MmrTestHasherBlake256>(&root, &hash, pos).is_err());
+        }
+    }
+}
+
+/// Walking a proof up past height 31 must return an error rather than overflowing the shift used to calculate the
+/// peak of a node. Both the `mmr_size` and the path are provided by whoever sent us the proof, and the leaf index is
+/// provided by the caller, so none of them can be trusted.
+#[test]
+fn proof_that_walks_past_height_31_is_rejected() {
+    let mmr = create_mmr(2);
+    let root = mmr.get_merkle_root().unwrap();
+    let hash = int_to_hash(0);
+
+    let proof = MerkleProof {
+        mmr_size: usize::MAX,
+        path: vec![int_to_hash(0); 33],
+        peaks: Vec::new(),
+    };
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, LeafIndex(1usize << 31))
+            .is_err()
+    );
+}
+
 const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["2e53af27cab59e217386f5138cbac4f0ee53087e8fd1500b8ef836d7e80fd9a8","aa72bf6d136aac5df8faec94246439f7045487a1bd9984101f46fa926f527e8d"],"peaks":["fd11974cff85dcac247817c33efaf3f7b8c9bc43e980dd80553af84231389088"]}"#;
 const BINCODE_PROOF: &str = "0800000000000000020000000000000020000000000000002e53af27cab59e217386f5138cbac4f0ee53087e8fd1500b8ef836d7e80fd9a82000000000000000aa72bf6d136aac5df8faec94246439f7045487a1bd9984101f46fa926f527e8d01000000000000002000000000000000fd11974cff85dcac247817c33efaf3f7b8c9bc43e980dd80553af84231389088";
 
