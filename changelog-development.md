@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.1](https://github.com/tari-project/tari/compare/v5.7.0-pre.0...v5.7.0-pre.1) (2026-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wallet_ffi:** `destroy_tari_vector()` now frees the `TariVector`'s
+backing buffer and, for the `Text`, `Commitment` and `Utxo` tags, every
+element's heap data - including the five C strings inside each
+`TariUtxo`. Until now it freed only the header and leaked the rest.
+Callers that worked around that leak by freeing those themselves (for
+example `string_destroy(utxo.commitment)` after indexing `v->ptr`
+directly) must stop, or they will double free. The copies returned by
+the `tari_utxo_get_*()` accessors are unaffected and must still be
+released with `string_destroy()`.
+
+### Bug Fixes
+
+* **mmr:** return an error instead of panicking on malformed merkle pr… ([#7968](https://github.com/tari-project/tari/issues/7968)) ([c7a3631](https://github.com/tari-project/tari/commit/c7a3631d06ec7ae31ccf93302372a291abcdd523))
+* upgrade random x ([#7969](https://github.com/tari-project/tari/issues/7969)) ([bbcc7d1](https://github.com/tari-project/tari/commit/bbcc7d15ec0b4b4cfe34326ffb671385688968ba))
+* **wallet_ffi:** make TariVector borrow instead of consume ([#7964](https://github.com/tari-project/tari/issues/7964)) ([#7967](https://github.com/tari-project/tari/issues/7967)) ([e6fe270](https://github.com/tari-project/tari/commit/e6fe270161061812ed95c2ce67f2ebcc691ca046))
+
 ## [5.7.0-pre.0](https://github.com/tari-project/tari/compare/v5.6.0-pre.1...v5.7.0-pre.0) (2026-08-21)
 
 
