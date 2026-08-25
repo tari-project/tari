@@ -107,33 +107,23 @@ trait MerkleProofDigest<H: Digest<OutputSize = U32>> {
     /// Returns an array to the vector of sibling hashes along the path to the key's leaf node for this proof.
     fn siblings(&self) -> &[NodeHash];
 
-    /// Calculate the Merkle& tree root for this proof, given the key and value hash.
-    fn calculate_root_hash(&self, key: &NodeKey, leaf_hash: NodeHash) -> NodeHash {
+    /// Calculate the Merkle tree root for this proof, given the key and value hash. Returns `None` if the proof is
+    /// malformed, i.e. it carries more siblings than there are bits in a key, since there is no key for that height.
+    fn calculate_root_hash(&self, key: &NodeKey, leaf_hash: NodeHash) -> Option<NodeHash> {
         let n = self.siblings().len();
         let dirs = key.as_directions().take(n);
-        let hash = self.siblings().iter().zip(dirs).rev().enumerate().fold(
-            leaf_hash,
-            |current, (i, (sibling_hash, direction))| {
-                let height = n.saturating_sub(i).saturating_sub(1);
-                match direction {
-                    TraverseDirection::Left => BranchNode::<H>::branch_hash(
-                        height,
-                        &height_key(key, height).expect("Should exist"),
-                        &current,
-                        sibling_hash,
-                    ),
-                    TraverseDirection::Right => BranchNode::<H>::branch_hash(
-                        height,
-                        &height_key(key, height).expect("Should exist"),
-                        sibling_hash,
-                        &current,
-                    ),
-                }
-            },
-        );
+        let mut current = leaf_hash;
+        for (i, (sibling_hash, direction)) in self.siblings().iter().zip(dirs).rev().enumerate() {
+            let height = n.saturating_sub(i).saturating_sub(1);
+            let height_key = height_key(key, height)?;
+            current = match direction {
+                TraverseDirection::Left => BranchNode::<H>::branch_hash(height, &height_key, &current, sibling_hash),
+                TraverseDirection::Right => BranchNode::<H>::branch_hash(height, &height_key, sibling_hash, &current),
+            };
+        }
         let mut result = [0; 32];
-        result.copy_from_slice(hash.as_slice());
-        result.into()
+        result.copy_from_slice(current.as_slice());
+        Some(result.into())
     }
 }
 
@@ -170,8 +160,11 @@ impl<H: Digest<OutputSize = U32>> InclusionProof<H> {
     pub fn validate(&self, expected_key: &NodeKey, expected_value: &ValueHash, expected_root: &NodeHash) -> bool {
         // calculate expected leaf node hash
         let leaf_hash = LeafNode::<H>::hash_value(expected_key, expected_value);
-        let calculated_root = self.calculate_root_hash(expected_key, leaf_hash);
-        calculated_root == *expected_root
+        match self.calculate_root_hash(expected_key, leaf_hash) {
+            Some(calculated_root) => calculated_root == *expected_root,
+            // The proof is malformed, so it cannot be valid
+            None => false,
+        }
     }
 }
 
@@ -215,7 +208,10 @@ impl<H: Digest<OutputSize = U32>> ExclusionProof<H> {
             Some(leaf) => leaf.hash().clone(),
             None => (EmptyNode {}).hash().clone(),
         };
-        let root = self.calculate_root_hash(expected_key, leaf_hash);
+        // If the proof is malformed, a root cannot be calculated and the proof cannot be valid
+        let Some(root) = self.calculate_root_hash(expected_key, leaf_hash) else {
+            return false;
+        };
         // For exclusion proof, roots must match AND existing leaf must be empty, or keys must not match
         root == *expected_root &&
             match &self.leaf {
@@ -237,6 +233,23 @@ mod test {
     use blake2::Blake2b;
 
     use super::*;
+    use crate::sparse_merkle_tree::node::KEY_LENGTH;
+
+    #[test]
+    fn proof_with_too_many_siblings_is_rejected() {
+        // A proof cannot have more siblings than there are bits in a key, since there is no key for those heights.
+        // Such a proof is malformed and must be rejected rather than panicking.
+        let key = NodeKey::from([64u8; 32]);
+        let value = ValueHash::from([128u8; 32]);
+        let root = NodeHash::from([0u8; 32]);
+        let siblings = vec![NodeHash::from([1u8; 32]); KEY_LENGTH * 8 + 1];
+
+        let in_proof = InclusionProof::<Blake2b<U32>>::new(siblings.clone());
+        assert!(!in_proof.validate(&key, &value, &root));
+
+        let ex_proof = ExclusionProof::<Blake2b<U32>>::new(siblings, None);
+        assert!(!ex_proof.validate(&key, &root));
+    }
 
     #[test]
     fn root_proof() {

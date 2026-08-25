@@ -108,7 +108,12 @@ pub fn find_peaks(size: usize) -> Option<Vec<usize>> {
 #[allow(clippy::arithmetic_side_effects)]
 pub fn family(pos: usize) -> Result<(usize, usize), MerkleMountainRangeError> {
     let (peak_map, height) = peak_map_height(pos);
-    let peak = 1 << height;
+    // The type of the literal must be given explicitly. Inference only sees the `i128::from` below, which is
+    // satisfied by many integer types, so the literal would otherwise default to `i32` and the shift would silently
+    // produce `i32::MIN` at height 31 and panic (overflow checks are enabled for release builds too) at height 32
+    // and above. The smallest node index at height `h` is `2^(h+1) - 2`, so `height` is at most 63 for a `usize`
+    // position and the shift below can never overflow a `u64`.
+    let peak: u64 = 1 << height;
 
     // Convert to i128 so that we don't over/underflow, and then we will cast back to usize after
     let pos = pos as i128;
@@ -134,7 +139,8 @@ pub fn family_branch(pos: usize, last_pos: usize) -> Vec<(usize, usize)> {
     // loop going up the tree, from node to parent, as long as we stay inside
     // the tree (as defined by last_pos).
     let (peak_map, height) = peak_map_height(pos);
-    let mut peak = 1 << height;
+    // `height` is at most 63 for a `usize` position, so the shift cannot overflow
+    let mut peak: usize = 1 << height;
     let mut branch = vec![];
     let mut current = pos;
     let mut sibling;
@@ -192,7 +198,8 @@ pub fn peak_map_height(mut pos: usize) -> (usize, usize) {
 /// Is the node at this pos the "left" sibling of its parent?
 pub fn is_left_sibling(pos: usize) -> bool {
     let (peak_map, height) = peak_map_height(pos);
-    let peak = 1 << height;
+    // `height` is at most 63 for a `usize` position, so the shift cannot overflow
+    let peak: usize = 1 << height;
     (peak_map & peak) == 0
 }
 
@@ -346,6 +353,23 @@ mod test {
         assert_eq!(family(15).unwrap(), (17, 16));
         assert_eq!(family(6).unwrap(), (14, 13));
         assert_eq!(family(13).unwrap(), (14, 6));
+    }
+
+    /// The peak of a node must be calculated in a type wide enough to hold it. The first node at height `h` sits at
+    /// index `2^(h+1) - 2` and is a left child, so its parent is `2^(h+1)` positions further along and its sibling is
+    /// the node just before the parent.
+    #[test]
+    fn families_at_every_height() {
+        for height in 0..63u32 {
+            let peak = 1usize << height.saturating_add(1);
+            let pos = peak.saturating_sub(2);
+            assert_eq!(
+                family(pos).unwrap(),
+                (pos.saturating_add(peak), pos.saturating_add(peak).saturating_sub(1)),
+                "family({pos}) at height {height}"
+            );
+            assert!(is_left_sibling(pos), "is_left_sibling({pos}) at height {height}");
+        }
     }
 
     #[test]
