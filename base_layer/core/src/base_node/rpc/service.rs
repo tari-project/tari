@@ -1,7 +1,10 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 use log::*;
 use tari_common_types::types::{CompressedSignature, FixedHash};
@@ -295,6 +298,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }
 
         let mut responses: Vec<TxQueryBatchResponse> = Vec::with_capacity(message.sigs.len());
+        let mut cached_responses = HashMap::with_capacity(message.sigs.len());
 
         let metadata = self
             .db
@@ -303,9 +307,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         for sig in message.sigs {
+            // Protobuf's canonical byte fields make a stable key after the signature validates. Keeping a response
+            // cache avoids repeating the database and mempool lookup while preserving one positional response for
+            // every signature supplied by the caller.
+            let cache_key = (sig.public_nonce.clone(), sig.signature.clone());
             let signature =
                 CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
-            let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
+            let response = match cached_responses.get(&cache_key) {
+                Some(response) => response.clone(),
+                None => {
+                    let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
+                    cached_responses.insert(cache_key, response.clone());
+                    response
+                },
+            };
             responses.push(TxQueryBatchResponse {
                 signature: Some(SignatureProto::from(&signature)),
                 location: response.location,
@@ -726,5 +741,115 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .map(|url| url.to_string())
                 .unwrap_or_default(),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::UncompressedPublicKey;
+    use tari_comms::protocol::rpc::RpcStatusCode;
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_shutdown::Shutdown;
+    use tari_utilities::ByteArray;
+
+    use super::*;
+    use crate::{
+        base_node::state_machine_service::states::StatusInfo,
+        mempool::test_utils::mock::{MempoolMockState, create_mempool_service_mock},
+        test_helpers::blockchain::{TempDatabase, create_new_blockchain_with_network},
+    };
+
+    fn make_state_machine_handle() -> StateMachineHandle {
+        use tokio::sync::{broadcast, watch};
+
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let shutdown = Shutdown::new();
+        StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal())
+    }
+
+    fn make_service() -> (BaseNodeWalletRpcService<TempDatabase>, MempoolMockState) {
+        let db = create_new_blockchain_with_network(Network::LocalNet);
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let service =
+            BaseNodeWalletRpcService::new(AsyncBlockchainDb::from(db), mempool, make_state_machine_handle(), None);
+        (service, mempool_state)
+    }
+
+    fn assert_cardinality_error(status: RpcStatus) {
+        assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);
+        assert!(
+            status.details().contains("Exceeded maximum allowed query"),
+            "unexpected status: {status}"
+        );
+    }
+
+    #[tokio::test]
+    async fn oversized_repeated_requests_are_rejected_before_backend_work() {
+        let (service, mempool_state) = make_service();
+        let over_cap = MAX_ALLOWED_QUERY_SIZE + 1;
+
+        assert_cardinality_error(
+            service
+                .transaction_batch_query(Request::new(0.into(), SignaturesProto {
+                    sigs: vec![SignatureProto::default(); over_cap],
+                }))
+                .await
+                .unwrap_err(),
+        );
+        assert_cardinality_error(
+            service
+                .fetch_matching_utxos(Request::new(0.into(), FetchMatchingUtxos {
+                    output_hashes: vec![vec![0; 32]; over_cap],
+                }))
+                .await
+                .unwrap_err(),
+        );
+        assert_cardinality_error(
+            service
+                .utxo_query(Request::new(0.into(), UtxoQueryRequest {
+                    output_hashes: vec![vec![0; 32]; over_cap],
+                }))
+                .await
+                .unwrap_err(),
+        );
+        assert_cardinality_error(
+            service
+                .query_deleted(Request::new(0.into(), QueryDeletedRequest {
+                    hashes: vec![vec![0; 32]; over_cap],
+                    chain_must_include_header: Vec::new(),
+                }))
+                .await
+                .unwrap_err(),
+        );
+
+        assert_eq!(mempool_state.get_call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn transaction_batch_query_deduplicates_work_but_preserves_response_shape() {
+        let (service, mempool_state) = make_service();
+        let signature = SignatureProto {
+            public_nonce: UncompressedPublicKey::default().to_vec(),
+            signature: RistrettoSecretKey::default().to_vec(),
+        };
+
+        let response = service
+            .transaction_batch_query(Request::new(0.into(), SignaturesProto {
+                sigs: vec![signature.clone(), signature.clone(), signature.clone()],
+            }))
+            .await
+            .unwrap()
+            .into_message();
+
+        assert_eq!(response.responses.len(), 3);
+        assert!(
+            response
+                .responses
+                .iter()
+                .all(|item| item.signature == Some(signature.clone()))
+        );
+        assert_eq!(mempool_state.get_call_count(), 1);
     }
 }

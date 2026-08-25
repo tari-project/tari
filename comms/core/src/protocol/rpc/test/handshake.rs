@@ -20,16 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::{SinkExt, StreamExt};
+use prost::Message;
 use tari_test_utils::unpack_enum;
 use tokio::task;
 
 use crate::{
     framing,
     memsocket::MemorySocket,
+    message::MessageExt,
+    proto,
     protocol::rpc::{
         Handshake,
         error::HandshakeRejectReason,
-        handshake::{RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
+        handshake::{MAX_SUPPORTED_RPC_VERSIONS, RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
     },
 };
 
@@ -68,4 +72,29 @@ async fn it_rejects_the_handshake() {
     let err = handshake_client.perform_client_handshake().await.unwrap_err();
     unpack_enum!(RpcHandshakeError::Rejected(reason) = err);
     unpack_enum!(HandshakeRejectReason::NoServerSessionsAvailable("session limit reached") = reason);
+}
+
+#[tokio::test]
+async fn it_rejects_an_oversized_supported_versions_list() {
+    let (client, server) = MemorySocket::new_pair();
+
+    let handshake_result = task::spawn(async move {
+        let mut server_framed = framing::canonical(server, 1024);
+        let mut handshake_server = Handshake::new(&mut server_framed);
+        handshake_server.perform_server_handshake().await
+    });
+
+    let mut client_framed = framing::canonical(client, 1024);
+    let session = proto::rpc::RpcSession {
+        supported_versions: vec![0; MAX_SUPPORTED_RPC_VERSIONS + 1],
+    };
+    client_framed.send(session.to_encoded_bytes().into()).await.unwrap();
+
+    let reply = client_framed.next().await.unwrap().unwrap();
+    let reply = proto::rpc::RpcSessionReply::decode(reply.freeze()).unwrap();
+    let err = reply.result().unwrap_err();
+    unpack_enum!(RpcHandshakeError::Rejected(reason) = err);
+    unpack_enum!(HandshakeRejectReason::UnsupportedVersion = reason);
+
+    unpack_enum!(RpcHandshakeError::ClientNoSupportedVersion = handshake_result.await.unwrap().unwrap_err());
 }

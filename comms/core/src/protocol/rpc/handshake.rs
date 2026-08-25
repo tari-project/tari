@@ -39,6 +39,7 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 /// Supported RPC protocol versions.
 /// Currently only v0 is supported
 pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
+pub(super) const MAX_SUPPORTED_RPC_VERSIONS: usize = 16;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RpcHandshakeError {
@@ -83,6 +84,11 @@ where T: AsyncRead + AsyncWrite + Unpin
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
+                if msg.supported_versions.len() > MAX_SUPPORTED_RPC_VERSIONS {
+                    self.reject_with_reason(HandshakeRejectReason::UnsupportedVersion)
+                        .await?;
+                    return Err(RpcHandshakeError::ClientNoSupportedVersion);
+                }
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
