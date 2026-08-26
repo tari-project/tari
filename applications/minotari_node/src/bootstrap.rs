@@ -293,6 +293,7 @@ where B: BlockchainBackend + 'static
             .with_maximum_sessions_per_client(p2p_config.rpc_max_sessions_per_peer)
             .with_cull_oldest_peer_rpc_connection_on_full(p2p_config.cull_oldest_peer_rpc_connection_on_full)
             .with_idle_session_timeout(p2p_config.rpc_idle_session_timeout)
+            .with_maximum_client_deadline(p2p_config.rpc_maximum_client_deadline)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
