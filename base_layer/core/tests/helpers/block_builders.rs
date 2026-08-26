@@ -583,6 +583,7 @@ pub fn create_chain_header(
     let achieved_target_diff = AchievedTargetDifficulty::try_construct(
         header.pow_algo(),
         prev_accum.target_difficulty,
+        prev_accum.target_difficulty,
         prev_accum.achieved_difficulty,
     )
     .unwrap();

@@ -60,7 +60,7 @@ where St: ?Sized + Stream + Unpin
                     self.collection.push(item);
                 },
                 Poll::Ready(None) | Poll::Pending => {
-                    break Poll::Ready(self.collection.drain(..).collect());
+                    break Poll::Ready(std::mem::take(&mut self.collection));
                 },
             }
         }

@@ -47,6 +47,7 @@ pub use blockchain_database::{
     calculate_validator_node_mr,
     fetch_header,
     fetch_headers,
+    fetch_target_difficulties_for_next_block,
     fetch_target_difficulty_for_next_block,
 };
 mod blockchain_backend;

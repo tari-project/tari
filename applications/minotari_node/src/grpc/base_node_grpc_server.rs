@@ -68,6 +68,7 @@ use tari_core::{
     consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
+    proof_of_work::AdjustedTarget,
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -476,9 +477,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Sha3x: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -505,9 +508,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Monero RandomX: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -535,9 +540,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Tari RandomX: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -565,9 +572,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Cuckaroo: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
+                    // The *unadjusted* target tracks the real hash rate; see above.
                     let estimated_hash_rate_scaled = target_difficulty
+                        .base
                         .as_u64()
                         .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
                         .checked_div(target_time)

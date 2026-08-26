@@ -90,8 +90,8 @@ impl CommandContext {
         let mut buff = Vec::new();
         writeln!(
             buff,
-            "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
-             Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.Cuckaroo"
+            "Height,Achieved,TargetDifficulty,CalculatedDifficulty,AdjustedDifficulty,SolveTime,NormalizedSolveTime,\
+             Algo,Timestamp,Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.Cuckaroo"
         )?;
         output.write_all(&buff).await?;
 
@@ -118,16 +118,34 @@ impl CommandContext {
                 .consensus_constants(height)
                 .max_pow_difficulty(pow_algo);
 
-            let calculated_target_difficulty = target_diff
-                .get(pow_algo)
-                .map_err(ChainStorageError::UnexpectedResult)?
-                .calculate(min, max);
+            let algo_window = target_diff.get(pow_algo).map_err(ChainStorageError::UnexpectedResult)?;
+            // `calculated` is the *unadjusted* target so that it stays comparable with the stored
+            // `existing_target_difficulty`; diffing those two is the whole point of this command. The adjusted target
+            // (what the miner actually had to clear) is reported alongside it.
+            let calculated = algo_window.calculate_pair(min, max);
+            let calculated_target_difficulty = calculated.base;
+            let adjusted_target_difficulty = calculated.adjusted;
             let existing_target_difficulty = header.accumulated_data().target_difficulty;
             let achieved = header.accumulated_data().achieved_difficulty;
             let solve_time = (header.header().timestamp.as_u64() as i64)
                 .saturating_sub(prev_header.header().timestamp.as_u64() as i64);
+            // Mirror the consensus normalisation order: scale by the effective modifier *first*, then clamp to the
+            // maximum block time (`lwma_diff::raw_difficulty`). Doing it the other way round disagrees with consensus
+            // whenever the clamp binds. Consensus multiplies before dividing, so do the same here rather than
+            // forming a truncated integer ratio first; this column is diagnostic, but it is only useful if it
+            // reproduces the value consensus actually used.
+            let raw_solve_time = u64::try_from(cmp::max(solve_time, 1)).unwrap();
+            // u128, like consensus, so a large solve time cannot saturate the multiplication
+            let scaled_solve_time = u64::try_from(
+                u128::from(raw_solve_time)
+                    .saturating_mul(u128::from(calculated_target_difficulty.as_u64()))
+                    .checked_div(u128::from(cmp::max(adjusted_target_difficulty.as_u64(), 1)))
+                    // The divisor is clamped to at least 1 above, so this is never `None`
+                    .unwrap_or(u128::from(u64::MAX)),
+            )
+            .unwrap_or(u64::MAX);
             let normalized_solve_time = cmp::min(
-                u64::try_from(cmp::max(solve_time, 1)).unwrap(),
+                scaled_solve_time,
                 LinearWeightedMovingAverage::max_block_time(
                     self.consensus_rules
                         .consensus_constants(height)
@@ -143,11 +161,12 @@ impl CommandContext {
             buff.clear();
             writeln!(
                 buff,
-                "{},{},{},{},{},{},{},{},{},{},{},{}, {}",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{}, {}",
                 height,
                 achieved.as_u64(),
                 existing_target_difficulty.as_u64(),
                 calculated_target_difficulty.as_u64(),
+                adjusted_target_difficulty.as_u64(),
                 solve_time,
                 normalized_solve_time,
                 pow_algo,

@@ -129,9 +129,10 @@ impl fmt::Display for Difficulty {
 /// General difficulty adjustment algorithm trait. The key method is `get_difficulty`, which returns the target
 /// difficulty given a set of historical achieved difficulties; supplied through the `add` method.
 pub trait DifficultyAdjustment {
-    /// Adds the latest block timestamp (in seconds) and total accumulated difficulty. If the new data point violates
-    /// some difficulty criteria, then `add` returns an error with the type of failure indicated
-    fn add(&mut self, timestamp: EpochTime, accumulated_difficulty: Difficulty) -> Result<(), String>;
+    /// Adds the latest block timestamp (in seconds), its target difficulty and the adjusted target difficulty that
+    /// the block's proof of work actually had to clear. If the new data point violates some difficulty criteria, then
+    /// `add` returns an error with the type of failure indicated
+    fn add(&mut self, timestamp: EpochTime, target: Difficulty, adjusted_target: Difficulty) -> Result<(), String>;
 
     /// Return the calculated target difficulty for the next block.
     fn get_difficulty(&self) -> Option<Difficulty>;

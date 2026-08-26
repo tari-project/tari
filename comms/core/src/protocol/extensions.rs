@@ -165,7 +165,7 @@ impl ProtocolExtensionContext {
     }
 
     pub(crate) fn drain_complete_signals(&mut self) -> Vec<ShutdownSignal> {
-        self.complete_signals.drain(..).collect()
+        std::mem::take(&mut self.complete_signals)
     }
 
     pub(crate) fn take_protocols(&mut self) -> Option<Protocols<Substream>> {

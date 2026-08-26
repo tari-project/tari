@@ -45,7 +45,7 @@ use tari_node_components::blocks::{
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
-    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    tari_proof_of_work::{PowAlgorithm, PowError},
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{RwLock, watch};
@@ -66,6 +66,7 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
+        AdjustedTarget,
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
@@ -401,7 +402,8 @@ where B: BlockchainBackend + 'static
                 let block_template = NewBlockTemplate::from_block(
                     block,
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
-                        .await?,
+                        .await?
+                        .adjusted,
                     self.consensus_manager.get_block_reward_at(height),
                     is_mempool_synced,
                 )?;
@@ -1231,22 +1233,30 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    /// Returns both the unadjusted target difficulty and the backoff adjusted target for the next block.
+    ///
+    /// Miners must clear the *adjusted* target (TIP-RFC-MT-0004), so that is what goes into the block template and
+    /// the gRPC miner data. Anything deriving a hash rate from the target must use the *unadjusted* one, otherwise a
+    /// run of same-algorithm blocks inflates the reported hash rate by up to the backoff cap.
     async fn get_target_difficulty_for_next_block(
         &self,
         pow_algo: PowAlgorithm,
         constants: &ConsensusConstants,
         current_block_hash: HashOutput,
-    ) -> Result<Difficulty, CommsInterfaceError> {
+    ) -> Result<AdjustedTarget, CommsInterfaceError> {
         let target_difficulty = self
             .blockchain_db
             .fetch_target_difficulty_for_next_block(pow_algo, current_block_hash)
             .await?;
 
-        let target = target_difficulty.calculate(
+        let target = target_difficulty.calculate_pair(
             constants.min_pow_difficulty(pow_algo),
             constants.max_pow_difficulty(pow_algo),
         );
-        trace!(target: LOG_TARGET, "Target difficulty {target} for PoW {pow_algo}");
+        trace!(
+            target: LOG_TARGET,
+            "Target difficulty {} (adjusted {}) for PoW {pow_algo}", target.base, target.adjusted
+        );
         Ok(target)
     }
 

@@ -174,6 +174,9 @@ pub struct ConsensusConstants {
     cuckaroo_edge_bits: u8,
     /// Include c29 accumulated difficulty or not
     include_c29_accumulated_difficulty_into_total: bool,
+    /// The cap (`M_MAX`) on the exponential same-algorithm proof of work backoff modifier (TIP-RFC-MT-0004).
+    /// A value of `1` disables the backoff entirely (pre-fork behaviour), `32` is the RFC cap.
+    pow_backoff_cap: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -213,25 +216,112 @@ const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
 const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
 pub const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 - 14_700_000_000) * 1_000_000);
 
+/// The cap (`M_MAX`) on the exponential same-algorithm proof of work backoff modifier, as specified by
+/// TIP-RFC-MT-0004. This must stay in sync with `tari_core::proof_of_work::MAX_POW_BACKOFF_MODIFIER`.
+pub const POW_BACKOFF_CAP: u64 = 32;
+/// A `pow_backoff_cap` of 1 disables the same-algorithm backoff, which is the pre-TIP-RFC-MT-0004 behaviour.
+pub const POW_BACKOFF_DISABLED: u64 = 1;
+/// The LWMA difficulty block window after TIP-RFC-MT-0004 activates (shortened from 90 for faster response to hash
+/// rate swings).
+pub const TIP004_DIFFICULTY_BLOCK_WINDOW: u64 = 45;
+// TIP-RFC-MT-0004 activation heights.
+//
+// Every network with live history gets a gated activation entry rather than a change to its height-0 constants:
+// shortening `difficulty_block_window` or enabling `pow_backoff_cap` retroactively would make every historical block
+// recompute to a different target than the one recorded in its `BlockHeaderAccumulatedData`, so a fresh sync would
+// reject at roughly the first block past the window and existing nodes would report that active constants changed.
+// This follows how every previous consensus change on these networks was rolled out (see the `include_c29...` entries
+// below).
+//
+// TODO: All five heights are placeholders. `u64::MAX` means the fork never activates, which keeps each network on its
+// current rules until a height is chosen. These MUST be set before release.
+/// Sentinel activation height meaning "this fork has no scheduled height yet". `ConsensusConstantsBuilder::new`
+/// skips entries gated on it, so unscheduled forks do not leak into test fixtures as if they were live rules.
+pub const UNSCHEDULED_ACTIVATION_HEIGHT: u64 = u64::MAX;
+/// TIP-RFC-MT-0004 activation height for MainNet.
+pub const MAINNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+/// TIP-RFC-MT-0004 activation height for StageNet.
+pub const STAGENET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+/// TIP-RFC-MT-0004 activation height for NextNet.
+pub const NEXTNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+/// TIP-RFC-MT-0004 activation height for Esmeralda.
+pub const ESMERALDA_TIP004_ACTIVATION_HEIGHT: u64 = 860_000;
+/// TIP-RFC-MT-0004 activation height for Igor.
+pub const IGOR_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
     const MAINNET_MAX_WEIGHT_V1: u64 = 90_000;
 
-    pub fn for_network_at_height(network: Network, height: u64) -> Self {
-        let versions = match network {
+    /// All consensus constants entries for a network, in the order they become effective.
+    pub fn for_network(network: Network) -> Vec<Self> {
+        match network {
             Network::LocalNet => ConsensusConstants::localnet(),
             Network::Igor => ConsensusConstants::igor(),
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Esmeralda => ConsensusConstants::esmeralda(),
             Network::StageNet => ConsensusConstants::stagenet(),
             Network::NextNet => ConsensusConstants::nextnet(),
-        };
-        versions
-            .into_iter()
-            .filter(|v| v.effective_from_height <= height)
-            .max_by_key(|v| v.effective_from_height)
+        }
+    }
+
+    /// The single authoritative answer to "which constants are in force at `height`".
+    ///
+    /// This walks the vector in order and stops at the first entry that is not yet effective, which means a later
+    /// entry always wins over an earlier one carrying the same or a higher effective height. That is the behaviour
+    /// the node actually runs on, so every other consumer must agree with it. Selecting by "greatest effective
+    /// height" instead is only equivalent while the vector is sorted, and a divergence there means two components
+    /// disagreeing about the live rules. `activation_test` pins every consumer against this function.
+    ///
+    /// Returns `None` only for an empty slice. If no entry is effective yet the first is returned, matching the
+    /// long standing behaviour of `ConsensusManager::consensus_constants`.
+    pub fn active_at_height(constants: &[Self], height: u64) -> Option<&Self> {
+        constants.get(Self::active_index_at_height(constants, height)?)
+    }
+
+    /// The index of the entry [`ConsensusConstants::active_at_height`] would select. Callers that need to look at the
+    /// neighbouring entry - the coinbase maturity tranches do, to work out the previous maturity - must use this
+    /// rather than searching the vector by value, so that there is only one definition of "active".
+    pub fn active_index_at_height(constants: &[Self], height: u64) -> Option<usize> {
+        if constants.is_empty() {
+            return None;
+        }
+        let mut active = 0;
+        for (index, c) in constants.iter().enumerate() {
+            if c.effective_from_height > height {
+                break;
+            }
+            active = index;
+        }
+        Some(active)
+    }
+
+    /// True if these constants carry the same rules as `other`, ignoring the height they become effective from.
+    ///
+    /// This answers "are these two rule sets the same", *not* "is consensus unchanged". Comparing the entries
+    /// selected at a single height is not sufficient to conclude the latter: moving an activation height can leave
+    /// the same entry selected at that height while changing which entry applies over the range the height moved
+    /// across. A caller asking about consensus must therefore evaluate this at every effective height of both
+    /// vectors, not only at the tip - see `ConsensusConstantsTracker::check_for_changes`.
+    ///
+    /// Note also that `effective_from_height` is not purely descriptive: header sync compares it against the block
+    /// height to decide when to refresh the permitted algorithms, difficulty window and backoff cap, and the coinbase
+    /// maturity tranches do arithmetic on it. It is excluded here only because the *selection* already accounts for
+    /// it, and only for callers that sweep the breakpoints as described above.
+    pub fn has_same_rules_as(&self, other: &Self) -> bool {
+        let mut this = self.clone();
+        let mut that = other.clone();
+        this.effective_from_height = 0;
+        that.effective_from_height = 0;
+        this == that
+    }
+
+    pub fn for_network_at_height(network: Network, height: u64) -> Self {
+        let versions = Self::for_network(network);
+        Self::active_at_height(&versions, height)
             .expect("There is always at least one consensus version")
+            .clone()
     }
 
     /// The height at which these constants become effective
@@ -464,8 +554,16 @@ impl ConsensusConstants {
         self.include_c29_accumulated_difficulty_into_total
     }
 
+    /// The cap on the exponential same-algorithm proof of work backoff modifier (TIP-RFC-MT-0004). `1` disables the
+    /// backoff.
+    pub fn pow_backoff_cap(&self) -> u64 {
+        self.pow_backoff_cap
+    }
+
     pub fn localnet() -> Vec<Self> {
-        let difficulty_block_window = 90;
+        // LocalNet is ephemeral (no persistent chain to invalidate), so TIP-RFC-MT-0004 applies from height 0. Note
+        // that LocalNet sets `min_difficulty == max_difficulty == 1`, so the backoff clamps to a no-op there.
+        let difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
@@ -526,6 +624,7 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: true,
+            pow_backoff_cap: POW_BACKOFF_CAP,
         }];
         consensus_constants
     }
@@ -602,8 +701,9 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: true,
+            pow_backoff_cap: POW_BACKOFF_DISABLED,
         }];
-        consensus_constants
+        Self::with_tip004_activation(consensus_constants, IGOR_TIP004_ACTIVATION_HEIGHT)
     }
 
     /// *
@@ -665,6 +765,7 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -717,8 +818,13 @@ impl ConsensusConstants {
         let mut con4 = con3.clone();
         con4.include_c29_accumulated_difficulty_into_total = true;
         con4.effective_from_height = 181_000;
-        let consensus_constants = vec![consensus_constants1, con2, con3, con4];
-        consensus_constants
+
+        let mut con5 = con4.clone();
+        con5.effective_from_height = ESMERALDA_TIP004_ACTIVATION_HEIGHT;
+        con5.pow_backoff_cap = POW_BACKOFF_CAP;
+        con5.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+
+        vec![consensus_constants1, con2, con3, con4, con5]
     }
 
     /// *
@@ -778,8 +884,9 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            pow_backoff_cap: POW_BACKOFF_DISABLED,
         }];
-        consensus_constants
+        Self::with_tip004_activation(consensus_constants, STAGENET_TIP004_ACTIVATION_HEIGHT)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -834,6 +941,7 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -888,10 +996,17 @@ impl ConsensusConstants {
 
         let mut con_5 = con_4.clone();
         con_5.include_c29_accumulated_difficulty_into_total = true;
-        con_5.effective_from_height = 5000;
+        // NOTE: this entry was originally declared with `effective_from_height = 5000`, which left the constants
+        // vector unsorted. `ConsensusManager::consensus_constants` walks the vector in order and stops at the first
+        // entry whose height exceeds the one being looked up, so a height in `5000..5500` stopped at `con_4` and
+        // never reached this entry, while any height at or above 5500 walked past `con_4` and landed here. 5500 is
+        // therefore the height from which this entry has always actually been in force; stating it explicitly keeps
+        // every lookup answering exactly as before while making the vector non-decreasing, which the activation
+        // helper below and `consensus_constants` both rely on.
+        con_5.effective_from_height = 5_500;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
-        consensus_constants
+        Self::with_tip004_activation(consensus_constants, NEXTNET_TIP004_ACTIVATION_HEIGHT)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -947,6 +1062,7 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -1010,7 +1126,32 @@ impl ConsensusConstants {
         con_6.effective_from_height = 126_000;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
-        consensus_constants
+        Self::with_tip004_activation(consensus_constants, MAINNET_TIP004_ACTIVATION_HEIGHT)
+    }
+
+    /// Appends the TIP-RFC-MT-0004 activation entry (exponential same-algorithm PoW backoff plus the shortened LWMA
+    /// window; both changes are gated on the same fork height) to a network's constants.
+    ///
+    /// The new entry is a clone of the network's latest entry, so every other consensus value carries over unchanged.
+    /// Networks with live history must activate this way rather than at height 0: retroactively changing
+    /// `difficulty_block_window` or `pow_backoff_cap` would make historical blocks recompute to a different target
+    /// than the one recorded in their accumulated data.
+    fn with_tip004_activation(mut constants: Vec<Self>, activation_height: u64) -> Vec<Self> {
+        // The base must be the entry `ConsensusManager::consensus_constants` would return for a height just below
+        // the activation, which is the *last* element, not the one with the greatest `effective_from_height`. That
+        // lookup walks the vector in order without breaking early, so a later entry always wins over an earlier one
+        // with a higher height. Picking `max_by_key` instead silently dropped NextNet's
+        // `include_c29_accumulated_difficulty_into_total`, bundling an unrelated consensus change into this fork.
+        // `assert_activation_entry_matches_runtime_lookup` pins this for every network.
+        let latest = constants.last().expect("consensus constants are never empty").clone();
+        // A never-activating placeholder height is deliberately still added, so that the entry is exercised by tests
+        // and so that setting a real height is a one line change.
+        let mut activated = latest;
+        activated.effective_from_height = activation_height;
+        activated.pow_backoff_cap = POW_BACKOFF_CAP;
+        activated.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+        constants.push(activated);
+        constants
     }
 
     fn current_permitted_output_types() -> Vec<OutputType> {
@@ -1059,13 +1200,27 @@ pub struct ConsensusConstantsBuilder {
 }
 
 impl ConsensusConstantsBuilder {
+    /// Starts from the constants that are actually live on `network` today.
+    ///
+    /// Entries gated on an unscheduled activation height (a `u64::MAX` placeholder, such as TIP-RFC-MT-0004 until a
+    /// real height is chosen) are skipped, so that fixtures keep exercising the rules the network is really running.
+    /// Once a placeholder is replaced by a real height the corresponding entry is picked up automatically.
+    ///
+    /// The chosen entry is normalised to `effective_from_height = 0`, because the result is normally used as a
+    /// single entry constants vector. Lookups that filter on the effective height rather than falling back to the
+    /// first entry - `get_maturity_tranches`, and therefore `total_tokens_spendable_at_height` and the chain balance
+    /// validator - find nothing at all in a one element vector whose only entry is effective at `u64::MAX`.
     pub fn new(network: Network) -> Self {
-        Self {
-            consensus: NetworkConsensus::from(network)
-                .create_consensus_constants()
-                .pop()
-                .expect("Empty consensus constants"),
-        }
+        let all = NetworkConsensus::from(network).create_consensus_constants();
+        let mut consensus = all
+            .iter()
+            .rev()
+            .find(|c| c.effective_from_height != UNSCHEDULED_ACTIVATION_HEIGHT)
+            .or_else(|| all.last())
+            .expect("Empty consensus constants")
+            .clone();
+        consensus.effective_from_height = 0;
+        Self { consensus }
     }
 
     pub fn clear_proof_of_work(mut self) -> Self {
@@ -1145,8 +1300,184 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    /// Sets the cap on the exponential same-algorithm PoW backoff modifier (TIP-RFC-MT-0004). Pass
+    /// [`POW_BACKOFF_DISABLED`] to switch the backoff off.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `cap` is not a power of two in `1..=POW_BACKOFF_CAP`. A cap outside that range would make the
+    /// penalty and the LWMA's de-normalisation disagree.
+    pub fn with_pow_backoff_cap(mut self, cap: u64) -> Self {
+        assert!(
+            cap > 0 && cap.is_power_of_two() && cap <= POW_BACKOFF_CAP,
+            "pow_backoff_cap must be a power of two in 1..={POW_BACKOFF_CAP}, but {cap} was given"
+        );
+        self.consensus.pow_backoff_cap = cap;
+        self
+    }
+
+    /// Sets the LWMA difficulty block window.
+    pub fn with_difficulty_block_window(mut self, block_window: u64) -> Self {
+        self.consensus.difficulty_block_window = block_window;
+        self
+    }
+
+    /// Sets the height from which these constants become effective.
+    pub fn with_effective_from_height(mut self, height: u64) -> Self {
+        self.consensus.effective_from_height = height;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus
+    }
+}
+
+#[cfg(test)]
+mod activation_test {
+    use tari_common::configuration::Network;
+
+    use super::*;
+
+    const ALL_NETWORKS: [Network; 6] = [
+        Network::LocalNet,
+        Network::Igor,
+        Network::Esmeralda,
+        Network::NextNet,
+        Network::StageNet,
+        Network::MainNet,
+    ];
+
+    fn activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_TIP004_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_TIP004_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_TIP004_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_TIP004_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_TIP004_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// The authoritative lookup, shared with `ConsensusManager::consensus_constants` and the node's consensus
+    /// constants tracker. Calling the real function rather than copying it means these tests also guard changes to
+    /// it.
+    fn runtime_lookup(constants: &[ConsensusConstants], height: u64) -> &ConsensusConstants {
+        ConsensusConstants::active_at_height(constants, height).expect("never empty")
+    }
+
+    /// The in-order walk only agrees with "the entry with the greatest effective height" while the vector is sorted.
+    /// NextNet was not, which is how the TIP-RFC-MT-0004 activation entry came to be cloned from an entry the
+    /// runtime never returns.
+    #[test]
+    fn constants_vectors_are_sorted_by_effective_height() {
+        for network in ALL_NETWORKS {
+            let constants = ConsensusConstants::for_network(network);
+            for pair in constants.windows(2) {
+                let (a, b) = (pair.first().expect("windows(2)"), pair.get(1).expect("windows(2)"));
+                assert!(
+                    a.effective_from_height <= b.effective_from_height,
+                    "{network} consensus constants are out of order: {} then {}",
+                    a.effective_from_height,
+                    b.effective_from_height
+                );
+            }
+        }
+    }
+
+    /// `for_network_at_height` picks the greatest effective height while `ConsensusManager` walks in order. Those
+    /// two can only agree while the vector is sorted, and a disagreement means two nodes applying different rules
+    /// depending on which lookup they happened to use.
+    #[test]
+    fn the_two_constants_lookups_agree_at_every_boundary() {
+        for network in ALL_NETWORKS {
+            let constants = ConsensusConstants::for_network(network);
+            let mut heights = vec![0u64, 1, u64::MAX - 1, u64::MAX];
+            for c in &constants {
+                heights.push(c.effective_from_height.saturating_sub(1));
+                heights.push(c.effective_from_height);
+                heights.push(c.effective_from_height.saturating_add(1));
+            }
+            for height in heights {
+                assert_eq!(
+                    ConsensusConstants::for_network_at_height(network, height),
+                    *runtime_lookup(&constants, height),
+                    "{network} lookups disagree at height {height}"
+                );
+            }
+        }
+    }
+
+    /// The activation entry must differ from the rules live just below it in exactly three fields. Anything else
+    /// would mean an unrelated consensus change riding along inside the TIP-RFC-MT-0004 fork.
+    #[test]
+    fn tip004_activation_entry_only_changes_the_backoff_and_the_window() {
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let constants = ConsensusConstants::for_network(network);
+            let activation = activation_height(network);
+            let live = runtime_lookup(&constants, activation.saturating_sub(1)).clone();
+
+            let mut expected = live.clone();
+            expected.effective_from_height = activation;
+            expected.pow_backoff_cap = POW_BACKOFF_CAP;
+            expected.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+
+            let actual = constants.last().expect("never empty");
+            assert_eq!(
+                *actual, expected,
+                "{network} activation entry drifted from the live rules"
+            );
+            // Spelled out because this is the field that was silently reverted on NextNet
+            assert_eq!(
+                actual.include_c29_accumulated_difficulty_into_total,
+                live.include_c29_accumulated_difficulty_into_total,
+                "{network} activation entry changes include_c29_accumulated_difficulty_into_total"
+            );
+        }
+    }
+
+    #[test]
+    fn nextnet_c29_accumulation_survives_the_fork() {
+        // Regression test for the specific bug: NextNet's vector was unsorted, so the activation entry was cloned
+        // from `con_4` (c29 excluded) rather than `con_5` (c29 included), which would have switched Cuckaroo out of
+        // the accumulated difficulty at the fork height.
+        let constants = ConsensusConstants::for_network(Network::NextNet);
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::NextNet, 5_500)
+                .include_c29_accumulated_difficulty_into_total()
+        );
+        assert!(
+            constants
+                .last()
+                .expect("never empty")
+                .include_c29_accumulated_difficulty_into_total()
+        );
+    }
+
+    #[test]
+    fn the_builder_hands_out_the_rules_that_are_live_today() {
+        for network in ALL_NETWORKS {
+            let built = ConsensusConstantsBuilder::new(network).build();
+            let constants = ConsensusConstants::for_network(network);
+            // The builder skips entries still gated on the `u64::MAX` placeholder, but deliberately picks an
+            // activation entry up once it has a real height. So the entry it must agree with is the newest
+            // *scheduled* one, which is the activation entry itself on a network whose fork has been scheduled and
+            // the entry below the fork on one where it has not. Looking it up through `runtime_lookup` rather than
+            // re-implementing the builder's search keeps this test guarding `active_at_height` as well.
+            let newest_scheduled = constants
+                .iter()
+                .map(|c| c.effective_from_height)
+                .filter(|height| *height != UNSCHEDULED_ACTIVATION_HEIGHT)
+                .max()
+                .unwrap_or(0);
+            let mut live = runtime_lookup(&constants, newest_scheduled).clone();
+            // The builder's output is used as a single entry vector, so it is normalised to height 0
+            live.effective_from_height = 0;
+            assert_eq!(built, live, "{network} builder drifted from the live rules");
+            // A single entry vector with a non-zero effective height breaks lookups that filter on it, such as the
+            // coinbase maturity tranches.
+            assert_eq!(built.effective_from_height(), 0, "{network}");
+        }
     }
 }
 

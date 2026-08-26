@@ -255,6 +255,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         header.pow_algo(),
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
+        Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
     )
     .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
