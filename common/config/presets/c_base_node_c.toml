@@ -195,6 +195,11 @@ listener_self_liveness_check_interval = 15
 # slot in `rpc_max_simultaneous_sessions`. Time spent servicing a request does not count towards this. A peer that
 # disappears without closing its substream would otherwise hold its session forever. (default value = 600).
 #rpc_idle_session_timeout = 600
+# The longest deadline, in seconds, the RPC server will honour from a client. The deadline bounds a single service call
+# and the gap between two messages of a streaming response, so without a ceiling a peer can switch off those timeouts
+# entirely. Requests asking for more are clamped to this, not rejected; a request that then runs past it gets a Timeout
+# status. Values below the 1 second minimum client deadline are floored at it. (default value = 600).
+#rpc_maximum_client_deadline = 600
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------

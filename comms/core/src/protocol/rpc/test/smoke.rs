@@ -142,7 +142,17 @@ pub(super) async fn setup<T: GreetingRpc>(
     service_impl: T,
     num_concurrent_sessions: usize,
 ) -> (Control, Yamux, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
-    let (notif_tx, server_hnd, context, shutdown) = setup_service(service_impl, num_concurrent_sessions).await;
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(num_concurrent_sessions)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    setup_with_builder(service_impl, builder).await
+}
+
+pub(super) async fn setup_with_builder<T: GreetingRpc>(
+    service_impl: T,
+    builder: RpcServerBuilder,
+) -> (Control, Yamux, task::JoinHandle<()>, Arc<NodeIdentity>, Shutdown) {
+    let (notif_tx, server_hnd, context, shutdown) = setup_service_with_builder(service_impl, builder).await;
     let (_, inbound, outbound) = build_multiplexed_connections().await;
     let inbound_control = inbound.get_yamux_control();
 
@@ -363,6 +373,44 @@ async fn timeout() {
     assert_eq!(resp.greeting, "took a while to load");
 }
 
+/// A peer asking for a deadline beyond the server's ceiling must be held to the ceiling, and must
+/// be *told* when the request runs past it - not left waiting out its own, much longer, deadline.
+#[tokio::test]
+async fn client_deadline_is_capped_and_the_client_is_told() {
+    let delay = Arc::new(RwLock::new(Duration::from_secs(60)));
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(1)
+        .with_minimum_client_deadline(Duration::from_secs(0))
+        .with_maximum_client_deadline(Duration::from_secs(1));
+    let (_inbound, outbound, _, _, _shutdown) =
+        setup_with_builder(SlowGreetingService::new(delay.clone()), builder).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, 1024);
+
+    // Ask for far more than the server allows. If the cap were not applied on the wire, or if the
+    // server went silent instead of replying, this request would not resolve until the client's own
+    // deadline expires - well past the timeout below.
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(600))
+        .with_deadline_grace_period(Duration::from_secs(60))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let result = time::timeout(Duration::from_secs(10), client.say_hello(Default::default()))
+        .await
+        .expect("client was not told about the capped deadline and waited on its own instead");
+
+    let err = result.unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
+    assert_eq!(status.as_status_code(), RpcStatusCode::Timeout);
+
+    // The session survives: the next request is served normally.
+    *delay.write().await = Duration::from_secs(0);
+    let resp = client.say_hello(Default::default()).await.unwrap();
+    assert_eq!(resp.greeting, "took a while to load");
+}
+
 #[tokio::test]
 async fn unknown_protocol() {
     let (notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
@@ -448,6 +496,69 @@ async fn stream_still_works_after_cancel() {
     resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
         r.unwrap();
     });
+}
+
+/// A peer that opens a streaming request and then stops draining its yamux window used to park the
+/// server, and keep its session slot, indefinitely.
+///
+/// Two separate bounds are needed. The read timeout does not cover `framed.send`, and the outer
+/// session loop's idle timer does not tick while a request is being handled - so the write parks.
+/// Bounding only the write is not enough either: `run()` then tries to close the substream
+/// gracefully, and `EarlyClose::poll_close` returns `Pending` for a peer that is merely silent, so
+/// the task parks one level up instead. Either way the session's `BoundedExecutor` permit is held
+/// until `start()` returns, which is what actually locks other peers out of the node.
+///
+/// So the assertion here is the one that matters: another session can still be opened.
+#[tokio::test]
+async fn a_peer_that_stops_reading_does_not_hold_its_session_slot() {
+    const NUM_ITEMS: u32 = 512;
+    // A single global session, so the second handshake below succeeds only if the first session's
+    // slot was genuinely reclaimed.
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(1)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    let (_inbound, outbound, _, _, _shutdown) = setup_with_builder(GreetingService::default(), builder).await;
+
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    let mut stalled_client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(2))
+        .with_deadline_grace_period(Duration::from_secs(1))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // Far more data than a yamux window holds, produced as fast as the server can send it.
+    let _stalled_stream = stalled_client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 64 * 1024,
+            delay_ms: 0,
+        })
+        .await
+        .unwrap();
+
+    // Never drain it. Wait out the write deadline and the close timeout with room to spare, and do
+    // not touch `_stalled_stream` - reading it would unblock the server and mask the bug.
+    time::sleep(Duration::from_secs(10)).await;
+
+    // The slot must be free for somebody else.
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .expect("session slot was not reclaimed from the stalled peer");
+
+    let resp = client
+        .say_hello(SayHelloRequest {
+            name: "Norman".to_string(),
+            language: 0,
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.greeting, "Sawubona Norman");
 }
 
 #[tokio::test]

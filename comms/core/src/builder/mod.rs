@@ -60,7 +60,6 @@ use crate::{
 ///
 /// ```rust
 /// # use std::{sync::Arc, time::Duration};
-/// # use rand::;
 /// # use tari_shutdown::Shutdown;
 /// # use tari_comms::{
 /// #     {CommsBuilder, NodeIdentity},
@@ -69,17 +68,9 @@ use crate::{
 /// # };
 /// # #[tokio::main]
 /// # async fn main() {
-/// use std::env::temp_dir;
 /// use tari_common_sqlite::connection::DbConnection;
-/// use tari_comms::connectivity::ConnectivityConfig;
-/// use tari_comms::peer_manager::create_test_peer;
 /// use tari_comms::peer_manager::database::{PeerDatabaseSql, MIGRATIONS};
-/// use tari_comms::test_utils::peer_manager::random_name;
 ///
-/// use tari_storage::{
-///     lmdb_store::{LMDBBuilder, LMDBConfig},
-///     LMDBWrapper,
-/// };
 /// let node_identity = Arc::new(NodeIdentity::random(
 ///     &mut rand::rng(),
 ///     "/dns4/basenodezforhire.com/tcp/18000".parse().unwrap(),
@@ -88,7 +79,8 @@ use crate::{
 /// node_identity.sign();
 /// let mut shutdown = Shutdown::new();
 /// let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
-/// let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE)).unwrap();
+/// // The peer database is seeded with this node's own identity.
+/// let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
 ///
 /// let unspawned_node = CommsBuilder::new()
 ///   // .with_listener_address("/ip4/0.0.0.0/tcp/18000".parse().unwrap())

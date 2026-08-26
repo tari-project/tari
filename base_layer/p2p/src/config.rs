@@ -165,6 +165,16 @@ pub struct P2pConfig {
     /// Default: 10 minutes
     #[serde(with = "serializers::seconds")]
     pub rpc_idle_session_timeout: Duration,
+    /// The longest deadline the RPC server will honour from a client. The deadline bounds a single
+    /// service call and the gap between two messages of a streaming response, and arrives on the
+    /// wire as an unbounded number of seconds, so without a ceiling a peer can switch off those
+    /// timeouts entirely. Requests asking for more are clamped to this, not rejected; a request
+    /// that then runs past it gets a `Timeout` status. Raise it if peers legitimately need a longer
+    /// `rpc_deadline` than this allows. Values below the 1s minimum client deadline are floored at
+    /// it, so a misconfigured zero cannot stop the node serving.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rpc_maximum_client_deadline: Duration,
     /// The maximum time a seed peer connection is allowed to stay open before being forcibly closed.
     /// Default: 15 minutes
     #[serde(with = "serializers::seconds")]
@@ -195,6 +205,7 @@ impl Default for P2pConfig {
             rpc_max_sessions_per_peer: 10,
             cull_oldest_peer_rpc_connection_on_full: true,
             rpc_idle_session_timeout: Duration::from_secs(10 * 60),
+            rpc_maximum_client_deadline: Duration::from_secs(10 * 60),
             max_seed_peer_age: Duration::from_secs(15 * 60),
         }
     }
