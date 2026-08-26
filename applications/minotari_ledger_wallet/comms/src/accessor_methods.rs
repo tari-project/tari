@@ -23,7 +23,7 @@
 use std::sync::{LazyLock, Mutex};
 
 use log::debug;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch, STATIC_SPEND_INDEX};
 use rand::Rng;
 use semver::Version;
 use tari_common::configuration::Network;
@@ -41,6 +41,95 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
+
+const MIN_SCRIPT_OFFSET_IDENTITIES: usize = 2;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ScriptOffsetKeyIdentity {
+    branch: LedgerKeyBranch,
+    index: u64,
+}
+
+fn validate_script_offset_keys(
+    derived_script_key_count: usize,
+    script_key_indexes: &[(LedgerKeyBranch, u64)],
+    derived_sender_offset_count: usize,
+    sender_offset_indexes: &[(LedgerKeyBranch, u64)],
+) -> Result<(), LedgerDeviceError> {
+    if sender_offset_indexes
+        .iter()
+        .any(|(branch, _)| !branch.is_script_offset_sender_branch())
+    {
+        return Err(LedgerDeviceError::Processing(
+            "GetScriptOffset: invalid managed sender-offset branch".to_string(),
+        ));
+    }
+    if script_key_indexes
+        .iter()
+        .any(|(branch, _)| !branch.is_script_offset_script_branch())
+    {
+        return Err(LedgerDeviceError::Processing(
+            "GetScriptOffset: invalid managed script-key branch".to_string(),
+        ));
+    }
+
+    let mut sender_identities = Vec::new();
+    for (branch, index) in sender_offset_indexes {
+        let identity = ScriptOffsetKeyIdentity {
+            branch: *branch,
+            index: *index,
+        };
+        if !sender_identities.contains(&identity) {
+            sender_identities.push(identity);
+        }
+    }
+    if derived_sender_offset_count > 0 {
+        let identity = ScriptOffsetKeyIdentity {
+            branch: LedgerKeyBranch::Spend,
+            index: STATIC_SPEND_INDEX,
+        };
+        if !sender_identities.contains(&identity) {
+            sender_identities.push(identity);
+        }
+    }
+
+    let mut script_identities = Vec::new();
+    for (branch, index) in script_key_indexes {
+        let identity = ScriptOffsetKeyIdentity {
+            branch: *branch,
+            index: *index,
+        };
+        if !script_identities.contains(&identity) {
+            script_identities.push(identity);
+        }
+    }
+    if derived_script_key_count > 0 {
+        let identity = ScriptOffsetKeyIdentity {
+            branch: LedgerKeyBranch::Spend,
+            index: STATIC_SPEND_INDEX,
+        };
+        if !script_identities.contains(&identity) {
+            script_identities.push(identity);
+        }
+    }
+
+    let overlap = sender_identities
+        .iter()
+        .any(|identity| script_identities.contains(identity));
+    let unique_count = sender_identities.len() +
+        script_identities
+            .iter()
+            .filter(|identity| !sender_identities.contains(identity))
+            .count();
+    if overlap || unique_count < MIN_SCRIPT_OFFSET_IDENTITIES {
+        return Err(LedgerDeviceError::Processing(
+            "GetScriptOffset: script and sender-offset key identities must be disjoint and contain at least two keys"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
 
 /// The script signature key
 pub enum ScriptSignatureKey {
@@ -345,6 +434,12 @@ pub fn ledger_get_script_offset(
         derived_sender_offsets.len(),
         sender_offset_indexes
     );
+    validate_script_offset_keys(
+        derived_script_keys.len(),
+        script_key_indexes,
+        derived_sender_offsets.len(),
+        sender_offset_indexes,
+    )?;
     verify_ledger_application()?;
 
     // 1. data sizes
@@ -631,5 +726,47 @@ pub fn ledger_get_one_sided_metadata_signature(
         Err(e) => Err(LedgerDeviceError::Instruction(format!(
             "GetOneSidedMetadataSignature: {e}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn script_offset_host_validation_rejects_one_unique_identity() {
+        assert!(
+            validate_script_offset_keys(1, &[], 0, &[]).is_err(),
+            "one static spend identity must not satisfy the anti-extraction guard"
+        );
+    }
+
+    #[test]
+    fn script_offset_host_validation_accepts_independent_valid_roles() {
+        assert!(validate_script_offset_keys(1, &[], 0, &[(LedgerKeyBranch::OneSidedSenderOffset, 9)],).is_ok());
+    }
+
+    #[test]
+    fn script_offset_host_validation_rejects_cross_side_static_identity() {
+        assert!(validate_script_offset_keys(0, &[(LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)], 1, &[],).is_err());
+        assert!(validate_script_offset_keys(1, &[], 1, &[]).is_err());
+    }
+
+    #[test]
+    fn script_offset_host_validation_rejects_wrong_role_branches() {
+        assert!(
+            validate_script_offset_keys(0, &[(LedgerKeyBranch::OneSidedSenderOffset, 1)], 0, &[(
+                LedgerKeyBranch::Random,
+                2
+            )],)
+            .is_err()
+        );
+        assert!(
+            validate_script_offset_keys(0, &[(LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)], 0, &[(
+                LedgerKeyBranch::Spend,
+                STATIC_SPEND_INDEX
+            )],)
+            .is_err()
+        );
     }
 }
