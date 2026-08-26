@@ -34,6 +34,7 @@ use crate::{Dht, DhtConfig, dht::DhtInitializationError, outbound::DhtOutboundRe
 /// Builder for the DHT.
 ///
 /// ```rust
+/// use tari_common_sqlite::connection::DbConnectionUrl;
 /// use tari_comms_dht::Dht;
 /// let builder = Dht::builder()
 ///     .mainnet()

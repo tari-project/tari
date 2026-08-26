@@ -108,19 +108,24 @@ impl AggregateBodyInternalConsistencyValidator {
     ) -> Result<(), AggregatedBodyValidationError> {
         let total_reward = total_reward.unwrap_or(MicroMinotari::zero());
 
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        // Structural checks first. Everything below this point costs at least one signature
+        // verification per kernel or output, so the bound on how many of those there can be has to
+        // be applied before any of it runs - otherwise a peer can spend a single oversized
+        // `submit_transaction` to buy an unbounded amount of our CPU for a body we were always
+        // going to reject. Neither of these does any crypto.
+        check_weight(body, height, constants)?;
+        check_sorting_and_duplicates(body)?;
+
         // old internal validator
         verify_kernel_signatures(body)?;
-
-        let constants = self.consensus_manager.consensus_constants(height);
 
         validate_versions(body, constants)?;
 
         for output in body.outputs() {
             validate_individual_output(output, constants)?;
         }
-
-        check_weight(body, height, constants)?;
-        check_sorting_and_duplicates(body)?;
 
         // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
