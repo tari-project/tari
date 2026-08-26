@@ -92,7 +92,7 @@ impl ConnectivityManagerMockState {
     }
 
     pub async fn take_calls(&self) -> Vec<String> {
-        self.with_state(|state| state.calls.drain(..).collect()).await
+        self.with_state(|state| std::mem::take(&mut state.calls)).await
     }
 
     pub async fn count_calls_containing(&self, pat: &str) -> usize {
@@ -116,7 +116,7 @@ impl ConnectivityManagerMockState {
     }
 
     pub async fn take_dialed_peers(&self) -> Vec<NodeId> {
-        self.with_state(|state| state.dialed_peers.drain(..).collect()).await
+        self.with_state(|state| std::mem::take(&mut state.dialed_peers)).await
     }
 
     pub async fn clear_dialed_peers(&self) {
@@ -193,7 +193,7 @@ impl ConnectivityManagerMockState {
     }
 
     pub async fn take_banned_peers(&self) -> Vec<(NodeId, Duration, String)> {
-        self.with_state(|state| state.banned_peers.drain(..).collect()).await
+        self.with_state(|state| std::mem::take(&mut state.banned_peers)).await
     }
 
     pub(self) async fn with_state<F, R>(&self, f: F) -> R

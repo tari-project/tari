@@ -244,6 +244,8 @@ pub const MAINNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 pub const STAGENET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 /// TIP-RFC-MT-0004 activation height for NextNet.
 pub const NEXTNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+/// TIP-RFC-MT-0004 activation height for Esmeralda.
+pub const ESMERALDA_TIP004_ACTIVATION_HEIGHT: u64 = 860_000;
 /// TIP-RFC-MT-0004 activation height for Igor.
 pub const IGOR_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 
@@ -818,7 +820,7 @@ impl ConsensusConstants {
         con4.effective_from_height = 181_000;
 
         let mut con5 = con4.clone();
-        con5.effective_from_height = 860_000;
+        con5.effective_from_height = ESMERALDA_TIP004_ACTIVATION_HEIGHT;
         con5.pow_backoff_cap = POW_BACKOFF_CAP;
         con5.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
 
