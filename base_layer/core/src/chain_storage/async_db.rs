@@ -164,43 +164,91 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<HorizonSyncOutputCheckpoint>, "fetch_horizon_sync_output_checkpoint");
 
-    make_async_fn!(verify_horizon_sync_output_root(expected_root: HashOutput) -> (), "verify_horizon_sync_output_root");
+    make_async_fn!(
+        verify_horizon_sync_output_root(expected_root: HashOutput) -> (),
+        "verify_horizon_sync_output_root"
+    );
 
     //---------------------------------- TXO --------------------------------------------//
 
-    make_async_fn!(fetch_outputs(output_hash: HashOutput) -> Vec<OutputMinedInfo>, "fetch_outputs");
+    make_async_fn!(
+        fetch_outputs(output_hash: HashOutput) -> Vec<OutputMinedInfo>,
+        "fetch_outputs"
+    );
 
-    make_async_fn!(fetch_inputs(output_hash: HashOutput) -> Vec<InputMinedInfo>, "fetch_inputs");
+    make_async_fn!(
+        fetch_inputs(output_hash: HashOutput) -> Vec<InputMinedInfo>,
+        "fetch_inputs"
+    );
 
-    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
+    make_async_fn!(
+        fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>,
+        "fetch_unspent_output_by_commitment"
+    );
 
-    make_async_fn!(fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_outputs_with_spend_status_at_tip");
+    make_async_fn!(
+        fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>,
+        "fetch_outputs_with_spend_status_at_tip"
+    );
 
-    make_async_fn!(fetch_outputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<OutputMinedInfo>>, "fetch_outputs_mined_info");
+    make_async_fn!(
+        fetch_outputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<OutputMinedInfo>>,
+        "fetch_outputs_mined_info"
+    );
 
-    make_async_fn!(fetch_inputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<InputMinedInfo>>, "fetch_inputs_mined_info");
+    make_async_fn!(
+        fetch_inputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<InputMinedInfo>>,
+        "fetch_inputs_mined_info"
+    );
 
-    make_async_fn!(fetch_outputs_in_block_with_spend_state(header_hash: HashOutput, spend_status_at_header: Option<HashOutput>) -> Vec<(TransactionOutput, bool)>, "fetch_outputs_in_block_with_spend_state");
+    make_async_fn!(
+        fetch_outputs_in_block_with_spend_state(
+            header_hash: HashOutput,
+            spend_status_at_header: Option<HashOutput>,
+        ) -> Vec<(TransactionOutput, bool)>,
+        "fetch_outputs_in_block_with_spend_state"
+    );
 
-    make_async_fn!(fetch_outputs_in_block(header_hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
+    make_async_fn!(
+        fetch_outputs_in_block(header_hash: HashOutput) -> Vec<TransactionOutput>,
+        "fetch_outputs_in_block"
+    );
 
-    make_async_fn!(fetch_inputs_in_block(header_hash: HashOutput) -> Vec<TransactionInput>, "fetch_inputs_in_block");
+    make_async_fn!(
+        fetch_inputs_in_block(header_hash: HashOutput) -> Vec<TransactionInput>,
+        "fetch_inputs_in_block"
+    );
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
     //---------------------------------- Kernel --------------------------------------------//
-    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+    make_async_fn!(
+        fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>,
+        "fetch_kernel_by_excess_sig"
+    );
 
-    make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
+    make_async_fn!(
+        fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>,
+        "fetch_kernels_in_block"
+    );
 
-    make_async_fn!(generate_kernel_merkle_proof(excess_sig: CompressedSignature) -> KernelMerkleProof, "generate_kernel_merkle_proof");
+    make_async_fn!(
+        generate_kernel_merkle_proof(excess_sig: CompressedSignature) -> KernelMerkleProof,
+        "generate_kernel_merkle_proof"
+    );
 
     //---------------------------------- MMR --------------------------------------------//
-    make_async_fn!(prepare_new_block(template: NewBlockTemplate) -> Block, "prepare_new_block");
+    make_async_fn!(
+        prepare_new_block(template: NewBlockTemplate) -> Block,
+        "prepare_new_block"
+    );
 
     make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_size");
 
-    make_async_fn!(calculate_mmr_roots(block: Block) -> (Block, MmrRoots), "calculate_mmr_roots");
+    make_async_fn!(
+        calculate_mmr_roots(block: Block) -> (Block, MmrRoots),
+        "calculate_mmr_roots"
+    );
 
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
@@ -209,15 +257,27 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_chain_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<ChainHeader>, "fetch_chain_headers");
 
-    make_async_fn!(fetch_header_accumulated_data(hash: HashOutput) -> Option<BlockHeaderAccumulatedData>, "fetch_header_accumulated_data");
+    make_async_fn!(
+        fetch_header_accumulated_data(hash: HashOutput) -> Option<BlockHeaderAccumulatedData>,
+        "fetch_header_accumulated_data"
+    );
 
     make_async_fn!(fetch_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<BlockHeader>, "fetch_headers");
 
-    make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
+    make_async_fn!(
+        fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>,
+        "fetch_header_by_block_hash"
+    );
 
-    make_async_fn!(fetch_header_containing_kernel_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_kernel_mmr");
+    make_async_fn!(
+        fetch_header_containing_kernel_mmr(mmr_position: u64) -> ChainHeader,
+        "fetch_header_containing_kernel_mmr"
+    );
 
-    make_async_fn!(fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>, "fetch_chain_header_by_block_hash");
+    make_async_fn!(
+        fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>,
+        "fetch_chain_header_by_block_hash"
+    );
 
     make_async_fn!(
          /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader. Or None if not found.
@@ -233,7 +293,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
 
-    make_async_fn!(insert_valid_headers(headers: Vec<ChainHeader>) -> (), "insert_valid_headers");
+    make_async_fn!(
+        insert_valid_headers(headers: Vec<ChainHeader>) -> (),
+        "insert_valid_headers"
+    );
 
     //---------------------------------- Block --------------------------------------------//
     make_async_fn!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
@@ -242,75 +305,162 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 
-    make_async_fn!(chain_block_or_orphan_block_exists(block_hash: BlockHash) -> bool, "block_exists");
+    make_async_fn!(
+        chain_block_or_orphan_block_exists(block_hash: BlockHash) -> bool,
+        "block_exists"
+    );
 
-    make_async_fn!(chain_header_or_orphan_exists(block_hash: BlockHash) -> bool, "header_exists");
+    make_async_fn!(
+        chain_header_or_orphan_exists(block_hash: BlockHash) -> bool,
+        "header_exists"
+    );
 
-    make_async_fn!(bad_block_exists(block_hash: BlockHash) -> (bool, String), "bad_block_exists");
+    make_async_fn!(
+        bad_block_exists(block_hash: BlockHash) -> (bool, String),
+        "bad_block_exists"
+    );
 
     make_async_fn!(fetch_bad_blocks() -> Vec<BadBlock>, "bad_block_exists");
 
     make_async_fn!(clear_all_bad_blocks() -> (), "clear_all_bad_blocks");
 
-    make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
+    make_async_fn!(
+        fetch_block(height: u64, compact: bool) -> HistoricalBlock,
+        "fetch_block"
+    );
 
     make_async_fn!(fetch_blocks<T: RangeBounds<u64>>(bounds: T, compact: bool) -> Vec<HistoricalBlock>, "fetch_blocks");
 
     make_async_fn!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
 
-    make_async_fn!(fetch_block_by_hash(hash: HashOutput, compact: bool) -> Option<HistoricalBlock>, "fetch_block_by_hash");
+    make_async_fn!(
+        fetch_block_by_hash(hash: HashOutput, compact: bool) -> Option<HistoricalBlock>,
+        "fetch_block_by_hash"
+    );
 
     make_async_fn!(fetch_orphan_blocks() -> Vec<ChainHeader>, "fetch_orphan_blocks");
 
-    make_async_fn!(fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+    make_async_fn!(
+        fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>,
+        "fetch_block_with_kernel"
+    );
 
-    make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+    make_async_fn!(
+        fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>,
+        "fetch_block_with_utxo"
+    );
 
-    make_async_fn!(fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData, "fetch_block_accumulated_data");
+    make_async_fn!(
+        fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData,
+        "fetch_block_accumulated_data"
+    );
 
-    make_async_fn!(fetch_block_accumulated_data_by_height(height: u64) -> BlockAccumulatedData, "fetch_block_accumulated_data_by_height");
+    make_async_fn!(
+        fetch_block_accumulated_data_by_height(height: u64) -> BlockAccumulatedData,
+        "fetch_block_accumulated_data_by_height"
+    );
 
     //---------------------------------- Misc. --------------------------------------------//
 
     make_async_fn!(prune_to_height(height: u64) -> (), "prune_to_height");
 
-    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
+    make_async_fn!(
+        rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>,
+        "rewind_to_height"
+    );
 
-    make_async_fn!(rewind_to_hash(hash: BlockHash) -> Vec<Arc<ChainBlock>>, "rewind_to_hash");
+    make_async_fn!(
+        rewind_to_hash(hash: BlockHash) -> Vec<Arc<ChainBlock>>,
+        "rewind_to_hash"
+    );
 
-    make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
+    make_async_fn!(
+        fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>,
+        "fetch_block_timestamps"
+    );
 
-    make_async_fn!(fetch_target_difficulty_for_next_block(pow_algo: PowAlgorithm, current_block_hash: HashOutput) -> TargetDifficultyWindow, "fetch_target_difficulty");
+    make_async_fn!(
+        fetch_target_difficulty_for_next_block(
+            pow_algo: PowAlgorithm,
+            current_block_hash: HashOutput,
+        ) -> TargetDifficultyWindow,
+        "fetch_target_difficulty"
+    );
 
-    make_async_fn!(fetch_target_difficulties_for_next_block(current_block_hash: HashOutput) -> TargetDifficulties, "fetch_target_difficulties_for_next_block");
+    make_async_fn!(
+        fetch_target_difficulties_for_next_block(current_block_hash: HashOutput) -> TargetDifficulties,
+        "fetch_target_difficulties_for_next_block"
+    );
 
-    make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
+    make_async_fn!(
+        fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>,
+        "fetch_block_hashes_from_header_tip"
+    );
 
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
-    make_async_fn!(fetch_all_active_validator_nodes(height: u64) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_all_active_validator_nodes");
+    make_async_fn!(
+        fetch_all_active_validator_nodes(height: u64) -> Vec<ValidatorNodeRegistrationInfo>,
+        "fetch_all_active_validator_nodes"
+    );
 
-    make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<CompressedPublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
+    make_async_fn!(
+        fetch_active_validator_nodes(
+            height: u64,
+            validator_network: Option<CompressedPublicKey>,
+        ) -> Vec<ValidatorNodeRegistrationInfo>,
+        "fetch_active_validator_nodes"
+    );
 
-    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
+    make_async_fn!(
+        fetch_validators_activating_in_epoch(
+            sidechain_pk: Option<CompressedPublicKey>,
+            epoch: VnEpoch,
+        ) -> Vec<ValidatorNodeRegistrationInfo>,
+        "fetch_validators_activating_in_epoch"
+    );
 
-    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
+    make_async_fn!(
+        fetch_validators_exiting_in_epoch(
+            sidechain_pk: Option<CompressedPublicKey>,
+            epoch: VnEpoch,
+        ) -> Vec<ValidatorNodeRegistrationInfo>,
+        "fetch_validators_exiting_in_epoch"
+    );
 
-    make_async_fn!(get_validator_node(sidechain_id: Option<CompressedPublicKey>, public_key: CompressedPublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
+    make_async_fn!(
+        get_validator_node(
+            sidechain_id: Option<CompressedPublicKey>,
+            public_key: CompressedPublicKey,
+        ) -> Option<ValidatorNodeRegistrationInfo>,
+        "get_validator_node"
+    );
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
 
-    make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
+    make_async_fn!(
+        fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo,
+        "fetch_mined_info_by_payref"
+    );
 
-    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> Vec<MinedInfo>, "fetch_mined_info_by_output_hash");
+    make_async_fn!(
+        fetch_mined_info_by_output_hash(output_hash: HashOutput) -> Vec<MinedInfo>,
+        "fetch_mined_info_by_output_hash"
+    );
 
-    make_async_fn!(request_accumulated_data_check(auto_correct: bool, breathing_time_ms: u64) -> (), "request_accumulated_data_check");
+    make_async_fn!(
+        request_accumulated_data_check(auto_correct: bool, breathing_time_ms: u64) -> (),
+        "request_accumulated_data_check"
+    );
 
-    make_async_fn!(request_blockchain_consistency_check(full_validation: bool, auto_correct: bool, breathing_time_ms: u64) -> (), "request_blockchain_consistency_check");
+    make_async_fn!(
+        request_blockchain_consistency_check(full_validation: bool, auto_correct: bool, breathing_time_ms: u64) -> (),
+        "request_blockchain_consistency_check"
+    );
 
     make_async_fn!(stop_running_accumulated_data_check_task() -> (), "stop_running_accumulated_data_check_task");
 
