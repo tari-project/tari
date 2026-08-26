@@ -358,6 +358,7 @@ async fn send_via_cli(world: &mut TariWorld, amount: u64, sender: String, receiv
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;

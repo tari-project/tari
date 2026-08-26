@@ -382,6 +382,7 @@ impl WalletGrpcServer {
     async fn transfer_single_tx(
         &self,
         recipients: Vec<minotari_app_grpc::tari_rpc::PaymentRecipient>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<Response<minotari_app_grpc::tari_rpc::TransferResponse>, Status> {
         let fee_per_gram = recipients.first().expect("already checked").fee_per_gram;
         let recipients = recipients
@@ -417,7 +418,7 @@ impl WalletGrpcServer {
         let ids = transaction_service
             .send_one_sided_multi_recipient_transaction(
                 recipients,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 OutputFeatures::default(),
                 fee_per_gram.into(),
             )
@@ -1179,8 +1180,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             ));
         }
 
+        let mut selection_criteria = UtxoSelectionCriteria::default();
+        selection_criteria.excluding = parse_excluded_commitments(message.excluded_commitments)?;
+
         if message.single_tx {
-            return self.transfer_single_tx(message.recipients).await;
+            return self.transfer_single_tx(message.recipients, selection_criteria).await;
         }
         let recipients = message
             .recipients
@@ -1230,6 +1234,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 MemoField::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
+            let selection_criteria = selection_criteria.clone();
             transfers.push(async move {
                 (
                     hex_address,
@@ -1238,7 +1243,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -1249,7 +1254,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_to_stealth_address_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -4539,5 +4544,44 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
         }
     } else {
         Default::default()
+    }
+}
+
+fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<CompressedCommitment>, Status> {
+    commitments
+        .into_iter()
+        .enumerate()
+        .map(|(index, commitment)| {
+            CompressedCommitment::from_canonical_bytes(&commitment).map_err(|error| {
+                Status::invalid_argument(format!(
+                    "excluded_commitments[{index}] is not a canonical compressed commitment: {error}"
+                ))
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_utilities::ByteArray;
+
+    use super::parse_excluded_commitments;
+
+    #[test]
+    fn parse_excluded_commitments_rejects_invalid_commitments_with_their_index() {
+        let status = parse_excluded_commitments(vec![vec![0; 32], vec![1; 31]]).unwrap_err();
+
+        assert!(status.message().contains("excluded_commitments[1]"));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_accepts_canonical_commitments() {
+        let bytes = tari_common_types::types::CompressedCommitment::default()
+            .as_bytes()
+            .to_vec();
+
+        let parsed = parse_excluded_commitments(vec![bytes]).unwrap();
+
+        assert_eq!(parsed.len(), 1);
     }
 }

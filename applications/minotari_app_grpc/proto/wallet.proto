@@ -2008,6 +2008,8 @@ message BroadcastSignedOneSidedTransactionResponse {
 message TransferRequest {
   repeated PaymentRecipient recipients = 1;
   bool single_tx = 2;
+  // Canonical compressed commitments that must not be selected as transaction inputs.
+  repeated bytes excluded_commitments = 3;
 }
 
 // A request to perform a range-limited coin-join to self operation.
