@@ -818,7 +818,7 @@ impl ConsensusConstants {
         con4.effective_from_height = 181_000;
 
         let mut con5 = con4.clone();
-        con5.effective_from_height = 854_000;
+        con5.effective_from_height = 860_000;
         con5.pow_backoff_cap = POW_BACKOFF_CAP;
         con5.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
 
