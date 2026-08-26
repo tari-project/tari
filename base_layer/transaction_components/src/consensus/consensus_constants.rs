@@ -244,8 +244,6 @@ pub const MAINNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 pub const STAGENET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 /// TIP-RFC-MT-0004 activation height for NextNet.
 pub const NEXTNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
-/// TIP-RFC-MT-0004 activation height for Esmeralda.
-pub const ESMERALDA_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 /// TIP-RFC-MT-0004 activation height for Igor.
 pub const IGOR_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 
@@ -818,8 +816,14 @@ impl ConsensusConstants {
         let mut con4 = con3.clone();
         con4.include_c29_accumulated_difficulty_into_total = true;
         con4.effective_from_height = 181_000;
-        let consensus_constants = vec![consensus_constants1, con2, con3, con4];
-        Self::with_tip004_activation(consensus_constants, ESMERALDA_TIP004_ACTIVATION_HEIGHT)
+
+
+        let mut con5 = con4.clone();
+        con5.effective_from_height = 854_000;
+        con5.pow_backoff_cap = POW_BACKOFF_CAP;
+        con5.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+
+        let consensus_constants = vec![consensus_constants1, con2, con3, con4, con5];
     }
 
     /// *
