@@ -99,22 +99,24 @@ where F: FnOnce() -> R {
 
 macro_rules! make_async_fn {
     (
-     $(#[$outer:meta])*
-     $fn:ident() -> $rtype:ty, $name:expr) => {
+        $(#[$outer:meta])*
+        $fn:ident() -> $rtype:ty, $name:expr
+    ) => {
         $(#[$outer])*
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
             tokio::task::spawn_blocking(move || {
-                    trace_log($name, move || db.$fn())
+                trace_log($name, move || db.$fn())
             })
             .await?
         }
     };
-
-
     (
-     $(#[$outer:meta])*
-     $fn:ident$(< $( $lt:tt $( : $clt:path )? ),+ >)?($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
+        $(#[$outer:meta])*
+        $fn:ident$(< $( $lt:tt $( : $clt:path )? ),+ >)?(
+            $($param:ident:$ptype:ty),+ $(,)? // <-- Added $(,)? here to allow a trailing comma
+        ) -> $rtype:ty, $name:expr
+    ) => {
         $(#[$outer])*
         pub async fn $fn$(< $( $lt $( : $clt )? ),+ + Sync + Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
