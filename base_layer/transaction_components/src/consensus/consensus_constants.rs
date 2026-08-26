@@ -1459,8 +1459,18 @@ mod activation_test {
         for network in ALL_NETWORKS {
             let built = ConsensusConstantsBuilder::new(network).build();
             let constants = ConsensusConstants::for_network(network);
-            let activation = activation_height(network);
-            let mut live = runtime_lookup(&constants, activation.saturating_sub(1)).clone();
+            // The builder skips entries still gated on the `u64::MAX` placeholder, but deliberately picks an
+            // activation entry up once it has a real height. So the entry it must agree with is the newest
+            // *scheduled* one, which is the activation entry itself on a network whose fork has been scheduled and
+            // the entry below the fork on one where it has not. Looking it up through `runtime_lookup` rather than
+            // re-implementing the builder's search keeps this test guarding `active_at_height` as well.
+            let newest_scheduled = constants
+                .iter()
+                .map(|c| c.effective_from_height)
+                .filter(|height| *height != UNSCHEDULED_ACTIVATION_HEIGHT)
+                .max()
+                .unwrap_or(0);
+            let mut live = runtime_lookup(&constants, newest_scheduled).clone();
             // The builder's output is used as a single entry vector, so it is normalised to height 0
             live.effective_from_height = 0;
             assert_eq!(built, live, "{network} builder drifted from the live rules");
