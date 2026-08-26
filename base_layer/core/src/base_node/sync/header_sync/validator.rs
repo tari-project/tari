@@ -254,7 +254,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     ///
     /// Panics if initialize_state was not called prior to calling this function
     pub fn take_valid_headers(&mut self) -> Vec<ChainHeader> {
-        self.state_mut().valid_headers.drain(..).collect::<Vec<_>>()
+        std::mem::take(&mut self.state_mut().valid_headers)
     }
 
     /// Returns a slice containing the current valid headers

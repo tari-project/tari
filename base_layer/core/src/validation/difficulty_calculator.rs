@@ -128,7 +128,7 @@ mod backoff_test {
             if wanted(sha3x_difficulty(header).unwrap()) {
                 return;
             }
-            header.nonce += 1;
+            header.nonce = header.nonce.saturating_add(1);
         }
         panic!("could not grind a header with the wanted difficulty");
     }

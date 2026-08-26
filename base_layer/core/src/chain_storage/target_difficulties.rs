@@ -267,6 +267,7 @@ mod test {
         /// shifted by one entry computes the same target as the correct one and an off-by-one in *which* headers are
         /// selected would go unnoticed. Varying both makes `calculate_pair` a near-injective fingerprint of the
         /// window contents.
+        #[allow(clippy::arithmetic_side_effects)]
         fn build(algos: &[PowAlgorithm], base_difficulty: u64) -> Self {
             let mut headers = StdHashMap::new();
             let mut ordered = Vec::new();
@@ -274,7 +275,7 @@ mod test {
             let mut timestamp = 1_000_000u64;
             for (i, algo) in algos.iter().enumerate() {
                 // Deterministic jitter spanning roughly half to double the target time
-                let jitter = (i as u64 * 37) % (TARGET_TIME + 1);
+                let jitter = ((i as u64).saturating_mul(37)) % (TARGET_TIME.saturating_add(1));
                 timestamp += TARGET_TIME / 2 + jitter;
                 let mut block_header = header(*algo, timestamp);
                 block_header.height = i as u64;

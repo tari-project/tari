@@ -137,8 +137,11 @@ impl CommandContext {
             let raw_solve_time = u64::try_from(cmp::max(solve_time, 1)).unwrap();
             // u128, like consensus, so a large solve time cannot saturate the multiplication
             let scaled_solve_time = u64::try_from(
-                u128::from(raw_solve_time) * u128::from(calculated_target_difficulty.as_u64()) /
-                    u128::from(cmp::max(adjusted_target_difficulty.as_u64(), 1)),
+                u128::from(raw_solve_time)
+                    .saturating_mul(u128::from(calculated_target_difficulty.as_u64()))
+                    .checked_div(u128::from(cmp::max(adjusted_target_difficulty.as_u64(), 1)))
+                    // The divisor is clamped to at least 1 above, so this is never `None`
+                    .unwrap_or(u128::from(u64::MAX)),
             )
             .unwrap_or(u64::MAX);
             let normalized_solve_time = cmp::min(

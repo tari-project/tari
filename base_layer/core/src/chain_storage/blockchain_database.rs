@@ -2893,7 +2893,7 @@ pub(crate) fn target_difficulty_for_next_block<T: ChainHeaderSource + ?Sized>(
     let walk = walk_difficulty_window(db, start_header, |algo| {
         let in_window = algo == pow_algo && count < capacity;
         if in_window {
-            count += 1;
+            count = count.saturating_add(1);
         }
         (in_window, count >= capacity)
     })?;
@@ -2947,7 +2947,7 @@ pub(crate) fn target_difficulties_for_next_block<T: ChainHeaderSource + ?Sized>(
     let walk = walk_difficulty_window(db, start_header, |algo| {
         let in_window = match counts.get_mut(&algo) {
             Some(count) if *count < capacity => {
-                *count += 1;
+                *count = count.saturating_add(1);
                 true
             },
             _ => false,
@@ -2960,7 +2960,7 @@ pub(crate) fn target_difficulties_for_next_block<T: ChainHeaderSource + ?Sized>(
     // that are not in any window only advance the run.
     let mut next_index = walk.algos.len();
     for entry in walk.window.iter().rev() {
-        for index in (entry.index + 1..next_index).rev() {
+        for index in (entry.index.saturating_add(1)..next_index).rev() {
             targets.push_algo(*walk.algos.get(index).expect("index is in range"));
         }
         targets

@@ -133,12 +133,13 @@ impl LinearWeightedMovingAverage {
 
         let &(mut previous_timestamp, _, _) = self.target_difficulties.front().expect("Already checked");
         let mut this_timestamp;
-        let max_scaled_block_time = u128::from(self.max_block_time) * u128::from(MAX_POW_BACKOFF_MODIFIER);
+        let max_scaled_block_time =
+            u128::from(self.max_block_time).saturating_mul(u128::from(MAX_POW_BACKOFF_MODIFIER));
         // Normalising can only ever shrink a solve time, and never by more than `MAX_POW_BACKOFF_MODIFIER` (see
         // `PowBackoffTracker::modifier_for`). Anything above this bound therefore normalises to at least
         // `max_scaled_block_time` and is clamped regardless, so capping the raw value first is lossless and keeps the
         // multiplication below well inside u128.
-        let max_raw_solve_time = max_scaled_block_time * u128::from(MAX_POW_BACKOFF_MODIFIER);
+        let max_raw_solve_time = max_scaled_block_time.saturating_mul(u128::from(MAX_POW_BACKOFF_MODIFIER));
         // Loop through N most recent blocks.
         for (i, (timestamp, target, adjusted_target)) in self.target_difficulties.iter().skip(1).enumerate() {
             // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
@@ -167,7 +168,12 @@ impl LinearWeightedMovingAverage {
             let target = u128::from(target.as_u64());
             let adjusted_target = u128::from(adjusted_target.as_u64()).max(target);
             let scaled_solve_time = min(
-                raw_solve_time * u128::from(MAX_POW_BACKOFF_MODIFIER) * target / adjusted_target,
+                raw_solve_time
+                    .saturating_mul(u128::from(MAX_POW_BACKOFF_MODIFIER))
+                    .saturating_mul(target)
+                    .checked_div(adjusted_target)
+                    // `adjusted_target >= target >= Difficulty::min()`, so the divisor is never zero
+                    .unwrap_or(max_scaled_block_time),
                 max_scaled_block_time,
             );
 
@@ -258,7 +264,7 @@ impl LinearWeightedMovingAverage {
             );
         }
         self.block_window = block_window;
-        while self.target_difficulties.len() > block_window + 1 {
+        while self.target_difficulties.len() > block_window.saturating_add(1) {
             self.target_difficulties.pop_front();
         }
         Ok(())
@@ -438,6 +444,7 @@ mod test {
 
     /// Verbatim copy of the pre-TIP-0004 LWMA calculation, used to prove that the scaled implementation is
     /// bit-identical when every backoff modifier is 1 (i.e. for all pre-fork blocks).
+    #[allow(clippy::arithmetic_side_effects)]
     fn legacy_calculate(data: &[(EpochTime, Difficulty)], target_time: u64, max_block_time: u64) -> Option<u64> {
         use std::cmp::min;
         if data.len() <= 1 {
@@ -469,7 +476,7 @@ mod test {
             weighted_times += u128::from(solve_time * (i + 1) as u64);
         }
         let k = n * (n + 1) * u128::from(target_time) / 2;
-        let target = u64::try_from(ave_difficulty * k / weighted_times).unwrap_or(u64::MAX);
+        let target = u64::try_from(ave_difficulty.saturating_mul(k).saturating_div(weighted_times)).unwrap_or(u64::MAX);
         if target < Difficulty::min().as_u64() {
             None
         } else {
@@ -520,7 +527,7 @@ mod test {
     fn scaled(target: u64, modifier: u64) -> (Difficulty, Difficulty) {
         (
             Difficulty::from_u64(target).unwrap(),
-            Difficulty::from_u64(target * modifier).unwrap(),
+            Difficulty::from_u64(target.saturating_mul(modifier)).unwrap(),
         )
     }
 
