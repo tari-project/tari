@@ -4595,9 +4595,12 @@ mod tests {
 
     #[test]
     fn parse_excluded_commitments_rejects_invalid_points_with_their_index() {
-        let status = parse_excluded_commitments(vec![vec![0; 32]]).unwrap_err();
+        let mut invalid_point = vec![0; 32];
+        invalid_point[0] = 1;
+        let status = parse_excluded_commitments(vec![invalid_point]).unwrap_err();
 
         assert!(status.message().contains("excluded_commitments[0]"));
+        assert!(status.message().contains("not a valid compressed commitment"));
     }
 
     #[test]
