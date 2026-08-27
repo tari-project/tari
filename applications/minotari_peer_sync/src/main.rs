@@ -40,7 +40,7 @@ use std::{
     path::{Path, PathBuf},
     process,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use clap::Parser;
@@ -409,6 +409,10 @@ async fn run(
         .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?;
     report.num_peers_in_db = all_peers.len();
     report.num_downloaded = all_peers.iter().filter(|p| !p.is_seed()).count();
+    let now = now_epoch_secs();
+    for peer in &all_peers {
+        *report.claim_ages.entry(ClaimAge::of(peer, now)).or_default() += 1;
+    }
 
     // --- Dial every peer ------------------------------------------------------------------------------------------
     let mut num_skipped = 0usize;
@@ -646,10 +650,19 @@ async fn dial_peer(connectivity: &ConnectivityRequester, peer: &Peer, dial_timeo
             .map(|a| a.address().to_string())
             .unwrap_or_else(|| "no address".to_string()),
         mix: AddressMix::of(peer),
+        claim_age: ClaimAge::of(peer, now_epoch_secs()),
         is_seed: peer.is_seed(),
         latency: started.elapsed(),
         error,
     }
+}
+
+/// Seconds since the unix epoch, to compare against the epoch timestamp inside a peer's signed address claim.
+fn now_epoch_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
 }
 
 /// The config name of a transport, as it would be written in config.toml.
@@ -705,6 +718,7 @@ struct DialOutcome {
     node_id: NodeId,
     address: String,
     mix: AddressMix,
+    claim_age: ClaimAge,
     is_seed: bool,
     latency: Duration,
     error: Option<String>,
@@ -750,6 +764,59 @@ impl AddressMix {
     }
 }
 
+/// How long ago the peer last signed its address claim, bucketed. The claim timestamp is the only temporal
+/// information the peer sync carries, and a peer re-signs only when its addresses or features change - so this is
+/// "when did this peer last change its addresses", not a liveness signal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum ClaimAge {
+    Days7,
+    Days14,
+    Days30,
+    Days90,
+    Days180,
+    Older,
+    Unknown,
+}
+
+impl ClaimAge {
+    const ALL: [ClaimAge; 7] = [
+        ClaimAge::Days7,
+        ClaimAge::Days14,
+        ClaimAge::Days30,
+        ClaimAge::Days90,
+        ClaimAge::Days180,
+        ClaimAge::Older,
+        ClaimAge::Unknown,
+    ];
+
+    fn of(peer: &Peer, now: i64) -> Self {
+        let Some(claimed_at) = peer.addresses.newest_claim_updated_at() else {
+            return ClaimAge::Unknown;
+        };
+        let age_days = now.saturating_sub(claimed_at.timestamp()).max(0) / 86_400;
+        match age_days {
+            0..=6 => ClaimAge::Days7,
+            7..=13 => ClaimAge::Days14,
+            14..=29 => ClaimAge::Days30,
+            30..=89 => ClaimAge::Days90,
+            90..=179 => ClaimAge::Days180,
+            _ => ClaimAge::Older,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ClaimAge::Days7 => "under 7 days",
+            ClaimAge::Days14 => "7 - 14 days",
+            ClaimAge::Days30 => "14 - 30 days",
+            ClaimAge::Days90 => "30 - 90 days",
+            ClaimAge::Days180 => "90 - 180 days",
+            ClaimAge::Older => "over 180 days",
+            ClaimAge::Unknown => "no claim (seeds)",
+        }
+    }
+}
+
 /// A `count x label` summary of address mixes, e.g. `onion-only 37, mixed 2, ip-only 1`.
 fn summarize_mixes<'a, I: Iterator<Item = &'a DialOutcome>>(outcomes: I) -> String {
     let mut counts: HashMap<AddressMix, usize> = HashMap::new();
@@ -780,6 +847,7 @@ struct Report {
     dial_time: Duration,
     dialed: Vec<DialOutcome>,
     address_failures: Vec<(String, usize)>,
+    claim_ages: HashMap<ClaimAge, usize>,
 }
 
 impl Report {
@@ -803,6 +871,7 @@ impl Report {
             dial_time: Duration::ZERO,
             dialed: Vec::new(),
             address_failures: Vec::new(),
+            claim_ages: HashMap::new(),
         }
     }
 
@@ -917,6 +986,46 @@ impl Display for Report {
             )?;
             for (reason, count) in self.address_failures.iter().take(10) {
                 writeln!(f, "  {count:>5} x {reason}")?;
+            }
+        }
+
+        if !self.claim_ages.is_empty() {
+            writeln!(
+                f,
+                "------------------------- Age of the peers' address claims ---------------------"
+            )?;
+            writeln!(
+                f,
+                "A peer signs its addresses only when they change, so this is how long ago each peer last changed \
+                 its\naddresses - not how long ago it was seen alive."
+            )?;
+            writeln!(
+                f,
+                "  {:<18}{:>8}{:>10}{:>11}{:>8}",
+                "claim age", "peers", "dialled", "connected", "failed"
+            )?;
+            for age in ClaimAge::ALL {
+                let peers = self.claim_ages.get(&age).copied().unwrap_or(0);
+                if peers == 0 {
+                    continue;
+                }
+                let dialed = self.dialed.iter().filter(|r| r.claim_age == age);
+                let (connected, failed) = dialed.fold((0usize, 0usize), |(ok, bad), r| {
+                    if r.error.is_none() {
+                        (ok + 1, bad)
+                    } else {
+                        (ok, bad + 1)
+                    }
+                });
+                writeln!(
+                    f,
+                    "  {:<18}{:>8}{:>10}{:>11}{:>8}",
+                    age.label(),
+                    peers,
+                    connected + failed,
+                    connected,
+                    failed
+                )?;
             }
         }
 
