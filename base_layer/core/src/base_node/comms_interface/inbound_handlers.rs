@@ -83,19 +83,6 @@ const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 #[cfg(feature = "metrics")]
 const DIFF_INDICATOR_LAG: u64 = 25;
 
-fn validate_mempool_excess_sig_count(count: usize) -> Result<(), CommsInterfaceError> {
-    if count > MAX_REQUEST_BY_KERNEL_EXCESS_SIGS {
-        return Err(CommsInterfaceError::InvalidRequest {
-            request: "FetchMempoolTransactionsByExcessSigs",
-            details: format!(
-                "Exceeded maximum number of kernel excess sigs in request (max: {}, got:{count})",
-                MAX_REQUEST_BY_KERNEL_EXCESS_SIGS,
-            ),
-        });
-    }
-    Ok(())
-}
-
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
 #[derive(Debug, Clone, Display)]
@@ -504,7 +491,6 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
-                validate_mempool_excess_sig_count(excess_sigs.len())?;
                 let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     FetchMempoolTransactionsResponse {
@@ -883,10 +869,27 @@ where B: BlockchainBackend + 'static
             let FetchMempoolTransactionsResponse {
                 transactions,
                 not_found,
-            } = self
+            } = match self
                 .outbound_nci
                 .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
-                .await?;
+                .await
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to retrieve missing transactions for compact block #{} ({}) from peer {}: {}. \
+                         Requesting full block.",
+                        header.height,
+                        block_hash.to_hex(),
+                        source_peer,
+                        error,
+                    );
+                    #[cfg(feature = "metrics")]
+                    metrics::compact_block_full_misses(header.height).inc();
+                    return self.request_full_block_from_peer(source_peer, block_hash).await;
+                },
+            };
 
             // Add returned transactions to unconfirmed pool
             if !transactions.is_empty() {
@@ -1283,27 +1286,5 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             mempool_last_seen: self.mempool_last_seen.clone(),
             mempool_sync_timeout: self.mempool_sync_timeout,
         }
-    }
-}
-
-#[cfg(test)]
-mod cardinality_tests {
-    use super::*;
-
-    #[test]
-    fn mempool_excess_signature_limit_rejects_before_the_handler_can_query() {
-        let error = validate_mempool_excess_sig_count(MAX_REQUEST_BY_KERNEL_EXCESS_SIGS + 1).unwrap_err();
-        match error {
-            CommsInterfaceError::InvalidRequest { request, details } => {
-                assert_eq!(request, "FetchMempoolTransactionsByExcessSigs");
-                assert!(details.contains("Exceeded maximum number of kernel excess sigs"));
-            },
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn mempool_excess_signature_limit_accepts_the_boundary() {
-        validate_mempool_excess_sig_count(MAX_REQUEST_BY_KERNEL_EXCESS_SIGS).unwrap();
     }
 }

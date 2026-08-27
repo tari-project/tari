@@ -298,7 +298,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }
 
         let mut responses: Vec<TxQueryBatchResponse> = Vec::with_capacity(message.sigs.len());
-        let mut cached_responses = HashMap::with_capacity(message.sigs.len());
+        let mut cached_responses: HashMap<CompressedSignature, TxQueryResponse> = HashMap::new();
 
         let metadata = self
             .db
@@ -307,17 +307,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         for sig in message.sigs {
-            // Protobuf's canonical byte fields make a stable key after the signature validates. Keeping a response
-            // cache avoids repeating the database and mempool lookup while preserving one positional response for
-            // every signature supplied by the caller.
-            let cache_key = (sig.public_nonce.clone(), sig.signature.clone());
             let signature =
                 CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
-            let response = match cached_responses.get(&cache_key) {
+            // Cache by the validated signature itself so duplicate inputs avoid repeated database and mempool work
+            // without cloning the protobuf byte fields. A positional response is still emitted for every input.
+            let response = match cached_responses.get(&signature) {
                 Some(response) => response.clone(),
                 None => {
                     let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
-                    cached_responses.insert(cache_key, response.clone());
+                    cached_responses.insert(signature.clone(), response.clone());
                     response
                 },
             };
