@@ -32,6 +32,10 @@ use tari_p2p::TransportType;
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
+    /// How many rounds to run. Round 1 is the base node's own peer sync from the seed peers; every round after that
+    /// asks the peers that were successfully dialled for their peer lists, and dials only the peers that are new.
+    #[clap(long, default_value_t = 5)]
+    pub rounds: usize,
     /// How long to wait for the DHT seed strap (peer sync) to complete, in seconds
     #[clap(long, default_value_t = 180)]
     pub sync_timeout: u64,
@@ -45,7 +49,7 @@ pub struct Cli {
     /// How many peers to dial concurrently
     #[clap(long, default_value_t = 10)]
     pub concurrency: usize,
-    /// Only dial the first N peers (default: dial all of them)
+    /// Only dial the first N new peers each round (default: dial all of them)
     #[clap(long)]
     pub max_peers: Option<usize>,
     /// Do not dial the seed peers themselves, only the peers that were downloaded from them

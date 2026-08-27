@@ -7,6 +7,9 @@ the same `config.toml`, uses the same seed peers and DNS seeds, and lets the DHT
 seed peers and stream their peer lists back into the peer database. Once that finishes it dials every peer it
 downloaded and reports how many of them could be connected to.
 
+It then keeps going: each further round asks the peers that answered for *their* peer lists, over the same DHT
+`get_peers` RPC the network discovery uses, and dials only the peers that are new. Five rounds by default.
+
 No blockchain database, sync, mining or gRPC is started.
 
 ## Running
@@ -76,11 +79,12 @@ identity file.
 
 | Option | Default | Description |
 | --- | --- | --- |
+| `--rounds <n>` | 5 | Rounds to run: round 1 is the seed sync, each later one asks the peers that answered for more |
 | `--sync-timeout <secs>` | 180 | How long to wait for peer sync to complete |
 | `--settle-time <secs>` | 5 | Grace period after peer sync before the peer list is read |
 | `--dial-timeout <secs>` | 30 | Per-peer dial timeout |
 | `--concurrency <n>` | 10 | How many peers to dial at once |
-| `--max-peers <n>` | all | Only dial the first N peers |
+| `--max-peers <n>` | all | Only dial the first N new peers each round |
 | `--skip-seeds` | off | Do not dial the seed peers themselves |
 | `--show-peers` | off | Print a line per peer with its address and result |
 | `--reuse-peer-db` | off | Keep the peer database from the previous run |
@@ -130,6 +134,9 @@ Failure reasons:
   measure: a peer re-signs only when its addresses or features change, so a long-lived node with a stable address
   keeps an old claim, and a fresh claim only means the peer changed addresses recently. The seeds have no claim (they
   come from the config) and sit in their own row.
+- **Rounds** shows what each round contributed. `asked` is how many of the previous round's connected peers actually
+  returned a peer list; `new peers` is how many peers appeared that had not been dialled before. A round stops the run
+  early when nobody answered (there is then nobody left to ask) or when no undialled peers remain.
 - **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
   what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
   duplicate.

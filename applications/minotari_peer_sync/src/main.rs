@@ -33,7 +33,7 @@ mod cli;
 mod config;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
     fs,
     net::SocketAddr,
@@ -44,7 +44,7 @@ use std::{
 };
 
 use clap::Parser;
-use futures::{StreamExt, stream};
+use futures::{StreamExt, future, stream};
 use log::*;
 use minotari_app_utilities::{
     consts,
@@ -60,6 +60,7 @@ use tari_comms::{
     CommsNode,
     Minimized,
     NodeIdentity,
+    PeerConnection,
     PeerManager,
     RefKind,
     UnspawnedCommsNode,
@@ -68,7 +69,18 @@ use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures},
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_comms_dht::{Dht, event::DhtEvent};
+use tari_comms_dht::{
+    Dht,
+    DhtClient,
+    DhtConfig,
+    GetPeersRequest,
+    GetPeersResponse,
+    NetworkDiscoveryConfig,
+    PeerInfo,
+    PeerValidator,
+    UnvalidatedPeerInfo,
+    event::DhtEvent,
+};
 use tari_p2p::{
     TransportType,
     comms_connector::InboundDomainConnector,
@@ -409,42 +421,104 @@ async fn run(
         .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?;
     report.num_peers_in_db = all_peers.len();
     report.num_downloaded = all_peers.iter().filter(|p| !p.is_seed()).count();
-    let now = now_epoch_secs();
-    for peer in &all_peers {
-        *report.claim_ages.entry(ClaimAge::of(peer, now)).or_default() += 1;
-    }
 
-    // --- Dial every peer ------------------------------------------------------------------------------------------
-    let mut num_skipped = 0usize;
-    let mut candidates: Vec<Peer> = all_peers
-        .into_iter()
-        .filter(|p| {
-            if cli.skip_seeds && p.is_seed() {
-                return false;
-            }
-            if p.deleted_at.is_some() || p.is_banned() {
-                num_skipped += 1;
-                return false;
-            }
-            true
-        })
-        .collect();
-    report.num_skipped = num_skipped;
-    if let Some(max) = cli.max_peers {
-        candidates.truncate(max);
-    }
-
-    println!("Peer sync done, dialing {} peer(s)...", candidates.len());
-    let started = Instant::now();
+    // --- Dial, then ask whoever answered for more peers, round after round -----------------------------------------
     let dial_timeout = Duration::from_secs(cli.dial_timeout);
-    let results: Vec<DialOutcome> = stream::iter(candidates.iter())
-        .map(|peer| dial_peer(&connectivity, peer, dial_timeout))
-        .buffer_unordered(cli.concurrency.max(1))
-        .collect()
-        .await;
+    let mut dialled: HashSet<NodeId> = HashSet::new();
+    let mut connected_last_round: Vec<Peer> = Vec::new();
+    let mut all_results: Vec<DialOutcome> = Vec::new();
+    let started = Instant::now();
+
+    for round in 1..=cli.rounds.max(1) {
+        // Round 1 works off the seed strap above; later rounds have to go and ask for more peers first.
+        let (asked_ok, asked_total) = if round == 1 {
+            (0, 0)
+        } else {
+            println!(
+                "Round {round}: asking {} peer(s) that answered last round for their peer lists...",
+                connected_last_round.len()
+            );
+            ask_peers_for_peers(&connectivity, &peer_manager, &config, &connected_last_round, &cli).await
+        };
+
+        let mut num_skipped = 0usize;
+        let mut candidates: Vec<Peer> = peer_manager
+            .all(None)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
+            .into_iter()
+            .filter(|p| {
+                if dialled.contains(&p.node_id) || (cli.skip_seeds && p.is_seed()) {
+                    return false;
+                }
+                if p.deleted_at.is_some() || p.is_banned() {
+                    num_skipped += 1;
+                    return false;
+                }
+                true
+            })
+            .collect();
+        report.num_skipped += num_skipped;
+        let num_new = candidates.len();
+        if let Some(max) = cli.max_peers {
+            candidates.truncate(max);
+        }
+
+        if candidates.is_empty() {
+            report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
+            break;
+        }
+
+        println!("Round {round}: dialing {} new peer(s)...", candidates.len());
+        let results: Vec<DialOutcome> = stream::iter(candidates.iter())
+            .map(|peer| dial_peer(&connectivity, peer, dial_timeout))
+            .buffer_unordered(cli.concurrency.max(1))
+            .collect()
+            .await;
+
+        dialled.extend(candidates.iter().map(|p| p.node_id.clone()));
+        let connected_node_ids: HashSet<NodeId> = results
+            .iter()
+            .filter(|r| r.error.is_none())
+            .map(|r| r.node_id.clone())
+            .collect();
+        connected_last_round = candidates
+            .into_iter()
+            .filter(|p| connected_node_ids.contains(&p.node_id))
+            .collect();
+
+        report.round_stats.push(RoundStats {
+            round,
+            asked_ok,
+            asked_total,
+            num_new,
+            num_dialled: results.len(),
+            num_connected: connected_node_ids.len(),
+            num_failed: results.len() - connected_node_ids.len(),
+        });
+        all_results.extend(results);
+
+        if connected_last_round.is_empty() && round < cli.rounds.max(1) {
+            report.stopped_after = Some(format!(
+                "round {round}: no peer answered, so there is nobody to ask for more"
+            ));
+            break;
+        }
+    }
+
     report.dial_time = started.elapsed();
-    report.address_failures = collect_address_failures(&peer_manager, &results).await;
-    report.add_dial_results(results);
+    report.address_failures = collect_address_failures(&peer_manager, &all_results).await;
+    let now = now_epoch_secs();
+    report.claim_ages.clear();
+    for peer in peer_manager
+        .all(None)
+        .await
+        .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
+    {
+        *report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default() += 1;
+    }
+    report.num_peers_in_db = report.claim_ages.values().sum();
+    report.add_dial_results(all_results);
 
     shutdown.trigger();
     if time::timeout(Duration::from_secs(10), comms.wait_until_shutdown())
@@ -590,6 +664,144 @@ impl BootstrapWaiter {
             }
         }
     }
+}
+
+/// Asks each of `sources` for its peer list over the DHT `get_peers` RPC and adds whatever passes validation to the
+/// peer database - the same exchange the DHT's own network discovery makes with its sync peers, driven here from the
+/// peers that answered in the previous round.
+///
+/// Returns (peers that answered, peers asked).
+async fn ask_peers_for_peers(
+    connectivity: &ConnectivityRequester,
+    peer_manager: &PeerManager,
+    config: &PeerSyncConfig,
+    sources: &[Peer],
+    cli: &Cli,
+) -> (usize, usize) {
+    let answered = stream::iter(sources.iter())
+        .map(|peer| ask_peer_for_peers(connectivity, peer_manager, config, peer, cli))
+        .buffer_unordered(cli.concurrency.max(1))
+        .filter(|answered| future::ready(*answered))
+        .count()
+        .await;
+    (answered, sources.len())
+}
+
+/// Returns whether this peer answered with a peer list.
+async fn ask_peer_for_peers(
+    connectivity: &ConnectivityRequester,
+    peer_manager: &PeerManager,
+    config: &PeerSyncConfig,
+    peer: &Peer,
+    cli: &Cli,
+) -> bool {
+    let dht = &config.base_node.p2p.dht;
+    let discovery = &dht.network_discovery;
+
+    let dial = time::timeout(
+        Duration::from_secs(cli.dial_timeout),
+        connectivity.dial_peer(peer.node_id.clone(), RefKind::Weak),
+    );
+    let mut conn = match dial.await {
+        Ok(Ok(conn)) => conn,
+        Ok(Err(err)) => {
+            debug!(target: LOG_TARGET, "Could not dial {} to ask for peers: {}", peer.node_id, err);
+            return false;
+        },
+        Err(_) => {
+            debug!(target: LOG_TARGET, "Dial to {} timed out before it could be asked for peers", peer.node_id);
+            return false;
+        },
+    };
+
+    let peers = match fetch_peers(&mut conn, discovery, dht).await {
+        Ok(peers) => peers,
+        Err(err) => {
+            debug!(target: LOG_TARGET, "{} did not give us its peer list: {}", peer.node_id, err);
+            let _ignore = conn.disconnect(Minimized::Yes, "peer sync round done").await;
+            return false;
+        },
+    };
+    let _ignore = conn.disconnect(Minimized::Yes, "peer sync round done").await;
+
+    let validator = PeerValidator::new(dht);
+    for peer_info in peers {
+        let candidate: UnvalidatedPeerInfo = match peer_info.try_into() {
+            Ok(candidate) => candidate,
+            Err(err) => {
+                debug!(target: LOG_TARGET, "Skipping an invalid peer from {}: {}", peer.node_id, err);
+                continue;
+            },
+        };
+        let existing = match peer_manager.find_by_public_key(&candidate.public_key).await {
+            Ok(existing) => existing,
+            Err(err) => {
+                debug!(target: LOG_TARGET, "Could not look up a peer offered by {}: {}", peer.node_id, err);
+                continue;
+            },
+        };
+        match validator.validate_peer(candidate, existing) {
+            Ok(valid) => {
+                if let Err(err) = peer_manager.add_or_update_peer(valid).await {
+                    debug!(target: LOG_TARGET, "Could not store a peer offered by {}: {}", peer.node_id, err);
+                }
+            },
+            Err(err) => debug!(target: LOG_TARGET, "Rejected a peer offered by {}: {}", peer.node_id, err),
+        }
+    }
+    true
+}
+
+/// Runs the `get_peers` RPC over an established connection, bounded the same way the DHT bounds it: a peer is under no
+/// obligation to respect the count we ask for, or to end the stream at all.
+async fn fetch_peers(
+    conn: &mut PeerConnection,
+    discovery: &NetworkDiscoveryConfig,
+    dht: &DhtConfig,
+) -> Result<Vec<PeerInfo>, String> {
+    let mut client = time::timeout(discovery.bootstrap_rpc_connect_timeout, conn.connect_rpc::<DhtClient>())
+        .await
+        .map_err(|_| "rpc connect timed out".to_string())?
+        .map_err(|e| e.to_string())?;
+
+    let num_peers = discovery.max_peers_to_sync_per_round.max(1);
+    let req = GetPeersRequest {
+        n: num_peers,
+        include_clients: false,
+        max_claims: dht.max_permitted_peer_claims.try_into().unwrap_or(u32::MAX),
+        max_addresses_per_claim: dht
+            .peer_validator_config
+            .max_permitted_peer_addresses_per_claim
+            .try_into()
+            .unwrap_or(u32::MAX),
+    };
+    let mut stream = time::timeout(discovery.bootstrap_rpc_get_peers_stream_timeout, client.get_peers(req))
+        .await
+        .map_err(|_| "get_peers timed out".to_string())?
+        .map_err(|e| e.to_string())?;
+
+    let max_peers = usize::try_from(num_peers).unwrap_or(usize::MAX);
+    // Allow some slack for empty responses interleaved with real ones, as the DHT does
+    let max_items = max_peers.saturating_mul(2);
+    let mut peers = Vec::with_capacity(max_peers);
+    let mut items = 0usize;
+    while peers.len() < max_peers && items < max_items {
+        match time::timeout(discovery.bootstrap_rpc_streaming_timeout, stream.next()).await {
+            Ok(Some(Ok(GetPeersResponse { peer }))) => {
+                items += 1;
+                if let Some(peer) = peer {
+                    peers.push(peer);
+                }
+            },
+            // Stream ended, errored, or stalled: keep whatever it gave us
+            Ok(Some(Err(err))) => {
+                debug!(target: LOG_TARGET, "get_peers stream error from {}: {}", conn.peer_node_id(), err);
+                break;
+            },
+            Ok(None) | Err(_) => break,
+        }
+    }
+    Ok(peers)
 }
 
 /// `ConnectivityError` only reports that every address failed, not why each one did. The dialer records the reason
@@ -832,6 +1044,17 @@ fn summarize_mixes<'a, I: Iterator<Item = &'a DialOutcome>>(outcomes: I) -> Stri
         .join(", ")
 }
 
+/// What one round did: who it asked, what it found, and how the dials went.
+struct RoundStats {
+    round: usize,
+    asked_ok: usize,
+    asked_total: usize,
+    num_new: usize,
+    num_dialled: usize,
+    num_connected: usize,
+    num_failed: usize,
+}
+
 struct Report {
     network: String,
     transport: String,
@@ -848,6 +1071,8 @@ struct Report {
     dialed: Vec<DialOutcome>,
     address_failures: Vec<(String, usize)>,
     claim_ages: HashMap<ClaimAge, usize>,
+    round_stats: Vec<RoundStats>,
+    stopped_after: Option<String>,
 }
 
 impl Report {
@@ -872,6 +1097,8 @@ impl Report {
             dialed: Vec::new(),
             address_failures: Vec::new(),
             claim_ages: HashMap::new(),
+            round_stats: Vec::new(),
+            stopped_after: None,
         }
     }
 
@@ -930,7 +1157,7 @@ impl Display for Report {
         writeln!(f, "Peers in peer database        : {}", self.num_peers_in_db)?;
         writeln!(
             f,
-            "Peer sync status              : {} after {:.1?} ({} round(s))",
+            "Peer sync status              : {} after {:.1?} ({} seed sync round(s))",
             if self.sync.completed {
                 "completed"
             } else if self.sync.timed_out {
@@ -941,9 +1168,41 @@ impl Display for Report {
             self.sync_time,
             self.sync.rounds
         )?;
+        if !self.round_stats.is_empty() {
+            writeln!(
+                f,
+                "------------------------------------ Rounds ------------------------------------"
+            )?;
+            writeln!(
+                f,
+                "Round 1 dials what the seed sync found. Every later round asks the peers that answered for\ntheir \
+                 peer lists and dials only the peers that are new."
+            )?;
+            writeln!(
+                f,
+                "  {:<8}{:>12}{:>12}{:>10}{:>11}{:>8}",
+                "round", "asked", "new peers", "dialled", "connected", "failed"
+            )?;
+            for r in &self.round_stats {
+                let asked = if r.round == 1 {
+                    "seed sync".to_string()
+                } else {
+                    format!("{}/{}", r.asked_ok, r.asked_total)
+                };
+                writeln!(
+                    f,
+                    "  {:<8}{:>12}{:>12}{:>10}{:>11}{:>8}",
+                    r.round, asked, r.num_new, r.num_dialled, r.num_connected, r.num_failed
+                )?;
+            }
+            if let Some(reason) = &self.stopped_after {
+                writeln!(f, "  stopped early - {reason}")?;
+            }
+        }
+
         writeln!(
             f,
-            "----------------------------------- Dialing ------------------------------------"
+            "------------------------------ Dialing (all rounds) ----------------------------"
         )?;
         writeln!(
             f,
