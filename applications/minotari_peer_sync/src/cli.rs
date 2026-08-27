@@ -22,9 +22,10 @@
 
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
+use tari_p2p::TransportType;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -72,6 +73,43 @@ pub struct Cli {
     /// The user agent to advertise. Defaults to the same string the base node uses.
     #[clap(long)]
     pub user_agent: Option<String>,
+    /// Start the bundled tor instance even when `base_node.use_libtor` is false in the config (unix builds with the
+    /// `libtor` feature only)
+    #[clap(long, conflicts_with = "no_libtor")]
+    pub libtor: bool,
+    /// Do not start the bundled tor instance, use an already-running tor instead (unix builds with the `libtor`
+    /// feature only)
+    #[clap(long)]
+    pub no_libtor: bool,
+    /// Path to the libtor data directory. Defaults to `<base path>/libtor/peer_sync`.
+    #[clap(short = 'z', long)]
+    pub libtor_data_dir: Option<PathBuf>,
+    /// Override the configured transport. `tor`, `tor-tcp` and `tcp-tor` need a running tor with a control port;
+    /// `tcp` needs no tor but cannot reach peers that only advertise onion addresses.
+    #[clap(long, value_enum)]
+    pub transport: Option<Transport>,
+}
+
+/// The transports that can be selected from the command line. Mirrors [`TransportType`], which has no `FromStr`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Transport {
+    Tcp,
+    Tor,
+    TorTcp,
+    TcpTor,
+    Socks5,
+}
+
+impl From<Transport> for TransportType {
+    fn from(value: Transport) -> Self {
+        match value {
+            Transport::Tcp => TransportType::Tcp,
+            Transport::Tor => TransportType::Tor,
+            Transport::TorTcp => TransportType::TorTcp,
+            Transport::TcpTor => TransportType::TcpTor,
+            Transport::Socks5 => TransportType::Socks5,
+        }
+    }
 }
 
 impl ConfigOverrideProvider for Cli {

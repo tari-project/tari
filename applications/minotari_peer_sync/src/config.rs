@@ -68,6 +68,9 @@ pub struct BaseNodeP2pConfig {
     pub identity_file: PathBuf,
     /// A path to the file that stores the tor hidden service private key, if using the tor transport.
     pub tor_identity_file: PathBuf,
+    /// Spin up and use a built-in tor instance. Only works on macos/linux, and only when built with the `libtor`
+    /// feature.
+    pub use_libtor: bool,
     /// The p2p (comms and DHT) configuration
     pub p2p: P2pConfig,
 }
@@ -79,6 +82,7 @@ impl Default for BaseNodeP2pConfig {
             network: Network::default(),
             identity_file: PathBuf::from("config/base_node_id.json"),
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
+            use_libtor: true,
             p2p: P2pConfig {
                 datastore_path: PathBuf::from("peer_db/base_node"),
                 ..Default::default()

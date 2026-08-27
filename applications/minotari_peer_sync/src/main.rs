@@ -36,7 +36,8 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
     fs,
-    path::PathBuf,
+    net::SocketAddr,
+    path::{Path, PathBuf},
     process,
     sync::Arc,
     time::{Duration, Instant},
@@ -64,9 +65,11 @@ use tari_comms::{
     connectivity::ConnectivityRequester,
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{Peer, PeerFeatures},
+    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_comms_dht::{Dht, event::DhtEvent};
 use tari_p2p::{
+    TransportType,
     comms_connector::pubsub_connector,
     initialization::{P2pInitializer, spawn_comms_using_transport},
 };
@@ -80,6 +83,12 @@ use crate::{cli::Cli, config::PeerSyncConfig};
 const LOG_TARGET: &str = "minotari::peer_sync";
 /// The pubsub buffer for inbound domain messages. Nothing consumes them here, they are dropped.
 const MESSAGE_BUFFER_SIZE: usize = 100;
+/// How long to wait for the listener to bind before giving up on it. Creating a tor hidden service is the slow case.
+const LISTENER_TIMEOUT: Duration = Duration::from_secs(120);
+/// How long to wait for an already-running tor's control port during the pre-flight check.
+const TOR_CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long to wait for the bundled tor (libtor) to open its control port. Starting tor takes a few seconds.
+const LIBTOR_STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn main() {
     match main_inner() {
@@ -114,6 +123,9 @@ fn main_inner() -> Result<Report, ExitError> {
     let mut config = PeerSyncConfig::load_from(&cfg)?;
     apply_overrides(&cli, &mut config)?;
 
+    let started_libtor = start_libtor(&cli, &mut config, &base_path)?;
+    check_tor_is_reachable(&config, started_libtor)?;
+
     let node_identity = build_node_identity(&cli, &config)?;
     info!(
         target: LOG_TARGET,
@@ -123,13 +135,17 @@ fn main_inner() -> Result<Report, ExitError> {
     );
 
     let runtime = setup_runtime()?;
-    runtime.block_on(run(cli, config, node_identity))
+    runtime.block_on(run(cli, config, node_identity, started_libtor))
 }
 
 /// Applies the peer-sync specific overrides on top of the base node's config. These exist so that a run does not
 /// disturb - or get disturbed by - a base node that is running against the same base directory.
 fn apply_overrides(cli: &Cli, config: &mut PeerSyncConfig) -> Result<(), ExitError> {
     let p2p = &mut config.base_node.p2p;
+
+    if let Some(transport) = cli.transport {
+        p2p.transport.transport_type = transport.into();
+    }
 
     // Keep this run's peers out of the base node's peer database.
     let peer_db_dir = cli
@@ -182,6 +198,96 @@ fn clear_peer_database(dir: &PathBuf, database_name: &str) -> Result<(), ExitErr
     Ok(())
 }
 
+/// Starts the bundled tor instance when the transport needs tor, pointing the transport at its control port. This is
+/// the same thing the base node does with `use_libtor`, so a run needs no externally managed tor.
+///
+/// Returns whether tor was started here.
+#[cfg(all(unix, feature = "libtor"))]
+fn start_libtor(cli: &Cli, config: &mut PeerSyncConfig, base_path: &Path) -> Result<bool, ExitError> {
+    use tari_libtor::tor::Tor;
+
+    let wanted = !cli.no_libtor && (cli.libtor || config.base_node.use_libtor);
+    if !wanted || !config.base_node.p2p.transport.is_tor() {
+        return Ok(false);
+    }
+    // Its own data directory: a base node's libtor instance owns (and locks) the one under its own directory.
+    let data_dir = cli
+        .libtor_data_dir
+        .clone()
+        .unwrap_or_else(|| base_path.to_path_buf())
+        .join("libtor")
+        .join("peer_sync");
+    println!("Starting the bundled tor instance in {}...", data_dir.display());
+    let tor = Tor::initialize(data_dir)?;
+    tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
+    tor.run_background();
+    debug!(target: LOG_TARGET, "Bundled tor started: {:?}", config.base_node.p2p.transport.tor.control_address);
+    Ok(true)
+}
+
+#[cfg(not(all(unix, feature = "libtor")))]
+fn start_libtor(_cli: &Cli, _config: &mut PeerSyncConfig, _base_path: &Path) -> Result<bool, ExitError> {
+    Ok(false)
+}
+
+/// The tor transports cannot bind a listener without tor, and when the listener fails the whole connection manager
+/// quits - leaving every dial to fail with an unhelpful "channel closed". Check up front so that the reason, and the
+/// way around it, is the first thing reported.
+fn check_tor_is_reachable(config: &PeerSyncConfig, started_libtor: bool) -> Result<(), ExitError> {
+    let transport = &config.base_node.p2p.transport;
+    if !transport.transport_type.uses_tor_hidden_service() {
+        return Ok(());
+    }
+    // A non-ip control address (e.g. a dns one) cannot be probed here; leave it to the listener.
+    let Ok(control_addr) = multiaddr_to_socketaddr(&transport.tor.control_address) else {
+        return Ok(());
+    };
+    let timeout = if started_libtor {
+        LIBTOR_STARTUP_TIMEOUT
+    } else {
+        TOR_CONTROL_TIMEOUT
+    };
+    let Err(err) = wait_for_tor_control_port(control_addr, timeout) else {
+        return Ok(());
+    };
+    let detail = if started_libtor {
+        format!(
+            "the bundled tor did not open its control port at {control_addr} within {timeout:.0?}: {err}.\nCheck \
+             tor.log in the libtor data directory"
+        )
+    } else {
+        format!(
+            "the tor control port at {control_addr} could not be reached: {err}.\nEither start tor, or run with \
+             `--libtor` to have a bundled tor started for you (unix builds with the `libtor` feature)"
+        )
+    };
+    Err(ExitError::new(
+        ExitCode::TorOffline,
+        format!(
+            "The `{:?}` transport needs tor, but {detail}, or run with `--transport tcp` to test over TCP only (peers \
+             that advertise only onion addresses will then be unreachable).",
+            transport.transport_type
+        ),
+    ))
+}
+
+/// Polls the tor control port until it accepts a connection or `timeout` expires.
+fn wait_for_tor_control_port(control_addr: SocketAddr, timeout: Duration) -> Result<(), std::io::Error> {
+    const POLL_INTERVAL: Duration = Duration::from_millis(500);
+    let deadline = Instant::now() + timeout;
+    loop {
+        match std::net::TcpStream::connect_timeout(&control_addr, TOR_CONTROL_TIMEOUT) {
+            Ok(_) => return Ok(()),
+            Err(err) => {
+                if Instant::now() >= deadline {
+                    return Err(err);
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            },
+        }
+    }
+}
+
 /// Returns `addr` with its TCP port replaced by `port`.
 fn with_tcp_port(addr: &Multiaddr, port: u16) -> Multiaddr {
     addr.iter()
@@ -212,9 +318,14 @@ fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIde
     )))
 }
 
-async fn run(cli: Cli, config: PeerSyncConfig, node_identity: Arc<NodeIdentity>) -> Result<Report, ExitError> {
+async fn run(
+    cli: Cli,
+    config: PeerSyncConfig,
+    node_identity: Arc<NodeIdentity>,
+    started_libtor: bool,
+) -> Result<Report, ExitError> {
     let mut shutdown = Shutdown::new();
-    let mut report = Report::new(&cli, &config, &node_identity);
+    let mut report = Report::new(&cli, &config, &node_identity, started_libtor);
 
     let (comms, dht_bootstrap) = start_comms(&cli, &config, node_identity, shutdown.to_signal()).await?;
     let peer_manager = comms.peer_manager();
@@ -328,9 +439,33 @@ async fn start_comms(
     let comms = handles
         .take_handle::<UnspawnedCommsNode>()
         .expect("P2pInitializer did not add UnspawnedCommsNode");
-    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone(), |_identity| {})
+    let mut comms = spawn_comms_using_transport(comms, p2p_config.transport.clone(), |_identity| {})
         .await
         .map_err(|e| e.to_exit_error())?;
+
+    // The listener binds asynchronously, and if it fails the connection manager exits without dialing anything. Wait
+    // for it here so that a failure is reported instead of showing up as every peer failing to dial.
+    match time::timeout(
+        LISTENER_TIMEOUT,
+        comms.connection_manager_requester().wait_until_listening(),
+    )
+    .await
+    {
+        Ok(Ok(info)) => info!(target: LOG_TARGET, "Listening on {}", info.bind_address()),
+        Ok(Err(err)) => {
+            return Err(ExitError::new(
+                ExitCode::NetworkError,
+                format!(
+                    "The comms listener failed to start ({err}), so no peer can be dialled. See the network log for \
+                     the underlying error."
+                ),
+            ));
+        },
+        Err(_) => warn!(
+            target: LOG_TARGET,
+            "The listener did not report as bound within {LISTENER_TIMEOUT:.0?}, continuing anyway"
+        ),
+    }
 
     Ok((comms, bootstrap))
 }
@@ -419,6 +554,18 @@ async fn dial_peer(connectivity: &ConnectivityRequester, peer: &Peer, dial_timeo
     }
 }
 
+/// The config name of a transport, as it would be written in config.toml.
+fn transport_label(transport: TransportType) -> &'static str {
+    match transport {
+        TransportType::Memory => "memory",
+        TransportType::Tcp => "tcp",
+        TransportType::Tor => "tor",
+        TransportType::TorTcp => "tor_tcp",
+        TransportType::TcpTor => "tcp_tor",
+        TransportType::Socks5 => "socks5",
+    }
+}
+
 /// Dial failures usually name the peer or address that failed, which would make every failure look unique in the
 /// summary. Those parts are replaced with placeholders so that failures group by their actual cause.
 fn generalize_failure(reason: &str) -> String {
@@ -476,10 +623,14 @@ struct Report {
 }
 
 impl Report {
-    fn new(cli: &Cli, config: &PeerSyncConfig, node_identity: &NodeIdentity) -> Self {
+    fn new(cli: &Cli, config: &PeerSyncConfig, node_identity: &NodeIdentity, started_libtor: bool) -> Self {
         Self {
             network: config.base_node.network.to_string(),
-            transport: format!("{:?}", config.base_node.p2p.transport.transport_type).to_lowercase(),
+            transport: format!(
+                "{}{}",
+                transport_label(config.base_node.p2p.transport.transport_type),
+                if started_libtor { " (bundled tor)" } else { "" }
+            ),
             node_id: node_identity.node_id().to_hex(),
             ephemeral_identity: !cli.use_node_identity,
             show_peers: cli.show_peers,

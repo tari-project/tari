@@ -4586,6 +4586,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_features",
+ "tari_libtor",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",

@@ -21,10 +21,36 @@ The binary is network-family locked at build time, exactly like the base node, s
 TARI_TARGET_NETWORK=mainnet cargo build --release --bin minotari_peer_sync
 ```
 
+### Tor
+
+The base node's default transport needs tor. On unix the `libtor` feature (on by default) means you do not have to
+supply it: when the transport is a tor one and `base_node.use_libtor` is true, the tool starts its own bundled tor
+instance, exactly as the base node does, and points the transport at its control port. Its data directory is
+`<base path>/libtor/peer_sync` (override with `-z/--libtor-data-dir`) — deliberately separate from the base node's, so
+the two instances do not fight over the same directory. The report marks such a run as `tcp_tor (bundled tor)`.
+
+`--libtor` forces it on even when the config sets `use_libtor = false`. `--no-libtor` (or building with
+`--no-default-features`) uses an already-running tor instead:
+
+```bash
+tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 \
+    --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1
+```
+
+Either way the tor control port is checked before comms starts, because without tor the listener cannot bind, the
+connection manager quits and every dial then fails with a meaningless "channel closed". The tool exits immediately with
+that reason instead.
+
+The tor-free alternative is `--transport tcp`, which cannot reach peers that only advertise onion addresses (they show
+up as `All peer addresses are excluded` in the report). On mainnet that is most peers, so a TCP run understates
+reachability - it is a quick check, not a measurement.
+
+### Configuration
+
 It reads `<base-path>/<network>/config/config.toml` — the same file and the same `[base_node]` / `[p2p.seeds]`
 sections as `minotari_node` — so `--base-path`, `--config`, `--network` and `-p key=value` overrides all work the way
 they do for the node. Example: force TCP instead of the configured tor transport with
-`-p base_node.p2p.transport.type=tcp`.
+`--transport tcp` (or `-p base_node.p2p.transport.type=tcp`).
 
 Progress and the final report go to stdout; the detail (every seed sync and every dial) is logged to
 `<base-path>/<network>/log/peer_sync/`.
@@ -58,6 +84,10 @@ identity file.
 | `--listener-port <port>` | 0 | Port to listen on |
 | `--use-node-identity` | off | Use the base node's identity instead of a throw-away one |
 | `--user-agent <string>` | base node's | User agent to advertise |
+| `--transport <type>` | from config | `tcp`, `tor`, `tor-tcp`, `tcp-tor` or `socks5` |
+| `--libtor` | off | Start the bundled tor even when `base_node.use_libtor` is false |
+| `--no-libtor` | off | Do not start the bundled tor, use an already-running one |
+| `-z, --libtor-data-dir <path>` | `<base path>/libtor/peer_sync` | Bundled tor's data directory |
 
 ## Reading the report
 
@@ -89,4 +119,4 @@ Failure reasons:
 - **Peer sync status** mirrors the base node's own early-exit rules — the DHT stops as soon as it has enough peers, so
   a short run with a modest peer count is normal, not a failure.
 - `All peer addresses are excluded` above means the peer only advertises onion addresses while this run used the TCP
-  transport. Use the tor transport (with tor running) to reach those peers.
+  transport. Use a tor transport to reach those peers - on esmeralda the same run goes from 3/13 to 10/13 connected.

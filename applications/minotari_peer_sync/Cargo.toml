@@ -17,6 +17,7 @@ minotari_app_utilities = { workspace = true }
 tari_common = { workspace = true }
 tari_comms = { workspace = true, features = ["rpc"] }
 tari_comms_dht = { workspace = true }
+tari_libtor = { workspace = true, optional = true }
 tari_p2p = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
@@ -39,6 +40,11 @@ log4rs = { workspace = true, default-features = false, features = [
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[features]
+default = ["libtor"]
+# Run a bundled tor instance (unix only) instead of requiring an already-running tor
+libtor = ["tari_libtor"]
 
 [build-dependencies]
 tari_features = { workspace = true }
