@@ -58,6 +58,13 @@ impl DifficultyCalculator {
             constants.max_pow_difficulty(block_header.pow.pow_algo),
         );
         let gen_hash = *self.rules.get_genesis_block().hash();
+        // Deliberately a plain database lookup, with no header-sync style cache. This path validates against the
+        // committed main chain (block validation, block sync, mempool), where the database *is* the chain being
+        // extended, so the boundary header it returns is the correct VM key.
+        //
+        // Header sync is the exception and must not be "made consistent" with this: it validates headers before
+        // `switch_to_pending_chain` rewinds, so on a forking node the database still holds the chain that is about
+        // to be discarded. That path resolves the VM key itself in `BlockHeaderSyncValidator::validate`.
         let vm_key = *db
             .fetch_chain_header_by_height(tari_rx_vm_key_height(block_header.height))?
             .hash();
