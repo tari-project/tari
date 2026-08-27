@@ -58,6 +58,21 @@ impl DifficultyCalculator {
             constants.max_pow_difficulty(block_header.pow.pow_algo),
         );
         let gen_hash = *self.rules.get_genesis_block().hash();
+        // Deliberately a plain database lookup, with no header-sync style cache. It is correct for the
+        // accumulated-data helpers `process_accumulated_data_for_height` and `verify_accumulated_data_for_height`,
+        // whose headers are already part of the committed main chain, so the boundary header the database returns is
+        // the right VM key.
+        //
+        // Header sync must not be "made consistent" with this: it validates headers before `switch_to_pending_chain`
+        // rewinds, so on a forking node the database still holds the chain that is about to be discarded. That path
+        // resolves the VM key itself in `BlockHeaderSyncValidator::validate`.
+        //
+        // KNOWN OPEN ISSUE: `insert_orphan_and_find_new_tips` (blockchain_database.rs:3653 and :3766) also reaches
+        // here, through `HeaderFullValidator::validate` on its `target_difficulty: None` branch, for orphan and
+        // side-chain headers. There the database is *not* the chain being extended, so this lookup returns the main
+        // chain's boundary header, which is the wrong VM key for a deep side chain. Both callers do compute and pass
+        // a `vm_key`, but `HeaderFullValidator::validate` only reads that argument on its `Some(target)` branch and
+        // silently discards it on the path that lands here.
         let vm_key = *db
             .fetch_chain_header_by_height(tari_rx_vm_key_height(block_header.height))?
             .hash();

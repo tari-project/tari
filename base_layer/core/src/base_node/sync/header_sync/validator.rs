@@ -63,7 +63,14 @@ struct State {
     previous_accum: BlockHeaderAccumulatedData,
     previous_header: BlockHeader,
     valid_headers: Vec<ChainHeader>,
+    /// The Tari RandomX VM key boundaries (`height`, `hash`) that are known to belong to the chain currently being
+    /// validated. Seeded in [`BlockHeaderSyncValidator::initialize_state`] with the boundaries at or below the chain
+    /// split (which both chains agree on) and extended in [`BlockHeaderSyncValidator::validate`] with every boundary
+    /// the peer's chain has proven.
     vm_key: Vec<(u64, FixedHash)>,
+    /// The height of the chain split this sync started from. The local database is only a trustworthy source of VM
+    /// keys at or below this height; above it, it still holds the chain that is about to be rewound.
+    chain_split_height: u64,
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
@@ -110,6 +117,29 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         );
 
         let gen_hash = *self.consensus_rules.get_genesis_block().hash();
+        // `start_hash` is the chain split: the last block this node and the sync peer agree on.
+        let chain_split_height = start_header.height;
+
+        // Seed the Tari RandomX VM key cache with the band boundaries that both chains agree on.
+        //
+        // Header sync validates every header *before* `switch_to_pending_chain` rewinds the local chain, so for the
+        // whole of validation the database still returns this node's own (possibly losing) fork. Only blocks at or
+        // below the chain split are common to both chains, so those are the only VM keys that may be taken from the
+        // database. Boundaries above the split are filled in by `validate` as the peer's headers are proven.
+        //
+        // Only the boundaries this sync can actually consult are seeded: the lowest VM key height any header above
+        // the split can ask for is `tari_rx_vm_key_height(chain_split_height + 1)`, and VM key heights are
+        // non-decreasing in header height, so the loop below runs a small, constant number of times.
+        let mut vm_key = vec![(0, gen_hash)];
+        let mut key_height = tari_rx_vm_key_height(chain_split_height.saturating_add(1));
+        while key_height <= chain_split_height {
+            if key_height > 0 {
+                let hash = *self.db.fetch_chain_header(key_height).await?.hash();
+                vm_key.push((key_height, hash));
+            }
+            key_height = key_height.saturating_add(TARI_RX_VM_KEY_BLOCK_SWAP);
+        }
+
         self.state = Some(State {
             current_height: start_header.height,
             timestamps,
@@ -118,7 +148,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             previous_header: start_header,
             // One large allocation is usually better even if it is not always used.
             valid_headers: Vec::with_capacity(HEADER_SYNC_INITIAL_MAX_HEADERS),
-            vm_key: vec![(0, gen_hash)],
+            vm_key,
+            chain_split_height,
         });
 
         Ok(())
@@ -156,20 +187,38 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let result = {
             let txn = self.db.inner().db_read_access()?;
             let vm_key_height = tari_rx_vm_key_height(header.height);
-            let vm_key = match txn.fetch_chain_header_by_height(vm_key_height) {
-                Ok(header) => *header.hash(),
-                Err(_) => {
-                    // header not found, lets search our cached headers
-                    let mut vm_key = None;
-                    for (height, hash) in &state.vm_key {
-                        if *height == vm_key_height {
-                            vm_key = Some(*hash);
-                            break;
-                        }
-                    }
-                    vm_key.ok_or(ChainStorageError::UnexpectedResult(
-                        "Could not find header in database or cache".to_string(),
-                    ))?
+            // The Tari RandomX VM key must come from the chain we are validating, never from the chain in the
+            // database. Header sync runs entirely before the reorg rewind in `switch_to_pending_chain`, so on a
+            // forking node `fetch_chain_header_by_height` still returns the fork that is about to be discarded. A VM
+            // key taken from there makes every `PowAlgorithm::RandomXT` header of the honest chain hash to garbage,
+            // fail the difficulty check, and get the honest peer banned.
+            //
+            // `state.vm_key` is authoritative and is therefore consulted first: it is seeded in `initialize_state`
+            // with the boundaries at or below the chain split (common to both chains) and extended with every
+            // boundary this sync has proven, which covers every boundary above the split because headers are
+            // validated in order from the split and a VM key height always lags the header height.
+            let cached_vm_key = state
+                .vm_key
+                .iter()
+                .find(|(height, _)| *height == vm_key_height)
+                .map(|(_, hash)| *hash);
+            let vm_key = match cached_vm_key {
+                Some(hash) => hash,
+                // At or below the chain split the database is, by definition, an ancestor of the split block and so
+                // agrees with the peer's chain. This is a belt-and-braces fallback; `initialize_state` should
+                // already have seeded these.
+                None if vm_key_height <= state.chain_split_height => {
+                    *txn.fetch_chain_header_by_height(vm_key_height)?.hash()
+                },
+                // Above the split the database is the wrong chain, so failing is the only safe answer. This is not a
+                // peer offence, and `ChainStorageError::UnexpectedResult` carries no ban reason.
+                None => {
+                    let split_height = state.chain_split_height;
+                    return Err(ChainStorageError::UnexpectedResult(format!(
+                        "Tari RandomX VM key at height {vm_key_height} is above the chain split at height \
+                         {split_height} and has not been validated during this sync"
+                    ))
+                    .into());
                 },
             };
             self.validator.validate(
@@ -410,6 +459,322 @@ mod test {
             unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);
             assert_eq!(actual, 14);
             assert_eq!(expected, 13);
+        }
+    }
+
+    /// The Tari RandomX VM key must be resolved from the chain that is being validated, never from the chain sitting
+    /// in the database.
+    ///
+    /// Header sync validates every header *before* `switch_to_pending_chain` rewinds, so while validation runs the
+    /// database still returns this node's own fork. A fork whose split point falls below a VM key band boundary used
+    /// to hand the losing fork's boundary hash to every `RandomXT` header of the honest chain, which then hashed to
+    /// garbage, failed the difficulty check and got the honest peer banned.
+    mod tari_rx_vm_key {
+        // Test-only chain building: heights are small `u64` constants indexed into `Vec`s, and any overflow or
+        // out-of-range index is a bug in the test that should panic loudly.
+        #![allow(clippy::indexing_slicing, clippy::cast_possible_truncation)]
+
+        use tari_transaction_components::{
+            consensus::{ConsensusConstantsBuilder, consensus_constants::PowAlgorithmConstants},
+            tari_proof_of_work::{Difficulty, ProofOfWork},
+        };
+
+        use super::*;
+        use crate::{proof_of_work::tari_randomx_difficulty, test_helpers::blockchain::create_custom_blockchain};
+
+        /// The band boundary the tests fork around.
+        const BOUNDARY: u64 = TARI_RX_VM_KEY_BLOCK_SWAP;
+        /// The lowest height whose VM key is `BOUNDARY` rather than genesis (see `tari_rx_vm_key_height`).
+        const FORK_TIP: u64 = BOUNDARY + 65;
+        /// The local chain reaches past the boundary, so the database always has a block at `BOUNDARY` to hand out.
+        const LOCAL_TIP: u64 = BOUNDARY + 52;
+        /// A split below the boundary: the two chains hold *different* blocks at `BOUNDARY`. This is the broken case.
+        const SPLIT_BELOW: u64 = BOUNDARY - 48;
+        /// A split above the boundary: both chains share the block at `BOUNDARY`, so nothing can go wrong.
+        const SPLIT_ABOVE: u64 = BOUNDARY + 12;
+
+        struct Fork {
+            validator: BlockHeaderSyncValidator<TempDatabase>,
+            db: AsyncBlockchainDb<TempDatabase>,
+            factory: RandomXFactory,
+            rules: BaseNodeConsensusManager,
+            /// This node's chain. `local[i]` is the header at height `i + 1`.
+            local: Vec<BlockHeader>,
+            /// The sync peer's chain, from the split (exclusive) up to and including `FORK_TIP`.
+            peer: Vec<BlockHeader>,
+        }
+
+        impl Fork {
+            fn split_hash(&self, split_height: u64) -> FixedHash {
+                self.local[(split_height - 1) as usize].hash()
+            }
+
+            /// The hash this node's (soon to be rewound) chain holds at the band boundary.
+            fn local_boundary(&self) -> FixedHash {
+                self.local[(BOUNDARY - 1) as usize].hash()
+            }
+
+            /// The hash the peer's chain holds at the band boundary.
+            fn peer_boundary(&self, split_height: u64) -> FixedHash {
+                self.peer[(BOUNDARY - split_height - 1) as usize].hash()
+            }
+        }
+
+        fn build_headers(
+            rules: &BaseNodeConsensusManager,
+            parent: &BlockHeader,
+            to_height: u64,
+            base_timestamp: u64,
+            timestamp_offset: u64,
+        ) -> Vec<BlockHeader> {
+            let mut headers = Vec::new();
+            let mut prev = parent.clone();
+            for height in (parent.height + 1)..=to_height {
+                let mut header = BlockHeader::from_previous(&prev);
+                header.version = rules.consensus_constants(height).blockchain_version().into();
+                // Strictly increasing, and comfortably in the past so the future time limit is never hit. The offset
+                // is what makes the peer's chain differ from (and hash differently to) this node's chain.
+                header.timestamp = EpochTime::from(base_timestamp + height * 10 + timestamp_offset);
+                // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
+                header.kernel_mmr_size = prev.kernel_mmr_size + 1;
+                header.output_smt_size = prev.output_smt_size + 1;
+                headers.push(header.clone());
+                prev = header;
+            }
+            headers
+        }
+
+        fn to_chain_headers(headers: &[BlockHeader]) -> Vec<ChainHeader> {
+            headers
+                .iter()
+                .map(|header| {
+                    let accum = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
+                    ChainHeader::try_construct(header.clone(), accum).unwrap()
+                })
+                .collect()
+        }
+
+        /// Grinds the tip's nonce until its Tari RandomX difficulty under the peer's boundary hash and under this
+        /// node's boundary hash relate as `wanted` asks. Most randomly keyed hashes land on the lowest difficulty,
+        /// so a test may not assume that two different VM keys produce two different difficulties.
+        fn grind_apart(
+            header: &mut BlockHeader,
+            factory: &RandomXFactory,
+            peer_key: &FixedHash,
+            local_key: &FixedHash,
+            wanted: impl Fn(Difficulty, Difficulty) -> bool,
+        ) {
+            for _ in 0..10_000 {
+                let with_peer_key = tari_randomx_difficulty(header, factory, peer_key).unwrap();
+                let with_local_key = tari_randomx_difficulty(header, factory, local_key).unwrap();
+                if wanted(with_peer_key, with_local_key) {
+                    return;
+                }
+                header.nonce += 1;
+            }
+            panic!("could not grind a nonce that separates the two VM keys");
+        }
+
+        /// Builds a node whose database holds `local` (heights 1..=`LOCAL_TIP`) as its chain, and a competing peer
+        /// chain that forks at `split_height` and runs to `FORK_TIP`. Only the local chain is written to the
+        /// database - exactly the state header sync validates in, before any rewind has happened.
+        ///
+        /// The tip of the peer's chain is a `RandomXT` header, the only algorithm that consults the VM key.
+        async fn setup_fork(rules: BaseNodeConsensusManager, split_height: u64) -> Fork {
+            let factory = RandomXFactory::default();
+            let db: AsyncBlockchainDb<TempDatabase> = create_custom_blockchain(rules.clone()).into();
+            let genesis = db.fetch_chain_header(0).await.unwrap();
+            let base_timestamp = genesis.header().timestamp.as_u64();
+
+            let local = build_headers(&rules, genesis.header(), LOCAL_TIP, base_timestamp, 0);
+            db.insert_valid_headers(to_chain_headers(&local)).await.unwrap();
+
+            let mut peer = build_headers(&rules, &local[(split_height - 1) as usize], FORK_TIP, base_timestamp, 5);
+            peer.last_mut().unwrap().pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+
+            let validator = BlockHeaderSyncValidator::new(db.clone(), rules.clone(), factory.clone());
+            Fork {
+                validator,
+                db,
+                factory,
+                rules,
+                local,
+                peer,
+            }
+        }
+
+        /// LocalNet pins every difficulty at 1, so a header validates whichever VM key is used. That is fine for the
+        /// tests that assert *which* key was used, because the achieved difficulty is recorded in the accumulated
+        /// data.
+        fn localnet_rules() -> BaseNodeConsensusManager {
+            BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap()
+        }
+
+        /// The Tari RandomX target this node's chain must fail to clear and the peer's chain must clear.
+        const RANDOMX_T_TARGET: u64 = 16;
+
+        /// LocalNet, but with a Tari RandomX difficulty that a wrongly keyed hash cannot clear, so that picking the
+        /// wrong VM key is an outright validation failure rather than a silent difference.
+        fn rules_with_a_real_randomx_t_target() -> BaseNodeConsensusManager {
+            let target = Difficulty::from_u64(RANDOMX_T_TARGET).unwrap();
+            let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+                .clear_proof_of_work()
+                .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+                    min_difficulty: Difficulty::min(),
+                    max_difficulty: Difficulty::min(),
+                    target_time: 360,
+                })
+                .add_proof_of_work(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+                    min_difficulty: target,
+                    max_difficulty: target,
+                    target_time: 360,
+                })
+                .build();
+            BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(constants)
+                .build()
+                .unwrap()
+        }
+
+        /// Regression test for the VM key being read from the chain that is about to be rewound.
+        ///
+        /// The split is below the band boundary, so this node's chain and the peer's chain hold different blocks at
+        /// `BOUNDARY`. The `RandomXT` header in that band must be hashed under the *peer's* boundary hash; before the
+        /// fix `fetch_chain_header_by_height` succeeded and the local (losing) chain's hash won.
+        #[tokio::test]
+        async fn it_uses_the_peer_chain_vm_key_when_the_split_is_below_the_boundary() {
+            let mut fork = setup_fork(localnet_rules(), SPLIT_BELOW).await;
+            let local_boundary = fork.local_boundary();
+            let peer_boundary = fork.peer_boundary(SPLIT_BELOW);
+            assert_ne!(
+                local_boundary, peer_boundary,
+                "the two chains must disagree at the band boundary for this test to mean anything"
+            );
+
+            let mut tip = fork.peer.last().unwrap().clone();
+            assert_eq!(tip.pow_algo(), PowAlgorithm::RandomXT);
+            assert_eq!(tari_rx_vm_key_height(tip.height), BOUNDARY);
+            grind_apart(
+                &mut tip,
+                &fork.factory,
+                &peer_boundary,
+                &local_boundary,
+                |peer, local| peer != local,
+            );
+            *fork.peer.last_mut().unwrap() = tip.clone();
+
+            fork.validator
+                .initialize_state(&fork.split_hash(SPLIT_BELOW))
+                .await
+                .unwrap();
+            for header in fork.peer.clone() {
+                fork.validator.validate(header).await.unwrap();
+            }
+
+            let expected = tari_randomx_difficulty(&tip, &fork.factory, &peer_boundary).unwrap();
+            let from_the_rewound_chain = tari_randomx_difficulty(&tip, &fork.factory, &local_boundary).unwrap();
+            assert_ne!(expected, from_the_rewound_chain);
+
+            let validated = fork.validator.valid_headers().last().unwrap();
+            assert_eq!(validated.header().height, FORK_TIP);
+            assert_eq!(validated.accumulated_data().achieved_difficulty, expected);
+        }
+
+        /// A split at or above the boundary leaves both chains agreeing on the boundary block, so the database and
+        /// the cache return the same hash. Nothing about this case may change.
+        #[tokio::test]
+        async fn it_is_unchanged_when_the_split_is_at_or_above_the_boundary() {
+            let mut fork = setup_fork(localnet_rules(), SPLIT_ABOVE).await;
+            let boundary = fork.local_boundary();
+            assert!(
+                fork.peer.iter().all(|h| h.height > BOUNDARY),
+                "the peer's chain must start above the boundary, so the boundary block is shared"
+            );
+
+            fork.validator
+                .initialize_state(&fork.split_hash(SPLIT_ABOVE))
+                .await
+                .unwrap();
+            for header in fork.peer.clone() {
+                fork.validator.validate(header).await.unwrap();
+            }
+
+            let tip = fork.peer.last().unwrap();
+            let expected = tari_randomx_difficulty(tip, &fork.factory, &boundary).unwrap();
+            let validated = fork.validator.valid_headers().last().unwrap();
+            assert_eq!(validated.header().height, FORK_TIP);
+            assert_eq!(validated.accumulated_data().achieved_difficulty, expected);
+        }
+
+        /// `initialize_state` seeds the cache from the database with the boundaries at or below the split - the only
+        /// ones the two chains are guaranteed to agree on - and with nothing above it.
+        #[tokio::test]
+        async fn initialize_state_seeds_the_cache_with_the_boundaries_at_or_below_the_split() {
+            let mut fork = setup_fork(localnet_rules(), SPLIT_ABOVE).await;
+            let gen_hash = *fork.rules.get_genesis_block().hash();
+            fork.validator
+                .initialize_state(&fork.split_hash(SPLIT_ABOVE))
+                .await
+                .unwrap();
+            assert_eq!(fork.validator.state().chain_split_height, SPLIT_ABOVE);
+            assert_eq!(fork.validator.state().vm_key, vec![
+                (0, gen_hash),
+                (BOUNDARY, fork.local_boundary()),
+            ]);
+
+            // Below the split there is no boundary other than genesis to seed: the block at `BOUNDARY` belongs to the
+            // contested part of the chain and has to be proven by the peer during the sync.
+            let mut fork = setup_fork(localnet_rules(), SPLIT_BELOW).await;
+            fork.validator
+                .initialize_state(&fork.split_hash(SPLIT_BELOW))
+                .await
+                .unwrap();
+            assert_eq!(fork.validator.state().chain_split_height, SPLIT_BELOW);
+            assert_eq!(fork.validator.state().vm_key, vec![(0, gen_hash)]);
+        }
+
+        /// An honest peer must never be banned because of a fork that is entirely local.
+        ///
+        /// The nonce is ground so that the header clears the Tari RandomX target under the peer's VM key and misses
+        /// it under this node's, which makes the outcome depend on nothing but which key the validator picks. With
+        /// the old lookup this produced a ban-able `ValidationError` and a persisted bad block.
+        #[tokio::test]
+        async fn an_honest_peer_is_not_banned_because_of_a_local_fork() {
+            let mut fork = setup_fork(rules_with_a_real_randomx_t_target(), SPLIT_BELOW).await;
+            let local_boundary = fork.local_boundary();
+            let peer_boundary = fork.peer_boundary(SPLIT_BELOW);
+            let target = Difficulty::from_u64(RANDOMX_T_TARGET).unwrap();
+
+            let mut tip = fork.peer.last().unwrap().clone();
+            grind_apart(
+                &mut tip,
+                &fork.factory,
+                &peer_boundary,
+                &local_boundary,
+                |peer, local| peer >= target && local < target,
+            );
+            *fork.peer.last_mut().unwrap() = tip.clone();
+
+            fork.validator
+                .initialize_state(&fork.split_hash(SPLIT_BELOW))
+                .await
+                .unwrap();
+            for header in fork.peer.clone() {
+                let (height, hash) = (header.height, header.hash());
+                if let Err(err) = fork.validator.validate(header).await {
+                    panic!(
+                        "header #{height} from the honest peer was rejected ({err}), ban reason: {:?}",
+                        err.get_ban_reason()
+                    );
+                }
+                let (is_bad_block, reason) = fork.db.bad_block_exists(hash).await.unwrap();
+                assert!(!is_bad_block, "header #{height} was recorded as a bad block: {reason}");
+            }
+
+            // The counterfactual: had the VM key come from the chain that is about to be rewound, this header would
+            // have missed the target and the peer would have been banned for it.
+            assert!(tari_randomx_difficulty(&tip, &fork.factory, &local_boundary).unwrap() < target);
+            assert!(tari_randomx_difficulty(&tip, &fork.factory, &peer_boundary).unwrap() >= target);
         }
     }
 }
