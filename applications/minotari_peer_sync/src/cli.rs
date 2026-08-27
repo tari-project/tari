@@ -29,6 +29,8 @@ use tari_p2p::TransportType;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
+// Command line flags are bools; grouping them into structs would only make the flag definitions harder to read
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,

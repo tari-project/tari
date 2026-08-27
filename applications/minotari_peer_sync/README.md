@@ -135,8 +135,10 @@ Failure reasons:
   keeps an old claim, and a fresh claim only means the peer changed addresses recently. The seeds have no claim (they
   come from the config) and sit in their own row.
 - **Rounds** shows what each round contributed. `asked` is how many of the previous round's connected peers actually
-  returned a peer list; `new peers` is how many peers appeared that had not been dialled before. A round stops the run
-  early when nobody answered (there is then nobody left to ask) or when no undialled peers remain.
+  returned a peer list; `discovered` is how many peers that asking added to the peer database (for round 1, everything
+  the seed sync found); `undialled` is how many known peers had still never been dialled when the round started, which
+  grows when `--max-peers` caps a round. A round stops the run early when nobody answered (there is then nobody left
+  to ask) or when no undialled peers remain.
 - **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
   what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
   duplicate.

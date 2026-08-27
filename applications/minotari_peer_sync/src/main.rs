@@ -332,7 +332,7 @@ fn check_tor_is_reachable(config: &PeerSyncConfig, libtor_dir: Option<&Path>) ->
 /// Polls the tor control port until it accepts a connection or `timeout` expires.
 fn wait_for_tor_control_port(control_addr: SocketAddr, timeout: Duration) -> Result<(), std::io::Error> {
     const POLL_INTERVAL: Duration = Duration::from_millis(500);
-    let deadline = Instant::now() + timeout;
+    let deadline = Instant::now().checked_add(timeout).unwrap_or_else(Instant::now);
     loop {
         match std::net::TcpStream::connect_timeout(&control_addr, TOR_CONTROL_TIMEOUT) {
             Ok(_) => return Ok(()),
@@ -374,6 +374,124 @@ fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIde
         Vec::new(),
         PeerFeatures::COMMUNICATION_NODE,
     )))
+}
+
+/// Runs the dial/ask rounds: round 1 dials what the seed sync found, and each round after that asks the peers that
+/// answered for their peer lists and dials only the peers that have not been dialled yet.
+async fn dial_rounds(
+    cli: &Cli,
+    config: &PeerSyncConfig,
+    peer_manager: &PeerManager,
+    connectivity: &ConnectivityRequester,
+    report: &mut Report,
+) -> Result<(), ExitError> {
+    // --- Dial, then ask whoever answered for more peers, round after round -----------------------------------------
+    let dial_timeout = Duration::from_secs(cli.dial_timeout);
+    let mut dialled: HashSet<NodeId> = HashSet::new();
+    let mut connected_last_round: Vec<Peer> = Vec::new();
+    let mut all_results: Vec<DialOutcome> = Vec::new();
+    let started = Instant::now();
+
+    for round in 1..=cli.rounds.max(1) {
+        // Round 1 works off the seed strap above; later rounds have to go and ask for more peers first.
+        let peers_before = peer_manager.count().await;
+        let (asked_ok, asked_total) = if round == 1 {
+            (0, 0)
+        } else {
+            println!(
+                "Round {round}: asking {} peer(s) that answered last round for their peer lists...",
+                connected_last_round.len()
+            );
+            ask_peers_for_peers(connectivity, peer_manager, config, &connected_last_round, cli).await
+        };
+        // Round 1 inherits everything the seed sync found; later rounds only count what asking added.
+        let num_discovered = if round == 1 {
+            peers_before
+        } else {
+            peer_manager.count().await.saturating_sub(peers_before)
+        };
+
+        let mut num_skipped = 0usize;
+        let mut candidates: Vec<Peer> = peer_manager
+            .all(None)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
+            .into_iter()
+            .filter(|p| {
+                if dialled.contains(&p.node_id) || (cli.skip_seeds && p.is_seed()) {
+                    return false;
+                }
+                if p.deleted_at.is_some() || p.is_banned() {
+                    num_skipped = num_skipped.saturating_add(1);
+                    return false;
+                }
+                true
+            })
+            .collect();
+        report.num_skipped = report.num_skipped.saturating_add(num_skipped);
+        let num_undialled = candidates.len();
+        if let Some(max) = cli.max_peers {
+            candidates.truncate(max);
+        }
+
+        if candidates.is_empty() {
+            report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
+            break;
+        }
+
+        println!("Round {round}: dialing {} new peer(s)...", candidates.len());
+        let results: Vec<DialOutcome> = stream::iter(candidates.iter())
+            .map(|peer| dial_peer(connectivity, peer, dial_timeout))
+            .buffer_unordered(cli.concurrency.max(1))
+            .collect()
+            .await;
+
+        dialled.extend(candidates.iter().map(|p| p.node_id.clone()));
+        let connected_node_ids: HashSet<NodeId> = results
+            .iter()
+            .filter(|r| r.error.is_none())
+            .map(|r| r.node_id.clone())
+            .collect();
+        connected_last_round = candidates
+            .into_iter()
+            .filter(|p| connected_node_ids.contains(&p.node_id))
+            .collect();
+
+        report.round_stats.push(RoundStats {
+            round,
+            asked_ok,
+            asked_total,
+            num_discovered,
+            num_undialled,
+            num_dialled: results.len(),
+            num_connected: connected_node_ids.len(),
+            num_failed: results.len().saturating_sub(connected_node_ids.len()),
+        });
+        all_results.extend(results);
+
+        if connected_last_round.is_empty() && round < cli.rounds.max(1) {
+            report.stopped_after = Some(format!(
+                "round {round}: no peer answered, so there is nobody to ask for more"
+            ));
+            break;
+        }
+    }
+
+    report.dial_time = started.elapsed();
+    report.address_failures = collect_address_failures(peer_manager, &all_results).await;
+    let now = now_epoch_secs();
+    report.claim_ages.clear();
+    for peer in peer_manager
+        .all(None)
+        .await
+        .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
+    {
+        let counter = report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default();
+        *counter = counter.saturating_add(1);
+    }
+    report.num_peers_in_db = report.claim_ages.values().sum();
+    report.add_dial_results(all_results);
+    Ok(())
 }
 
 async fn run(
@@ -422,103 +540,7 @@ async fn run(
     report.num_peers_in_db = all_peers.len();
     report.num_downloaded = all_peers.iter().filter(|p| !p.is_seed()).count();
 
-    // --- Dial, then ask whoever answered for more peers, round after round -----------------------------------------
-    let dial_timeout = Duration::from_secs(cli.dial_timeout);
-    let mut dialled: HashSet<NodeId> = HashSet::new();
-    let mut connected_last_round: Vec<Peer> = Vec::new();
-    let mut all_results: Vec<DialOutcome> = Vec::new();
-    let started = Instant::now();
-
-    for round in 1..=cli.rounds.max(1) {
-        // Round 1 works off the seed strap above; later rounds have to go and ask for more peers first.
-        let (asked_ok, asked_total) = if round == 1 {
-            (0, 0)
-        } else {
-            println!(
-                "Round {round}: asking {} peer(s) that answered last round for their peer lists...",
-                connected_last_round.len()
-            );
-            ask_peers_for_peers(&connectivity, &peer_manager, &config, &connected_last_round, &cli).await
-        };
-
-        let mut num_skipped = 0usize;
-        let mut candidates: Vec<Peer> = peer_manager
-            .all(None)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
-            .into_iter()
-            .filter(|p| {
-                if dialled.contains(&p.node_id) || (cli.skip_seeds && p.is_seed()) {
-                    return false;
-                }
-                if p.deleted_at.is_some() || p.is_banned() {
-                    num_skipped += 1;
-                    return false;
-                }
-                true
-            })
-            .collect();
-        report.num_skipped += num_skipped;
-        let num_new = candidates.len();
-        if let Some(max) = cli.max_peers {
-            candidates.truncate(max);
-        }
-
-        if candidates.is_empty() {
-            report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
-            break;
-        }
-
-        println!("Round {round}: dialing {} new peer(s)...", candidates.len());
-        let results: Vec<DialOutcome> = stream::iter(candidates.iter())
-            .map(|peer| dial_peer(&connectivity, peer, dial_timeout))
-            .buffer_unordered(cli.concurrency.max(1))
-            .collect()
-            .await;
-
-        dialled.extend(candidates.iter().map(|p| p.node_id.clone()));
-        let connected_node_ids: HashSet<NodeId> = results
-            .iter()
-            .filter(|r| r.error.is_none())
-            .map(|r| r.node_id.clone())
-            .collect();
-        connected_last_round = candidates
-            .into_iter()
-            .filter(|p| connected_node_ids.contains(&p.node_id))
-            .collect();
-
-        report.round_stats.push(RoundStats {
-            round,
-            asked_ok,
-            asked_total,
-            num_new,
-            num_dialled: results.len(),
-            num_connected: connected_node_ids.len(),
-            num_failed: results.len() - connected_node_ids.len(),
-        });
-        all_results.extend(results);
-
-        if connected_last_round.is_empty() && round < cli.rounds.max(1) {
-            report.stopped_after = Some(format!(
-                "round {round}: no peer answered, so there is nobody to ask for more"
-            ));
-            break;
-        }
-    }
-
-    report.dial_time = started.elapsed();
-    report.address_failures = collect_address_failures(&peer_manager, &all_results).await;
-    let now = now_epoch_secs();
-    report.claim_ages.clear();
-    for peer in peer_manager
-        .all(None)
-        .await
-        .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
-    {
-        *report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default() += 1;
-    }
-    report.num_peers_in_db = report.claim_ages.values().sum();
-    report.add_dial_results(all_results);
+    dial_rounds(&cli, &config, &peer_manager, &connectivity, &mut report).await?;
 
     shutdown.trigger();
     if time::timeout(Duration::from_secs(10), comms.wait_until_shutdown())
@@ -629,7 +651,9 @@ impl BootstrapWaiter {
     /// along the way.
     async fn wait(mut self, timeout: Duration) -> SyncOutcome {
         let mut outcome = SyncOutcome::default();
-        let deadline = time::Instant::now() + timeout;
+        let deadline = time::Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(time::Instant::now);
         loop {
             let event = tokio::select! {
                 event = self.events.recv() => event,
@@ -643,10 +667,11 @@ impl BootstrapWaiter {
                 Ok(event) => match &*event {
                     DhtEvent::NetworkDiscoveryPeersAdded(info) => {
                         info!(target: LOG_TARGET, "Peer sync round complete: {info}");
-                        outcome.rounds += 1;
-                        outcome.num_new_peers += info.num_new_peers;
-                        outcome.num_duplicate_peers += info.num_duplicate_peers;
-                        outcome.num_seeds_contacted += info.num_succeeded;
+                        outcome.rounds = outcome.rounds.saturating_add(1);
+                        outcome.num_new_peers = outcome.num_new_peers.saturating_add(info.num_new_peers);
+                        outcome.num_duplicate_peers =
+                            outcome.num_duplicate_peers.saturating_add(info.num_duplicate_peers);
+                        outcome.num_seeds_contacted = outcome.num_seeds_contacted.saturating_add(info.num_succeeded);
                     },
                     DhtEvent::PrimaryBootstrapComplete => {
                         outcome.completed = true;
@@ -788,7 +813,7 @@ async fn fetch_peers(
     while peers.len() < max_peers && items < max_items {
         match time::timeout(discovery.bootstrap_rpc_streaming_timeout, stream.next()).await {
             Ok(Some(Ok(GetPeersResponse { peer }))) => {
-                items += 1;
+                items = items.saturating_add(1);
                 if let Some(peer) = peer {
                     peers.push(peer);
                 }
@@ -827,7 +852,8 @@ async fn collect_address_failures(peer_manager: &PeerManager, results: &[DialOut
     for peer in &peers {
         for address in peer.addresses.addresses() {
             if let Some(reason) = address.last_failed_reason() {
-                *reasons.entry(generalize_failure(reason)).or_default() += 1;
+                let counter = reasons.entry(generalize_failure(reason)).or_default();
+                *counter = counter.saturating_add(1);
             }
         }
     }
@@ -899,7 +925,7 @@ fn generalize_failure(reason: &str) -> String {
             let core_len = token
                 .trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/' || c == '.'))
                 .len();
-            let trailing = &token[core_len..];
+            let trailing = token.get(core_len..).unwrap_or("");
             let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/');
             if trimmed.starts_with('/') {
                 format!("<address>{trailing}")
@@ -953,9 +979,9 @@ impl AddressMix {
             .address_iter()
             .fold((0usize, 0usize), |(onion, other), addr| {
                 if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) {
-                    (onion + 1, other)
+                    (onion.saturating_add(1), other)
                 } else {
-                    (onion, other + 1)
+                    (onion, other.saturating_add(1))
                 }
             });
         match (onion, other) {
@@ -1033,7 +1059,8 @@ impl ClaimAge {
 fn summarize_mixes<'a, I: Iterator<Item = &'a DialOutcome>>(outcomes: I) -> String {
     let mut counts: HashMap<AddressMix, usize> = HashMap::new();
     for outcome in outcomes {
-        *counts.entry(outcome.mix).or_default() += 1;
+        let counter = counts.entry(outcome.mix).or_default();
+        *counter = counter.saturating_add(1);
     }
     let mut counts: Vec<_> = counts.into_iter().collect();
     counts.sort_by_key(|(mix, _)| *mix);
@@ -1049,7 +1076,8 @@ struct RoundStats {
     round: usize,
     asked_ok: usize,
     asked_total: usize,
-    num_new: usize,
+    num_discovered: usize,
+    num_undialled: usize,
     num_dialled: usize,
     num_connected: usize,
     num_failed: usize,
@@ -1114,18 +1142,20 @@ impl Report {
 
 impl Display for Report {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let num_dialed = self.dialed.len();
-        let num_connected = self.num_connected();
-        let num_failed = num_dialed.saturating_sub(num_connected);
-        let pct = if num_dialed == 0 {
-            0.0
-        } else {
-            #[allow(clippy::cast_precision_loss)]
-            {
-                num_connected as f64 * 100.0 / num_dialed as f64
-            }
-        };
+        self.fmt_header(f)?;
+        self.fmt_rounds(f)?;
+        self.fmt_dialing(f)?;
+        self.fmt_claim_ages(f)?;
+        self.fmt_peer_list(f)?;
+        writeln!(
+            f,
+            "================================================================================"
+        )
+    }
+}
 
+impl Report {
+    fn fmt_header(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
             "\n================================ Peer sync report ================================"
@@ -1168,6 +1198,10 @@ impl Display for Report {
             self.sync_time,
             self.sync.rounds
         )?;
+        Ok(())
+    }
+
+    fn fmt_rounds(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if !self.round_stats.is_empty() {
             writeln!(
                 f,
@@ -1180,8 +1214,8 @@ impl Display for Report {
             )?;
             writeln!(
                 f,
-                "  {:<8}{:>12}{:>12}{:>10}{:>11}{:>8}",
-                "round", "asked", "new peers", "dialled", "connected", "failed"
+                "  {:<8}{:>12}{:>12}{:>11}{:>10}{:>11}{:>8}",
+                "round", "asked", "discovered", "undialled", "dialled", "connected", "failed"
             )?;
             for r in &self.round_stats {
                 let asked = if r.round == 1 {
@@ -1191,14 +1225,30 @@ impl Display for Report {
                 };
                 writeln!(
                     f,
-                    "  {:<8}{:>12}{:>12}{:>10}{:>11}{:>8}",
-                    r.round, asked, r.num_new, r.num_dialled, r.num_connected, r.num_failed
+                    "  {:<8}{:>12}{:>12}{:>11}{:>10}{:>11}{:>8}",
+                    r.round, asked, r.num_discovered, r.num_undialled, r.num_dialled, r.num_connected, r.num_failed
                 )?;
             }
             if let Some(reason) = &self.stopped_after {
                 writeln!(f, "  stopped early - {reason}")?;
             }
         }
+
+        Ok(())
+    }
+
+    fn fmt_dialing(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let num_dialed = self.dialed.len();
+        let num_connected = self.num_connected();
+        let num_failed = num_dialed.saturating_sub(num_connected);
+        let pct = if num_dialed == 0 {
+            0.0
+        } else {
+            #[allow(clippy::cast_precision_loss)]
+            {
+                num_connected as f64 * 100.0 / num_dialed as f64
+            }
+        };
 
         writeln!(
             f,
@@ -1227,7 +1277,8 @@ impl Display for Report {
         if num_failed > 0 {
             let mut reasons: HashMap<String, usize> = HashMap::new();
             for outcome in self.dialed.iter().filter_map(|r| r.error.as_deref()) {
-                *reasons.entry(generalize_failure(outcome)).or_default() += 1;
+                let counter = reasons.entry(generalize_failure(outcome)).or_default();
+                *counter = counter.saturating_add(1);
             }
             let mut reasons: Vec<_> = reasons.into_iter().collect();
             reasons.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
@@ -1248,6 +1299,10 @@ impl Display for Report {
             }
         }
 
+        Ok(())
+    }
+
+    fn fmt_claim_ages(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if !self.claim_ages.is_empty() {
             writeln!(
                 f,
@@ -1271,9 +1326,9 @@ impl Display for Report {
                 let dialed = self.dialed.iter().filter(|r| r.claim_age == age);
                 let (connected, failed) = dialed.fold((0usize, 0usize), |(ok, bad), r| {
                     if r.error.is_none() {
-                        (ok + 1, bad)
+                        (ok.saturating_add(1), bad)
                     } else {
-                        (ok, bad + 1)
+                        (ok, bad.saturating_add(1))
                     }
                 });
                 writeln!(
@@ -1281,13 +1336,17 @@ impl Display for Report {
                     "  {:<18}{:>8}{:>10}{:>11}{:>8}",
                     age.label(),
                     peers,
-                    connected + failed,
+                    connected.saturating_add(failed),
                     connected,
                     failed
                 )?;
             }
         }
 
+        Ok(())
+    }
+
+    fn fmt_peer_list(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.show_peers {
             writeln!(
                 f,
@@ -1315,10 +1374,7 @@ impl Display for Report {
                 }
             }
         }
-        writeln!(
-            f,
-            "================================================================================"
-        )
+        Ok(())
     }
 }
 
