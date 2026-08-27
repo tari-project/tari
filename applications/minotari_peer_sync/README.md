@@ -125,6 +125,11 @@ Failure reasons:
   entries are `Transport error for <address>: Host unreachable`, which is tor reporting that it could not reach a
   hidden service (the node is offline, the address is not malformed), and `No route to host` or `Connection refused`
   for ip addresses.
+- **Age of the peers' address claims** buckets every known peer by how long ago it signed the addresses it
+  advertises, with the dial outcome for the peers that were dialled. Read it as a distribution, not a liveness
+  measure: a peer re-signs only when its addresses or features change, so a long-lived node with a stable address
+  keeps an old claim, and a fresh claim only means the peer changed addresses recently. The seeds have no claim (they
+  come from the config) and sit in their own row.
 - **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
   what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
   duplicate.
