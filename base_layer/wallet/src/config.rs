@@ -37,10 +37,13 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, types::CompressedCommitment};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
-use tari_utilities::SafePassword;
+use tari_utilities::{
+    SafePassword,
+    hex::{Hex, HexError},
+};
 use url::Url;
 
 use crate::{
@@ -142,6 +145,9 @@ pub struct WalletConfig {
     /// gRPC broadcast confirmation timeout in ms. This is how long the grpc server will wait for the mempool to
     /// respond once the transaction has been submitted, either accepted or rejected. Default = 5000ms
     pub grpc_broadcast_confirmation: u64,
+    /// A list of commitments (in hex) to exclude from UTXO scanning / recovery import
+    #[serde(default)]
+    pub excluded_commitments: StringList,
 }
 
 impl Default for WalletConfig {
@@ -188,6 +194,7 @@ impl Default for WalletConfig {
             scanning_interval: 60,
             grpc_db_write_timeout: 100,
             grpc_broadcast_confirmation: 5000,
+            excluded_commitments: StringList::default(),
         }
     }
 }
@@ -215,6 +222,13 @@ impl WalletConfig {
             *path_mut = base_path.as_ref().join(path_mut.as_path());
         }
     }
+
+    pub fn get_excluded_commitments(&self) -> Result<Vec<CompressedCommitment>, HexError> {
+        self.excluded_commitments
+            .iter()
+            .map(|s| CompressedCommitment::from_hex(s.trim()))
+            .collect()
+    }
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -227,3 +241,23 @@ pub enum TransactionStage {
     Mined,
     TimedOut,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_excluded_commitments_parsing() {
+        let mut config = WalletConfig::default();
+        assert!(config.excluded_commitments.is_empty());
+        assert!(config.get_excluded_commitments().unwrap().is_empty());
+
+        let hex_val = "006399307893ae875ac7677b564ba068a9bc18eb903f5245a39a78aeebecc87b";
+        let commitment = CompressedCommitment::from_hex(hex_val).unwrap();
+        config.excluded_commitments = vec![hex_val.to_string()].into();
+        let parsed = config.get_excluded_commitments().unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0], commitment);
+    }
+}
+

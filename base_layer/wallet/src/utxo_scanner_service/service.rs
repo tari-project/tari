@@ -24,7 +24,10 @@ use std::fmt::Display;
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{tari_address::TariAddress, types::HashOutput};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{CompressedCommitment, HashOutput},
+};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::{sync::broadcast, task};
@@ -178,6 +181,7 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
     pub(crate) one_sided_tari_address: TariAddress,
     pub(crate) birthday_offset: u16,
     pub(crate) client_factory: THttpClientFactory,
+    pub(crate) excluded_commitments: Vec<CompressedCommitment>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

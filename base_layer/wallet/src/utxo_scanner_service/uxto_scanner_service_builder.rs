@@ -22,7 +22,8 @@
 
 use std::fmt::Debug;
 
-use tari_common_types::tari_address::TariAddress;
+use log::*;
+use tari_common_types::{tari_address::TariAddress, types::CompressedCommitment};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tokio::sync::broadcast;
@@ -39,7 +40,7 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
-        service::{UtxoScannerResources, UtxoScannerService},
+        service::{LOG_TARGET, UtxoScannerResources, UtxoScannerService},
     },
 };
 
@@ -65,6 +66,7 @@ pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
     mode: Option<UtxoScannerMode>,
     client_factory: Option<TWalletClientFactory>,
     scanning_interval: u64,
+    excluded_commitments: Vec<CompressedCommitment>,
 }
 
 impl<T> Default for UtxoScannerServiceBuilder<T> {
@@ -74,11 +76,12 @@ impl<T> Default for UtxoScannerServiceBuilder<T> {
             mode: None,
             client_factory: None,
             scanning_interval: 60, // Default scanning interval in seconds
+            excluded_commitments: Vec::new(),
         }
     }
 }
 
-impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBuilder<T> {
+impl<T> UtxoScannerServiceBuilder<T> {
     /// Set the maximum number of times we retry recovery. A failed recovery is counted as _all_ peers have failed.
     /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
     pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
@@ -91,13 +94,20 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
         self
     }
 
-    pub fn with_client_factory(&mut self, factory: T) -> &mut Self {
-        self.client_factory = Some(factory);
+    pub fn with_scanning_interval(&mut self, interval: u64) -> &mut Self {
+        self.scanning_interval = interval;
         self
     }
 
-    pub fn with_scanning_interval(&mut self, interval: u64) -> &mut Self {
-        self.scanning_interval = interval;
+    pub fn with_excluded_commitments(&mut self, excluded_commitments: Vec<CompressedCommitment>) -> &mut Self {
+        self.excluded_commitments = excluded_commitments;
+        self
+    }
+}
+
+impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBuilder<T> {
+    pub fn with_client_factory(&mut self, factory: T) -> &mut Self {
+        self.client_factory = Some(factory);
         self
     }
 
@@ -115,6 +125,24 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
                 ));
             },
         };
+
+        let mut excluded_commitments = self.excluded_commitments.clone();
+        match wallet.config.get_excluded_commitments() {
+            Ok(commitments) => {
+                for c in commitments {
+                    if !excluded_commitments.contains(&c) {
+                        excluded_commitments.push(c);
+                    }
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to parse excluded commitment from wallet config: {e}"
+                );
+            },
+        }
+
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             output_manager_service: wallet.output_manager_service.clone(),
@@ -122,6 +150,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             one_sided_tari_address,
             birthday_offset: wallet.config.birthday_offset,
             client_factory: client_factory.clone(),
+            excluded_commitments,
         };
 
         let (event_sender, _) = broadcast::channel(2000);
@@ -167,6 +196,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             one_sided_tari_address,
             birthday_offset,
             client_factory,
+            excluded_commitments: self.excluded_commitments.clone(),
         };
 
         Ok(UtxoScannerService::new(
@@ -180,3 +210,21 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tari_utilities::hex::Hex;
+
+    #[test]
+    fn test_builder_with_excluded_commitments() {
+        let mut builder = UtxoScannerServiceBuilder::<()>::default();
+        assert!(builder.excluded_commitments.is_empty());
+
+        let comm = CompressedCommitment::from_hex("006399307893ae875ac7677b564ba068a9bc18eb903f5245a39a78aeebecc87b").unwrap();
+        builder.with_excluded_commitments(vec![comm.clone()]);
+        assert_eq!(builder.excluded_commitments.len(), 1);
+        assert_eq!(builder.excluded_commitments[0], comm);
+    }
+}
+

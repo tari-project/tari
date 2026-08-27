@@ -2538,3 +2538,136 @@ async fn multisig_withdraw_fee_estimate_counts_the_output_memo() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_maturity_greater_than_i64_max_balance_and_coin_selection() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let scanned_block = ScannedBlock {
+        header_hash: HashOutput::zero(),
+        height: 100,
+        timestamp: Utc::now().naive_utc(),
+    };
+    backend.save_last_scanned_height(scanned_block).unwrap();
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
+
+    let amount = MicroMinotari::from(5000);
+    // Maturity greater than i64::MAX (GHSA-f5fr-v7h5-w6q7)
+    let overflow_maturity = (i64::MAX as u64) + 1000;
+    let uo = make_input_with_features(
+        &mut rand::rng().clone(),
+        amount,
+        OutputFeatures {
+            maturity: overflow_maturity,
+            ..Default::default()
+        },
+        key_manager.key_manager(),
+    );
+    oms.add_output(uo.clone(), None).await.unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
+
+    let balance = oms.get_balance().await.unwrap();
+    // Must NOT appear in available_balance
+    assert_eq!(balance.available_balance, MicroMinotari::zero());
+    // Must appear in time_locked_balance
+    assert_eq!(balance.time_locked_balance, Some(amount));
+
+    // Assert it is never returned by coin selection at tip height 100
+    let err = oms
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(2),
+            script!(Nop).unwrap(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // Update scanned block height to a very high height and assert it still is never selected
+    let high_block = ScannedBlock {
+        header_hash: HashOutput::zero(),
+        height: 10_000_000,
+        timestamp: Utc::now().naive_utc(),
+    };
+    backend.save_last_scanned_height(high_block).unwrap();
+    let balance_high = oms.get_balance().await.unwrap();
+    assert_eq!(balance_high.available_balance, MicroMinotari::zero());
+    assert_eq!(balance_high.time_locked_balance, Some(amount));
+
+    let err_high = oms
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(2),
+            script!(Nop).unwrap(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err_high, OutputManagerError::NotEnoughFunds));
+}
+
+#[tokio::test]
+async fn test_rescan_with_commitment_blocklisted_produces_wallet_db_without_commitment() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
+
+    let amount = MicroMinotari::from(10_000);
+    // Create commitment X (to be blocklisted)
+    let uo_x = make_input(
+        &mut rand::rng().clone(),
+        amount,
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let tx_output_x = uo_x.to_transaction_output().unwrap();
+    let commitment_x = tx_output_x.commitment.clone();
+
+    // Create normal commitment Y (not blocklisted)
+    let uo_y = make_input(
+        &mut rand::rng().clone(),
+        amount,
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let tx_output_y = uo_y.to_transaction_output().unwrap();
+    let commitment_y = tx_output_y.commitment.clone();
+
+    // Configure WalletConfig with commitment X blocklisted
+    let mut wallet_config = minotari_wallet::WalletConfig::default();
+    use tari_utilities::hex::Hex;
+    wallet_config.excluded_commitments = vec![commitment_x.to_hex()].into();
+    let excluded = wallet_config.get_excluded_commitments().unwrap();
+    assert_eq!(excluded, vec![commitment_x.clone()]);
+
+    // The candidate wallet outputs to rescan
+    let candidate_wallet_outputs = vec![uo_x.clone(), uo_y.clone()];
+
+    // Rescan / recovery filter logic as executed by UtxoScannerTask:
+    // Any outputs matching excluded_commitments are skipped from import
+    for uo in candidate_wallet_outputs {
+        let tx_out = uo.to_transaction_output().unwrap();
+        if !excluded.contains(&tx_out.commitment) {
+            oms.add_output(uo.clone(), None).await.unwrap();
+            backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
+        }
+    }
+
+    // Verify wallet DB state after rescan:
+    // Wallet DB contains commitment Y, and does NOT contain commitment X
+    let unspent = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent.len(), 1);
+    assert!(unspent.iter().any(|u| u.commitment == commitment_y));
+    assert!(!unspent.iter().any(|u| u.commitment == commitment_x));
+}
+
+

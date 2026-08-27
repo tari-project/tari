@@ -220,6 +220,10 @@ where KM: TransactionKeyManagerInterface
             .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
 
         let minimum_value_promise = MicroMinotari::zero();
+        // Security note (GHSA-f5fr-v7h5-w6q7): A sender can supply arbitrary `output_features` (including `maturity`).
+        // No upper bound is enforced here on recipient output maturity because the recipient-side filter
+        // (enforcing `.ge(0)` and `TransactionInput::is_mature_at`) serves as the active security control,
+        // correctly classifying far-future maturity outputs as time-locked rather than spendable.
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(output_features)
             .with_script(script)

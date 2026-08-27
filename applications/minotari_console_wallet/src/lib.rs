@@ -113,6 +113,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,
+        excluded_commitments: Vec::new(),
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)

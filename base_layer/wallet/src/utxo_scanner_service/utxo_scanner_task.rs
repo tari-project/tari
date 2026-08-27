@@ -612,7 +612,7 @@ where
         Ok(result)
     }
 
-    fn search_for_owned_outputs(
+    pub(crate) fn search_for_owned_outputs(
         &mut self,
         outputs: Vec<MinimalUtxoSyncInfo>,
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
@@ -622,6 +622,15 @@ where
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e))?;
+
+            if self.resources.excluded_commitments.contains(&commitment) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Skipping excluded commitment: {}",
+                    commitment.to_hex()
+                );
+                continue;
+            }
 
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
@@ -656,10 +665,26 @@ where
         Ok(found_outputs)
     }
 
-    async fn scan_for_outputs(
+    pub(crate) async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TransactionOutput)>, anyhow::Error> {
+        let outputs: Vec<TransactionOutput> = outputs
+            .into_iter()
+            .filter(|o| {
+                if self.resources.excluded_commitments.contains(&o.commitment) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Filtering out excluded commitment from scan_for_outputs: {}",
+                        o.commitment.to_hex()
+                    );
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+
         let start = Instant::now();
         let outputs_by_hash: HashMap<_, _> = outputs.iter().cloned().map(|o| (o.hash(), o)).collect();
         let mut found_outputs = Vec::new();

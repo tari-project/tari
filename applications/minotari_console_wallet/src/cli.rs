@@ -119,6 +119,9 @@ pub struct Cli {
     /// Useful for verifying which environment variables are set before starting the wallet.
     #[clap(long)]
     pub print_env: bool,
+    /// Comma-separated or repeated hex commitments to exclude from UTXO scanning / recovery import
+    #[clap(long, alias = "exclude-commitments", value_delimiter = ',')]
+    pub excluded_commitments: Vec<String>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -145,6 +148,13 @@ impl ConfigOverrideProvider for Cli {
         }
         if let Some(ref path) = self.burn_proof_out {
             replace_or_add_override(&mut overrides, "wallet.burn_proofs_dir", &path.display().to_string());
+        }
+        if !self.excluded_commitments.is_empty() {
+            replace_or_add_override(
+                &mut overrides,
+                "wallet.excluded_commitments",
+                &self.excluded_commitments.join(","),
+            );
         }
         overrides
     }
@@ -715,3 +725,23 @@ pub struct ValidateOutputsArgs {
     #[clap(long, num_args = 1.., required = true)]
     pub commitments: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_exclude_commitments_override() {
+        let hex_comm = "006399307893ae875ac7677b564ba068a9bc18eb903f5245a39a78aeebecc87b";
+        let cli = Cli::try_parse_from(["wallet", "--exclude-commitments", hex_comm]).unwrap();
+        assert_eq!(cli.excluded_commitments, vec![hex_comm.to_string()]);
+
+        let overrides = cli.get_config_property_overrides(&Network::Esmeralda);
+        let val = overrides
+            .iter()
+            .find(|(k, _)| k == "wallet.excluded_commitments")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(val, Some(hex_comm));
+    }
+}
+
