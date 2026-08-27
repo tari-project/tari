@@ -4571,6 +4571,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "minotari_peer_sync"
+version = "5.7.0-pre.2"
+dependencies = [
+ "clap",
+ "config",
+ "futures 0.3.32",
+ "log",
+ "log4rs",
+ "minotari_app_utilities",
+ "rand 0.10.1",
+ "serde",
+ "tari_common",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_features",
+ "tari_p2p",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_utilities",
+ "tokio",
+]
+
+[[package]]
 name = "minotari_utils"
 version = "5.7.0-pre.2"
 dependencies = [
