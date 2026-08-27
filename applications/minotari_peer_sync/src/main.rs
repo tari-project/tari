@@ -60,28 +60,32 @@ use tari_comms::{
     CommsNode,
     Minimized,
     NodeIdentity,
+    PeerManager,
     RefKind,
     UnspawnedCommsNode,
     connectivity::ConnectivityRequester,
     multiaddr::{Multiaddr, Protocol},
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures},
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_comms_dht::{Dht, event::DhtEvent};
 use tari_p2p::{
     TransportType,
-    comms_connector::pubsub_connector,
+    comms_connector::InboundDomainConnector,
     initialization::{P2pInitializer, spawn_comms_using_transport},
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
-use tokio::{sync::broadcast::error::RecvError, time};
+use tokio::{
+    sync::{broadcast::error::RecvError, mpsc},
+    time,
+};
 
 use crate::{cli::Cli, config::PeerSyncConfig};
 
 const LOG_TARGET: &str = "minotari::peer_sync";
-/// The pubsub buffer for inbound domain messages. Nothing consumes them here, they are dropped.
+/// The buffer for inbound domain messages. Nothing consumes them here, they are dropped.
 const MESSAGE_BUFFER_SIZE: usize = 100;
 /// How long to wait for the listener to bind before giving up on it. Creating a tor hidden service is the slow case.
 const LISTENER_TIMEOUT: Duration = Duration::from_secs(120);
@@ -123,8 +127,8 @@ fn main_inner() -> Result<Report, ExitError> {
     let mut config = PeerSyncConfig::load_from(&cfg)?;
     apply_overrides(&cli, &mut config)?;
 
-    let started_libtor = start_libtor(&cli, &mut config, &base_path)?;
-    check_tor_is_reachable(&config, started_libtor)?;
+    let libtor_dir = start_libtor(&cli, &mut config, &base_path)?;
+    check_tor_is_reachable(&config, libtor_dir.as_deref())?;
 
     let node_identity = build_node_identity(&cli, &config)?;
     info!(
@@ -135,7 +139,17 @@ fn main_inner() -> Result<Report, ExitError> {
     );
 
     let runtime = setup_runtime()?;
-    runtime.block_on(run(cli, config, node_identity, started_libtor))
+    let result = runtime.block_on(run(cli, config, node_identity, libtor_dir.clone()));
+
+    // A per-run tor data directory holds a consensus cache of tens of megabytes and is of no use to the next run, so
+    // only the shared directory is kept.
+    if let Some(dir) = libtor_dir.filter(|d| d.ends_with(format!("peer_sync-{}", process::id()))) {
+        debug!(target: LOG_TARGET, "Removing the per-run tor data directory {}", dir.display());
+        if let Err(err) = fs::remove_dir_all(&dir) {
+            debug!(target: LOG_TARGET, "Could not remove {}: {}", dir.display(), err);
+        }
+    }
+    result
 }
 
 /// Applies the peer-sync specific overrides on top of the base node's config. These exist so that a run does not
@@ -201,39 +215,71 @@ fn clear_peer_database(dir: &PathBuf, database_name: &str) -> Result<(), ExitErr
 /// Starts the bundled tor instance when the transport needs tor, pointing the transport at its control port. This is
 /// the same thing the base node does with `use_libtor`, so a run needs no externally managed tor.
 ///
-/// Returns whether tor was started here.
+/// Returns the tor data directory when tor was started here.
 #[cfg(all(unix, feature = "libtor"))]
-fn start_libtor(cli: &Cli, config: &mut PeerSyncConfig, base_path: &Path) -> Result<bool, ExitError> {
+fn start_libtor(cli: &Cli, config: &mut PeerSyncConfig, base_path: &Path) -> Result<Option<PathBuf>, ExitError> {
     use tari_libtor::tor::Tor;
 
     let wanted = !cli.no_libtor && (cli.libtor || config.base_node.use_libtor);
     if !wanted || !config.base_node.p2p.transport.is_tor() {
-        return Ok(false);
+        return Ok(None);
     }
     // Its own data directory: a base node's libtor instance owns (and locks) the one under its own directory.
-    let data_dir = cli
+    let mut data_dir = cli
         .libtor_data_dir
         .clone()
         .unwrap_or_else(|| base_path.to_path_buf())
         .join("libtor")
         .join("peer_sync");
+    // Tor refuses to run two instances against one data directory: it waits five seconds for the lock and then exits,
+    // which surfaces later as an unexplained listener failure. Give a concurrent run its own directory instead. The
+    // shared one is kept as the default because it caches the consensus, which is what makes startup quick.
+    if is_tor_data_dir_in_use(&data_dir) {
+        let fallback = data_dir.with_file_name(format!("peer_sync-{}", process::id()));
+        println!(
+            "The tor data directory {} is in use by another instance, using {} for this run",
+            data_dir.display(),
+            fallback.display()
+        );
+        data_dir = fallback;
+    }
     println!("Starting the bundled tor instance in {}...", data_dir.display());
-    let tor = Tor::initialize(data_dir)?;
+    let tor = Tor::initialize(data_dir.clone())?;
     tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
     tor.run_background();
     debug!(target: LOG_TARGET, "Bundled tor started: {:?}", config.base_node.p2p.transport.tor.control_address);
-    Ok(true)
+    Ok(Some(data_dir))
+}
+
+/// Whether another process is using this tor data directory. Tor takes a `flock` on `data/lock` for as long as it
+/// runs, so probing that lock is the same test tor itself makes. The control port it writes to `data/control_port` is
+/// not a usable signal: every run overwrites that file, so it can name a port belonging to a run that has since ended.
+#[cfg(all(unix, feature = "libtor"))]
+fn is_tor_data_dir_in_use(data_dir: &Path) -> bool {
+    let Ok(lock) = fs::File::open(data_dir.join("data").join("lock")) else {
+        // No lock file, so tor has never run here
+        return false;
+    };
+    match lock.try_lock() {
+        // Taken here, so nothing else holds it. Dropping the file releases it again.
+        Ok(()) => false,
+        Err(fs::TryLockError::WouldBlock) => true,
+        Err(err) => {
+            debug!(target: LOG_TARGET, "Could not probe the tor data directory lock: {err}");
+            false
+        },
+    }
 }
 
 #[cfg(not(all(unix, feature = "libtor")))]
-fn start_libtor(_cli: &Cli, _config: &mut PeerSyncConfig, _base_path: &Path) -> Result<bool, ExitError> {
-    Ok(false)
+fn start_libtor(_cli: &Cli, _config: &mut PeerSyncConfig, _base_path: &Path) -> Result<Option<PathBuf>, ExitError> {
+    Ok(None)
 }
 
 /// The tor transports cannot bind a listener without tor, and when the listener fails the whole connection manager
 /// quits - leaving every dial to fail with an unhelpful "channel closed". Check up front so that the reason, and the
 /// way around it, is the first thing reported.
-fn check_tor_is_reachable(config: &PeerSyncConfig, started_libtor: bool) -> Result<(), ExitError> {
+fn check_tor_is_reachable(config: &PeerSyncConfig, libtor_dir: Option<&Path>) -> Result<(), ExitError> {
     let transport = &config.base_node.p2p.transport;
     if !transport.transport_type.uses_tor_hidden_service() {
         return Ok(());
@@ -242,7 +288,7 @@ fn check_tor_is_reachable(config: &PeerSyncConfig, started_libtor: bool) -> Resu
     let Ok(control_addr) = multiaddr_to_socketaddr(&transport.tor.control_address) else {
         return Ok(());
     };
-    let timeout = if started_libtor {
+    let timeout = if libtor_dir.is_some() {
         LIBTOR_STARTUP_TIMEOUT
     } else {
         TOR_CONTROL_TIMEOUT
@@ -250,10 +296,10 @@ fn check_tor_is_reachable(config: &PeerSyncConfig, started_libtor: bool) -> Resu
     let Err(err) = wait_for_tor_control_port(control_addr, timeout) else {
         return Ok(());
     };
-    let detail = if started_libtor {
+    let detail = if let Some(dir) = libtor_dir {
         format!(
-            "the bundled tor did not open its control port at {control_addr} within {timeout:.0?}: {err}.\nCheck \
-             tor.log in the libtor data directory"
+            "the bundled tor did not open its control port at {control_addr} within {timeout:.0?}: {err}.\nCheck {}",
+            dir.join("data").join("tor.log").display()
         )
     } else {
         format!(
@@ -322,12 +368,19 @@ async fn run(
     cli: Cli,
     config: PeerSyncConfig,
     node_identity: Arc<NodeIdentity>,
-    started_libtor: bool,
+    libtor_dir: Option<PathBuf>,
 ) -> Result<Report, ExitError> {
     let mut shutdown = Shutdown::new();
-    let mut report = Report::new(&cli, &config, &node_identity, started_libtor);
+    let mut report = Report::new(&cli, &config, &node_identity, libtor_dir.is_some());
 
-    let (comms, dht_bootstrap) = start_comms(&cli, &config, node_identity, shutdown.to_signal()).await?;
+    let (comms, dht_bootstrap) = start_comms(
+        &cli,
+        &config,
+        node_identity,
+        libtor_dir.as_deref(),
+        shutdown.to_signal(),
+    )
+    .await?;
     let peer_manager = comms.peer_manager();
     let connectivity = comms.connectivity();
 
@@ -386,6 +439,7 @@ async fn run(
         .collect()
         .await;
     report.dial_time = started.elapsed();
+    report.address_failures = collect_address_failures(&peer_manager, &results).await;
     report.add_dial_results(results);
 
     shutdown.trigger();
@@ -405,6 +459,7 @@ async fn start_comms(
     cli: &Cli,
     config: &PeerSyncConfig,
     node_identity: Arc<NodeIdentity>,
+    libtor_dir: Option<&Path>,
     shutdown_signal: tari_shutdown::ShutdownSignal,
 ) -> Result<(CommsNode, BootstrapWaiter), ExitError> {
     let mut p2p_config = config.base_node.p2p.clone();
@@ -417,7 +472,12 @@ async fn start_comms(
         .user_agent
         .clone()
         .unwrap_or_else(|| format!("tari/basenode/{}", consts::APP_VERSION_NUMBER));
-    let (publisher, _subscription_factory) = pubsub_connector(MESSAGE_BUFFER_SIZE);
+    // The base node hands inbound domain messages to a pubsub connector for its services to subscribe to. There is
+    // no service here to subscribe, and a pubsub connector with no subscribers logs a warning for every message it
+    // forwards, so the messages are drained and dropped instead.
+    let (sink, mut inbound_messages) = mpsc::channel(MESSAGE_BUFFER_SIZE);
+    tokio::spawn(async move { while inbound_messages.recv().await.is_some() {} });
+    let publisher = InboundDomainConnector::new(sink);
 
     let mut handles = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
@@ -453,12 +513,17 @@ async fn start_comms(
     {
         Ok(Ok(info)) => info!(target: LOG_TARGET, "Listening on {}", info.bind_address()),
         Ok(Err(err)) => {
+            let where_to_look = match libtor_dir {
+                Some(dir) => format!(
+                    "See the network log, and {}, for the underlying error - a second tor instance on the same data \
+                     directory is one cause.",
+                    dir.join("data").join("tor.log").display()
+                ),
+                None => "See the network log for the underlying error.".to_string(),
+            };
             return Err(ExitError::new(
                 ExitCode::NetworkError,
-                format!(
-                    "The comms listener failed to start ({err}), so no peer can be dialled. See the network log for \
-                     the underlying error."
-                ),
+                format!("The comms listener failed to start ({err}), so no peer can be dialled. {where_to_look}"),
             ));
         },
         Err(_) => warn!(
@@ -523,6 +588,38 @@ impl BootstrapWaiter {
     }
 }
 
+/// `ConnectivityError` only reports that every address failed, not why each one did. The dialer records the reason
+/// per address on the peer as it goes, so read those back for the peers that failed to give the real causes.
+async fn collect_address_failures(peer_manager: &PeerManager, results: &[DialOutcome]) -> Vec<(String, usize)> {
+    let failed: Vec<NodeId> = results
+        .iter()
+        .filter(|r| r.error.is_some())
+        .map(|r| r.node_id.clone())
+        .collect();
+    if failed.is_empty() {
+        return Vec::new();
+    }
+    let peers = match peer_manager.get_peers_by_node_ids(&failed).await {
+        Ok(peers) => peers,
+        Err(err) => {
+            warn!(target: LOG_TARGET, "Could not read back the peers that failed to dial: {err}");
+            return Vec::new();
+        },
+    };
+
+    let mut reasons: HashMap<String, usize> = HashMap::new();
+    for peer in &peers {
+        for address in peer.addresses.addresses() {
+            if let Some(reason) = address.last_failed_reason() {
+                *reasons.entry(generalize_failure(reason)).or_default() += 1;
+            }
+        }
+    }
+    let mut reasons: Vec<_> = reasons.into_iter().collect();
+    reasons.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+    reasons
+}
+
 async fn dial_peer(connectivity: &ConnectivityRequester, peer: &Peer, dial_timeout: Duration) -> DialOutcome {
     let started = Instant::now();
     let result = time::timeout(
@@ -542,12 +639,13 @@ async fn dial_peer(connectivity: &ConnectivityRequester, peer: &Peer, dial_timeo
         Err(_) => Some(format!("Dial timed out after {dial_timeout:.0?}")),
     };
     DialOutcome {
-        node_id: peer.node_id.to_hex(),
+        node_id: peer.node_id.clone(),
         address: peer
             .addresses
             .best()
             .map(|a| a.address().to_string())
             .unwrap_or_else(|| "no address".to_string()),
+        mix: AddressMix::of(peer),
         is_seed: peer.is_seed(),
         latency: started.elapsed(),
         error,
@@ -572,13 +670,18 @@ fn generalize_failure(reason: &str) -> String {
     reason
         .split_whitespace()
         .map(|token| {
+            // Keep any trailing punctuation, so that `<address>:` still reads as a prefix of the message after it
+            let core_len = token
+                .trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '/' || c == '.'))
+                .len();
+            let trailing = &token[core_len..];
             let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '/');
             if trimmed.starts_with('/') {
-                "<address>"
+                format!("<address>{trailing}")
             } else if trimmed.len() >= 20 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-                "<peer>"
+                format!("<peer>{trailing}")
             } else {
-                token
+                token.to_string()
             }
         })
         .collect::<Vec<_>>()
@@ -599,11 +702,67 @@ struct SyncOutcome {
 
 #[derive(Debug)]
 struct DialOutcome {
-    node_id: String,
+    node_id: NodeId,
     address: String,
+    mix: AddressMix,
     is_seed: bool,
     latency: Duration,
     error: Option<String>,
+}
+
+/// The kinds of address a peer advertises. Which kinds a peer has decides which transports can reach it at all, so
+/// this is the first thing to look at when a lot of peers fail to connect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum AddressMix {
+    OnionOnly,
+    Mixed,
+    IpOnly,
+    None,
+}
+
+impl AddressMix {
+    fn of(peer: &Peer) -> Self {
+        let (onion, other) = peer
+            .addresses
+            .address_iter()
+            .fold((0usize, 0usize), |(onion, other), addr| {
+                if addr.iter().any(|p| matches!(p, Protocol::Onion3(_))) {
+                    (onion + 1, other)
+                } else {
+                    (onion, other + 1)
+                }
+            });
+        match (onion, other) {
+            (0, 0) => AddressMix::None,
+            (_, 0) => AddressMix::OnionOnly,
+            (0, _) => AddressMix::IpOnly,
+            _ => AddressMix::Mixed,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            AddressMix::OnionOnly => "onion-only",
+            AddressMix::Mixed => "mixed",
+            AddressMix::IpOnly => "ip-only",
+            AddressMix::None => "no address",
+        }
+    }
+}
+
+/// A `count x label` summary of address mixes, e.g. `onion-only 37, mixed 2, ip-only 1`.
+fn summarize_mixes<'a, I: Iterator<Item = &'a DialOutcome>>(outcomes: I) -> String {
+    let mut counts: HashMap<AddressMix, usize> = HashMap::new();
+    for outcome in outcomes {
+        *counts.entry(outcome.mix).or_default() += 1;
+    }
+    let mut counts: Vec<_> = counts.into_iter().collect();
+    counts.sort_by_key(|(mix, _)| *mix);
+    counts
+        .into_iter()
+        .map(|(mix, count)| format!("{} {}", mix.label(), count))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 struct Report {
@@ -620,6 +779,7 @@ struct Report {
     sync_time: Duration,
     dial_time: Duration,
     dialed: Vec<DialOutcome>,
+    address_failures: Vec<(String, usize)>,
 }
 
 impl Report {
@@ -642,6 +802,7 @@ impl Report {
             sync_time: Duration::ZERO,
             dial_time: Duration::ZERO,
             dialed: Vec::new(),
+            address_failures: Vec::new(),
         }
     }
 
@@ -715,12 +876,24 @@ impl Display for Report {
             f,
             "----------------------------------- Dialing ------------------------------------"
         )?;
-        writeln!(f, "Peers dialled                 : {num_dialed}")?;
+        writeln!(
+            f,
+            "Peers dialled                 : {num_dialed}  ({})",
+            summarize_mixes(self.dialed.iter())
+        )?;
         if self.num_skipped > 0 {
             writeln!(f, "  skipped (banned / deleted)  : {}", self.num_skipped)?;
         }
-        writeln!(f, "Connected                     : {num_connected} ({pct:.1}%)")?;
-        writeln!(f, "Failed                        : {num_failed}")?;
+        writeln!(
+            f,
+            "Connected                     : {num_connected} ({pct:.1}%)  ({})",
+            summarize_mixes(self.dialed.iter().filter(|r| r.error.is_none()))
+        )?;
+        writeln!(
+            f,
+            "Failed                        : {num_failed}  ({})",
+            summarize_mixes(self.dialed.iter().filter(|r| r.error.is_some()))
+        )?;
         writeln!(f, "Time to dial all peers        : {:.1?}", self.dial_time)?;
 
         if num_failed > 0 {
@@ -736,6 +909,17 @@ impl Display for Report {
             }
         }
 
+        if !self.address_failures.is_empty() {
+            writeln!(
+                f,
+                "Why each address failed (the dialer tries every address a peer advertises; a dial cut short by \
+                 --dial-timeout records nothing):"
+            )?;
+            for (reason, count) in self.address_failures.iter().take(10) {
+                writeln!(f, "  {count:>5} x {reason}")?;
+            }
+        }
+
         if self.show_peers {
             writeln!(
                 f,
@@ -747,9 +931,19 @@ impl Display for Report {
                     None => writeln!(
                         f,
                         "  OK   {} {} ({:.1?}){}",
-                        outcome.node_id, outcome.address, outcome.latency, seed
+                        outcome.node_id.to_hex(),
+                        outcome.address,
+                        outcome.latency,
+                        seed
                     )?,
-                    Some(err) => writeln!(f, "  FAIL {} {} - {}{}", outcome.node_id, outcome.address, err, seed)?,
+                    Some(err) => writeln!(
+                        f,
+                        "  FAIL {} {} - {}{}",
+                        outcome.node_id.to_hex(),
+                        outcome.address,
+                        err,
+                        seed
+                    )?,
                 }
             }
         }
@@ -757,5 +951,32 @@ impl Display for Report {
             f,
             "================================================================================"
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::generalize_failure;
+
+    #[test]
+    fn generalize_failure_replaces_addresses_and_peers_but_keeps_punctuation() {
+        assert_eq!(
+            generalize_failure("Transport error for /onion3/abcdef123456:18141: Host unreachable"),
+            "Transport error for <address>: Host unreachable"
+        );
+        assert_eq!(
+            generalize_failure("Dial timeout dialing /ip4/1.2.3.4/tcp/18189 after 60.00s"),
+            "Dial timeout dialing <address> after 60.00s"
+        );
+        assert_eq!(
+            generalize_failure("All peer addresses are excluded for peer a1b68fcda89ce0366858fd9c66"),
+            "All peer addresses are excluded for peer <peer>"
+        );
+    }
+
+    #[test]
+    fn generalize_failure_leaves_plain_messages_alone() {
+        let msg = "Noise handshake error: peer closed the connection during the noise handshake";
+        assert_eq!(generalize_failure(msg), msg);
     }
 }

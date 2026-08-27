@@ -39,7 +39,7 @@ log4rs = { workspace = true, default-features = false, features = [
 ] }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 
 [features]
 default = ["libtor"]

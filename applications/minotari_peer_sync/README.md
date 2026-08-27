@@ -52,8 +52,11 @@ sections as `minotari_node` — so `--base-path`, `--config`, `--network` and `-
 they do for the node. Example: force TCP instead of the configured tor transport with
 `--transport tcp` (or `-p base_node.p2p.transport.type=tcp`).
 
-Progress and the final report go to stdout; the detail (every seed sync and every dial) is logged to
-`<base-path>/<network>/log/peer_sync/`.
+Progress and the final report go to stdout; the detail (every seed sync and every dial, and all comms warnings) is
+logged to `<base-path>/<network>/log/peer_sync/`.
+
+The log configuration is written to `<base-path>/<network>/config/peer_sync/log4rs.yml` on the first run and is not
+overwritten afterwards, so delete that file to pick up a newer version of it.
 
 ## Safe to run next to a running base node
 
@@ -113,6 +116,15 @@ Failure reasons:
 ================================================================================
 ```
 
+- **Address mix** in brackets after each dial count is what the peers advertise: `onion-only` peers are unreachable
+  without a tor transport, `ip-only` peers are unreachable without TCP. On mainnet the peer set is overwhelmingly
+  onion-only, so a TCP run understates reachability badly.
+- **Why each address failed** is the reason the dialer recorded against each individual address, read back from the
+  peer database. It is the useful one: the per-peer `Failure reasons` above it collapse to
+  `Failed to connect to peer within the maximum number of attempts` once every address of a peer has failed. Common
+  entries are `Transport error for <address>: Host unreachable`, which is tor reporting that it could not reach a
+  hidden service (the node is offline, the address is not malformed), and `No route to host` or `Connection refused`
+  for ip addresses.
 - **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
   what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
   duplicate.

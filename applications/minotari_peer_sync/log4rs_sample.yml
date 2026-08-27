@@ -79,20 +79,26 @@ loggers:
       - application
     additive: false
 
+  # `additive: false` keeps these off the console: the tool's own output and report are what belongs on stdout, and
+  # a run that abandons slow dials produces a steady stream of comms warnings that would otherwise bury it. The full
+  # detail is in network.log.
   comms:
     level: debug
     appenders:
       - network
+    additive: false
 
   p2p:
     level: debug
     appenders:
       - network
+    additive: false
 
   yamux:
     level: info
     appenders:
       - network
+    additive: false
 
   mio:
     level: error
