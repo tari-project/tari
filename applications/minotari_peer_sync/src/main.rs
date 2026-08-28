@@ -933,7 +933,7 @@ async fn fetch_peers(
 
 /// `ConnectivityError` only reports that every address failed, not why each one did. The dialer records the reason
 /// per address on the peer as it goes, so read those back for the peers that failed to give the real causes.
-async fn collect_address_failures(peer_manager: &PeerManager, results: &[DialOutcome]) -> Vec<(String, usize)> {
+async fn collect_address_failures(peer_manager: &PeerManager, results: &[DialOutcome]) -> Vec<(Sanitized, usize)> {
     let failed: Vec<NodeId> = results
         .iter()
         .filter(|r| r.error.is_some())
@@ -950,11 +950,12 @@ async fn collect_address_failures(peer_manager: &PeerManager, results: &[DialOut
         },
     };
 
-    let mut reasons: HashMap<String, usize> = HashMap::new();
+    let mut reasons: HashMap<Sanitized, usize> = HashMap::new();
     for peer in &peers {
         for address in peer.addresses.addresses() {
             if let Some(reason) = address.last_failed_reason() {
-                let counter = reasons.entry(generalize_failure(reason)).or_default();
+                // The dialer recorded this against an address the peer supplied, so it is untrusted as well.
+                let counter = reasons.entry(generalize_failure(&Sanitized::new(reason))).or_default();
                 *counter = counter.saturating_add(1);
             }
         }
@@ -979,16 +980,17 @@ async fn dial_peer(connectivity: &ConnectivityRequester, peer: &Peer, dial_timeo
             }
             None
         },
-        Ok(Err(err)) => Some(err.to_string()),
-        Err(_) => Some(format!("Dial timed out after {dial_timeout:.0?}")),
+        // The connectivity error quotes the addresses it tried, which the peer chose, so it is sanitised too.
+        Ok(Err(err)) => Some(Sanitized::new(&err.to_string())),
+        Err(_) => Some(Sanitized::new(&format!("Dial timed out after {dial_timeout:.0?}"))),
     };
     DialOutcome {
         node_id: peer.node_id.clone(),
         address: peer
             .addresses
             .best()
-            .map(|a| a.address().to_string())
-            .unwrap_or_else(|| "no address".to_string()),
+            .map(|a| Sanitized::new(&a.address().to_string()))
+            .unwrap_or_else(|| Sanitized::new("no address")),
         mix: AddressMix::of(peer),
         claim_age: ClaimAge::of(peer, now_epoch_secs()),
         is_seed: peer.is_seed(),
@@ -1017,10 +1019,82 @@ fn transport_label(transport: TransportType) -> &'static str {
     }
 }
 
+/// A string that came from a remote peer, with everything that could drive the operator's terminal escaped.
+///
+/// Constructing one of these is the only way peer-supplied text gets into the report, so the escaping happens once on
+/// the way in rather than at each of the places the report prints. A new print site cannot reintroduce the problem,
+/// and a new *ingestion* site has to go through [`Sanitized::new`] to typecheck.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct Sanitized(String);
+
+impl Sanitized {
+    fn new(raw: &str) -> Self {
+        Self(escape_untrusted(raw))
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for Sanitized {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+/// Escapes every character a remote peer could use to drive a terminal instead of just being read as text.
+///
+/// A peer's multiaddr is echoed back in this report, and for `/dns4/`, `/dns6/` and `/dnsaddr/` components the peer
+/// validator only checks the address's structure and that it is globally routable - never its character set (see
+/// `validate_address` in `comms/core/src/peer_validator/helpers.rs`). The multiaddr wire decode is a plain
+/// `str::from_utf8` and `Protocol`'s `Display` writes the string straight back out, so a peer that self-signs an
+/// identity claim - which needs no reputation - can carry ESC, NUL or a newline all the way to stdout. That is enough
+/// to clear the screen, recolour a failed dial so it reads as a success, or forge whole report lines. The point of
+/// this tool is to produce a report an operator can trust, so a remote peer must not be able to write part of it.
+///
+/// Escapes rather than drops, so that a hostile address is conspicuous in the report instead of quietly shortened.
+fn escape_untrusted(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        if c.is_control() || is_invisible(c) {
+            let code = u32::from(c);
+            if code <= 0xff {
+                out.push_str(&format!("\\x{code:02x}"));
+            } else {
+                out.push_str(&format!("\\u{{{code:04x}}}"));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Characters that render as nothing, or that reorder the text around them. `char::is_control` does not cover these:
+/// they are the bidirectional overrides and zero-width marks behind "Trojan Source" style spoofing, and a peer could
+/// use them to make one address display as another.
+fn is_invisible(c: char) -> bool {
+    matches!(c,
+        '\u{00ad}' |               // soft hyphen
+        '\u{200b}'..='\u{200f}' |  // zero width space/joiners, LTR and RTL marks
+        '\u{2028}'..='\u{202e}' |  // line and paragraph separators, bidi embedding and overrides
+        '\u{2060}'..='\u{2064}' |  // word joiner and invisible maths operators
+        '\u{2066}'..='\u{206f}' |  // bidi isolates and deprecated formatting
+        '\u{feff}'                 // zero width no-break space / BOM
+    )
+}
+
 /// Dial failures usually name the peer or address that failed, which would make every failure look unique in the
 /// summary. Those parts are replaced with placeholders so that failures group by their actual cause.
-fn generalize_failure(reason: &str) -> String {
-    reason
+///
+/// This is a grouping helper and deliberately not a sanitiser: it splits on whitespace, so an address carrying an
+/// embedded space or newline would never match the `<address>` placeholder and would pass straight through. It takes
+/// an already-[`Sanitized`] string for that reason, and only ever drops or keeps whole tokens, so its result is still
+/// safe to print.
+fn generalize_failure(reason: &Sanitized) -> Sanitized {
+    let generalized = reason
+        .as_str()
         .split_whitespace()
         .map(|token| {
             // Keep any trailing punctuation, so that `<address>:` still reads as a prefix of the message after it
@@ -1038,7 +1112,8 @@ fn generalize_failure(reason: &str) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" ");
+    Sanitized(generalized)
 }
 
 // -------------------------------------------- Reporting ---------------------------------------------------------//
@@ -1056,12 +1131,14 @@ struct SyncOutcome {
 #[derive(Debug)]
 struct DialOutcome {
     node_id: NodeId,
-    address: String,
+    /// The peer's own advertised address, so untrusted - see [`Sanitized`].
+    address: Sanitized,
     mix: AddressMix,
     claim_age: ClaimAge,
     is_seed: bool,
     latency: Duration,
-    error: Option<String>,
+    /// The dial failure, which quotes the address that failed, so also untrusted.
+    error: Option<Sanitized>,
 }
 
 /// The kinds of address a peer advertises. Which kinds a peer has decides which transports can reach it at all, so
@@ -1218,7 +1295,7 @@ struct Report {
     sync_time: Duration,
     dial_time: Duration,
     dialed: Vec<DialOutcome>,
-    address_failures: Vec<(String, usize)>,
+    address_failures: Vec<(Sanitized, usize)>,
     claim_ages: HashMap<ClaimAge, usize>,
     round_stats: Vec<RoundStats>,
     stopped_after: Option<String>,
@@ -1453,8 +1530,8 @@ impl Report {
         writeln!(f, "Time to dial all peers        : {:.1?}", self.dial_time)?;
 
         if num_failed > 0 {
-            let mut reasons: HashMap<String, usize> = HashMap::new();
-            for outcome in self.dialed.iter().filter_map(|r| r.error.as_deref()) {
+            let mut reasons: HashMap<Sanitized, usize> = HashMap::new();
+            for outcome in self.dialed.iter().filter_map(|r| r.error.as_ref()) {
                 let counter = reasons.entry(generalize_failure(outcome)).or_default();
                 *counter = counter.saturating_add(1);
             }
@@ -1611,7 +1688,7 @@ mod test {
         peer_manager::{Peer, PeerFeatures, PeerFlags},
     };
 
-    use super::{DialOutcome, Report, generalize_failure};
+    use super::{DialOutcome, Report, Sanitized, escape_untrusted, generalize_failure};
     use crate::{cli::Cli, config::PeerSyncConfig};
 
     fn empty_report() -> Report {
@@ -1651,14 +1728,18 @@ mod test {
     }
 
     fn outcome(error: Option<&str>) -> DialOutcome {
+        outcome_at("/ip4/1.2.3.4/tcp/18189", error)
+    }
+
+    fn outcome_at(address: &str, error: Option<&str>) -> DialOutcome {
         DialOutcome {
             node_id: super::NodeId::default(),
-            address: "/ip4/1.2.3.4/tcp/18189".to_string(),
+            address: Sanitized::new(address),
             mix: super::AddressMix::IpOnly,
             claim_age: super::ClaimAge::Unknown,
             is_seed: false,
             latency: super::Duration::from_millis(1),
-            error: error.map(ToString::to_string),
+            error: error.map(Sanitized::new),
         }
     }
 
@@ -1826,18 +1907,22 @@ mod test {
         assert!(result.contains("Peers in peer database        : 12"), "{result}");
     }
 
+    fn generalize(reason: &str) -> String {
+        generalize_failure(&Sanitized::new(reason)).as_str().to_string()
+    }
+
     #[test]
     fn generalize_failure_replaces_addresses_and_peers_but_keeps_punctuation() {
         assert_eq!(
-            generalize_failure("Transport error for /onion3/abcdef123456:18141: Host unreachable"),
+            generalize("Transport error for /onion3/abcdef123456:18141: Host unreachable"),
             "Transport error for <address>: Host unreachable"
         );
         assert_eq!(
-            generalize_failure("Dial timeout dialing /ip4/1.2.3.4/tcp/18189 after 60.00s"),
+            generalize("Dial timeout dialing /ip4/1.2.3.4/tcp/18189 after 60.00s"),
             "Dial timeout dialing <address> after 60.00s"
         );
         assert_eq!(
-            generalize_failure("All peer addresses are excluded for peer a1b68fcda89ce0366858fd9c66"),
+            generalize("All peer addresses are excluded for peer a1b68fcda89ce0366858fd9c66"),
             "All peer addresses are excluded for peer <peer>"
         );
     }
@@ -1845,6 +1930,67 @@ mod test {
     #[test]
     fn generalize_failure_leaves_plain_messages_alone() {
         let msg = "Noise handshake error: peer closed the connection during the noise handshake";
-        assert_eq!(generalize_failure(msg), msg);
+        assert_eq!(generalize(msg), msg);
+    }
+
+    /// A peer chooses its own advertised address, and for `/dns4/` and friends the peer validator never constrains
+    /// the character set, so the report must not echo whatever bytes it is handed. Anything that could move the
+    /// cursor, recolour output, or start a new line has to be inert by the time it reaches the terminal.
+    #[test]
+    fn terminal_control_sequences_from_a_peer_never_reach_the_report() {
+        // Clear the screen, home the cursor, turn the text green, forge a line, and slip in a NUL for good measure.
+        let hostile = "/dns4/\u{1b}[2J\u{1b}[H\u{1b}[32mOK reachable\nSeed peers connected to       : 99\0/tcp/9000";
+
+        let mut report = empty_report();
+        report.show_peers = true;
+        report.add_dial_results(vec![outcome_at(hostile, Some(hostile))]);
+        report.address_failures = vec![(generalize_failure(&Sanitized::new(hostile)), 1)];
+        let rendered = report.to_string();
+
+        // No raw ESC or NUL survives anywhere in the output. Raw newlines are not checked this way - the report is
+        // full of its own - so the peer's newline is pinned instead by the line it tried to forge never existing.
+        assert!(
+            !rendered.contains('\u{1b}'),
+            "a raw ESC from a peer reached the report:\n{rendered:?}"
+        );
+        assert!(
+            !rendered.contains('\0'),
+            "a raw NUL from a peer reached the report:\n{rendered:?}"
+        );
+        assert!(
+            !rendered
+                .lines()
+                .any(|l| l.trim() == "Seed peers connected to       : 99"),
+            "a peer forged a report line:\n{rendered}"
+        );
+        // Escaped, not dropped: the operator can see something hostile was advertised.
+        assert!(
+            rendered.contains("\\x1b[2J"),
+            "the ESC was not escaped visibly:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\\x00"),
+            "the NUL was not escaped visibly:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\\x0a"),
+            "the newline was not escaped visibly:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn escape_untrusted_leaves_ordinary_addresses_alone() {
+        let addr = "/onion3/abcdefghijklmnop:18141";
+        assert_eq!(escape_untrusted(addr), addr);
+        assert_eq!(escape_untrusted("/ip4/1.2.3.4/tcp/18189"), "/ip4/1.2.3.4/tcp/18189");
+    }
+
+    /// Bidi overrides and zero-width characters are not `char::is_control`, but they reorder or hide what is printed
+    /// around them, which is enough to make one address display as another.
+    #[test]
+    fn invisible_and_bidi_characters_are_escaped_too() {
+        assert_eq!(escape_untrusted("a\u{202e}b"), "a\\u{202e}b");
+        assert_eq!(escape_untrusted("a\u{200b}b"), "a\\u{200b}b");
+        assert_eq!(escape_untrusted("a\u{feff}b"), "a\\u{feff}b");
     }
 }
