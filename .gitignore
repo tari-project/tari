@@ -81,3 +81,5 @@ app_nanos.json
 Dockerfile
 docker-compose.yml
 entrypoint.sh
+
+.cocoindex_code/
