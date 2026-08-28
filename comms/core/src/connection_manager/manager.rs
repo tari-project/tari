@@ -53,7 +53,7 @@ use crate::{
     multiplexing::Substream,
     net_address::MultiaddrRange,
     noise::NoiseConfig,
-    peer_manager::{NodeId, NodeIdentity, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, PeerManagerError},
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
@@ -540,7 +540,27 @@ where
         node_id: NodeId,
         reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
-        match self.peer_manager.find_by_node_id(&node_id).await {
+        // Shed rather than block. This lookup is the first thing the ConnectionManager's request loop
+        // does for a dial, ahead of any log line or timeout guard, so a slow peer database used to
+        // stall the whole actor here. The query itself runs on the blocking pool and completes
+        // regardless of this timeout; we simply stop waiting for it.
+        let lookup = time::timeout(PEER_LOOKUP_TIMEOUT, self.peer_manager.find_by_node_id(&node_id)).await;
+        let lookup = match lookup {
+            Ok(result) => result,
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer database lookup for dial to '{}' exceeded {PEER_LOOKUP_TIMEOUT:.0?}. Shedding the dial \
+                     rather than stalling the connection manager.",
+                    node_id.short_str()
+                );
+                if let Some(reply) = reply {
+                    let _result = reply.send(Err(ConnectionManagerError::PeerLookupTimeout));
+                }
+                return;
+            },
+        };
+        match lookup {
             Ok(Some(peer)) => {
                 // The reply channel travels inside the request, so a shed request drops it and the
                 // caller sees a cancelled reply — never an indefinite wait.

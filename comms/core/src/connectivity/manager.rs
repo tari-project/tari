@@ -60,7 +60,7 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequester,
     },
-    peer_manager::NodeId,
+    peer_manager::{NodeId, PEER_LOOKUP_TIMEOUT},
     utils::datetime::format_duration,
 };
 
@@ -375,7 +375,25 @@ impl ConnectivityManagerActor {
         ref_kind: RefKind,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
-        match self.peer_manager.is_peer_banned(&node_id).await {
+        // Shed rather than block. `handle_dial_peer` runs on the ConnectivityManager's single request
+        // loop and this ban check precedes every other statement in it, so a slow peer database used
+        // to wedge the actor here — and with it `select_connections`, which the DHT needs to
+        // propagate anything at all. The query still completes on the blocking pool; we just stop
+        // waiting on it.
+        let ban_check = time::timeout(PEER_LOOKUP_TIMEOUT, self.peer_manager.is_peer_banned(&node_id)).await;
+        let Ok(ban_check) = ban_check else {
+            warn!(
+                target: LOG_TARGET,
+                "Ban check for dial to peer '{}' exceeded {PEER_LOOKUP_TIMEOUT:.0?}. Shedding the dial rather than \
+                 stalling the connectivity manager.",
+                node_id.short_str()
+            );
+            if let Some(reply) = reply_tx {
+                let _result = reply.send(Err(ConnectionManagerError::PeerLookupTimeout));
+            }
+            return;
+        };
+        match ban_check {
             Ok(true) => {
                 if let Some(reply) = reply_tx {
                     let _result = reply.send(Err(ConnectionManagerError::PeerBanned));

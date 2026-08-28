@@ -65,7 +65,7 @@ use crate::{
     multiplexing::Yamux,
     net_address::{MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::{CommsPublicKey, TransportProtocol},
@@ -290,16 +290,31 @@ where
             },
         }
 
-        let _ = self
-            .peer_manager
-            .add_or_update_peer(dial_state.peer().clone())
-            .await
-            .map_err(|e| {
+        // Bounded, because this write-back sits on the dialer's `select!` loop: every failed dial
+        // writes the peer back, so under a dial storm this is exactly where the dialer used to wedge.
+        // The write still completes on the blocking pool if it overruns - we just stop waiting for it
+        // and carry on servicing dial requests.
+        let write_back = time::timeout(
+            PEER_LOOKUP_TIMEOUT,
+            self.peer_manager.add_or_update_peer(dial_state.peer().clone()),
+        )
+        .await;
+        match write_back {
+            Ok(Ok(_)) => {},
+            Ok(Err(e)) => {
                 error!(target: LOG_TARGET, "Could not update peer data: {e}");
                 let _ = dial_state
                     .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
                     .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {e:?}"));
-            });
+            },
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer write-back for '{node_id}' exceeded {PEER_LOOKUP_TIMEOUT:.0?}; it will complete in the \
+                     background. The peer database is slow."
+                );
+            },
+        }
 
         #[cfg(feature = "metrics")]
         metrics::pending_connections(ConnectionDirection::Outbound).dec();
