@@ -400,10 +400,6 @@ async fn dial_rounds(
     // --- Dial, then ask whoever answered for more peers, round after round -----------------------------------------
     let dial_timeout = Duration::from_secs(cli.dial_timeout);
     let mut dialled: HashSet<NodeId> = HashSet::new();
-    // Banned and deleted peers are never added to `dialled`, so they come back around every round. Track them by node
-    // id rather than counting them, or a five round run reports each of them five times. The value is whether the peer
-    // is a seed, so that the Result section can reconcile them against the downloaded peers alone.
-    let mut skipped: HashMap<NodeId, bool> = HashMap::new();
     let mut connected_last_round: Vec<Peer> = Vec::new();
     let mut all_results: Vec<DialOutcome> = Vec::new();
     let started = Instant::now();
@@ -435,9 +431,7 @@ async fn dial_rounds(
             peer_manager.count().await.saturating_sub(peers_before)
         };
 
-        let (candidates, num_undialled) = undialled_candidates(cli, peer_manager, &dialled, &mut skipped).await?;
-        report.num_skipped = skipped.len();
-        report.num_downloaded_skipped = skipped.values().filter(|is_seed| !**is_seed).count();
+        let (candidates, num_undialled) = undialled_candidates(cli, peer_manager, &dialled).await?;
         if candidates.is_empty() {
             report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
             break;
@@ -483,7 +477,12 @@ async fn dial_rounds(
 
     report.dial_time = started.elapsed();
     report.address_failures = collect_address_failures(peer_manager, &all_results).await;
-    summarize_peer_db(peer_manager, report).await?;
+    let connected: HashSet<NodeId> = all_results
+        .iter()
+        .filter(|r| r.error.is_none())
+        .map(|r| r.node_id.clone())
+        .collect();
+    summarize_peer_db(peer_manager, &dialled, &connected, report).await?;
     report.add_dial_results(all_results);
     Ok(())
 }
@@ -497,7 +496,6 @@ async fn undialled_candidates(
     cli: &Cli,
     peer_manager: &PeerManager,
     dialled: &HashSet<NodeId>,
-    skipped: &mut HashMap<NodeId, bool>,
 ) -> Result<(Vec<Peer>, usize), ExitError> {
     let mut candidates: Vec<Peer> = peer_manager
         .all(None)
@@ -509,7 +507,6 @@ async fn undialled_candidates(
                 return false;
             }
             if p.deleted_at.is_some() || p.is_banned() {
-                skipped.insert(p.node_id.clone(), p.is_seed());
                 return false;
             }
             true
@@ -522,22 +519,36 @@ async fn undialled_candidates(
     Ok((candidates, num_undialled))
 }
 
-/// Reads the final state of the peer database into the report: how many peers were downloaded in total, and how the
-/// address claims of everything we know about are distributed by age.
-async fn summarize_peer_db(peer_manager: &PeerManager, report: &mut Report) -> Result<(), ExitError> {
+/// Reads the final state of the peer database into the report. Every count the Result section prints is derived
+/// here, from this one snapshot, so the section reconciles by construction: each peer falls into exactly one of
+/// dialled / banned or deleted / never reached, and the three add up to the peer's population by definition.
+///
+/// Deriving "banned or deleted" here rather than accumulating it as the rounds go is what makes it truthful.
+/// [`Peer::is_banned`] is wall-clock bound (`peer.rs:287` filters `banned_until` against `Utc::now()`), and the DHT's
+/// short ban is ten minutes, so a peer banned in an early round can legitimately be dialled in a later one. A running
+/// tally would have counted such a peer in both buckets at once.
+async fn summarize_peer_db(
+    peer_manager: &PeerManager,
+    dialled: &HashSet<NodeId>,
+    connected: &HashSet<NodeId>,
+    report: &mut Report,
+) -> Result<(), ExitError> {
     let now = now_epoch_secs();
     report.claim_ages.clear();
-    report.num_downloaded_total = 0;
+    report.reset_peer_db_counts();
     for peer in peer_manager
         .all(None)
         .await
         .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
     {
-        if !peer.is_seed() {
-            report.num_downloaded_total = report.num_downloaded_total.saturating_add(1);
-        }
         let counter = report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default();
         *counter = counter.saturating_add(1);
+
+        report.count_peer(
+            &peer,
+            dialled.contains(&peer.node_id),
+            connected.contains(&peer.node_id),
+        );
     }
     report.num_peers_in_db_final = report.claim_ages.values().sum();
     Ok(())
@@ -1191,9 +1202,17 @@ struct Report {
     /// Non-seed peers in the peer database at the end of the run, i.e. including everything the later rounds asked
     /// for. Equal to `num_downloaded` for a single round run.
     num_downloaded_total: usize,
-    /// The subset of `num_downloaded_total` that was never dialled because it was banned or deleted, as opposed to
-    /// simply never being reached before `--rounds` or `--max-peers` ran out.
+    /// The three disjoint buckets `num_downloaded_total` partitions into, all counted in the same pass over the final
+    /// peer database, so that they sum back to it exactly.
+    num_downloaded_dialled: usize,
+    /// Downloaded peers never dialled because they are banned or deleted *now*, at the end of the run.
     num_downloaded_skipped: usize,
+    /// Downloaded peers never dialled because `--rounds` or `--max-peers` ran out first.
+    num_downloaded_never_reached: usize,
+    /// The subset of `num_downloaded_dialled` that answered.
+    num_downloaded_connected: usize,
+    num_seeds_dialled: usize,
+    num_seeds_connected: usize,
     num_skipped: usize,
     sync: SyncOutcome,
     sync_time: Duration,
@@ -1222,7 +1241,12 @@ impl Report {
             num_peers_in_db_final: 0,
             num_downloaded: 0,
             num_downloaded_total: 0,
+            num_downloaded_dialled: 0,
             num_downloaded_skipped: 0,
+            num_downloaded_never_reached: 0,
+            num_downloaded_connected: 0,
+            num_seeds_dialled: 0,
+            num_seeds_connected: 0,
             num_skipped: 0,
             sync: SyncOutcome::default(),
             sync_time: Duration::ZERO,
@@ -1233,6 +1257,54 @@ impl Report {
             round_stats: Vec::new(),
             stopped_after: None,
         }
+    }
+
+    /// Files one peer from the final peer database snapshot into exactly one bucket, so that the buckets sum back to
+    /// the population they came from without any arithmetic at print time.
+    ///
+    /// `was_dialled` is tested before the ban, deliberately. [`Peer::is_banned`] is wall-clock bound - it filters
+    /// `banned_until` against `Utc::now()` - and the DHT's short ban is ten minutes, so a peer banned in an early
+    /// round can be dialled perfectly legitimately in a later one. Reading the ban first would count that peer as
+    /// both dialled and skipped, inflating the "banned or deleted" figure this section is meant to be trusted on.
+    fn count_peer(&mut self, peer: &Peer, was_dialled: bool, was_connected: bool) {
+        // Read from the peer as it is now, not as it was when a round passed over it: a ban that has since expired is
+        // not the reason this peer went undialled.
+        let unusable = peer.deleted_at.is_some() || peer.is_banned();
+        if !was_dialled && unusable {
+            self.num_skipped = self.num_skipped.saturating_add(1);
+        }
+        if peer.is_seed() {
+            if was_dialled {
+                self.num_seeds_dialled = self.num_seeds_dialled.saturating_add(1);
+                if was_connected {
+                    self.num_seeds_connected = self.num_seeds_connected.saturating_add(1);
+                }
+            }
+            return;
+        }
+        self.num_downloaded_total = self.num_downloaded_total.saturating_add(1);
+        if was_dialled {
+            self.num_downloaded_dialled = self.num_downloaded_dialled.saturating_add(1);
+            if was_connected {
+                self.num_downloaded_connected = self.num_downloaded_connected.saturating_add(1);
+            }
+        } else if unusable {
+            self.num_downloaded_skipped = self.num_downloaded_skipped.saturating_add(1);
+        } else {
+            self.num_downloaded_never_reached = self.num_downloaded_never_reached.saturating_add(1);
+        }
+    }
+
+    /// Zeroes everything [`summarize_peer_db`] counts, so that it always reports the snapshot it just read.
+    fn reset_peer_db_counts(&mut self) {
+        self.num_downloaded_total = 0;
+        self.num_downloaded_dialled = 0;
+        self.num_downloaded_skipped = 0;
+        self.num_downloaded_never_reached = 0;
+        self.num_downloaded_connected = 0;
+        self.num_seeds_dialled = 0;
+        self.num_seeds_connected = 0;
+        self.num_skipped = 0;
     }
 
     fn add_dial_results(&mut self, mut results: Vec<DialOutcome>) {
@@ -1483,31 +1555,23 @@ impl Report {
         Ok(())
     }
 
-    /// How many of the dialled peers are seeds, and how many of those connected.
-    fn seed_dial_counts(&self) -> (usize, usize) {
-        let dialled = self.dialed.iter().filter(|r| r.is_seed);
-        (dialled.clone().count(), dialled.filter(|r| r.error.is_none()).count())
-    }
-
-    /// How many of the dialled peers were downloaded (i.e. are not seeds), and how many of those connected.
-    fn downloaded_dial_counts(&self) -> (usize, usize) {
-        let dialled = self.dialed.iter().filter(|r| !r.is_seed);
-        (dialled.clone().count(), dialled.filter(|r| r.error.is_none()).count())
-    }
-
     /// The two numbers the tool exists to produce: how many peers were downloaded, and how many of *those* answered a
     /// dial. The seed peers are dialled too, but they were configured rather than downloaded, so counting them in
     /// either number would make the pair a rate over two different populations. They get their own line instead.
     fn fmt_result(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let (seeds_dialled, seeds_connected) = self.seed_dial_counts();
-        let (downloaded_dialled, downloaded_connected) = self.downloaded_dial_counts();
+        let (seeds_dialled, seeds_connected) = (self.num_seeds_dialled, self.num_seeds_connected);
+        let (downloaded_dialled, downloaded_connected) = (self.num_downloaded_dialled, self.num_downloaded_connected);
         // Not every downloaded peer gets dialled: `--max-peers` caps a round, `--rounds` can run out with candidates
         // left over, and banned or deleted peers are never candidates at all. Spell the remainder out, so that the
         // downloaded count and the dial count below it are visibly the same population rather than two adjacent
         // numbers that happen to differ.
-        let not_dialled = self.num_downloaded_total.saturating_sub(downloaded_dialled);
-        let banned = self.num_downloaded_skipped.min(not_dialled);
-        let never_reached = not_dialled.saturating_sub(banned);
+        //
+        // These are summed, not subtracted: `summarize_peer_db` puts every downloaded peer into exactly one of the
+        // three buckets in a single pass over the final peer database, so they add back up to `num_downloaded_total`
+        // by construction. Nothing here needs clamping to make the section reconcile.
+        let never_reached = self.num_downloaded_never_reached;
+        let banned = self.num_downloaded_skipped;
+        let not_dialled = never_reached.saturating_add(banned);
         writeln!(
             f,
             "------------------------------------ Result ------------------------------------"
@@ -1538,45 +1602,67 @@ impl Report {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration as StdDuration;
+
     use clap::Parser;
-    use tari_comms::{NodeIdentity, peer_manager::PeerFeatures};
+    use tari_comms::{
+        NodeIdentity,
+        net_address::MultiaddressesWithStats,
+        peer_manager::{Peer, PeerFeatures, PeerFlags},
+    };
 
     use super::{DialOutcome, Report, generalize_failure};
     use crate::{cli::Cli, config::PeerSyncConfig};
 
-    fn report_with(dialed: Vec<DialOutcome>, num_downloaded_total: usize) -> Report {
+    fn empty_report() -> Report {
         let cli = Cli::parse_from(["minotari_peer_sync"]);
         let config = PeerSyncConfig::default();
         let identity =
             NodeIdentity::random_multiple_addresses(&mut rand::rng(), Vec::new(), PeerFeatures::COMMUNICATION_NODE);
-        let mut report = Report::new(&cli, &config, &identity, false);
-        report.num_downloaded_total = num_downloaded_total;
-        report.num_peers_in_db_final = num_downloaded_total;
-        report.add_dial_results(dialed);
-        report
+        Report::new(&cli, &config, &identity, false)
+    }
+
+    fn peer(flags: PeerFlags) -> Peer {
+        let identity =
+            NodeIdentity::random_multiple_addresses(&mut rand::rng(), Vec::new(), PeerFeatures::COMMUNICATION_NODE);
+        Peer::new(
+            identity.public_key().clone(),
+            identity.node_id().clone(),
+            MultiaddressesWithStats::default(),
+            flags,
+            PeerFeatures::COMMUNICATION_NODE,
+            Vec::new(),
+            String::new(),
+        )
+    }
+
+    fn downloaded_peer() -> Peer {
+        peer(PeerFlags::default())
+    }
+
+    fn seed_peer() -> Peer {
+        peer(PeerFlags::SEED)
+    }
+
+    fn banned(mut peer: Peer) -> Peer {
+        peer.ban_for(StdDuration::from_secs(600), "test".to_string());
+        assert!(peer.is_banned(), "the test peer should be banned");
+        peer
     }
 
     fn outcome(error: Option<&str>) -> DialOutcome {
-        dial_outcome(false, error)
-    }
-
-    fn seed_outcome(error: Option<&str>) -> DialOutcome {
-        dial_outcome(true, error)
-    }
-
-    fn dial_outcome(is_seed: bool, error: Option<&str>) -> DialOutcome {
         DialOutcome {
             node_id: super::NodeId::default(),
             address: "/ip4/1.2.3.4/tcp/18189".to_string(),
             mix: super::AddressMix::IpOnly,
             claim_age: super::ClaimAge::Unknown,
-            is_seed,
+            is_seed: false,
             latency: super::Duration::from_millis(1),
             error: error.map(ToString::to_string),
         }
     }
 
-    /// The report's closing `Result` section, which is what a caller reads the two headline numbers off.
+    /// The report's closing `Result` section, which is what a caller reads the headline numbers off.
     fn result_section(report: &Report) -> String {
         let rendered = report.to_string();
         let (_, result) = rendered
@@ -1587,9 +1673,14 @@ mod test {
 
     #[test]
     fn report_ends_with_the_downloaded_and_connected_counts() {
-        let report = report_with(vec![outcome(None), outcome(None), outcome(Some("Dial timed out"))], 7);
+        let mut report = empty_report();
+        // Three downloaded peers dialled, two of which answered.
+        report.count_peer(&downloaded_peer(), true, true);
+        report.count_peer(&downloaded_peer(), true, true);
+        report.count_peer(&downloaded_peer(), true, false);
         let result = result_section(&report);
-        assert!(result.contains("Peers downloaded              : 7"), "{result}");
+
+        assert!(result.contains("Peers downloaded              : 3"), "{result}");
         assert!(
             result.contains("Peers connected to            : 2 of the 3 downloaded peer(s) dialled"),
             "{result}"
@@ -1598,7 +1689,7 @@ mod test {
 
     #[test]
     fn report_of_a_run_that_found_nothing_reports_zeroes_rather_than_nothing() {
-        let result = result_section(&report_with(Vec::new(), 0));
+        let result = result_section(&empty_report());
         assert!(result.contains("Peers downloaded              : 0"), "{result}");
         assert!(
             result.contains("Peers connected to            : 0 of the 0 downloaded peer(s) dialled"),
@@ -1614,17 +1705,13 @@ mod test {
     /// rather than downloaded, so they belong on their own line and out of both of the downloaded numbers.
     #[test]
     fn seed_peers_are_kept_out_of_the_downloaded_connect_rate() {
-        // Two downloaded peers, one of which connected, plus two seeds that both connected.
-        let mut report = report_with(
-            vec![
-                outcome(None),
-                outcome(Some("Dial timed out")),
-                seed_outcome(None),
-                seed_outcome(None),
-            ],
-            2,
-        );
+        let mut report = empty_report();
         report.num_seed_peers = 2;
+        // Two downloaded peers, one of which connected, plus two seeds that both connected.
+        report.count_peer(&downloaded_peer(), true, true);
+        report.count_peer(&downloaded_peer(), true, false);
+        report.count_peer(&seed_peer(), true, true);
+        report.count_peer(&seed_peer(), true, true);
         let result = result_section(&report);
 
         assert!(
@@ -1647,10 +1734,16 @@ mod test {
     /// dial count printed under it read as two measurements of one population when they are not.
     #[test]
     fn undialled_downloaded_peers_are_reconciled_in_the_result_section() {
-        // Ten downloaded peers known, but only three were ever dialled (one of them connected). One of the seven
-        // left over was banned; the other six simply never came up before the run ended.
-        let mut report = report_with(vec![outcome(None), outcome(Some("boom")), outcome(Some("boom"))], 10);
-        report.num_downloaded_skipped = 1;
+        let mut report = empty_report();
+        // Ten downloaded peers known: three dialled (one answered), one banned and never dialled, six that simply
+        // never came up before the run ended.
+        report.count_peer(&downloaded_peer(), true, true);
+        report.count_peer(&downloaded_peer(), true, false);
+        report.count_peer(&downloaded_peer(), true, false);
+        report.count_peer(&banned(downloaded_peer()), false, false);
+        for _ in 0..6 {
+            report.count_peer(&downloaded_peer(), false, false);
+        }
         let result = result_section(&report);
 
         assert!(result.contains("Peers downloaded              : 10"), "{result}");
@@ -1670,15 +1763,18 @@ mod test {
         );
     }
 
-    /// The banned/deleted breakdown may never exceed the remainder it is a part of, whatever the peer database did
-    /// mid-run.
+    /// A ban expires on the wall clock, so a peer passed over as banned in an early round can be dialled for real in
+    /// a later one. It must then be counted as dialled and *only* as dialled: counting it in the banned bucket too
+    /// would inflate that figure, and would previously have been papered over by clamping the split.
     #[test]
-    fn the_reconciliation_holds_when_every_downloaded_peer_was_dialled() {
-        let mut report = report_with(vec![outcome(None), outcome(None)], 2);
-        report.num_downloaded_skipped = 5;
+    fn a_peer_that_was_dialled_is_never_also_counted_as_banned() {
+        let mut report = empty_report();
+        // Still banned in the final snapshot, yet it was dialled earlier while the ban was not in force.
+        report.count_peer(&banned(downloaded_peer()), true, true);
         let result = result_section(&report);
 
-        assert!(result.contains("  dialled                     : 2"), "{result}");
+        assert!(result.contains("Peers downloaded              : 1"), "{result}");
+        assert!(result.contains("  dialled                     : 1"), "{result}");
         assert!(
             result.contains(
                 "  not dialled                 : 0 (0 never reached before --rounds / --max-peers ran out, 0 banned \
@@ -1686,13 +1782,38 @@ mod test {
             ),
             "{result}"
         );
+        assert!(
+            result.contains("Peers connected to            : 1 of the 1 downloaded peer(s) dialled"),
+            "{result}"
+        );
+        // The Dialing section's skipped line is derived from the same snapshot, so it must agree.
+        assert_eq!(report.num_skipped, 0);
+    }
+
+    /// The three downloaded buckets are counted in one pass over one snapshot, so they sum back to the population
+    /// exactly - there is no arithmetic at print time that could disagree.
+    #[test]
+    fn the_downloaded_buckets_always_sum_to_the_downloaded_total() {
+        let mut report = empty_report();
+        report.count_peer(&downloaded_peer(), true, true);
+        report.count_peer(&banned(downloaded_peer()), false, false);
+        report.count_peer(&downloaded_peer(), false, false);
+        report.count_peer(&seed_peer(), true, true);
+
+        assert_eq!(
+            report.num_downloaded_dialled + report.num_downloaded_skipped + report.num_downloaded_never_reached,
+            report.num_downloaded_total
+        );
+        assert_eq!(report.num_downloaded_total, 3, "the seed must not be counted here");
+        assert_eq!(report.num_seeds_dialled, 1);
     }
 
     /// The peer sync section is a snapshot of what the seed sync produced, so the rounds that run after it must not
     /// write back into it. Only the Result section carries the end-of-run peer database size.
     #[test]
     fn the_peer_sync_section_keeps_its_sync_time_database_count() {
-        let mut report = report_with(vec![outcome(None)], 9);
+        let mut report = empty_report();
+        report.add_dial_results(vec![outcome(None)]);
         report.num_peers_in_db = 4;
         report.num_peers_in_db_final = 12;
         let rendered = report.to_string();
