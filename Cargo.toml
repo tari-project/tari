@@ -35,6 +35,7 @@ members = [
     "infrastructure/test_utils",
     "buildtools/deps_only",
     "applications/minotari_node",
+    "applications/minotari_peer_sync",
     "applications/minotari_console_wallet",
     "applications/minotari_app_utilities",
     "applications/minotari_merge_mining_proxy",
@@ -84,6 +85,7 @@ minotari_console_wallet = { path = "applications/minotari_console_wallet", versi
 minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy", version = "5.7.0-pre.2" }
 minotari_miner = { path = "applications/minotari_miner", version = "5.7.0-pre.2" }
 minotari_node = { path = "applications/minotari_node", version = "5.7.0-pre.2" }
+minotari_peer_sync = { path = "applications/minotari_peer_sync", version = "5.7.0-pre.2" }
 minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.7.0-pre.2" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "5.7.0-pre.2" }
