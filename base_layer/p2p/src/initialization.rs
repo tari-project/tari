@@ -48,6 +48,7 @@ use tari_comms::{
     multiaddr::multiaddr,
     peer_manager::{
         NodeIdentity,
+        PEER_DATABASE_BUSY_TIMEOUT,
         Peer,
         PeerFeatures,
         PeerFlags,
@@ -151,7 +152,12 @@ where
     fs::create_dir_all(&data_path)?;
     let database_url = DbConnectionUrl::File(PathBuf::from(data_path).join("peers.db"));
     debug!(target: LOG_TARGET, "initialize_local_test_comms - node_identity: {}, database URL: {}", node_identity.node_id().to_hex(), database_url.to_url_string());
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
+        &database_url,
+        MIGRATIONS,
+        Some(5),
+        PEER_DATABASE_BUSY_TIMEOUT,
+    )?;
     let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
 
     //---------------------------------- Comms --------------------------------------------//
@@ -298,7 +304,14 @@ async fn configure_comms_and_dht(
             .join(&config.peer_database_name)
             .with_extension("db"),
     );
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(16))?;
+    // The peer database is written on every dial result, so it must not be able to park a caller for
+    // the shared 60s default - see `PEER_DATABASE_BUSY_TIMEOUT`.
+    let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
+        &database_url,
+        MIGRATIONS,
+        Some(16),
+        PEER_DATABASE_BUSY_TIMEOUT,
+    )?;
     let this_node = builder
         .node_identity()
         .as_deref()

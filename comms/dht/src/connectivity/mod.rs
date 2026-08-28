@@ -82,6 +82,51 @@ const DIAL_OVERSUBSCRIBE_FACTOR: usize = 3;
 /// requests when flooded — so the dial budget is capped regardless of how far below target we are.
 const MAX_IN_FLIGHT_POOL_MULTIPLE: usize = 2;
 
+/// How long a peer is excluded from selection after its first failed dial. Doubles per consecutive
+/// failure up to [`DIAL_BACKOFF_MAX`].
+const DIAL_BACKOFF_BASE: Duration = Duration::from_secs(30);
+
+/// Ceiling on the per-peer dial backoff. This also bounds the worst case where *every* known peer is
+/// unreachable: the pool then dials nothing until the earliest backoff expires, which is the correct
+/// response — those dials were failing anyway — but should not be open-ended.
+const DIAL_BACKOFF_MAX: Duration = Duration::from_secs(10 * 60);
+
+/// Hard cap on the number of peers we track backoff state for. Every tracked peer becomes one more
+/// `node_id != ?` term in the candidate-selection query, so this is kept well clear of SQLite's bind
+/// parameter limit and of making that query expensive. When the cap is hit the entries that expire
+/// soonest are dropped, which at worst lets those peers become eligible again early.
+const MAX_DIAL_BACKOFF_ENTRIES: usize = 500;
+
+/// Per-peer dial backoff state.
+///
+/// Without this, a node whose pool never becomes healthy re-dials the same set of unreachable peers
+/// on every refresh cycle, forever. Every one of those failures writes back through
+/// `PeerManager::add_or_update_peer`, and that write pressure is what tips the peer database — and
+/// with it the comms actors — over.
+#[derive(Debug, Clone, Copy)]
+struct DialBackoff {
+    /// Consecutive failed dials. Reset when the peer connects.
+    failures: u32,
+    /// The peer is not a dial candidate before this instant.
+    retry_after: Instant,
+}
+
+impl DialBackoff {
+    /// Advance the backoff after another failed dial.
+    fn next(previous: Option<Self>) -> Self {
+        let failures = previous.map_or(1, |b| b.failures.saturating_add(1));
+        // `2^(failures - 1) * base`, saturating rather than wrapping into a short delay.
+        let backoff = DIAL_BACKOFF_BASE
+            .checked_mul(1u32.checked_shl(failures.saturating_sub(1)).unwrap_or(u32::MAX))
+            .unwrap_or(DIAL_BACKOFF_MAX)
+            .min(DIAL_BACKOFF_MAX);
+        Self {
+            failures,
+            retry_after: Instant::now().checked_add(backoff).unwrap_or_else(Instant::now),
+        }
+    }
+}
+
 /// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
@@ -111,6 +156,8 @@ pub(crate) struct DhtConnectivity {
     /// and when the dial was issued. A pool entry without a connection handle is only meaningful
     /// when paired with this: it distinguishes "still dialing" from "stale slot".
     pending_dials: HashMap<NodeId, Instant>,
+    /// Peers whose dials keep failing, and when they may be dialed again. See [`DialBackoff`].
+    dial_backoff: HashMap<NodeId, DialBackoff>,
     /// Holds references to peer connections that should be kept alive
     connection_handles: Vec<PeerConnection>,
     stats: Stats,
@@ -134,6 +181,7 @@ impl DhtConnectivity {
         Self {
             random_pool: Vec::with_capacity(pool_size),
             pending_dials: HashMap::with_capacity(pool_size),
+            dial_backoff: HashMap::new(),
             connection_handles: Vec::with_capacity(pool_size),
             config,
             peer_manager,
@@ -629,6 +677,8 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
+        // The peer is reachable after all, so it starts from a clean slate the next time it fails.
+        self.dial_backoff.remove(conn.peer_node_id());
         if conn.peer_features().is_client() {
             debug!(
                 target: LOG_TARGET,
@@ -818,6 +868,7 @@ impl DhtConnectivity {
             PeerConnectFailed(node_id) => {
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 self.pending_dials.remove(&node_id);
+                self.record_dial_failure(&node_id);
                 if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
                     debug!(
                         target: LOG_TARGET,
@@ -951,15 +1002,60 @@ impl DhtConnectivity {
         self.random_pool.clone()
     }
 
+    /// Record a failed dial and push the peer's next eligible dial time out.
+    fn record_dial_failure(&mut self, node_id: &NodeId) {
+        let backoff = DialBackoff::next(self.dial_backoff.get(node_id).copied());
+        trace!(
+            target: LOG_TARGET,
+            "Dial to '{}' failed {} time(s) in a row; excluding it from selection for {:.0?}",
+            node_id.short_str(),
+            backoff.failures,
+            backoff.retry_after.saturating_duration_since(Instant::now()),
+        );
+        self.dial_backoff.insert(node_id.clone(), backoff);
+    }
+
+    /// Drop expired backoff entries and, if the map has grown past its cap, the entries that expire
+    /// soonest.
+    fn prune_dial_backoff(&mut self) {
+        let now = Instant::now();
+        self.dial_backoff.retain(|_, backoff| backoff.retry_after > now);
+        if self.dial_backoff.len() > MAX_DIAL_BACKOFF_ENTRIES {
+            let mut entries = self
+                .dial_backoff
+                .iter()
+                .map(|(node_id, backoff)| (node_id.clone(), backoff.retry_after))
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|(_, retry_after)| *retry_after);
+            let overflow = self.dial_backoff.len().saturating_sub(MAX_DIAL_BACKOFF_ENTRIES);
+            for (node_id, _) in entries.into_iter().take(overflow) {
+                self.dial_backoff.remove(&node_id);
+            }
+        }
+    }
+
     async fn fetch_random_peers(
         &mut self,
         n: usize,
         excluded: &[NodeId],
         known_good: bool,
     ) -> Result<Vec<NodeId>, DhtConnectivityError> {
+        // Peers that have just failed us are not candidates. Re-dialling them every cycle is both
+        // futile and the write load that overwhelms the peer database — every failed dial writes the
+        // peer back.
+        self.prune_dial_backoff();
         let mut excluded = excluded.to_vec();
+        excluded.extend(self.dial_backoff.keys().cloned());
         excluded.extend(self.peer_allow_list().await?);
         let peers = self.peer_manager.random_peers(n, &excluded, None, known_good).await?;
+        if peers.is_empty() && n > 0 && !self.dial_backoff.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "No dial candidates: {} known peer(s) are in dial backoff. Waiting for one to become eligible \
+                 rather than re-dialling peers that never resolve.",
+                self.dial_backoff.len()
+            );
+        }
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

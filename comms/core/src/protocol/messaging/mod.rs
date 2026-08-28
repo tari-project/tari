@@ -32,7 +32,6 @@ mod extension;
 pub use extension::MessagingProtocolExtension;
 
 mod error;
-mod forward;
 mod inbound;
 #[cfg(feature = "metrics")]
 mod metrics;

@@ -35,6 +35,10 @@ pub struct TrySpawnError;
 ///
 /// Use the asynchronous spawn method to spawn a task. If a given number of tasks are already spawned and have not
 /// completed, the spawn function will block (asynchronously) until a previously spawned task completes.
+///
+/// Cloning shares the same permit pool, so a clone can be handed to a spawned task purely to read
+/// the live occupancy from inside it.
+#[derive(Clone)]
 pub struct BoundedExecutor {
     // inner: runtime::Handle,
     semaphore: Arc<Semaphore>,

@@ -27,6 +27,7 @@ use std::{
     iter,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockWriteGuard},
+    time::Duration,
 };
 
 use diesel::{
@@ -178,7 +179,22 @@ impl DbConnection {
     /// override the default setting of 1.
     /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
     pub fn connect_url(db_url: &DbConnectionUrl, sqlite_pool_size: Option<usize>) -> Result<Self, StorageError> {
-        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}'");
+        Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+    }
+
+    /// As [`Self::connect_url`], but with an explicit `PRAGMA busy_timeout`.
+    ///
+    /// The default ([`PRAGMA_BUSY_TIMEOUT`], 60s) suits databases where losing a write is worse than
+    /// waiting - the wallet, for instance. It is a poor fit for databases on a hot networking path,
+    /// where a call that waits a minute for a lock has long outlived the request that made it and,
+    /// even when run on a blocking thread pool, occupies a thread in it for that whole minute. Such
+    /// callers should pass something far shorter.
+    pub fn connect_url_with_busy_timeout(
+        db_url: &DbConnectionUrl,
+        sqlite_pool_size: Option<usize>,
+        busy_timeout: Duration,
+    ) -> Result<Self, StorageError> {
+        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}' (busy_timeout {busy_timeout:.0?})");
 
         // Ensure the path exists
         if let DbConnectionUrl::File(path) = db_url &&
@@ -192,7 +208,7 @@ impl DbConnection {
             sqlite_pool_size.unwrap_or(1),
             true,
             true,
-            PRAGMA_BUSY_TIMEOUT,
+            busy_timeout,
         );
         pool.create_pool()?;
 
@@ -224,8 +240,19 @@ impl DbConnection {
         migrations: EmbeddedMigrations,
         sqlite_pool_size: Option<usize>,
     ) -> Result<Self, StorageError> {
+        Self::connect_and_migrate_with_busy_timeout(db_url, migrations, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+    }
+
+    /// As [`Self::connect_and_migrate`], but with an explicit `PRAGMA busy_timeout`. See
+    /// [`Self::connect_url_with_busy_timeout`] for when to override the default.
+    pub fn connect_and_migrate_with_busy_timeout(
+        db_url: &DbConnectionUrl,
+        migrations: EmbeddedMigrations,
+        sqlite_pool_size: Option<usize>,
+        busy_timeout: Duration,
+    ) -> Result<Self, StorageError> {
         let _lock = Self::acquire_migration_write_lock()?;
-        let conn = Self::connect_url(db_url, sqlite_pool_size)?;
+        let conn = Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, busy_timeout)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
