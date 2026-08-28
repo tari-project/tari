@@ -106,7 +106,7 @@ Transport                     : tcp
 ---------------------------------- Peer sync -----------------------------------
 Seed peers (config + DNS)     : 2
 Seed peers synced from        : 2
-Peers downloaded              : 11
+Peers downloaded by seed sync : 11
   new / duplicate this run    : 6 / 5
 Peers in peer database        : 13
 Peer sync status              : completed after 2.5s (1 round(s))
@@ -117,6 +117,9 @@ Failed                        : 10
 Time to dial all peers        : 2.2s
 Failure reasons:
      10 x ConnectionFailed: All peer addresses are excluded for peer <peer>
+------------------------------------ Result ------------------------------------
+Peers downloaded              : 11
+Peers connected to            : 3 of 13 dialled
 ================================================================================
 ```
 
@@ -139,9 +142,12 @@ Failure reasons:
   the seed sync found); `undialled` is how many known peers had still never been dialled when the round started, which
   grows when `--max-peers` caps a round. A round stops the run early when nobody answered (there is then nobody left
   to ask) or when no undialled peers remain.
-- **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
-  what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
-  duplicate.
+- **Result** is the bottom line: every non-seed peer in the peer database when the run ended, and how many of the
+  peers that were dialled answered. With `--rounds 1` its downloaded count is the same as **Peers downloaded by seed
+  sync** in the peer sync section above; with more rounds it also includes what the later rounds asked for.
+- **Peers downloaded by seed sync** is every non-seed peer in the peer database at the end of the sync. `new` and
+  `duplicate` are what the seed strap round itself reported: two seeds handing out the same peer counts once as new
+  and once as a duplicate.
 - **Peer sync status** mirrors the base node's own early-exit rules — the DHT stops as soon as it has enough peers, so
   a short run with a modest peer count is normal, not a failure.
 - `All peer addresses are excluded` above means the peer only advertises onion addresses while this run used the TCP

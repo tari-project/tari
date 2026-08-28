@@ -194,6 +194,17 @@ fn apply_overrides(cli: &Cli, config: &mut PeerSyncConfig) -> Result<(), ExitErr
     // We advertise no address of our own (see build_node_identity), so there is nothing to liveness check.
     p2p.listener_self_liveness_check_interval = None;
 
+    // The DHT's network discovery state machine returns immediately when this is off, which would leave the run
+    // waiting out --sync-timeout with an empty peer database and no indication of why.
+    if !p2p.dht.network_discovery.enabled {
+        return Err(ExitError::new(
+            ExitCode::ConfigError,
+            "`base_node.p2p.dht.network_discovery.enabled` is false, so the DHT downloads no peers and there would be \
+             nothing to dial. Enable it in config.toml, or override it for this run with `-p \
+             base_node.p2p.dht.network_discovery.enabled=true`.",
+        ));
+    }
+
     Ok(())
 }
 
@@ -381,6 +392,7 @@ fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIde
 async fn dial_rounds(
     cli: &Cli,
     config: &PeerSyncConfig,
+    node_identity: &NodeIdentity,
     peer_manager: &PeerManager,
     connectivity: &ConnectivityRequester,
     report: &mut Report,
@@ -388,6 +400,9 @@ async fn dial_rounds(
     // --- Dial, then ask whoever answered for more peers, round after round -----------------------------------------
     let dial_timeout = Duration::from_secs(cli.dial_timeout);
     let mut dialled: HashSet<NodeId> = HashSet::new();
+    // Banned and deleted peers are never added to `dialled`, so they come back around every round. Track them by node
+    // id rather than counting them, or a five round run reports each of them five times.
+    let mut skipped: HashSet<NodeId> = HashSet::new();
     let mut connected_last_round: Vec<Peer> = Vec::new();
     let mut all_results: Vec<DialOutcome> = Vec::new();
     let started = Instant::now();
@@ -402,7 +417,15 @@ async fn dial_rounds(
                 "Round {round}: asking {} peer(s) that answered last round for their peer lists...",
                 connected_last_round.len()
             );
-            ask_peers_for_peers(connectivity, peer_manager, config, &connected_last_round, cli).await
+            ask_peers_for_peers(
+                connectivity,
+                peer_manager,
+                config,
+                node_identity,
+                &connected_last_round,
+                cli,
+            )
+            .await
         };
         // Round 1 inherits everything the seed sync found; later rounds only count what asking added.
         let num_discovered = if round == 1 {
@@ -411,29 +434,8 @@ async fn dial_rounds(
             peer_manager.count().await.saturating_sub(peers_before)
         };
 
-        let mut num_skipped = 0usize;
-        let mut candidates: Vec<Peer> = peer_manager
-            .all(None)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
-            .into_iter()
-            .filter(|p| {
-                if dialled.contains(&p.node_id) || (cli.skip_seeds && p.is_seed()) {
-                    return false;
-                }
-                if p.deleted_at.is_some() || p.is_banned() {
-                    num_skipped = num_skipped.saturating_add(1);
-                    return false;
-                }
-                true
-            })
-            .collect();
-        report.num_skipped = report.num_skipped.saturating_add(num_skipped);
-        let num_undialled = candidates.len();
-        if let Some(max) = cli.max_peers {
-            candidates.truncate(max);
-        }
-
+        let (candidates, num_undialled) = undialled_candidates(cli, peer_manager, &dialled, &mut skipped).await?;
+        report.num_skipped = skipped.len();
         if candidates.is_empty() {
             report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
             break;
@@ -479,18 +481,63 @@ async fn dial_rounds(
 
     report.dial_time = started.elapsed();
     report.address_failures = collect_address_failures(peer_manager, &all_results).await;
+    summarize_peer_db(peer_manager, report).await?;
+    report.add_dial_results(all_results);
+    Ok(())
+}
+
+/// The peers that are worth dialling this round: everything in the peer database that has not been dialled yet and
+/// is not banned or deleted. Banned and deleted peers are recorded in `skipped` rather than counted, because they are
+/// never added to `dialled` and so come back around on every round.
+///
+/// Returns (the peers to dial, how many were undialled before `--max-peers` capped the round).
+async fn undialled_candidates(
+    cli: &Cli,
+    peer_manager: &PeerManager,
+    dialled: &HashSet<NodeId>,
+    skipped: &mut HashSet<NodeId>,
+) -> Result<(Vec<Peer>, usize), ExitError> {
+    let mut candidates: Vec<Peer> = peer_manager
+        .all(None)
+        .await
+        .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
+        .into_iter()
+        .filter(|p| {
+            if dialled.contains(&p.node_id) || (cli.skip_seeds && p.is_seed()) {
+                return false;
+            }
+            if p.deleted_at.is_some() || p.is_banned() {
+                skipped.insert(p.node_id.clone());
+                return false;
+            }
+            true
+        })
+        .collect();
+    let num_undialled = candidates.len();
+    if let Some(max) = cli.max_peers {
+        candidates.truncate(max);
+    }
+    Ok((candidates, num_undialled))
+}
+
+/// Reads the final state of the peer database into the report: how many peers were downloaded in total, and how the
+/// address claims of everything we know about are distributed by age.
+async fn summarize_peer_db(peer_manager: &PeerManager, report: &mut Report) -> Result<(), ExitError> {
     let now = now_epoch_secs();
     report.claim_ages.clear();
+    report.num_downloaded_total = 0;
     for peer in peer_manager
         .all(None)
         .await
         .map_err(|e| ExitError::new(ExitCode::NetworkError, e))?
     {
+        if !peer.is_seed() {
+            report.num_downloaded_total = report.num_downloaded_total.saturating_add(1);
+        }
         let counter = report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default();
         *counter = counter.saturating_add(1);
     }
     report.num_peers_in_db = report.claim_ages.values().sum();
-    report.add_dial_results(all_results);
     Ok(())
 }
 
@@ -513,7 +560,43 @@ async fn run(
     .await?;
     let peer_manager = comms.peer_manager();
     let connectivity = comms.connectivity();
+    let identity = comms.node_identity();
 
+    // Comms owns a peer database connection pool backed by blocking threads, and dropping the runtime out from under
+    // those can hang. Run the whole sync/dial phase to completion, then always shut comms down before returning.
+    let result = sync_and_dial(
+        &cli,
+        &config,
+        &identity,
+        &peer_manager,
+        &connectivity,
+        dht_bootstrap,
+        &mut report,
+    )
+    .await;
+
+    shutdown.trigger();
+    if time::timeout(Duration::from_secs(10), comms.wait_until_shutdown())
+        .await
+        .is_err()
+    {
+        debug!(target: LOG_TARGET, "Comms did not shut down cleanly within 10s");
+    }
+
+    result?;
+    Ok(report)
+}
+
+/// Waits for the DHT's peer sync to finish, then dials what it downloaded.
+async fn sync_and_dial(
+    cli: &Cli,
+    config: &PeerSyncConfig,
+    node_identity: &NodeIdentity,
+    peer_manager: &PeerManager,
+    connectivity: &ConnectivityRequester,
+    dht_bootstrap: BootstrapWaiter,
+    report: &mut Report,
+) -> Result<(), ExitError> {
     // --- Peer sync ------------------------------------------------------------------------------------------------
     let seeds = peer_manager
         .get_seed_peers()
@@ -540,17 +623,7 @@ async fn run(
     report.num_peers_in_db = all_peers.len();
     report.num_downloaded = all_peers.iter().filter(|p| !p.is_seed()).count();
 
-    dial_rounds(&cli, &config, &peer_manager, &connectivity, &mut report).await?;
-
-    shutdown.trigger();
-    if time::timeout(Duration::from_secs(10), comms.wait_until_shutdown())
-        .await
-        .is_err()
-    {
-        debug!(target: LOG_TARGET, "Comms did not shut down cleanly within 10s");
-    }
-
-    Ok(report)
+    dial_rounds(cli, config, node_identity, peer_manager, connectivity, report).await
 }
 
 /// Builds and spawns the same comms + DHT stack the base node builds, minus the blockchain services. The DHT starts
@@ -596,9 +669,12 @@ async fn start_comms(
     let dht = handles.expect_handle::<Dht>();
     let bootstrap = BootstrapWaiter::new(&dht);
 
-    let comms = handles
-        .take_handle::<UnspawnedCommsNode>()
-        .expect("P2pInitializer did not add UnspawnedCommsNode");
+    let comms = handles.take_handle::<UnspawnedCommsNode>().ok_or_else(|| {
+        ExitError::new(
+            ExitCode::NetworkError,
+            "P2pInitializer did not register an UnspawnedCommsNode, so comms cannot be started",
+        )
+    })?;
     let mut comms = spawn_comms_using_transport(comms, p2p_config.transport.clone(), |_identity| {})
         .await
         .map_err(|e| e.to_exit_error())?;
@@ -700,11 +776,12 @@ async fn ask_peers_for_peers(
     connectivity: &ConnectivityRequester,
     peer_manager: &PeerManager,
     config: &PeerSyncConfig,
+    node_identity: &NodeIdentity,
     sources: &[Peer],
     cli: &Cli,
 ) -> (usize, usize) {
     let answered = stream::iter(sources.iter())
-        .map(|peer| ask_peer_for_peers(connectivity, peer_manager, config, peer, cli))
+        .map(|peer| ask_peer_for_peers(connectivity, peer_manager, config, node_identity, peer, cli))
         .buffer_unordered(cli.concurrency.max(1))
         .filter(|answered| future::ready(*answered))
         .count()
@@ -717,6 +794,7 @@ async fn ask_peer_for_peers(
     connectivity: &ConnectivityRequester,
     peer_manager: &PeerManager,
     config: &PeerSyncConfig,
+    node_identity: &NodeIdentity,
     peer: &Peer,
     cli: &Cli,
 ) -> bool {
@@ -758,6 +836,11 @@ async fn ask_peer_for_peers(
                 continue;
             },
         };
+        // The DHT's own seed strap drops ourselves out of the peer lists it is handed; without this we would store
+        // ourselves as a peer and then spend a round trying to dial ourselves.
+        if candidate.public_key == *node_identity.public_key() {
+            continue;
+        }
         let existing = match peer_manager.find_by_public_key(&candidate.public_key).await {
             Ok(existing) => existing,
             Err(err) => {
@@ -1091,7 +1174,11 @@ struct Report {
     show_peers: bool,
     num_seed_peers: usize,
     num_peers_in_db: usize,
+    /// Non-seed peers in the peer database when the seed sync finished.
     num_downloaded: usize,
+    /// Non-seed peers in the peer database at the end of the run, i.e. including everything the later rounds asked
+    /// for. Equal to `num_downloaded` for a single round run.
+    num_downloaded_total: usize,
     num_skipped: usize,
     sync: SyncOutcome,
     sync_time: Duration,
@@ -1118,6 +1205,7 @@ impl Report {
             num_seed_peers: 0,
             num_peers_in_db: 0,
             num_downloaded: 0,
+            num_downloaded_total: 0,
             num_skipped: 0,
             sync: SyncOutcome::default(),
             sync_time: Duration::ZERO,
@@ -1147,6 +1235,7 @@ impl Display for Report {
         self.fmt_dialing(f)?;
         self.fmt_claim_ages(f)?;
         self.fmt_peer_list(f)?;
+        self.fmt_result(f)?;
         writeln!(
             f,
             "================================================================================"
@@ -1178,7 +1267,7 @@ impl Report {
         )?;
         writeln!(f, "Seed peers (config + DNS)     : {}", self.num_seed_peers)?;
         writeln!(f, "Seed peers synced from        : {}", self.sync.num_seeds_contacted)?;
-        writeln!(f, "Peers downloaded              : {}", self.num_downloaded)?;
+        writeln!(f, "Peers downloaded by seed sync : {}", self.num_downloaded)?;
         writeln!(
             f,
             "  new / duplicate this run    : {} / {}",
@@ -1376,11 +1465,84 @@ impl Report {
         }
         Ok(())
     }
+
+    /// The two numbers the tool exists to produce: how many peers were downloaded, and how many of them answered a
+    /// dial.
+    fn fmt_result(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "------------------------------------ Result ------------------------------------"
+        )?;
+        writeln!(f, "Peers downloaded              : {}", self.num_downloaded_total)?;
+        writeln!(
+            f,
+            "Peers connected to            : {} of {} dialled",
+            self.num_connected(),
+            self.dialed.len()
+        )
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::generalize_failure;
+    use clap::Parser;
+    use tari_comms::{NodeIdentity, peer_manager::PeerFeatures};
+
+    use super::{DialOutcome, Report, generalize_failure};
+    use crate::{cli::Cli, config::PeerSyncConfig};
+
+    fn report_with(dialed: Vec<DialOutcome>, num_downloaded_total: usize) -> Report {
+        let cli = Cli::parse_from(["minotari_peer_sync"]);
+        let config = PeerSyncConfig::default();
+        let identity =
+            NodeIdentity::random_multiple_addresses(&mut rand::rng(), Vec::new(), PeerFeatures::COMMUNICATION_NODE);
+        let mut report = Report::new(&cli, &config, &identity, false);
+        report.num_downloaded_total = num_downloaded_total;
+        report.add_dial_results(dialed);
+        report
+    }
+
+    fn outcome(error: Option<&str>) -> DialOutcome {
+        DialOutcome {
+            node_id: super::NodeId::default(),
+            address: "/ip4/1.2.3.4/tcp/18189".to_string(),
+            mix: super::AddressMix::IpOnly,
+            claim_age: super::ClaimAge::Unknown,
+            is_seed: false,
+            latency: super::Duration::from_millis(1),
+            error: error.map(ToString::to_string),
+        }
+    }
+
+    /// The report's closing `Result` section, which is what a caller reads the two headline numbers off.
+    fn result_section(report: &Report) -> String {
+        let rendered = report.to_string();
+        let (_, result) = rendered
+            .split_once("------------------------------------ Result ")
+            .unwrap_or_else(|| panic!("the report has no Result section:\n{rendered}"));
+        result.to_string()
+    }
+
+    #[test]
+    fn report_ends_with_the_downloaded_and_connected_counts() {
+        let report = report_with(vec![outcome(None), outcome(None), outcome(Some("Dial timed out"))], 7);
+        let result = result_section(&report);
+        assert!(result.contains("Peers downloaded              : 7"), "{result}");
+        assert!(
+            result.contains("Peers connected to            : 2 of 3 dialled"),
+            "{result}"
+        );
+    }
+
+    #[test]
+    fn report_of_a_run_that_found_nothing_reports_zeroes_rather_than_nothing() {
+        let result = result_section(&report_with(Vec::new(), 0));
+        assert!(result.contains("Peers downloaded              : 0"), "{result}");
+        assert!(
+            result.contains("Peers connected to            : 0 of 0 dialled"),
+            "{result}"
+        );
+    }
 
     #[test]
     fn generalize_failure_replaces_addresses_and_peers_but_keeps_punctuation() {
