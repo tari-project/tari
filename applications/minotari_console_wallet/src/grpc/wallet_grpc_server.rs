@@ -183,6 +183,7 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
     offline_signing::models::SignedOneSidedTransactionResult,
+    rpc::MAX_ALLOWED_QUERY_SIZE,
     transaction_components::{
         OutputFeatures,
         TransactionOutput,
@@ -382,6 +383,7 @@ impl WalletGrpcServer {
     async fn transfer_single_tx(
         &self,
         recipients: Vec<minotari_app_grpc::tari_rpc::PaymentRecipient>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<Response<minotari_app_grpc::tari_rpc::TransferResponse>, Status> {
         let fee_per_gram = recipients.first().expect("already checked").fee_per_gram;
         let recipients = recipients
@@ -417,7 +419,7 @@ impl WalletGrpcServer {
         let ids = transaction_service
             .send_one_sided_multi_recipient_transaction(
                 recipients,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 OutputFeatures::default(),
                 fee_per_gram.into(),
             )
@@ -1179,8 +1181,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             ));
         }
 
+        let selection_criteria = UtxoSelectionCriteria {
+            excluding: parse_excluded_commitments(message.excluded_commitments)?,
+            ..Default::default()
+        };
+
         if message.single_tx {
-            return self.transfer_single_tx(message.recipients).await;
+            return self.transfer_single_tx(message.recipients, selection_criteria).await;
         }
         let recipients = message
             .recipients
@@ -1230,6 +1237,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 MemoField::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
+            let selection_criteria = selection_criteria.clone();
             transfers.push(async move {
                 (
                     hex_address,
@@ -1238,7 +1246,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -1249,7 +1257,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_to_stealth_address_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -4539,5 +4547,77 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
         }
     } else {
         Default::default()
+    }
+}
+
+fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<CompressedCommitment>, Status> {
+    if commitments.len() > MAX_ALLOWED_QUERY_SIZE {
+        return Err(Status::invalid_argument(format!(
+            "excluded_commitments exceeds the maximum allowed size. Requested: {}, max: {MAX_ALLOWED_QUERY_SIZE}",
+            commitments.len()
+        )));
+    }
+
+    commitments
+        .into_iter()
+        .enumerate()
+        .map(|(index, commitment)| {
+            let commitment = CompressedCommitment::from_canonical_bytes(&commitment).map_err(|error| {
+                Status::invalid_argument(format!(
+                    "excluded_commitments[{index}] is not a canonical compressed commitment: {error}"
+                ))
+            })?;
+            commitment.to_commitment().map_err(|error| {
+                Status::invalid_argument(format!(
+                    "excluded_commitments[{index}] is not a valid compressed commitment: {error}"
+                ))
+            })?;
+            Ok(commitment)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::types::{CommitmentFactory, CompressedCommitment};
+    use tari_crypto::commitment::HomomorphicCommitmentFactory;
+    use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
+    use tari_utilities::ByteArray;
+
+    use super::parse_excluded_commitments;
+
+    #[test]
+    fn parse_excluded_commitments_rejects_invalid_lengths_with_their_index() {
+        let status = parse_excluded_commitments(vec![vec![1; 31]]).unwrap_err();
+
+        assert!(status.message().contains("excluded_commitments[0]"));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_rejects_invalid_points_with_their_index() {
+        let invalid_point = vec![
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let status = parse_excluded_commitments(vec![invalid_point]).unwrap_err();
+
+        assert!(status.message().contains("excluded_commitments[0]"));
+        assert!(status.message().contains("not a valid compressed commitment"));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_rejects_oversized_requests() {
+        let status = parse_excluded_commitments(vec![Vec::new(); MAX_ALLOWED_QUERY_SIZE + 1]).unwrap_err();
+
+        assert!(status.message().contains(&MAX_ALLOWED_QUERY_SIZE.to_string()));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_accepts_canonical_commitments() {
+        let commitment = CompressedCommitment::from_commitment(CommitmentFactory::default().zero());
+        let bytes = commitment.as_bytes().to_vec();
+
+        let parsed = parse_excluded_commitments(vec![bytes]).unwrap();
+
+        assert_eq!(parsed, vec![commitment]);
     }
 }

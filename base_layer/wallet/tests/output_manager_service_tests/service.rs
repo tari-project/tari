@@ -404,6 +404,55 @@ async fn fee_estimate() {
     assert_insufficient_funds_quote(fee.0, fee_per_gram, 1);
 }
 
+#[tokio::test]
+async fn prepare_transaction_fails_when_all_commitments_are_excluded() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let outputs = [3000u64, 4000]
+        .into_iter()
+        .map(|value| {
+            make_input(
+                &mut rand::rng(),
+                MicroMinotari::from(value),
+                &OutputFeatures::default(),
+                oms.key_manager_handle.key_manager(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for output in &outputs {
+        oms.output_manager_handle
+            .add_output(output.clone(), None)
+            .await
+            .unwrap();
+    }
+    backend
+        .mark_outputs_as_unspent(outputs.iter().map(|output| (output.output_hash(), true)).collect())
+        .unwrap();
+
+    let selection_criteria = UtxoSelectionCriteria {
+        excluding: outputs.iter().map(|output| output.commitment().clone()).collect(),
+        ..Default::default()
+    };
+    let result = oms
+        .output_manager_handle
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            MicroMinotari::from(100),
+            selection_criteria,
+            OutputFeatures::default(),
+            MicroMinotari::from(1),
+            script!(Nop).unwrap(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await;
+
+    assert!(matches!(result, Err(OutputManagerError::NotEnoughFunds)));
+}
+
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
