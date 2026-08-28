@@ -401,8 +401,9 @@ async fn dial_rounds(
     let dial_timeout = Duration::from_secs(cli.dial_timeout);
     let mut dialled: HashSet<NodeId> = HashSet::new();
     // Banned and deleted peers are never added to `dialled`, so they come back around every round. Track them by node
-    // id rather than counting them, or a five round run reports each of them five times.
-    let mut skipped: HashSet<NodeId> = HashSet::new();
+    // id rather than counting them, or a five round run reports each of them five times. The value is whether the peer
+    // is a seed, so that the Result section can reconcile them against the downloaded peers alone.
+    let mut skipped: HashMap<NodeId, bool> = HashMap::new();
     let mut connected_last_round: Vec<Peer> = Vec::new();
     let mut all_results: Vec<DialOutcome> = Vec::new();
     let started = Instant::now();
@@ -436,6 +437,7 @@ async fn dial_rounds(
 
         let (candidates, num_undialled) = undialled_candidates(cli, peer_manager, &dialled, &mut skipped).await?;
         report.num_skipped = skipped.len();
+        report.num_downloaded_skipped = skipped.values().filter(|is_seed| !**is_seed).count();
         if candidates.is_empty() {
             report.stopped_after = Some(format!("round {round}: no peers left that have not been dialled"));
             break;
@@ -495,7 +497,7 @@ async fn undialled_candidates(
     cli: &Cli,
     peer_manager: &PeerManager,
     dialled: &HashSet<NodeId>,
-    skipped: &mut HashSet<NodeId>,
+    skipped: &mut HashMap<NodeId, bool>,
 ) -> Result<(Vec<Peer>, usize), ExitError> {
     let mut candidates: Vec<Peer> = peer_manager
         .all(None)
@@ -507,7 +509,7 @@ async fn undialled_candidates(
                 return false;
             }
             if p.deleted_at.is_some() || p.is_banned() {
-                skipped.insert(p.node_id.clone());
+                skipped.insert(p.node_id.clone(), p.is_seed());
                 return false;
             }
             true
@@ -1189,6 +1191,9 @@ struct Report {
     /// Non-seed peers in the peer database at the end of the run, i.e. including everything the later rounds asked
     /// for. Equal to `num_downloaded` for a single round run.
     num_downloaded_total: usize,
+    /// The subset of `num_downloaded_total` that was never dialled because it was banned or deleted, as opposed to
+    /// simply never being reached before `--rounds` or `--max-peers` ran out.
+    num_downloaded_skipped: usize,
     num_skipped: usize,
     sync: SyncOutcome,
     sync_time: Duration,
@@ -1217,6 +1222,7 @@ impl Report {
             num_peers_in_db_final: 0,
             num_downloaded: 0,
             num_downloaded_total: 0,
+            num_downloaded_skipped: 0,
             num_skipped: 0,
             sync: SyncOutcome::default(),
             sync_time: Duration::ZERO,
@@ -1495,6 +1501,13 @@ impl Report {
     fn fmt_result(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let (seeds_dialled, seeds_connected) = self.seed_dial_counts();
         let (downloaded_dialled, downloaded_connected) = self.downloaded_dial_counts();
+        // Not every downloaded peer gets dialled: `--max-peers` caps a round, `--rounds` can run out with candidates
+        // left over, and banned or deleted peers are never candidates at all. Spell the remainder out, so that the
+        // downloaded count and the dial count below it are visibly the same population rather than two adjacent
+        // numbers that happen to differ.
+        let not_dialled = self.num_downloaded_total.saturating_sub(downloaded_dialled);
+        let banned = self.num_downloaded_skipped.min(not_dialled);
+        let never_reached = not_dialled.saturating_sub(banned);
         writeln!(
             f,
             "------------------------------------ Result ------------------------------------"
@@ -1504,6 +1517,12 @@ impl Report {
             f,
             "Peers downloaded              : {} (not counting the {} seed peer(s))",
             self.num_downloaded_total, self.num_seed_peers
+        )?;
+        writeln!(f, "  dialled                     : {downloaded_dialled}")?;
+        writeln!(
+            f,
+            "  not dialled                 : {not_dialled} ({never_reached} never reached before --rounds / \
+             --max-peers ran out, {banned} banned or deleted)"
         )?;
         writeln!(
             f,
@@ -1619,6 +1638,52 @@ mod test {
         );
         assert!(
             result.contains("Seed peers connected to       : 2 of the 2 seed peer(s) dialled"),
+            "{result}"
+        );
+    }
+
+    /// Downloaded peers are not all dialled - `--max-peers` caps a round, `--rounds` can run out, and banned peers
+    /// are never candidates. The Result section has to account for that gap itself, or the downloaded count and the
+    /// dial count printed under it read as two measurements of one population when they are not.
+    #[test]
+    fn undialled_downloaded_peers_are_reconciled_in_the_result_section() {
+        // Ten downloaded peers known, but only three were ever dialled (one of them connected). One of the seven
+        // left over was banned; the other six simply never came up before the run ended.
+        let mut report = report_with(vec![outcome(None), outcome(Some("boom")), outcome(Some("boom"))], 10);
+        report.num_downloaded_skipped = 1;
+        let result = result_section(&report);
+
+        assert!(result.contains("Peers downloaded              : 10"), "{result}");
+        assert!(result.contains("  dialled                     : 3"), "{result}");
+        // 3 dialled + 7 not dialled = the 10 downloaded, and 6 + 1 = the 7, all stated here rather than left to the
+        // reader to find in the Rounds table.
+        assert!(
+            result.contains(
+                "  not dialled                 : 7 (6 never reached before --rounds / --max-peers ran out, 1 banned \
+                 or deleted)"
+            ),
+            "{result}"
+        );
+        assert!(
+            result.contains("Peers connected to            : 1 of the 3 downloaded peer(s) dialled"),
+            "{result}"
+        );
+    }
+
+    /// The banned/deleted breakdown may never exceed the remainder it is a part of, whatever the peer database did
+    /// mid-run.
+    #[test]
+    fn the_reconciliation_holds_when_every_downloaded_peer_was_dialled() {
+        let mut report = report_with(vec![outcome(None), outcome(None)], 2);
+        report.num_downloaded_skipped = 5;
+        let result = result_section(&report);
+
+        assert!(result.contains("  dialled                     : 2"), "{result}");
+        assert!(
+            result.contains(
+                "  not dialled                 : 0 (0 never reached before --rounds / --max-peers ran out, 0 banned \
+                 or deleted)"
+            ),
             "{result}"
         );
     }
