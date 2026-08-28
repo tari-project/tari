@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.2](https://github.com/tari-project/tari/compare/v5.7.0-pre.1...v5.7.0-pre.2) (2026-08-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* rfc tip 004 (#7960)
+
+### Features
+
+* rfc tip 004 ([#7960](https://github.com/tari-project/tari/issues/7960)) ([89ea795](https://github.com/tari-project/tari/commit/89ea795722a06a290279d267d87413fceba9f1b3))
+
+
+### Bug Fixes
+
+* enforce safe limits on RPC request handling ([#7972](https://github.com/tari-project/tari/issues/7972)) ([26f5d97](https://github.com/tari-project/tari/commit/26f5d9742be8f736c3a5711608859dd4ea15e27c)), closes [#3](https://github.com/tari-project/tari/issues/3) [#3](https://github.com/tari-project/tari/issues/3)
+
 ## [5.7.0-pre.1](https://github.com/tari-project/tari/compare/v5.7.0-pre.0...v5.7.0-pre.1) (2026-08-25)
 
 

@@ -30,7 +30,7 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
-use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -42,7 +42,7 @@ use super::{
 };
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::{AchievedTargetDifficulty, randomx_factory::RandomXFactory},
+    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget, randomx_factory::RandomXFactory},
     test_helpers::create_consensus_rules,
     validation::{DifficultyCalculator, FinalHorizonStateValidation, error::ValidationError},
 };
@@ -126,7 +126,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         header: &BlockHeader,
         _: &BlockHeader,
         _: &[EpochTime],
-        _: Option<Difficulty>,
+        _: Option<AdjustedTarget>,
         _: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {

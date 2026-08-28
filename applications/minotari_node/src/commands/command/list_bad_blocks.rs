@@ -53,7 +53,7 @@ impl CommandContext {
                 i.saturating_add(1),
                 format!("{}", bad_block.height),
                 format!("#{}", bad_block.hash.to_hex()),
-                format!("{}", bad_block.reason),
+                bad_block.reason.to_string(),
             ]);
         }
         table.enable_row_count().print_stdout();

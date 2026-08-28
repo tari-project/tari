@@ -389,7 +389,7 @@ impl DhtConnectivity {
             "Refreshing peer pool (#new = {})",
             new_peers.len(),
         );
-        let old_peers = self.random_pool.drain(..).collect::<Vec<_>>();
+        let old_peers = std::mem::take(&mut self.random_pool);
         for peer in &new_peers {
             self.insert_random_peer(peer.clone());
         }

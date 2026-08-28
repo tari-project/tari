@@ -85,18 +85,8 @@ impl ConsensusManager {
 
     /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
-        let mut constants = self
-            .inner
-            .consensus_constants
-            .first()
-            .expect("Should always have at least one consensus constant");
-        for c in &self.inner.consensus_constants {
-            if c.effective_from_height() > height {
-                break;
-            }
-            constants = c
-        }
-        constants
+        ConsensusConstants::active_at_height(&self.inner.consensus_constants, height)
+            .expect("Should always have at least one consensus constant")
     }
 
     /// Get the vector of consensus constants applicable for all heights

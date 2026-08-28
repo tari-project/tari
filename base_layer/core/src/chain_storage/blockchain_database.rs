@@ -22,7 +22,7 @@
 use std::{
     cmp,
     cmp::{Ordering, max, min},
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
@@ -77,7 +77,7 @@ use tari_node_components::blocks::{
 use tari_transaction_components::{
     BanPeriod,
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
-    tari_proof_of_work::PowAlgorithm,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
@@ -134,7 +134,13 @@ use crate::{
     consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparer},
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::{TargetDifficultyWindow, randomx_factory::RandomXFactory},
+    proof_of_work::{
+        MAX_BACKOFF_RUN_LOOKBACK,
+        PowBackoffTracker,
+        TargetDifficultyWindow,
+        adjust_target,
+        randomx_factory::RandomXFactory,
+    },
     validation::{
         CandidateBlockValidator,
         DifficultyCalculator,
@@ -1780,36 +1786,7 @@ where B: BlockchainBackend
         current_block_hash: HashOutput,
     ) -> Result<TargetDifficulties, ChainStorageError> {
         let db = self.db_read_access()?;
-        let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
-
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height().saturating_add(1))
-            .map_err(ChainStorageError::UnexpectedResult)?;
-        // Add start header since we have it on hand
-        targets
-            .add_front(
-                current_header.header(),
-                current_header.accumulated_data().target_difficulty,
-            )
-            .map_err(ChainStorageError::UnexpectedResult)?;
-
-        while current_header.height() > 0 && !targets.is_full() {
-            current_header = db.fetch_chain_header_in_all_chains(&current_header.header().prev_hash)?;
-            if !targets
-                .is_algo_full(current_header.header().pow_algo())
-                .map_err(ChainStorageError::UnexpectedResult)?
-            {
-                targets
-                    .add_front(
-                        current_header.header(),
-                        current_header.accumulated_data().target_difficulty,
-                    )
-                    .map_err(ChainStorageError::UnexpectedResult)?;
-            }
-            if targets.is_full() {
-                break;
-            }
-        }
-        Ok(targets)
+        fetch_target_difficulties_for_next_block(&*db, &self.consensus_manager, &current_block_hash)
     }
 
     pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
@@ -2771,6 +2748,122 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
     db.write(txn)
 }
 
+/// One header that belongs in a difficulty window, plus its position in the walk so that the backoff run can be
+/// replayed over it in the right order.
+struct WindowHeader {
+    /// Index into [`DifficultyWindowWalk::algos`]
+    index: usize,
+    height: u64,
+    algo: PowAlgorithm,
+    timestamp: EpochTime,
+    target_difficulty: Difficulty,
+}
+
+/// The result of walking the chain backwards far enough to fill the difficulty window(s).
+///
+/// Only the PoW algorithm of each walked header is retained (one byte each), because that is all the backoff run
+/// needs; the full headers are deliberately *not* buffered. The walk can run all the way to genesis when one
+/// permitted algorithm is under-mined, so buffering whole headers would make this a memory amplification vector for
+/// any caller reachable over gRPC.
+struct DifficultyWindowWalk {
+    /// PoW algorithm of every walked header, newest first.
+    algos: Vec<PowAlgorithm>,
+    /// The headers that belong in a difficulty window, newest first. Bounded by `algo count * window capacity`.
+    window: Vec<WindowHeader>,
+}
+
+/// The single database operation the difficulty window walk needs. Factored into its own trait so that the walk and
+/// its replay - which are consensus critical and must agree with the incremental header sync path - can be tested
+/// against an in-memory chain.
+pub(crate) trait ChainHeaderSource {
+    fn fetch_chain_header(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError>;
+}
+
+impl<T: BlockchainBackend> ChainHeaderSource for T {
+    fn fetch_chain_header(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError> {
+        // The block may be in the chained orphan pool or in the main chain
+        self.fetch_chain_header_in_all_chains(hash)
+    }
+}
+
+/// Walks the chain backwards from `start_header`, recording the PoW algorithm of every header and the data of the
+/// headers that belong in a difficulty window, plus [`MAX_BACKOFF_RUN_LOOKBACK`] further headers of lookback.
+///
+/// The lookback is what makes the TIP-RFC-MT-0004 backoff modifier of the *oldest* window entry exact: if the whole
+/// lookback is a single algorithm, the run is at least `MAX_BACKOFF_RUN_LOOKBACK + 1` long and the modifier is capped
+/// anyway, so no deeper walk is ever required.
+fn walk_difficulty_window<T, F>(
+    db: &T,
+    start_header: ChainHeader,
+    mut take: F,
+) -> Result<DifficultyWindowWalk, ChainStorageError>
+where
+    T: ChainHeaderSource + ?Sized,
+    // Returns (belongs in a window, all windows are now full)
+    F: FnMut(PowAlgorithm) -> (bool, bool),
+{
+    let mut walk = DifficultyWindowWalk {
+        algos: Vec::new(),
+        window: Vec::new(),
+    };
+    let mut header = start_header;
+    let mut prev_hash;
+    loop {
+        let algo = header.header().pow_algo();
+        let (in_window, is_full) = take(algo);
+        if in_window {
+            walk.window.push(WindowHeader {
+                index: walk.algos.len(),
+                height: header.height(),
+                algo,
+                timestamp: header.header().timestamp(),
+                target_difficulty: header.accumulated_data().target_difficulty,
+            });
+        }
+        walk.algos.push(algo);
+        let height = header.height();
+        prev_hash = header.header().prev_hash;
+        if height == 0 || is_full {
+            break;
+        }
+        header = db.fetch_chain_header(&prev_hash)?;
+    }
+
+    let mut height = header.height();
+    for _ in 0..MAX_BACKOFF_RUN_LOOKBACK {
+        if height == 0 {
+            break;
+        }
+        header = db.fetch_chain_header(&prev_hash)?;
+        walk.algos.push(header.header().pow_algo());
+        height = header.height();
+        prev_hash = header.header().prev_hash;
+    }
+
+    Ok(walk)
+}
+
+/// Replays a backward walk oldest -> newest, so that each window entry's backoff modifier is derived from its own
+/// predecessors, and hands each window entry to `add`. Returns the seeded tracker.
+fn replay_difficulty_window<F>(
+    walk: &DifficultyWindowWalk,
+    mut add: F,
+) -> Result<PowBackoffTracker, ChainStorageError>
+where
+    F: FnMut(&WindowHeader, &PowBackoffTracker) -> Result<(), ChainStorageError>,
+{
+    let mut tracker = PowBackoffTracker::new();
+    let mut window = walk.window.iter().rev().peekable();
+    for (index, algo) in walk.algos.iter().enumerate().rev() {
+        if window.peek().is_some_and(|entry| entry.index == index) {
+            let entry = window.next().expect("just peeked");
+            add(entry, &tracker)?;
+        }
+        tracker.push(*algo);
+    }
+    Ok(tracker)
+}
+
 #[allow(clippy::ptr_arg)]
 pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     db: &T,
@@ -2778,25 +2871,119 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     pow_algo: PowAlgorithm,
     current_block_hash: &HashOutput,
 ) -> Result<TargetDifficultyWindow, ChainStorageError> {
-    // The block may be in the chained orphan pool or in the main chain
-    let mut header = db.fetch_chain_header_in_all_chains(current_block_hash)?;
-    let mut target_difficulties = consensus_manager
-        .new_target_difficulty(pow_algo, header.height().saturating_add(1))
-        .map_err(ChainStorageError::UnexpectedResult)?;
-    if header.header().pow.pow_algo == pow_algo {
-        target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
-    }
-    while header.height() > 0 && !target_difficulties.is_full() {
-        header = db.fetch_chain_header_in_all_chains(&header.header().prev_hash)?;
+    target_difficulty_for_next_block(db, consensus_manager, pow_algo, current_block_hash)
+}
 
-        // LWMA works with the "newest" value being at the back of the array, so we need to keep pushing to the front as
-        // we keep adding "older" values
-        if header.header().pow.pow_algo == pow_algo {
-            target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
+pub(crate) fn target_difficulty_for_next_block<T: ChainHeaderSource + ?Sized>(
+    db: &T,
+    consensus_manager: &BaseNodeConsensusManager,
+    pow_algo: PowAlgorithm,
+    current_block_hash: &HashOutput,
+) -> Result<TargetDifficultyWindow, ChainStorageError> {
+    let start_header = db.fetch_chain_header(current_block_hash)?;
+    let next_height = start_header.height().saturating_add(1);
+    let constants = consensus_manager.consensus_constants(next_height);
+    let capacity = difficulty_window_capacity(constants)?;
+    let mut target_difficulties = consensus_manager
+        .new_target_difficulty(pow_algo, next_height)
+        .map_err(ChainStorageError::UnexpectedResult)?;
+
+    // Pass 1: walk backwards, marking the headers of this algorithm that belong in the window.
+    let mut count = 0usize;
+    let walk = walk_difficulty_window(db, start_header, |algo| {
+        let in_window = algo == pow_algo && count < capacity;
+        if in_window {
+            count = count.saturating_add(1);
         }
-    }
+        (in_window, count >= capacity)
+    })?;
+
+    // Pass 2: replay oldest -> newest so that each block's backoff modifier is derived from its own predecessors.
+    let tracker = replay_difficulty_window(&walk, |entry, tracker| {
+        let header_constants = consensus_manager.consensus_constants(entry.height);
+        let modifier = tracker.modifier_for(entry.algo, header_constants.pow_backoff_cap());
+        let adjusted_target = adjust_target(
+            entry.target_difficulty,
+            modifier,
+            header_constants.min_pow_difficulty(entry.algo),
+            header_constants.max_pow_difficulty(entry.algo),
+        );
+        // LWMA works with the "newest" value being at the back of the array
+        target_difficulties.add_back(entry.timestamp, entry.target_difficulty, adjusted_target);
+        Ok(())
+    })?;
+    target_difficulties.set_next_modifier(tracker.modifier_for(pow_algo, constants.pow_backoff_cap()));
 
     Ok(target_difficulties)
+}
+
+#[allow(clippy::ptr_arg)]
+pub fn fetch_target_difficulties_for_next_block<T: BlockchainBackend>(
+    db: &T,
+    consensus_manager: &BaseNodeConsensusManager,
+    current_block_hash: &HashOutput,
+) -> Result<TargetDifficulties, ChainStorageError> {
+    target_difficulties_for_next_block(db, consensus_manager, current_block_hash)
+}
+
+pub(crate) fn target_difficulties_for_next_block<T: ChainHeaderSource + ?Sized>(
+    db: &T,
+    consensus_manager: &BaseNodeConsensusManager,
+    current_block_hash: &HashOutput,
+) -> Result<TargetDifficulties, ChainStorageError> {
+    let start_header = db.fetch_chain_header(current_block_hash)?;
+    let next_height = start_header.height().saturating_add(1);
+    let constants = consensus_manager.consensus_constants(next_height);
+    let capacity = difficulty_window_capacity(constants)?;
+    let mut targets =
+        TargetDifficulties::new(consensus_manager, next_height).map_err(ChainStorageError::UnexpectedResult)?;
+
+    // Pass 1: walk backwards, marking the headers that belong in one of the per-algorithm windows.
+    let mut counts: HashMap<PowAlgorithm, usize> = constants
+        .current_permitted_pow_algos()
+        .into_iter()
+        .map(|algo| (algo, 0usize))
+        .collect();
+    let walk = walk_difficulty_window(db, start_header, |algo| {
+        let in_window = match counts.get_mut(&algo) {
+            Some(count) if *count < capacity => {
+                *count = count.saturating_add(1);
+                true
+            },
+            _ => false,
+        };
+        (in_window, counts.values().all(|count| *count >= capacity))
+    })?;
+
+    // Pass 2: replay oldest -> newest so that each block's backoff modifier is derived from its own predecessors.
+    // `TargetDifficulties` owns an equivalent tracker, so the window entries are pushed through it and the headers
+    // that are not in any window only advance the run.
+    let mut next_index = walk.algos.len();
+    for entry in walk.window.iter().rev() {
+        for index in (entry.index.saturating_add(1)..next_index).rev() {
+            targets.push_algo(*walk.algos.get(index).expect("index is in range"));
+        }
+        targets
+            .add_back_parts(
+                entry.algo,
+                entry.timestamp,
+                entry.target_difficulty,
+                consensus_manager.consensus_constants(entry.height),
+            )
+            .map_err(ChainStorageError::UnexpectedResult)?;
+        next_index = entry.index;
+    }
+    for index in (0..next_index).rev() {
+        targets.push_algo(*walk.algos.get(index).expect("index is in range"));
+    }
+
+    Ok(targets)
+}
+
+fn difficulty_window_capacity(constants: &ConsensusConstants) -> Result<usize, ChainStorageError> {
+    Ok(usize::try_from(constants.difficulty_block_window())
+        .map_err(|e| ChainStorageError::UnexpectedResult(format!("difficulty block window exceeds usize::MAX: {e}")))?
+        .saturating_add(1))
 }
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Result<HistoricalBlock, ChainStorageError> {
@@ -4100,7 +4287,10 @@ mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_transaction_components::{
-        consensus::{ConsensusConstantsBuilder, consensus_constants::PowAlgorithmConstants},
+        consensus::{
+            ConsensusConstantsBuilder,
+            consensus_constants::{POW_BACKOFF_DISABLED, PowAlgorithmConstants},
+        },
         tari_proof_of_work::Difficulty,
     };
 
@@ -5150,6 +5340,11 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
+                    // `BlockSpec` mines every block at a hardcoded difficulty (1 by default) regardless of the
+                    // consensus target, so under TIP-RFC-MT-0004 the second consecutive Sha3x block would correctly
+                    // be rejected for not clearing its 2x target. That is a property of the test harness, not of the
+                    // reorg behaviour under test, so switch the backoff off here.
+                    .with_pow_backoff_cap(POW_BACKOFF_DISABLED)
                     .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
                         min_difficulty: Difficulty::min(),
                         max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),

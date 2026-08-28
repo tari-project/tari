@@ -559,6 +559,7 @@ mod clear_all_pending_headers {
                             PowAlgorithm::Sha3x,
                             Difficulty::min(),
                             Difficulty::min(),
+                            Difficulty::min(),
                         )
                         .unwrap(),
                     )

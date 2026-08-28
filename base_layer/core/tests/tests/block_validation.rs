@@ -58,7 +58,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::{
         ConsensusConstantsBuilder,
-        consensus_constants::{BlockVersion, PowAlgorithmConstants},
+        consensus_constants::{BlockVersion, POW_BACKOFF_DISABLED, PowAlgorithmConstants},
     },
     crypto_factories::CryptoFactories,
     key_manager::{KeyManager, TransactionKeyManagerInterface},
@@ -476,6 +476,11 @@ async fn test_orphan_body_validation() {
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
+        // These tests mine single-algorithm chains at a fixed difficulty chosen up front
+        // (`find_header_with_achieved_difficulty`), so under TIP-RFC-MT-0004 the block after the (Sha3x) genesis
+        // would correctly be rejected for not clearing its 2x target. That is a property of the test setup, not of
+        // the header/body validation under test, so switch the backoff off here.
+        .with_pow_backoff_cap(POW_BACKOFF_DISABLED)
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let key_manager = KeyManager::new_random().unwrap();
@@ -706,6 +711,11 @@ async fn test_header_validation() {
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
+        // These tests mine single-algorithm chains at a fixed difficulty chosen up front
+        // (`find_header_with_achieved_difficulty`), so under TIP-RFC-MT-0004 the block after the (Sha3x) genesis
+        // would correctly be rejected for not clearing its 2x target. That is a property of the test setup, not of
+        // the header/body validation under test, so switch the backoff off here.
+        .with_pow_backoff_cap(POW_BACKOFF_DISABLED)
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager);

@@ -113,6 +113,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             blockchain_version: u16::from(cc.blockchain_version()).into(),
             future_time_limit: cc.ftl().as_u64(),
             difficulty_block_window: cc.difficulty_block_window(),
+            pow_backoff_cap: cc.pow_backoff_cap(),
             max_block_transaction_weight: cc.max_block_transaction_weight(),
             max_block_coinbase_count: cc.max_block_coinbase_count(),
             pow_algo_count: cc.pow_algo_count(),
