@@ -108,7 +108,7 @@ Seed peers (config + DNS)     : 2
 Seed peers synced from        : 2
 Peers downloaded by seed sync : 11
   new / duplicate this run    : 6 / 5
-Peers in peer database        : 13
+Peers in database after sync  : 13
 Peer sync status              : completed after 2.5s (1 round(s))
 ----------------------------------- Dialing ------------------------------------
 Peers dialled                 : 13
@@ -118,8 +118,10 @@ Time to dial all peers        : 2.2s
 Failure reasons:
      10 x ConnectionFailed: All peer addresses are excluded for peer <peer>
 ------------------------------------ Result ------------------------------------
-Peers downloaded              : 11
-Peers connected to            : 3 of 13 dialled
+Peers in peer database        : 13
+Peers downloaded              : 11 (not counting the 2 seed peer(s))
+Peers connected to            : 1 of the 11 downloaded peer(s) dialled
+Seed peers connected to       : 2 of the 2 seed peer(s) dialled
 ================================================================================
 ```
 
@@ -142,9 +144,12 @@ Peers connected to            : 3 of 13 dialled
   the seed sync found); `undialled` is how many known peers had still never been dialled when the round started, which
   grows when `--max-peers` caps a round. A round stops the run early when nobody answered (there is then nobody left
   to ask) or when no undialled peers remain.
-- **Result** is the bottom line: every non-seed peer in the peer database when the run ended, and how many of the
-  peers that were dialled answered. With `--rounds 1` its downloaded count is the same as **Peers downloaded by seed
-  sync** in the peer sync section above; with more rounds it also includes what the later rounds asked for.
+- **Result** is the bottom line. `Peers downloaded` is every non-seed peer in the peer database when the run ended:
+  with `--rounds 1` that is the same as **Peers downloaded by seed sync** above, and with more rounds it also includes
+  what the later rounds asked for. `Peers connected to` is a rate over exactly that set — the seed peers get dialled
+  too, but they came from the config rather than from a download, so they are counted on their own line instead of
+  being mixed into either number. `Peers in peer database` here is the end-of-run size, seeds included, as opposed to
+  **Peers in database after sync** above, which is frozen at the moment the seed sync finished.
 - **Peers downloaded by seed sync** is every non-seed peer in the peer database at the end of the sync. `new` and
   `duplicate` are what the seed strap round itself reported: two seeds handing out the same peer counts once as new
   and once as a duplicate.

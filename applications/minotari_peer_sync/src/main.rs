@@ -537,7 +537,7 @@ async fn summarize_peer_db(peer_manager: &PeerManager, report: &mut Report) -> R
         let counter = report.claim_ages.entry(ClaimAge::of(&peer, now)).or_default();
         *counter = counter.saturating_add(1);
     }
-    report.num_peers_in_db = report.claim_ages.values().sum();
+    report.num_peers_in_db_final = report.claim_ages.values().sum();
     Ok(())
 }
 
@@ -550,30 +550,31 @@ async fn run(
     let mut shutdown = Shutdown::new();
     let mut report = Report::new(&cli, &config, &node_identity, libtor_dir.is_some());
 
-    let (comms, dht_bootstrap) = start_comms(
-        &cli,
-        &config,
-        node_identity,
-        libtor_dir.as_deref(),
-        shutdown.to_signal(),
-    )
-    .await?;
+    let (mut comms, dht_bootstrap) = start_comms(&cli, &config, node_identity, shutdown.to_signal()).await?;
+
+    // From here on comms is spawned. It owns a peer database connection pool backed by blocking threads, and dropping
+    // the runtime out from under those can hang, so every path out of this function goes through the one shutdown
+    // block below - including a listener that never bound.
+    let listener = wait_for_listener(&mut comms, libtor_dir.as_deref()).await;
     let peer_manager = comms.peer_manager();
     let connectivity = comms.connectivity();
     let identity = comms.node_identity();
 
-    // Comms owns a peer database connection pool backed by blocking threads, and dropping the runtime out from under
-    // those can hang. Run the whole sync/dial phase to completion, then always shut comms down before returning.
-    let result = sync_and_dial(
-        &cli,
-        &config,
-        &identity,
-        &peer_manager,
-        &connectivity,
-        dht_bootstrap,
-        &mut report,
-    )
-    .await;
+    let result = match listener {
+        Ok(()) => {
+            sync_and_dial(
+                &cli,
+                &config,
+                &identity,
+                &peer_manager,
+                &connectivity,
+                dht_bootstrap,
+                &mut report,
+            )
+            .await
+        },
+        Err(err) => Err(err),
+    };
 
     shutdown.trigger();
     if time::timeout(Duration::from_secs(10), comms.wait_until_shutdown())
@@ -632,7 +633,6 @@ async fn start_comms(
     cli: &Cli,
     config: &PeerSyncConfig,
     node_identity: Arc<NodeIdentity>,
-    libtor_dir: Option<&Path>,
     shutdown_signal: tari_shutdown::ShutdownSignal,
 ) -> Result<(CommsNode, BootstrapWaiter), ExitError> {
     let mut p2p_config = config.base_node.p2p.clone();
@@ -675,12 +675,19 @@ async fn start_comms(
             "P2pInitializer did not register an UnspawnedCommsNode, so comms cannot be started",
         )
     })?;
-    let mut comms = spawn_comms_using_transport(comms, p2p_config.transport.clone(), |_identity| {})
+    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone(), |_identity| {})
         .await
         .map_err(|e| e.to_exit_error())?;
 
-    // The listener binds asynchronously, and if it fails the connection manager exits without dialing anything. Wait
-    // for it here so that a failure is reported instead of showing up as every peer failing to dial.
+    Ok((comms, bootstrap))
+}
+
+/// The listener binds asynchronously, and if it fails the connection manager exits without dialing anything. Waiting
+/// for it means the failure is reported as itself, instead of showing up as every peer failing to dial.
+///
+/// This runs after [`start_comms`] rather than inside it because by then comms is spawned: its caller has to shut it
+/// down on the way out, and a failure here is not special enough to deserve a second way of doing that.
+async fn wait_for_listener(comms: &mut CommsNode, libtor_dir: Option<&Path>) -> Result<(), ExitError> {
     match time::timeout(
         LISTENER_TIMEOUT,
         comms.connection_manager_requester().wait_until_listening(),
@@ -707,8 +714,7 @@ async fn start_comms(
             "The listener did not report as bound within {LISTENER_TIMEOUT:.0?}, continuing anyway"
         ),
     }
-
-    Ok((comms, bootstrap))
+    Ok(())
 }
 
 /// Watches the DHT event stream for the end of the initial peer sync round.
@@ -1173,7 +1179,11 @@ struct Report {
     ephemeral_identity: bool,
     show_peers: bool,
     num_seed_peers: usize,
+    /// Peers in the peer database when the seed sync finished. Printed in the peer sync section, which is a snapshot
+    /// of that moment, so the later rounds must not touch it - see `num_peers_in_db_final`.
     num_peers_in_db: usize,
+    /// Peers in the peer database at the end of the run.
+    num_peers_in_db_final: usize,
     /// Non-seed peers in the peer database when the seed sync finished.
     num_downloaded: usize,
     /// Non-seed peers in the peer database at the end of the run, i.e. including everything the later rounds asked
@@ -1204,6 +1214,7 @@ impl Report {
             show_peers: cli.show_peers,
             num_seed_peers: 0,
             num_peers_in_db: 0,
+            num_peers_in_db_final: 0,
             num_downloaded: 0,
             num_downloaded_total: 0,
             num_skipped: 0,
@@ -1273,7 +1284,7 @@ impl Report {
             "  new / duplicate this run    : {} / {}",
             self.sync.num_new_peers, self.sync.num_duplicate_peers
         )?;
-        writeln!(f, "Peers in peer database        : {}", self.num_peers_in_db)?;
+        writeln!(f, "Peers in database after sync  : {}", self.num_peers_in_db)?;
         writeln!(
             f,
             "Peer sync status              : {} after {:.1?} ({} seed sync round(s))",
@@ -1466,19 +1477,42 @@ impl Report {
         Ok(())
     }
 
-    /// The two numbers the tool exists to produce: how many peers were downloaded, and how many of them answered a
-    /// dial.
+    /// How many of the dialled peers are seeds, and how many of those connected.
+    fn seed_dial_counts(&self) -> (usize, usize) {
+        let dialled = self.dialed.iter().filter(|r| r.is_seed);
+        (dialled.clone().count(), dialled.filter(|r| r.error.is_none()).count())
+    }
+
+    /// How many of the dialled peers were downloaded (i.e. are not seeds), and how many of those connected.
+    fn downloaded_dial_counts(&self) -> (usize, usize) {
+        let dialled = self.dialed.iter().filter(|r| !r.is_seed);
+        (dialled.clone().count(), dialled.filter(|r| r.error.is_none()).count())
+    }
+
+    /// The two numbers the tool exists to produce: how many peers were downloaded, and how many of *those* answered a
+    /// dial. The seed peers are dialled too, but they were configured rather than downloaded, so counting them in
+    /// either number would make the pair a rate over two different populations. They get their own line instead.
     fn fmt_result(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let (seeds_dialled, seeds_connected) = self.seed_dial_counts();
+        let (downloaded_dialled, downloaded_connected) = self.downloaded_dial_counts();
         writeln!(
             f,
             "------------------------------------ Result ------------------------------------"
         )?;
-        writeln!(f, "Peers downloaded              : {}", self.num_downloaded_total)?;
+        writeln!(f, "Peers in peer database        : {}", self.num_peers_in_db_final)?;
         writeln!(
             f,
-            "Peers connected to            : {} of {} dialled",
-            self.num_connected(),
-            self.dialed.len()
+            "Peers downloaded              : {} (not counting the {} seed peer(s))",
+            self.num_downloaded_total, self.num_seed_peers
+        )?;
+        writeln!(
+            f,
+            "Peers connected to            : {downloaded_connected} of the {downloaded_dialled} downloaded peer(s) \
+             dialled"
+        )?;
+        writeln!(
+            f,
+            "Seed peers connected to       : {seeds_connected} of the {seeds_dialled} seed peer(s) dialled"
         )
     }
 }
@@ -1498,17 +1532,26 @@ mod test {
             NodeIdentity::random_multiple_addresses(&mut rand::rng(), Vec::new(), PeerFeatures::COMMUNICATION_NODE);
         let mut report = Report::new(&cli, &config, &identity, false);
         report.num_downloaded_total = num_downloaded_total;
+        report.num_peers_in_db_final = num_downloaded_total;
         report.add_dial_results(dialed);
         report
     }
 
     fn outcome(error: Option<&str>) -> DialOutcome {
+        dial_outcome(false, error)
+    }
+
+    fn seed_outcome(error: Option<&str>) -> DialOutcome {
+        dial_outcome(true, error)
+    }
+
+    fn dial_outcome(is_seed: bool, error: Option<&str>) -> DialOutcome {
         DialOutcome {
             node_id: super::NodeId::default(),
             address: "/ip4/1.2.3.4/tcp/18189".to_string(),
             mix: super::AddressMix::IpOnly,
             claim_age: super::ClaimAge::Unknown,
-            is_seed: false,
+            is_seed,
             latency: super::Duration::from_millis(1),
             error: error.map(ToString::to_string),
         }
@@ -1529,7 +1572,7 @@ mod test {
         let result = result_section(&report);
         assert!(result.contains("Peers downloaded              : 7"), "{result}");
         assert!(
-            result.contains("Peers connected to            : 2 of 3 dialled"),
+            result.contains("Peers connected to            : 2 of the 3 downloaded peer(s) dialled"),
             "{result}"
         );
     }
@@ -1539,9 +1582,62 @@ mod test {
         let result = result_section(&report_with(Vec::new(), 0));
         assert!(result.contains("Peers downloaded              : 0"), "{result}");
         assert!(
-            result.contains("Peers connected to            : 0 of 0 dialled"),
+            result.contains("Peers connected to            : 0 of the 0 downloaded peer(s) dialled"),
             "{result}"
         );
+        assert!(
+            result.contains("Seed peers connected to       : 0 of the 0 seed peer(s) dialled"),
+            "{result}"
+        );
+    }
+
+    /// The headline pair has to be a rate over one population: the seeds are dialled too, but they were configured
+    /// rather than downloaded, so they belong on their own line and out of both of the downloaded numbers.
+    #[test]
+    fn seed_peers_are_kept_out_of_the_downloaded_connect_rate() {
+        // Two downloaded peers, one of which connected, plus two seeds that both connected.
+        let mut report = report_with(
+            vec![
+                outcome(None),
+                outcome(Some("Dial timed out")),
+                seed_outcome(None),
+                seed_outcome(None),
+            ],
+            2,
+        );
+        report.num_seed_peers = 2;
+        let result = result_section(&report);
+
+        assert!(
+            result.contains("Peers downloaded              : 2 (not counting the 2 seed peer(s))"),
+            "{result}"
+        );
+        // Not "1 of 4": the four dials include the two seeds, which are not downloaded peers.
+        assert!(
+            result.contains("Peers connected to            : 1 of the 2 downloaded peer(s) dialled"),
+            "{result}"
+        );
+        assert!(
+            result.contains("Seed peers connected to       : 2 of the 2 seed peer(s) dialled"),
+            "{result}"
+        );
+    }
+
+    /// The peer sync section is a snapshot of what the seed sync produced, so the rounds that run after it must not
+    /// write back into it. Only the Result section carries the end-of-run peer database size.
+    #[test]
+    fn the_peer_sync_section_keeps_its_sync_time_database_count() {
+        let mut report = report_with(vec![outcome(None)], 9);
+        report.num_peers_in_db = 4;
+        report.num_peers_in_db_final = 12;
+        let rendered = report.to_string();
+        let (header, result) = rendered
+            .split_once("------------------------------------ Result ")
+            .unwrap_or_else(|| panic!("the report has no Result section:\n{rendered}"));
+
+        assert!(header.contains("Peers in database after sync  : 4"), "{header}");
+        assert!(!header.contains(": 12"), "the sync snapshot was overwritten:\n{header}");
+        assert!(result.contains("Peers in peer database        : 12"), "{result}");
     }
 
     #[test]
