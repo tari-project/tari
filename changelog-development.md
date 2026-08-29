@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.3](https://github.com/tari-project/tari/compare/v5.7.0-pre.2...v5.7.0-pre.3) (2026-08-29)
+
+
+### Features
+
+* test peers app ([#7977](https://github.com/tari-project/tari/issues/7977)) ([2fb6c82](https://github.com/tari-project/tari/commit/2fb6c82d554b64117cd0b6135acb8e3065d103b7))
+* **wallet:** support excluding commitments from gRPC transfers ([#7974](https://github.com/tari-project/tari/issues/7974)) ([7ce6bec](https://github.com/tari-project/tari/commit/7ce6becca07f84a6a86abd36280a586846a651cb)), closes [tari-project/special_contributions#20](https://github.com/tari-project/special_contributions/issues/20)
+
+
+### Bug Fixes
+
+*  header sync ([#7976](https://github.com/tari-project/tari/issues/7976)) ([c1b0dce](https://github.com/tari-project/tari/commit/c1b0dcee0307cc348fd5d1e06901f8ace46d03b1))
+
 ## [5.7.0-pre.2](https://github.com/tari-project/tari/compare/v5.7.0-pre.1...v5.7.0-pre.2) (2026-08-26)
 
 
