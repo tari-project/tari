@@ -126,6 +126,7 @@ message SidechainBlockHeader {
   bytes metadata_hash = 11;
   ShardGroupAccumulatedData accumulated_data = 12;
   bytes epoch_hash = 13;
+  uint32 protocol_version = 14;
 }
 
 message EvictAtom {

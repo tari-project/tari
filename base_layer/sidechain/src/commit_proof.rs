@@ -185,6 +185,14 @@ impl ChainLink {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct SidechainBlockHeader {
     pub network: u8,
+    /// The protocol version the block was produced under. A block is self-describing: [`Self::calculate_hash`]
+    /// selects its hash schema from this field alone, so this crate can hash any block it is given without knowing
+    /// the sidechain's per-network activation schedule.
+    ///
+    /// Version 0 is the version a header encodes to when the field is absent, so a proof serialised before the
+    /// field existed still deserialises into the version it was produced under.
+    #[serde(default)]
+    pub protocol_version: u32,
     #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
     #[serde(with = "hex_or_bytes")]
@@ -208,19 +216,39 @@ pub struct SidechainBlockHeader {
 
 impl SidechainBlockHeader {
     pub fn calculate_hash(&self) -> FixedHash {
-        let fields = BlockHeaderHashFields::V1(BlockHeaderHashFieldsV1 {
-            network: self.network,
-            justify_id: &self.justify_id,
-            height: self.height,
-            epoch: self.epoch,
-            epoch_hash: &self.epoch_hash,
-            shard_group: self.shard_group,
-            proposed_by: self.proposed_by.as_bytes(),
-            state_merkle_root: &self.state_merkle_root,
-            command_merkle_root: &self.command_merkle_root,
-            accumulated_data: &self.accumulated_data,
-            metadata_hash: &self.metadata_hash,
-        });
+        let fields = match self.protocol_version {
+            // Protocol version 0 commits to a preimage that carries no version, so its block IDs stay reproducible.
+            0 => BlockHeaderHashFields::V1(BlockHeaderHashFieldsV1 {
+                network: self.network,
+                justify_id: &self.justify_id,
+                height: self.height,
+                epoch: self.epoch,
+                epoch_hash: &self.epoch_hash,
+                shard_group: self.shard_group,
+                proposed_by: self.proposed_by.as_bytes(),
+                state_merkle_root: &self.state_merkle_root,
+                command_merkle_root: &self.command_merkle_root,
+                accumulated_data: &self.accumulated_data,
+                metadata_hash: &self.metadata_hash,
+            }),
+            // From version 1 the version is part of the preimage, so that two versions sharing a preimage shape
+            // (a fork that changes something other than the header) still produce distinct block IDs and the
+            // version a block claims cannot be altered without invalidating it.
+            protocol_version => BlockHeaderHashFields::V2(BlockHeaderHashFieldsV2 {
+                network: self.network,
+                protocol_version,
+                justify_id: &self.justify_id,
+                height: self.height,
+                epoch: self.epoch,
+                epoch_hash: &self.epoch_hash,
+                shard_group: self.shard_group,
+                proposed_by: self.proposed_by.as_bytes(),
+                state_merkle_root: &self.state_merkle_root,
+                command_merkle_root: &self.command_merkle_root,
+                accumulated_data: &self.accumulated_data,
+                metadata_hash: &self.metadata_hash,
+            }),
+        };
 
         layer2::block_hasher().chain(&fields).finalize().into()
     }
@@ -360,14 +388,35 @@ pub struct ProposalCertificateSignatureFields<'a> {
     pub decision: QuorumDecision,
 }
 
+/// The hash preimage schemas for a sidechain block header, one per shape the header has taken. The variant is
+/// selected by [`SidechainBlockHeader::protocol_version`], so the variant index is consensus-bound: entries are
+/// append-only and never reordered.
 #[derive(Debug, BorshSerialize)]
 pub enum BlockHeaderHashFields<'a> {
     V1(BlockHeaderHashFieldsV1<'a>),
+    V2(BlockHeaderHashFieldsV2<'a>),
 }
 
 #[derive(Debug, BorshSerialize)]
 pub struct BlockHeaderHashFieldsV1<'a> {
     pub network: u8,
+    pub justify_id: &'a FixedHash,
+    pub height: u64,
+    pub epoch: u64,
+    pub epoch_hash: &'a FixedHash,
+    pub shard_group: ShardGroup,
+    pub accumulated_data: &'a ShardGroupAccumulatedData,
+    // NOTE this is borsh encoded as variable length bytes - technically should always be 32
+    pub proposed_by: &'a [u8],
+    pub state_merkle_root: &'a FixedHash,
+    pub command_merkle_root: &'a FixedHash,
+    pub metadata_hash: &'a FixedHash,
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct BlockHeaderHashFieldsV2<'a> {
+    pub network: u8,
+    pub protocol_version: u32,
     pub justify_id: &'a FixedHash,
     pub height: u64,
     pub epoch: u64,
