@@ -113,6 +113,20 @@ mod error;
 mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
+
+/// Deadline for a single control message — the transaction inventory and the list of requested
+/// indexes. Both are one bounded frame, so a short deadline is safe.
+const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Deadline for one item of the transaction stream, and for closing the substream.
+///
+/// This is an *inter-message* bound: the clock restarts for every frame, so it limits how long a
+/// peer may stall between transactions, not how long a whole transfer may take. It is deliberately
+/// longer than [`MESSAGE_TIMEOUT`] because a frame here carries an entire transaction and may be up
+/// to [`MAX_FRAME_SIZE`] (3 MiB) — large aggregate transactions really do reach the low megabytes —
+/// and a peer behind a slow link such as a Tor circuit sustaining ~50 KiB/s needs about a minute to
+/// deliver one. Ten seconds would abort such a peer mid-sync.
+const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(60);
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
@@ -373,11 +387,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 Ok(())
             },
             Err(err) => {
-                if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {err}");
+                // Bounded: this runs while already handling an error, often because the peer has
+                // gone away, which is exactly when an unbounded flush or close never returns.
+                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
+                    debug!(target: LOG_TARGET, "Timed out flushing stream: {err}");
                 }
-                if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {err}");
+                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await {
+                    debug!(target: LOG_TARGET, "Timed out closing stream: {err}");
                 }
                 Err(err)
             },
@@ -438,7 +454,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         }
 
         // Close the stream after writing
-        self.framed.close().await?;
+        time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close())
+            .await
+            .map_err(|_| MempoolProtocolError::SendTimeout)??;
 
         Ok(())
     }
@@ -450,11 +468,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 Ok(())
             },
             Err(err) => {
-                if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {err}");
+                // Bounded: this runs while already handling an error, often because the peer has
+                // gone away, which is exactly when an unbounded flush or close never returns.
+                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
+                    debug!(target: LOG_TARGET, "Timed out flushing stream: {err}");
                 }
-                if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {err}");
+                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await {
+                    debug!(target: LOG_TARGET, "Timed out closing stream: {err}");
                 }
                 Err(err)
             },
@@ -543,7 +563,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
         let mut num_recv = 0usize;
-        while let Some(result) = self.framed.next().await {
+        // Bounded per item: an unbounded read here parks forever against a peer that neither sends
+        // the terminator nor closes the substream — which pins this node's mempool, and with it the
+        // blockchain database and its LMDB file lock, for the life of the process.
+        while let Some(result) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.next())
+            .await
+            .map_err(|_| MempoolProtocolError::RecvTimeout)?
+        {
             let bytes = result?;
             let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
                 MempoolProtocolError::DecodeFailed {
@@ -650,7 +676,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn read_message<T: prost::Message + Default>(&mut self) -> Result<T, MempoolProtocolError> {
-        let msg = time::timeout(Duration::from_secs(10), self.framed.next())
+        let msg = time::timeout(MESSAGE_TIMEOUT, self.framed.next())
             .await
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
             .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_node_id.clone()))??;
@@ -666,18 +692,24 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         S: Stream<Item = T> + Unpin,
         T: prost::Message,
     {
-        let mut s = stream.map(|m| Bytes::from(m.to_encoded_bytes())).map(Ok);
-        self.framed.send_all(&mut s).await?;
+        // `send_all` has no deadline, so a peer that stops reading stalls this task indefinitely.
+        // Feeding item by item keeps the batching (one flush at the end) while bounding each step.
+        let mut stream = stream.map(|m| Bytes::from(m.to_encoded_bytes()));
+        while let Some(bytes) = stream.next().await {
+            time::timeout(STREAM_ITEM_TIMEOUT, self.framed.feed(bytes))
+                .await
+                .map_err(|_| MempoolProtocolError::SendTimeout)??;
+        }
+        time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush())
+            .await
+            .map_err(|_| MempoolProtocolError::SendTimeout)??;
         Ok(())
     }
 
     async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
-        time::timeout(
-            Duration::from_secs(10),
-            self.framed.send(message.to_encoded_bytes().into()),
-        )
-        .await
-        .map_err(|_| MempoolProtocolError::SendTimeout)??;
+        time::timeout(MESSAGE_TIMEOUT, self.framed.send(message.to_encoded_bytes().into()))
+            .await
+            .map_err(|_| MempoolProtocolError::SendTimeout)??;
         Ok(())
     }
 }

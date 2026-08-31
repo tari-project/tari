@@ -76,6 +76,8 @@ url = "2.5.4"
 
 [dev-dependencies]
 criterion = { version = "0.8" }
+# `test-util` enables tokio's paused clock, used to exercise protocol timeouts without real waits
+tokio = { workspace = true, features = ["test-util"] }
 flate2 = "1"
 tari_p2p = { workspace = true, features = ["test-mocks"] }
 tari_test_utils = { workspace = true }

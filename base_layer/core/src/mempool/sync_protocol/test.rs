@@ -23,7 +23,7 @@
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
-use std::{fmt, io, sync::Arc};
+use std::{fmt, io, sync::Arc, time::Duration};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
@@ -58,7 +58,13 @@ use crate::{
     mempool::{
         Mempool,
         proto,
-        sync_protocol::{MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL, MempoolPeerProtocol, MempoolSyncProtocol},
+        sync_protocol::{
+            MAX_FRAME_SIZE,
+            MEMPOOL_SYNC_PROTOCOL,
+            MempoolPeerProtocol,
+            MempoolProtocolError,
+            MempoolSyncProtocol,
+        },
     },
     validation::mocks::MockValidator,
 };
@@ -358,4 +364,44 @@ where
     T: prost::Message,
 {
     writer.send(message.to_encoded_bytes().into()).await.unwrap();
+}
+
+/// A peer that takes our inventory and then goes silent — it neither sends the terminator nor
+/// closes the substream. This used to park the initiator forever on an unbounded `framed.next()`,
+/// and because each initiator task holds a `Mempool` clone (and through its validator, a handle on
+/// the blockchain database) a single such peer pinned the node's LMDB file lock for the life of the
+/// process. In the cucumber suite that stopped a restarted node from ever opening its database.
+///
+/// Time is paused, so the inter-message deadline elapses instantly in test time. The outer deadline
+/// is a watchdog: it is strictly longer than the one under test, so if the read ever becomes
+/// unbounded again this fails with a clear message instead of hanging.
+#[tokio::test(start_paused = true)]
+async fn initiator_gives_up_when_a_peer_stalls_mid_transaction_stream() {
+    let (mempool, _transactions) = new_mempool_with_transactions(1).await;
+    let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    // Held for the whole test: dropping it would close the substream, which is the *other* way out
+    // of the read loop and not what we are testing.
+    let mut peer = framing::canonical(sock_in, MAX_FRAME_SIZE);
+
+    let framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let initiator = task::spawn(async move {
+        MempoolPeerProtocol::new(Default::default(), framed, peer_node.node_id().clone(), mempool)
+            .start_initiator()
+            .await
+    });
+
+    // Take the inventory the initiator sends, then answer nothing at all.
+    let _inventory: proto::TransactionInventory = read_message(&mut peer).await;
+
+    let result = tokio::time::timeout(Duration::from_secs(600), initiator)
+        .await
+        .expect("initiator never returned — the transaction stream read is unbounded again")
+        .unwrap();
+
+    assert!(
+        matches!(result, Err(MempoolProtocolError::RecvTimeout)),
+        "expected the inter-message deadline to fire, got {result:?}"
+    );
 }
