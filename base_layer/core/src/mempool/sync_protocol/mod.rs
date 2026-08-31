@@ -119,16 +119,45 @@ const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 /// indexes. Both are one bounded frame, so a short deadline is safe.
 const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Deadline for one item of the transaction stream, and for closing the substream.
+/// Deadline for delivering one frame of the transaction stream, and for closing the substream.
 ///
-/// This is an *inter-message* bound: the clock restarts for every frame, so it limits how long a
-/// peer may stall between transactions, not how long a whole transfer may take. It is deliberately
-/// longer than [`MESSAGE_TIMEOUT`] because a frame here carries an entire transaction and may be up
-/// to [`MAX_FRAME_SIZE`] (3 MiB) — large aggregate transactions really do reach the low megabytes —
-/// and a peer behind a slow link such as a Tor circuit sustaining ~50 KiB/s needs about a minute to
-/// deliver one. Ten seconds would abort such a peer mid-sync.
-const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(60);
+/// The clock restarts for every frame, so this bounds how long any single transaction may take to
+/// arrive. Note it is not an idle-gap bound: the deadline covers complete delivery of the frame,
+/// not merely the wait for its first byte. A frame here carries an entire transaction and may be up
+/// to [`MAX_FRAME_SIZE`] (3 MiB); at the ~50 KiB/s a Tor circuit can sustain, delivering one takes
+/// 61s, so this is set at roughly double that rather than at the edge of it.
+///
+/// Because it restarts per frame it cannot bound the exchange as a whole — a peer trickling one
+/// frame just inside the deadline would hold the substream open forever. [`PROTOCOL_TIMEOUT`] and
+/// the item cap in `read_and_insert_transactions_until_complete` are what bound that.
+const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Deadline for one peer's entire mempool sync exchange.
+///
+/// This is the bound that actually caps how long a peer can hold the initiator permit. Initiators
+/// are serialised behind a single permit, so without an aggregate deadline one slow or malicious
+/// peer wedges mempool sync for the whole node no matter how tight the per-frame deadline is. A
+/// sync that cannot finish inside this is not useful for initial-sync purposes; it is abandoned and
+/// retried against another peer.
+const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// How long to wait, on shutdown, for aborted peer protocol tasks to actually finish.
+///
+/// Aborting is not enough on its own: `JoinSet::drop` requests cancellation without waiting, so the
+/// `Mempool` clones those tasks hold — and through them the blockchain database and its LMDB file
+/// lock — could still be alive after this service has returned.
+const TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
+
+/// Report the outcome of a bounded `close()`. Closing is always best effort — the exchange is over
+/// either way — but the reason is worth keeping, including the inner IO error.
+fn log_close_outcome(result: Result<Result<(), std::io::Error>, time::error::Elapsed>) {
+    match result {
+        Err(_elapsed) => debug!(target: LOG_TARGET, "Timed out closing stream"),
+        Ok(Err(err)) => debug!(target: LOG_TARGET, "IO error when closing stream: {err}"),
+        Ok(Ok(())) => {},
+    }
+}
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
 
@@ -215,7 +244,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 },
 
                 // Reap finished peer protocols so the set does not grow for the life of the node.
-                Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {},
+                Some(result) = self.tasks.join_next(), if !self.tasks.is_empty() => {
+                    if let Err(err) = result
+                        && !err.is_cancelled()
+                    {
+                        warn!(target: LOG_TARGET, "Mempool peer protocol task terminated abnormally: {err}");
+                    }
+                },
 
                 _ = &mut self.shutdown_signal => {
                     info!(
@@ -227,7 +262,26 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                 }
             }
         }
-        // `self.tasks` is dropped here, which aborts anything still running.
+
+        // Abort *and* wait. `JoinSet::drop` only requests cancellation, so returning here without
+        // joining would leave the aborted tasks — and the `Mempool` clones they hold, and through
+        // those the blockchain database and its LMDB file lock — alive for an unbounded moment
+        // after this service has reported itself shut down. Deterministic release is the whole
+        // point, so the wait is bounded rather than best effort.
+        //
+        // One residual remains and cannot be closed from here: `Mempool` operations run inside
+        // `spawn_blocking`, and aborting the async task detaches the blocking closure, which holds
+        // its own handle on the mempool storage until it returns. Those closures are short
+        // in-memory operations under the storage lock, so the window is brief, but it is not zero.
+        if time::timeout(TASK_SHUTDOWN_TIMEOUT, self.tasks.shutdown())
+            .await
+            .is_err()
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Peer protocol tasks did not finish within {TASK_SHUTDOWN_TIMEOUT:?} of being aborted"
+            );
+        }
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
@@ -323,8 +377,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             match conn.open_framed_substream(&MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE).await {
                 Ok(framed) => {
                     let protocol = MempoolPeerProtocol::new(config, framed, conn.peer_node_id().clone(), mempool);
-                    match protocol.start_initiator().await {
-                        Ok(_) => {
+                    // Aggregate deadline: the per-frame one restarts on every frame, so only this
+                    // bounds how long a peer can hold the single initiator permit.
+                    match time::timeout(PROTOCOL_TIMEOUT, protocol.start_initiator()).await {
+                        Err(_elapsed) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Mempool initiator protocol with peer `{}` exceeded {PROTOCOL_TIMEOUT:?}; abandoning it",
+                                conn.peer_node_id().short_str(),
+                            );
+                        },
+                        Ok(Ok(_)) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "Mempool initiator protocol completed successfully for peer `{}`",
@@ -332,7 +395,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
                             );
                             num_synched.fetch_add(1, Ordering::SeqCst);
                         },
-                        Err(err) => {
+                        Ok(Err(err)) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "Mempool initiator protocol failed for peer `{}`: {}",
@@ -358,15 +421,24 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         self.tasks.spawn(async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
-            match protocol.start_responder().await {
-                Ok(_) => {
+            // Aggregate deadline, as for the initiator: a responder holds no permit, but an
+            // unbounded exchange still keeps a `Mempool` clone alive indefinitely.
+            match time::timeout(PROTOCOL_TIMEOUT, protocol.start_responder()).await {
+                Err(_elapsed) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Mempool responder protocol with peer `{}` exceeded {PROTOCOL_TIMEOUT:?}; abandoning it",
+                        node_id.short_str()
+                    );
+                },
+                Ok(Ok(_)) => {
                     debug!(
                         target: LOG_TARGET,
                         "Mempool responder protocol succeeded for peer `{}`",
                         node_id.short_str()
                     );
                 },
-                Err(err) => {
+                Ok(Err(err)) => {
                     debug!(
                         target: LOG_TARGET,
                         "Mempool responder protocol failed for peer `{}`: {}",
@@ -412,12 +484,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             Err(err) => {
                 // Bounded: this runs while already handling an error, often because the peer has
                 // gone away, which is exactly when an unbounded flush or close never returns.
-                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
-                    debug!(target: LOG_TARGET, "Timed out flushing stream: {err}");
+                match time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
+                    Err(_elapsed) => debug!(target: LOG_TARGET, "Timed out flushing stream"),
+                    Ok(Err(err)) => debug!(target: LOG_TARGET, "IO error when flushing stream: {err}"),
+                    Ok(Ok(())) => {},
                 }
-                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await {
-                    debug!(target: LOG_TARGET, "Timed out closing stream: {err}");
-                }
+                log_close_outcome(time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await);
                 Err(err)
             },
         }
@@ -476,10 +548,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.write_transactions(missing_txns).await?;
         }
 
-        // Close the stream after writing
-        time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close())
-            .await
-            .map_err(|_| MempoolProtocolError::SendTimeout)??;
+        // Close the stream after writing. The exchange is complete by this point, so a failure to
+        // close is cosmetic: reporting it as an error would discard a sync that actually succeeded
+        // and, in the initiator, skip `num_synched`, leaving the node spawning initiators forever.
+        // It also must not fall through to the caller's flush/close retry, which would drive
+        // `poll_flush` and `poll_close` on a sink whose close has already been polled.
+        log_close_outcome(time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await);
 
         Ok(())
     }
@@ -493,12 +567,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             Err(err) => {
                 // Bounded: this runs while already handling an error, often because the peer has
                 // gone away, which is exactly when an unbounded flush or close never returns.
-                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
-                    debug!(target: LOG_TARGET, "Timed out flushing stream: {err}");
+                match time::timeout(STREAM_ITEM_TIMEOUT, self.framed.flush()).await {
+                    Err(_elapsed) => debug!(target: LOG_TARGET, "Timed out flushing stream"),
+                    Ok(Err(err)) => debug!(target: LOG_TARGET, "IO error when flushing stream: {err}"),
+                    Ok(Ok(())) => {},
                 }
-                if let Err(err) = time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await {
-                    debug!(target: LOG_TARGET, "Timed out closing stream: {err}");
-                }
+                log_close_outcome(time::timeout(STREAM_ITEM_TIMEOUT, self.framed.close()).await);
                 Err(err)
             },
         }
@@ -586,6 +660,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
         let mut num_recv = 0usize;
+        // The sender caps what it will send (`.take(initial_sync_max_transactions)`); the receiver
+        // enforces the same limit, so a peer cannot keep the exchange alive by streaming forever.
+        let max_recv = self.config.initial_sync_max_transactions;
         // Bounded per item: an unbounded read here parks forever against a peer that neither sends
         // the terminator nor closes the substream — which pins this node's mempool, and with it the
         // blockchain database and its LMDB file lock, for the life of the process.
@@ -603,6 +680,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
             match item.transaction {
                 Some(txn) => {
+                    if num_recv >= max_recv {
+                        return Err(MempoolProtocolError::TooManyTransactions {
+                            peer: self.peer_node_id.clone(),
+                            max: max_recv,
+                        });
+                    }
                     self.validate_and_insert_transaction(txn).await?;
                     num_recv = num_recv.saturating_add(1);
                 },

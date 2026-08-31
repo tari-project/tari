@@ -23,7 +23,14 @@
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
-use std::{fmt, io, sync::Arc, time::Duration};
+use std::{
+    fmt,
+    io,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Duration,
+};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
@@ -58,6 +65,7 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     mempool::{
         Mempool,
+        MempoolServiceConfig,
         proto,
         sync_protocol::{
             MAX_FRAME_SIZE,
@@ -410,4 +418,154 @@ async fn initiator_gives_up_when_a_peer_stalls_mid_transaction_stream() {
         matches!(result, Err(MempoolProtocolError::RecvTimeout)),
         "expected the inter-message deadline to fire, got {result:?}"
     );
+}
+
+/// Wraps a substream so that closing it never completes, modelling a peer that has stopped reading
+/// but has not gone away. Reads, writes and flushes pass straight through.
+struct StallingClose<T> {
+    inner: T,
+}
+
+impl<T: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for StallingClose<T> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for StallingClose<T> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+}
+
+/// A peer that keeps streaming transactions past the limit both sides agreed on must be cut off.
+///
+/// The per-frame deadline cannot do this on its own: it restarts for every frame, so a peer that
+/// trickles items — even slowly, as here — holds the exchange, and with it the single initiator
+/// permit, open indefinitely. The sender already caps what it will send; this asserts the receiver
+/// enforces the same cap. Time is paused, so the 100s between items costs nothing to run.
+#[tokio::test(start_paused = true)]
+async fn initiator_cuts_off_a_peer_that_streams_past_the_agreed_limit() {
+    let (mempool, _transactions) = new_mempool_with_transactions(0).await;
+    let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let mut peer = framing::canonical(sock_in, MAX_FRAME_SIZE);
+
+    let config = MempoolServiceConfig {
+        initial_sync_max_transactions: 2,
+        ..Default::default()
+    };
+    let framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let initiator = task::spawn(async move {
+        MempoolPeerProtocol::new(config, framed, peer_node.node_id().clone(), mempool)
+            .start_initiator()
+            .await
+    });
+
+    let _inventory: proto::TransactionInventory = read_message(&mut peer).await;
+
+    // Trickle transactions, never sending the terminator. The gap is under the per-frame deadline,
+    // so only the item cap can stop this.
+    let transactions = create_transactions(3);
+    for txn in &transactions {
+        tokio::time::sleep(Duration::from_secs(100)).await;
+        let item = proto::TransactionItem {
+            transaction: Some(txn.clone().try_into().unwrap()),
+        };
+        write_message(&mut peer, item).await;
+    }
+
+    let result = tokio::time::timeout(Duration::from_secs(3600), initiator)
+        .await
+        .expect("initiator never returned — a trickling peer is unbounded again")
+        .unwrap();
+
+    assert!(
+        matches!(result, Err(MempoolProtocolError::TooManyTransactions { max: 2, .. })),
+        "expected the item cap to fire, got {result:?}"
+    );
+}
+
+/// A sync that exchanged everything successfully must still count as a success when only the
+/// trailing `close()` fails. Reporting it as an error would skip `num_synched`, leaving the node
+/// spawning initiators forever against a peer it has in fact already synced with.
+#[tokio::test(start_paused = true)]
+async fn successful_sync_still_succeeds_when_the_trailing_close_stalls() {
+    let (protocol_notif, _, _, transactions1, _shutdown) = setup(2).await;
+
+    let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    protocol_notif
+        .send(ProtocolNotification::new(
+            MEMPOOL_SYNC_PROTOCOL.clone(),
+            ProtocolEvent::NewInboundSubstream(node1.node_id().clone(), sock_in),
+        ))
+        .await
+        .unwrap();
+
+    let (mempool2, _transactions2) = new_mempool_with_transactions(1).await;
+    mempool2.insert(Arc::new(transactions1[0].clone())).await.unwrap();
+
+    // Everything is exchanged normally; only the final close never completes.
+    let framed = framing::canonical(StallingClose { inner: sock_out }, MAX_FRAME_SIZE);
+    let result = tokio::time::timeout(
+        Duration::from_secs(3600),
+        MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2).start_initiator(),
+    )
+    .await
+    .expect("initiator never returned — the trailing close is unbounded again");
+
+    assert!(
+        result.is_ok(),
+        "a completed exchange must not be demoted to a failure by a stalled close, got {result:?}"
+    );
+}
+
+/// `run()` must actually return when the shutdown signal fires, because everything that makes
+/// shutdown deterministic — aborting the peer protocol tasks and waiting for them — happens after
+/// the loop breaks. If the future were cut short instead of returning, that code would never run.
+#[tokio::test]
+async fn run_returns_when_shutdown_is_triggered() {
+    let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
+    let (mempool, _transactions) = new_mempool_with_transactions(0).await;
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_state = connectivity_mock.spawn();
+    let (block_event_sender, _) = broadcast::channel(1);
+    let block_receiver = block_event_sender.subscribe();
+
+    let mut shutdown = Shutdown::new();
+    let protocol = MempoolSyncProtocol::<MemorySocket>::new(
+        Default::default(),
+        protocol_notif_rx,
+        mempool,
+        connectivity,
+        block_receiver,
+        shutdown.to_signal(),
+    );
+    let running = task::spawn(protocol.run());
+    connectivity_state.wait_until_event_receivers_ready().await;
+
+    shutdown.trigger();
+
+    tokio::time::timeout(Duration::from_secs(30), running)
+        .await
+        .expect("run() did not return after shutdown was triggered")
+        .unwrap();
+
+    drop(protocol_notif_tx);
 }

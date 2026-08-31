@@ -45,4 +45,6 @@ pub enum MempoolProtocolError {
     SendTimeout,
     #[error("Receive timeout occurred")]
     RecvTimeout,
+    #[error("Peer `{peer}` sent more than the agreed maximum of {max} transaction(s)")]
+    TooManyTransactions { peer: NodeId, max: usize },
 }
