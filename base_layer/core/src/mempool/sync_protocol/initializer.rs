@@ -83,9 +83,23 @@ impl ServiceInitializer for MempoolSyncInitializer {
         // join its peer protocol tasks, which is precisely the guarantee we need at shutdown. This
         // service therefore handles the signal itself, at both points where it can wait forever.
         context.spawn_when_ready(move |handles| async move {
-            let state_machine = handles.expect_handle::<StateMachineHandle>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
+            // `get_handle` rather than `expect_handle`: the ready signal also fires when the stack
+            // builder returns early on an initializer error, dropping the notifier. In that case no
+            // handles were ever registered, and unlike `spawn_until_shutdown` — which could drop
+            // this future before its body ran — `spawn_when_ready` always runs it. Panicking here
+            // would add noise to an already-failing startup rather than reporting anything new.
+            let (Some(state_machine), Some(connectivity), Some(base_node)) = (
+                handles.get_handle::<StateMachineHandle>(),
+                handles.get_handle::<ConnectivityRequester>(),
+                handles.get_handle::<LocalNodeCommsInterface>(),
+            ) else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Service handles are unavailable, so the node is shutting down before it \
+                     finished starting. Mempool sync protocol will not run."
+                );
+                return;
+            };
             let shutdown_signal = handles.get_shutdown_signal();
 
             let mut status_watch = state_machine.get_status_info_watch();
