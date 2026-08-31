@@ -138,6 +138,9 @@ message QuorumCertificate {
   bytes parent_id = 2;
   repeated ValidatorSignature signatures = 3;
   QuorumDecision decision = 4;
+  uint64 epoch = 5;
+  uint64 height = 6;
+  uint32 protocol_version = 7;
 }
 
 enum QuorumDecision {
