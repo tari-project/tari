@@ -22,8 +22,8 @@
 
 use std::time::Instant;
 
-use futures::{SinkExt, StreamExt, future};
-use tokio::{pin, sync::mpsc};
+use futures::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
 use tracing::{Instrument, Level, debug, error, span, trace};
 
 #[cfg(feature = "metrics")]
@@ -252,6 +252,7 @@ impl OutboundMessaging {
         let Self {
             mut messages_rx,
             peer_node_id,
+            retry_queue_tx,
             ..
         } = self;
         let span = span!(
@@ -266,17 +267,59 @@ impl OutboundMessaging {
             "Starting direct message forwarding for peer `{}` (stream: {})", peer_node_id, stream_id
         );
 
-        let (sink, mut remote_stream) = MessagingProtocol::framed(substream.stream).split();
+        let (mut sink, mut remote_stream) = MessagingProtocol::framed(substream.stream).split();
 
-        // Convert unbounded channel to a stream
-        let outbound_stream = futures::stream::unfold(&mut messages_rx, |rx| async move {
-            let v = rx.recv().await;
-            v.map(|v| (v, rx))
-        });
+        // We drop the `conn` handle before awaiting a disconnect below to ensure that outbound messaging isn't
+        // itself holding onto the handle keeping the connection alive.
+        let mut on_disconnect = Box::pin(conn.on_disconnect());
+        drop(conn);
 
         #[cfg(feature = "metrics")]
         let outbound_count = metrics::outbound_message_count();
-        let stream = outbound_stream.map(|mut out_msg| {
+
+        // A message is only ever reported as sent (`reply_success`) once the write to the sink has actually
+        // succeeded. Pulling a message off `messages_rx` and reporting success before attempting to write it -
+        // the previous behaviour - meant that a message which was popped right as the connection tore down
+        // (routine during simultaneous-dial tie breaking, which can cycle a peer's connection several times in
+        // quick succession) was reported as delivered while never being written at all: it wasn't on the wire,
+        // and having already been popped off `messages_rx`, it was also invisible to the retry drain below. Do
+        // not restructure this back into a pipelined `Stream`/`Sink` forward without preserving "attempt before
+        // ack" - that ordering is the fix.
+        loop {
+            let out_msg = tokio::select! {
+                biased;
+                _ = &mut on_disconnect => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging stream {} ended for peer {} (connection disconnected).",
+                        stream_id, peer_node_id
+                    );
+                    break;
+                },
+                // Read from the yamux socket to determine if it is closed. This is a send-only relationship for
+                // this protocol, so any activity (including a clean close) on the read side means we're done.
+                _ = remote_stream.next() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging stream {} ended for peer {} (remote closed).", stream_id, peer_node_id
+                    );
+                    break;
+                },
+                maybe_msg = messages_rx.recv() => {
+                    match maybe_msg {
+                        Some(msg) => msg,
+                        None => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Outbound messaging stream {} for peer {} ending: no more messages.",
+                                stream_id, peer_node_id
+                            );
+                            break;
+                        },
+                    }
+                },
+            };
+
             #[cfg(feature = "metrics")]
             outbound_count.inc();
             trace!(
@@ -284,30 +327,27 @@ impl OutboundMessaging {
                 "Message for peer '{}' sending {} on stream {}", peer_node_id, out_msg, stream_id
             );
 
-            out_msg.reply_success();
-            Result::<_, MessagingProtocolError>::Ok(out_msg.body)
-        });
-
-        // Stop the stream as soon as the disconnection occurs, this allows the outbound stream to terminate as soon as
-        // the connection terminates rather than detecting the disconnect on the next message send.
-        let stream = stream.take_until(async move {
-            let on_disconnect = conn.on_disconnect();
-            let peer_node_id = conn.peer_node_id().clone();
-            // We drop the conn handle here BEFORE awaiting a disconnect to ensure that the outbound messaging isn't
-            // holding onto the handle keeping the connection alive
-            drop(conn);
-            // Read from the yamux socket to determine if it is closed.
-            let close_detect = remote_stream.next();
-            pin!(on_disconnect);
-            pin!(close_detect);
-            future::select(on_disconnect, close_detect).await;
-            debug!(
-                target: LOG_TARGET,
-                "Outbound messaging stream {} ended for peer {}.", stream_id, peer_node_id
-            )
-        });
-
-        super::forward::Forward::new(stream, sink.sink_map_err(Into::into)).await?;
+            let mut out_msg = out_msg;
+            match sink.send(out_msg.body.clone()).await {
+                Ok(_) => out_msg.reply_success(),
+                Err(err) => {
+                    // The write genuinely failed - most commonly because the connection died between this
+                    // message being popped off the channel and the write being attempted. It was never
+                    // delivered, so it must not be acked as a success, and - since it is no longer in
+                    // `messages_rx` for the drain below to find - it must be requeued here or it is lost for
+                    // good.
+                    debug!(
+                        target: LOG_TARGET,
+                        "Failed to send message to peer '{}' on stream {}: {}. Queuing for retry.",
+                        peer_node_id, stream_id, err
+                    );
+                    #[cfg(feature = "metrics")]
+                    metrics::error_count().inc();
+                    drop(retry_queue_tx.send(out_msg));
+                    break;
+                },
+            }
+        }
 
         // Close so that the protocol handler does not resend to this session
         messages_rx.close();
@@ -316,7 +356,7 @@ impl OutboundMessaging {
         // dropped.
         let mut retried_messages_count = 0usize;
         while let Some(msg) = messages_rx.recv().await {
-            if self.retry_queue_tx.send(msg).is_err() {
+            if retry_queue_tx.send(msg).is_err() {
                 // The messaging protocol has shut down, so let's exit too
                 break;
             }

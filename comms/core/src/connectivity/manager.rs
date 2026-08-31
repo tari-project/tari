@@ -30,7 +30,7 @@ use log::*;
 use nom::lib::std::collections::hash_map::Entry;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{Semaphore, mpsc, oneshot},
     task::JoinHandle,
     time,
     time::MissedTickBehavior,
@@ -60,7 +60,7 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequester,
     },
-    peer_manager::NodeId,
+    peer_manager::{NodeId, PEER_LOOKUP_TIMEOUT, PeerManagerError},
     utils::datetime::format_duration,
 };
 
@@ -68,6 +68,24 @@ const LOG_TARGET: &str = "comms::connectivity::manager";
 
 // Maximum time allowed for refreshing the connection pool
 const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
+
+/// How many times a failed ban-persistence write (see `ConnectivityManagerActor::ban_peer`) is retried in the
+/// background before giving up and logging loudly. Bounded so a peer database that stays unavailable does not
+/// accumulate retry tasks forever - three attempts, doubling from `BAN_PERSIST_RETRY_INITIAL_DELAY`, is enough
+/// to ride out a transient contention window (this is exactly what `PEER_DATABASE_BUSY_TIMEOUT` bounds a single
+/// attempt to) without meaningfully delaying when we give up and say so.
+const BAN_PERSIST_RETRY_ATTEMPTS: usize = 3;
+const BAN_PERSIST_RETRY_INITIAL_DELAY: Duration = Duration::from_secs(2);
+/// Upper bound for the doubling delay between retries - matches `BAN_PERSIST_RETRY_ATTEMPTS` (2s, 4s, 8s all
+/// fall under this; the cap only matters if either constant above is changed later).
+const BAN_PERSIST_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
+/// Caps how many ban-persistence retries (see `ConnectivityManagerActor::retry_ban_persistence`) may be
+/// in flight at once. A burst of independent bans during sustained peer-database unavailability would otherwise
+/// spawn one retry task per ban, each issuing up to `BAN_PERSIST_RETRY_ATTEMPTS` more writes against the very
+/// database that is already struggling - a feedback direction opposite to what the retry exists for. Generous
+/// rather than tight: this is a backstop against a burst, not an expected steady-state load (tokio's default
+/// blocking pool already absorbs far more than this without the retries needing their own bound at all).
+const MAX_CONCURRENT_BAN_PERSIST_RETRIES: usize = 16;
 // Maximum time allowed to disconnect a single peer
 const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 // Warning threshold for request processing time
@@ -113,6 +131,7 @@ impl ConnectivityManager {
             allow_list: vec![],
             proactive_dialer,
             seeds: vec![],
+            ban_persist_retry_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BAN_PERSIST_RETRIES)),
         }
         .spawn()
     }
@@ -172,6 +191,8 @@ struct ConnectivityManagerActor {
     allow_list: Vec<NodeId>,
     proactive_dialer: ProactiveDialer,
     seeds: Vec<NodeId>,
+    /// Bounds concurrent `retry_ban_persistence` tasks - see `MAX_CONCURRENT_BAN_PERSIST_RETRIES`.
+    ban_persist_retry_permits: Arc<Semaphore>,
 }
 
 impl ConnectivityManagerActor {
@@ -375,7 +396,25 @@ impl ConnectivityManagerActor {
         ref_kind: RefKind,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
-        match self.peer_manager.is_peer_banned(&node_id).await {
+        // Shed rather than block. `handle_dial_peer` runs on the ConnectivityManager's single request
+        // loop and this ban check precedes every other statement in it, so a slow peer database used
+        // to wedge the actor here — and with it `select_connections`, which the DHT needs to
+        // propagate anything at all. The query still completes on the blocking pool; we just stop
+        // waiting on it.
+        let ban_check = time::timeout(PEER_LOOKUP_TIMEOUT, self.peer_manager.is_peer_banned(&node_id)).await;
+        let Ok(ban_check) = ban_check else {
+            warn!(
+                target: LOG_TARGET,
+                "Ban check for dial to peer '{}' exceeded {PEER_LOOKUP_TIMEOUT:.0?}. Shedding the dial rather than \
+                 stalling the connectivity manager.",
+                node_id.short_str()
+            );
+            if let Some(reply) = reply_tx {
+                let _result = reply.send(Err(ConnectionManagerError::PeerLookupTimeout));
+            }
+            return;
+        };
+        match ban_check {
             Ok(true) => {
                 if let Some(reply) = reply_tx {
                     let _result = reply.send(Err(ConnectionManagerError::PeerBanned));
@@ -1258,15 +1297,67 @@ impl ConnectivityManagerActor {
             format_duration(duration),
             reason
         );
-        let ban_result = self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await;
+        let ban_result = self
+            .peer_manager
+            .ban_peer_by_node_id(node_id, duration, reason.clone())
+            .await;
 
         #[cfg(feature = "metrics")]
         super::metrics::banned_peers_counter().inc();
 
+        if let Err(ref err) = ban_result {
+            // Deliberately done *before* publishing `PeerBanned` and disconnecting below, not after: an
+            // operator who reacts to that event (or to the disconnect) by calling `unban-peer`/
+            // `unban-all-peers` must find this already queued, or the retry has no way to know the ban was
+            // lifted out from under it - see the residual-race note on `retry_ban_persistence`. Everything from
+            // here down to the retry being spawned is synchronous, non-blocking Rust with no `.await` in
+            // between, so the window this leaves is a handful of CPU instructions, not the up-to-
+            // `PEER_DISCONNECT_TIMEOUT` (250ms) the disconnect below can otherwise take - nowhere close to
+            // reachable by a human reacting to an event, only by another task racing the exact same instant,
+            // which is what the residual-race note already accounts for.
+            //
+            // Skip the retry entirely for `PeerNotFound`: that means this node has no record of the peer at all
+            // (e.g. banning on a connection that was never added via `add_or_update_peer`), which retrying
+            // cannot fix.
+            if !matches!(err, PeerManagerError::PeerNotFound(_)) {
+                // Semaphore acquired *before* `ban_generation` reads/creates a tracked entry: a retry shed here
+                // for being over `MAX_CONCURRENT_BAN_PERSIST_RETRIES` is never spawned and never checks its
+                // generation, so it must not leave an entry behind either - see the doc comment on
+                // `PeerManager::ban_generations` for why that map needs to stay bounded.
+                match Arc::clone(&self.ban_persist_retry_permits).try_acquire_owned() {
+                    Ok(permit) => {
+                        // This is the generation the retry must still match right before it writes.
+                        let expected_generation = self.peer_manager.ban_generation(node_id);
+                        // `retry_ban_persistence` is a plain `async fn`, spawned here rather than spawning
+                        // internally, so a test can `.await` it directly and observe whether it wrote - see its
+                        // doc comment and the `retry_ban_persistence_tests` module for why that matters.
+                        tokio::spawn(Self::retry_ban_persistence(
+                            self.peer_manager.clone(),
+                            node_id.clone(),
+                            duration,
+                            reason,
+                            expected_generation,
+                            permit,
+                        ));
+                    },
+                    Err(_) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Peer {node_id} is being banned but the ban could not be persisted, and \
+                             {MAX_CONCURRENT_BAN_PERSIST_RETRIES} ban-persistence retries are already in flight \
+                             so this one was not queued. It is only banned for this session - a restart or a \
+                             fresh `is_peer_banned` lookup will not see it as banned."
+                        );
+                    },
+                }
+            }
+        }
+
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
-            // The ban is already recorded above; closing the connection is best-effort. The connection may
+            // The ban decision has already been made and published above, whether or not it landed in the peer
+            // database (see above); closing the connection is best-effort regardless. The connection may
             // already have been torn down (frequently the very reason we are banning the peer, e.g. it dropped
             // mid-sync), in which case the disconnect request cannot be sent. That is an expected race, not an
             // error, so we log it quietly and still consider the ban successful.
@@ -1286,8 +1377,110 @@ impl ConnectivityManagerActor {
                 },
             }
         }
+
         ban_result?;
         Ok(())
+    }
+
+    /// Retries a ban write that failed to persist, in the background, without blocking the calling actor. See
+    /// `BAN_PERSIST_RETRY_ATTEMPTS` for why this is bounded rather than retried forever, and
+    /// `MAX_CONCURRENT_BAN_PERSIST_RETRIES` for why `permit` must be held for the task's lifetime.
+    ///
+    /// Before every write attempt (including the first), re-checks `expected_generation` against the peer's
+    /// *current* ban generation - via `PeerManager::ban_generation_if_tracked`, which never inserts - and
+    /// abandons without writing the moment they no longer match, *including* when the entry is missing
+    /// entirely (see that method's doc comment for why a missing entry must never be read as "unchanged"; it
+    /// can go missing not only via an unban but also via `PeerManager::maybe_prune_ban_generations`'s
+    /// oldest-eviction stage, which is a relative ranking with no guarantee it will never pick a live retry's
+    /// entry). This is what stops the retry from resurrecting a ban an operator deliberately lifted with
+    /// `unban-peer`/`unban-all-peers` while this task was sleeping: those calls bump the generation immediately
+    /// (see `PeerManager::unban_peer`), independent of whether their own database write succeeds. Residual
+    /// race: the check and the write below are not atomic with each other, so a generation bump landing in the
+    /// gap between them - i.e. an unban arriving after this task has just confirmed the generation still
+    /// matches but before its own write commits - is not caught, and the write would still land. Closing that
+    /// fully needs the unban itself to take precedence at the database layer (e.g. a compare-and-swap in
+    /// `set_banned` keyed to the same generation, which `set_banned` does not have), not just a check at this
+    /// call site. What this does close is the much wider window this finding was actually about: the
+    /// multi-second gap between a failed write and the retry that follows it, which is exactly what an operator
+    /// reacting to a `PeerBanned` event needs.
+    ///
+    /// Deliberately a plain `async fn`, not a `fn` that spawns internally: the caller (`ban_peer`) is the one
+    /// that spawns it. That lets `retry_ban_persistence_tests` drive this directly with `.await` and inspect
+    /// the peer database afterward to see whether the write actually happened - i.e. it makes *the decision to
+    /// write or abandon* the thing under test, not just the accessor (`PeerManager::ban_generation_if_tracked`)
+    /// the decision happens to be built on. A test that only covered the accessor in isolation would keep
+    /// passing even if this function's call site were reverted back to the insert-on-read `ban_generation`,
+    /// silently reintroducing the exact resurrection bug this exists to prevent - see that test module's doc
+    /// comment for how it was verified to actually catch that reversion.
+    async fn retry_ban_persistence(
+        peer_manager: Arc<PeerManager>,
+        node_id: NodeId,
+        duration: Duration,
+        reason: String,
+        expected_generation: u64,
+        permit: tokio::sync::OwnedSemaphorePermit,
+    ) {
+        let _permit = permit;
+        // Snapshots for the final log lines below: both `node_id` and `reason` are moved into the retry
+        // closure and would otherwise no longer be available once `retry_with_backoff` returns - the
+        // closure (and its captures) is dropped along with it.
+        let node_id_for_log = node_id.clone();
+        let reason_for_log = reason.clone();
+        let result = retry_with_backoff(
+            BAN_PERSIST_RETRY_ATTEMPTS,
+            BAN_PERSIST_RETRY_INITIAL_DELAY,
+            BAN_PERSIST_RETRY_MAX_DELAY,
+            move |attempt| {
+                let peer_manager = peer_manager.clone();
+                let node_id = node_id.clone();
+                let reason = reason.clone();
+                async move {
+                    // `ban_generation_if_tracked`, not `ban_generation`: this is a re-check, not the
+                    // baseline capture, and must never insert. A missing entry here means "we no longer
+                    // know whether this ban is still wanted" - either an unban, or
+                    // `maybe_prune_ban_generations`'s oldest-eviction stage, which is a *relative* ranking an
+                    // unban's re-touch does not defend against the way it does against the TTL stage (see that
+                    // method's doc comment). Treating `None` the same as "the generation changed" - abandon,
+                    // do not write - rather than as "unchanged" is the fix: comparing against a
+                    // freshly-reinserted `0` would make an evicted entry indistinguishable from a legitimate
+                    // baseline of `0` and let a stale retry resurrect a lifted ban.
+                    if peer_manager.ban_generation_if_tracked(&node_id) != Some(expected_generation) {
+                        return Ok(BanPersistOutcome::Superseded);
+                    }
+                    peer_manager
+                        .ban_peer_by_node_id(&node_id, duration, reason)
+                        .await
+                        .map(|_| BanPersistOutcome::Persisted(attempt))
+                }
+            },
+        )
+        .await;
+
+        match result {
+            Ok(BanPersistOutcome::Persisted(attempt)) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Ban for peer {node_id_for_log} persisted on retry {attempt}/{BAN_PERSIST_RETRY_ATTEMPTS}"
+                );
+            },
+            Ok(BanPersistOutcome::Superseded) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Abandoned a ban-persistence retry for peer {node_id_for_log}: either its ban state \
+                     changed (e.g. an operator unban) or its bookkeeping entry was pruned while this retry was \
+                     queued - both read the same way and are handled the same way, by not writing"
+                );
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Peer {node_id_for_log} was disconnected as banned ({reason_for_log}) but the ban could \
+                     not be persisted after {BAN_PERSIST_RETRY_ATTEMPTS} retries: {err}. It is only banned \
+                     for this session - a restart or a fresh `is_peer_banned` lookup will not see it as \
+                     banned. The peer database may be persistently unavailable."
+                );
+            },
+        }
     }
 
     async fn execute_proactive_dialing(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
@@ -1455,5 +1648,239 @@ async fn disconnect_silent_with_timeout(
             );
             Err(PeerConnectionError::DisconnectTimeout)
         },
+    }
+}
+
+/// Outcome of one attempt inside `retry_ban_persistence`'s call to `retry_with_backoff`. Both variants stop the
+/// retry loop (it is only `Err` that keeps it going) - `Superseded` is not a failure, just a different reason to
+/// stop, which is why it is carried as `Ok` rather than folded into the error type.
+enum BanPersistOutcome {
+    /// The write succeeded, on the given attempt number (1-based).
+    Persisted(usize),
+    /// Not attempted: the peer's ban generation had already moved on from what this retry was queued for (see
+    /// `ConnectivityManagerActor::retry_ban_persistence`).
+    Superseded,
+}
+
+/// Retries `f` until it returns `Ok`, sleeping before each attempt (including the first) for a delay that starts
+/// at `initial_delay` and doubles - capped at `max_delay` - after each `Err`. Returns the first `Ok`, or the last
+/// `Err` once `attempts` have all been made.
+///
+/// Generic and free of anything but the backoff policy itself - no I/O, no domain knowledge of what `f` does -
+/// specifically so the attempt-counting, doubling and give-up behaviour can be unit-tested on their own (see the
+/// `tests` module below) without needing a database or any other real failure to inject.
+async fn retry_with_backoff<F, Fut, T, E>(
+    attempts: usize,
+    initial_delay: Duration,
+    max_delay: Duration,
+    mut f: F,
+) -> Result<T, E>
+where
+    F: FnMut(usize) -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    let mut delay = initial_delay;
+    let mut last_err = None;
+    for attempt in 1..=attempts.max(1) {
+        time::sleep(delay).await;
+        match f(attempt).await {
+            Ok(v) => return Ok(v),
+            Err(err) => {
+                delay = delay.checked_mul(2).unwrap_or(max_delay).min(max_delay);
+                last_err = Some(err);
+            },
+        }
+    }
+    // `attempts.max(1)` above guarantees the loop ran at least once, so it always either returned `Ok` or set
+    // `last_err` - this is unreachable, not a real fallback.
+    #[allow(clippy::expect_used)]
+    Err(last_err.expect("retry_with_backoff: loop ran at least once, so an Err was always recorded on exit"))
+}
+
+#[cfg(test)]
+mod retry_with_backoff_tests {
+    #![allow(clippy::indexing_slicing)]
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// Succeeds on the Nth call; every call before that returns `Err`. Also records how many times it was
+    /// invoked and the wall-clock (virtual, under `start_paused`) instant of each call, so tests can assert on
+    /// both attempt counting and the backoff delay between attempts.
+    struct CountingFailThenSucceed {
+        calls: AtomicUsize,
+        succeed_on_attempt: usize,
+        call_instants: std::sync::Mutex<Vec<time::Instant>>,
+    }
+
+    impl CountingFailThenSucceed {
+        fn new(succeed_on_attempt: usize) -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+                succeed_on_attempt,
+                call_instants: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn call(&self, attempt: usize) -> Result<usize, &'static str> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.call_instants.lock().unwrap().push(time::Instant::now());
+            if attempt >= self.succeed_on_attempt {
+                Ok(attempt)
+            } else {
+                Err("not yet")
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn succeeds_on_first_attempt_calls_f_exactly_once() {
+        let target = CountingFailThenSucceed::new(1);
+        let result = retry_with_backoff(3, Duration::from_secs(2), Duration::from_secs(30), |attempt| {
+            std::future::ready(target.call(attempt))
+        })
+        .await;
+        assert_eq!(result, Ok(1));
+        assert_eq!(target.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retries_with_doubling_backoff_until_success() {
+        let target = CountingFailThenSucceed::new(3);
+        let start = time::Instant::now();
+        let result = retry_with_backoff(5, Duration::from_secs(2), Duration::from_secs(30), |attempt| {
+            std::future::ready(target.call(attempt))
+        })
+        .await;
+        assert_eq!(result, Ok(3));
+        assert_eq!(target.calls.load(Ordering::SeqCst), 3);
+
+        // Attempt 1 after 2s, attempt 2 after a further 4s, attempt 3 (the success) after a further 8s - 14s
+        // total from start, matching the doubling policy (2s, 4s, 8s).
+        let instants = target.call_instants.lock().unwrap();
+        assert_eq!(instants.len(), 3);
+        assert_eq!(instants[0].saturating_duration_since(start), Duration::from_secs(2));
+        assert_eq!(instants[1].saturating_duration_since(start), Duration::from_secs(6));
+        assert_eq!(instants[2].saturating_duration_since(start), Duration::from_secs(14));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn gives_up_after_exhausting_every_attempt() {
+        let target = CountingFailThenSucceed::new(usize::MAX);
+        let result: Result<usize, &'static str> =
+            retry_with_backoff(3, Duration::from_secs(2), Duration::from_secs(30), |attempt| {
+                std::future::ready(target.call(attempt))
+            })
+            .await;
+        assert_eq!(result, Err("not yet"));
+        assert_eq!(target.calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn delay_is_capped_at_max_delay() {
+        let target = CountingFailThenSucceed::new(usize::MAX);
+        let start = time::Instant::now();
+        let _ = retry_with_backoff(4, Duration::from_secs(5), Duration::from_secs(8), |attempt| {
+            std::future::ready(target.call(attempt))
+        })
+        .await;
+
+        // Per-step delay uncapped would double as 5s, 10s, 20s, 40s. Capped at 8s it is 5s, 8s, 8s, 8s -
+        // cumulative instants 5s, 13s, 21s, 29s.
+        let instants = target.call_instants.lock().unwrap();
+        assert_eq!(instants.len(), 4);
+        assert_eq!(instants[0].saturating_duration_since(start), Duration::from_secs(5));
+        assert_eq!(instants[1].saturating_duration_since(start), Duration::from_secs(13));
+        assert_eq!(instants[2].saturating_duration_since(start), Duration::from_secs(21));
+        assert_eq!(instants[3].saturating_duration_since(start), Duration::from_secs(29));
+    }
+}
+
+#[cfg(test)]
+mod retry_ban_persistence_tests {
+    use tokio::sync::Semaphore;
+
+    use super::*;
+    use crate::{
+        peer_manager::{PeerFeatures, create_test_peer},
+        test_utils::peer_manager::build_peer_manager,
+    };
+
+    /// End-to-end regression test for the resurrection bug fixed by moving `retry_ban_persistence`'s re-check
+    /// off insert-on-read `PeerManager::ban_generation` onto the never-inserting `ban_generation_if_tracked` -
+    /// see that function's doc comment for the full account of why. This drives `retry_ban_persistence` itself,
+    /// not just the accessor it is built on, so that reverting its call site back to
+    /// `peer_manager.ban_generation(&node_id) != expected_generation` is actually caught here rather than only
+    /// by a test of the accessor in isolation, which would keep passing regardless of what the call site does.
+    ///
+    /// Verified this actually catches that reversion: temporarily changed the re-check inside
+    /// `retry_ban_persistence` back to the pre-fix `peer_manager.ban_generation(&node_id) !=
+    /// expected_generation`, ran this test, and confirmed it failed (the peer ended up banned - the exact
+    /// resurrection this exists to prevent); reverted, and confirmed it passes again.
+    #[tokio::test(start_paused = true)]
+    async fn retry_abandons_without_writing_when_its_tracked_entry_has_gone_missing() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer).await.unwrap();
+
+        // The baseline `ban_peer` would have captured when it scheduled this retry.
+        let expected_generation = peer_manager.ban_generation(&node_id);
+
+        // Simulate the entry going missing mid-retry - e.g. `maybe_prune_ban_generations`'s oldest-eviction
+        // stage - without needing to provoke a real, threshold-sized sweep.
+        peer_manager.forget_ban_generation_for_test(&node_id);
+
+        let permits = Arc::new(Semaphore::new(1));
+        let permit = permits.try_acquire_owned().unwrap();
+
+        ConnectivityManagerActor::retry_ban_persistence(
+            peer_manager.clone(),
+            node_id.clone(),
+            Duration::from_secs(3600),
+            "test".to_string(),
+            expected_generation,
+            permit,
+        )
+        .await;
+
+        assert!(
+            !peer_manager.is_peer_banned(&node_id).await.unwrap(),
+            "a retry whose tracked entry has gone missing at re-check time must abandon without writing - ending up \
+             banned here means it silently resurrected/persisted a ban that had already been superseded"
+        );
+    }
+
+    /// Sibling of the above along the "unchanged" path: with the entry left alone and matching, the retry must
+    /// still actually persist the ban - confirming the abandon path above is a real decision, not a bug that
+    /// happens to make ever writing look like abandoning.
+    #[tokio::test(start_paused = true)]
+    async fn retry_persists_the_ban_when_its_tracked_entry_is_unchanged() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer).await.unwrap();
+
+        let expected_generation = peer_manager.ban_generation(&node_id);
+
+        let permits = Arc::new(Semaphore::new(1));
+        let permit = permits.try_acquire_owned().unwrap();
+
+        ConnectivityManagerActor::retry_ban_persistence(
+            peer_manager.clone(),
+            node_id.clone(),
+            Duration::from_secs(3600),
+            "test".to_string(),
+            expected_generation,
+            permit,
+        )
+        .await;
+
+        assert!(
+            peer_manager.is_peer_banned(&node_id).await.unwrap(),
+            "a retry whose tracked entry is unchanged must actually persist the ban"
+        );
     }
 }

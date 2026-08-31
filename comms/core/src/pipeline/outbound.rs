@@ -33,6 +33,9 @@ use crate::{bounded_executor::BoundedExecutor, pipeline::builder::OutboundPipeli
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
+/// How long a single outbound message may occupy a pipeline slot before it is abandoned.
+const PIPELINE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Calls a service in a new task whenever a message is received by the configured channel and forwards the resulting
 /// message as a [MessageRequest](crate::protocol::messaging::MessageRequest).
 pub struct Outbound<TPipeline, TItem> {
@@ -77,11 +80,14 @@ where
             let pipeline = self.config.pipeline.clone();
             let id = current_id;
             current_id = current_id.wrapping_add(1) % u64::MAX;
+            // Shares the permit pool with `self.executor`, so the task can read the pipeline's live
+            // occupancy at the moment it times out rather than at the moment it was spawned.
+            let occupancy = self.executor.clone();
             self.executor
                 .spawn(async move {
                     let timer = Instant::now();
                     trace!(target: LOG_TARGET, "Start outbound pipeline {id}");
-                    match time::timeout(Duration::from_secs(10), pipeline.oneshot(msg)).await {
+                    match time::timeout(PIPELINE_TIMEOUT, pipeline.oneshot(msg)).await {
                         Ok(Ok(_)) => {},
                         Ok(Err(err)) => {
                             error!(
@@ -89,12 +95,30 @@ where
                                 "Outbound pipeline {id} returned an error: '{err}'"
                             );
                         },
-                        Err(err) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Outbound pipeline {id} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
-                                 deadlock or excessive delay in processing this pipeline. {err}"
-                            );
+                        Err(_) => {
+                            // Distinguish the two very different faults that both surface here. A
+                            // saturated pipeline is self-inflicted back-pressure; a near-empty one
+                            // means the message is stuck on something downstream (typically an actor
+                            // that has stopped being scheduled), and reporting that as a "deadlock in
+                            // this pipeline" sends the reader four layers away from the actual fault.
+                            let max_available = occupancy.max_available();
+                            let in_use = max_available.saturating_sub(occupancy.num_available());
+                            if in_use.saturating_mul(2) >= max_available {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Outbound pipeline {id} timed out after {PIPELINE_TIMEOUT:.0?} and was aborted. \
+                                     The outbound pipeline is saturated ({in_use}/{max_available} slots in use): it \
+                                     is not draining as fast as messages arrive."
+                                );
+                            } else {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Outbound pipeline {id} timed out after {PIPELINE_TIMEOUT:.0?} and was aborted, \
+                                     but the pipeline itself is nearly empty ({in_use}/{max_available} slots in use). \
+                                     This message is blocked on an unresponsive downstream service, not on pipeline \
+                                     capacity — look at the comms actors (connectivity/connection manager), not here."
+                                );
+                            }
                         },
                     }
 

@@ -181,6 +181,17 @@ impl ConnectivityManagerMockState {
         .await
     }
 
+    /// Removes a previously registered connection so that `GetConnection` misses again, without touching the
+    /// underlying `PeerConnection` (which stays perfectly usable). Lets a test simulate the connectivity pool
+    /// briefly losing track of a connection that is still alive on the wire - e.g. a tie break resolving a beat
+    /// behind the substream negotiation for the connection it kept.
+    pub async fn remove_active_connection(&self, peer: &NodeId) {
+        self.with_state(|state| {
+            state.active_conns.remove(peer);
+        })
+        .await
+    }
+
     pub async fn set_pending_connection(&self, peer: &NodeId) {
         self.with_state(|state| {
             state.pending_conns.entry(peer.clone()).or_default();

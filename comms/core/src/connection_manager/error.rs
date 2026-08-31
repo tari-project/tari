@@ -44,6 +44,8 @@ pub enum ConnectionManagerError {
     SendToActorFailed,
     #[error("Dial request queue is full, the dial was shed")]
     DialQueueFull,
+    #[error("Peer database lookup did not complete within the actor lookup timeout, the request was shed")]
+    PeerLookupTimeout,
     #[error("Request was canceled before the response could be sent")]
     ActorRequestCanceled,
     #[error("Failed to connect on all addresses for peer")]

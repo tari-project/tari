@@ -77,6 +77,9 @@ toml = { version = "0.5" }
 tokio = { workspace = true, features = ["test-util"] }
 
 env_logger = "0.11"
+# Used by `no_peer_manager_method_performs_synchronous_storage_io` to parse the peer manager sources
+# rather than pattern-match them. Already in the lockfile as a transitive proc-macro dependency.
+syn = { version = "2.0.118", features = ["full", "visit"] }
 tempfile = "3.1.0"
 
 [build-dependencies]

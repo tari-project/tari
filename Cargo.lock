@@ -7650,6 +7650,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "snow",
+ "syn 2.0.118",
  "tari_common",
  "tari_common_sqlite",
  "tari_comms_rpc_macros",
