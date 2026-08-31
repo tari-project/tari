@@ -88,12 +88,13 @@ use tari_comms::{
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx},
 };
+use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Semaphore,
-    task,
+    task::JoinSet,
     time,
 };
 
@@ -139,6 +140,12 @@ pub struct MempoolSyncProtocol<TSubstream> {
     permits: Arc<Semaphore>,
     connectivity: ConnectivityRequester,
     block_event_stream: BlockEventReceiver,
+    shutdown_signal: ShutdownSignal,
+    /// Owns every spawned peer protocol task. Each one holds a `Mempool` clone, so they must die
+    /// with this protocol: dropping the set aborts them and releases those clones. Detaching them
+    /// (a bare `task::spawn`) left them alive after the node had shut down, pinning the mempool's
+    /// validator and through it the blockchain database and its LMDB file lock.
+    tasks: JoinSet<()>,
 }
 
 impl<TSubstream> MempoolSyncProtocol<TSubstream>
@@ -150,6 +157,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         mempool: Mempool,
         connectivity: ConnectivityRequester,
         block_event_stream: BlockEventReceiver,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             config,
@@ -159,6 +167,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             permits: Arc::new(Semaphore::new(1)),
             connectivity,
             block_event_stream,
+            shutdown_signal,
+            tasks: JoinSet::new(),
         }
     }
 
@@ -202,9 +212,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
 
                 Some(notif) = self.protocol_notifier.recv() => {
                     self.handle_protocol_notification(notif);
+                },
+
+                // Reap finished peer protocols so the set does not grow for the life of the node.
+                Some(_) = self.tasks.join_next(), if !self.tasks.is_empty() => {},
+
+                _ = &mut self.shutdown_signal => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Mempool protocol handler is shutting down, aborting {} peer protocol task(s)",
+                        self.tasks.len()
+                    );
+                    break;
                 }
             }
         }
+        // `self.tasks` is dropped here, which aborts anything still running.
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
@@ -291,7 +314,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         let permits = self.permits.clone();
         let num_synched = self.num_synched.clone();
         let config = self.config.clone();
-        task::spawn(async move {
+        self.tasks.spawn(async move {
             // Only initiate this protocol with a single peer at a time
             let _permit = permits.acquire().await;
             if num_synched.load(Ordering::SeqCst) >= config.initial_sync_num_peers {
@@ -329,10 +352,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         });
     }
 
-    fn spawn_inbound_handler(&self, node_id: NodeId, substream: TSubstream) {
+    fn spawn_inbound_handler(&mut self, node_id: NodeId, substream: TSubstream) {
         let mempool = self.mempool.clone();
         let config = self.config.clone();
-        task::spawn(async move {
+        self.tasks.spawn(async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
             match protocol.start_responder().await {

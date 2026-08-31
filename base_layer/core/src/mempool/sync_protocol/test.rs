@@ -41,6 +41,7 @@ use tari_comms::{
         node_identity::build_node_identity,
     },
 };
+use tari_shutdown::Shutdown;
 use tari_transaction_components::{
     key_manager::KeyManager,
     tari_amount::uT,
@@ -102,6 +103,8 @@ async fn setup(
     ConnectivityManagerMockState,
     Mempool,
     Vec<Transaction>,
+    // Returned so the caller keeps it alive: dropping it shuts the protocol down.
+    Shutdown,
 ) {
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
     let (mempool, transactions) = new_mempool_with_transactions(num_txns).await;
@@ -109,12 +112,14 @@ async fn setup(
     let connectivity_manager_mock_state = connectivity_manager_mock.spawn();
     let (block_event_sender, _) = broadcast::channel(1);
     let block_receiver = block_event_sender.subscribe();
+    let shutdown = Shutdown::new();
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
         mempool.clone(),
         connectivity,
         block_receiver,
+        shutdown.to_signal(),
     );
 
     task::spawn(protocol.run());
@@ -124,12 +129,13 @@ async fn setup(
         connectivity_manager_mock_state,
         mempool,
         transactions,
+        shutdown,
     )
 }
 
 #[tokio::test]
 async fn empty_set() {
-    let (_, connectivity_manager_state, mempool1, _) = setup(0).await;
+    let (_, connectivity_manager_state, mempool1, _, _shutdown) = setup(0).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -157,7 +163,7 @@ async fn empty_set() {
 
 #[tokio::test]
 async fn synchronise() {
-    let (_, connectivity_manager_state, mempool1, transactions1) = setup(5).await;
+    let (_, connectivity_manager_state, mempool1, transactions1, _shutdown) = setup(5).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -189,7 +195,7 @@ async fn synchronise() {
 
 #[tokio::test]
 async fn duplicate_set() {
-    let (_, connectivity_manager_state, mempool1, transactions1) = setup(2).await;
+    let (_, connectivity_manager_state, mempool1, transactions1, _shutdown) = setup(2).await;
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (_node1_conn, node1_mock, node2_conn, _) =
@@ -221,7 +227,7 @@ async fn duplicate_set() {
 
 #[tokio::test]
 async fn responder() {
-    let (protocol_notif, _, _, transactions1) = setup(2).await;
+    let (protocol_notif, _, _, transactions1, _shutdown) = setup(2).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -255,7 +261,7 @@ async fn responder() {
 
 #[tokio::test]
 async fn initiator_messages() {
-    let (protocol_notif, _, _, transactions1) = setup(2).await;
+    let (protocol_notif, _, _, transactions1, _shutdown) = setup(2).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
@@ -290,7 +296,7 @@ async fn initiator_messages() {
 
 #[tokio::test]
 async fn responder_messages() {
-    let (_, connectivity_manager_state, _, transactions1) = setup(1).await;
+    let (_, connectivity_manager_state, _, transactions1, _shutdown) = setup(1).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);

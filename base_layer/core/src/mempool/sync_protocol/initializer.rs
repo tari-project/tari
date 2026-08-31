@@ -102,9 +102,17 @@ impl ServiceInitializer for MempoolSyncInitializer {
             }
             let base_node_events = base_node.get_block_event_stream();
 
-            MempoolSyncProtocol::new(config, notif_rx, mempool, connectivity, base_node_events)
-                .run()
-                .await;
+            let shutdown_signal = handles.get_shutdown_signal();
+            MempoolSyncProtocol::new(
+                config,
+                notif_rx,
+                mempool,
+                connectivity,
+                base_node_events,
+                shutdown_signal,
+            )
+            .run()
+            .await;
         });
 
         trace!(target: LOG_TARGET, "Mempool sync service initialized");
