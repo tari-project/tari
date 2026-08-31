@@ -39,6 +39,7 @@ use tari_comms::{
     BytesMut,
     connectivity::ConnectivityEvent,
     framing,
+    framing::CanonicalFraming,
     memsocket::MemorySocket,
     message::MessageExt,
     peer_manager::PeerFeatures,
@@ -75,6 +76,7 @@ use crate::{
             MempoolSyncProtocol,
         },
     },
+    proto as shared_proto,
     validation::mocks::MockValidator,
 };
 
@@ -568,4 +570,161 @@ async fn run_returns_when_shutdown_is_triggered() {
         .unwrap();
 
     drop(protocol_notif_tx);
+}
+
+/// Encodes a transaction as a stream item, as a peer would send it.
+fn transaction_item(txn: &Transaction) -> proto::TransactionItem {
+    proto::TransactionItem {
+        transaction: Some(shared_proto::types::Transaction::try_from(Arc::new(txn.clone())).unwrap()),
+    }
+}
+
+/// Drives the initiator side of an exchange until the protocol's responder task is parked waiting
+/// for transactions from us, and hands back our end of the substream. Announcing a transaction the
+/// responder does not have is what makes it ask, and therefore wait.
+async fn park_responder_awaiting_transactions(
+    protocol_notif: &ProtocolNotificationTx<MemorySocket>,
+    peer: &tari_comms::NodeIdentity,
+) -> CanonicalFraming<MemorySocket> {
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    protocol_notif
+        .send(ProtocolNotification::new(
+            MEMPOOL_SYNC_PROTOCOL.clone(),
+            ProtocolEvent::NewInboundSubstream(peer.node_id().clone(), sock_in),
+        ))
+        .await
+        .unwrap();
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+
+    let unknown = create_transactions(1);
+    let inventory = proto::TransactionInventory {
+        items: unknown
+            .iter()
+            .map(|tx| tx.first_kernel_excess_sig().unwrap().get_signature().to_vec())
+            .collect(),
+    };
+    write_message(&mut framed, inventory).await;
+
+    // Drain the transactions it sends us, up to and including the terminator, then its request for
+    // the transaction it is missing. After this it is inside its read loop.
+    loop {
+        let item: proto::TransactionItem = read_message(&mut framed).await;
+        if item.transaction.is_none() {
+            break;
+        }
+    }
+    let indexes: proto::InventoryIndexes = read_message(&mut framed).await;
+    assert_eq!(indexes.indexes, vec![0]);
+    framed
+}
+
+/// Trickle items just inside the per-frame deadline until our end of the substream is closed,
+/// then assert it was closed rather than still hanging open. Returns how long we kept it up.
+async fn trickle_until_abandoned<T>(framed: &mut CanonicalFraming<T>, txn: &Transaction)
+where T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin {
+    let item = transaction_item(txn);
+    // Keep feeding items *forever*, each gap just inside STREAM_ITEM_TIMEOUT (120s) and the total
+    // count far below the item cap (10_000). That is the whole point: neither of those bounds can
+    // end this exchange, so if it ever ends it can only be the aggregate deadline.
+    //
+    // Never stop trickling of our own accord. An earlier version sent a fixed four items and then
+    // waited for EOF, which passed even with PROTOCOL_TIMEOUT raised to 24h — once we fell silent,
+    // the per-frame deadline closed the substream and the test read that as success. Ending the
+    // loop ourselves is exactly what makes this test vacuous.
+    //
+    // PROTOCOL_TIMEOUT is 300s, so ~3 items should do it; the generous cap only bounds the failure
+    // case, and 50 x 119s (~1.6h of virtual time) is far past any plausible aggregate bound.
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_secs(119)).await;
+        if framed.send(item.to_encoded_bytes().into()).await.is_err() {
+            // The peer task was dropped and took its end of the substream with it.
+            return;
+        }
+    }
+    panic!("kept trickling for 50 frames without being cut off — the aggregate deadline did not fire");
+}
+
+/// A responder that keeps receiving frames inside the per-frame deadline must still be abandoned
+/// once the whole exchange exceeds `PROTOCOL_TIMEOUT`. Without an aggregate bound a peer can hold a
+/// `Mempool` clone — and through it the blockchain database — for as long as it likes simply by
+/// trickling.
+#[tokio::test]
+async fn responder_abandons_a_peer_that_exceeds_the_aggregate_deadline() {
+    let (protocol_notif, _, _, _transactions, _shutdown) = setup(1).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let mut framed = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+
+    // Set up over real time so socket round-trips cannot race the auto-advancing clock; only the
+    // trickle below needs the clock moved.
+    tokio::time::pause();
+    let txn = create_transactions(1).remove(0);
+    trickle_until_abandoned(&mut framed, &txn).await;
+}
+
+/// The same guarantee on the initiator side, which is the one that matters most: initiators are
+/// serialised behind a single permit, so an unbounded exchange wedges mempool sync node-wide. This
+/// also covers opening the substream, which is inside the deadline.
+#[tokio::test]
+async fn initiator_abandons_a_peer_that_exceeds_the_aggregate_deadline() {
+    let (_, connectivity_manager_state, _, _transactions, _shutdown) = setup(1).await;
+    let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (_node1_conn, node1_mock, node2_conn, _) =
+        create_peer_connection_mock_pair(node1.to_peer(), node2.to_peer()).await;
+
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(node2_conn.into()));
+
+    let substream = node1_mock.next_incoming_substream().await.unwrap();
+    let mut framed = framing::canonical(substream, MAX_FRAME_SIZE);
+    // The initiator opens with its inventory and then waits for our transactions.
+    let _inventory: proto::TransactionInventory = read_message(&mut framed).await;
+
+    tokio::time::pause();
+    let txn = create_transactions(1).remove(0);
+    trickle_until_abandoned(&mut framed, &txn).await;
+}
+
+/// The M4 guarantee itself: by the time `run()` returns, the peer protocol tasks must be gone, not
+/// merely told to stop. `JoinSet::drop` aborts without awaiting, so a peer task — and the `Mempool`
+/// clone it holds — could otherwise outlive the service reporting itself shut down. If the task has
+/// really been dropped, its end of the substream is closed and ours reads EOF.
+#[tokio::test]
+async fn peer_tasks_are_gone_by_the_time_run_returns() {
+    let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
+    let (mempool, _transactions) = new_mempool_with_transactions(1).await;
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_state = connectivity_mock.spawn();
+    let (block_event_sender, _) = broadcast::channel(1);
+    let block_receiver = block_event_sender.subscribe();
+
+    let mut shutdown = Shutdown::new();
+    let protocol = MempoolSyncProtocol::new(
+        Default::default(),
+        protocol_notif_rx,
+        mempool,
+        connectivity,
+        block_receiver,
+        shutdown.to_signal(),
+    );
+    let running = task::spawn(protocol.run());
+    connectivity_state.wait_until_event_receivers_ready().await;
+
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let mut framed = park_responder_awaiting_transactions(&protocol_notif_tx, &peer).await;
+
+    shutdown.trigger();
+    tokio::time::timeout(Duration::from_secs(30), running)
+        .await
+        .expect("run() did not return after shutdown was triggered")
+        .unwrap();
+
+    // `run()` has returned. The peer task must already be gone, so this reads EOF rather than
+    // blocking on a substream something is still holding.
+    let next = tokio::time::timeout(Duration::from_secs(5), framed.next())
+        .await
+        .expect("peer task still held the substream after run() returned");
+    assert!(
+        next.is_none(),
+        "expected EOF once the peer task was joined, got {next:?}"
+    );
 }

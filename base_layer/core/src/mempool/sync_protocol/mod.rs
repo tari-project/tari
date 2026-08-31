@@ -374,43 +374,63 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             if num_synched.load(Ordering::SeqCst) >= config.initial_sync_num_peers {
                 return;
             }
-            match conn.open_framed_substream(&MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE).await {
-                Ok(framed) => {
-                    let protocol = MempoolPeerProtocol::new(config, framed, conn.peer_node_id().clone(), mempool);
-                    // Aggregate deadline: the per-frame one restarts on every frame, so only this
-                    // bounds how long a peer can hold the single initiator permit.
-                    match time::timeout(PROTOCOL_TIMEOUT, protocol.start_initiator()).await {
-                        Err(_elapsed) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Mempool initiator protocol with peer `{}` exceeded {PROTOCOL_TIMEOUT:?}; abandoning it",
-                                conn.peer_node_id().short_str(),
-                            );
-                        },
-                        Ok(Ok(_)) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Mempool initiator protocol completed successfully for peer `{}`",
-                                conn.peer_node_id().short_str(),
-                            );
-                            num_synched.fetch_add(1, Ordering::SeqCst);
-                        },
-                        Ok(Err(err)) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Mempool initiator protocol failed for peer `{}`: {}",
-                                conn.peer_node_id().short_str(),
-                                err
-                            );
-                        },
-                    }
+            let peer = conn.peer_node_id().clone();
+            // The aggregate deadline has to span opening the substream as well as the exchange.
+            // Opening is itself unbounded — an unbounded request/reply to the connection worker
+            // followed by a yamux `open_stream()` with no timeout of its own (only the subsequent
+            // protocol negotiation is bounded) — and it runs while holding the permit, so a peer
+            // with a wedged control would otherwise stall mempool sync for the whole node exactly
+            // as an unbounded read used to.
+            let synced = time::timeout(PROTOCOL_TIMEOUT, async {
+                let framed = match conn.open_framed_substream(&MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE).await {
+                    Ok(framed) => framed,
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Unable to establish mempool protocol substream to peer `{}`: {}",
+                            peer.short_str(),
+                            err
+                        );
+                        return false;
+                    },
+                };
+                match MempoolPeerProtocol::new(config, framed, peer.clone(), mempool)
+                    .start_initiator()
+                    .await
+                {
+                    Ok(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Mempool initiator protocol completed successfully for peer `{}`",
+                            peer.short_str(),
+                        );
+                        true
+                    },
+                    Err(err) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Mempool initiator protocol failed for peer `{}`: {}",
+                            peer.short_str(),
+                            err
+                        );
+                        false
+                    },
+                }
+            })
+            .await;
+
+            match synced {
+                Ok(true) => {
+                    num_synched.fetch_add(1, Ordering::SeqCst);
                 },
-                Err(err) => error!(
-                    target: LOG_TARGET,
-                    "Unable to establish mempool protocol substream to peer `{}`: {}",
-                    conn.peer_node_id().short_str(),
-                    err
-                ),
+                Ok(false) => {},
+                Err(_elapsed) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Mempool initiator exchange with peer `{}` exceeded {PROTOCOL_TIMEOUT:?}; abandoning it",
+                        peer.short_str(),
+                    );
+                },
             }
         });
     }
