@@ -106,9 +106,9 @@ Transport                     : tcp
 ---------------------------------- Peer sync -----------------------------------
 Seed peers (config + DNS)     : 2
 Seed peers synced from        : 2
-Peers downloaded              : 11
+Peers downloaded by seed sync : 11
   new / duplicate this run    : 6 / 5
-Peers in peer database        : 13
+Peers in database after sync  : 13
 Peer sync status              : completed after 2.5s (1 round(s))
 ----------------------------------- Dialing ------------------------------------
 Peers dialled                 : 13
@@ -117,6 +117,13 @@ Failed                        : 10
 Time to dial all peers        : 2.2s
 Failure reasons:
      10 x ConnectionFailed: All peer addresses are excluded for peer <peer>
+------------------------------------ Result ------------------------------------
+Peers in peer database        : 13
+Peers downloaded              : 11 (not counting the 2 seed peer(s))
+  dialled                     : 11
+  not dialled                 : 0 (0 never reached before --rounds / --max-peers ran out, 0 banned or deleted)
+Peers connected to            : 1 of the 11 downloaded peer(s) dialled
+Seed peers connected to       : 2 of the 2 seed peer(s) dialled
 ================================================================================
 ```
 
@@ -139,9 +146,23 @@ Failure reasons:
   the seed sync found); `undialled` is how many known peers had still never been dialled when the round started, which
   grows when `--max-peers` caps a round. A round stops the run early when nobody answered (there is then nobody left
   to ask) or when no undialled peers remain.
-- **Peers downloaded** is every non-seed peer in the peer database at the end of the sync. `new` and `duplicate` are
-  what the seed strap round itself reported: two seeds handing out the same peer counts once as new and once as a
-  duplicate.
+- **Result** is the bottom line, and it reconciles on its own — every number in it is accounted for by the others,
+  without reading any section above it.
+  - `Peers downloaded` is every non-seed peer in the peer database when the run ended: with `--rounds 1` that is the
+    same as **Peers downloaded by seed sync** above, and with more rounds it also includes what the later rounds
+    asked for. It splits into `dialled` plus `not dialled`.
+  - `not dialled` is *not* normally zero. A downloaded peer goes undialled when `--max-peers` capped the round it
+    would have been in, when `--rounds` ran out with candidates still queued, or when it is banned or deleted and so
+    was never a candidate at all. The line names how many fell into each case, so the gap between `Peers downloaded`
+    and the dial count below it is always explained in place.
+  - `Peers connected to` is a rate over the `dialled` subset — *not* over `Peers downloaded`, which is why `dialled`
+    is printed. The seed peers are dialled too, but they came from the config rather than from a download, so they
+    are counted on their own line instead of being mixed into either number.
+  - `Peers in peer database` here is the end-of-run size, seeds included, as opposed to **Peers in database after
+    sync** above, which is frozen at the moment the seed sync finished.
+- **Peers downloaded by seed sync** is every non-seed peer in the peer database at the end of the sync. `new` and
+  `duplicate` are what the seed strap round itself reported: two seeds handing out the same peer counts once as new
+  and once as a duplicate.
 - **Peer sync status** mirrors the base node's own early-exit rules — the DHT stops as soon as it has enough peers, so
   a short run with a modest peer count is normal, not a failure.
 - `All peer addresses are excluded` above means the peer only advertises onion addresses while this run used the TCP

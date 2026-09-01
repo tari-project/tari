@@ -252,22 +252,106 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     );
 }
 
-#[then(expr = "node {word} has a pruned height of {int}")]
-async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
+/// The most blocks a healthy pruned node may lag its own pruning horizon by.
+///
+/// `prune_database_if_needed` only prunes when
+/// `pruned_height < (tip - pruning_horizon) - pruning_interval`, and the integration harness sets
+/// `pruning_interval = 1` for pruned nodes. That gate therefore fires on alternating blocks: after
+/// a prune the node sits at `tip - horizon` (lag `horizon`), the next block fails the gate (lag
+/// `horizon + 1`), and the block after that prunes again. So propagation alone keeps the lag in
+/// `horizon..=horizon + 1`.
+///
+/// `horizon + 1` is therefore the derived bound, and the second block is empirical margin only — it
+/// is deliberately not attributed to any particular mechanism. Do not read it as covering one
+/// missed prune: see the PRECONDITION on `pruned_height_within_horizon` for the one known way the
+/// lag can exceed the derived bound, whose magnitude a `+1` would not bound anyway.
+///
+/// NOTE: this is deliberately a constant rather than being read from the node's config.
+/// `BaseNodeProcess.config` is cloned before the spawn task overrides `pruning_interval` to 1, so
+/// reading `pruning_interval` back would yield the production default of 50 and a nonsense bound.
+/// `pruning_horizon` is never mutated after that clone, which is why reading *it* is sound.
+const MAX_PRUNE_LAG_SLACK: u64 = 2;
+
+/// Assert that a pruned node has pruned up to (approximately) its pruning horizon.
+///
+/// Asserting an *exact* pruned height is not reproducible. Because of the alternating gate
+/// described on [`MAX_PRUNE_LAG_SLACK`], which heights are reachable at all depends on how the
+/// blocks arrived: the block-sync loop does not prune per block, so a node that falls behind and
+/// catches up lands on the opposite parity and can never reach the height a propagation-only run
+/// would have reached.
+///
+/// What *is* stable is the band. This asserts both edges of it:
+/// - lower: `tip - pruned_height <= horizon + MAX_PRUNE_LAG_SLACK`, i.e. the node pruned up to its horizon and kept
+///   doing so. This is the substance of the test — it rejects a regression where pruning runs once and then stalls,
+///   which a bare `pruned_height > 0` check would let through.
+/// - upper: `pruned_height <= tip - horizon`, i.e. it never pruned away history the horizon says it must keep. This is
+///   near-tautological today (`prune_to_height` is always called with exactly that target) but is a cheap guard against
+///   a future change that prunes too aggressively.
+///
+/// The horizon is read from the node's own configuration, so the feature file carries no magic
+/// numbers.
+///
+/// PRECONDITION: the caller must have already pinned this node at the network tip, and left the
+/// network tip stationary (e.g. with an "all nodes are on the same chain at height N" step, mining
+/// no further blocks until this step returns). Both bounds depend on it:
+///
+/// - lower: `DecideNextSync` prunes to `best_peer_tip - horizon` taken from the sync peer's *claimed* metadata, which
+///   is frozen at the Listening-time liveness ping (`SyncPeer` exposes no setter for it). If the peer keeps mining
+///   while the sync is in flight, header sync carries the local tip past that target and the lag settles at `horizon +
+///   n`, where `n` is however many blocks the peer advanced during the sync window. That is unbounded, so
+///   [`MAX_PRUNE_LAG_SLACK`] does not cover it — a stationary peer tip does, by making `n` zero.
+/// - upper: measured against the node's *own* tip, while `DecideNextSync` prunes relative to the *peer* tip, which can
+///   transiently sit above `local_tip - horizon`.
+///
+/// Reusing this step while the node is still behind, or while blocks are still being mined, could
+/// therefore fail either bound spuriously.
+#[then(expr = "node {word} has a pruned height within its pruning horizon")]
+async fn pruned_height_within_horizon(world: &mut TariWorld, node: String) {
+    let pruning_horizon = world.get_node(&node).unwrap().config.storage.pruning_horizon;
+    assert!(
+        pruning_horizon > 0,
+        "node {node} is not a pruned node (pruning horizon is 0), so it will never prune"
+    );
+    let max_lag = pruning_horizon + MAX_PRUNE_LAG_SLACK;
+
     let mut client = world.get_node_client(&node).await.unwrap();
 
+    // Phase 1: wait for the node to prune up to its horizon. Pruning is driven by block arrival, so
+    // it can trail the tip for a while before settling into the band.
     wait_for!(
         timeout: DEFAULT_TIMEOUT,
-        description: format!("node {node} to reach pruned height {height}"),
+        description: format!(
+            "node {node} to prune to within {max_lag} blocks of its tip (pruning horizon {pruning_horizon})"
+        ),
         condition: async {
-            let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
-            let pruned_height = chain_tip.metadata.unwrap().pruned_height;
-            if pruned_height == height {
+            let metadata = client.get_tip_info(Empty {}).await.unwrap().into_inner().metadata.unwrap();
+            let tip = metadata.best_block_height;
+            let pruned_height = metadata.pruned_height;
+            let lag = tip.saturating_sub(pruned_height);
+            if pruned_height > 0 && lag <= max_lag {
                 Ok(true)
             } else {
-                Err(format!("current pruned height {pruned_height}"))
+                Err(format!("pruned height {pruned_height} at tip {tip} (lag {lag}, want <= {max_lag})"))
             }
         }
+    );
+
+    // Phase 2: the node must not have pruned beyond its horizon. Both values come from a single
+    // metadata snapshot, so they are consistent with one another.
+    let metadata = client
+        .get_tip_info(Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .metadata
+        .unwrap();
+    let tip = metadata.best_block_height;
+    let pruned_height = metadata.pruned_height;
+    let max_prunable = tip.saturating_sub(pruning_horizon);
+    assert!(
+        pruned_height <= max_prunable,
+        "node {node} pruned past its horizon: pruned height {pruned_height} exceeds {max_prunable} (tip {tip} - \
+         pruning horizon {pruning_horizon})"
     );
 }
 

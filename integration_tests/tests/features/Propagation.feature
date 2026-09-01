@@ -101,4 +101,13 @@ Feature: Block Propagation
     Then TX1 is in the MINED of all nodes
     When I mine 17 blocks on SENDER
     Then all nodes are on the same chain at height 21
-    Then node PNODE1 has a pruned height of 16
+    # Mine two more blocks at a settled tip so PNODE1 receives them via `add_block` ->
+    # `prune_database_if_needed`. Propagation wins the race because a node only learns the network
+    # tip from `metadata_auto_ping_interval` (3s in tests) while local propagation takes
+    # milliseconds. One block would already be enough for the assertion to hold; the second is
+    # defence in depth for the case where a block reaches PNODE1 by sync and so skips the gate.
+    When I mine 1 blocks on SENDER
+    Then all nodes are on the same chain at height 22
+    When I mine 1 blocks on SENDER
+    Then all nodes are on the same chain at height 23
+    Then node PNODE1 has a pruned height within its pruning horizon
