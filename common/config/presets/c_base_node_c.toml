@@ -201,6 +201,18 @@ listener_self_liveness_check_interval = 15
 # status. Values below the 1 second minimum client deadline are floored at it. (default value = 600).
 #rpc_maximum_client_deadline = 600
 
+# Enable proactive (recovery) dialing in the comms connectivity manager. The DHT peer pool owns the steady-state
+# connection count; the proactive dialer only runs when this node has fewer than `proactive_dialing_floor`
+# connections, i.e. when the pool cannot recover unaided (cold start, total isolation, seed re-dial). Setting this
+# to false is the kill switch for that subsystem. (default value = true)
+#proactive_dialing_enabled = true
+# The connection count below which the proactive dialer is allowed to run. This is a floor, not a target: it must
+# stay strictly below the DHT peer pool size (`dht.num_neighbouring_nodes` + `dht.num_random_nodes`, 12 by
+# default) or the dialer becomes a second steady-state connection-count controller fighting the pool on the same
+# refresh tick. A floor set at or above the pool size is clamped below it at startup, with a warning.
+# (default value = 8)
+#proactive_dialing_floor = 8
+
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
 # Choose which peer address types to use and in which order to prefer them.

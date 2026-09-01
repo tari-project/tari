@@ -72,23 +72,27 @@ impl ProactiveDialer {
         }
 
         let current_connections = pool.count_connected_nodes();
-        let target = self.config.target_connection_count;
+        let floor = self.config.proactive_dialing_floor;
 
         // Update metrics
 
-        if current_connections >= target {
+        // The call site in `refresh_connection_pool` already makes this decision; this is a backstop for any
+        // other caller, not the gate. Keep both: the gate belongs at the call site so it is visible there.
+        if current_connections >= floor {
             debug!(
                 target: LOG_TARGET,
-                "({task_id}) Current connections ({current_connections}) meet or exceed target ({target}), no proactive dialing needed",
+                "({task_id}) Current connections ({current_connections}) are at or above the proactive dialing floor \
+                 ({floor}), no proactive dialing needed",
             );
 
             return Ok(0);
         }
 
-        let needed = target.saturating_sub(current_connections);
+        let needed = floor.saturating_sub(current_connections);
         debug!(
             target: LOG_TARGET,
-            "({task_id}) Proactive dialing: need {needed} more connections ({current_connections}/{target})",
+            "({task_id}) Proactive dialing: need {needed} more connections to reach the floor \
+             ({current_connections}/{floor})",
 
         );
 

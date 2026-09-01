@@ -179,6 +179,18 @@ pub struct P2pConfig {
     /// Default: 15 minutes
     #[serde(with = "serializers::seconds")]
     pub max_seed_peer_age: Duration,
+    /// Enable proactive (recovery) dialing in the comms connectivity manager. The DHT peer pool owns the
+    /// steady-state connection count; the proactive dialer only exists to get this node back off the floor when
+    /// the pool cannot recover unaided (cold start, total isolation). Setting this to false is the kill switch
+    /// for that subsystem.
+    /// Default: true
+    pub proactive_dialing_enabled: bool,
+    /// The connection count below which the proactive dialer is allowed to run. A *floor*, not a target - it
+    /// must stay strictly below the DHT peer pool size (`dht.num_neighbouring_nodes + dht.num_random_nodes`) or
+    /// the dialer becomes a second steady-state connection-count controller fighting the pool on the same tick.
+    /// `P2pInitializer` clamps it below the pool size and warns if this is set into conflict.
+    /// Default: 8
+    pub proactive_dialing_floor: usize,
 }
 
 impl Default for P2pConfig {
@@ -207,6 +219,8 @@ impl Default for P2pConfig {
             rpc_idle_session_timeout: Duration::from_secs(10 * 60),
             rpc_maximum_client_deadline: Duration::from_secs(10 * 60),
             max_seed_peer_age: Duration::from_secs(15 * 60),
+            proactive_dialing_enabled: true,
+            proactive_dialing_floor: 8,
         }
     }
 }

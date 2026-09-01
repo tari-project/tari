@@ -551,6 +551,35 @@ impl P2pInitializer {
     }
 }
 
+/// Reconciles the comms proactive dialer's floor with the DHT peer pool size, returning the floor to actually
+/// configure.
+///
+/// The DHT peer pool and the proactive dialer are both closed-loop connection-count controllers running on the
+/// same tick (`connection_pool_refresh_interval` is set from `dht.connectivity.update_interval` just above).
+/// They only coexist because the dialer's floor is *strictly below* the pool's target, which makes the dialer
+/// silent whenever the pool is anywhere near healthy and leaves it to do the one job it is actually needed for:
+/// getting this node off the floor when the pool cannot recover unaided.
+///
+/// With default config that relationship holds by arithmetic (8 < 6 + 6), not by design. `num_neighbouring_nodes`
+/// and `num_random_nodes` are both live operator-settable keys, and any sum at or below the floor turns the
+/// dialer back into a co-equal steady-state controller fighting the pool - proactively dialing peers the pool
+/// then immediately disconnects as over-capacity, every refresh cycle, forever. Clamping here is what makes the
+/// relationship deliberate rather than incidental.
+fn reconcile_proactive_dialing_floor(configured_floor: usize, dht_pool_size: usize) -> usize {
+    if configured_floor < dht_pool_size {
+        return configured_floor;
+    }
+    let clamped = dht_pool_size.saturating_sub(1);
+    warn!(
+        target: LOG_TARGET,
+        "proactive_dialing_floor ({configured_floor}) >= DHT pool size ({dht_pool_size}), clamping to {clamped}. \
+         The proactive dialer is a recovery mechanism and must stay strictly below the DHT peer pool size, which \
+         owns the steady-state connection count - otherwise the two fight each other every refresh cycle. Raise \
+         dht.num_neighbouring_nodes/dht.num_random_nodes, or lower p2p.proactive_dialing_floor, to silence this."
+    );
+    clamped
+}
+
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
@@ -578,6 +607,14 @@ impl ServiceInitializer for P2pInitializer {
             .with_reaper_min_connection_thresholds(
                 self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes,
             )
+            .with_proactive_dialing_enabled(config.proactive_dialing_enabled)
+            .with_proactive_dialing_floor(reconcile_proactive_dialing_floor(
+                config.proactive_dialing_floor,
+                self.config
+                    .dht
+                    .num_neighbouring_nodes
+                    .saturating_add(self.config.dht.num_random_nodes),
+            ))
             .set_self_liveness_check(config.listener_self_liveness_check_interval);
 
         if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
@@ -618,9 +655,77 @@ impl ServiceInitializer for P2pInitializer {
 mod test {
     use tari_common::configuration::Network;
     use tari_comms::connection_manager::WireMode;
+
+    use super::*;
+    use crate::P2pConfig;
+
     #[test]
     fn self_liveness_network_wire_byte_is_consistent() {
         let wire_mode = WireMode::Liveness;
         assert_eq!(wire_mode.as_byte(), Network::RESERVED_WIRE_BYTE);
+    }
+
+    /// The pool size used here is `P2pInitializer`'s own expression for it, so this test tracks the wiring
+    /// rather than a copy of it.
+    fn dht_pool_size(config: &P2pConfig) -> usize {
+        config
+            .dht
+            .num_neighbouring_nodes
+            .saturating_add(config.dht.num_random_nodes)
+    }
+
+    /// The regression this whole change exists to prevent: a DHT peer pool sized at or below the proactive
+    /// dialer's floor turns the dialer into a second steady-state connection-count controller, dialing peers
+    /// the pool immediately disconnects as over-capacity, every refresh cycle, forever. Both keys are live and
+    /// operator-settable, so the invariant has to be enforced at wire-up, not assumed.
+    #[test]
+    fn floor_is_clamped_strictly_below_a_small_dht_pool() {
+        let mut config = P2pConfig::default();
+        config.dht.num_neighbouring_nodes = 2;
+        config.dht.num_random_nodes = 2;
+
+        let pool_size = dht_pool_size(&config);
+        assert!(
+            config.proactive_dialing_floor >= pool_size,
+            "test setup is wrong: this test needs a pool size that conflicts with the default floor"
+        );
+
+        let floor = reconcile_proactive_dialing_floor(config.proactive_dialing_floor, pool_size);
+        assert!(
+            floor < pool_size,
+            "the proactive dialing floor ({floor}) must end up strictly below the DHT pool size ({pool_size})"
+        );
+    }
+
+    /// The default base node configuration must not be clamped - if it is, the default floor and the default
+    /// pool size have drifted into conflict and the arithmetic that keeps the two controllers apart no longer
+    /// holds out of the box.
+    #[test]
+    fn default_config_needs_no_clamping() {
+        let config = P2pConfig::default();
+        let pool_size = dht_pool_size(&config);
+
+        assert_eq!(
+            reconcile_proactive_dialing_floor(config.proactive_dialing_floor, pool_size),
+            config.proactive_dialing_floor,
+            "the default proactive dialing floor ({}) should already be strictly below the default DHT pool size \
+             ({pool_size})",
+            config.proactive_dialing_floor
+        );
+        assert!(config.proactive_dialing_floor < pool_size);
+    }
+
+    /// A floor exactly equal to the pool size is still a conflict - the two controllers would chase adjacent
+    /// numbers on the same tick - so the clamp is `<`, not `<=`.
+    #[test]
+    fn floor_equal_to_pool_size_is_still_clamped() {
+        assert_eq!(reconcile_proactive_dialing_floor(6, 6), 5);
+    }
+
+    /// A degenerate pool size cannot have anything strictly below it other than zero, which disables proactive
+    /// dialing entirely. That is the correct outcome and must not underflow.
+    #[test]
+    fn zero_pool_size_clamps_to_zero_without_underflowing() {
+        assert_eq!(reconcile_proactive_dialing_floor(8, 0), 0);
     }
 }
