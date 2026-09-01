@@ -451,6 +451,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
         Network::try_from(network_byte).map_err(|err| format!("Invalid network byte: {err}"))?;
         Ok(Self {
             network: network_byte,
+            protocol_version: value.protocol_version,
             parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
             justify_id: value.justify_id.try_into().map_err(|_| "Invalid justify id")?,
             height: value.height,
@@ -481,6 +482,7 @@ impl From<&SidechainBlockHeader> for proto::types::SidechainBlockHeader {
     fn from(value: &SidechainBlockHeader) -> Self {
         Self {
             network: u32::from(value.network),
+            protocol_version: value.protocol_version,
             parent_id: value.parent_id.to_vec(),
             justify_id: value.justify_id.to_vec(),
             height: value.height,
