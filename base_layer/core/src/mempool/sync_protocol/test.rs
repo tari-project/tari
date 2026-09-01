@@ -728,3 +728,50 @@ async fn peer_tasks_are_gone_by_the_time_run_returns() {
         "expected EOF once the peer task was joined, got {next:?}"
     );
 }
+
+/// Only one initiator runs at a time, and the ones that miss the permit decline rather than queue.
+///
+/// Queueing was unbounded in practice: every reorg and `BlockSyncComplete` resets `num_synched` and
+/// spawns an initiator per connection, and runs were observed with 155-218 parked on the permit,
+/// each holding a `Mempool` clone and through it the node's blockchain database handle. Declining
+/// costs nothing a waiter would have achieved — a waiter re-checks `num_synched` and usually
+/// returns without doing anything — and the peer is retried on the next connectivity or block
+/// event.
+///
+/// The discriminator is what happens *after* the permit is released. Simply observing that the
+/// second peer gets no substream while the permit is held proves nothing: a queued initiator has
+/// not opened one either. So this releases the permit and then checks the second peer is still not
+/// contacted — which is only true if it gave up rather than waited its turn.
+#[tokio::test]
+async fn a_second_initiator_declines_instead_of_queueing_for_the_permit() {
+    let (_, connectivity_manager_state, _, _transactions, _shutdown) = setup(1).await;
+
+    let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let busy_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let second_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (_busy_conn, busy_mock, busy_peer_conn, _) =
+        create_peer_connection_mock_pair(node1.to_peer(), busy_peer.to_peer()).await;
+    let (_second_conn, second_mock, second_peer_conn, _) =
+        create_peer_connection_mock_pair(node1.to_peer(), second_peer.to_peer()).await;
+
+    // The first peer takes the permit and holds it: accept its substream and never answer, so its
+    // exchange stays in flight.
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(busy_peer_conn.into()));
+    let substream = busy_mock.next_incoming_substream().await.unwrap();
+    let mut busy_framed = framing::canonical(substream, MAX_FRAME_SIZE);
+    let _inventory: proto::TransactionInventory = read_message(&mut busy_framed).await;
+
+    // A second connection arrives while the permit is held.
+    connectivity_manager_state.publish_event(ConnectivityEvent::PeerConnected(second_peer_conn.into()));
+    tokio::task::yield_now().await;
+
+    // Release the permit by tearing down the first exchange. A queued initiator would wake here and
+    // open its substream; one that declined is already gone.
+    drop(busy_framed);
+
+    let opened = tokio::time::timeout(Duration::from_secs(5), second_mock.next_incoming_substream()).await;
+    assert!(
+        !matches!(opened, Ok(Some(_))),
+        "second initiator opened a substream once the permit was released; it queued instead of declining"
+    );
+}

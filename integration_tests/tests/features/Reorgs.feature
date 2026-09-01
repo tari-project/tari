@@ -94,9 +94,7 @@ Feature: Reorgs
      When I start base node NODE1
      Then all nodes are at height 20
 
-  # @flaky: stops and restarts NODE1, which must re-bind its services; under CI contention the
-  # restart can exceed the service-start deadline, so allow the retry mechanism to cover it.
-  @critical @flaky
+  @critical
   Scenario: Pruned mode reorg past horizon
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1

@@ -369,8 +369,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         let num_synched = self.num_synched.clone();
         let config = self.config.clone();
         self.tasks.spawn(async move {
-            // Only initiate this protocol with a single peer at a time
-            let _permit = permits.acquire().await;
+            // Only initiate this protocol with a single peer at a time, and don't queue behind the
+            // peer that holds the permit. Queueing was unbounded in practice — every reorg and
+            // `BlockSyncComplete` resets `num_synched` and spawns one initiator per connection, and
+            // runs were observed with 155-218 of them parked here, each pinning a `Mempool` clone
+            // and through it the node's blockchain database handle. Since a caller that waits its
+            // turn re-checks `num_synched` and usually returns without doing anything anyway,
+            // declining outright costs almost nothing: connectivity events and block events keep
+            // arriving, so a peer skipped now is retried on the next one.
+            let Ok(_permit) = permits.try_acquire() else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Mempool sync is already in progress with another peer; not initiating with `{}`",
+                    conn.peer_node_id().short_str(),
+                );
+                return;
+            };
             if num_synched.load(Ordering::SeqCst) >= config.initial_sync_num_peers {
                 return;
             }
