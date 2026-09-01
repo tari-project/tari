@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.4](https://github.com/tari-project/tari/compare/v5.7.0-pre.3...v5.7.0-pre.4) (2026-09-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sidechain:** bind epoch and height into the proposal vote signature (#7982)
+* **sidechain:** add a protocol version to the sidechain block header (#7983)
+
+### Features
+
+* **sidechain:** add a protocol version to the sidechain block header ([#7983](https://github.com/tari-project/tari/issues/7983)) ([db5ef65](https://github.com/tari-project/tari/commit/db5ef65951036c5e0c4c8163f5206c9435030c48))
+* **sidechain:** bind epoch and height into the proposal vote signature ([#7982](https://github.com/tari-project/tari/issues/7982)) ([ddbf585](https://github.com/tari-project/tari/commit/ddbf585510f38deee8bbc7281a9bdc65abfd2540)), closes [#7983](https://github.com/tari-project/tari/issues/7983)
+
+
+### Bug Fixes
+
+* stop running peer-database SQLite on tokio worker threads ([#7981](https://github.com/tari-project/tari/issues/7981)) ([600b400](https://github.com/tari-project/tari/commit/600b40074f0ded6f39ad0164ffe6c1b5ed233fe5))
+
 ## [5.7.0-pre.3](https://github.com/tari-project/tari/compare/v5.7.0-pre.2...v5.7.0-pre.3) (2026-08-29)
 
 
