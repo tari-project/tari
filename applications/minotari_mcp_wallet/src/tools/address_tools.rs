@@ -29,16 +29,16 @@ use std::sync::Arc;
 
 use minotari_app_grpc::tari_rpc::{Empty, GetPaymentIdAddressRequest};
 use minotari_mcp_common::{
-    get_optional_string_param,
-    get_required_string_param,
-    security::PermissionLevel,
     McpError,
     McpResult,
     McpTool,
+    get_optional_string_param,
+    get_required_string_param,
+    security::PermissionLevel,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
 
 /// Tool for getting wallet addresses
 #[derive(Clone)]

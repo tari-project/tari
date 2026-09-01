@@ -18,17 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Cancel transaction MCP tool
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param
-};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::CancelTransactionRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResult, McpTool, PermissionLevel, get_required_string_param, json_schema};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::CancelTransactionRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Tool for cancelling pending transactions
@@ -67,14 +66,16 @@ impl McpTool for CancelTransactionTool {
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let tx_id = get_required_string_param(params, "transaction_id")?;
-        
+
         if tx_id.is_empty() {
             return Err(McpError::invalid_request("Transaction ID cannot be empty"));
         }
 
         // Validate transaction ID format (should be numeric or hex)
         if tx_id.parse::<u64>().is_err() && !tx_id.starts_with("0x") {
-            return Err(McpError::invalid_request("Transaction ID must be a number or hex string"));
+            return Err(McpError::invalid_request(
+                "Transaction ID must be a number or hex string",
+            ));
         }
 
         Ok(())
@@ -82,20 +83,19 @@ impl McpTool for CancelTransactionTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let tx_id_str = get_required_string_param(&params, "transaction_id")?;
-        
+
         // Parse transaction ID
         let tx_id = if tx_id_str.starts_with("0x") {
             u64::from_str_radix(&tx_id_str[2..], 16)
                 .map_err(|_| McpError::invalid_request("Invalid hex transaction ID"))?
         } else {
-            tx_id_str.parse::<u64>()
+            tx_id_str
+                .parse::<u64>()
                 .map_err(|_| McpError::invalid_request("Invalid transaction ID format"))?
         };
 
         // Create cancel request
-        let request = CancelTransactionRequest {
-            tx_id,
-        };
+        let request = CancelTransactionRequest { tx_id };
 
         // Execute cancellation
         let mut client = self.grpc_client.as_ref().clone();
@@ -109,10 +109,10 @@ impl McpTool for CancelTransactionTool {
         Ok(serde_json::json!({
             "success": response.is_success,
             "transaction_id": tx_id,
-            "message": if response.is_success { 
-                "Transaction cancelled successfully" 
-            } else { 
-                "Transaction could not be cancelled (may be already mined or invalid)" 
+            "message": if response.is_success {
+                "Transaction cancelled successfully"
+            } else {
+                "Transaction could not be cancelled (may be already mined or invalid)"
             }
         }))
     }

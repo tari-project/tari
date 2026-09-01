@@ -18,17 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Coin split MCP tool for splitting coins
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_u64_param
-};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::CoinSplitRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResult, McpTool, PermissionLevel, get_required_u64_param, json_schema};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::CoinSplitRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Tool for splitting coins into smaller denominations  
@@ -63,7 +62,7 @@ impl McpTool for CoinSplitTool {
                 "description": "Amount in microTari for each split coin"
             },
             "split_count" => {
-                "type": "number", 
+                "type": "number",
                 "description": "Number of split coins to create"
             },
             "fee_per_gram" => {

@@ -28,8 +28,8 @@
 use minotari_app_grpc::tari_rpc::{Empty, GetPeersRequest};
 use minotari_mcp_common::{McpError, McpResult, McpTool};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
 
 /// Tool for getting network status
 #[derive(Clone)]
@@ -186,7 +186,8 @@ impl McpTool for ListConnectedPeersTool {
                             std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
-                                .as_secs() - peer.last_connection
+                                .as_secs()
+                                .saturating_sub(peer.last_connection)
                         } else {
                             0
                         }
@@ -211,7 +212,7 @@ impl McpTool for ListConnectedPeersTool {
                 "total_peers": peer_count,
                 "online_peers": online_count,
                 "banned_peers": banned_count,
-                "healthy_peers": online_count - banned_count,
+                "healthy_peers": online_count.saturating_sub(banned_count),
             },
             "network_health": {
                 "status": if online_count >= 8 {
@@ -355,9 +356,9 @@ impl McpTool for GetAllPeersTool {
             "summary": {
                 "total_known_peers": total_count,
                 "connected_peers": connected_count,
-                "disconnected_peers": total_count - connected_count,
+                "disconnected_peers": total_count.saturating_sub(connected_count),
                 "banned_peers": banned_count,
-                "healthy_peers": connected_count - banned_count,
+                "healthy_peers": connected_count.saturating_sub(banned_count),
                 "connection_rate": if total_count > 0 {
                     (connected_count as f64 / total_count as f64 * 100.0).round()
                 } else {
@@ -561,7 +562,7 @@ impl McpTool for NetworkDiagnosticsTool {
             "connectivity": {
                 "connected_peers": peer_count,
                 "banned_peers": banned_peers,
-                "healthy_peers": peer_count - banned_peers,
+                "healthy_peers": peer_count.saturating_sub(banned_peers),
                 "avg_latency_ms": network_status.avg_latency_ms,
                 "num_node_connections": network_status.num_node_connections,
             },

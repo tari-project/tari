@@ -2207,6 +2207,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyn-clone"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
 name = "eax"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4379,6 +4385,74 @@ dependencies = [
 ]
 
 [[package]]
+name = "minotari_mcp_common"
+version = "5.7.0-pre.4"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "hex",
+ "log",
+ "minotari_node_grpc_client",
+ "minotari_wallet_grpc_client",
+ "prost 0.13.5",
+ "prost-reflect",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tonic 0.13.1",
+ "unicode-normalization",
+ "uuid",
+ "which 5.0.0",
+]
+
+[[package]]
+name = "minotari_mcp_node"
+version = "5.7.0-pre.4"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clap",
+ "hex",
+ "log",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "minotari_mcp_common",
+ "minotari_node_grpc_client",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic 0.13.1",
+]
+
+[[package]]
+name = "minotari_mcp_wallet"
+version = "5.7.0-pre.4"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clap",
+ "hex",
+ "log",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "minotari_mcp_common",
+ "minotari_wallet_grpc_client",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "tari_utilities",
+ "tokio",
+ "tonic 0.13.1",
+]
+
+[[package]]
 name = "minotari_merge_mining_proxy"
 version = "5.7.0-pre.4"
 dependencies = [
@@ -5942,7 +6016,7 @@ dependencies = [
  "regex",
  "syn 1.0.109",
  "tempfile",
- "which",
+ "which 4.4.2",
 ]
 
 [[package]]
@@ -5989,6 +6063,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "prost-reflect"
+version = "0.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37587d5a8a1b3dc9863403d084fc2254b91ab75a702207098837950767e2260b"
+dependencies = [
+ "prost 0.13.5",
+ "prost-types 0.13.5",
 ]
 
 [[package]]
@@ -6730,6 +6814,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
+dependencies = [
+ "dyn-clone",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.118",
+]
+
+[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6868,6 +6976,17 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8404,6 +8523,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.2.1",
+ "parking_lot 0.12.5",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.4",
@@ -8453,6 +8573,17 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util 0.7.18",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
+dependencies = [
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -8913,6 +9044,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
 
 [[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9047,6 +9187,7 @@ checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -9243,6 +9384,19 @@ dependencies = [
  "home",
  "once_cell",
  "rustix 0.38.44",
+]
+
+[[package]]
+name = "which"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bf3ea8596f3a0dd5980b46430f2058dfe2c36a27ccfbb1845d6fbfcd9ba6e14"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix 0.38.44",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

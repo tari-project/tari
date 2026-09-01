@@ -18,14 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Transaction info resource (templated)
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetTransactionInfoRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetTransactionInfoRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Resource providing detailed information about a specific transaction
@@ -43,7 +45,9 @@ impl TransactionInfoResource {
         // Expected format: transaction/{id}
         let parts: Vec<&str> = uri.split('/').collect();
         if parts.len() != 2 || parts[0] != "transaction" {
-            return Err(McpError::invalid_request("Invalid transaction URI format. Expected: transaction/{id}"));
+            return Err(McpError::invalid_request(
+                "Invalid transaction URI format. Expected: transaction/{id}",
+            ));
         }
 
         let tx_id_str = parts[1];
@@ -51,7 +55,8 @@ impl TransactionInfoResource {
             u64::from_str_radix(&tx_id_str[2..], 16)
                 .map_err(|_| McpError::invalid_request("Invalid hex transaction ID"))
         } else {
-            tx_id_str.parse::<u64>()
+            tx_id_str
+                .parse::<u64>()
                 .map_err(|_| McpError::invalid_request("Invalid transaction ID format"))
         }
     }
@@ -77,9 +82,9 @@ impl McpResource for TransactionInfoResource {
 
     async fn read_with_uri(&self, uri: &str) -> McpResult<Value> {
         let tx_id = Self::extract_transaction_id(uri)?;
-        
+
         let mut client = self.grpc_client.as_ref().clone();
-        
+
         let response = client
             .get_transaction_info(GetTransactionInfoRequest {
                 transaction_ids: vec![tx_id],
@@ -88,7 +93,7 @@ impl McpResource for TransactionInfoResource {
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get transaction info: {e}")))?;
 
         let transactions = response.into_inner().transactions;
-        
+
         if transactions.is_empty() {
             return Err(McpError::resource_not_found(format!("Transaction {} not found", tx_id)));
         }
@@ -116,6 +121,8 @@ impl McpResource for TransactionInfoResource {
     }
 
     async fn read(&self) -> McpResult<Value> {
-        Err(McpError::invalid_request("Transaction info requires a transaction ID. Use: transaction/{id}"))
+        Err(McpError::invalid_request(
+            "Transaction info requires a transaction ID. Use: transaction/{id}",
+        ))
     }
 }

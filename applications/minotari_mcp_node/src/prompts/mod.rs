@@ -23,12 +23,12 @@
 //! Node-specific MCP prompts
 
 use minotari_mcp_common::{
+    McpResult,
+    PromptRegistry,
     prompts::MessageRole,
     resource_message,
     simple_prompt,
     text_message,
-    McpResult,
-    PromptRegistry,
 };
 
 /// Registry for node-specific MCP prompts

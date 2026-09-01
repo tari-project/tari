@@ -260,35 +260,35 @@ impl StartupDiagnostics {
 
         // Check if base path is writable
         let base_path = Path::new(&self.base_path);
-        if let Some(parent) = base_path.parent() {
-            if parent.exists() {
-                // Try to create a test file to check write permissions
-                let test_file = parent.join(".tari_mcp_test");
-                match std::fs::write(&test_file, "test") {
-                    Ok(_) => {
-                        drop(std::fs::remove_file(&test_file)); // Clean up
-                        results.push(DiagnosticResult {
-                            component: "Directory Permissions".to_string(),
-                            status: DiagnosticStatus::Healthy,
-                            message: "Base path is writable".to_string(),
-                            suggestions: vec![],
-                            details: None,
-                        });
-                    },
-                    Err(e) => {
-                        results.push(DiagnosticResult {
-                            component: "Directory Permissions".to_string(),
-                            status: DiagnosticStatus::Error,
-                            message: "Base path is not writable".to_string(),
-                            suggestions: vec![
-                                format!("Check permissions on: {}", parent.display()),
-                                "Choose a different base path".to_string(),
-                                "Run with elevated permissions if needed".to_string(),
-                            ],
-                            details: Some(e.to_string()),
-                        });
-                    },
-                }
+        if let Some(parent) = base_path.parent() &&
+            parent.exists()
+        {
+            // Try to create a test file to check write permissions
+            let test_file = parent.join(".tari_mcp_test");
+            match std::fs::write(&test_file, "test") {
+                Ok(_) => {
+                    drop(std::fs::remove_file(&test_file)); // Clean up
+                    results.push(DiagnosticResult {
+                        component: "Directory Permissions".to_string(),
+                        status: DiagnosticStatus::Healthy,
+                        message: "Base path is writable".to_string(),
+                        suggestions: vec![],
+                        details: None,
+                    });
+                },
+                Err(e) => {
+                    results.push(DiagnosticResult {
+                        component: "Directory Permissions".to_string(),
+                        status: DiagnosticStatus::Error,
+                        message: "Base path is not writable".to_string(),
+                        suggestions: vec![
+                            format!("Check permissions on: {}", parent.display()),
+                            "Choose a different base path".to_string(),
+                            "Run with elevated permissions if needed".to_string(),
+                        ],
+                        details: Some(e.to_string()),
+                    });
+                },
             }
         }
 

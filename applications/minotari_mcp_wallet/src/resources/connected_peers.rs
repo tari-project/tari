@@ -18,14 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Connected peers resource
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetConnectedPeersRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetConnectedPeersRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Resource providing information about connected peers
@@ -59,14 +61,14 @@ impl McpResource for ConnectedPeersResource {
 
     async fn read(&self) -> McpResult<Value> {
         let mut client = self.grpc_client.as_ref().clone();
-        
+
         let response = client
             .get_connected_peers(GetConnectedPeersRequest {})
             .await
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get connected peers: {e}")))?;
 
         let peers_response = response.into_inner();
-        
+
         let mut peers = Vec::new();
         for peer in peers_response.connected_peers {
             peers.push(serde_json::json!({

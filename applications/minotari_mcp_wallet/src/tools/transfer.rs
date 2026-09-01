@@ -18,17 +18,24 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Transfer MCP tool for sending Tari
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param, get_required_u64_param
+    McpError,
+    McpResult,
+    McpTool,
+    PermissionLevel,
+    get_required_string_param,
+    get_required_u64_param,
+    json_schema,
 };
 use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::TransferRequest};
-use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
 use tonic::transport::Channel;
 
 /// Tool for transferring Tari to another address
@@ -59,12 +66,12 @@ impl McpTool for TransferTool {
     fn input_schema(&self) -> Value {
         json_schema! {
             "recipient" => {
-                "type": "string", 
+                "type": "string",
                 "description": "Destination address or emoji ID to send Tari to"
             },
             "amount" => {
                 "type": "number",
-                "description": "Amount of microTari to send" 
+                "description": "Amount of microTari to send"
             },
             "fee_per_gram" => {
                 "type": "number",
@@ -80,7 +87,7 @@ impl McpTool for TransferTool {
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let recipient = get_required_string_param(params, "recipient")?;
         let amount = get_required_u64_param(params, "amount")?;
-        
+
         if recipient.is_empty() {
             return Err(McpError::invalid_request("Recipient cannot be empty"));
         }
@@ -93,7 +100,9 @@ impl McpTool for TransferTool {
         if let Some(fee) = params.get("fee_per_gram") {
             if let Some(fee_val) = fee.as_u64() {
                 if fee_val == 0 {
-                    return Err(McpError::invalid_request("Fee per gram must be greater than 0 if specified"));
+                    return Err(McpError::invalid_request(
+                        "Fee per gram must be greater than 0 if specified",
+                    ));
                 }
             }
         }
