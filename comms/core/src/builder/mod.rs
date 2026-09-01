@@ -315,6 +315,22 @@ impl CommsBuilder {
         self
     }
 
+    /// Enable or disable proactive (recovery) dialing. Disabling it leaves the DHT peer pool as the only thing
+    /// dialing new peers, which is fine on a node that stays connected and removes its only unaided way back
+    /// from total isolation.
+    pub fn with_proactive_dialing_enabled(mut self, enabled: bool) -> Self {
+        self.connectivity_config.proactive_dialing_enabled = enabled;
+        self
+    }
+
+    /// The connection count below which the proactive dialer is allowed to run. This is a floor, not a target -
+    /// see [`ConnectivityConfig::proactive_dialing_floor`]. It must stay strictly below the DHT peer pool size;
+    /// `P2pInitializer` clamps it to enforce that.
+    pub fn with_proactive_dialing_floor(mut self, floor: usize) -> Self {
+        self.connectivity_config.proactive_dialing_floor = floor;
+        self
+    }
+
     /// Set the transport protocols to use for communication
     /// if not provided defaults to IP4, IP6, TOR and memory address
     pub fn with_transport_protocols(mut self, protocols: Vec<TransportProtocol>) -> Self {

@@ -22,6 +22,8 @@
 
 use std::time::Duration;
 
+use super::connection_stats::PeerConnectionStats;
+
 /// Connectivity actor configuration
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectivityConfig {
@@ -52,10 +54,16 @@ pub struct ConnectivityConfig {
     /// The closest number of peer connections to maintain; connections above the threshold will be removed
     /// (default: disabled)
     pub maintain_n_closest_connections_only: Option<usize>,
-    /// Target number of active peer connections to maintain
+    /// The connection count below which the proactive dialer is allowed to run. This is a *floor*, not a target:
+    /// steady-state connection count is owned by the DHT peer pool, and the proactive dialer exists only to get a
+    /// node back off the floor when the pool cannot recover unaided (cold start, total isolation, seed re-dial).
+    ///
+    /// It must therefore stay strictly below the DHT pool size (`num_neighbouring_nodes + num_random_nodes`), or
+    /// the dialer becomes a second steady-state connection-count controller fighting the pool on the same tick.
+    /// `P2pInitializer` clamps it to enforce that.
     /// Default: 8
-    pub target_connection_count: usize,
-    /// Enable proactive peer dialing to maintain target connections
+    pub proactive_dialing_floor: usize,
+    /// Enable proactive peer dialing to recover from a connection count below `proactive_dialing_floor`
     /// Default: true
     pub proactive_dialing_enabled: bool,
     /// Multiplier for calculating how many peers to dial based on success rate
@@ -75,6 +83,23 @@ pub struct ConnectivityConfig {
     pub max_seed_peer_age: Duration,
 }
 
+impl ConnectivityConfig {
+    /// Whether this peer's circuit breaker is currently open, i.e. it has failed
+    /// `circuit_breaker_failure_threshold` times in a row and has not yet waited out
+    /// `circuit_breaker_retry_interval`.
+    ///
+    /// The single definition of that question. There are two places that must not dial a circuit-broken peer -
+    /// `ConnectivityManagerActor::handle_dial_peer`, which covers every dial routed through the connectivity
+    /// actor, and `ProactiveDialer::select_dial_candidates`, whose dials go straight to the connection manager
+    /// and so never reach the actor at all. They are genuinely separate call sites; keeping the *predicate* in
+    /// one place is what stops them from drifting apart.
+    ///
+    /// A peer with no recorded stats has never failed, so it is never circuit-broken.
+    pub(crate) fn is_circuit_broken(&self, stats: Option<&PeerConnectionStats>) -> bool {
+        stats.is_some_and(|stats| !stats.should_allow_connection(self.circuit_breaker_retry_interval))
+    }
+}
+
 impl Default for ConnectivityConfig {
     fn default() -> Self {
         Self {
@@ -87,7 +112,7 @@ impl Default for ConnectivityConfig {
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
             maintain_n_closest_connections_only: None,
-            target_connection_count: 8,
+            proactive_dialing_floor: 8,
             proactive_dialing_enabled: true,
             dialing_multiplier: 2.5,
             success_rate_tracking_window: Duration::from_secs(5 * 60),

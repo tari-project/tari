@@ -317,10 +317,14 @@ impl DhtConnectivity {
             .random_pool
             .iter()
             .partition::<Vec<_>, _>(|peer| self.connection_handles.iter().any(|c| c.peer_node_id() == *peer));
+        // Both numbers below are pool-scoped on purpose, and both are labelled as such. `comms::connectivity`
+        // reports `#ConnectedNodes(incl. inbound)` on the same tick, which counts every connected node peer -
+        // inbound connections the DHT pool never selected included - so the two targets legitimately disagree
+        // and only read as contradictory when one of them does not say what it is counting.
         debug!(
             target: LOG_TARGET,
-            "DHT connectivity status: {}peer pool: {}/{} ({} connected, last refreshed {}), active DHT connections: \
-             {}/{}",
+            "DHT connectivity status: {}peer pool: {}/{} ({} connected, last refreshed {}), pool connection \
+             handles held: {}/{}",
             self.cooldown_in_effect
                 .map(|ts| format!(
                     "COOLDOWN({:.2?} remaining) ",
