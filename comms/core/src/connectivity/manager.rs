@@ -430,26 +430,31 @@ impl ConnectivityManagerActor {
             },
         }
 
-        // Per-peer circuit breaker. `handle_dial_peer` is the single chokepoint every dial passes
-        // through, so this is the only place the breaker can cover DHT-originated dials as well as
-        // the proactive dialer's own - previously it was consulted only inside the dialer's
-        // candidate filter, which is why the DHT could re-dial a peer that had just failed
+        // Per-peer circuit breaker, for dials that reach this actor. That is every dial routed through
+        // `ConnectivityRequester` - notably the DHT peer pool's `request_many_dials`, which previously
+        // bypassed the breaker entirely and could therefore re-dial a peer that had just failed
         // `circuit_breaker_failure_threshold` times in a row.
         //
-        // It applies to *speculative* dials only: `reply_tx: None` together with `RefKind::Weak` is
-        // exactly what `ConnectivityRequester::request_many_dials` sends (the pool refresh) and is
-        // never what an explicit `dial_peer` from sync or RPC sends. An explicit dial names a peer
-        // some other subsystem specifically needs, and must never be circuit-broken.
+        // It is *not* the only dial path in comms: `ProactiveDialer::dial_peers_concurrently` calls
+        // `ConnectionManagerRequester::try_send_dial_peer` directly and never passes through here, so it
+        // keeps its own breaker check in `select_dial_candidates`. Both sites ask the same question via
+        // `ConnectivityConfig::is_circuit_broken` so the two cannot drift apart, but they remain two
+        // call sites - this is not a single chokepoint for all dials.
+        //
+        // Here it applies to *speculative* dials only: `reply_tx: None` together with `RefKind::Weak` is
+        // exactly what `ConnectivityRequester::request_many_dials` sends (the pool refresh) and is never
+        // what an explicit `dial_peer` sends. Both halves of that test matter - `RefKind::Weak` alone is
+        // not enough, because the ordinary messaging and RPC dial paths ask for `Weak` handles too and
+        // are explicit (they carry a `reply_tx`). An explicit dial names a peer some other subsystem
+        // specifically needs, and must never be circuit-broken.
         let is_speculative_dial = reply_tx.is_none() && matches!(ref_kind, RefKind::Weak);
-        if is_speculative_dial &&
-            let Some(stats) = self.connection_stats.get(&node_id) &&
-            !stats.should_allow_connection(self.config.circuit_breaker_retry_interval)
-        {
+        let stats = self.connection_stats.get(&node_id);
+        if is_speculative_dial && self.config.is_circuit_broken(stats) {
             debug!(
                 target: LOG_TARGET,
                 "Skipping speculative dial to peer {} - its circuit breaker is open ({})",
                 node_id.short_str(),
-                stats
+                stats.map(ToString::to_string).unwrap_or_default()
             );
             return;
         }
@@ -555,6 +560,18 @@ impl ConnectivityManagerActor {
     }
 
     async fn refresh_connection_pool(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        self.clean_connection_pool();
+        // Deliberately outside the proactive-dialing gate below: aging seed connections out is unconditional,
+        // only the seed *re-dial* path (inside `execute_proactive_dialing`) is gated on the floor.
+        self.disconnect_seed_peers(task_id).await;
+
+        if self.config.is_connection_reaping_enabled {
+            self.reap_inactive_connections(task_id).await;
+        }
+        if let Some(threshold) = self.config.maintain_n_closest_connections_only {
+            self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
+        }
+
         // The DHT pool size this node was wired for. Both comms-side ceilings are set from
         // `num_neighbouring_nodes + num_random_nodes` by `P2pInitializer`, so either one reports the number the
         // DHT's own status line calls the "peer pool" - printing it here is what lets the two log targets be
@@ -563,12 +580,20 @@ impl ConnectivityManagerActor {
             .config
             .maintain_n_closest_connections_only
             .unwrap_or(self.config.reaper_min_connection_threshold);
-        let num_connected_nodes = self.pool.count_connected_nodes();
         let floor = self.config.proactive_dialing_floor;
-        // Decided once, here, so the single status line below and the branch it describes cannot disagree.
+
+        // Read the connection count exactly once, here, and use that one value for both the status line and
+        // the gate below. It has to be read *after* the cleanup, seed-disconnect, reaping and
+        // minimize-connections passes above, all of which can drop connections: a count taken before them
+        // could say "idle" in the log while the gate, acting on the real post-cleanup count, dials anyway on
+        // that same tick - which is precisely the two-logs-disagreeing-on-one-tick confusion this status line
+        // exists to end. Reading it after also means a node just pushed below the floor recovers on this tick
+        // rather than the next.
+        let num_connected_nodes = self.pool.count_connected_nodes();
+        let should_dial = self.config.proactive_dialing_enabled && num_connected_nodes < floor;
         let dialer_state = if !self.config.proactive_dialing_enabled {
             "disabled"
-        } else if num_connected_nodes < floor {
+        } else if should_dial {
             "ARMED"
         } else {
             "idle"
@@ -576,7 +601,7 @@ impl ConnectivityManagerActor {
 
         info!(
             target: LOG_TARGET,
-            "CONNECTIVITY_REFRESH: Performing connection pool cleanup/refresh ({}). (#Peers = {}, \
+            "CONNECTIVITY_REFRESH: Performed connection pool cleanup/refresh ({}). (#Peers = {}, \
              #ConnectedNodes(incl. inbound)={}, #Failed={}, #Disconnected={}, #Clients={}, DHT pool size={}, \
              proactive dialer={} (floor {}))",
             task_id,
@@ -590,30 +615,11 @@ impl ConnectivityManagerActor {
             floor,
         );
 
-        self.clean_connection_pool();
-        // Deliberately outside the proactive-dialing gate below: aging seed connections out is unconditional,
-        // only the seed *re-dial* path (inside `execute_proactive_dialing`) is gated on the floor.
-        self.disconnect_seed_peers(task_id).await;
-
-        if self.config.is_connection_reaping_enabled {
-            self.reap_inactive_connections(task_id).await;
-        }
-        if let Some(threshold) = self.config.maintain_n_closest_connections_only {
-            self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
-        }
-
         // Proactive dialing is a *recovery* mechanism, not a steady-state connection-count controller - the DHT
         // peer pool owns that. Gate it here, at the call site, rather than relying on the dialer's own early
         // return: the constraint that keeps the two loops from fighting is "this floor stays below the DHT pool
         // size", and it should be legible where the decision is made.
-        //
-        // Re-read the connection count rather than reusing the one above: the reaping and minimize-connections
-        // passes in between may have dropped connections, and a node that has just been pushed below the floor
-        // should recover on this tick, not the next one.
-        if self.config.proactive_dialing_enabled &&
-            self.pool.count_connected_nodes() < floor &&
-            let Err(err) = self.execute_proactive_dialing(task_id).await
-        {
+        if should_dial && let Err(err) = self.execute_proactive_dialing(task_id).await {
             warn!(
                 target: LOG_TARGET,
                 "({task_id}) Proactive dialing failed: {err:?}"
@@ -2039,6 +2045,40 @@ mod speculative_dial_circuit_breaker_tests {
         match cm_rx.try_recv() {
             Ok(ConnectionManagerRequest::DialPeer { node_id: dialed, .. }) => assert_eq!(dialed, node_id),
             other => panic!("an explicit dial must never be circuit-broken, got {other:?}"),
+        }
+    }
+
+    /// The discriminator's most consequential case, and the one the two tests above do *not* pin between
+    /// them. `ConnectivityRequester::dial_peer` always sends `reply_tx: Some(..)` whatever `RefKind` it is
+    /// given, and the ordinary messaging and RPC dial paths both ask for `RefKind::Weak`
+    /// (`protocol/messaging/outbound.rs` and `protocol/rpc/context.rs`) - so `Weak` + `Some(reply_tx)` is the
+    /// dominant explicit-dial shape in production, not `Strong`.
+    ///
+    /// If the check ever regressed to testing `ref_kind` alone and dropped the `reply_tx.is_none()` half,
+    /// every other test in this module would still pass while every RPC and messaging dial to a peer with a
+    /// tripped breaker was silently dropped. This is that test.
+    #[tokio::test]
+    async fn explicit_weak_dial_to_a_circuit_broken_peer_still_goes_through() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer).await.unwrap();
+
+        let (mut actor, mut cm_rx, _shutdown) = setup(peer_manager);
+        trip_circuit_breaker(&mut actor, &node_id);
+
+        let (reply_tx, _reply_rx) = oneshot::channel();
+        actor
+            .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
+            .await;
+
+        match cm_rx.try_recv() {
+            Ok(ConnectionManagerRequest::DialPeer { node_id: dialed, .. }) => assert_eq!(dialed, node_id),
+            other => panic!(
+                "a Weak dial carrying a reply_tx is explicit (this is what messaging and RPC send) and must never be \
+                 circuit-broken, got {other:?}"
+            ),
         }
     }
 

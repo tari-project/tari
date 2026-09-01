@@ -221,10 +221,11 @@ impl ProactiveDialer {
         let mut final_candidates = Vec::new();
         for peer in candidates {
             // The SQL query already filtered for communication nodes, non-banned, non-deleted
-            // Just need to check circuit breaker state
-            if let Some(stats) = connection_stats.get(&peer.node_id) &&
-                !stats.should_allow_connection(self.config.circuit_breaker_retry_interval)
-            {
+            // Just need to check circuit breaker state. These dials go straight to the connection manager
+            // via `try_send_dial_peer` and never reach `ConnectivityManagerActor::handle_dial_peer`, so this
+            // check cannot be dropped in favour of the one there - but it asks the same question through the
+            // same predicate so the two cannot disagree.
+            if self.config.is_circuit_broken(connection_stats.get(&peer.node_id)) {
                 trace!(
                     target: LOG_TARGET,
                     "({}) Skipping peer {} due to circuit breaker",

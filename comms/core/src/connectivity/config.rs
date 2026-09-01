@@ -22,6 +22,8 @@
 
 use std::time::Duration;
 
+use super::connection_stats::PeerConnectionStats;
+
 /// Connectivity actor configuration
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectivityConfig {
@@ -79,6 +81,23 @@ pub struct ConnectivityConfig {
     /// Maximum seed peer age
     /// Default: 15 minutes
     pub max_seed_peer_age: Duration,
+}
+
+impl ConnectivityConfig {
+    /// Whether this peer's circuit breaker is currently open, i.e. it has failed
+    /// `circuit_breaker_failure_threshold` times in a row and has not yet waited out
+    /// `circuit_breaker_retry_interval`.
+    ///
+    /// The single definition of that question. There are two places that must not dial a circuit-broken peer -
+    /// `ConnectivityManagerActor::handle_dial_peer`, which covers every dial routed through the connectivity
+    /// actor, and `ProactiveDialer::select_dial_candidates`, whose dials go straight to the connection manager
+    /// and so never reach the actor at all. They are genuinely separate call sites; keeping the *predicate* in
+    /// one place is what stops them from drifting apart.
+    ///
+    /// A peer with no recorded stats has never failed, so it is never circuit-broken.
+    pub(crate) fn is_circuit_broken(&self, stats: Option<&PeerConnectionStats>) -> bool {
+        stats.is_some_and(|stats| !stats.should_allow_connection(self.circuit_breaker_retry_interval))
+    }
 }
 
 impl Default for ConnectivityConfig {
