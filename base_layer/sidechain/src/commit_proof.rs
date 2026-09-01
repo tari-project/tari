@@ -282,6 +282,19 @@ pub struct QuorumCertificate {
     pub header_hash: FixedHash,
     #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
+    /// The protocol version of the block this certificate justifies, which selects the message its members signed.
+    /// A certificate is self-describing for the same reason a header is, and carries its own version because the
+    /// certificates in a proof may justify blocks either side of an activation from the block in its header.
+    #[serde(default)]
+    pub protocol_version: u32,
+    /// The epoch of the justified block. From protocol version 1 it is signed over by each member, so a mismatch
+    /// fails signature verification. A certificate that carries no epoch reads as 0, which is what a version 0
+    /// certificate — whose signatures do not cover it — encodes to.
+    #[serde(default)]
+    pub epoch: u64,
+    /// The height of the justified block. See `epoch`.
+    #[serde(default)]
+    pub height: u64,
     pub signatures: Vec<ValidatorQcSignature>,
     pub decision: QuorumDecision,
 }
@@ -358,7 +371,14 @@ pub struct ValidatorQcSignature {
 
 impl ValidatorQcSignature {
     #[must_use]
-    pub fn verify(&self, block_id: &FixedHash, decision: QuorumDecision) -> bool {
+    pub fn verify(
+        &self,
+        protocol_version: u32,
+        block_id: &FixedHash,
+        decision: QuorumDecision,
+        epoch: u64,
+        height: u64,
+    ) -> bool {
         let Ok(public_key) = self.public_key.to_public_key() else {
             return false;
         };
@@ -367,9 +387,7 @@ impl ValidatorQcSignature {
             return false;
         };
 
-        let fields = ProposalCertificateSignatureFields { block_id, decision };
-
-        let message = layer2::proposal_vote_signature_hasher().chain(&fields).finalize();
+        let message = ProposalVoteMessage::new(protocol_version, block_id, decision, epoch, height).calculate_hash();
         signature.verify(&public_key, message)
     }
 
@@ -382,10 +400,69 @@ impl ValidatorQcSignature {
     }
 }
 
+/// The message a proposal vote signs, in the shape the block's protocol version calls for. Signing and verifying
+/// both go through this so that the two cannot select different shapes.
+///
+/// Each variant serialises as its inner fields with no discriminant, so version 0 signs exactly the bytes it always
+/// has and signatures already collected stay verifiable.
+#[derive(Debug)]
+pub enum ProposalVoteMessage<'a> {
+    V0(ProposalCertificateSignatureFields<'a>),
+    V1(ProposalCertificateSignatureFieldsV1<'a>),
+}
+
+impl<'a> ProposalVoteMessage<'a> {
+    pub fn new(
+        protocol_version: u32,
+        block_id: &'a FixedHash,
+        decision: QuorumDecision,
+        epoch: u64,
+        height: u64,
+    ) -> Self {
+        match protocol_version {
+            0 => Self::V0(ProposalCertificateSignatureFields { block_id, decision }),
+            protocol_version => Self::V1(ProposalCertificateSignatureFieldsV1 {
+                protocol_version,
+                block_id,
+                decision,
+                epoch,
+                height,
+            }),
+        }
+    }
+
+    pub fn calculate_hash(&self) -> FixedHash {
+        layer2::proposal_vote_signature_hasher().chain(self).finalize().into()
+    }
+}
+
+impl BorshSerialize for ProposalVoteMessage<'_> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        match self {
+            Self::V0(fields) => fields.serialize(writer),
+            Self::V1(fields) => fields.serialize(writer),
+        }
+    }
+}
+
 #[derive(Debug, BorshSerialize)]
 pub struct ProposalCertificateSignatureFields<'a> {
     pub block_id: &'a FixedHash,
     pub decision: QuorumDecision,
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct ProposalCertificateSignatureFieldsV1<'a> {
+    /// The version the vote was cast under. Committed to so that two versions sharing this preimage shape still
+    /// produce distinct messages, and a certificate cannot be relabelled to a version its members did not sign.
+    pub protocol_version: u32,
+    pub block_id: &'a FixedHash,
+    pub decision: QuorumDecision,
+    /// The epoch the vote was cast in. Present so that a single signature attributes the vote to a view, which is
+    /// what lets two conflicting votes be proven to be equivocation rather than two votes at different heights.
+    pub epoch: u64,
+    /// The height the vote was cast at. See `epoch`.
+    pub height: u64,
 }
 
 /// The hash preimage schemas for a sidechain block header, one per shape the header has taken. The variant is

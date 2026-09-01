@@ -577,6 +577,9 @@ impl TryFrom<proto::types::QuorumCertificate> for QuorumCertificate {
         Ok(Self {
             header_hash: value.header_hash.try_into().map_err(|_| "Invalid block body hash")?,
             parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
+            epoch: value.epoch,
+            height: value.height,
+            protocol_version: value.protocol_version,
             signatures: value
                 .signatures
                 .into_iter()
@@ -594,6 +597,9 @@ impl From<&QuorumCertificate> for proto::types::QuorumCertificate {
         Self {
             parent_id: value.parent_id.to_vec(),
             header_hash: value.header_hash.to_vec(),
+            epoch: value.epoch,
+            height: value.height,
+            protocol_version: value.protocol_version,
             signatures: value.signatures.iter().map(Into::into).collect(),
             decision: proto::types::QuorumDecision::from(value.decision).into(),
         }
@@ -726,6 +732,9 @@ mod test {
         proto::types::QuorumCertificate {
             header_hash: vec![0u8; 32],
             parent_id: vec![0u8; 32],
+            epoch: 0,
+            height: 0,
+            protocol_version: 0,
             signatures: vec![signature; num_signatures],
             decision: proto::types::QuorumDecision::Accept as i32,
         }

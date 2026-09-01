@@ -221,7 +221,7 @@ fn validate_qc(
             });
         }
 
-        if !sig.verify(&block_id, quorum_decision) {
+        if !sig.verify(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height) {
             return Err(SidechainProofValidationError::InvalidProof {
                 details: format!("Invalid signature for QC for block ID {block_id}",),
             });
