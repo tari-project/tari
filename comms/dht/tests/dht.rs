@@ -1045,7 +1045,7 @@ async fn wait_for_messages_received(events: &mut broadcast::Receiver<MessagingEv
             .unwrap_or_else(|_| panic!("timed out waiting for {count} message(s) at {node}, got {received}"))
             .unwrap();
         if matches!(event, MessagingEvent::MessageReceived(..)) {
-            received += 1;
+            received = received.saturating_add(1);
         }
     }
 }
