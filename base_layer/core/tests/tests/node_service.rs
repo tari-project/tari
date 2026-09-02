@@ -73,7 +73,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn propagate_and_forward_many_valid_blocks() {
     let temp_dir = tempdir().unwrap();
     let key_manager = KeyManager::new_random().unwrap();
@@ -230,7 +230,7 @@ async fn propagate_and_forward_many_valid_blocks() {
     dan_node.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block_hash() {
     // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
@@ -355,7 +355,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     carol_node.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[allow(clippy::too_many_lines)]
 async fn propagate_and_forward_invalid_block() {
     let temp_dir = tempdir().unwrap();
