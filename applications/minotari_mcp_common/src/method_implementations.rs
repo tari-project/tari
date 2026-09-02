@@ -77,7 +77,7 @@ impl ParameterConverter for GetBlocksConverter {
                                 param: format!("heights[{index}]"),
                                 expected: "unsigned integer".to_string(),
                                 actual: format!("{height_value:?}"),
-                            })
+                            });
                         },
                     }
                 }

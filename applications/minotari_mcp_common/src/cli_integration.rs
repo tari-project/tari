@@ -202,11 +202,11 @@ impl NodeArgumentBuilder {
         }
 
         // Add log config if specified
-        if self.include_base_args {
-            if let Some(log_config) = self.config.log_config {
-                args.push("--log-config".to_string());
-                args.push(log_config.to_string_lossy().to_string());
-            }
+        if self.include_base_args &&
+            let Some(log_config) = self.config.log_config
+        {
+            args.push("--log-config".to_string());
+            args.push(log_config.to_string_lossy().to_string());
         }
 
         // Add node-specific arguments

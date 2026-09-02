@@ -129,10 +129,10 @@ impl GrpcConfigParser {
         }
 
         // Check service wildcard match
-        if let Some(service_name) = self.extract_service_name(method_name) {
-            if self.allowed_services.contains(&service_name) {
-                return true;
-            }
+        if let Some(service_name) = self.extract_service_name(method_name) &&
+            self.allowed_services.contains(&service_name)
+        {
+            return true;
         }
 
         false

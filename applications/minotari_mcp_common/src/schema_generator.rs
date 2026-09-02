@@ -249,30 +249,28 @@ impl SchemaGenerator {
         }
 
         // Check required properties
-        if let Some(required) = schema_obj.get("required") {
-            if let Some(required_array) = required.as_array() {
-                if let Some(obj) = value.as_object() {
-                    for req_prop in required_array {
-                        if let Some(prop_name) = req_prop.as_str() {
-                            if !obj.contains_key(prop_name) {
-                                return Err(SchemaError::MissingParameter(format!("{path}.{prop_name}")));
-                            }
-                        }
-                    }
+        if let Some(required) = schema_obj.get("required") &&
+            let Some(required_array) = required.as_array() &&
+            let Some(obj) = value.as_object()
+        {
+            for req_prop in required_array {
+                if let Some(prop_name) = req_prop.as_str() &&
+                    !obj.contains_key(prop_name)
+                {
+                    return Err(SchemaError::MissingParameter(format!("{path}.{prop_name}")));
                 }
             }
         }
 
         // Validate properties
-        if let Some(properties) = schema_obj.get("properties") {
-            if let Some(props_obj) = properties.as_object() {
-                if let Some(value_obj) = value.as_object() {
-                    for (prop_name, prop_value) in value_obj {
-                        if let Some(prop_schema) = props_obj.get(prop_name) {
-                            let prop_path = format!("{path}.{prop_name}");
-                            self.validate_value(prop_value, prop_schema, &prop_path)?;
-                        }
-                    }
+        if let Some(properties) = schema_obj.get("properties") &&
+            let Some(props_obj) = properties.as_object() &&
+            let Some(value_obj) = value.as_object()
+        {
+            for (prop_name, prop_value) in value_obj {
+                if let Some(prop_schema) = props_obj.get(prop_name) {
+                    let prop_path = format!("{path}.{prop_name}");
+                    self.validate_value(prop_value, prop_schema, &prop_path)?;
                 }
             }
         }
@@ -287,48 +285,44 @@ impl SchemaGenerator {
 
         // Check minimum/maximum for numbers
         if let Some(num_value) = value.as_f64() {
-            if let Some(minimum) = schema_obj.get("minimum") {
-                if let Some(min_val) = minimum.as_f64() {
-                    if num_value < min_val {
-                        return Err(SchemaError::ValueOutOfRange {
-                            field: path.to_string(),
-                            value: num_value.to_string(),
-                        });
-                    }
-                }
+            if let Some(minimum) = schema_obj.get("minimum") &&
+                let Some(min_val) = minimum.as_f64() &&
+                num_value < min_val
+            {
+                return Err(SchemaError::ValueOutOfRange {
+                    field: path.to_string(),
+                    value: num_value.to_string(),
+                });
             }
 
-            if let Some(maximum) = schema_obj.get("maximum") {
-                if let Some(max_val) = maximum.as_f64() {
-                    if num_value > max_val {
-                        return Err(SchemaError::ValueOutOfRange {
-                            field: path.to_string(),
-                            value: num_value.to_string(),
-                        });
-                    }
-                }
+            if let Some(maximum) = schema_obj.get("maximum") &&
+                let Some(max_val) = maximum.as_f64() &&
+                num_value > max_val
+            {
+                return Err(SchemaError::ValueOutOfRange {
+                    field: path.to_string(),
+                    value: num_value.to_string(),
+                });
             }
         }
 
         // Check string patterns and formats
         if let Some(str_value) = value.as_str() {
-            if let Some(pattern) = schema_obj.get("pattern") {
-                if let Some(pattern_str) = pattern.as_str() {
-                    if let Ok(regex) = regex::Regex::new(pattern_str) {
-                        if !regex.is_match(str_value) {
-                            return Err(SchemaError::InvalidFormat {
-                                field: path.to_string(),
-                                reason: format!("does not match pattern: {pattern_str}"),
-                            });
-                        }
-                    }
-                }
+            if let Some(pattern) = schema_obj.get("pattern") &&
+                let Some(pattern_str) = pattern.as_str() &&
+                let Ok(regex) = regex::Regex::new(pattern_str) &&
+                !regex.is_match(str_value)
+            {
+                return Err(SchemaError::InvalidFormat {
+                    field: path.to_string(),
+                    reason: format!("does not match pattern: {pattern_str}"),
+                });
             }
 
-            if let Some(format) = schema_obj.get("format") {
-                if let Some(format_str) = format.as_str() {
-                    self.validate_string_format(str_value, format_str, path)?;
-                }
+            if let Some(format) = schema_obj.get("format") &&
+                let Some(format_str) = format.as_str()
+            {
+                self.validate_string_format(str_value, format_str, path)?;
             }
         }
 
@@ -387,13 +381,11 @@ impl SchemaGenerator {
                     });
                 }
             },
-            "uint32" => {
-                if value.parse::<u32>().is_err() {
-                    return Err(SchemaError::InvalidFormat {
-                        field: path.to_string(),
-                        reason: "invalid uint32 format".to_string(),
-                    });
-                }
+            "uint32" if value.parse::<u32>().is_err() => {
+                return Err(SchemaError::InvalidFormat {
+                    field: path.to_string(),
+                    reason: "invalid uint32 format".to_string(),
+                });
             },
             _ => {
                 // Unknown format, skip validation

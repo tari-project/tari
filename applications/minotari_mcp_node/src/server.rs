@@ -50,7 +50,7 @@ use minotari_mcp_common::{
     StartupDiagnostics,
     TariProcessLauncher,
 };
-use minotari_node_grpc_client::{grpc::base_node_client::BaseNodeClient, BaseNodeGrpcClient};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use tonic::transport::{Channel, Endpoint};
 
 use crate::{

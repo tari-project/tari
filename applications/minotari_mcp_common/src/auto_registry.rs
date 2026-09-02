@@ -34,13 +34,13 @@ use serde_json::json;
 use tokio::sync::RwLock;
 
 use crate::{
-    grpc_discovery::{base_node_methods, wallet_methods, GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery},
+    McpResult,
+    McpTool,
+    grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery, base_node_methods, wallet_methods},
     grpc_error_mapper::GrpcErrorMapper,
     grpc_executor::GrpcExecutor,
     schema_generator::SchemaGenerator,
     tool_metadata::{ToolCategory, ToolMetadata, ToolMetadataRegistry, ToolRiskLevel},
-    McpResult,
-    McpTool,
 };
 
 /// Configuration for auto-discovery
@@ -232,10 +232,10 @@ impl AutoDiscoveryRegistry {
                 }
 
                 // Check tool overrides
-                if let Some(override_config) = self.config.tool_overrides.get(&method.name) {
-                    if override_config.disabled {
-                        return false;
-                    }
+                if let Some(override_config) = self.config.tool_overrides.get(&method.name) &&
+                    override_config.disabled
+                {
+                    return false;
                 }
 
                 true
@@ -345,7 +345,7 @@ impl AutoDiscoveryRegistry {
                 .get(&method.name)
                 .map(|limit| crate::tool_metadata::RateLimit {
                     requests_per_minute: *limit,
-                    requests_per_hour: limit * 60,
+                    requests_per_hour: limit.saturating_mul(60),
                     burst_limit: (*limit).max(10),
                 }),
             version: "1.0.0".to_string(),
@@ -488,13 +488,12 @@ impl AutoDiscoveryRegistry {
             let status = executor.get_status();
 
             // If health monitoring is enabled, filter based on health
-            if status.health_monitoring_enabled {
-                if let Some(is_healthy) = status.is_healthy() {
-                    if !is_healthy {
-                        log::warn!("Service is unhealthy, returning empty tool list");
-                        return HashMap::new();
-                    }
-                }
+            if status.health_monitoring_enabled &&
+                let Some(is_healthy) = status.is_healthy() &&
+                !is_healthy
+            {
+                log::warn!("Service is unhealthy, returning empty tool list");
+                return HashMap::new();
             }
         }
 
@@ -524,8 +523,10 @@ impl AutoDiscoveryRegistry {
 
         let total_tools = tools.len();
         let enabled_tools = status.values().filter(|s| s.enabled).count();
-        let control_tools = metadata.get_by_risk_level(ToolRiskLevel::High).len() +
-            metadata.get_by_risk_level(ToolRiskLevel::Critical).len();
+        let control_tools = metadata
+            .get_by_risk_level(ToolRiskLevel::High)
+            .len()
+            .saturating_add(metadata.get_by_risk_level(ToolRiskLevel::Critical).len());
         let total_usage = status.values().map(|s| s.usage_count).sum();
         let total_errors = status.values().map(|s| s.error_count).sum();
 

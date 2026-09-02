@@ -30,14 +30,14 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::{
+    McpError,
+    McpResult,
     auto_registry::ServerType,
     connection_manager::ConnectionManager,
     grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo},
     grpc_error_mapper::GrpcErrorMapper,
     health_checker::HealthResult,
     parameter_converter::ConversionRegistry,
-    McpError,
-    McpResult,
 };
 
 /// Unified gRPC method executor for node and wallet clients
@@ -234,16 +234,16 @@ impl GrpcExecutor {
 
             // Get health status and check if service is healthy
             let health_status = conn_manager.get_all_health_status();
-            if let Some(health) = health_status.get(service_name) {
-                if !health.is_healthy() {
-                    log::warn!(
-                        "Service {} is not healthy (status: {}), but proceeding with request",
-                        service_name,
-                        health.status
-                    );
-                    // Note: We log the warning but don't fail the request immediately
-                    // The circuit breaker in the connection manager will handle failures
-                }
+            if let Some(health) = health_status.get(service_name) &&
+                !health.is_healthy()
+            {
+                log::warn!(
+                    "Service {} is not healthy (status: {}), but proceeding with request",
+                    service_name,
+                    health.status
+                );
+                // Note: We log the warning but don't fail the request immediately
+                // The circuit breaker in the connection manager will handle failures
             }
         }
 
@@ -640,8 +640,8 @@ mod tests {
         use serde_json::json;
 
         use crate::{
-            grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo},
             ConversionRegistryFactory,
+            grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo},
         };
 
         // Create a real conversion registry with node converters

@@ -30,7 +30,7 @@ use std::{
 
 use tokio::{
     process::{Child, Command},
-    sync::{mpsc, RwLock},
+    sync::{RwLock, mpsc},
 };
 use uuid::Uuid;
 
@@ -99,7 +99,7 @@ impl ProcessSupervisor {
 
     /// Start supervising the process
     pub async fn start(&self) -> McpResult<()> {
-        let mut restart_attempts = 0;
+        let mut restart_attempts = 0u32;
         let mut shutdown_rx = self
             .shutdown_rx
             .write()
@@ -216,12 +216,12 @@ impl ProcessSupervisor {
             }
 
             // Check if process is still running
-            if let Some(child) = self.child.write().await.as_mut() {
-                if let Ok(Some(status)) = child.try_wait() {
-                    return Err(McpError::server_error(format!(
-                        "Process exited during startup with status: {status:?}"
-                    )));
-                }
+            if let Some(child) = self.child.write().await.as_mut() &&
+                let Ok(Some(status)) = child.try_wait()
+            {
+                return Err(McpError::server_error(format!(
+                    "Process exited during startup with status: {status:?}"
+                )));
             }
 
             attempts = attempts.saturating_add(1);

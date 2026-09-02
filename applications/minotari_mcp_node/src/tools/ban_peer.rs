@@ -18,17 +18,27 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Peer management MCP tools
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param, get_required_number_param, impl_mcp_tool, tool_schema
-};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{BanPeerRequest, UnbanPeerRequest}};
 use async_trait::async_trait;
+use minotari_mcp_common::{
+    McpError,
+    McpResult,
+    McpTool,
+    PermissionLevel,
+    get_required_number_param,
+    get_required_string_param,
+    impl_mcp_tool,
+    json_schema,
+    tool_schema,
+};
+use minotari_node_grpc_client::{
+    BaseNodeGrpcClient,
+    grpc::{BanPeerRequest, UnbanPeerRequest},
+};
 use serde_json::Value;
-
 use tonic::transport::Channel;
 
 /// Tool for banning peers
@@ -76,7 +86,7 @@ impl McpTool for BanPeerTool {
         let peer_key = get_required_string_param(params, "peer_public_key")?;
         let duration = get_required_number_param(params, "duration_hours")?;
         let reason = get_required_string_param(params, "reason")?;
-        
+
         if peer_key.is_empty() {
             return Err(McpError::invalid_request("Peer public key cannot be empty"));
         }
@@ -100,7 +110,7 @@ impl McpTool for BanPeerTool {
         let peer_key = get_required_string_param(&params, "peer_public_key")?;
         let duration_hours = get_required_number_param(&params, "duration_hours")?;
         let reason = get_required_string_param(&params, "reason")?;
-        
+
         // Convert duration to seconds (0 for permanent)
         let duration_secs = if duration_hours == 0.0 {
             0
@@ -168,7 +178,7 @@ impl McpTool for UnbanPeerTool {
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let peer_key = get_required_string_param(params, "peer_public_key")?;
-        
+
         if peer_key.is_empty() {
             return Err(McpError::invalid_request("Peer public key cannot be empty"));
         }
@@ -182,7 +192,7 @@ impl McpTool for UnbanPeerTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let peer_key = get_required_string_param(&params, "peer_public_key")?;
-        
+
         let request = UnbanPeerRequest {
             peer_public_key: peer_key.clone(),
         };

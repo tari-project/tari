@@ -201,7 +201,10 @@ impl SecurityContext {
     }
 
     pub fn cleanup_expired_sessions(&mut self) {
-        let cutoff = Utc::now() - chrono::Duration::hours(1);
+        // On the (impossible in practice) overflow, keep every session rather than dropping them all
+        let cutoff = Utc::now()
+            .checked_sub_signed(chrono::Duration::hours(1))
+            .unwrap_or(DateTime::<Utc>::MIN_UTC);
         self.sessions.retain(|_, session| session.last_activity > cutoff);
     }
 }
@@ -216,7 +219,10 @@ impl RateLimiter {
 
     fn check_rate_limit(&mut self, client_ip: IpAddr) -> bool {
         let now = Utc::now();
-        let cutoff = now - chrono::Duration::minutes(1);
+        // On the (impossible in practice) overflow, keep every request, i.e. rate limit more strictly
+        let cutoff = now
+            .checked_sub_signed(chrono::Duration::minutes(1))
+            .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
         let requests = self.client_requests.entry(client_ip).or_default();
 

@@ -26,10 +26,25 @@
 //! and transaction validation status.
 
 use minotari_app_grpc::tari_rpc::{Empty, GetMempoolTransactionsRequest, Signature, TransactionStateRequest};
-use minotari_mcp_common::{get_required_string_param, McpError, McpResult, McpTool};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
+
+/// Fee and weight samples taken from every transaction currently in the mempool
+#[derive(Default)]
+struct MempoolSamples {
+    fee_distribution: Vec<u64>,
+    weight_distribution: Vec<usize>,
+    total_fees: u64,
+    total_weight: usize,
+    tx_count: usize,
+}
+
+/// Index into a sorted distribution for the given percentile, clamped to the last element
+fn percentile_index(len: usize, percentile: usize) -> usize {
+    len.saturating_mul(percentile).saturating_div(100)
+}
 
 /// Tool for getting mempool statistics
 #[derive(Clone)]
@@ -80,7 +95,7 @@ impl McpTool for GetMempoolStatsTool {
             "unconfirmed_txs": response.unconfirmed_txs,
             "reorg_txs": response.reorg_txs,
             "unconfirmed_weight": response.unconfirmed_weight,
-            "total_transactions": response.unconfirmed_txs + response.reorg_txs,
+            "total_transactions": response.unconfirmed_txs.saturating_add(response.reorg_txs),
         }))
     }
 }
@@ -172,7 +187,7 @@ impl McpTool for GetMempoolTransactionsTool {
                         .unwrap_or(0),
                     "total_weight": transaction.body.as_ref()
                         .map(|body| {
-                            body.inputs.len() + body.outputs.len() + body.kernels.len()
+                            body.inputs.len().saturating_add(body.outputs.len()).saturating_add(body.kernels.len())
                         })
                         .unwrap_or(0),
                 });
@@ -294,6 +309,44 @@ impl AnalyzeMempoolTool {
     pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
+
+    /// Stream every mempool transaction, accumulating its fee and weight
+    async fn collect_samples(&self) -> McpResult<MempoolSamples> {
+        let tx_request = Request::new(GetMempoolTransactionsRequest {});
+        let mut tx_stream = self
+            .grpc_client
+            .clone()
+            .get_mempool_transactions(tx_request)
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
+            .into_inner();
+
+        let mut samples = MempoolSamples::default();
+        while let Some(tx_response) = tx_stream
+            .message()
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
+        {
+            if let Some(transaction) = tx_response.transaction &&
+                let Some(body) = transaction.body
+            {
+                let tx_fee: u64 = body.kernels.iter().map(|k| k.fee).sum();
+                let tx_weight = body
+                    .inputs
+                    .len()
+                    .saturating_add(body.outputs.len())
+                    .saturating_add(body.kernels.len());
+
+                samples.fee_distribution.push(tx_fee);
+                samples.weight_distribution.push(tx_weight);
+                samples.total_fees = samples.total_fees.saturating_add(tx_fee);
+                samples.total_weight = samples.total_weight.saturating_add(tx_weight);
+                samples.tx_count = samples.tx_count.saturating_add(1);
+            }
+        }
+
+        Ok(samples)
+    }
 }
 
 #[async_trait::async_trait]
@@ -330,43 +383,17 @@ impl McpTool for AnalyzeMempoolTool {
             .into_inner();
 
         // Then get transaction details
-        let tx_request = Request::new(GetMempoolTransactionsRequest {});
-        let mut tx_stream = self
-            .grpc_client
-            .clone()
-            .get_mempool_transactions(tx_request)
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
-            .into_inner();
-
-        let mut fee_distribution = Vec::new();
-        let mut weight_distribution = Vec::new();
-        let mut total_fees = 0u64;
-        let mut total_weight = 0usize;
-        let mut tx_count = 0;
-
-        while let Some(tx_response) = tx_stream
-            .message()
-            .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
-        {
-            if let Some(transaction) = tx_response.transaction {
-                if let Some(body) = transaction.body {
-                    let tx_fee: u64 = body.kernels.iter().map(|k| k.fee).sum();
-                    let tx_weight = body.inputs.len() + body.outputs.len() + body.kernels.len();
-
-                    fee_distribution.push(tx_fee);
-                    weight_distribution.push(tx_weight);
-                    total_fees += tx_fee;
-                    total_weight += tx_weight;
-                    tx_count = tx_count.saturating_add(1);
-                }
-            }
-        }
+        let MempoolSamples {
+            mut fee_distribution,
+            mut weight_distribution,
+            total_fees,
+            total_weight,
+            tx_count,
+        } = self.collect_samples().await?;
 
         // Calculate statistics
-        let avg_fee = if tx_count > 0 { total_fees / tx_count as u64 } else { 0 };
-        let avg_weight = if tx_count > 0 { total_weight / tx_count } else { 0 };
+        let avg_fee = total_fees.checked_div(tx_count as u64).unwrap_or(0);
+        let avg_weight = total_weight.checked_div(tx_count).unwrap_or(0);
 
         // Sort for percentile calculations
         fee_distribution.sort_unstable();
@@ -381,10 +408,10 @@ impl McpTool for AnalyzeMempoolTool {
             })
         } else {
             json!({
-                "p50": fee_distribution.get(fee_distribution.len() / 2).unwrap_or(&0),
-                "p75": fee_distribution.get(fee_distribution.len() * 3 / 4).unwrap_or(&0),
-                "p90": fee_distribution.get(fee_distribution.len() * 9 / 10).unwrap_or(&0),
-                "p99": fee_distribution.get(fee_distribution.len() * 99 / 100).unwrap_or(&0),
+                "p50": fee_distribution.get(percentile_index(fee_distribution.len(), 50)).unwrap_or(&0),
+                "p75": fee_distribution.get(percentile_index(fee_distribution.len(), 75)).unwrap_or(&0),
+                "p90": fee_distribution.get(percentile_index(fee_distribution.len(), 90)).unwrap_or(&0),
+                "p99": fee_distribution.get(percentile_index(fee_distribution.len(), 99)).unwrap_or(&0),
             })
         };
         #[allow(clippy::cast_possible_truncation)]
@@ -418,9 +445,13 @@ impl McpTool for AnalyzeMempoolTool {
                 } else {
 
                     // Suggest 75th percentile fee rate for faster confirmation
-                    let p75_fee = *fee_distribution.get(fee_distribution.len() * 3 / 4).unwrap_or(&0);
-                    let p75_weight = *weight_distribution.get(weight_distribution.len() * 3 / 4).unwrap_or(&1);
-                    if p75_weight > 0 { p75_fee / p75_weight as u64 } else { 25 }
+                    let p75_fee = *fee_distribution
+                        .get(percentile_index(fee_distribution.len(), 75))
+                        .unwrap_or(&0);
+                    let p75_weight = *weight_distribution
+                        .get(percentile_index(weight_distribution.len(), 75))
+                        .unwrap_or(&1);
+                    p75_fee.checked_div(p75_weight as u64).unwrap_or(25)
                 },
                 "network_congestion": if stats_response.unconfirmed_txs > 1000 {
                     "HIGH"

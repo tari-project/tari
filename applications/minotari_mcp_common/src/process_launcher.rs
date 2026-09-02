@@ -32,7 +32,7 @@ use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::Arc, time::
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
-    sync::{mpsc, RwLock},
+    sync::{RwLock, mpsc},
 };
 use uuid::Uuid;
 
@@ -319,7 +319,7 @@ impl ProcessLauncher {
             }
 
             // Wait for graceful shutdown with periodic checks
-            let mut attempts = 0;
+            let mut attempts = 0usize;
             while attempts < 10 {
                 // 5 seconds total
                 match child.try_wait() {

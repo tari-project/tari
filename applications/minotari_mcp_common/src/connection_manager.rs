@@ -34,31 +34,26 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock as AsyncRwLock;
 use tonic::{
-    transport::{Channel, Endpoint},
     Status,
+    transport::{Channel, Endpoint},
 };
 
 use crate::{
-    health_checker::{GrpcHealthChecker, HealthChecker, HealthConfig, HealthResult},
     McpError,
     McpResult,
+    health_checker::{GrpcHealthChecker, HealthChecker, HealthConfig, HealthResult},
 };
 
 /// Circuit breaker state
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum CircuitBreakerState {
     /// Circuit is closed, requests are flowing normally
+    #[default]
     Closed,
     /// Circuit is open, requests are being rejected
     Open,
     /// Circuit is half-open, testing if service has recovered
     HalfOpen,
-}
-
-impl Default for CircuitBreakerState {
-    fn default() -> Self {
-        Self::Closed
-    }
 }
 
 impl std::fmt::Display for CircuitBreakerState {
@@ -130,7 +125,7 @@ impl CircuitBreakerMetrics {
         if self.total_requests == 0 {
             0.0
         } else {
-            (self.total_requests - self.successful_requests) as f64 / self.total_requests as f64 * 100.0
+            self.total_requests.saturating_sub(self.successful_requests) as f64 / self.total_requests as f64 * 100.0
         }
     }
 
@@ -455,13 +450,13 @@ impl ConnectionManager {
     /// Get a connection for a service, considering health and circuit breaker status
     pub async fn get_connection(&self, service_name: &str) -> McpResult<Channel> {
         // Check health status first
-        if let Some(health) = self.health_checker.get_health_status(service_name) {
-            if !health.is_healthy() {
-                return Err(McpError::service_unavailable(format!(
-                    "Service {} is not healthy: {}",
-                    service_name, health.status
-                )));
-            }
+        if let Some(health) = self.health_checker.get_health_status(service_name) &&
+            !health.is_healthy()
+        {
+            return Err(McpError::service_unavailable(format!(
+                "Service {} is not healthy: {}",
+                service_name, health.status
+            )));
         }
 
         // Check circuit breaker
@@ -588,16 +583,16 @@ impl ConnectionManager {
     /// Cleanup idle connections across all pools
     pub async fn cleanup_idle_connections(&self) {
         let mut connections = self.connections.write().await;
-        let mut total_cleaned = 0;
+        let mut total_cleaned = 0usize;
 
         for (service_name, conn_list) in connections.iter_mut() {
             let initial_count = conn_list.len();
             conn_list.retain(|conn| !conn.is_idle(self.pool_config.idle_timeout));
-            let cleaned = initial_count - conn_list.len();
+            let cleaned = initial_count.saturating_sub(conn_list.len());
 
             if cleaned > 0 {
                 log::debug!("Cleaned up {cleaned} idle connections for service: {service_name}");
-                total_cleaned += cleaned;
+                total_cleaned = total_cleaned.saturating_add(cleaned);
             }
         }
 
@@ -622,7 +617,7 @@ impl ConnectionManager {
                 for (service_name, conn_list) in connections.iter_mut() {
                     let initial_count = conn_list.len();
                     conn_list.retain(|conn| !conn.is_idle(idle_timeout));
-                    let cleaned = initial_count - conn_list.len();
+                    let cleaned = initial_count.saturating_sub(conn_list.len());
 
                     if cleaned > 0 {
                         log::debug!("Maintenance: Cleaned {cleaned} idle connections for {service_name}");

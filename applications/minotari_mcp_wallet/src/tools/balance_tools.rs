@@ -28,10 +28,10 @@
 use std::sync::Arc;
 
 use minotari_app_grpc::tari_rpc::{Empty, GetBalanceRequest, UserPaymentId};
-use minotari_mcp_common::{get_optional_string_param, security::PermissionLevel, McpError, McpResult, McpTool};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_optional_string_param, security::PermissionLevel};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
 
 /// Tool for getting wallet balance
 #[derive(Clone)]
@@ -88,8 +88,10 @@ impl McpTool for GetBalanceTool {
             .into_inner();
 
         // Calculate total balance and percentages
-        let total_balance =
-            response.available_balance + response.pending_incoming_balance + response.timelocked_balance;
+        let total_balance = response
+            .available_balance
+            .saturating_add(response.pending_incoming_balance)
+            .saturating_add(response.timelocked_balance);
 
         Ok(json!({
             "balance": {
@@ -101,7 +103,7 @@ impl McpTool for GetBalanceTool {
             "summary": {
                 "total_balance": total_balance,
                 "spendable_balance": response.available_balance,
-                "locked_balance": response.pending_outgoing_balance + response.timelocked_balance,
+                "locked_balance": response.pending_outgoing_balance.saturating_add(response.timelocked_balance),
                 "incoming_balance": response.pending_incoming_balance,
             },
             "percentages": if total_balance > 0 {
@@ -249,12 +251,15 @@ impl McpTool for BalanceAnalysisTool {
         let requested_amount = params.get("requested_amount").and_then(|v| v.as_u64()).unwrap_or(0);
 
         // Calculate various metrics
-        let total_balance = balance_response.available_balance +
-            balance_response.pending_incoming_balance +
-            balance_response.timelocked_balance;
+        let total_balance = balance_response
+            .available_balance
+            .saturating_add(balance_response.pending_incoming_balance)
+            .saturating_add(balance_response.timelocked_balance);
 
         let liquid_balance = balance_response.available_balance;
-        let locked_balance = balance_response.pending_outgoing_balance + balance_response.timelocked_balance;
+        let locked_balance = balance_response
+            .pending_outgoing_balance
+            .saturating_add(balance_response.timelocked_balance);
 
         // Liquidity analysis
         let liquidity_ratio = if total_balance > 0 {
@@ -287,7 +292,7 @@ impl McpTool for BalanceAnalysisTool {
         }
 
         if requested_amount > 0 && can_spend_requested {
-            let remaining_after = liquid_balance - requested_amount;
+            let remaining_after = liquid_balance.saturating_sub(requested_amount);
             if remaining_after < 10000 {
                 // Less than 0.01 T remaining
                 recommendations.push("Transaction would use almost all available funds".to_string());
@@ -331,12 +336,12 @@ impl McpTool for BalanceAnalysisTool {
                     "requested_amount": requested_amount,
                     "can_spend": can_spend_requested,
                     "remaining_after_spend": if can_spend_requested {
-                        liquid_balance - requested_amount
+                        liquid_balance.saturating_sub(requested_amount)
                     } else {
                         liquid_balance
                     },
                     "deficit": if !can_spend_requested && requested_amount > liquid_balance {
-                        requested_amount - liquid_balance
+                        requested_amount.saturating_sub(liquid_balance)
                     } else {
                         0
                     },
@@ -457,9 +462,10 @@ impl McpTool for BalanceMonitorTool {
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
             .into_inner();
 
-        let total_balance = balance_response.available_balance +
-            balance_response.pending_incoming_balance +
-            balance_response.timelocked_balance;
+        let total_balance = balance_response
+            .available_balance
+            .saturating_add(balance_response.pending_incoming_balance)
+            .saturating_add(balance_response.timelocked_balance);
 
         let liquidity_ratio = if total_balance > 0 {
             balance_response.available_balance as f64 / total_balance as f64
