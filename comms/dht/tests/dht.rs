@@ -37,6 +37,7 @@ use tari_comms_dht::{
     outbound::{OutboundEncryption, SendMessageParams},
 };
 use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
+use tokio::{sync::broadcast, time};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
@@ -379,6 +380,19 @@ async fn test_dht_propagate_dedup() {
     connect_nodes(&mut node_A, &mut node_C).await;
     connect_nodes(&mut node_B, &mut node_C).await;
     connect_nodes(&mut node_C, &mut node_D).await;
+    // `dial_peer` returning does not mean every node's connectivity pool has caught up: the dialled side
+    // learns about its new inbound connection asynchronously. Propagation picks its peers from that pool, so
+    // without this barrier a node can propagate to a subset of the peers this test assumes are wired up.
+    // `wait_for_connectivity` is not enough here - it only waits for a node to come online, which takes a
+    // single peer. Only the dialling side of each pair is waited on: an inbound connection does not need to
+    // be in the receiver's pool for delivery to work, and A is the only node that has to fan out to two.
+    wait_for_connections_to(&node_A, &[
+        node_B.node_identity().node_id(),
+        node_C.node_identity().node_id(),
+    ])
+    .await;
+    wait_for_connections_to(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connections_to(&node_C, &[node_D.node_identity().node_id()]).await;
 
     let mut node_A_messaging = node_A.messaging_events.subscribe();
     let mut node_B_messaging = node_B.messaging_events.subscribe();
@@ -432,10 +446,13 @@ async fn test_dht_propagate_dedup() {
     let node_C_id = node_C.node_identity().node_id().clone();
     let node_D_id = node_D.node_identity().node_id().clone();
 
-    // Ensure that the message has propagated before disconnecting everyone
-    let _result = node_B_messaging2.recv().await.unwrap();
-    let _result = node_C_messaging2.recv().await.unwrap();
-    let _result = node_D_messaging2.recv().await.unwrap();
+    // Ensure that the message has propagated before disconnecting everyone. Node C sits on two propagation
+    // paths (A->C directly, and A->B->C), so it must be given time to receive *both* messages - waiting for a
+    // single event here let the second one still be in flight when the nodes were shut down below, which is
+    // what the assertions further down then reported as a missing message.
+    wait_for_messages_received(&mut node_B_messaging2, 1, "node B").await;
+    wait_for_messages_received(&mut node_C_messaging2, 2, "node C").await;
+    wait_for_messages_received(&mut node_D_messaging2, 1, "node D").await;
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -995,6 +1012,42 @@ fn count_messages_received(events: &[MessagingEvent], node_ids: &[&NodeId]) -> u
             node_ids.contains(&recv_node_id)
         })
         .count()
+}
+
+/// Wait until `node`'s connectivity pool actually holds an active connection to each of `peers`.
+///
+/// Propagation selects its peers from this pool, so a node that has not yet registered a connection it dialled
+/// will silently propagate to a subset of the topology the test set up.
+async fn wait_for_connections_to(node: &TestNode, peers: &[&NodeId]) {
+    let mut connectivity = node.comms.connectivity();
+    for _ in 0..100 {
+        let active = connectivity.get_active_connections().await.unwrap();
+        if peers
+            .iter()
+            .all(|peer| active.iter().any(|conn| conn.peer_node_id() == *peer))
+        {
+            return;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("{} never established a connection to every one of {peers:?}", node.name);
+}
+
+/// Wait until `count` messages have actually been *received* by a node.
+///
+/// `MessagingEvent` also carries the protocol-exit variants, so a bare `recv()` can return without a single
+/// message having arrived - only `MessageReceived` is counted here.
+async fn wait_for_messages_received(events: &mut broadcast::Receiver<MessagingEvent>, count: usize, node: &str) {
+    let mut received = 0;
+    while received < count {
+        let event = time::timeout(Duration::from_secs(20), events.recv())
+            .await
+            .unwrap_or_else(|_| panic!("timed out waiting for {count} message(s) at {node}, got {received}"))
+            .unwrap();
+        if matches!(event, MessagingEvent::MessageReceived(..)) {
+            received += 1;
+        }
+    }
 }
 
 async fn wait_for_connectivity(nodes: &[&TestNode]) {
