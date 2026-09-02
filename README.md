@@ -113,6 +113,7 @@ For example, to build for the Esmeralda testnet:
 ```bash
 TARI_TARGET_NETWORK=testnet cargo build --release
 ```
+If you do not specify a target network, it will choose testnet. 
 
 At runtime you pick the specific network with `--network <name>` or the `TARI_NETWORK` environment variable, within the
 set the binary was compiled for.
