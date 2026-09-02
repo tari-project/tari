@@ -24,13 +24,15 @@
 #![allow(clippy::arithmetic_side_effects)]
 use std::{
     fmt::{Debug, Formatter},
+    fs::OpenOptions,
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
+use fs2::FileExt;
 use minotari_app_utilities::identity_management::save_as_json;
 use minotari_node::{BaseNodeConfig, GrpcMethod, MetricsConfig, run_base_node};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
@@ -115,7 +117,9 @@ pub async fn spawn_base_node_with_config(
     // the end of this function — i.e. after the replacement task had already been spawned onto the
     // same four ports — so its teardown would race the new node for them.
     if let Some(mut node_ps) = world.base_nodes.shift_remove(&bn_name) {
-        node_ps.kill().await;
+        // The replacement reuses this node's temp dir, so it must also wait for the blockchain
+        // database lock — the ports come back long before the database does.
+        node_ps.kill_and_wait_for_db_lock().await;
 
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
@@ -172,13 +176,14 @@ pub async fn spawn_base_node_with_config(
     };
 
     let name_cloned = bn_name.clone();
+    let name_for_errors = bn_name.clone();
     let world_default_payment_address = world.default_payment_address.to_base58();
 
     let peer_addresses = get_peer_addresses(world, &peers).await;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
-    task::spawn(async move {
+    let mut node_task = task::spawn(async move {
         let mut base_node_config = minotari_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
@@ -278,10 +283,7 @@ pub async fn spawn_base_node_with_config(
              is_seed_node={is_seed_node}, http_port={http_port}, xmrig_proxy_port={xmrig_proxy_port}"
         );
 
-        let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
-        if let Err(e) = result {
-            panic!("{e:?}");
-        }
+        run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await
     });
 
     // make the new base node able to be referenced by other processes
@@ -290,10 +292,26 @@ pub async fn spawn_base_node_with_config(
         world.seed_nodes.push(bn_name);
     }
 
-    wait_for_service(http_port).await;
-    wait_for_service(port).await;
-    wait_for_service(grpc_port).await;
-    wait_for_service(xmrig_proxy_port).await;
+    // Race the port waits against the node task itself. `run_base_node` returning during startup
+    // always means a fatal error — e.g. `CannotAcquireFileLock` when a previous incarnation still
+    // holds the database — and in that case no port is ever bound, so `wait_for_service` would
+    // otherwise burn its full 120s timeout and report the misleading "service on port N to start"
+    // rather than the actual cause. Errors used to be raised by a `panic!` inside this detached
+    // task, where they were swallowed into a `JoinError` nobody inspected.
+    tokio::select! {
+        result = &mut node_task => match result {
+            Ok(Ok(())) => panic!("base node '{name_for_errors}' exited before it finished starting up"),
+            Ok(Err(e)) => panic!("base node '{name_for_errors}' failed to start: {e:?}"),
+            Err(e) => panic!("base node '{name_for_errors}' panicked while starting up: {e}"),
+        },
+        () = async {
+            wait_for_service(http_port).await;
+            wait_for_service(port).await;
+            wait_for_service(grpc_port).await;
+            wait_for_service(xmrig_proxy_port).await;
+        } => {},
+    }
+    // Dropping the handle detaches the task; the node keeps running until its shutdown signal.
 }
 
 impl BaseNodeProcess {
@@ -316,7 +334,40 @@ impl BaseNodeProcess {
     ///
     /// All four ports are checked against a single shared deadline rather than 30s each, so the
     /// worst case is 30s per node instead of 120s.
+    ///
+    /// This deliberately does NOT wait for the blockchain database to be released — see
+    /// [`BaseNodeProcess::kill_and_wait_for_db_lock`], which only the restart path needs.
     pub async fn kill(&mut self) {
+        self.shutdown_and_wait(false).await;
+    }
+
+    /// [`BaseNodeProcess::kill`], plus a wait for the blockchain database's exclusive file lock to
+    /// be released, under the same shared deadline.
+    ///
+    /// Only the restart path (`When I stop node X` / `When I start base node X`) needs this,
+    /// because only there is the temp dir — and therefore the lock file — reused. After a
+    /// scenario, every node's temp dir is unique to that feature/scenario/node/grpc-port and can
+    /// never be contended again, so making teardown wait for the lock would only delay returning
+    /// ports to the shared pool for no benefit.
+    ///
+    /// Why the lock needs a wait of its own: the node releases its listening sockets long before
+    /// it releases the database. `run_base_node` returns (and prints "Goodbye!") within a
+    /// millisecond of the shutdown signal, but the `BlockchainDatabase` — and with it the
+    /// `Arc<File>` holding the flock — is cloned into detached tasks that nothing awaits, most
+    /// notably the axum wallet-query HTTP server, whose graceful shutdown drops its listener
+    /// immediately (freeing the port this function watches) and only then drains its open
+    /// connections. CI logs show the lock still held 11s+ after the ports came back. Waiting on
+    /// the node's `JoinHandle` instead would therefore not help: it completes essentially
+    /// instantly. The lock itself is the only accurate signal available from outside the node.
+    ///
+    /// `acquire_exclusive_file_lock` in the product fails fast rather than retrying — correct
+    /// behaviour when another process owns the DB — so a node restarted too early dies with
+    /// `CannotAcquireFileLock` and never binds any port at all.
+    pub async fn kill_and_wait_for_db_lock(&mut self) {
+        self.shutdown_and_wait(true).await;
+    }
+
+    async fn shutdown_and_wait(&mut self, wait_for_db_lock: bool) {
         self.kill_signal.trigger();
 
         let ports = [
@@ -325,12 +376,16 @@ impl BaseNodeProcess {
             ("http", self.http_port),
             ("xmrig_proxy", self.xmrig_proxy_port),
         ];
+        // `spawn_base_node_with_config` sets `base_node.lmdb_path` to this (absolute) temp dir, so
+        // `set_base_path` leaves it untouched and `create_lmdb_database` locks the file directly
+        // inside it — see `acquire_exclusive_file_lock` in `chain_storage::lmdb_db`.
+        let lock_file_path = self.temp_dir_path.join(".chain_storage_file.lock");
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         loop {
-            if ports
+            let ports_released = ports
                 .iter()
-                .all(|(_, port)| TcpListener::bind(("127.0.0.1", *port)).is_ok())
-            {
+                .all(|(_, port)| TcpListener::bind(("127.0.0.1", *port)).is_ok());
+            if ports_released && (!wait_for_db_lock || is_db_file_lock_released(&lock_file_path)) {
                 return;
             }
             if tokio::time::Instant::now() >= deadline {
@@ -347,5 +402,29 @@ impl BaseNodeProcess {
                 );
             }
         }
+        if wait_for_db_lock && !is_db_file_lock_released(&lock_file_path) {
+            eprintln!(
+                "WARNING: base node '{}' database lock file {} was not released within 30s timeout",
+                self.name,
+                lock_file_path.display()
+            );
+        }
+    }
+}
+
+/// Whether the blockchain database's exclusive file lock is free for another process to take.
+///
+/// Uses the same API as the product code (`fs2::FileExt::try_lock_exclusive`) so the semantics
+/// match exactly, and releases the lock again immediately — the point is only to observe that the
+/// previous incarnation has let go of it. A lock file that does not exist yet is nothing to wait
+/// for, so it counts as released.
+fn is_db_file_lock_released(lock_file_path: &Path) -> bool {
+    if !lock_file_path.exists() {
+        return true;
+    }
+    match OpenOptions::new().read(true).write(true).open(lock_file_path) {
+        // The lock is dropped with `file` at the end of this scope, handing it straight back.
+        Ok(file) => file.try_lock_exclusive().is_ok(),
+        Err(_) => false,
     }
 }

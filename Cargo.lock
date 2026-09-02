@@ -7842,6 +7842,7 @@ dependencies = [
  "chrono",
  "csv",
  "cucumber",
+ "fs2",
  "futures 0.3.32",
  "indexmap 1.9.3",
  "libc",

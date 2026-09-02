@@ -77,34 +77,75 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
-        context.spawn_until_shutdown(move |handles| async move {
-            let state_machine = handles.expect_handle::<StateMachineHandle>();
-            let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
+        // `spawn_when_ready`, not `spawn_until_shutdown`: the latter races this whole future against
+        // the shutdown signal with `future::select`, which polls the signal first and drops the
+        // future without polling it again. That would cut `run()` short before it can abort and
+        // join its peer protocol tasks, which is precisely the guarantee we need at shutdown. This
+        // service therefore handles the signal itself, at both points where it can wait forever.
+        context.spawn_when_ready(move |handles| async move {
+            // `get_handle` rather than `expect_handle`: the ready signal also fires when the stack
+            // builder returns early on an initializer error, dropping the notifier. In that case no
+            // handles were ever registered, and unlike `spawn_until_shutdown` — which could drop
+            // this future before its body ran — `spawn_when_ready` always runs it. Panicking here
+            // would add noise to an already-failing startup rather than reporting anything new.
+            let (Some(state_machine), Some(connectivity), Some(base_node)) = (
+                handles.get_handle::<StateMachineHandle>(),
+                handles.get_handle::<ConnectivityRequester>(),
+                handles.get_handle::<LocalNodeCommsInterface>(),
+            ) else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Service handles are unavailable, so the node is shutting down before it \
+                     finished starting. Mempool sync protocol will not run."
+                );
+                return;
+            };
+            let shutdown_signal = handles.get_shutdown_signal();
 
             let mut status_watch = state_machine.get_status_info_watch();
             if !status_watch.borrow().state_info.is_synced() {
                 debug!(target: LOG_TARGET, "Waiting for node to do initial sync...");
-                while status_watch.changed().await.is_ok() {
-                    if status_watch.borrow().state_info.is_synced() {
+                let wait_for_initial_sync = async {
+                    while status_watch.changed().await.is_ok() {
+                        if status_watch.borrow().state_info.is_synced() {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Initial sync is done. Starting mempool sync protocol"
+                            );
+                            break;
+                        }
+                        trace!(
+                            target: LOG_TARGET,
+                            "Mempool sync still on hold, waiting for node to do initial sync",
+                        );
+                        sleep(Duration::from_secs(30)).await;
+                    }
+                };
+                let mut shutdown = shutdown_signal.clone();
+                tokio::pin!(wait_for_initial_sync);
+                tokio::select! {
+                    () = &mut wait_for_initial_sync => {},
+                    _ = &mut shutdown => {
                         debug!(
                             target: LOG_TARGET,
-                            "Initial sync is done. Starting mempool sync protocol"
+                            "Shutdown requested before initial sync completed; mempool sync will not start"
                         );
-                        break;
-                    }
-                    trace!(
-                        target: LOG_TARGET,
-                        "Mempool sync still on hold, waiting for node to do initial sync",
-                    );
-                    sleep(Duration::from_secs(30)).await;
+                        return;
+                    },
                 }
             }
             let base_node_events = base_node.get_block_event_stream();
 
-            MempoolSyncProtocol::new(config, notif_rx, mempool, connectivity, base_node_events)
-                .run()
-                .await;
+            MempoolSyncProtocol::new(
+                config,
+                notif_rx,
+                mempool,
+                connectivity,
+                base_node_events,
+                shutdown_signal,
+            )
+            .run()
+            .await;
         });
 
         trace!(target: LOG_TARGET, "Mempool sync service initialized");
