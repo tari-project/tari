@@ -86,33 +86,6 @@ backwards from mainnet into development.
 Which networks a binary can run is fixed at compile time by `TARI_TARGET_NETWORK`. See
 [Choosing a network](README.md#choosing-a-network) in the README.
 
-## Feature gates
-
-When developing a new feature in Tari, it will initially be placed behind a feature gate. This offers the comfort and
-flexibility that should a feature not be ready by the time it first hits the `mainnet` branch, it will not be active
-on mainnet.
-
-Feature gates are declared in `FEATURE_LIST` in
-[common/tari_features/src/lib.rs](./common/tari_features/src/lib.rs), and the status values are defined in
-[common/tari_features/src/status.rs](./common/tari_features/src/status.rs). The name of the feature gate is assigned
-in the tracking issue of the RFC that describes the feature.
-
-| Status | Meaning | Compiled into |
-| --- | --- | --- |
-| `New` | New feature; may not even be working. | testnet builds only |
-| `Testing` | Potentially complete, but still gated. | testnet and nextnet builds |
-| `Active` | Live; the gate has been removed from the code. | all builds |
-| `Removed` | Cancelled; cannot be invoked anywhere. | nothing |
-
-A feature can be tested on a testnet for as long as necessary. Once it is ready for final testing, promote it to
-`Testing` so that it ships in the next nextnet release. Once the community feels it is ready for mainnet, promote it
-to `Active` and remove the gating attributes from the code.
-
-When a feature reaches `Active`, or if we decide to kill it and mark it `Removed`, **do not delete its record** from
-`FEATURE_LIST`. Keeping the record preserves the history of feature development.
-
-Note that `FEATURE_LIST` is currently empty — there are no gated features in flight at the moment.
-
 ## Versioning
 
 The release period is **eight weeks**.
@@ -130,9 +103,8 @@ intended network:
 * Increase MAJOR on each mainnet hard fork.
 * Increase MINOR on each release cycle.
 * Increase PATCH for hotfixes and all other changes.
-* A `-pre.x` suffix (e.g. `v5.7.0-pre.4`) is a development/testnet build, with all feature gates open.
-* An `-rc.x` suffix (e.g. `v5.7.0-rc.0`) is a nextnet release candidate, with `Testing` gates open.
-* No suffix (e.g. `v5.6.0`) is a stagenet/mainnet build, with all gates closed.
+* A `-pre.x` suffix (e.g. `v5.7.0-pre.4`) is a development/beta build.
+* No suffix (e.g. `v5.6.0`) is a full official build.
 
 There are some implications for this model:
 
