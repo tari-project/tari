@@ -392,7 +392,7 @@ pub fn state_event(event: &StateEvent) -> String {
         StateEvent::ProceedToHorizonSync(_) => "ProceedToHorizonSync".to_string(),
         StateEvent::ProceedToBlockSync(_) => "ProceedToBlockSync".to_string(),
         StateEvent::HorizonStateSynchronized => "HorizonStateSynchronized".to_string(),
-        StateEvent::HorizonStateSyncFailure => "HorizonStateSyncFailure".to_string(),
+        StateEvent::HorizonStateSyncFailure(err) => format!("HorizonStateSyncFailure({err})"),
         StateEvent::BlocksSynchronized => "BlocksSynchronized".to_string(),
         StateEvent::BlockSyncFailed => "BlockSyncFailed".to_string(),
         StateEvent::FallenBehind(_) => "FallenBehind".to_string(),
