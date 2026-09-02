@@ -28,8 +28,8 @@ The goals of having these guidelines are fourfold:
 These guidelines are split up into a few main topics:
 
 * [The release process](#the-minotari-release-process) explains how the release schedule for Tari works.
-* The [Feature RFC process](#feature-rfc-process) describes how new features get into Tari, from conception
-  to implementation.
+* [Improvement proposals (TIPs)](#improvement-proposals-tips) describes how larger features and protocol changes
+  get into Tari, from conception to implementation.
 * [Pull requests](#pull-requests) offers guidelines on how to get your code merged into the code base
   with the minimum of fuss.
 * [Code reviews](#code-reviews) are integral to keeping the code secure and performant. This section
@@ -120,46 +120,91 @@ appropriate time.
 
 [compiler release process]: https://internals.rust-lang.org/t/release-channels-git-branching-and-the-release-process/1940
 
-## Feature RFC process
+## Improvement proposals (TIPs)
 
 Standard issue management is used for bug fixes, performance improvements, and technical debt repayments. Larger
-features, and substantial changes to how Tari works, get implemented via the RFC process.
+features, and substantial changes to how Tari works, go through the **Tari Improvement Proposal (TIP)** process in the
+[RFC repo]. TIPs replace the older standalone RFC process: a protocol or architecture change is now a TIP of the
+`RFC` type, and the historical RFC documents have been folded into the same book under their new TIP names.
 
-A very rough outline of the flow goes as follows:
+The process itself is specified in [TIP-1] and summarised below. Where this summary and TIP-1 disagree, **TIP-1 wins**.
 
-- Someone has an idea for an improvement or feature.
-- They bring it up and discuss it with the community in the [Discord] #dev channel.
-- Someone — usually the leading proponent — writes up a detailed specification of the proposal as an RFC and submits it
-  as a PR to the [RFC repo]. At this stage, a number for the RFC will be assigned.
-- The community reviews and comments on the RFC.
-- After several drafts and revisions, the PR gets merged, and the RFC enters
-  ![draft status](./meta/img/status-draft.svg).
-- At this point, the RFC can still undergo changes via PRs. The RFC remains in
-  ![draft status](./meta/img/status-draft.svg), and the changes are logged in a _Change Log_
-  maintained at the bottom of the RFC.
-- If someone wants to implement the RFC — usually the RFC author, but it needn't be — they will create a tracking
-  issue for the RFC. The tracking issue collects all the conversations around the implementation of the RFC in one
-  place. The RFC status will then change to ![WIP status](./meta/img/status-wip.svg). A feature gate
-  name will be assigned to the feature at this stage.
-- Development for this feature happens behind the feature gate, and PRs are submitted against the `development` branch.
-- Once the implementation is complete and active on a testnet, the RFC status can then be changed to
-  ![testing status](./meta/img/status-testing.svg).
-- The RFC should be updated to match the implementation. The changes must be summarised in the Change Log. Once the
-  feature is stabilised and is live on mainnet, the status can be updated to
-  ![active status](./meta/img/status-active.svg).
+### Proposal types
 
-If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as
-![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
+| Type | Code | Used for |
+| --- | --- | --- |
+| Architecture | `RFC` | Technical implementation decisions: chain features, proof designs, other critical technical improvements. |
+| Process | `PROC` | Changes to how the Tari community functions. |
+| Best Practice | `BPRA` | A technology or implementation choice all applicable Tari services and libraries should follow. |
+| Product Direction | `DIR` | Product-level decisions that span Tari subprojects. |
 
-The source code must ultimately be the source of truth for the Tari implementation.
-If the code and RFC have deviated substantially, mark it ![out of date](./meta/img/status-outofdate.svg).
-Then file an issue asking someone to kindly update the RFC and bring it back in line with the code.
+Proposals are named `S-TIP-TYP-SUB-X` — a status flag, the literal `TIP`, the type code, an optional subtype, and a
+sequential number. Base-layer proposals use the `MT` subtype (e.g. `TIP-RFC-MT-0120`) and Ootle proposals use `O`.
+The name changes as the status flag changes, but **the URL never changes**, so links stay stable.
 
-Taking on this thankless task is an excellent way for new contributors to learn the code base and quickly add value
-to the project!
+### Roles
 
-[Discord]: https://discord.gg/q3Sfzb8S2V
+* **Author** — writes the proposal, shepherds the forum and pull request discussions, and builds community consensus.
+  A proposal may have several authors.
+* **Expert Reviewer** — a community-recognised expert in the subject area who does the initial vetting and prepares the
+  proposal for the Council vote. The Expert Reviewer **cannot** be an author of the same proposal, and should ideally
+  come from a different team.
+* **Tari Council** — votes on whether to accept a proposal, and acts as a backstop if an author cannot find an Expert
+  Reviewer or has a concern about one. Until the Council is established, Tari Labs fills this role.
+
+### Workflow
+
+1. **Initial discussion.** Gut-check the idea with the community first — the [Discord] #dev channel, the
+   [community forums], or a Tari meetup. Do not open a proposal cold.
+2. **Find an Expert Reviewer.** Approach someone with the relevant domain expertise and the time to review. If you
+   don't know who to ask, ask the core contributors or the Council.
+3. **Open the PR.** Draft the proposal using an existing one as a guide, pick the next free sequence number for your
+   type and subtype, and open a PR against the [RFC repo] titled `TIP-XXXX: <title>` with status `Proposed`. The
+   Expert Reviewer reviews it, and it is merged once that initial review passes — merging means "worth discussing",
+   not "accepted".
+4. **Community review.** Announce the merged proposal on the forum (Governance category), Telegram and Discord, then
+   iterate via follow-up PRs as concerns are raised. When consensus is reached, tell the Council it is ready.
+5. **Council review.** The Council checks that it was competently reviewed, that the community had a chance to weigh
+   in, and that consensus was reached, then votes. A majority approval moves it to `Accepted` in a new PR. A rejection
+   comes with a reason; if that reason can't be remedied, the status becomes `Rejected` and the reasoning is recorded
+   at the top of the document.
+6. **Announce the change.** Post the outcome in the original announcement thread on the forum.
+
+Implementation happens in this repository, with PRs against the `development` branch as normal.
+
+### Statuses
+
+The RFC book is organised by status, and a proposal's status flag is the `S` in its name:
+
+| Status | Flag | Meaning |
+| --- | --- | --- |
+| Proposed | `P` | Under discussion; not yet accepted or rejected by the Council. |
+| Accepted | `A` | Approved by the Council, but not yet implemented. |
+| Implemented | `I` | Implementation complete, or otherwise in effect. |
+| Rejected | `R` | Rejected by the Council, or withdrawn by the author. |
+| Deprecated | `D` | Superseded or no longer relevant. |
+
+A proposal that needs no implementation goes straight from Accepted to Implemented.
+
+Process and Best Practice proposals can be updated after acceptance — open a PR, loop in the previous authors, and run
+it past the Council again. Small changes such as formatting may not need an Expert Reviewer.
+
+If a proposal ever becomes redundant, **DO NOT delete it**. Mark it `Deprecated` and add an explanation of why it is no
+longer relevant.
+
+The source code must ultimately be the source of truth for the Tari implementation. If the code and a proposal have
+deviated substantially, file an issue asking someone to kindly bring the document back in line with the code. Taking on
+this thankless task is an excellent way for new contributors to learn the code base and quickly add value to the
+project!
+
+Note that the migration from the old RFC format is still in progress: TIP-1 is itself in `Proposed` status, legacy RFCs
+are still being updated with the new header preamble, and the document template in the RFC repo has not yet caught up
+with the header that TIP-1 specifies. Follow TIP-1 and copy a recently updated proposal rather than the old template.
+
+[Discord]: https://discord.gg/tari
+[community forums]: https://community.tari.com/
 [RFC repo]: https://github.com/tari-project/rfcs
+[TIP-1]: https://rfc.tari.com/TIP-0001_tari_improvement_proposals.html
 
 ## Pull requests
 
