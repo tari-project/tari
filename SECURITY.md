@@ -49,7 +49,6 @@ against networks, or any physical or electronic attempts against property and/or
 Please report any **non-sensitive** issue **unrelated to security** as a Github issue in the relevant repository.
 
 Security issues can be disclosed using one of the following channels, in decreasing order of preference: 
-  * [HackerOne Bug Bounty Programme](https://hackerone.com/tari_labs)
   * A [Private Security Disclosure](https://github.com/tari-project/tari/security/advisories/new) on Github
   * [The Tari Labs Security mailing list](mailto:security@tari.com) 
 
@@ -72,9 +71,6 @@ If your report qualifies for a bounty reward, we will:
 * Notify you once an issue has been resolved; and
 * Provide a time window for the lifting of restrictions around public disclosure.
 
-Disclosures made through the [HackerOne bounty programme](https://hackerone.com/tari_labs) will be acknowledged 
-and triaged faster than via the other channels, typically within 7 days. Disclosures made via GitHub or email may 
-take longer. 
 
 ## Our Expectations
 
@@ -132,12 +128,12 @@ submit a report through one of our [Disclosure Channels](#disclosure) before goi
 It is preferred, but it is not an absolute requirement to make use of the HackerOne bounty programme to claim 
 Minotari token rewards.
 
-| Severity | Bounty Range\*      | 
-|----------|---------------------|
-| Critical | 100,000 XTM - 250,000 XTM | 
-| High     | 25,000 XTM - 75,000 XTM | 
-| Medium   | 5,000 - 15,000  XTM  | 
-| Low      | 500 - 5,000 XTM      | 
+| Severity | Bounty Range\*            | 
+|----------|---------------------------|
+| Critical | 200,000 XTM - 250,000 XTM | 
+| High     | 150,000 XTM               | 
+| Medium   | 60,000  XTM               | 
+| Low      | 15,000 XTM                | 
 
 #### Notes and conditions for token bounty rewards:
 
