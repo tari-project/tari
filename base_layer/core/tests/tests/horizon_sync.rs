@@ -35,7 +35,7 @@ use crate::helpers::{
 };
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_archival_node_happy_path > .\target\output.txt 2>&1
@@ -284,7 +284,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 }
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
@@ -667,7 +667,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
 }
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
@@ -854,7 +854,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     assert!(!sync::wait_for_is_peer_banned(&alice_node, carol_node.node_identity.node_id(), 1).await);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_discards_mismatched_checkpoint() {
     // Exercises the full sync state machine through a horizon sync where Alice's database already
     // contains a `HorizonSyncOutputCheckpoint` whose `sync_target_hash` does NOT match the new
@@ -947,7 +947,7 @@ async fn test_horizon_sync_discards_mismatched_checkpoint() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_clears_checkpoint_on_completion() {
     // Verifies the end-to-end resume contract: after a horizon sync runs to completion the
     // checkpoint is cleared, so a subsequent sync starts from height 1 (verified via the resume

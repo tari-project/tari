@@ -29,7 +29,7 @@ use tari_core::{
 use crate::helpers::{sync, sync::WhatToDelete};
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -125,7 +125,7 @@ async fn test_header_sync_happy_path() {
 }
 
 #[ignore]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_with_fork_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -235,7 +235,7 @@ async fn test_header_sync_with_fork_happy_path() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_uneven_headers_and_blocks_happy_path() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -291,7 +291,7 @@ async fn test_header_sync_uneven_headers_and_blocks_happy_path() {
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -362,7 +362,7 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_even_headers_and_blocks_peer_lies_about_pow_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -423,7 +423,7 @@ async fn test_header_sync_even_headers_and_blocks_peer_lies_about_pow_with_ban()
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reorg() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 

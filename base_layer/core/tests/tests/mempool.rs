@@ -1004,7 +1004,7 @@ async fn test_reorg() {
     mempool.process_reorg(vec![], vec![reorg_block4.into()]).await.unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {

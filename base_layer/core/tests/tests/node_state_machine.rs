@@ -159,10 +159,10 @@ async fn test_listening_lagging() {
 }
 
 #[allow(clippy::too_many_lines)]
-// Deliberately left on a single worker thread, unlike the sync tests. `Listening::next_event` below returns as
-// soon as it sees a lagging peer, so the `sync_peers.len() == 2` assertion at the end of this test relies on
-// both peers' chain metadata having been processed before it is reached. Serialised execution is what makes
-// that hold; on 4 worker threads this test fails ~35% of the time. Raising this needs that race fixed first.
+// The single worker thread here is load-bearing. `Listening::next_event` below returns as soon as it sees a
+// lagging peer, so the `sync_peers.len() == 2` assertion at the end of this test relies on both peers' chain
+// metadata having been processed before it is reached, and it is serialised execution that makes that hold.
+// Measured at 4 worker threads: 7 failures in 20 runs, against 0 in 20 here. Fix that race before raising it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;

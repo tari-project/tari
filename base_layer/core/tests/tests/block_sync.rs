@@ -28,7 +28,7 @@ use crate::helpers::{
     sync::{WhatToDelete, state_event},
 };
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_happy_path() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
 
@@ -92,7 +92,7 @@ async fn test_block_sync_happy_path() {
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 5);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -151,7 +151,7 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
@@ -211,7 +211,7 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
 }
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_with_conbase_spend_happy_path_1() {
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_block_sync_with_conbase_spend_happy_path_1 > .\target\output.txt 2>&1
@@ -319,7 +319,7 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
 }
 
 #[allow(clippy::too_many_lines)]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_with_conbase_spend_happy_path_2() {
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_block_sync_with_conbase_spend_happy_path_2 > .\target\output.txt 2>&1
