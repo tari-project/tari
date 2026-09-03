@@ -125,11 +125,11 @@ pub struct ConnectionManagerConfig {
     pub max_simultaneous_inbound_connects: usize,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
-    /// The maximum time to wait for the first byte before closing the connection. Default: 15s
+    /// The maximum time to wait for the first byte before closing the connection. Default: 6s
     pub time_to_first_byte: Duration,
     /// The maximum time to wait for a noise protocol handshake message before timing out. For 1.5 RTT XX handshake,
     /// the responder will wait 2 x this value (1 per receive) before timing out.
-    /// Default: 15s
+    /// Default: 6s
     pub noise_handshake_recv_timeout: Duration,
     /// The maximum time to wait for a peer to respond on a noise protocol dial.
     /// Default: 60s
@@ -162,16 +162,12 @@ impl Default for ConnectionManagerConfig {
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             liveness_max_sessions: 1,
-            // Both handshake-path timeouts guard against a peer that has gone away mid-handshake, so they only
-            // need to be short enough to release the connection slot (capped by `max_simultaneous_inbound_connects`)
-            // in reasonable time. At 6s they were instead being tripped by latency: a loaded CI runner or a Tor
-            // circuit can easily take longer than that to get the first byte or a noise message across.
-            time_to_first_byte: Duration::from_secs(15),
-            noise_handshake_recv_timeout: Duration::from_secs(15),
+            time_to_first_byte: Duration::from_secs(6),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
             self_liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
+            noise_handshake_recv_timeout: Duration::from_secs(6),
             noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
         }
