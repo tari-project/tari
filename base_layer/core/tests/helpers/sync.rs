@@ -538,6 +538,8 @@ pub fn init_connection_logging() {
         .parse_filters(
             "warn,comms::connection_manager::peer_connection=debug,comms::connectivity::manager=debug,\
              comms::multiplexing::yamux=debug,comms::rpc::server=debug,comms::rpc::client=debug,\
+             p2p::services::liveness=debug,c::bn::chain_state_sync_service=debug,\
+             c::bn::state_machine_service::states::listening=debug,\
              c::bn::state_machine_service::states::horizon_state_sync=debug",
         )
         .is_test(false)

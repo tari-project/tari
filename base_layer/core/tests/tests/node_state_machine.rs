@@ -71,6 +71,7 @@ use crate::helpers::{
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
+    crate::helpers::sync::init_connection_logging();
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = KeyManager::new_random().unwrap();
@@ -86,7 +87,12 @@ async fn test_listening_lagging() {
         vec![MempoolServiceConfig::default(); 2],
         vec![
             LivenessConfig {
-                auto_ping_interval: Some(Duration::from_millis(100)),
+                // Unlike the sync tests, these two genuinely need liveness: the chain metadata that
+                // `Listening` decides on arrives on ping-pong. But `auto_ping_interval` doubles as the
+                // in-flight TTL for each ping, and 3 expiries disconnect the peer, so 100ms gave a pong
+                // 100ms to round-trip or the peer whose metadata we are waiting for gets dropped. One
+                // second still delivers metadata well inside this test's 10s budget.
+                auto_ping_interval: Some(Duration::from_secs(1)),
                 ..Default::default()
             };
             2
@@ -165,6 +171,7 @@ async fn test_listening_lagging() {
 // Measured at 4 worker threads: 7 failures in 20 runs, against 0 in 20 here. Fix that race before raising it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_initial_fallen_behind() {
+    crate::helpers::sync::init_connection_logging();
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = KeyManager::new_random().unwrap();
@@ -180,7 +187,12 @@ async fn test_listening_initial_fallen_behind() {
         vec![MempoolServiceConfig::default(); 3],
         vec![
             LivenessConfig {
-                auto_ping_interval: Some(Duration::from_millis(100)),
+                // Unlike the sync tests, these two genuinely need liveness: the chain metadata that
+                // `Listening` decides on arrives on ping-pong. But `auto_ping_interval` doubles as the
+                // in-flight TTL for each ping, and 3 expiries disconnect the peer, so 100ms gave a pong
+                // 100ms to round-trip or the peer whose metadata we are waiting for gets dropped. One
+                // second still delivers metadata well inside this test's 10s budget.
+                auto_ping_interval: Some(Duration::from_secs(1)),
                 ..Default::default()
             };
             3
@@ -305,6 +317,7 @@ async fn test_listening_initial_fallen_behind() {
 
 #[tokio::test]
 async fn test_event_channel() {
+    crate::helpers::sync::init_connection_logging();
     let network = Network::Esmeralda;
     if std::env::var("TARI_NETWORK").is_err() {
         // SAFETY: This test is not run in parallel with tests that depend on this env var.
