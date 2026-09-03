@@ -519,3 +519,24 @@ pub fn create_block_chain_with_transactions(
 
     (blocks, coinbases)
 }
+
+/// Turn on connection-lifetime logging for a sync test.
+///
+/// The recurring CI failure in these tests is the peer connection being closed underneath an
+/// in-flight sync RPC, and every candidate cause already logs which side did it and why - but no
+/// test installs a logger, so none of it is ever seen. Nextest only prints a test's output when it
+/// fails, so this is silent on the happy path.
+///
+/// The filter is explicit rather than driven by `RUST_LOG` so the output stays readable and the
+/// volume stays predictable; CI sets `RUST_LOG=debug` globally, which would otherwise turn this
+/// into a firehose across every test in the binary.
+pub fn init_connection_logging() {
+    let _ignore = env_logger::Builder::new()
+        .parse_filters(
+            "warn,comms::connection_manager::peer_connection=debug,comms::connectivity::manager=debug,\
+             comms::multiplexing::yamux=debug,comms::rpc::server=debug,comms::rpc::client=debug,\
+             c::bn::state_machine_service::states::horizon_state_sync=debug",
+        )
+        .is_test(false)
+        .try_init();
+}
