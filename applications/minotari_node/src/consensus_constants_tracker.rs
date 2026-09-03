@@ -35,6 +35,7 @@ pub struct ConsensusConstantsTracker {
     storage_path: PathBuf,
 }
 
+#[allow(dead_code)]
 impl ConsensusConstantsTracker {
     pub fn new(data_dir: &Path) -> Self {
         let mut storage_path = data_dir.to_path_buf();
