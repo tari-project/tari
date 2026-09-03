@@ -280,6 +280,8 @@ async fn build_node_context(
     // current_height) {     error!(target: LOG_TARGET, "{}", error_msg);
     //     eprintln!("\n{}\n", error_msg);
     // }
+    // remove this later
+    consensus_tracker.store_current(current_constants.clone())?;
 
     let mempool_validator = TransactionFullValidator::new(
         factories.clone(),
