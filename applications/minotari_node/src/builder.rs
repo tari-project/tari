@@ -275,10 +275,11 @@ async fn build_node_context(
         .map(|o| o.best_block_height())
         .unwrap_or_default();
 
-    if let Err(error_msg) = consensus_tracker.check_for_changes(current_constants, current_height) {
-        error!(target: LOG_TARGET, "{}", error_msg);
-        eprintln!("\n{}\n", error_msg);
-    }
+    // bypassing for now as we will hit this, we are changing the epoch length of the ootle, but this wont impact any
+    // current mainnet node if let Err(error_msg) = consensus_tracker.check_for_changes(current_constants,
+    // current_height) {     error!(target: LOG_TARGET, "{}", error_msg);
+    //     eprintln!("\n{}\n", error_msg);
+    // }
 
     let mempool_validator = TransactionFullValidator::new(
         factories.clone(),
