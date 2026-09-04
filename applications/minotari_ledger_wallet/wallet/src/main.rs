@@ -47,6 +47,7 @@ use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
     Instruction as InstructionMapping,
     LedgerKeyBranch as BranchMapping,
+    STATIC_SPEND_INDEX,
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -100,12 +101,11 @@ pub enum Instruction {
 }
 
 const P2_MORE: u8 = 0x01;
-const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyType {
     Spend = 0x01,
     Nonce = 0x02,
@@ -136,6 +136,14 @@ impl KeyType {
         } else {
             return Err(AppSW::BadBranchKey);
         }
+    }
+
+    fn is_script_offset_script_branch(self) -> bool {
+        matches!(self, Self::Spend | Self::PreMine)
+    }
+
+    fn is_script_offset_sender_branch(self) -> bool {
+        matches!(self, Self::OneSidedSenderOffset | Self::Random)
     }
 }
 

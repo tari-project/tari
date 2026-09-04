@@ -28,6 +28,8 @@ use digest::{KeyInit, consts::U64};
 use log::trace;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 #[cfg(feature = "ledger")]
+use minotari_ledger_wallet_common::common_types::STATIC_SPEND_INDEX;
+#[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
     ledger_get_dh_shared_secret,
@@ -102,6 +104,65 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
+
+#[cfg(feature = "ledger")]
+fn validate_ledger_script_offset_key_ids(
+    script_key_ids: &[TariKeyId],
+    sender_offset_key_ids: &[TariKeyId],
+) -> Result<(), KeyManagerError> {
+    let mut script_identities = Vec::new();
+    for key_id in script_key_ids {
+        let identity = match key_id {
+            TariKeyId::LedgerKey { branch, index } => {
+                if !branch.is_script_offset_script_branch() {
+                    return Err(KeyManagerError::LedgerError(format!(
+                        "Ledger branch {branch} cannot be used as a script key"
+                    )));
+                }
+                Some((*branch, *index))
+            },
+            TariKeyId::Derived { .. } => Some((LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)),
+            _ => None,
+        };
+        if let Some(identity) = identity &&
+            !script_identities.contains(&identity)
+        {
+            script_identities.push(identity);
+        }
+    }
+
+    let mut sender_identities = Vec::new();
+    for key_id in sender_offset_key_ids {
+        let identity = match key_id {
+            TariKeyId::LedgerKey { branch, index } => {
+                if !branch.is_script_offset_sender_branch() {
+                    return Err(KeyManagerError::LedgerError(format!(
+                        "Ledger branch {branch} cannot be used as a sender offset"
+                    )));
+                }
+                Some((*branch, *index))
+            },
+            TariKeyId::Derived { .. } => Some((LedgerKeyBranch::Spend, STATIC_SPEND_INDEX)),
+            _ => None,
+        };
+        if let Some(identity) = identity &&
+            !sender_identities.contains(&identity)
+        {
+            sender_identities.push(identity);
+        }
+    }
+
+    if sender_identities
+        .iter()
+        .any(|identity| script_identities.contains(identity))
+    {
+        return Err(KeyManagerError::LedgerError(
+            "Ledger script and sender-offset key identities must be disjoint".to_string(),
+        ));
+    }
+
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct KeyManager {
@@ -286,6 +347,7 @@ impl KeyManager {
     ) -> Result<PrivateKey, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            validate_ledger_script_offset_key_ids(script_key_ids, sender_offset_key_ids)?;
             let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];

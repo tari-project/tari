@@ -118,6 +118,9 @@ pub enum LedgerKeyBranch {
     Spend = 0x07,
 }
 
+/// Fixed derivation index used for the Ledger wallet's static spend key.
+pub const STATIC_SPEND_INDEX: u64 = 42;
+
 impl LedgerKeyBranch {
     pub fn as_byte(self) -> u8 {
         self as u8
@@ -142,6 +145,16 @@ impl LedgerKeyBranch {
             LedgerKeyBranch::Spend => "Spend",
             LedgerKeyBranch::MetadataEphemeralNonce => "MetadataEphemeralNonce",
         }
+    }
+
+    /// Returns whether this branch can provide a managed script key to `GetScriptOffset`.
+    pub fn is_script_offset_script_branch(self) -> bool {
+        matches!(self, Self::Spend | Self::PreMine)
+    }
+
+    /// Returns whether this branch can provide a managed sender offset to `GetScriptOffset`.
+    pub fn is_script_offset_sender_branch(self) -> bool {
+        matches!(self, Self::OneSidedSenderOffset | Self::Random)
     }
 }
 
