@@ -23,7 +23,10 @@
 use std::sync::{LazyLock, Mutex};
 
 use log::debug;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction, LedgerKeyBranch, MAX_PAYLOADS},
+    script_offset_policy::validate_script_offset_request,
+};
 use rand::Rng;
 use semver::Version;
 use tari_common::configuration::Network;
@@ -346,6 +349,18 @@ pub fn ledger_get_script_offset(
         sender_offset_indexes
     );
     verify_ledger_application()?;
+
+    // The device enforces this too - it has to, since it cannot trust us - but failing here gives a legible error
+    // instead of a bare status word, and stops a wallet-side bug from ever reaching the device. This runs the same
+    // guard the device does, over the whole request, so nothing gets past here only to be refused on-device.
+    validate_script_offset_request(
+        sender_offset_indexes,
+        script_key_indexes,
+        derived_sender_offsets.len() as u64,
+        derived_script_keys.len() as u64,
+        u64::from(MAX_PAYLOADS),
+    )
+    .map_err(|e| LedgerDeviceError::InvalidScriptOffsetRequest(e.to_string()))?;
 
     // 1. data sizes
     let mut instructions: Vec<u8> = Vec::new();

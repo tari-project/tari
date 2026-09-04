@@ -47,6 +47,7 @@ use minotari_ledger_wallet_common::common_types::{
     AppSW as AppSWMapping,
     Instruction as InstructionMapping,
     LedgerKeyBranch as BranchMapping,
+    MAX_PAYLOADS,
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -102,7 +103,6 @@ pub enum Instruction {
 const P2_MORE: u8 = 0x01;
 const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
-const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq)]
@@ -121,21 +121,29 @@ impl KeyType {
         self as u8
     }
 
-    fn from_branch_key(n: u64) -> Result<Self, AppSW> {
+    /// Map a wire branch onto the key type used for BIP32 derivation.
+    ///
+    /// This is deliberately total: deciding *whether* a branch may be used in a given context is the caller's job,
+    /// and for `GetScriptOffset` it belongs to `script_offset_policy`, not here.
+    fn from_branch(branch: BranchMapping) -> Self {
+        match branch {
+            BranchMapping::OneSidedSenderOffset => Self::OneSidedSenderOffset,
+            BranchMapping::Spend => Self::Spend,
+            BranchMapping::Random => Self::Random,
+            BranchMapping::PreMine => Self::PreMine,
+            BranchMapping::MetadataEphemeralNonce => Self::MetadataEphemeralNonce,
+        }
+    }
+
+    fn branch_from_byte(n: u64) -> Result<BranchMapping, AppSW> {
         if n > u64::from(u8::MAX) {
             return Err(AppSW::BadBranchKey);
         }
-        if let Some(branch) = BranchMapping::from_byte(n as u8) {
-            match branch {
-                BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
-                BranchMapping::Spend => Ok(Self::Spend),
-                BranchMapping::Random => Ok(Self::Random),
-                BranchMapping::PreMine => Ok(Self::PreMine),
-                BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
-            }
-        } else {
-            return Err(AppSW::BadBranchKey);
-        }
+        BranchMapping::from_byte(n as u8).ok_or(AppSW::BadBranchKey)
+    }
+
+    fn from_branch_key(n: u64) -> Result<Self, AppSW> {
+        Ok(Self::from_branch(Self::branch_from_byte(n)?))
     }
 }
 
