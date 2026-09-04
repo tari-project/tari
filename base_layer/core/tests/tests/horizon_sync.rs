@@ -37,6 +37,7 @@ use crate::helpers::{
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_archival_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_archival_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -286,6 +287,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -669,6 +671,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_prune_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -856,6 +859,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_discards_mismatched_checkpoint() {
+    sync::init_connection_logging();
     // Exercises the full sync state machine through a horizon sync where Alice's database already
     // contains a `HorizonSyncOutputCheckpoint` whose `sync_target_hash` does NOT match the new
     // sync target. The synchronizer must discard the stale checkpoint and complete a fresh sync.
@@ -949,6 +953,7 @@ async fn test_horizon_sync_discards_mismatched_checkpoint() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_clears_checkpoint_on_completion() {
+    sync::init_connection_logging();
     // Verifies the end-to-end resume contract: after a horizon sync runs to completion the
     // checkpoint is cleared, so a subsequent sync starts from height 1 (verified via the resume
     // path's no-checkpoint branch).

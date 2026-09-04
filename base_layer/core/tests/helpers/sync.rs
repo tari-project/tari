@@ -168,13 +168,16 @@ pub async fn create_network_with_multiple_nodes(
         .unwrap();
     let (node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); num_nodes],
-        vec![
-            LivenessConfig {
-                auto_ping_interval: Some(Duration::from_millis(100)),
-                ..Default::default()
-            };
-            num_nodes
-        ],
+        // Liveness auto-ping is deliberately left at its production default of `None`.
+        //
+        // `LivenessService` uses `auto_ping_interval` as the in-flight TTL for each ping, and
+        // disconnects a peer after `max_allowed_ping_failures` (2) rounds. At the 100ms this used to
+        // be set to, a pong had 100ms to make it back through DHT, messaging and a runtime shared
+        // with every node in the test - so on a loaded CI runner every round failed and liveness
+        // tore down the sync peer roughly once a second, mid-sync, with
+        // "LivenessService disconnect failed peers". These tests build their `SyncPeer`s straight
+        // from the peer's blockchain db and never read liveness data, so pinging buys them nothing.
+        vec![LivenessConfig::default(); num_nodes],
         blockchain_db_configs,
         vec![P2pConfig::default(); num_nodes],
         consensus_manager,
@@ -392,7 +395,7 @@ pub fn state_event(event: &StateEvent) -> String {
         StateEvent::ProceedToHorizonSync(_) => "ProceedToHorizonSync".to_string(),
         StateEvent::ProceedToBlockSync(_) => "ProceedToBlockSync".to_string(),
         StateEvent::HorizonStateSynchronized => "HorizonStateSynchronized".to_string(),
-        StateEvent::HorizonStateSyncFailure => "HorizonStateSyncFailure".to_string(),
+        StateEvent::HorizonStateSyncFailure(err) => format!("HorizonStateSyncFailure({err})"),
         StateEvent::BlocksSynchronized => "BlocksSynchronized".to_string(),
         StateEvent::BlockSyncFailed => "BlockSyncFailed".to_string(),
         StateEvent::FallenBehind(_) => "FallenBehind".to_string(),
@@ -518,4 +521,27 @@ pub fn create_block_chain_with_transactions(
     let coinbases = [&coinbases_a[..], &coinbases_b[1..], &coinbases_c[1..]].concat();
 
     (blocks, coinbases)
+}
+
+/// Turn on connection-lifetime logging for a sync test.
+///
+/// The recurring CI failure in these tests is the peer connection being closed underneath an
+/// in-flight sync RPC, and every candidate cause already logs which side did it and why - but no
+/// test installs a logger, so none of it is ever seen. Nextest only prints a test's output when it
+/// fails, so this is silent on the happy path.
+///
+/// The filter is explicit rather than driven by `RUST_LOG` so the output stays readable and the
+/// volume stays predictable; CI sets `RUST_LOG=debug` globally, which would otherwise turn this
+/// into a firehose across every test in the binary.
+pub fn init_connection_logging() {
+    let _ignore = env_logger::Builder::new()
+        .parse_filters(
+            "warn,comms::connection_manager::peer_connection=debug,comms::connectivity::manager=debug,\
+             comms::multiplexing::yamux=debug,comms::rpc::server=debug,comms::rpc::client=debug,\
+             p2p::services::liveness=debug,c::bn::chain_state_sync_service=debug,\
+             c::bn::state_machine_service::states::listening=debug,\
+             c::bn::state_machine_service::states::horizon_state_sync=debug",
+        )
+        .is_test(false)
+        .try_init();
 }

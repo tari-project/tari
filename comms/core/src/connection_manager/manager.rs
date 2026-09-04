@@ -125,11 +125,11 @@ pub struct ConnectionManagerConfig {
     pub max_simultaneous_inbound_connects: usize,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
-    /// The maximum time to wait for the first byte before closing the connection. Default: 3s
+    /// The maximum time to wait for the first byte before closing the connection. Default: 6s
     pub time_to_first_byte: Duration,
     /// The maximum time to wait for a noise protocol handshake message before timing out. For 1.5 RTT XX handshake,
     /// the responder will wait 2 x this value (1 per receive) before timing out.
-    /// Default: 3s
+    /// Default: 6s
     pub noise_handshake_recv_timeout: Duration,
     /// The maximum time to wait for a peer to respond on a noise protocol dial.
     /// Default: 60s

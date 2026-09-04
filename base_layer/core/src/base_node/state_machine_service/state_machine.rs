@@ -179,7 +179,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 Listening(s.into(), false)
             },
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
-            (HorizonStateSync(s), HorizonStateSyncFailure) => {
+            (HorizonStateSync(s), HorizonStateSyncFailure(_)) => {
                 db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },

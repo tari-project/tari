@@ -28,6 +28,7 @@ use tari_test_utils::unpack_enum;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot},
+    time,
     time::timeout,
 };
 
@@ -44,7 +45,7 @@ use crate::{
     },
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
-    peer_manager::PeerFeatures,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager},
     protocol::ProtocolId,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
@@ -214,27 +215,35 @@ async fn smoke() {
     in_stream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, *b"HELLO");
 
+    // Each side persists the other while the connection is established, but the write does not
+    // happen inline with the `PeerConnected` event this test waited on, so poll rather than read
+    // once. This used to be read after `shutdown.trigger()` below, which raced the write against
+    // teardown and made the test flaky on slow machines.
+    let peer2 = find_peer_eventually(&peer_manager1, node_identity2.node_id(), "listener").await;
+    let peer1 = find_peer_eventually(&peer_manager2, node_identity1.node_id(), "dialer").await;
+
+    assert_eq!(&peer1.public_key, node_identity1.public_key());
+    assert_eq!(&peer2.public_key, node_identity2.public_key());
+
     // Disconnect conn1
     conn1.disconnect(Minimized::No, "unit test").await.unwrap();
     // conn2.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();
 
-    let peer2 = peer_manager1
-        .find_by_node_id(node_identity2.node_id())
-        .await
-        .unwrap()
-        .unwrap();
-    let peer1 = peer_manager2
-        .find_by_node_id(node_identity1.node_id())
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(&peer1.public_key, node_identity1.public_key());
-    assert_eq!(&peer2.public_key, node_identity2.public_key());
-
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+/// Wait for `node_id` to appear in `peer_manager`, which the connection handshake writes
+/// asynchronously.
+async fn find_peer_eventually(peer_manager: &PeerManager, node_id: &NodeId, side: &str) -> Peer {
+    for _ in 0..100 {
+        if let Some(peer) = peer_manager.find_by_node_id(node_id).await.unwrap() {
+            return peer;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("{side} never persisted peer {node_id}");
 }
 
 #[tokio::test]

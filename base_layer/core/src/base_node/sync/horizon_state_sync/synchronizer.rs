@@ -230,6 +230,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
+        // Kept so that the terminal error below can name why the peers actually failed. Without it every
+        // failure surfaces only as "no more sync peers", which says nothing about the underlying cause.
+        let mut last_err = None;
         for node_id in sync_peer_node_ids {
             match self.connect_and_attempt_sync(&node_id, to_header).await {
                 Ok(_) => return Ok(()),
@@ -252,16 +255,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     } else {
                         self.remove_sync_peer(&node_id);
                     }
+                    last_err = Some(format!("{node_id}: {err}"));
                 },
             }
         }
 
+        let last_err = last_err.unwrap_or_else(|| "no sync peers were attempted".to_string());
         if self.sync_peers.is_empty() {
-            Err(HorizonSyncError::NoMoreSyncPeers("Header sync failed".to_string()))
+            Err(HorizonSyncError::NoMoreSyncPeers(format!(
+                "horizon sync failed against every peer, last error was {last_err}"
+            )))
         } else if latency_counter >= self.sync_peers.len() {
             Err(HorizonSyncError::AllSyncPeersExceedLatency)
         } else {
-            Err(HorizonSyncError::FailedSyncAllPeers)
+            Err(HorizonSyncError::FailedSyncAllPeers(last_err))
         }
     }
 
@@ -270,8 +277,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         node_id: &NodeId,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        // Connect
-        let (mut client, sync_peer) = self.connect_sync_peer(node_id).await?;
+        // Connect. `_conn` is bound for the whole attempt on purpose: `PeerConnection::drop`
+        // terminates every RPC client created from a handle once the last handle goes away, so
+        // letting it fall out of scope here would tear down `client` mid-sync.
+        let (mut client, sync_peer, _conn) = self.connect_sync_peer(node_id).await?;
 
         // Perform horizon sync
         debug!(target: LOG_TARGET, "Check if pruning is needed");
@@ -288,7 +297,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn connect_sync_peer(
         &mut self,
         node_id: &NodeId,
-    ) -> Result<(BaseNodeSyncRpcClient, SyncPeer), HorizonSyncError> {
+    ) -> Result<(BaseNodeSyncRpcClient, SyncPeer, PeerConnection), HorizonSyncError> {
         let peer_index = self
             .get_sync_peer_index(node_id)
             .ok_or(HorizonSyncError::PeerNotFound)?;
@@ -347,6 +356,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok((
             client,
             self.sync_peers.get(peer_index).expect("Already checked").clone(),
+            conn,
         ))
     }
 
