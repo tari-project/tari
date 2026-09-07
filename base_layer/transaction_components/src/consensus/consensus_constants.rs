@@ -824,7 +824,11 @@ impl ConsensusConstants {
         con5.pow_backoff_cap = POW_BACKOFF_CAP;
         con5.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
 
-        vec![consensus_constants1, con2, con3, con4, con5]
+        let mut con6 = con5.clone();
+        con6.effective_from_height = 869_000;
+        con6.pow_backoff_cap = 2;
+
+        vec![consensus_constants1, con2, con3, con4, con5, con6]
     }
 
     /// *
