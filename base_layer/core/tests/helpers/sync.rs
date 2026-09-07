@@ -170,13 +170,15 @@ pub async fn create_network_with_multiple_nodes(
         vec![MempoolServiceConfig::default(); num_nodes],
         // Liveness auto-ping is deliberately left at its production default of `None`.
         //
-        // `LivenessService` uses `auto_ping_interval` as the in-flight TTL for each ping, and
-        // disconnects a peer after `max_allowed_ping_failures` (2) rounds. At the 100ms this used to
-        // be set to, a pong had 100ms to make it back through DHT, messaging and a runtime shared
-        // with every node in the test - so on a loaded CI runner every round failed and liveness
-        // tore down the sync peer roughly once a second, mid-sync, with
-        // "LivenessService disconnect failed peers". These tests build their `SyncPeer`s straight
-        // from the peer's blockchain db and never read liveness data, so pinging buys them nothing.
+        // Historically `LivenessService` used `auto_ping_interval` as the in-flight TTL for each ping
+        // and disconnected a peer after `max_allowed_ping_failures` (2) rounds, so the 100ms interval
+        // this helper used to set gave a pong 100ms to make it back through DHT, messaging and a
+        // runtime shared with every node in the test. On a loaded CI runner every round failed and
+        // liveness tore down the sync peer roughly once a second, mid-sync, with
+        // "LivenessService disconnect failed peers". That coupling is gone - the TTL is now
+        // `LivenessConfig::max_inflight_ttl` (30s by default), independent of the ping interval - but
+        // these tests build their `SyncPeer`s straight from the peer's blockchain db and never read
+        // liveness data, so pinging still buys them nothing.
         vec![LivenessConfig::default(); num_nodes],
         blockchain_db_configs,
         vec![P2pConfig::default(); num_nodes],

@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    iter,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{iter, sync::Arc, time::Instant};
 
 use futures::{Stream, future::Either, pin_mut, stream::StreamExt};
 use log::*;
@@ -56,8 +52,6 @@ use crate::{
     services::liveness::{LivenessEvent, PingPongEvent, handle::LivenessEventSender},
     tari_message::TariMessageType,
 };
-
-pub const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(30);
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream, TPingStream> {
@@ -257,11 +251,9 @@ where
     async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
         let nonce = msg.nonce;
-        self.state.add_inflight_ping(
-            nonce,
-            node_id.clone(),
-            self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
-        );
+        // The in-flight TTL is a timeout, not a rate: it must never be derived from `auto_ping_interval`.
+        self.state
+            .add_inflight_ping(nonce, node_id.clone(), self.config.max_inflight_ttl);
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
@@ -386,11 +378,9 @@ where
 
         for peer in selected_peers {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-            self.state.add_inflight_ping(
-                msg.nonce,
-                peer.clone(),
-                self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
-            );
+            // The in-flight TTL is a timeout, not a rate: it must never be derived from `auto_ping_interval`.
+            self.state
+                .add_inflight_ping(msg.nonce, peer.clone(), self.config.max_inflight_ttl);
             self.outbound_messaging
                 .send_direct_node_id(
                     peer,
@@ -416,6 +406,20 @@ where
         {
             // Liveness service is happy to be reaped — Weak handle.
             if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone(), RefKind::Weak).await {
+                // A non-zero strong count means someone (e.g. block/horizon sync) is actively using this
+                // connection. The connectivity manager refuses to reap those in `reap_inactive_connections` and
+                // `minimize_connections`; liveness must not bypass that guard and abort an in-progress RPC.
+                if conn.is_strongly_held() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Not disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings \
+                         because the connection is strongly held ({} strong handles)",
+                        conn.strong_count()
+                    );
+                    continue;
+                }
+                // NOTE: whether repeated ping failures should hard-disconnect at all - as opposed to marking the
+                // peer unhealthy and letting the connectivity layer decide - is still an open question.
                 debug!(
                     target: LOG_TARGET,
                     "Disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings"
@@ -461,6 +465,7 @@ mod test {
     use futures::stream;
     use tari_common_sqlite::connection::DbConnection;
     use tari_comms::{
+        connection_manager::PeerConnectionRequest,
         message::MessageTag,
         net_address::MultiaddressesWithStats,
         peer_manager::{
@@ -469,7 +474,7 @@ mod test {
             PeerFlags,
             database::{MIGRATIONS, PeerDatabaseSql},
         },
-        test_utils::mocks::create_connectivity_mock,
+        test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
         types::TransportProtocol,
     };
     use tari_comms_dht::{
@@ -488,7 +493,7 @@ mod test {
     use crate::{
         create_test_peer,
         proto::liveness::MetadataKey,
-        services::liveness::{handle::LivenessHandle, state::Metadata},
+        services::liveness::{MAX_INFLIGHT_TTL, handle::LivenessHandle, state::Metadata},
     };
 
     pub fn build_peer_manager() -> Arc<PeerManager> {
@@ -718,5 +723,165 @@ mod test {
         drop(publisher);
         let msg = subscriber.recv().await;
         assert!(msg.is_err());
+    }
+
+    /// Replies `Queued` to every outbound send request so that ping rounds complete without an
+    /// outbound messaging service behind them.
+    fn spawn_outbound_ack(mut outbound_rx: mpsc::UnboundedReceiver<DhtOutboundRequest>) {
+        task::spawn(async move {
+            while let Some(DhtOutboundRequest::SendMessage(_, _, reply_tx)) = outbound_rx.recv().await {
+                let (_keep_alive, rx) = oneshot::channel();
+                let _result = reply_tx.send(SendMessageResponse::Queued(
+                    vec![MessageSendState::new(MessageTag::new(), rx)].into(),
+                ));
+            }
+        });
+    }
+
+    /// Spawns a liveness service that auto-pings a single monitored peer which never pongs back.
+    /// Returns the connectivity mock state (so disconnect attempts can be observed) and the shutdown
+    /// that keeps the service alive.
+    async fn spawn_never_ponged_liveness(
+        node_id: NodeId,
+        mut config: LivenessConfig,
+    ) -> (ConnectivityManagerMockState, Shutdown) {
+        config.monitored_peers = vec![node_id];
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+
+        let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        spawn_outbound_ack(outbound_rx);
+
+        let (publisher, _) = broadcast::channel(200);
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            config,
+            stream::empty(),
+            stream::empty(),
+            LivenessState::new(),
+            connectivity,
+            OutboundMessageRequester::new(outbound_tx),
+            publisher,
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+        task::spawn(service.run());
+
+        (mock_state, shutdown)
+    }
+
+    fn random_node_id() -> NodeId {
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        NodeId::from_key(&pk)
+    }
+
+    /// A short `auto_ping_interval` must not shorten the in-flight ping TTL. Pre-fix, the interval was
+    /// used as the TTL, so 20ms rounds meant every unanswered ping expired immediately and the peer was
+    /// disconnected after three rounds (~60ms).
+    #[tokio::test]
+    async fn short_ping_interval_does_not_shorten_inflight_ttl() {
+        let node_id = random_node_id();
+        let (mock_state, _shutdown) = spawn_never_ponged_liveness(node_id, LivenessConfig {
+            auto_ping_interval: Some(Duration::from_millis(20)),
+            max_allowed_ping_failures: 2,
+            // Left at the default 30s - far longer than this test runs for.
+            ..Default::default()
+        })
+        .await;
+
+        // ~25 ping rounds, none of them answered.
+        time::sleep(Duration::from_millis(500)).await;
+
+        // `disconnect_failed_peers` only fetches a connection once a peer is over the failure threshold,
+        // so zero `GetConnection` calls proves the failed-ping counter never got there.
+        assert_eq!(
+            mock_state.count_calls_containing("GetConnection").await,
+            0,
+            "liveness attempted a disconnect even though max_inflight_ttl had not elapsed"
+        );
+    }
+
+    /// Control for the test above: with a genuinely short `max_inflight_ttl`, failures do accumulate and a
+    /// disconnect is attempted. This is what makes the assertion above meaningful.
+    #[tokio::test]
+    async fn expired_inflight_ttl_still_disconnects() {
+        let node_id = random_node_id();
+        let (mock_state, _shutdown) = spawn_never_ponged_liveness(node_id, LivenessConfig {
+            auto_ping_interval: Some(Duration::from_millis(20)),
+            max_allowed_ping_failures: 2,
+            max_inflight_ttl: Duration::from_millis(1),
+            ..Default::default()
+        })
+        .await;
+
+        let mut attempts = 0;
+        while mock_state.count_calls_containing("GetConnection").await == 0 {
+            attempts += 1;
+            assert!(attempts <= 50, "liveness never attempted to disconnect the failed peer");
+            time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Liveness must not tear down a connection that another subsystem (e.g. block sync) is actively
+    /// holding, mirroring the `is_strongly_held` guard in the connectivity manager's reapers.
+    #[tokio::test]
+    async fn strongly_held_connections_are_not_disconnected() {
+        let node_id = random_node_id();
+        let (conn, mut conn_rx) = create_dummy_peer_connection(node_id.clone());
+        let _strong_holder = conn.clone_strong();
+
+        let (mock_state, _shutdown) = spawn_never_ponged_liveness(node_id.clone(), LivenessConfig {
+            auto_ping_interval: Some(Duration::from_millis(20)),
+            max_allowed_ping_failures: 2,
+            max_inflight_ttl: Duration::from_millis(1),
+            ..Default::default()
+        })
+        .await;
+        mock_state.add_active_connection(conn).await;
+
+        // Wait until liveness has decided this peer is failed and looked its connection up.
+        let mut attempts = 0;
+        while mock_state.count_calls_containing("GetConnection").await == 0 {
+            attempts += 1;
+            assert!(
+                attempts <= 50,
+                "liveness never considered the failed peer for disconnect"
+            );
+            time::sleep(Duration::from_millis(20)).await;
+        }
+        // Give it a few more rounds to (incorrectly) disconnect.
+        time::sleep(Duration::from_millis(200)).await;
+
+        assert!(
+            conn_rx.try_recv().is_err(),
+            "liveness disconnected a strongly held connection"
+        );
+    }
+
+    /// Control for the test above: a weakly held connection over the failure threshold is disconnected.
+    #[tokio::test]
+    async fn weakly_held_failed_connections_are_disconnected() {
+        let node_id = random_node_id();
+        let (conn, mut conn_rx) = create_dummy_peer_connection(node_id.clone());
+
+        let (mock_state, _shutdown) = spawn_never_ponged_liveness(node_id.clone(), LivenessConfig {
+            auto_ping_interval: Some(Duration::from_millis(20)),
+            max_allowed_ping_failures: 2,
+            max_inflight_ttl: Duration::from_millis(1),
+            ..Default::default()
+        })
+        .await;
+        mock_state.add_active_connection(conn).await;
+
+        let mut attempts = 0;
+        let req = loop {
+            if let Ok(req) = conn_rx.try_recv() {
+                break req;
+            }
+            attempts += 1;
+            assert!(attempts <= 50, "liveness never disconnected the failed peer");
+            time::sleep(Duration::from_millis(20)).await;
+        };
+        assert!(matches!(req, PeerConnectionRequest::Disconnect(..)));
     }
 }

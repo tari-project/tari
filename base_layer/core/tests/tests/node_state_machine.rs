@@ -87,11 +87,11 @@ async fn test_listening_lagging() {
         vec![MempoolServiceConfig::default(); 2],
         vec![
             LivenessConfig {
-                // Unlike the sync tests, these two genuinely need liveness: the chain metadata that
-                // `Listening` decides on arrives on ping-pong. But `auto_ping_interval` doubles as the
-                // in-flight TTL for each ping, and 3 expiries disconnect the peer, so 100ms gave a pong
-                // 100ms to round-trip or the peer whose metadata we are waiting for gets dropped. One
-                // second still delivers metadata well inside this test's 10s budget.
+                // Unlike the sync tests, these genuinely need liveness: the chain metadata that
+                // `Listening` decides on arrives on ping-pong. One second delivers metadata well inside
+                // this test's 10s budget. (The in-flight ping TTL is `max_inflight_ttl`, independent of
+                // this interval, so a short interval no longer risks disconnecting the peer we are
+                // waiting on.)
                 auto_ping_interval: Some(Duration::from_secs(1)),
                 ..Default::default()
             };
@@ -187,11 +187,11 @@ async fn test_listening_initial_fallen_behind() {
         vec![MempoolServiceConfig::default(); 3],
         vec![
             LivenessConfig {
-                // Unlike the sync tests, these two genuinely need liveness: the chain metadata that
-                // `Listening` decides on arrives on ping-pong. But `auto_ping_interval` doubles as the
-                // in-flight TTL for each ping, and 3 expiries disconnect the peer, so 100ms gave a pong
-                // 100ms to round-trip or the peer whose metadata we are waiting for gets dropped. One
-                // second still delivers metadata well inside this test's 10s budget.
+                // Unlike the sync tests, these genuinely need liveness: the chain metadata that
+                // `Listening` decides on arrives on ping-pong. One second delivers metadata well inside
+                // this test's 10s budget. (The in-flight ping TTL is `max_inflight_ttl`, independent of
+                // this interval, so a short interval no longer risks disconnecting the peer we are
+                // waiting on.)
                 auto_ping_interval: Some(Duration::from_secs(1)),
                 ..Default::default()
             };

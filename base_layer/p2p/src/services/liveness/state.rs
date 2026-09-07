@@ -270,7 +270,7 @@ impl AverageLatency {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::services::liveness::service::MAX_INFLIGHT_TTL;
+    use crate::services::liveness::MAX_INFLIGHT_TTL;
 
     #[test]
     fn new() {
