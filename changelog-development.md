@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.5](https://github.com/tari-project/tari/compare/v5.7.0-pre.4...v5.7.0-pre.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* mcp apps ([#7985](https://github.com/tari-project/tari/issues/7985)) ([aba0f2e](https://github.com/tari-project/tari/commit/aba0f2eb2c50b4b7de3cd95ca59dfea069a67516))
+
 ## [5.7.0-pre.4](https://github.com/tari-project/tari/compare/v5.7.0-pre.3...v5.7.0-pre.4) (2026-09-01)
 
 
