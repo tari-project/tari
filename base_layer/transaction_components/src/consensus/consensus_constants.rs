@@ -1415,6 +1415,9 @@ mod activation_test {
 
     /// The activation entry must differ from the rules live just below it in exactly three fields. Anything else
     /// would mean an unrelated consensus change riding along inside the TIP-RFC-MT-0004 fork.
+    ///
+    /// The entry is found by its effective height rather than by taking the last one, because a network may
+    /// schedule further changes above the fork (Esmeralda tunes the backoff cap again after activation).
     #[test]
     fn tip004_activation_entry_only_changes_the_backoff_and_the_window() {
         for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
@@ -1427,7 +1430,10 @@ mod activation_test {
             expected.pow_backoff_cap = POW_BACKOFF_CAP;
             expected.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
 
-            let actual = constants.last().expect("never empty");
+            let actual = constants
+                .iter()
+                .find(|c| c.effective_from_height == activation)
+                .unwrap_or_else(|| panic!("{network} has no TIP-RFC-MT-0004 activation entry at height {activation}"));
             assert_eq!(
                 *actual, expected,
                 "{network} activation entry drifted from the live rules"
