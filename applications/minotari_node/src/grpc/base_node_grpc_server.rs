@@ -97,7 +97,15 @@ use crate::{
     BaseNodeConfig,
     builder::BaseNodeContext,
     grpc::{
-        blocks::{GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE, block_fees, block_heights, block_size},
+        blocks::{
+            GET_BLOCKS_PAGE_SIZE,
+            block_fees,
+            block_heights,
+            block_size,
+            height_pages,
+            resolve_requested_heights,
+            stream_blocks,
+        },
         data_cache::DataCache,
         hash_rate::{HashRateMovingAverage, NANOS_PER_UNIT, display_u_decimal_value},
         helpers::{mean, median},
@@ -2089,58 +2097,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for GetBlocks: {:?}", request.heights
         );
 
-        let mut heights = request.heights;
-        if heights.is_empty() {
-            let mut handler = self.node_service.clone();
-            if let Ok(tip) = handler.get_metadata().await {
-                heights.push(tip.best_block_height());
-            }
-        }
+        let heights = resolve_requested_heights(self.node_service.clone(), request.heights, report_error_flag).await?;
 
-        heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
-        heights.sort_unstable();
-        // unreachable panic: `heights` is not empty
-        let start = *heights.first().expect("unreachable");
-        let end = *heights.last().expect("unreachable");
-
-        let mut handler = self.node_service.clone();
-        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        let page_iter = NonOverlappingIntegerPairIter::new(start, end.saturating_add(1), GET_BLOCKS_PAGE_SIZE)
+        // Only fetch the heights that were actually requested: sparse requests are grouped into maximal contiguous
+        // runs and each run is paged individually, so the number of blocks hydrated is bounded by the number of
+        // requested heights and not by the span between the lowest and highest requested height.
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
-        task::spawn(async move {
-            for (start, end) in page_iter {
-                let blocks = match handler.get_blocks(start..=end, false).await {
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {err:?}"
-                        );
-                        return;
-                    },
-                    Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
-                };
 
-                for block in blocks {
-                    trace!(
-                        target: LOG_TARGET,
-                        "GetBlock GRPC sending block #{}",
-                        block.header().height
-                    );
-                    let result = block.try_into().map_err(|err| {
-                        obscure_error_if_true(
-                            report_error_flag,
-                            Status::internal(format!("Could not provide block: {err}")),
-                        )
-                    });
-                    if tx.send(result).await.is_err() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "[get_blocks] Request was cancelled while sending a response"
-                        );
-                    }
-                }
-            }
-        });
+        let handler = self.node_service.clone();
+        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(stream_blocks(handler, pages, tx, report_error_flag));
 
         trace!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
         Ok(Response::new(rx))
@@ -2285,6 +2252,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         target: LOG_TARGET,
                         "[search_utxos] Request was cancelled while sending a response"
                     );
+                    return;
                 }
             }
         });
