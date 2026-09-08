@@ -332,7 +332,6 @@ pub fn ledger_get_script_offset(
     partial_script_offset: &PrivateKey,
     derived_script_keys: &[PrivateKey],
     script_key_indexes: &[(LedgerKeyBranch, u64)],
-    derived_sender_offsets: &[PrivateKey],
     sender_offset_indexes: &[(LedgerKeyBranch, u64)],
 ) -> Result<PrivateKey, LedgerDeviceError> {
     debug!(

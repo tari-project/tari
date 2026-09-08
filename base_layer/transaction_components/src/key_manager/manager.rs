@@ -284,10 +284,13 @@ impl KeyManager {
         script_key_ids: &[TariKeyId],
         sender_offset_number: usize,
     ) -> Result<(PrivateKey, Vec<TariKeyId>), KeyManagerError> {
+
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];
+            let mut sender_offsets = Vec::with_capacity(sender_offset_number);
             for script_key_id in script_key_ids {
                 match script_key_id {
                     TariKeyId::LedgerKey { branch, index } => {
@@ -306,33 +309,21 @@ impl KeyManager {
                 }
             }
 
-            let mut derived_offset_keys = vec![];
             let mut sender_offset_indexes = vec![];
-            for sender_offset_key_id in sender_offset_key_ids {
-                match sender_offset_key_id {
-                    TariKeyId::LedgerKey { branch, index } => {
-                        sender_offset_indexes.push((*branch, *index));
-                    },
-                    TariKeyId::Derived { key } => {
-                        let key_id = TariKeyId::from_str(key.to_string().as_str())
-                            .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
-                        // Note: If the derived key is a TariKeyId::Managed, but not allowed in
-                        //       'self.get_private_key(...)' this will error.
-                        let k = self.get_private_key(&key_id)?;
-                        derived_offset_keys.push(k);
-                    },
-                    TariKeyId::Zero => {},
-                    _ => {
-                        partial_script_offset = partial_script_offset - self.get_private_key(sender_offset_key_id)?;
-                    },
-                }
-            }
+            for _ in 0..sender_offset_number {
+                let sender_offset_private_key = self
+                    .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+                sender_offsets.push(sender_offset_private_key.key_id);
+                    if let TariKeyId::LedgerKey { branch, index } = sender_offset_private_key {
+                            sender_offset_indexes.push((*branch, *index));
+                    }
+
+
             let signature = ledger_get_script_offset(
                 ledger.account,
                 &partial_script_offset,
                 &derived_script_keys,
                 &script_key_indexes,
-                &derived_offset_keys,
                 &sender_offset_indexes,
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;

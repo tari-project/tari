@@ -63,6 +63,7 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
         {
             NbglStatus::new().text(&"Invalid key type").show(false);
         }
+        return Err(AppSW::BadBranchKey);
     }
 
     let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
