@@ -282,11 +282,10 @@ impl KeyManager {
     fn ledger_get_script_offset_wrapper(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
+        sender_offset_number: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyId>), KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
-            let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];
             for script_key_id in script_key_ids {
@@ -1031,22 +1030,25 @@ impl TransactionKeyManagerInterface for KeyManager {
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
+        sender_offset_number: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyId>), KeyManagerError> {
         if self.wallet_type.is_ledger() {
-            self.ledger_get_script_offset_wrapper(script_key_ids, sender_offset_key_ids)
+            self.ledger_get_script_offset_wrapper(script_key_ids, sender_offset_number)
         } else {
+            let mut sender_offsets = Vec::with_capacity(sender_offset_number);
             let mut total_script_private_key = PrivateKey::default();
             for script_key_id in script_key_ids {
                 total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id)?
             }
             let mut total_sender_offset_private_key = PrivateKey::default();
-            for sender_offset_key_id in sender_offset_key_ids {
+            for _ in 0..sender_offset_number {
+                let random_key = self.get_random_key(None, None)?;
                 total_sender_offset_private_key =
-                    total_sender_offset_private_key + self.get_private_key(sender_offset_key_id)?;
+                    total_sender_offset_private_key + self.get_private_key(&random_key.key_id)?;
+                sender_offsets.push(random_key.key_id);
             }
             let script_offset = total_script_private_key - total_sender_offset_private_key;
-            Ok(script_offset)
+            Ok((script_offset, sender_offsets))
         }
     }
 
@@ -1451,3 +1453,58 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
         }
     }
 }
+
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use blake2::Blake2b;
+//     use chacha20poly1305::consts::U64;
+//     use tari_crypto::hashing::DomainSeparatedHasher;
+//     use tari_common_types::types::PrivateKey;
+//     use crate::key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface};
+//     use crate::key_manager::error::KeyManagerError;
+//     use crate::key_manager::manager::HASHER_LABEL_STEALTH_KEY;
+//     use crate::key_manager::wallet_types::ViewWallet;
+//     use crate::test_helpers::create_consensus_manager;
+//
+//     #[test]
+//     fn test_so() {
+//         let alice_key_manager = KeyManager::new_random().unwrap();
+//         //assume the key_manger is a ledger one, but we assume its a black box, so lets see if we can get the spend key. We assume we cannot get any of the private keys
+//         let (commitment_mask_key, change_script_key) =
+//             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
+//         let (random_key_1, _key) =
+//             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
+//         let (random_key_2, _key) =
+//             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
+//         let (random_key_3, _key) =
+//             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
+//         let (random_key_4, _key) =
+//             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
+//         let k_i = alice_key_manager.get_private_key(&commitment_mask_key.key_id).unwrap();
+//
+//         let offset_1 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(),random_key_2.key_id.clone())).unwrap();
+//         let offset_2 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(), random_key_2.key_id.clone(), random_key_3.key_id.clone())).unwrap();
+//
+//         let private_random_3 = &offset_1 - &offset_2;
+//         assert_eq!(private_random_3, alice_key_manager.get_private_key(&random_key_3.key_id).unwrap());
+//
+//         let offset_3 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(), random_key_2.key_id.clone(), random_key_4.key_id.clone())).unwrap();
+//         let private_random_4 = &offset_1 - &offset_3;
+//         assert_eq!(private_random_4, alice_key_manager.get_private_key(&random_key_4.key_id).unwrap());
+//
+//         let offset_4 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_3.key_id.clone(), random_key_4.key_id.clone())).unwrap();
+//         let private_ks = &offset_4 + &private_random_3+ &private_random_4;
+//         assert_eq!(private_ks, alice_key_manager.get_private_key(&change_script_key.key_id).unwrap());
+//         let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+//              HASHER_LABEL_STEALTH_KEY,
+//         );
+//         let hasher = hasher.chain(k_i.as_bytes()).finalize();
+//         let hash_private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).unwrap();
+//         let private_spend_key = offset_4 + &private_random_3+ &private_random_4 - hash_private_key;
+//         assert_eq!(private_spend_key, alice_key_manager.get_private_key(&TariKeyId::SpendKey).unwrap());
+//
+//     }
+//
+// }
