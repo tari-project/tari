@@ -2361,7 +2361,7 @@ async fn build_whole_input_spend(
         .unwrap();
 
     let recipient_address = random_dual_address();
-    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+    let sender_offset = builder.reserve_sender_offset_key().unwrap();
     let encryption_key = key_manager.get_random_key(None, None).unwrap();
     let (commitment_mask, _script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
     let script = push_pubkey_script(
@@ -2386,7 +2386,7 @@ async fn build_whole_input_spend(
         .add_recipient(
             recipient_address,
             output,
-            Some(sender_offset.key_id),
+            sender_offset.key_id,
             Some(encryption_key.key_id),
         )
         .unwrap();

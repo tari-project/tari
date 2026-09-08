@@ -376,10 +376,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
         self.transaction_key_manager_inner
-            .get_script_offset(script_key_ids, sender_offset_key_ids)
+            .get_script_offset(script_key_ids, sender_offset_count)
     }
 
     fn get_metadata_signature(

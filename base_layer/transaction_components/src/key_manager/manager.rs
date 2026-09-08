@@ -277,20 +277,23 @@ impl KeyManager {
         ))
     }
 
+    /// Ask the ledger device for a script offset.
+    ///
+    /// Only the script side of the sum crosses the wire. The device generates `sender_offset_count` sender offset
+    /// keys itself and returns their indexes, so the host can neither choose nor learn the key that blinds the
+    /// result.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn ledger_get_script_offset_wrapper(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_number: usize,
-    ) -> Result<(PrivateKey, Vec<TariKeyId>), KeyManagerError> {
-
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];
-            let mut sender_offsets = Vec::with_capacity(sender_offset_number);
             for script_key_id in script_key_ids {
                 match script_key_id {
                     TariKeyId::LedgerKey { branch, index } => {
@@ -309,31 +312,31 @@ impl KeyManager {
                 }
             }
 
-            let mut sender_offset_indexes = vec![];
-            for _ in 0..sender_offset_number {
-                let sender_offset_private_key = self
-                    .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
-                sender_offsets.push(sender_offset_private_key.key_id);
-                    if let TariKeyId::LedgerKey { branch, index } = sender_offset_private_key {
-                            sender_offset_indexes.push((*branch, *index));
-                    }
-
-
-            let signature = ledger_get_script_offset(
+            let (script_offset, sender_offset_indexes) = ledger_get_script_offset(
                 ledger.account,
                 &partial_script_offset,
                 &derived_script_keys,
                 &script_key_indexes,
-                &sender_offset_indexes,
+                sender_offset_count,
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
-            return Ok(signature);
+
+            let mut sender_offset_keys = Vec::with_capacity(sender_offset_indexes.len());
+            for index in sender_offset_indexes {
+                let key_id = TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    index,
+                };
+                let pub_key = self.get_public_key_at_key_id(&key_id)?;
+                sender_offset_keys.push(TariKeyAndId { key_id, pub_key });
+            }
+            return Ok((script_offset, sender_offset_keys));
         }
 
         trace!(target: "wallet::key_manager::ledger",
-            "Trying to get ledger script offset with script_key_ids: {:?}, sender_offset_key_ids:{:?}",
+            "Trying to get ledger script offset with script_key_ids: {:?}, sender_offset_count: {}",
             script_key_ids,
-            sender_offset_key_ids);
+            sender_offset_count);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
@@ -505,6 +508,30 @@ impl KeyManager {
     pub fn get_wallet_type(&self) -> &WalletType {
         &self.wallet_type
     }
+
+    /// Compute a script offset from an explicit set of script and sender offset keys.
+    ///
+    /// This is the raw `sum(script keys) - sum(sender offset keys)` with none of the guard rails
+    /// [`TransactionKeyManagerInterface::get_script_offset`] applies, so it can build offsets the key manager refuses
+    /// to produce. It exists for tests that need to assemble a transaction by hand or to construct a deliberately
+    /// malicious offset, and is not compiled into production builds.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    #[cfg(feature = "test-helpers")]
+    pub fn calculate_script_offset_from_keys(
+        &self,
+        script_key_ids: &[TariKeyId],
+        sender_offset_key_ids: &[TariKeyId],
+    ) -> Result<PrivateKey, KeyManagerError> {
+        let mut script_offset = PrivateKey::default();
+        for script_key_id in script_key_ids {
+            script_offset = script_offset + self.get_private_key(script_key_id)?;
+        }
+        for sender_offset_key_id in sender_offset_key_ids {
+            script_offset = script_offset - self.get_private_key(sender_offset_key_id)?;
+        }
+        Ok(script_offset)
+    }
 }
 
 impl TransactionKeyManagerInterface for KeyManager {
@@ -513,6 +540,23 @@ impl TransactionKeyManagerInterface for KeyManager {
         encryption_key: Option<TariKeyId>,
         ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
+        // Sender offset keys must be generated by the device inside `get_script_offset`, otherwise the host picks
+        // the index and can strip the blinding back out of the script offset it is handed. The spend branch is
+        // never addressable by index at all.
+        //
+        // Note: `MetadataEphemeralNonce` is still host-indexed and is retired separately, when signing moves to
+        // device-issued ephemeral nonce handles.
+        if let Some(branch) = ledger_key {
+            match branch {
+                LedgerKeyBranch::Random | LedgerKeyBranch::PreMine | LedgerKeyBranch::MetadataEphemeralNonce => {},
+                LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::Spend => {
+                    return Err(KeyManagerError::InvalidKeyBranch(format!(
+                        "'{branch}' keys cannot be requested through 'get_random_key'; sender offset keys are only \
+                         issued by 'get_script_offset'"
+                    )));
+                },
+            }
+        }
         if let Some(branch) = ledger_key &&
             self.wallet_type.is_ledger()
         {
@@ -1016,27 +1060,41 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(true)
     }
 
+    /// Compute a partial script offset for `script_key_ids`, generating `sender_offset_count` fresh sender offset
+    /// keys in the process.
+    ///
+    /// The returned offset is `sum(script keys) - sum(generated sender offset keys)`, and the caller must use each
+    /// returned key on exactly one output. Partial offsets are additive, so a transaction can be assembled from
+    /// several of these calls.
+    ///
+    /// At least one sender offset key must be generated: on a ledger wallet the result is otherwise the plain sum of
+    /// the input script private keys, from which the spend key can be recovered.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_number: usize,
-    ) -> Result<(PrivateKey, Vec<TariKeyId>), KeyManagerError> {
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
+        if sender_offset_count == 0 {
+            return Err(KeyManagerError::UnexpectedError(
+                "'get_script_offset' must generate at least one sender offset key".to_string(),
+            ));
+        }
         if self.wallet_type.is_ledger() {
-            self.ledger_get_script_offset_wrapper(script_key_ids, sender_offset_number)
+            self.ledger_get_script_offset_wrapper(script_key_ids, sender_offset_count)
         } else {
-            let mut sender_offsets = Vec::with_capacity(sender_offset_number);
+            let mut sender_offsets = Vec::with_capacity(sender_offset_count);
             let mut total_script_private_key = PrivateKey::default();
             for script_key_id in script_key_ids {
                 total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id)?
             }
             let mut total_sender_offset_private_key = PrivateKey::default();
-            for _ in 0..sender_offset_number {
+            for _ in 0..sender_offset_count {
                 let random_key = self.get_random_key(None, None)?;
                 total_sender_offset_private_key =
                     total_sender_offset_private_key + self.get_private_key(&random_key.key_id)?;
-                sender_offsets.push(random_key.key_id);
+                sender_offsets.push(random_key);
             }
             let script_offset = total_script_private_key - total_sender_offset_private_key;
             Ok((script_offset, sender_offsets))
@@ -1445,7 +1503,6 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
     }
 }
 
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
@@ -1462,8 +1519,8 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 //     #[test]
 //     fn test_so() {
 //         let alice_key_manager = KeyManager::new_random().unwrap();
-//         //assume the key_manger is a ledger one, but we assume its a black box, so lets see if we can get the spend key. We assume we cannot get any of the private keys
-//         let (commitment_mask_key, change_script_key) =
+//         //assume the key_manger is a ledger one, but we assume its a black box, so lets see if we can get the spend
+// key. We assume we cannot get any of the private keys         let (commitment_mask_key, change_script_key) =
 //             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
 //         let (random_key_1, _key) =
 //             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
@@ -1475,22 +1532,25 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 //             alice_key_manager.get_next_commitment_mask_and_script_key().unwrap();
 //         let k_i = alice_key_manager.get_private_key(&commitment_mask_key.key_id).unwrap();
 //
-//         let offset_1 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(),random_key_2.key_id.clone())).unwrap();
-//         let offset_2 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(), random_key_2.key_id.clone(), random_key_3.key_id.clone())).unwrap();
+//         let offset_1 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()),
+// &vec!(random_key_1.key_id.clone(),random_key_2.key_id.clone())).unwrap();         let offset_2 =
+// alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(),
+// random_key_2.key_id.clone(), random_key_3.key_id.clone())).unwrap();
 //
 //         let private_random_3 = &offset_1 - &offset_2;
 //         assert_eq!(private_random_3, alice_key_manager.get_private_key(&random_key_3.key_id).unwrap());
 //
-//         let offset_3 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_1.key_id.clone(), random_key_2.key_id.clone(), random_key_4.key_id.clone())).unwrap();
-//         let private_random_4 = &offset_1 - &offset_3;
-//         assert_eq!(private_random_4, alice_key_manager.get_private_key(&random_key_4.key_id).unwrap());
+//         let offset_3 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()),
+// &vec!(random_key_1.key_id.clone(), random_key_2.key_id.clone(), random_key_4.key_id.clone())).unwrap();         let
+// private_random_4 = &offset_1 - &offset_3;         assert_eq!(private_random_4,
+// alice_key_manager.get_private_key(&random_key_4.key_id).unwrap());
 //
-//         let offset_4 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()), &vec!(random_key_3.key_id.clone(), random_key_4.key_id.clone())).unwrap();
-//         let private_ks = &offset_4 + &private_random_3+ &private_random_4;
-//         assert_eq!(private_ks, alice_key_manager.get_private_key(&change_script_key.key_id).unwrap());
-//         let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
-//              HASHER_LABEL_STEALTH_KEY,
-//         );
+//         let offset_4 = alice_key_manager.get_script_offset(&vec!(change_script_key.key_id.clone()),
+// &vec!(random_key_3.key_id.clone(), random_key_4.key_id.clone())).unwrap();         let private_ks = &offset_4 +
+// &private_random_3+ &private_random_4;         assert_eq!(private_ks,
+// alice_key_manager.get_private_key(&change_script_key.key_id).unwrap());         let hasher =
+// DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+// HASHER_LABEL_STEALTH_KEY,         );
 //         let hasher = hasher.chain(k_i.as_bytes()).finalize();
 //         let hash_private_key = PrivateKey::from_uniform_bytes(hasher.as_ref()).unwrap();
 //         let private_spend_key = offset_4 + &private_random_3+ &private_random_4 - hash_private_key;
@@ -1499,3 +1559,64 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 //     }
 //
 // }
+
+#[cfg(test)]
+mod tests {
+    use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+
+    use crate::key_manager::{KeyManager, TransactionKeyManagerInterface, error::KeyManagerError};
+
+    #[test]
+    fn get_script_offset_refuses_to_produce_an_unblinded_offset() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+
+        // Without a sender offset key the result is the plain sum of the script private keys, which on a ledger
+        // wallet is enough to recover the spend key.
+        let err = key_manager
+            .get_script_offset(&[script_key.key_id.clone()], 0)
+            .unwrap_err();
+        assert!(
+            matches!(err, KeyManagerError::UnexpectedError(_)),
+            "unexpected error: {err:?}"
+        );
+
+        // The same call with a key to blind it is fine, and hands back exactly the keys it generated.
+        let (_, sender_offset_keys) = key_manager.get_script_offset(&[script_key.key_id], 2).unwrap();
+        assert_eq!(sender_offset_keys.len(), 2);
+        let first = sender_offset_keys.first().unwrap();
+        let second = sender_offset_keys.last().unwrap();
+        assert_ne!(first.key_id, second.key_id);
+    }
+
+    #[test]
+    fn get_script_offset_with_no_script_keys_still_needs_a_sender_offset_key() {
+        let key_manager = KeyManager::new_random().unwrap();
+        assert!(key_manager.get_script_offset(&[], 0).is_err());
+        assert_eq!(key_manager.get_script_offset(&[], 1).unwrap().1.len(), 1);
+    }
+
+    #[test]
+    fn get_random_key_refuses_the_sender_offset_and_spend_branches() {
+        let key_manager = KeyManager::new_random().unwrap();
+
+        for branch in [LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::Spend] {
+            let err = key_manager.get_random_key(None, Some(branch)).unwrap_err();
+            match err {
+                KeyManagerError::InvalidKeyBranch(message) => {
+                    assert!(message.contains("get_script_offset"), "unexpected message: {message}");
+                },
+                other => panic!("expected InvalidKeyBranch for '{branch}', got {other:?}"),
+            }
+        }
+
+        // The branches that are still host indexed are untouched by this guard.
+        for branch in [
+            LedgerKeyBranch::Random,
+            LedgerKeyBranch::PreMine,
+            LedgerKeyBranch::MetadataEphemeralNonce,
+        ] {
+            assert!(key_manager.get_random_key(None, Some(branch)).is_ok());
+        }
+    }
+}

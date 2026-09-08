@@ -45,8 +45,13 @@ pub enum TransactionBuilderError {
     TransactionError(#[from] TransactionError),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
-    #[error("Sender offset key ID is missing")]
-    SenderOffsetKeyIdMissing,
+    #[error("Inputs cannot be added after a sender offset key has been reserved")]
+    InputsAfterOutputs,
+    #[error(
+        "The script keys of {0} input(s) were never folded into the script offset; at least one output must take its \
+         sender offset key from `reserve_sender_offset_key`"
+    )]
+    UnassignedInputScriptKeys(usize),
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
     #[error("Transaction builder error: {0}")]

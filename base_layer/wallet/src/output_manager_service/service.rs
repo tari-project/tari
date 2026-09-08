@@ -1246,10 +1246,9 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())?
             .with_memo(payment_id);
-        let sender_offset_private_key_id_self = self
-            .resources
-            .key_manager
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        // The sender offset key must be one the key manager generated for this transaction - on a ledger wallet the
+        // device picks the index - and it arrives with the partial script offset that folds in the input script key.
+        let sender_offset_private_key_id_self = builder.reserve_sender_offset_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
 
         // Prepare receiver part of the transaction
@@ -1340,7 +1339,7 @@ where
         builder.add_recipient(
             recipient_address.clone(),
             output.clone(),
-            Some(sender_offset_private_key_id_self.key_id),
+            sender_offset_private_key_id_self.key_id,
             Some(encryption_key_id),
         )?;
 
@@ -1528,10 +1527,9 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_memo(payment_id.clone())
             .with_input(input.clone())?;
-        let sender_offset_private_key_id_self = self
-            .resources
-            .key_manager
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        // The sender offset key must be one the key manager generated for this transaction - on a ledger wallet the
+        // device picks the index - and it arrives with the partial script offset that folds in the input script key.
+        let sender_offset_private_key_id_self = tx_builder.reserve_sender_offset_key()?;
 
         // Prepare receiver part of the transaction
 
@@ -1604,7 +1602,7 @@ where
         tx_builder.add_recipient(
             self.resources.one_sided_tari_address.clone(),
             output.clone(),
-            Some(sender_offset_private_key_id_self.key_id),
+            sender_offset_private_key_id_self.key_id,
             Some(encryption_key_id),
         )?;
 
@@ -1678,17 +1676,20 @@ where
             tx_builder.with_input(kmo.wallet_output.clone())?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(
+        let sender_offset = tx_builder.reserve_sender_offset_key()?;
+        let sender_offset_key_id = sender_offset.key_id.clone();
+        let output = self.output_to_self(
             output_features,
             amount,
             covenant,
             payment_id,
             input_selection.as_final_fee(),
             minimum_value_promise,
+            sender_offset,
         )?;
 
         tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone(), None)
+            .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
         let mut outputs = vec![output];
@@ -2498,13 +2499,16 @@ where
                 amount_per_split
             };
 
-            let (output, sender_offset_key_id) = self.output_to_self(
+            let sender_offset = tx_builder.reserve_sender_offset_key()?;
+            let sender_offset_key_id = sender_offset.key_id.clone();
+            let output = self.output_to_self(
                 OutputFeatures::default(),
                 amount_per_split,
                 Covenant::default(),
                 output_payment_id.clone(),
                 fee,
                 MicroMinotari::zero(),
+                sender_offset,
             )?;
 
             tx_builder
@@ -2664,13 +2668,16 @@ where
         // initializing primary outputs
 
         for _ in 0..number_of_splits {
-            let (output, sender_offset_key_id) = self.output_to_self(
+            let sender_offset = tx_builder.reserve_sender_offset_key()?;
+            let sender_offset_key_id = sender_offset.key_id.clone();
+            let output = self.output_to_self(
                 OutputFeatures::default(),
                 amount_per_split,
                 Covenant::default(),
                 payment_id.clone(),
                 final_fee,
                 MicroMinotari::zero(),
+                sender_offset,
             )?;
 
             tx_builder
@@ -2736,6 +2743,10 @@ where
         Ok((tx_id, finalized.transaction, value))
     }
 
+    /// Build an output paying back to this wallet.
+    ///
+    /// `sender_offset` must have been reserved from the transaction builder the output will be added to, so that the
+    /// key is netted out of the script offset.
     fn output_to_self(
         &mut self,
         output_features: OutputFeatures,
@@ -2744,7 +2755,8 @@ where
         payment_id: MemoField,
         fee: MicroMinotari,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
+        sender_offset: TariKeyAndId,
+    ) -> Result<DbWalletOutput, OutputManagerError> {
         let (commitment_mask_key, script_key) = self.resources.key_manager.get_next_commitment_mask_and_script_key()?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
         let payment_id = payment_id
@@ -2770,7 +2782,6 @@ where
             &encrypted_data,
             &minimum_value_promise,
         );
-        let sender_offset = self.resources.key_manager.get_random_key(None, None)?;
         let metadata_signature = self.resources.key_manager.get_metadata_signature(
             &commitment_mask_key.key_id,
             &PrivateKey::from(amount),
@@ -2803,7 +2814,7 @@ where
             None,
         );
 
-        Ok((output, sender_offset.key_id))
+        Ok(output)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2869,13 +2880,16 @@ where
             tx_builder.with_input(input.wallet_output.clone())?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(
+        let sender_offset = tx_builder.reserve_sender_offset_key()?;
+        let sender_offset_key_id = sender_offset.key_id.clone();
+        let output = self.output_to_self(
             OutputFeatures::default(),
             accumulated_amount,
             Covenant::default(),
             payment_id.clone(),
             fee,
             MicroMinotari::zero(),
+            sender_offset,
         )?;
 
         tx_builder.with_output(output.wallet_output.clone(), sender_offset_key_id, None)?;

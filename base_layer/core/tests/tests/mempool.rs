@@ -1279,7 +1279,7 @@ async fn consensus_validation_large_tx() {
         .unwrap();
     let kernels = vec![kernel];
     let script_offset = key_manager
-        .get_script_offset(&input_script_keys, &sender_offsets)
+        .calculate_script_offset_from_keys(&input_script_keys, &sender_offsets)
         .unwrap();
     let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset);
     tx.body.sort();
@@ -1427,7 +1427,7 @@ async fn validation_reject_min_fee() {
         .unwrap();
     let kernels = vec![kernel];
     let script_offset = key_manager
-        .get_script_offset(&input_script_keys, &sender_offsets)
+        .calculate_script_offset_from_keys(&input_script_keys, &sender_offsets)
         .unwrap();
     let mut tx = Transaction::new(inputs, vec![tx_output], kernels, offset, script_offset);
     tx.body.sort();

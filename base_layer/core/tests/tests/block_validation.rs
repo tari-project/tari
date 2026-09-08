@@ -286,9 +286,11 @@ async fn inputs_are_not_malleable() {
 
     // Oh noes - they've managed to get hold of the private script and spend keys
     malicious_test_params.commitment_mask_key_id = spent_output.commitment_mask_key_id().clone();
+    // A key manager will not produce this offset - it always blinds the result with a sender offset key it generated
+    // itself - so build it from the raw keys.
     let modified_so = blockchain
         .key_manager
-        .get_script_offset(&[spent_output.script_key_id().clone()], &[malicious_test_params
+        .calculate_script_offset_from_keys(&[spent_output.script_key_id().clone()], &[malicious_test_params
             .script_key_id
             .clone()])
         .unwrap();

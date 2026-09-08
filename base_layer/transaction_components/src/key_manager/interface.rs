@@ -182,11 +182,19 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         custom_recovery_key_id: Option<PrivateKey>,
     ) -> Result<bool, KeyManagerError>;
 
+    /// Compute a partial script offset for `script_key_ids` while generating `sender_offset_count` fresh sender
+    /// offset keys.
+    ///
+    /// The offset is `sum(script keys) - sum(generated sender offset keys)`; the caller must place each returned key
+    /// on exactly one output. Partial offsets add up, so a transaction can be assembled from several calls.
+    ///
+    /// `sender_offset_count` must be at least one - on a ledger wallet an unblinded result is the plain sum of the
+    /// input script private keys, which reveals the wallet's spend key.
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError>;
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError>;
 
     // Creates a metadata signature for the output, without requiring manual user verification if on a ledger device
     fn get_metadata_signature(

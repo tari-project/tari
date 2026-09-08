@@ -95,7 +95,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     };
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
-    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+    let sender_offset = builder.reserve_sender_offset_key().unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(
             &commitment_mask_key.key_id,

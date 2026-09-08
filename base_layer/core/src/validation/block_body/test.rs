@@ -345,18 +345,19 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_fee(100.into());
 
     let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
-    let output_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+    let (output_sender_offset_partial, mut keys) = blockchain.km.get_script_offset(&[], 1).unwrap();
+    let output_sender_offset = keys.pop().unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask.key_id).into(),
     };
     let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
     let input_data = inputs!(script_public_key);
-    let output = WalletOutputBuilder::new(outputs[0].value() - MicroMinotari(100), commitment_mask.key_id)
+    let output = WalletOutputBuilder::new(outputs[0].value() - MicroMinotari(200), commitment_mask.key_id)
         .with_script(script![Nop].unwrap())
         .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
         .unwrap()
         .with_input_data(input_data)
-        .with_sender_offset_public_key(output_sender_offset.pub_key)
+        .with_sender_offset_public_key(output_sender_offset.pub_key.clone())
         .with_script_key(script_key_id.clone())
         .sign_metadata_signature(&blockchain.km, &output_sender_offset.key_id)
         .unwrap()
@@ -364,6 +365,7 @@ async fn allow_duplicate_outputs() {
         .unwrap();
 
     tx_builder
+        .with_partial_script_offset(output_sender_offset_partial.clone())
         .with_output(output.clone(), output_sender_offset.key_id.clone(), None)
         .unwrap();
     let finalized_tx = tx_builder.build().unwrap();
@@ -377,18 +379,19 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_fee(100.into());
 
     let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
-    let output_2_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+    let (output_2_sender_offset_partial, mut keys) = blockchain.km.get_script_offset(&[], 1).unwrap();
+    let output_2_sender_offset = keys.pop().unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask.key_id).into(),
     };
     let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
     let input_data = inputs!(script_public_key);
-    let output_2 = WalletOutputBuilder::new(output.value() - MicroMinotari(100), commitment_mask.key_id)
+    let output_2 = WalletOutputBuilder::new(output.value() - MicroMinotari(200), commitment_mask.key_id)
         .with_script(script![Nop].unwrap())
         .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
         .unwrap()
         .with_input_data(input_data)
-        .with_sender_offset_public_key(output_2_sender_offset.pub_key)
+        .with_sender_offset_public_key(output_2_sender_offset.pub_key.clone())
         .with_script_key(script_key_id.clone())
         .sign_metadata_signature(&blockchain.km, &output_2_sender_offset.key_id)
         .unwrap()
@@ -396,6 +399,7 @@ async fn allow_duplicate_outputs() {
         .unwrap();
 
     tx_builder
+        .with_partial_script_offset(output_2_sender_offset_partial.clone())
         .with_output(output_2.clone(), output_2_sender_offset.key_id.clone(), None)
         .unwrap();
     let finalized_tx = tx_builder.build().unwrap();
@@ -408,6 +412,7 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_input(outputs[1].clone()).unwrap();
     tx_builder.with_fee(100.into());
     tx_builder
+        .with_partial_script_offset(output_sender_offset_partial.clone())
         .with_output(output.clone(), output_sender_offset.key_id, None)
         .unwrap();
     let finalized_tx1 = tx_builder.build().unwrap();
@@ -416,18 +421,19 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_fee(100.into());
 
     let commitment_mask = blockchain.km.get_random_key(None, None).unwrap();
-    let output_3_sender_offset = blockchain.km.get_random_key(None, None).unwrap();
+    let (output_3_sender_offset_partial, mut keys) = blockchain.km.get_script_offset(&[], 1).unwrap();
+    let output_3_sender_offset = keys.pop().unwrap();
     let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask.key_id).into(),
     };
     let script_public_key = blockchain.km.get_public_key_at_key_id(&script_key_id).unwrap();
     let input_data = inputs!(script_public_key);
-    let output_3 = WalletOutputBuilder::new(output_2.value() - MicroMinotari(100), commitment_mask.key_id)
+    let output_3 = WalletOutputBuilder::new(output_2.value() - MicroMinotari(200), commitment_mask.key_id)
         .with_script(script![Nop].unwrap())
         .encrypt_data_for_recovery(&blockchain.km, None, MemoField::new_empty())
         .unwrap()
         .with_input_data(input_data)
-        .with_sender_offset_public_key(output_3_sender_offset.pub_key)
+        .with_sender_offset_public_key(output_3_sender_offset.pub_key.clone())
         .with_script_key(script_key_id.clone())
         .sign_metadata_signature(&blockchain.km, &output_3_sender_offset.key_id)
         .unwrap()
@@ -435,6 +441,7 @@ async fn allow_duplicate_outputs() {
         .unwrap();
 
     tx_builder
+        .with_partial_script_offset(output_3_sender_offset_partial.clone())
         .with_output(output_3.clone(), output_3_sender_offset.key_id.clone(), None)
         .unwrap();
     let (block, _) = blockchain.create_next_tip(
@@ -459,6 +466,7 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_input(outputs[2].clone()).unwrap();
     tx_builder.with_fee(100.into());
     tx_builder
+        .with_partial_script_offset(output_2_sender_offset_partial.clone())
         .with_output(output_2, output_2_sender_offset.key_id.clone(), None)
         .unwrap();
     let finalized_tx = tx_builder.build().unwrap();

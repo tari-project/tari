@@ -20,7 +20,10 @@ pub struct RecipientDetails {
 pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
-    pub sender_offset_key_id: Option<TariKeyId>,
+    /// The sender offset key this output publishes. It is always known: it comes either from
+    /// [`crate::TransactionBuilder::reserve_sender_offset_key`] or from a caller that registered the matching
+    /// partial script offset with the builder.
+    pub sender_offset_key_id: TariKeyId,
     pub custom_recovery_key_id: Option<TariKeyId>,
 }
 
@@ -28,7 +31,7 @@ impl OutputPair {
     pub fn new(
         output: WalletOutput,
         kernel_nonce: TariKeyId,
-        sender_offset_key_id: Option<TariKeyId>,
+        sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Self {
         Self {

@@ -45,6 +45,8 @@ pub enum KeyManagerError {
     EncryptionFailed(String),
     #[error("Invalid key id string: `{0}`")]
     InvalidKeyId(String),
+    #[error("Invalid key branch: `{0}`")]
+    InvalidKeyBranch(String),
     #[error("Unexpected error: `{0}`")]
     UnexpectedError(String),
     #[error("Byte array error: `{0}`")]

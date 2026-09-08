@@ -23,7 +23,10 @@
 use std::sync::{LazyLock, Mutex};
 
 use log::debug;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    script_offset::check_sender_offset_key_count,
+};
 use rand::Rng;
 use semver::Version;
 use tari_common::configuration::Network;
@@ -37,7 +40,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     error::LedgerDeviceError,
-    ledger_wallet::{Command, EXPECTED_NAME, MIN_LEDGER_APP_VERSION},
+    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_RESPONSE_VERSION, MIN_LEDGER_APP_VERSION},
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
@@ -326,54 +329,53 @@ pub fn ledger_get_script_signature(
     }
 }
 
-/// Get the script offset from the ledger device
+/// Get the script offset from the ledger device.
+///
+/// Only the script side of the sum is supplied: `partial_script_offset` is the sum of the script private keys the
+/// host already knows, `script_key_indexes` names pre-mine script keys by index and `derived_script_keys` carries
+/// the blinding factors of alpha derived script keys. The device generates `sender_offset_count` sender offset keys
+/// itself and returns their indexes, so the reply is always blinded by a key the host has never seen.
 pub fn ledger_get_script_offset(
     account: u64,
     partial_script_offset: &PrivateKey,
     derived_script_keys: &[PrivateKey],
     script_key_indexes: &[(LedgerKeyBranch, u64)],
-    sender_offset_indexes: &[(LedgerKeyBranch, u64)],
-) -> Result<PrivateKey, LedgerDeviceError> {
+    sender_offset_count: usize,
+) -> Result<(PrivateKey, Vec<u64>), LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
         "ledger_get_script_offset: account '{}', derived_script_keys: '{}', \
-        script_key_indexes: '{:?}', derived_sender_offsets '{}', sender_offset_indexes '{:?}'",
+        script_key_indexes: '{:?}', sender_offset_count '{}'",
         account,
         derived_script_keys.len(),
         script_key_indexes,
-        derived_sender_offsets.len(),
-        sender_offset_indexes
+        sender_offset_count
     );
+    // The device enforces this too, and is the only enforcement that matters; this is here so a caller gets a
+    // legible error instead of a status word.
+    let count = u64::try_from(sender_offset_count)
+        .map_err(|_| LedgerDeviceError::Processing("GetScriptOffset: sender offset count overflow".to_string()))?;
+    check_sender_offset_key_count(count)
+        .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     verify_ledger_application()?;
 
     // 1. data sizes
     let mut instructions: Vec<u8> = Vec::new();
-    instructions.extend_from_slice(&(sender_offset_indexes.len() as u64).to_le_bytes());
+    instructions.extend_from_slice(&(sender_offset_count as u64).to_le_bytes());
     instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
-    instructions.extend_from_slice(&(derived_sender_offsets.len() as u64).to_le_bytes());
     instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
     let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
 
     // 2. partial_script_offset
     data.push(partial_script_offset.to_vec());
 
-    // 3. sender_offset_indexes
-    for (branch, index) in sender_offset_indexes {
-        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
-        payload.extend_from_slice(&index.to_le_bytes());
-        data.push(payload);
-    }
-    // 4. script_key_indexes
+    // 3. script_key_indexes
     for (branch, index) in script_key_indexes {
         let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
         payload.extend_from_slice(&index.to_le_bytes());
         data.push(payload);
     }
-    // 5. derived_sender_offsets
-    for sender_offset in derived_sender_offsets {
-        data.push(sender_offset.to_vec());
-    }
-    // 6. derived_script_keys
+    // 4. derived_script_keys
     for script_key in derived_script_keys {
         data.push(script_key.to_vec());
     }
@@ -390,16 +392,33 @@ pub fn ledger_get_script_offset(
 
     match result {
         Some(result) => {
-            if result.data().len() < 33 {
+            let expected_len = 33usize.saturating_add(sender_offset_count.saturating_mul(8));
+            if result.data().len() < expected_len {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetScriptOffset: expected 1 + 32 bytes, got {} ({:?})",
+                    "GetScriptOffset: expected {} bytes, got {} ({:?})",
+                    expected_len,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let script_offset =
-                PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
-            Ok(script_offset)
+            let data = result.data();
+            let version = *data.first().expect("Index should exist");
+            if version != EXPECTED_RESPONSE_VERSION {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetScriptOffset: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. Please \
+                     update the 'Minotari Wallet' application on your device."
+                )));
+            }
+            let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
+            let mut sender_offset_indexes = Vec::with_capacity(sender_offset_count);
+            for i in 0..sender_offset_count {
+                let start = 33usize.saturating_add(i.saturating_mul(8));
+                let end = start.saturating_add(8);
+                let mut index_bytes = [0u8; 8];
+                index_bytes.copy_from_slice(data.get(start..end).expect("Index should exist"));
+                sender_offset_indexes.push(u64::from_le_bytes(index_bytes));
+            }
+            Ok((script_offset, sender_offset_indexes))
         },
         None => Err(LedgerDeviceError::Processing("GetScriptOffset: No result".to_string())),
     }

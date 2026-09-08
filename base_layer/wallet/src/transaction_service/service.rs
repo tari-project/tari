@@ -31,7 +31,6 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{StreamExt, pin_mut, stream::FuturesUnordered};
 use log::*;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -80,7 +79,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyId},
+    key_manager::{SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
@@ -2240,12 +2239,9 @@ where
 
         tx_builder.with_tx_type(TxType::ClaimAtomicSwap);
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
+        // The sender offset key must be one the key manager generated for this transaction - on a ledger wallet the
+        // device picks the index - and it arrives with the partial script offset that folds in the input script keys.
+        let sender_offset_private_key = tx_builder.reserve_sender_offset_key()?;
 
         let shared_secret = self
             .resources
@@ -2303,7 +2299,7 @@ where
         tx_builder.add_recipient(
             destination.clone(),
             output.clone(),
-            Some(sender_offset_private_key.key_id),
+            sender_offset_private_key.key_id,
             Some(encryption_key),
         )?;
 
@@ -2691,12 +2687,9 @@ where
 
         // Prepare receiver part of the transaction
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        // The sender offset key must be one the key manager generated for this transaction - on a ledger wallet the
+        // device picks the index - and it arrives with the partial script offset that folds in the input script keys.
+        let sender_offset_private_key = tx_builder.reserve_sender_offset_key()?;
 
         let shared_secret = self
             .resources
@@ -2771,7 +2764,7 @@ where
         tx_builder.add_recipient(
             dest_address.clone(),
             output.clone(),
-            Some(sender_offset_private_key.key_id),
+            sender_offset_private_key.key_id,
             Some(encryption_key),
         )?;
 
@@ -3118,7 +3111,7 @@ where
             .resources
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
-        let (sender_offset_private_key, stealth_claim_public_key) =
+        let (derived_sender_offset_key, stealth_claim_public_key) =
             if let Some(ref account_public_key) = claim_public_key {
                 let r = self
                     .resources
@@ -3128,13 +3121,9 @@ where
                     .resources
                     .transaction_key_manager_service
                     .compute_stealth_claim_public_key(&r.key_id, account_public_key)?;
-                (r, Some(c))
+                (Some(r), Some(c))
             } else {
-                let r = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_random_key(None, None)?;
-                (r, None)
+                (None, None)
             };
 
         let output_features = match stealth_claim_public_key.as_ref() {
@@ -3191,6 +3180,26 @@ where
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
 
+        let sender_offset_private_key = match derived_sender_offset_key {
+            // An L2-bound burn's `r` is derived from the commitment mask so the burn proof can be rebuilt from seed
+            // alone, so it cannot come from `reserve_sender_offset_key`. Register what it contributes to the script
+            // offset by hand instead. Such a burn therefore relies on its change output to fold in the input script
+            // keys, and will not build without one.
+            Some(r) => {
+                let r_private = self
+                    .resources
+                    .transaction_key_manager_service
+                    .key_manager()
+                    .get_private_key(&r.key_id)?;
+                // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+                #[allow(clippy::arithmetic_side_effects)]
+                let negated_r = PrivateKey::default() - r_private;
+                tx_builder.with_partial_script_offset(negated_r);
+                r
+            },
+            None => tx_builder.reserve_sender_offset_key()?,
+        };
+
         // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can
         // decrypt with DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account
         // secret). The L1 wallet does not rely on decrypting `encrypted_data` to recover its own
@@ -3228,7 +3237,7 @@ where
         tx_builder.add_recipient(
             Default::default(),
             output.clone(),
-            Some(sender_offset_private_key.key_id.clone()),
+            sender_offset_private_key.key_id.clone(),
             Some(recovery_key_id),
         )?;
 

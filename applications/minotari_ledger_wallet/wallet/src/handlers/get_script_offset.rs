@@ -4,28 +4,30 @@
 use alloc::vec::Vec;
 
 use ledger_device_sdk::io::Comm;
+use minotari_ledger_wallet_common::script_offset::{
+    ScriptOffsetHeaderError,
+    check_sender_offset_key_count,
+    parse_script_offset_header,
+};
 use tari_utilities::ByteArray;
 
 use crate::{
     crypto::keys::RistrettoSecretKey,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
+    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, get_random_u64},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
     STATIC_SPEND_INDEX,
 };
 
-const MIN_UNIQUE_KEYS: usize = 2;
-
 pub struct ScriptOffsetCtx {
     sender_offset_sum: RistrettoSecretKey,
     script_private_key_sum: RistrettoSecretKey,
+    sender_offset_indexes: Vec<u64>,
     account: u64,
-    total_offset_indexes: u64,
+    total_sender_offset_keys: u64,
     total_script_indexes: u64,
-    total_derived_offset_keys: u64,
     total_derived_script_keys: u64,
-    unique_keys: Vec<RistrettoSecretKey>,
 }
 
 // Implement constructor for TxInfo with default values
@@ -34,58 +36,53 @@ impl ScriptOffsetCtx {
         Self {
             sender_offset_sum: RistrettoSecretKey::default(),
             script_private_key_sum: RistrettoSecretKey::default(),
+            sender_offset_indexes: Vec::new(),
             account: 0,
-            total_offset_indexes: 0,
+            total_sender_offset_keys: 0,
             total_script_indexes: 0,
-            total_derived_offset_keys: 0,
             total_derived_script_keys: 0,
-            unique_keys: Vec::new(),
         }
     }
 
-    // Implement reset for TxInfo
-    fn reset(&mut self) {
+    /// Drop all accumulated state.
+    ///
+    /// The context outlives a single exchange, so anything that ends an exchange - a reply, an error, or an
+    /// unrelated instruction - must call this. Otherwise a host whose chunk was rejected could resume the
+    /// accumulation with a differently numbered follow-up chunk and read back a value the rejection was meant to
+    /// withhold.
+    pub fn reset(&mut self) {
         self.sender_offset_sum = RistrettoSecretKey::default();
         self.script_private_key_sum = RistrettoSecretKey::default();
+        self.sender_offset_indexes = Vec::new();
         self.account = 0;
-        self.total_offset_indexes = 0;
+        self.total_sender_offset_keys = 0;
         self.total_script_indexes = 0;
-        self.total_derived_offset_keys = 0;
         self.total_derived_script_keys = 0;
-        self.unique_keys = Vec::new();
-    }
-
-    fn add_unique_key(&mut self, secret_key: RistrettoSecretKey) {
-        if !self.unique_keys.contains(&secret_key) {
-            self.unique_keys.push(secret_key);
-        }
     }
 }
 
-fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) -> Result<(), AppSW> {
-    if data.len() != 40 {
-        return Err(AppSW::WrongApduLength);
+fn header_error_to_app_sw(e: ScriptOffsetHeaderError) -> AppSW {
+    match e {
+        ScriptOffsetHeaderError::WrongLength | ScriptOffsetHeaderError::TooManySenderOffsetKeys => {
+            AppSW::WrongApduLength
+        },
+        ScriptOffsetHeaderError::NoSenderOffsetKeys => AppSW::ScriptOffsetNoSenderOffsets,
     }
+}
 
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    offset_ctx.account = u64::from_le_bytes(account_bytes);
+/// Commit a validated header to `offset_ctx`.
+///
+/// Nothing is written before the header has passed every check: the context outlives a single exchange, so a header
+/// that were written and then rejected would leave the counts the host asked for in place for the next chunk to act
+/// on. `parse_script_offset_header` only yields a header once it has accepted it, and it is unit tested in
+/// `minotari_ledger_wallet_common`.
+fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) -> Result<(), AppSW> {
+    let header = parse_script_offset_header(data).map_err(header_error_to_app_sw)?;
 
-    let mut total_offset_keys = [0u8; 8];
-    total_offset_keys.clone_from_slice(&data[8..16]);
-    offset_ctx.total_offset_indexes = u64::from_le_bytes(total_offset_keys);
-
-    let mut total_script_indexes = [0u8; 8];
-    total_script_indexes.clone_from_slice(&data[16..24]);
-    offset_ctx.total_script_indexes = u64::from_le_bytes(total_script_indexes);
-
-    let mut total_derived_offset_keys = [0u8; 8];
-    total_derived_offset_keys.clone_from_slice(&data[24..32]);
-    offset_ctx.total_derived_offset_keys = u64::from_le_bytes(total_derived_offset_keys);
-
-    let mut total_derived_script_keys = [0u8; 8];
-    total_derived_script_keys.clone_from_slice(&data[32..40]);
-    offset_ctx.total_derived_script_keys = u64::from_le_bytes(total_derived_script_keys);
+    offset_ctx.account = header.account;
+    offset_ctx.total_sender_offset_keys = header.sender_offset_count;
+    offset_ctx.total_script_indexes = header.script_index_count;
+    offset_ctx.total_derived_script_keys = header.derived_script_key_count;
 
     Ok(())
 }
@@ -106,22 +103,30 @@ fn extract_branch_and_index(data: &[u8]) -> Result<(KeyType, u64), AppSW> {
     Ok((branch, index))
 }
 
-fn derive_key_from_alpha(
-    account: u64,
-    data: &[u8],
-    offset_ctx: &mut ScriptOffsetCtx,
-) -> Result<RistrettoSecretKey, AppSW> {
+fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
     if data.len() != 32 {
         return Err(AppSW::WrongApduLength);
     }
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
     let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
 
-    offset_ctx.add_unique_key(alpha.clone());
-
     alpha_hasher(alpha, blinding_factor)
 }
 
+/// Calculate a script offset.
+///
+/// The host supplies only the script side of the sum: a partial sum of the script private keys it already knows, the
+/// indexes of any pre-mine script keys, and the blinding factors of alpha derived script keys. The device generates
+/// every sender offset key itself and returns their indexes, so the host can never choose - or learn - the key that
+/// blinds the reply.
+///
+/// Wire format:
+/// - chunk 0: `account(8) | sender_offset_count(8) | script_index_count(8) | derived_script_key_count(8)`
+/// - chunk 1: `partial_script_key_sum(32)`
+/// - next `script_index_count` chunks: `branch(8) | index(8)`
+/// - next `derived_script_key_count` chunks: `blinding_factor(32)`
+///
+/// Reply: `version(1) | script_offset(32) | sender_offset_index(8) * sender_offset_count`
 pub fn handler_get_script_offset(
     comm: &mut Comm,
     chunk_number: u8,
@@ -138,50 +143,39 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // 2. partial_script_offset
+    // 2. partial sum of the script private keys the host already knows
     if chunk_number == 1 {
-        // Initialize 'script_private_key_sum' with 'partial_script_offset'
-        let partial_script_offset: RistrettoSecretKey =
+        if data.len() != 32 {
+            return Err(AppSW::WrongApduLength);
+        }
+        let partial_script_key_sum: RistrettoSecretKey =
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
-        offset_ctx.script_private_key_sum = partial_script_offset;
+        offset_ctx.script_private_key_sum = partial_script_key_sum;
 
         return Ok(());
     }
 
-    let payload_offset = 2;
-    let end_offset_indexes = payload_offset + offset_ctx.total_offset_indexes;
+    let payload_offset = 2u64;
 
-    // 3. Indexed Sender offset
-    if (payload_offset..end_offset_indexes).contains(&(chunk_number as u64)) {
+    // 3. Indexed script keys. The counts are host supplied, so saturate rather than wrap: a wrapped bound would
+    //    silently move which chunk numbers land in which section.
+    let end_script_indexes = payload_offset.saturating_add(offset_ctx.total_script_indexes);
+    if (payload_offset..end_script_indexes).contains(&(chunk_number as u64)) {
         let (branch, index) = extract_branch_and_index(data)?;
-        let offset = derive_from_bip32_key(offset_ctx.account, index, branch)?;
-
-        offset_ctx.add_unique_key(offset.clone());
-        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + offset;
-    }
-
-    // 4. Indexed Script key
-    let end_script_indexes = end_offset_indexes + offset_ctx.total_script_indexes;
-    if (end_offset_indexes..end_script_indexes).contains(&(chunk_number as u64)) {
-        let (branch, index) = extract_branch_and_index(data)?;
+        // The pre-mine branch holds the only script keys the wallet addresses by index; everything else would let
+        // the host name a key of its choosing and read it back out of the offset.
+        if branch != KeyType::PreMine {
+            return Err(AppSW::ScriptOffsetInvalidScriptBranch);
+        }
         let script_key = derive_from_bip32_key(offset_ctx.account, index, branch)?;
 
-        offset_ctx.add_unique_key(script_key.clone());
         offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + script_key;
     }
 
-    // 5. Derived sender offsets key
-    let end_derived_offset_keys = end_script_indexes + offset_ctx.total_derived_offset_keys;
-    if (end_script_indexes..end_derived_offset_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
-
-        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + k;
-    }
-
-    // 6. Derived script key
-    let end_derived_script_keys = end_derived_offset_keys + offset_ctx.total_derived_script_keys;
-    if (end_derived_offset_keys..end_derived_script_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data, offset_ctx)?;
+    // 4. Alpha derived script keys
+    let end_derived_script_keys = end_script_indexes.saturating_add(offset_ctx.total_derived_script_keys);
+    if (end_script_indexes..end_derived_script_keys).contains(&(chunk_number as u64)) {
+        let k = derive_key_from_alpha(offset_ctx.account, data)?;
 
         offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k
     }
@@ -190,15 +184,27 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // Guard against attacks to extract the spending private key
-    if offset_ctx.unique_keys.len() < MIN_UNIQUE_KEYS {
-        return Err(AppSW::ScriptOffsetNotUnique);
+    // 5. Re-check at the point the value would actually leave the device, rather than trusting a count that was
+    //    validated in an earlier exchange.
+    check_sender_offset_key_count(offset_ctx.total_sender_offset_keys).map_err(header_error_to_app_sw)?;
+
+    // 6. Generate the sender offset keys. The index comes from the device RNG, so the host cannot replay a call and
+    //    difference two replies to strip the blinding.
+    for _ in 0..offset_ctx.total_sender_offset_keys {
+        let index = get_random_u64();
+        let sender_offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::OneSidedSenderOffset)?;
+
+        offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + sender_offset;
+        offset_ctx.sender_offset_indexes.push(index);
     }
 
     let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
+    for index in &offset_ctx.sender_offset_indexes {
+        comm.append(&index.to_le_bytes());
+    }
     offset_ctx.reset();
 
     Ok(())

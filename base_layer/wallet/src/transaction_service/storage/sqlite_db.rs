@@ -3244,7 +3244,7 @@ mod test {
             .add_recipient(
                 source_address.clone(),
                 output,
-                Some(receiver_test_params.sender_offset_key_id),
+                receiver_test_params.sender_offset_key_id,
                 None,
             )
             .unwrap();

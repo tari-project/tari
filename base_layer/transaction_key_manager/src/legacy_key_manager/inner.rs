@@ -441,14 +441,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .construct_range_proof(commitment_mask_key_id, value, min_value)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
-        self.key_manager
-            .get_script_offset(script_key_ids, sender_offset_key_ids)
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
+        self.key_manager.get_script_offset(script_key_ids, sender_offset_count)
     }
 
     pub fn sign_script_message(

@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils;
 /// Ledger application status words.
+///
+/// Note: `0xB007` is retired (it was `ScriptOffsetNotUnique`) and must not be reused.
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AppSW {
@@ -20,13 +22,14 @@ pub enum AppSW {
     ScriptSignatureFail = 0xB004,
     RawSchnorrSignatureFail = 0xB005,
     SchnorrSignatureFail = 0xB006,
-    ScriptOffsetNotUnique = 0xB007,
     KeyDeriveFail = 0xB008,
     KeyDeriveFromCanonical = 0xB009,
     KeyDeriveFromUniform = 0xB00A,
     RandomNonceFail = 0xB00B,
     BadBranchKey = 0xB00C,
     MetadataSignatureFail = 0xB00D,
+    ScriptOffsetNoSenderOffsets = 0xB00E,
+    ScriptOffsetInvalidScriptBranch = 0xB00F,
     WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = 0x9000,
@@ -43,13 +46,14 @@ impl TryFrom<u16> for AppSW {
             0xB004 => Ok(AppSW::ScriptSignatureFail),
             0xB005 => Ok(AppSW::RawSchnorrSignatureFail),
             0xB006 => Ok(AppSW::SchnorrSignatureFail),
-            0xB007 => Ok(AppSW::ScriptOffsetNotUnique),
             0xB008 => Ok(AppSW::KeyDeriveFail),
             0xB009 => Ok(AppSW::KeyDeriveFromCanonical),
             0xB00A => Ok(AppSW::KeyDeriveFromUniform),
             0xB00B => Ok(AppSW::RandomNonceFail),
             0xB00C => Ok(AppSW::BadBranchKey),
             0xB00D => Ok(AppSW::MetadataSignatureFail),
+            0xB00E => Ok(AppSW::ScriptOffsetNoSenderOffsets),
+            0xB00F => Ok(AppSW::ScriptOffsetInvalidScriptBranch),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6e04 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
@@ -179,13 +183,14 @@ mod test {
             (0xB004, AppSW::ScriptSignatureFail),
             (0xB005, AppSW::RawSchnorrSignatureFail),
             (0xB006, AppSW::SchnorrSignatureFail),
-            (0xB007, AppSW::ScriptOffsetNotUnique),
             (0xB008, AppSW::KeyDeriveFail),
             (0xB009, AppSW::KeyDeriveFromCanonical),
             (0xB00A, AppSW::KeyDeriveFromUniform),
             (0xB00B, AppSW::RandomNonceFail),
             (0xB00C, AppSW::BadBranchKey),
             (0xB00D, AppSW::MetadataSignatureFail),
+            (0xB00E, AppSW::ScriptOffsetNoSenderOffsets),
+            (0xB00F, AppSW::ScriptOffsetInvalidScriptBranch),
             (0x6e03, AppSW::WrongApduLength),
             (0x6e04, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
@@ -211,9 +216,6 @@ mod test {
                 AppSW::SchnorrSignatureFail => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
-                AppSW::ScriptOffsetNotUnique => {
-                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
-                },
                 AppSW::KeyDeriveFail => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
@@ -230,6 +232,12 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::MetadataSignatureFail => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetNoSenderOffsets => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetInvalidScriptBranch => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::WrongApduLength => {

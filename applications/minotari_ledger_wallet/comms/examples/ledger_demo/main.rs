@@ -16,7 +16,7 @@
 /// `cargo run --release --example ledger_demo`
 /// -----------------------------------------------------------------------------------------------
 use dialoguer::{Select, theme::ColorfulTheme};
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ScriptSignatureKey,
@@ -34,7 +34,7 @@ use minotari_ledger_wallet_comms::{
         verify_ledger_application,
     },
     error::LedgerDeviceError,
-    ledger_wallet::get_transport,
+    ledger_wallet::{Command, get_transport},
 };
 use rand::Rng;
 use tari_common::configuration::Network;
@@ -114,9 +114,9 @@ fn main() {
     println!("\ntest: GetPublicKey");
     let index = rand::rng().next_u64();
 
+    // Note: the spend branch is deliberately not addressable from the host.
     for branch in [
         LedgerKeyBranch::OneSidedSenderOffset,
-        LedgerKeyBranch::Spend,
         LedgerKeyBranch::Random,
         LedgerKeyBranch::PreMine,
     ] {
@@ -145,7 +145,7 @@ fn main() {
             branch_key: get_random_nonce(),
         },
         ScriptSignatureKey::Managed {
-            branch: LedgerKeyBranch::Spend,
+            branch: LedgerKeyBranch::PreMine,
             index: rand::rng().next_u64(),
         },
     ] {
@@ -179,28 +179,127 @@ fn main() {
     let partial_script_offset = PrivateKey::default();
     let mut derived_script_keys = Vec::new();
     let mut script_key_indexes = Vec::new();
-    let mut derived_sender_offsets = Vec::new();
-    let mut sender_offset_indexes = Vec::new();
     for _i in 0..5 {
         derived_script_keys.push(get_random_nonce());
-        script_key_indexes.push((LedgerKeyBranch::Spend, rand::rng().next_u64()));
-        derived_sender_offsets.push(get_random_nonce());
-        sender_offset_indexes.push((LedgerKeyBranch::OneSidedSenderOffset, rand::rng().next_u64()));
+        script_key_indexes.push((LedgerKeyBranch::PreMine, rand::rng().next_u64()));
     }
 
+    let sender_offset_count = 3;
+    let (script_offset, sender_offset_indexes) = match ledger_get_script_offset(
+        account,
+        &partial_script_offset,
+        &derived_script_keys,
+        &script_key_indexes,
+        sender_offset_count,
+    ) {
+        Ok(val) => val,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    println!("script_offset:  {}", script_offset.to_hex());
+    println!("offset indexes: {sender_offset_indexes:?}");
+    if sender_offset_indexes.len() != sender_offset_count {
+        println!("\nError: expected {sender_offset_count} sender offset indexes\n");
+        return;
+    }
+
+    // The device must pick a fresh index every call, otherwise two calls could be differenced to strip the blinding.
     match ledger_get_script_offset(
         account,
         &partial_script_offset,
         &derived_script_keys,
         &script_key_indexes,
-        &derived_sender_offsets,
-        &sender_offset_indexes,
+        sender_offset_count,
     ) {
-        Ok(script_offset) => println!("script_offset:  {}", script_offset.to_hex()),
+        Ok((_, repeat_indexes)) => {
+            if repeat_indexes == sender_offset_indexes {
+                println!("\nError: the device reused its sender offset key indexes\n");
+                return;
+            }
+        },
         Err(e) => {
             println!("\nError: {e}\n");
             return;
         },
+    }
+
+    // An unblinded script offset must be refused: it is the plain sum of the input script private keys, and since
+    // the host chose the blinding factors those keys were derived from, it could strip them off and be left with
+    // the wallet's spend key.
+    //
+    // These go over raw APDUs on purpose. `ledger_get_script_offset` refuses a zero count before it opens the
+    // transport, so calling through it would never exercise the device's own rejection - the check that matters.
+    println!("\ntest: GetScriptOffset (no sender offset keys, must fail on the device)");
+    let mut zero_count_header = Vec::new();
+    zero_count_header.extend_from_slice(&0u64.to_le_bytes()); // sender_offset_count
+    zero_count_header.extend_from_slice(&0u64.to_le_bytes()); // script_index_count
+    zero_count_header.extend_from_slice(&1u64.to_le_bytes()); // derived_script_key_count
+    let header_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        0,
+        true,
+        zero_count_header,
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if header_response.retcode() == AppSW::Ok as u16 {
+        println!("\nError: the device accepted a script offset header with no sender offset keys\n");
+        return;
+    }
+    println!("rejected as expected: {:?}", AppSW::try_from(header_response.retcode()));
+
+    // The rejected header must leave nothing behind. Otherwise a host could follow it with a chunk that folds an
+    // alpha derived script key into the sum and then, because the (rejected) count was zero, read the sum back
+    // unblinded - full spend key recovery in two calls.
+    println!("\ntest: GetScriptOffset (resume after a rejected header, must fail on the device)");
+    let resume_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        2,
+        false,
+        get_random_nonce().to_vec(),
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if resume_response.retcode() == AppSW::Ok as u16 {
+        println!(
+            "\nError: the device resumed a rejected script offset and returned {} bytes\n",
+            resume_response.data().len()
+        );
+        return;
+    }
+    println!("rejected as expected: {:?}", AppSW::try_from(resume_response.retcode()));
+
+    // Only pre-mine script keys may be addressed by index; anything else lets the host name a key of its choosing.
+    // This one does reach the device: the count is valid, so the host side guard passes it through.
+    println!("\ntest: GetScriptOffset (non pre-mine script index, must fail on the device)");
+    match ledger_get_script_offset(
+        account,
+        &partial_script_offset,
+        &derived_script_keys,
+        &[(LedgerKeyBranch::Random, rand::rng().next_u64())],
+        1,
+    ) {
+        Ok(_) => {
+            println!("\nError: a script key index outside the pre-mine branch was accepted\n");
+            return;
+        },
+        Err(e) => println!("rejected as expected: {e}"),
     }
 
     // GetViewKey
@@ -232,7 +331,7 @@ fn main() {
     // GetRawSchnorrSignature
     println!("\ntest: GetRawSchnorrSignature");
     let private_key_index = rand::rng().next_u64();
-    let private_key_branch = LedgerKeyBranch::Spend;
+    let private_key_branch = LedgerKeyBranch::PreMine;
     let nonce_index = rand::rng().next_u64();
     let nonce_branch = LedgerKeyBranch::Random;
     let mut challenge = [0u8; 64];
@@ -260,7 +359,7 @@ fn main() {
     // GetScriptSchnorrSignature
     println!("\ntest: GetScriptSchnorrSignature");
     let private_key_index = rand::rng().next_u64();
-    let private_key_branch = LedgerKeyBranch::Spend;
+    let private_key_branch = LedgerKeyBranch::OneSidedSenderOffset;
     let mut nonce = [0u8; 32];
     rand::rng().fill_bytes(&mut nonce);
 

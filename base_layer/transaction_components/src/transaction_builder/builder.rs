@@ -4,7 +4,6 @@
 use std::{fmt, fmt::Debug};
 
 use log::*;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -27,7 +26,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::Fee,
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     transaction_builder::{
         error::TransactionBuilderError,
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
@@ -69,6 +68,14 @@ pub struct TransactionBuilder<KM> {
     kernel_features: KernelFeatures,
     burn_commitment: Option<CompressedCommitment>,
     own_address: TariAddress,
+    /// The running `sum(script keys) - sum(sender offset keys)` for the parts of the transaction that have already
+    /// been accounted for. Partial offsets are additive, so this is built up one output at a time.
+    partial_script_offset: PrivateKey,
+    /// Script keys of inputs that have not been folded into `partial_script_offset` yet. The next reserved sender
+    /// offset key drains them.
+    pending_input_script_keys: Vec<TariKeyId>,
+    /// Set once a sender offset key has been reserved, which fixes the set of inputs the offset was computed over.
+    sender_offset_key_reserved: bool,
 }
 
 impl<KM> TransactionBuilder<KM>
@@ -104,6 +111,9 @@ where KM: TransactionKeyManagerInterface
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
             own_address,
+            partial_script_offset: PrivateKey::default(),
+            pending_input_script_keys: Vec::new(),
+            sender_offset_key_reserved: false,
         })
     }
 
@@ -160,11 +170,15 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// Add a recipient to the transaction.
+    ///
+    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_key`], or the caller must have registered
+    /// the matching partial script offset with [`Self::with_partial_script_offset`]; otherwise the key is never
+    /// subtracted from the script offset and the transaction will not validate.
     pub fn add_recipient(
         &mut self,
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
-        sender_offset_key_id: Option<TariKeyId>,
+        sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let kernel_nonce = self.key_manager.get_random_key(None, None)?;
@@ -182,6 +196,35 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
+    /// Reserve a sender offset key for an output of this transaction.
+    ///
+    /// The key manager generates the key - on a ledger wallet the device does, and the host never sees it - and
+    /// returns it together with a partial script offset that also nets out every input script key added so far. The
+    /// returned key must be used on exactly one output of this transaction.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn reserve_sender_offset_key(&mut self) -> Result<TariKeyAndId, TransactionBuilderError> {
+        let script_keys = std::mem::take(&mut self.pending_input_script_keys);
+        let (partial_offset, mut sender_offset_keys) = self.key_manager.get_script_offset(&script_keys, 1)?;
+        self.partial_script_offset = &self.partial_script_offset + partial_offset;
+        self.sender_offset_key_reserved = true;
+        sender_offset_keys
+            .pop()
+            .ok_or_else(|| TransactionBuilderError::Other("Key manager returned no sender offset key".to_string()))
+    }
+
+    /// Register a partial script offset produced outside this builder.
+    ///
+    /// Flows that must create a sender offset key before a builder exists call
+    /// `key_manager.get_script_offset(&[], 1)` and hand the resulting offset here, so that the key they publish on an
+    /// output is still subtracted from the transaction's script offset.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn with_partial_script_offset(&mut self, partial_script_offset: PrivateKey) -> &mut Self {
+        self.partial_script_offset = &self.partial_script_offset + partial_script_offset;
+        self
+    }
+
     pub fn add_stealth_recipient(
         &mut self,
         destination: TariAddress,
@@ -189,11 +232,9 @@ where KM: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         memo_field: MemoField,
     ) -> Result<(), TransactionBuilderError> {
-        // if this is a ledger wallet, this needs to come from the ledger as it needs to sign with this key for the
-        // metadata signatures
-        let sender_offset_private_key = self
-            .key_manager
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        // If this is a ledger wallet, this needs to come from the ledger as it needs to sign with this key for the
+        // metadata signatures.
+        let sender_offset_private_key = self.reserve_sender_offset_key()?;
 
         let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
             private_key: sender_offset_private_key.key_id.clone().into(),
@@ -235,15 +276,23 @@ where KM: TransactionKeyManagerInterface
         self.add_recipient(
             destination,
             output,
-            Some(sender_offset_private_key.key_id),
+            sender_offset_private_key.key_id,
             Some(encryption_key),
         )?;
         Ok(())
     }
 
+    /// Add an input to the transaction.
+    ///
+    /// Inputs must all be added before the first sender offset key is reserved: reserving folds the script keys of
+    /// the inputs added so far into the script offset, so a later input would never be accounted for.
     pub fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
+        if self.sender_offset_key_reserved {
+            return Err(TransactionBuilderError::InputsAfterOutputs);
+        }
         let nonce = self.key_manager.get_random_key(None, None)?;
-        let pair = OutputPair::new(input, nonce.key_id, None, None);
+        self.pending_input_script_keys.push(input.script_key_id().clone());
+        let pair = OutputPair::new(input, nonce.key_id, TariKeyId::Zero, None);
         self.inputs.push(pair);
         Ok(self)
     }
@@ -254,6 +303,11 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
+    /// Add a custom output to the transaction.
+    ///
+    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_key`], or the caller must have registered
+    /// the matching partial script offset with [`Self::with_partial_script_offset`]; otherwise the key is never
+    /// subtracted from the script offset and the transaction will not validate.
     pub fn with_output(
         &mut self,
         output: WalletOutput,
@@ -261,7 +315,7 @@ where KM: TransactionKeyManagerInterface
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
         let nonce = self.key_manager.get_random_key(None, None)?;
-        let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id), custom_recovery_key_id);
+        let pair = OutputPair::new(output, nonce.key_id, sender_offset_key_id, custom_recovery_key_id);
         self.custom_outputs.push(pair);
         Ok(self)
     }
@@ -296,13 +350,6 @@ where KM: TransactionKeyManagerInterface
             );
         }
         Ok(size)
-    }
-
-    pub fn get_pre_build_change_output(
-        &mut self,
-    ) -> Result<(MicroMinotari, Option<OutputPair>, TxId), TransactionBuilderError> {
-        let (fee, change, tx_id) = self.add_change_if_required(true)?;
-        Ok((fee, change, tx_id.unwrap_or_else(TxId::new_random)))
     }
 
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -531,7 +578,7 @@ where KM: TransactionKeyManagerInterface
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key()?;
         let memo = self.create_change_memo(amount)?;
-        let sender_offset_public = self.key_manager.get_random_key(None, None)?;
+        let sender_offset_public = self.reserve_sender_offset_key()?;
         let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
         let input_data = ExecutionStack::default();
 
@@ -586,7 +633,7 @@ where KM: TransactionKeyManagerInterface
         Ok(Some(OutputPair::new(
             change_wallet_output,
             nonce.key_id,
-            Some(sender_offset_public.key_id),
+            sender_offset_public.key_id,
             None,
         )))
     }
@@ -712,10 +759,7 @@ where KM: TransactionKeyManagerInterface
             if let Some(recipient) = recipient_address {
                 output_pair.output.change_encrypted_data_with_verified_signature(
                     encrypted_data,
-                    output_pair
-                        .sender_offset_key_id
-                        .as_ref()
-                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    &output_pair.sender_offset_key_id,
                     memo_field,
                     recipient,
                     key_manager,
@@ -723,10 +767,7 @@ where KM: TransactionKeyManagerInterface
             } else {
                 output_pair.output.change_encrypted_data(
                     encrypted_data,
-                    output_pair
-                        .sender_offset_key_id
-                        .as_ref()
-                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    &output_pair.sender_offset_key_id,
                     memo_field,
                     key_manager,
                 )?;
@@ -749,8 +790,6 @@ where KM: TransactionKeyManagerInterface
         let (total_public_nonce, total_public_excess) =
             self.calculate_total_nonce_and_total_public_excess(&change_output)?;
 
-        let mut script_keys = Vec::new();
-        let mut sender_offset_keys = Vec::new();
         let mut offset = PrivateKey::default();
         let mut signature = UncompressedSignature::default();
 
@@ -812,7 +851,6 @@ where KM: TransactionKeyManagerInterface
             offset = offset -
                 self.key_manager
                     .get_txo_private_kernel_offset(input.output.commitment_mask_key_id(), &input.kernel_nonce)?;
-            script_keys.push(input.output.script_key_id().clone());
         }
 
         for output in &mut self.custom_outputs {
@@ -835,11 +873,6 @@ where KM: TransactionKeyManagerInterface
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(output.output.commitment_mask_key_id(), &output.kernel_nonce)?;
-            let sender_offset_key_id = output
-                .sender_offset_key_id
-                .clone()
-                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
-            sender_offset_keys.push(sender_offset_key_id);
         }
 
         for output in &self.recipient_outputs {
@@ -861,12 +894,6 @@ where KM: TransactionKeyManagerInterface
                     output.output.output.commitment_mask_key_id(),
                     &output.output.kernel_nonce,
                 )?;
-            let sender_offset_key_id = output
-                .output
-                .sender_offset_key_id
-                .clone()
-                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
-            sender_offset_keys.push(sender_offset_key_id);
         }
 
         if let Some(change) = &mut change_output {
@@ -890,14 +917,16 @@ where KM: TransactionKeyManagerInterface
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)?;
-            let sender_offset_key_id = change
-                .sender_offset_key_id
-                .clone()
-                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
-            sender_offset_keys.push(sender_offset_key_id);
         }
 
-        let script_offset = self.key_manager.get_script_offset(&script_keys, &sender_offset_keys)?;
+        // Every input script key must have been folded into a partial script offset, which only happens when an
+        // output takes its sender offset key from `reserve_sender_offset_key`.
+        if !self.pending_input_script_keys.is_empty() {
+            return Err(TransactionBuilderError::UnassignedInputScriptKeys(
+                self.pending_input_script_keys.len(),
+            ));
+        }
+        let script_offset = self.partial_script_offset.clone();
 
         core_tx_builder.add_offset(offset);
         core_tx_builder.add_script_offset(script_offset);
@@ -1033,6 +1062,9 @@ impl<KM> Debug for TransactionBuilder<KM> {
             kernel_features,
             burn_commitment,
             own_address,
+            partial_script_offset: _,
+            pending_input_script_keys: _,
+            sender_offset_key_reserved: _,
         } = self;
 
         fmt::Debug::fmt(
@@ -1094,6 +1126,7 @@ mod test {
         test_helpers::{
             TestParams,
             UtxoTestParams,
+            add_output_with_reserved_sender_offset_key,
             create_consensus_constants,
             create_consensus_manager,
             create_test_input,
@@ -1140,12 +1173,11 @@ mod test {
         let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id, None)
-            .unwrap()
             .with_input(input)
             .unwrap()
             .with_fee_per_gram(MicroMinotari(1))
             .with_prevent_fee_gt_amount(false);
+        add_output_with_reserved_sender_offset_key(&mut builder, output).unwrap();
         let result = builder.build().unwrap();
         assert_eq!(
             result.transaction.body.kernels().first().unwrap().lock_height,
@@ -1291,6 +1323,60 @@ mod test {
     }
 
     #[test]
+    fn inputs_cannot_be_added_after_a_sender_offset_key_is_reserved() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
+        let late_input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(2)).with_input(input).unwrap();
+
+        // Reserving folds in the script keys of the inputs added so far, so a later input would never be accounted
+        // for and the script offset would be wrong.
+        builder.reserve_sender_offset_key().unwrap();
+
+        let err = builder.with_input(late_input).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::InputsAfterOutputs),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn build_refuses_a_transaction_whose_input_script_keys_were_never_folded_in() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None);
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    // Input less fee exactly, so there is no change output and nothing reserves a sender offset key.
+                    value: MicroMinotari(1900),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder
+            .with_fee(MicroMinotari(100))
+            .with_prevent_fee_gt_amount(false)
+            .with_input(input)
+            .unwrap()
+            // The sender offset key came from `TestParams`, not from the builder, so it never drained the pending
+            // input script keys.
+            .with_output(output, p.sender_offset_key_id.clone(), None)
+            .unwrap();
+
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::UnassignedInputScriptKeys(1)),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
     fn zero_recipient_outputs() {
         let key_manager = KeyManager::new_random().unwrap();
         let p1 = TestParams::new(&key_manager);
@@ -1304,26 +1390,24 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(2))
             .with_input(input)
-            .unwrap()
-            .with_output(
-                create_wallet_output_with_data(
-                    script.clone(),
-                    output_features.clone(),
-                    &p1,
-                    MicroMinotari(500),
-                    &key_manager,
-                )
-                .unwrap(),
-                p1.sender_offset_key_id.clone(),
-                None,
-            )
-            .unwrap()
-            .with_output(
-                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager).unwrap(),
-                p2.sender_offset_key_id.clone(),
-                None,
-            )
             .unwrap();
+        add_output_with_reserved_sender_offset_key(
+            &mut builder,
+            create_wallet_output_with_data(
+                script.clone(),
+                output_features.clone(),
+                &p1,
+                MicroMinotari(500),
+                &key_manager,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        add_output_with_reserved_sender_offset_key(
+            &mut builder,
+            create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager).unwrap(),
+        )
+        .unwrap();
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction;
         let rules = create_consensus_manager();
@@ -1351,7 +1435,7 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(
             MicroMinotari(1200) - fee - MicroMinotari(10),
@@ -1371,7 +1455,7 @@ mod test {
         .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
+            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
             .unwrap();
 
         let finalized = builder.build().unwrap();
@@ -1418,7 +1502,7 @@ mod test {
             .with_fee_per_gram(MicroMinotari(20))
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
 
         let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
@@ -1436,7 +1520,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
+            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
             .unwrap();
         // Transaction should be complete
         let finalized = builder.build().unwrap();
@@ -1471,7 +1555,7 @@ mod test {
             .unwrap()
             .with_input(input3)
             .unwrap();
-        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1488,7 +1572,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
+            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
             .unwrap();
         let finalized = builder.build().unwrap();
 
@@ -1541,8 +1625,7 @@ mod test {
             .unwrap()
             .output
             .sender_offset_key_id
-            .clone()
-            .unwrap();
+            .clone();
         let shared_secret = key_manager
             .get_diffie_hellman_shared_secret(&bob_sender_offset, bob_address.public_view_key().unwrap())
             .unwrap();
@@ -1596,7 +1679,7 @@ mod test {
             .unwrap();
 
         let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1613,7 +1696,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
+            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
             .unwrap();
         let _err = builder.build().unwrap_err();
 
@@ -1638,7 +1721,7 @@ mod test {
             .with_prevent_fee_gt_amount(false);
 
         let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
         let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
             .with_features(OutputFeatures::default())
@@ -1655,7 +1738,7 @@ mod test {
             .unwrap();
 
         builder
-            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id), None)
+            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
             .unwrap();
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
         match builder.build() {
