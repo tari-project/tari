@@ -36,7 +36,7 @@
 //! [PingPong]: ./messages/enum.PingPong.html
 
 pub mod config;
-pub use self::config::LivenessConfig;
+pub use self::config::{LivenessConfig, MAX_INFLIGHT_TTL};
 
 pub mod error;
 
@@ -52,7 +52,6 @@ pub use handle::{
 
 mod message;
 mod service;
-pub use service::MAX_INFLIGHT_TTL;
 
 mod state;
 pub use state::Metadata;
