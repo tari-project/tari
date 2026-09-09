@@ -98,9 +98,9 @@ pub async fn resolve_requested_heights(
         heights.push(metadata.best_block_height());
     }
 
+    heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
     heights.sort_unstable();
     heights.dedup();
-    heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
 
     Ok(heights)
 }
