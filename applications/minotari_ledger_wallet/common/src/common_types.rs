@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use crate::utils;
 /// Ledger application status words.
 ///
-/// Note: `0xB007` is retired (it was `ScriptOffsetNotUnique`) and must not be reused.
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AppSW {
@@ -22,6 +21,7 @@ pub enum AppSW {
     ScriptSignatureFail = 0xB004,
     RawSchnorrSignatureFail = 0xB005,
     SchnorrSignatureFail = 0xB006,
+    // ScriptOffsetNotUnique = 0xB007 Dont reuse, is retired
     KeyDeriveFail = 0xB008,
     KeyDeriveFromCanonical = 0xB009,
     KeyDeriveFromUniform = 0xB00A,
