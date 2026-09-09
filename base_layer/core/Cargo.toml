@@ -75,7 +75,6 @@ primitive-types = { version = "0.12", features = ["serde"] }
 url = "2.5.4"
 
 [dev-dependencies]
-tari_transaction_components = { workspace = true, features = ["test-helpers"] }
 criterion = { version = "0.8" }
 # `test-util` enables tokio's paused clock, used to exercise protocol timeouts without real waits
 tokio = { workspace = true, features = ["test-util"] }

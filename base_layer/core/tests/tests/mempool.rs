@@ -49,7 +49,7 @@ use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     fee::Fee,
-    key_manager::{KeyManager, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface, TxoStage},
     tari_amount::{MicroMinotari, T, uT},
     tari_proof_of_work::Difficulty,
     test_helpers::{
@@ -1278,9 +1278,20 @@ async fn consensus_validation_large_tx() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let script_offset = key_manager
-        .calculate_script_offset_from_keys(&input_script_keys, &sender_offsets)
-        .unwrap();
+    // Build the script offset by hand - sum(script keys) - sum(sender offset keys) - because this transaction is
+    // assembled manually rather than through the key manager's transaction builder.
+    // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    let script_offset = {
+        let mut so = PrivateKey::default();
+        for script_key_id in &input_script_keys {
+            so = so + key_manager.get_private_key(script_key_id).unwrap();
+        }
+        for sender_offset_key_id in &sender_offsets {
+            so = so - key_manager.get_private_key(sender_offset_key_id).unwrap();
+        }
+        so
+    };
     let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset);
     tx.body.sort();
 
@@ -1426,9 +1437,20 @@ async fn validation_reject_min_fee() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let script_offset = key_manager
-        .calculate_script_offset_from_keys(&input_script_keys, &sender_offsets)
-        .unwrap();
+    // Build the script offset by hand - sum(script keys) - sum(sender offset keys) - because this transaction is
+    // assembled manually rather than through the key manager's transaction builder.
+    // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    let script_offset = {
+        let mut so = PrivateKey::default();
+        for script_key_id in &input_script_keys {
+            so = so + key_manager.get_private_key(script_key_id).unwrap();
+        }
+        for sender_offset_key_id in &sender_offsets {
+            so = so - key_manager.get_private_key(sender_offset_key_id).unwrap();
+        }
+        so
+    };
     let mut tx = Transaction::new(inputs, vec![tx_output], kernels, offset, script_offset);
     tx.body.sort();
 

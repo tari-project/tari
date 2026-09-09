@@ -508,30 +508,6 @@ impl KeyManager {
     pub fn get_wallet_type(&self) -> &WalletType {
         &self.wallet_type
     }
-
-    /// Compute a script offset from an explicit set of script and sender offset keys.
-    ///
-    /// This is the raw `sum(script keys) - sum(sender offset keys)` with none of the guard rails
-    /// [`TransactionKeyManagerInterface::get_script_offset`] applies, so it can build offsets the key manager refuses
-    /// to produce. It exists for tests that need to assemble a transaction by hand or to construct a deliberately
-    /// malicious offset, and is not compiled into production builds.
-    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
-    #[cfg(feature = "test-helpers")]
-    pub fn calculate_script_offset_from_keys(
-        &self,
-        script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
-        let mut script_offset = PrivateKey::default();
-        for script_key_id in script_key_ids {
-            script_offset = script_offset + self.get_private_key(script_key_id)?;
-        }
-        for sender_offset_key_id in sender_offset_key_ids {
-            script_offset = script_offset - self.get_private_key(sender_offset_key_id)?;
-        }
-        Ok(script_offset)
-    }
 }
 
 impl TransactionKeyManagerInterface for KeyManager {

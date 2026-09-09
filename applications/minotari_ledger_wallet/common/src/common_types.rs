@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::utils;
 /// Ledger application status words.
-///
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AppSW {

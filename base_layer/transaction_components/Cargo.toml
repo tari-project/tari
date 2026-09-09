@@ -11,8 +11,6 @@ license.workspace = true
 [features]
 ledger = ["minotari_ledger_wallet_comms"]
 wasm = ["wasm-bindgen"]
-# Exposes helpers that bypass the key manager's safety checks. Test/dev builds only.
-test-helpers = []
 
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
