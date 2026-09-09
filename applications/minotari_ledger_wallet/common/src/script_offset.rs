@@ -1,17 +1,22 @@
 // Copyright 2026 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! Parsing and validation of the `GetScriptOffset` header.
+//! Parsing and validation of the `GetScriptOffset` header, and the shared derivation of the sender offset key
+//! indexes the reply names.
 //!
 //! This lives here, rather than in the Ledger application, so that the rules the device relies on can be tested
 //! without a device. The application itself only builds for the Ledger targets.
 
-/// The device generates every sender offset key itself, so the reply carries one 8 byte index per key on top of the
-/// version byte and the 32 byte offset. This bound keeps the reply inside a single APDU.
+/// The device draws a single random base index and derives `base..base + count` from it, so the reply is a fixed
+/// size no matter how many keys were asked for. The bound therefore no longer exists to keep the reply inside one
+/// APDU; it exists because the device still performs `count` BIP32 derivations in a single exchange.
 pub const MAX_SENDER_OFFSET_KEYS: u64 = 25;
 
 /// Size of the `GetScriptOffset` header, including the account the transport prepends to the first chunk.
 pub const SCRIPT_OFFSET_HEADER_SIZE: usize = 32;
+
+/// Size of the `GetScriptOffset` reply: `version(1) | script_offset(32) | base_index(8)`.
+pub const SCRIPT_OFFSET_REPLY_SIZE: usize = 41;
 
 /// Why a `GetScriptOffset` header was refused.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -20,8 +25,10 @@ pub enum ScriptOffsetHeaderError {
     WrongLength,
     /// The host asked for a script offset that no device generated key would blind.
     NoSenderOffsetKeys,
-    /// More keys were asked for than fit in one reply.
+    /// More keys were asked for than the device will derive in one exchange.
     TooManySenderOffsetKeys,
+    /// No script side term of the sum was derived on the device.
+    NoDeviceScriptKeys,
 }
 
 /// The `GetScriptOffset` header, as sent in chunk 0.
@@ -53,6 +60,34 @@ pub fn check_sender_offset_key_count(sender_offset_count: u64) -> Result<(), Scr
     Ok(())
 }
 
+/// Check that at least one script side term of the sum was derived on the device.
+///
+/// This is the mirror of [`check_sender_offset_key_count`]. With no script keys at all the reply is `-k_sender` for
+/// a key the device generated, which hands the host a `OneSidedSenderOffset` private key: enough to recompute the
+/// one sided Diffie-Hellman secrets for that output and re-sign its metadata signature without the device, which is
+/// the whole point of the approval the device asked the user for.
+///
+/// `partial_script_key_sum` is deliberately not counted. It is one opaque 32 byte scalar, and a host with no script
+/// keys sends the zero scalar, which is indistinguishable from a legitimate sum that happens to be zero. Only
+/// pre-mine indexes and alpha derived blinding factors are terms the device itself turned into key material.
+pub fn check_script_key_count(
+    script_index_count: u64,
+    derived_script_key_count: u64,
+) -> Result<(), ScriptOffsetHeaderError> {
+    if script_index_count.saturating_add(derived_script_key_count) == 0 {
+        return Err(ScriptOffsetHeaderError::NoDeviceScriptKeys);
+    }
+    Ok(())
+}
+
+/// The index of the `i`th sender offset key derived from `base_index`.
+///
+/// The base is drawn from the device RNG and may sit anywhere in `u64`, so the walk wraps rather than saturating.
+/// Both sides call this, so a base near `u64::MAX` needs no special case on either.
+pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
+    base_index.wrapping_add(i)
+}
+
 fn read_u64(data: &[u8], start: usize) -> Result<u64, ScriptOffsetHeaderError> {
     let bytes = data
         .get(start..start.saturating_add(8))
@@ -76,6 +111,7 @@ pub fn parse_script_offset_header(data: &[u8]) -> Result<ScriptOffsetHeader, Scr
     let derived_script_key_count = read_u64(data, 24)?;
 
     check_sender_offset_key_count(sender_offset_count)?;
+    check_script_key_count(script_index_count, derived_script_key_count)?;
 
     Ok(ScriptOffsetHeader {
         account,
@@ -117,7 +153,7 @@ mod test {
             parse_script_offset_header(&[]).unwrap_err(),
             ScriptOffsetHeaderError::WrongLength
         );
-        let mut too_long = header_bytes(1, 1, 0, 0);
+        let mut too_long = header_bytes(1, 1, 0, 1);
         too_long.push(0);
         assert_eq!(
             parse_script_offset_header(&too_long).unwrap_err(),
@@ -126,12 +162,12 @@ mod test {
     }
 
     #[test]
-    fn it_rejects_more_keys_than_fit_in_a_reply() {
+    fn it_rejects_more_keys_than_the_device_will_derive_in_one_exchange() {
         assert_eq!(
-            parse_script_offset_header(&header_bytes(1, MAX_SENDER_OFFSET_KEYS.saturating_add(1), 0, 0)).unwrap_err(),
+            parse_script_offset_header(&header_bytes(1, MAX_SENDER_OFFSET_KEYS.saturating_add(1), 0, 1)).unwrap_err(),
             ScriptOffsetHeaderError::TooManySenderOffsetKeys
         );
-        assert!(parse_script_offset_header(&header_bytes(1, MAX_SENDER_OFFSET_KEYS, 0, 0)).is_ok());
+        assert!(parse_script_offset_header(&header_bytes(1, MAX_SENDER_OFFSET_KEYS, 0, 1)).is_ok());
     }
 
     /// A host that asks for a script offset with no sender offset keys is asking for the plain sum of the input
@@ -146,7 +182,21 @@ mod test {
         assert!(rejected.is_err(), "a rejected header must not yield anything to act on");
     }
 
-    /// The same check guards the point at which the offset would actually leave the device, so that a count carried
+    /// The mirror case: with no device derived script key the reply is `-k_sender` for a key the device just made,
+    /// which hands the host a one sided sender offset private key. The rejection must again yield no header, for
+    /// the same reason - otherwise a follow up chunk could resume the accumulation the rejection withheld.
+    #[test]
+    fn it_rejects_a_header_with_no_device_script_keys() {
+        let rejected = parse_script_offset_header(&header_bytes(1, 1, 0, 0));
+        assert_eq!(rejected.unwrap_err(), ScriptOffsetHeaderError::NoDeviceScriptKeys);
+        assert!(rejected.is_err(), "a rejected header must not yield anything to act on");
+
+        // One of either kind of device derived script key is enough.
+        assert!(parse_script_offset_header(&header_bytes(1, 1, 1, 0)).is_ok());
+        assert!(parse_script_offset_header(&header_bytes(1, 1, 0, 1)).is_ok());
+    }
+
+    /// The same checks guard the point at which the offset would actually leave the device, so that a count carried
     /// over from an earlier exchange cannot be trusted on its own.
     #[test]
     fn the_key_count_is_checked_independently_of_parsing() {
@@ -155,5 +205,49 @@ mod test {
             ScriptOffsetHeaderError::NoSenderOffsetKeys
         );
         assert!(check_sender_offset_key_count(1).is_ok());
+    }
+
+    /// ...and the two checks are independent of each other: neither count can stand in for the other.
+    #[test]
+    fn the_script_key_count_is_checked_independently_of_parsing() {
+        assert_eq!(
+            check_script_key_count(0, 0).unwrap_err(),
+            ScriptOffsetHeaderError::NoDeviceScriptKeys
+        );
+        assert!(check_script_key_count(1, 0).is_ok());
+        assert!(check_script_key_count(0, 1).is_ok());
+        assert!(check_script_key_count(3, 4).is_ok());
+        // A large count is not this check's business; it only asks whether anything was derived on the device.
+        assert!(check_script_key_count(u64::MAX, u64::MAX).is_ok());
+    }
+
+    /// The two checks do not shadow each other: a header can fail either one on its own.
+    #[test]
+    fn the_two_checks_are_independent_of_each_other() {
+        assert!(check_sender_offset_key_count(1).is_ok() && check_script_key_count(0, 0).is_err());
+        assert!(check_sender_offset_key_count(0).is_err() && check_script_key_count(1, 0).is_ok());
+    }
+
+    /// The reply names the sender offset keys by a single base index, so both sides have to walk it identically.
+    #[test]
+    fn the_index_walk_is_shared_by_both_sides() {
+        assert_eq!(sender_offset_index(10, 0), 10);
+        assert_eq!(sender_offset_index(10, 3), 13);
+
+        // A base within `count` of the end of the range wraps rather than saturating, so the device and the host
+        // still name the same keys.
+        let base = u64::MAX.saturating_sub(1);
+        assert_eq!(sender_offset_index(base, 0), u64::MAX - 1);
+        assert_eq!(sender_offset_index(base, 1), u64::MAX);
+        assert_eq!(sender_offset_index(base, 2), 0);
+        assert_eq!(sender_offset_index(base, 3), 1);
+
+        // Every index in a full sized request from that base is distinct.
+        let mut seen = Vec::new();
+        for i in 0..MAX_SENDER_OFFSET_KEYS {
+            let index = sender_offset_index(base, i);
+            assert!(!seen.contains(&index), "index {index} was derived twice");
+            seen.push(index);
+        }
     }
 }

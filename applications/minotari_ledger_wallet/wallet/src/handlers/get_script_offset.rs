@@ -1,13 +1,13 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::vec::Vec;
-
 use ledger_device_sdk::io::Comm;
 use minotari_ledger_wallet_common::script_offset::{
     ScriptOffsetHeaderError,
+    check_script_key_count,
     check_sender_offset_key_count,
     parse_script_offset_header,
+    sender_offset_index,
 };
 use tari_utilities::ByteArray;
 
@@ -23,7 +23,6 @@ use crate::{
 pub struct ScriptOffsetCtx {
     sender_offset_sum: RistrettoSecretKey,
     script_private_key_sum: RistrettoSecretKey,
-    sender_offset_indexes: Vec<u64>,
     account: u64,
     total_sender_offset_keys: u64,
     total_script_indexes: u64,
@@ -36,7 +35,6 @@ impl ScriptOffsetCtx {
         Self {
             sender_offset_sum: RistrettoSecretKey::default(),
             script_private_key_sum: RistrettoSecretKey::default(),
-            sender_offset_indexes: Vec::new(),
             account: 0,
             total_sender_offset_keys: 0,
             total_script_indexes: 0,
@@ -53,7 +51,6 @@ impl ScriptOffsetCtx {
     pub fn reset(&mut self) {
         self.sender_offset_sum = RistrettoSecretKey::default();
         self.script_private_key_sum = RistrettoSecretKey::default();
-        self.sender_offset_indexes = Vec::new();
         self.account = 0;
         self.total_sender_offset_keys = 0;
         self.total_script_indexes = 0;
@@ -67,6 +64,7 @@ fn header_error_to_app_sw(e: ScriptOffsetHeaderError) -> AppSW {
             AppSW::WrongApduLength
         },
         ScriptOffsetHeaderError::NoSenderOffsetKeys => AppSW::ScriptOffsetNoSenderOffsets,
+        ScriptOffsetHeaderError::NoDeviceScriptKeys => AppSW::ScriptOffsetNoDeviceScriptKeys,
     }
 }
 
@@ -117,8 +115,8 @@ fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey
 ///
 /// The host supplies only the script side of the sum: a partial sum of the script private keys it already knows, the
 /// indexes of any pre-mine script keys, and the blinding factors of alpha derived script keys. The device generates
-/// every sender offset key itself and returns their indexes, so the host can never choose - or learn - the key that
-/// blinds the reply.
+/// every sender offset key itself and returns the base index they were derived from, so the host can never choose -
+/// or learn - the keys that blind the reply.
 ///
 /// Wire format:
 /// - chunk 0: `account(8) | sender_offset_count(8) | script_index_count(8) | derived_script_key_count(8)`
@@ -126,7 +124,8 @@ fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey
 /// - next `script_index_count` chunks: `branch(8) | index(8)`
 /// - next `derived_script_key_count` chunks: `blinding_factor(32)`
 ///
-/// Reply: `version(1) | script_offset(32) | sender_offset_index(8) * sender_offset_count`
+/// Reply: `version(1) | script_offset(32) | base_index(8)`, where the keys are
+/// `base_index..base_index + sender_offset_count` walked with [`sender_offset_index`].
 pub fn handler_get_script_offset(
     comm: &mut Comm,
     chunk_number: u8,
@@ -184,27 +183,30 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // 5. Re-check at the point the value would actually leave the device, rather than trusting a count that was
-    //    validated in an earlier exchange.
+    // 5. Re-check both counts at the point the value would actually leave the device, rather than trusting counts
+    //    that were validated in an earlier exchange. Neither sum may leave unblinded by a term the host cannot
+    //    compute: no sender offset key means the reply is the plain script key sum (the spend key), and no device
+    //    derived script key means it is a device generated sender offset private key.
     check_sender_offset_key_count(offset_ctx.total_sender_offset_keys).map_err(header_error_to_app_sw)?;
+    check_script_key_count(offset_ctx.total_script_indexes, offset_ctx.total_derived_script_keys)
+        .map_err(header_error_to_app_sw)?;
 
-    // 6. Generate the sender offset keys. The index comes from the device RNG, so the host cannot replay a call and
-    //    difference two replies to strip the blinding.
-    for _ in 0..offset_ctx.total_sender_offset_keys {
-        let index = get_random_u64();
+    // 6. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
+    //    derived from `base..base + count`, so the host cannot replay a call and difference two replies to strip
+    //    the blinding, and no per-key state has to be accumulated on the device.
+    let base_index = get_random_u64();
+    for i in 0..offset_ctx.total_sender_offset_keys {
+        let index = sender_offset_index(base_index, i);
         let sender_offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::OneSidedSenderOffset)?;
 
         offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + sender_offset;
-        offset_ctx.sender_offset_indexes.push(index);
     }
 
     let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
-    for index in &offset_ctx.sender_offset_indexes {
-        comm.append(&index.to_le_bytes());
-    }
+    comm.append(&base_index.to_le_bytes());
     offset_ctx.reset();
 
     Ok(())

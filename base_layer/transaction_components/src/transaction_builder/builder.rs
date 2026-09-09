@@ -7,29 +7,39 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
-    transaction::TxId,
     types::{
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
+        FixedHash,
         PrivateKey,
         UncompressedPublicKey,
         UncompressedSignature,
     },
 };
-use tari_script::{ExecutionStack, push_pubkey_script, script};
+use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script, script};
 use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     MicroMinotari,
     consensus::ConsensusConstants,
-    fee::Fee,
+    fee::{Fee, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, TxoStage, error::KeyManagerError},
+    multisig::script::derive_multisig_ephemeral_pubkeys,
     transaction_builder::{
         error::TransactionBuilderError,
-        models::{FinalizedTransaction, OutputPair, RecipientDetails},
+        models::{
+            FinalizedTransaction,
+            OutputPair,
+            RecipientDetails,
+            RecipientKeys,
+            RecipientMetadataSignature,
+            RecipientScript,
+            RecipientScriptKey,
+            RecipientSpec,
+        },
     },
     transaction_components::{
         CoreTransactionBuilder,
@@ -46,11 +56,78 @@ use crate::{
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
+        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";
+
+/// Which half of the transaction is still open.
+///
+/// The phase exists because exactly one `get_script_offset` call may be made per transaction. That call folds in
+/// every input script key and generates every sender offset key at once, so the set of inputs and the number of
+/// outputs both have to be final before it happens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuilderPhase {
+    /// Inputs and recipient specs may still be added.
+    Collecting,
+    /// The sender offset keys have been reserved; the pool and the change decision are fixed.
+    Reserved,
+}
+
+/// An output that will be attached to the builder *after* the sender offset keys have been reserved.
+///
+/// The change decision made in [`TransactionBuilder::reserve_sender_offset_keys`] is binding, and so is the fee it
+/// computes, so the reservation has to see the value and the weight of every output the transaction will carry.
+/// Flows that cannot express an output as a [`RecipientSpec`] - because the published sender offset key is only one
+/// share of an aggregate, or because the output arrived fully formed from an untrusted payload - declare it here
+/// and attach it afterwards with [`TransactionBuilder::with_output`] or [`TransactionBuilder::add_recipient`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingOutput {
+    value: MicroMinotari,
+    features_and_scripts_size: usize,
+    takes_reserved_key: bool,
+}
+
+impl PendingOutput {
+    /// An output that will take one of the sender offset keys the reservation returns.
+    pub fn keyed(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
+        Self {
+            value,
+            features_and_scripts_size,
+            takes_reserved_key: true,
+        }
+    }
+
+    /// An output that publishes a sender offset key the caller derived itself and registered with
+    /// [`TransactionBuilder::with_host_derived_partial_script_offset`], so it takes no key from the pool.
+    pub fn host_keyed(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
+        Self {
+            value,
+            features_and_scripts_size,
+            takes_reserved_key: false,
+        }
+    }
+
+    /// Declare an output that already exists.
+    pub fn from_output(output: &WalletOutput) -> Result<Self, TransactionBuilderError> {
+        Ok(Self::keyed(
+            output.value(),
+            output
+                .features_and_scripts_byte_size()
+                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+        ))
+    }
+}
+
+/// The fee and change the reservation committed the transaction to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FeeAndChange {
+    fee: MicroMinotari,
+    /// `Some` exactly when a change key was reserved, so `build` must emit a change output for it.
+    change: Option<MicroMinotari>,
+}
 
 #[derive(Clone)]
 pub struct TransactionBuilder<KM> {
@@ -58,6 +135,7 @@ pub struct TransactionBuilder<KM> {
     key_manager: KM,
     fee_per_gram: Option<MicroMinotari>,
     fee: MicroMinotari,
+    recipient_specs: Vec<RecipientSpec>,
     recipient_outputs: Vec<RecipientDetails>,
     inputs: Vec<OutputPair>,
     custom_outputs: Vec<OutputPair>,
@@ -69,13 +147,25 @@ pub struct TransactionBuilder<KM> {
     burn_commitment: Option<CompressedCommitment>,
     own_address: TariAddress,
     /// The running `sum(script keys) - sum(sender offset keys)` for the parts of the transaction that have already
-    /// been accounted for. Partial offsets are additive, so this is built up one output at a time.
+    /// been accounted for. Partial offsets are additive, so a transaction can combine the one the key manager
+    /// returned with any the host derived itself.
     partial_script_offset: PrivateKey,
-    /// Script keys of inputs that have not been folded into `partial_script_offset` yet. The next reserved sender
-    /// offset key drains them.
+    /// Script keys of the inputs, folded into `partial_script_offset` by the single reservation.
     pending_input_script_keys: Vec<TariKeyId>,
-    /// Set once a sender offset key has been reserved, which fixes the set of inputs the offset was computed over.
-    sender_offset_key_reserved: bool,
+    phase: BuilderPhase,
+    /// One reserved key per recipient spec, in spec order.
+    spec_sender_offset_keys: Vec<TariKeyAndId>,
+    /// The reserved change key. Its presence *is* the change decision.
+    change_sender_offset_key: Option<TariKeyAndId>,
+    /// The binding fee and change amount, fixed when the keys were reserved.
+    fee_and_change: Option<FeeAndChange>,
+    /// How many outputs were attached to the builder before the reservation, and how many were declared to follow
+    /// it. Anything attached beyond that was never charged for.
+    outputs_before_reserve: usize,
+    declared_pending_outputs: usize,
+    /// The keys handed back to the caller by the reservation. Each one is subtracted from the script offset, so
+    /// each one has to end up on a published output.
+    caller_sender_offset_keys: Vec<TariKeyId>,
 }
 
 impl<KM> TransactionBuilder<KM>
@@ -101,6 +191,7 @@ where KM: TransactionKeyManagerInterface
             key_manager,
             fee_per_gram: None,
             fee: MicroMinotari::zero(),
+            recipient_specs: Vec::new(),
             recipient_outputs: Vec::new(),
             inputs: Vec::new(),
             custom_outputs: Vec::new(),
@@ -113,7 +204,13 @@ where KM: TransactionKeyManagerInterface
             own_address,
             partial_script_offset: PrivateKey::default(),
             pending_input_script_keys: Vec::new(),
-            sender_offset_key_reserved: false,
+            phase: BuilderPhase::Collecting,
+            spec_sender_offset_keys: Vec::new(),
+            change_sender_offset_key: None,
+            fee_and_change: None,
+            outputs_before_reserve: 0,
+            declared_pending_outputs: 0,
+            caller_sender_offset_keys: Vec::new(),
         })
     }
 
@@ -131,13 +228,6 @@ where KM: TransactionKeyManagerInterface
 
     pub fn fee_per_gram(&self) -> Option<MicroMinotari> {
         self.fee_per_gram
-    }
-
-    /// Returns a reference to the key manager embedded in this builder.
-    /// Used by the offline signing prepare functions to sign the payload
-    /// for integrity verification.
-    pub fn key_manager(&self) -> &KM {
-        &self.key_manager
     }
 
     pub fn with_lock_height(&mut self, lock_height: u64) -> &mut Self {
@@ -169,11 +259,11 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    /// Add a recipient to the transaction.
+    /// Add a recipient whose output is already built.
     ///
-    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_key`], or the caller must have registered
-    /// the matching partial script offset with [`Self::with_partial_script_offset`]; otherwise the key is never
-    /// subtracted from the script offset and the transaction will not validate.
+    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_keys`], or the caller must have registered
+    /// the matching partial script offset with [`Self::with_host_derived_partial_script_offset`]; otherwise the key
+    /// is never subtracted from the script offset and the transaction will not validate.
     pub fn add_recipient(
         &mut self,
         recipient_address: TariAddress,
@@ -196,35 +286,23 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
-    /// Reserve a sender offset key for an output of this transaction.
+    /// Declare a recipient output for the builder to construct in [`Self::build`].
     ///
-    /// The key manager generates the key - on a ledger wallet the device does, and the host never sees it - and
-    /// returns it together with a partial script offset that also nets out every input script key added so far. The
-    /// returned key must be used on exactly one output of this transaction.
-    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
-    pub fn reserve_sender_offset_key(&mut self) -> Result<TariKeyAndId, TransactionBuilderError> {
-        let script_keys = std::mem::take(&mut self.pending_input_script_keys);
-        let (partial_offset, mut sender_offset_keys) = self.key_manager.get_script_offset(&script_keys, 1)?;
-        self.partial_script_offset = &self.partial_script_offset + partial_offset;
-        self.sender_offset_key_reserved = true;
-        sender_offset_keys
-            .pop()
-            .ok_or_else(|| TransactionBuilderError::Other("Key manager returned no sender offset key".to_string()))
+    /// Specs belong to the collecting phase: the sender offset key an output publishes is only reserved once the
+    /// builder knows how many outputs the transaction has, because a single `get_script_offset` call for the whole
+    /// transaction is what keeps both sides of that sum blinded. Declaring a recipient after the reservation would
+    /// mint a key against no input script keys at all, which is what this design exists to prevent.
+    pub fn with_recipient_spec(&mut self, spec: RecipientSpec) -> Result<&mut Self, TransactionBuilderError> {
+        if self.phase != BuilderPhase::Collecting {
+            return Err(TransactionBuilderError::RecipientSpecAfterReserve);
+        }
+        self.recipient_specs.push(spec);
+        Ok(self)
     }
 
-    /// Register a partial script offset produced outside this builder.
+    /// Declare an ordinary one sided payment to `destination`.
     ///
-    /// Flows that must create a sender offset key before a builder exists call
-    /// `key_manager.get_script_offset(&[], 1)` and hand the resulting offset here, so that the key they publish on an
-    /// output is still subtracted from the transaction's script offset.
-    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
-    pub fn with_partial_script_offset(&mut self, partial_script_offset: PrivateKey) -> &mut Self {
-        self.partial_script_offset = &self.partial_script_offset + partial_script_offset;
-        self
-    }
-
+    /// A thin wrapper over [`Self::with_recipient_spec`], and therefore part of the collecting phase.
     pub fn add_stealth_recipient(
         &mut self,
         destination: TariAddress,
@@ -232,62 +310,80 @@ where KM: TransactionKeyManagerInterface
         output_features: OutputFeatures,
         memo_field: MemoField,
     ) -> Result<(), TransactionBuilderError> {
-        // If this is a ledger wallet, this needs to come from the ledger as it needs to sign with this key for the
-        // metadata signatures.
-        let sender_offset_private_key = self.reserve_sender_offset_key()?;
-
-        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-            private_key: sender_offset_private_key.key_id.clone().into(),
-            public_key: destination
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
-
-        let encryption_key = TariKeyId::DHEncryptedData {
-            private_key: sender_offset_private_key.key_id.clone().into(),
-            public_key: destination
-                .public_view_key()
-                .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
-                .clone(),
-        };
-        let script_spending_key = self
-            .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, destination.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
-
-        let sender_offset_public_key = self
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-
-        let minimum_value_promise = MicroMinotari::zero();
-        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
-            .with_features(output_features)
-            .with_script(script)
-            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            //We add a placeholder so that we only sign the metadata signature once all fees are calculated, and the user if they are on a ledger, only gets the prompt once
-            .with_place_holder_metadata_signature(&self.key_manager, &sender_offset_private_key.key_id)?
-            .try_build(&self.key_manager)?;
-
-        self.add_recipient(
-            destination,
-            output,
-            sender_offset_private_key.key_id,
-            Some(encryption_key),
-        )?;
+        self.with_recipient_spec(RecipientSpec::stealth(destination, amount, output_features, memo_field))?;
         Ok(())
+    }
+
+    /// Reserve every sender offset key this transaction needs, in a single call to the key manager.
+    ///
+    /// This is the one point at which key material is generated for the transaction's outputs. It folds every input
+    /// script key into the script offset and generates one sender offset key per recipient spec, per declared
+    /// pending output that asked for one, and one more for the change output if there will be one. Splitting it
+    /// across several calls is what the design forbids: a later call would see no input script keys left to fold in,
+    /// and its reply would be a bare sender offset private key.
+    ///
+    /// The change decision and the fee are made here and are binding - `build` emits exactly what this decided.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn reserve_sender_offset_keys(
+        &mut self,
+        pending_outputs: &[PendingOutput],
+    ) -> Result<Vec<TariKeyAndId>, TransactionBuilderError> {
+        if self.phase != BuilderPhase::Collecting {
+            return Err(TransactionBuilderError::SenderOffsetKeysAlreadyReserved);
+        }
+
+        let fee_and_change = self.decide_fee_and_change(pending_outputs)?;
+        let extra = pending_outputs.iter().filter(|o| o.takes_reserved_key).count();
+        let count = self
+            .recipient_specs
+            .len()
+            .saturating_add(usize::from(fee_and_change.change.is_some()))
+            .saturating_add(extra);
+        let script_keys = std::mem::take(&mut self.pending_input_script_keys);
+        let (partial_offset, mut sender_offset_keys) = self
+            .key_manager
+            .get_script_offset(&script_keys, count)
+            .map_err(surface_device_key_limit)?;
+        if sender_offset_keys.len() != count {
+            return Err(TransactionBuilderError::SenderOffsetKeyPoolExhausted);
+        }
+        self.partial_script_offset = &self.partial_script_offset + partial_offset;
+
+        // The caller's keys come off the end, so the pool keeps the spec keys at the front in spec order.
+        let caller_keys = sender_offset_keys.split_off(count.saturating_sub(extra));
+        if fee_and_change.change.is_some() {
+            self.change_sender_offset_key = sender_offset_keys.pop();
+        }
+        self.spec_sender_offset_keys = sender_offset_keys;
+
+        self.fee_and_change = Some(fee_and_change);
+        self.outputs_before_reserve = self.custom_outputs.len().saturating_add(self.recipient_outputs.len());
+        self.declared_pending_outputs = pending_outputs.len();
+        self.caller_sender_offset_keys = caller_keys.iter().map(|k| k.key_id.clone()).collect();
+        self.phase = BuilderPhase::Reserved;
+        Ok(caller_keys)
+    }
+
+    /// Register a partial script offset the host derived itself.
+    ///
+    /// The only legitimate use is an output whose sender offset key is reconstructible from the wallet seed and is
+    /// never a device secret - an L2 bound burn's `r`, derived from the output's own commitment mask, so that the
+    /// burn proof can be rebuilt from seed alone after recovery. A key that came off a ledger device must never be
+    /// registered here: the whole point of the device generating it is that the host never learns it.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn with_host_derived_partial_script_offset(&mut self, partial_script_offset: PrivateKey) -> &mut Self {
+        self.partial_script_offset = &self.partial_script_offset + partial_script_offset;
+        self
     }
 
     /// Add an input to the transaction.
     ///
-    /// Inputs must all be added before the first sender offset key is reserved: reserving folds the script keys of
-    /// the inputs added so far into the script offset, so a later input would never be accounted for.
+    /// Inputs must all be added before the sender offset keys are reserved: reserving folds the script keys of the
+    /// inputs added so far into the script offset, so a later input would never be accounted for.
     pub fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
-        if self.sender_offset_key_reserved {
+        if self.phase != BuilderPhase::Collecting {
             return Err(TransactionBuilderError::InputsAfterOutputs);
         }
         let nonce = self.key_manager.get_random_key(None, None)?;
@@ -305,9 +401,9 @@ where KM: TransactionKeyManagerInterface
 
     /// Add a custom output to the transaction.
     ///
-    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_key`], or the caller must have registered
-    /// the matching partial script offset with [`Self::with_partial_script_offset`]; otherwise the key is never
-    /// subtracted from the script offset and the transaction will not validate.
+    /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_keys`], or the caller must have registered
+    /// the matching partial script offset with [`Self::with_host_derived_partial_script_offset`]; otherwise the key
+    /// is never subtracted from the script offset and the transaction will not validate.
     pub fn with_output(
         &mut self,
         output: WalletOutput,
@@ -324,6 +420,40 @@ where KM: TransactionKeyManagerInterface
     pub fn with_prevent_fee_gt_amount(&mut self, prevent_fee_gt_amount: bool) -> &mut Self {
         self.prevent_fee_gt_amount = prevent_fee_gt_amount;
         self
+    }
+
+    /// The weight a recipient spec's output will contribute, measured from the spec rather than from the finished
+    /// output.
+    ///
+    /// The reservation has to charge for outputs that do not exist yet, and the change decision it makes is binding,
+    /// so `build` must not re-measure them against the outputs it goes on to construct - a byte of difference in
+    /// either direction could flip the decision.
+    pub fn spec_features_and_scripts_size(&self, spec: &RecipientSpec) -> Result<usize, TransactionBuilderError> {
+        let script = match &spec.script {
+            RecipientScript::Explicit(script) => (**script).clone(),
+            // Every default script is a single `PushPubKey`, whatever key ends up in it.
+            RecipientScript::Default => script!(PushPubKey(Box::default()))?,
+            RecipientScript::Multisig {
+                party_number,
+                public_keys,
+                message,
+            } => TariScript::new(vec![
+                Opcode::CheckMultiSigVerify(
+                    *party_number,
+                    u8::try_from(public_keys.len()).unwrap_or(u8::MAX),
+                    vec![CompressedPublicKey::default(); public_keys.len()],
+                    message.clone(),
+                ),
+                Opcode::PushPubKey(Box::default()),
+            ])?,
+        };
+        recipient_output_features_and_scripts_size(
+            self.consensus_constants.transaction_weight_params(),
+            &spec.features,
+            &script,
+            &spec.covenant,
+            &spec.memo,
+        )
     }
 
     fn get_total_features_and_scripts_size_for_outputs(&self) -> Result<usize, TransactionBuilderError> {
@@ -349,6 +479,9 @@ where KM: TransactionKeyManagerInterface
                 ),
             );
         }
+        for spec in &self.recipient_specs {
+            size = size.saturating_add(self.spec_features_and_scripts_size(spec)?);
+        }
         Ok(size)
     }
 
@@ -370,25 +503,46 @@ where KM: TransactionKeyManagerInterface
         &self.recipient_outputs
     }
 
+    pub fn recipient_specs(&self) -> &[RecipientSpec] {
+        &self.recipient_specs
+    }
+
     pub fn custom_outputs(&self) -> &[OutputPair] {
         &self.custom_outputs
     }
 
     pub fn get_fee_estimate_without_change(&self) -> Result<MicroMinotari, TransactionBuilderError> {
-        let num_outputs = self.custom_outputs.len().saturating_add(self.recipient_outputs.len());
+        self.fee_estimate_without_change(&[])
+    }
+
+    /// The fee this transaction would carry with `pending` further outputs attached and no change output.
+    ///
+    /// Flows that spend an entire input to a single recipient need this before they can work out what that
+    /// recipient's amount is, and the output does not exist yet at that point.
+    pub fn get_fee_estimate_with(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
+        self.fee_estimate_without_change(pending)
+    }
+
+    fn fee_estimate_without_change(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
+        let num_outputs = self
+            .custom_outputs
+            .len()
+            .saturating_add(self.recipient_outputs.len())
+            .saturating_add(self.recipient_specs.len())
+            .saturating_add(pending.len());
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         Ok(match self.fee_per_gram {
             Some(fee_per_gram) => {
-                let features_and_scripts_size_without_change =
-                    self.get_total_features_and_scripts_size_for_outputs()?;
-                fee_weighting.calculate(
-                    fee_per_gram,
-                    1,
-                    num_inputs,
-                    num_outputs,
-                    features_and_scripts_size_without_change,
-                )
+                let mut features_and_scripts_size = self.get_total_features_and_scripts_size_for_outputs()?;
+                for output in pending {
+                    features_and_scripts_size = features_and_scripts_size.saturating_add(
+                        fee_weighting
+                            .weighting()
+                            .round_up_features_and_scripts_size(output.features_and_scripts_size),
+                    );
+                }
+                fee_weighting.calculate(fee_per_gram, 1, num_inputs, num_outputs, features_and_scripts_size)
             },
             None => self.fee,
         })
@@ -398,7 +552,7 @@ where KM: TransactionKeyManagerInterface
         if self.fee_per_gram.is_none() && self.fee == MicroMinotari::zero() {
             return Err(TransactionBuilderError::FeeNotSet);
         }
-        if self.recipient_outputs.is_empty() && self.custom_outputs.is_empty() {
+        if self.recipient_outputs.is_empty() && self.custom_outputs.is_empty() && self.recipient_specs.is_empty() {
             return Err(TransactionBuilderError::NoRecipients);
         }
         if self.inputs.is_empty() {
@@ -407,48 +561,56 @@ where KM: TransactionKeyManagerInterface
         if self.inputs.len() > MAX_TRANSACTION_INPUTS {
             return Err(TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
         }
-        if self.recipient_outputs.len().saturating_add(self.custom_outputs.len()) > MAX_TRANSACTION_OUTPUTS {
+        if self
+            .recipient_outputs
+            .len()
+            .saturating_add(self.custom_outputs.len())
+            .saturating_add(self.recipient_specs.len()) >
+            MAX_TRANSACTION_OUTPUTS
+        {
             return Err(TransactionBuilderError::ExceedsMaxOutputs(MAX_TRANSACTION_OUTPUTS));
         }
         Ok(())
     }
 
-    fn add_change_if_required(
-        &mut self,
-        calculate_tx_id: bool,
-    ) -> Result<(MicroMinotari, Option<OutputPair>, Option<TxId>), TransactionBuilderError> {
-        let total_being_spent =
-            self.inputs
-                .iter()
-                .map(|i| i.output.value())
-                .try_fold(MicroMinotari::zero(), |acc, x| {
-                    acc.checked_add(x)
-                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-                })?;
-        let mut total_sent =
-            self.custom_outputs
-                .iter()
-                .map(|o| o.output.value())
-                .try_fold(MicroMinotari::zero(), |acc, x| {
-                    acc.checked_add(x)
-                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-                })?;
-        total_sent = self
+    fn total_output_value(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
+        let add = |acc: MicroMinotari, x: MicroMinotari| {
+            acc.checked_add(x)
+                .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+        };
+        let mut total = self
+            .custom_outputs
+            .iter()
+            .map(|o| o.output.value())
+            .try_fold(MicroMinotari::zero(), add)?;
+        total = self
             .recipient_outputs
             .iter()
             .map(|o| o.output.output.value())
-            .try_fold(total_sent, |acc, x| {
-                acc.checked_add(x)
-                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-            })?;
+            .try_fold(total, add)?;
+        total = self.recipient_specs.iter().map(|s| s.amount).try_fold(total, add)?;
+        pending.iter().map(|o| o.value).try_fold(total, add)
+    }
+
+    /// The weight induced fee a change output would add.
+    fn change_output_fee(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let fee_without_change = self.get_fee_estimate_without_change()?;
+        Ok(match self.fee_per_gram {
+            Some(fee_per_gram) => {
+                fee_weighting.calculate(fee_per_gram, 0, 0, 1, self.change_features_and_scripts_size()?)
+            },
+            None => 0.into(),
+        })
+    }
+
+    fn change_features_and_scripts_size(&self) -> Result<usize, TransactionBuilderError> {
+        let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let temp_script = script!(PushPubKey(Box::default()))?;
         let change_payment_id_size = self
             .create_change_memo(MicroMinotari(0))
             .map(|m| m.get_size())
             .unwrap_or(0);
-        let change_features_and_scripts_size = OutputFeatures::default()
+        let size = OutputFeatures::default()
             .get_serialized_size()
             .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?
             .saturating_add(
@@ -457,71 +619,39 @@ where KM: TransactionKeyManagerInterface
                     .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
             )
             .saturating_add(change_payment_id_size);
-        let change_features_and_scripts_size = fee_weighting
-            .weighting()
-            .round_up_features_and_scripts_size(change_features_and_scripts_size);
+        Ok(fee_weighting.weighting().round_up_features_and_scripts_size(size))
+    }
+
+    /// Decide, once and for all, what this transaction's fee is and whether it carries change.
+    ///
+    /// The decision is deliberately conservative: a change key is reserved only when the projected change exceeds
+    /// the weight induced fee that same output would add. That is the same test the change amount itself has to
+    /// pass, so the case where a key is reserved and there turns out to be nothing to put it on cannot arise from
+    /// rounding. The opposite case is harmless - with no change output the remainder simply goes to the fee.
+    fn decide_fee_and_change(&self, pending: &[PendingOutput]) -> Result<FeeAndChange, TransactionBuilderError> {
+        let total_being_spent = self.get_total_input_value()?;
+        let total_sent = self.total_output_value(pending)?;
+        let fee_without_change = self.fee_estimate_without_change(pending)?;
         let combined_sent = total_sent
             .checked_add(fee_without_change)
             .ok_or(TransactionBuilderError::TransactionAmountOverflow)?;
 
-        let change_amount = total_being_spent.checked_sub(combined_sent);
-        let (fee, change) = match change_amount {
-            None => {
-                return Err(TransactionBuilderError::SpendingMoreThanAvailable {
+        let remainder =
+            total_being_spent
+                .checked_sub(combined_sent)
+                .ok_or(TransactionBuilderError::SpendingMoreThanAvailable {
                     available: total_being_spent,
                     sent: combined_sent,
-                });
-            },
-            Some(MicroMinotari(0)) => (fee_without_change, None),
-            Some(remainder_without_change) => {
-                let change_fee = match self.fee_per_gram {
-                    Some(fee_per_gram) => {
-                        fee_weighting.calculate(fee_per_gram, 0, 0, 1, change_features_and_scripts_size)
-                    },
-                    None => 0.into(),
-                };
-                let change_amount = remainder_without_change.checked_sub(change_fee);
-                match change_amount {
-                    // You can't win. Just add the change to the fee (which is less than the cost of adding another
-                    // output and go without a change output
-                    // Not enough to cover the change output, so the remainder is added to the fee
-                    None | Some(MicroMinotari(0)) => (add_fee(fee_without_change, remainder_without_change)?, None),
-                    Some(v) => (add_fee(fee_without_change, change_fee)?, self.build_change(v)?),
-                }
-            },
-        };
-        if fee > total_sent {
-            warn!(
-                target: LOG_TARGET,
-                "Fee ({fee}) is greater than amount ({total_sent}) being sent for Transaction.",
-            );
-            if self.prevent_fee_gt_amount {
-                return Err(TransactionBuilderError::FeeGreaterThanAmount { fee, sent: total_sent });
-            }
-        }
-        let view_key = self.key_manager.get_view_key().pub_key;
-        let tx_id = if calculate_tx_id {
-            Some(
-                change
-                    .as_ref()
-                    .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
-                    .or_else(|| {
-                        self.recipient_outputs
-                            .first()
-                            .map(|r| r.output.output.calculate_tx_id(view_key.clone().as_bytes()))
-                    })
-                    .or_else(|| {
-                        self.custom_outputs
-                            .first()
-                            .map(|c| c.output.calculate_tx_id(view_key.clone().as_bytes()))
-                    })
-                    .unwrap_or_else(TxId::new_random),
-            )
-        } else {
-            None
+                })?;
+
+        let change_fee = self.change_output_fee()?;
+        let (fee, change) = match remainder.checked_sub(change_fee) {
+            // Not enough to cover a change output, so the remainder goes to the fee.
+            None | Some(MicroMinotari(0)) => (add_fee(fee_without_change, remainder)?, None),
+            Some(change) => (add_fee(fee_without_change, change_fee)?, Some(change)),
         };
 
-        Ok((fee, change, tx_id))
+        Ok(FeeAndChange { fee, change })
     }
 
     fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
@@ -540,11 +670,16 @@ where KM: TransactionKeyManagerInterface
         .map_err(TransactionBuilderError::InvalidMemo)?;
 
         // we only set for the first output, otherwise the extra data gets too large
-        if let Some(recipient) = self.recipient_outputs.first() {
-            memo.transaction_info_set_amount(recipient.output.output.value());
+        let first_recipient = self
+            .recipient_outputs
+            .first()
+            .map(|r| (r.output.output.value(), r.recipient_address.clone()))
+            .or_else(|| self.recipient_specs.first().map(|s| (s.amount, s.destination.clone())));
+        if let Some((value, address)) = first_recipient {
+            memo.transaction_info_set_amount(value);
             match memo.get_type() {
                 TxType::PaymentToOther => memo
-                    .transaction_info_set_address(recipient.recipient_address.clone())
+                    .transaction_info_set_address(address)
                     .map_err(TransactionBuilderError::InvalidMemo)?,
                 TxType::PaymentToSelf |
                 TxType::CoinSplit |
@@ -566,6 +701,12 @@ where KM: TransactionKeyManagerInterface
         for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.output.output_hash());
         }
+        // A spec's output does not exist yet, but its hash occupies the same space in the memo as any other. The
+        // reservation charges for this memo and the change decision it makes is binding, so the memo it measures has
+        // to be the same size as the one `build` writes - by which time every spec has become a recipient output.
+        for _ in &self.recipient_specs {
+            sent_hashes.push(FixedHash::zero());
+        }
         // if its too much outputs, we dont track this
         if sent_hashes.len() <= 2 {
             memo.transaction_info_set_sent_output_hashes(sent_hashes)
@@ -574,11 +715,156 @@ where KM: TransactionKeyManagerInterface
         Ok(memo)
     }
 
-    fn build_change(&mut self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
+    /// Resolve a spec's commitment mask, the key the recipient recovers the output with, and - for an output the
+    /// wallet is sending to itself - the script key generated alongside the mask.
+    fn spec_keys(
+        &self,
+        spec: &RecipientSpec,
+        sender_offset: &TariKeyAndId,
+    ) -> Result<(TariKeyId, Option<TariKeyId>, Option<TariKeyAndId>), TransactionBuilderError> {
+        match &spec.keys {
+            RecipientKeys::DiffieHellman => {
+                let view_key = spec
+                    .destination
+                    .public_view_key()
+                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?
+                    .clone();
+                Ok((
+                    TariKeyId::DHCommitmentMask {
+                        private_key: sender_offset.key_id.clone().into(),
+                        public_key: view_key.clone(),
+                    },
+                    Some(TariKeyId::DHEncryptedData {
+                        private_key: sender_offset.key_id.clone().into(),
+                        public_key: view_key,
+                    }),
+                    None,
+                ))
+            },
+            RecipientKeys::DiffieHellmanEncrypted => {
+                let view_key = spec
+                    .destination
+                    .public_view_key()
+                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?;
+                let shared_secret = self
+                    .key_manager
+                    .get_diffie_hellman_shared_secret(&sender_offset.key_id, view_key)?;
+                let commitment_mask = self.key_manager.create_encrypted_key(
+                    public_key_to_output_spending_key(&shared_secret).map_err(TransactionBuilderError::from)?,
+                    None,
+                )?;
+                let encryption = self.key_manager.create_encrypted_key(
+                    public_key_to_output_encryption_key(&shared_secret).map_err(TransactionBuilderError::from)?,
+                    None,
+                )?;
+                Ok((commitment_mask, Some(encryption), None))
+            },
+            RecipientKeys::Own => {
+                let (commitment_mask, script_key) = self.key_manager.get_next_commitment_mask_and_script_key()?;
+                Ok((commitment_mask.key_id, None, Some(script_key)))
+            },
+        }
+    }
+
+    /// Build the script a spec's output publishes.
+    fn spec_script(
+        &self,
+        spec: &RecipientSpec,
+        sender_offset: &TariKeyAndId,
+        commitment_mask_key_id: &TariKeyId,
+        own_script_key: Option<&TariKeyAndId>,
+    ) -> Result<TariScript, TransactionBuilderError> {
+        match &spec.script {
+            RecipientScript::Explicit(script) => Ok((**script).clone()),
+            RecipientScript::Default => match own_script_key {
+                Some(script_key) => Ok(script!(PushPubKey(Box::new(script_key.pub_key.clone())))?),
+                None => Ok(push_pubkey_script(
+                    &self.key_manager.stealth_address_script_spending_key(
+                        commitment_mask_key_id,
+                        spec.destination.public_spend_key(),
+                    )?,
+                )),
+            },
+            RecipientScript::Multisig {
+                party_number,
+                public_keys,
+                message,
+            } => {
+                let ephemeral_pubkeys =
+                    derive_multisig_ephemeral_pubkeys(&self.key_manager, public_keys, &sender_offset.key_id)?;
+                let script_pubkey = self
+                    .key_manager
+                    .stealth_address_script_spending_key(commitment_mask_key_id, spec.destination.public_spend_key())?;
+                Ok(TariScript::new(vec![
+                    Opcode::CheckMultiSigVerify(
+                        *party_number,
+                        u8::try_from(ephemeral_pubkeys.len())
+                            .map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
+                        ephemeral_pubkeys,
+                        message.clone(),
+                    ),
+                    Opcode::PushPubKey(Box::new(script_pubkey)),
+                ])?)
+            },
+        }
+    }
+
+    /// Construct the output a recipient spec describes, around the sender offset key reserved for it.
+    fn build_spec_output(
+        &self,
+        spec: &RecipientSpec,
+        sender_offset: &TariKeyAndId,
+        fee: MicroMinotari,
+    ) -> Result<(WalletOutput, Option<TariKeyId>), TransactionBuilderError> {
+        let mut memo = spec.memo.clone();
+        memo.set_fee(fee);
+
+        let (commitment_mask_key_id, recovery_key_id, own_script_key) = self.spec_keys(spec, sender_offset)?;
+        let script = self.spec_script(spec, sender_offset, &commitment_mask_key_id, own_script_key.as_ref())?;
+        let script_key_id = match &spec.script_key {
+            RecipientScriptKey::Zero => TariKeyId::Zero,
+            RecipientScriptKey::OwnSpendKey => self.key_manager.get_spend_key().key_id,
+            RecipientScriptKey::Own => own_script_key.as_ref().map(|k| k.key_id.clone()).ok_or_else(|| {
+                TransactionBuilderError::Other(
+                    "RecipientScriptKey::Own needs RecipientKeys::Own to generate the key".to_string(),
+                )
+            })?,
+        };
+
+        let builder = WalletOutputBuilder::new(spec.amount, commitment_mask_key_id)
+            .with_features(spec.features.clone())
+            .with_script(script)
+            .with_covenant(spec.covenant.clone())
+            .encrypt_data_for_recovery(&self.key_manager, recovery_key_id.as_ref(), memo)?
+            .with_input_data(ExecutionStack::default())
+            .with_sender_offset_public_key(sender_offset.pub_key.clone())
+            .with_script_key(script_key_id)
+            .with_minimum_value_promise(spec.minimum_value_promise);
+
+        // Spec built outputs are constructed after the fee is final, so each one is signed once and a ledger device
+        // prompts once.
+        let builder = match spec.metadata_signature {
+            RecipientMetadataSignature::UserVerified => builder.sign_metadata_signature_user_verified(
+                &self.key_manager,
+                &sender_offset.key_id,
+                &spec.destination,
+            )?,
+            RecipientMetadataSignature::Unverified => {
+                builder.sign_metadata_signature(&self.key_manager, &sender_offset.key_id)?
+            },
+        };
+
+        Ok((builder.try_build(&self.key_manager)?, recovery_key_id))
+    }
+
+    fn build_change(
+        &mut self,
+        amount: MicroMinotari,
+        sender_offset: TariKeyAndId,
+    ) -> Result<OutputPair, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key()?;
         let memo = self.create_change_memo(amount)?;
-        let sender_offset_public = self.reserve_sender_offset_key()?;
         let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
         let input_data = ExecutionStack::default();
 
@@ -607,7 +893,7 @@ where KM: TransactionKeyManagerInterface
         let metadata_sig = self.key_manager.get_metadata_signature(
             &change_commitment_mask_key.key_id,
             &amount.into(),
-            &sender_offset_public.key_id,
+            &sender_offset.key_id,
             output_version,
             &metadata_message,
             features.range_proof_type,
@@ -620,7 +906,7 @@ where KM: TransactionKeyManagerInterface
             script,
             input_data,
             change_script_key.key_id,
-            sender_offset_public.pub_key.clone(),
+            sender_offset.pub_key.clone(),
             metadata_sig,
             0,
             covenant,
@@ -630,12 +916,12 @@ where KM: TransactionKeyManagerInterface
             &self.key_manager,
         )?;
         let nonce = self.key_manager.get_random_key(None, None)?;
-        Ok(Some(OutputPair::new(
+        Ok(OutputPair::new(
             change_wallet_output,
             nonce.key_id,
-            sender_offset_public.key_id,
+            sender_offset.key_id,
             None,
-        )))
+        ))
     }
 
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
@@ -777,14 +1063,105 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
+    /// Turn every recipient spec into an output, using the keys reserved for them.
+    fn build_spec_outputs(&mut self, total_fee: MicroMinotari) -> Result<Vec<WalletOutput>, TransactionBuilderError> {
+        let specs = std::mem::take(&mut self.recipient_specs);
+        let keys = std::mem::take(&mut self.spec_sender_offset_keys);
+        let mut keys = keys.into_iter();
+        let mut spec_outputs = Vec::with_capacity(specs.len());
+        for spec in &specs {
+            let sender_offset = keys
+                .next()
+                .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
+            let (output, recovery_key_id) = self.build_spec_output(spec, &sender_offset, total_fee)?;
+            spec_outputs.push(output.clone());
+            self.add_recipient(spec.destination.clone(), output, sender_offset.key_id, recovery_key_id)?;
+        }
+        let remaining = keys.count();
+        if remaining > 0 {
+            return Err(TransactionBuilderError::SenderOffsetKeyPoolNotDrained { remaining });
+        }
+        Ok(spec_outputs)
+    }
+
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     pub fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
+        // The reservation is the only place the input script keys are folded into the script offset, so a builder
+        // that never reserved would produce a transaction whose script offset does not balance.
+        let FeeAndChange {
+            fee: total_fee,
+            change: change_amount,
+        } = self
+            .fee_and_change
+            .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;
+
+        // Every key the reservation handed back is subtracted from the script offset, so one that never made it
+        // onto a published output would leave the offset unbalanced and the transaction unspendable.
+        let unplaced = self
+            .caller_sender_offset_keys
+            .iter()
+            .filter(|key_id| {
+                !self
+                    .custom_outputs
+                    .iter()
+                    .chain(self.recipient_outputs.iter().map(|r| &r.output))
+                    .any(|o| &&o.sender_offset_key_id == key_id)
+            })
+            .count();
+        if unplaced > 0 {
+            return Err(TransactionBuilderError::SenderOffsetKeyPoolNotDrained { remaining: unplaced });
+        }
+
+        // Everything the reservation charged for was either present then, declared then, or is a spec. Anything
+        // else was never in the fee it committed to.
+        let attached_after_reserve = self
+            .custom_outputs
+            .len()
+            .saturating_add(self.recipient_outputs.len())
+            .saturating_sub(self.outputs_before_reserve);
+        if attached_after_reserve != self.declared_pending_outputs {
+            return Err(TransactionBuilderError::UndeclaredOutputAfterReserve {
+                declared: self.declared_pending_outputs,
+                added: attached_after_reserve,
+            });
+        }
+
         self.check_conditions()?;
 
-        let (total_fee, mut change_output, _) = self.add_change_if_required(false)?;
+        let total_sent = self.total_output_value(&[])?;
+        if total_fee > total_sent {
+            warn!(
+                target: LOG_TARGET,
+                "Fee ({total_fee}) is greater than amount ({total_sent}) being sent for Transaction.",
+            );
+            if self.prevent_fee_gt_amount {
+                return Err(TransactionBuilderError::FeeGreaterThanAmount {
+                    fee: total_fee,
+                    sent: total_sent,
+                });
+            }
+        }
+
+        // Construct the spec outputs first: the change memo names the first recipient, and the transaction id is
+        // derived from the outputs.
+        let spec_outputs = self.build_spec_outputs(total_fee)?;
+
+        let mut change_output = match (change_amount, self.change_sender_offset_key.take()) {
+            (Some(amount), Some(sender_offset)) => Some(self.build_change(amount, sender_offset)?),
+            (None, None) => None,
+            // The change decision was made when the keys were reserved and is binding in both directions. A key
+            // with no output to carry it is an invariant violation, not a case to paper over: it would be
+            // subtracted from the script offset and never published.
+            (_, key) => {
+                return Err(TransactionBuilderError::SenderOffsetKeyPoolNotDrained {
+                    remaining: usize::from(key.is_some()),
+                });
+            },
+        };
+
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
         let (total_public_nonce, total_public_excess) =
@@ -919,13 +1296,6 @@ where KM: TransactionKeyManagerInterface
                     .get_txo_private_kernel_offset(change.output.commitment_mask_key_id(), &change.kernel_nonce)?;
         }
 
-        // Every input script key must have been folded into a partial script offset, which only happens when an
-        // output takes its sender offset key from `reserve_sender_offset_key`.
-        if !self.pending_input_script_keys.is_empty() {
-            return Err(TransactionBuilderError::UnassignedInputScriptKeys(
-                self.pending_input_script_keys.len(),
-            ));
-        }
         let script_offset = self.partial_script_offset.clone();
 
         core_tx_builder.add_offset(offset);
@@ -1005,6 +1375,19 @@ where KM: TransactionKeyManagerInterface
             MemoField::default()
         };
 
+        // The spec built outputs went through `update_encrypted_data_and_metadata_sig` above like every other
+        // recipient, so return the versions that are actually in the body.
+        let spec_outputs = spec_outputs
+            .iter()
+            .map(|built| {
+                sent_outputs
+                    .iter()
+                    .find(|o| o.output.commitment() == built.commitment())
+                    .map(|o| o.output.clone())
+                    .unwrap_or_else(|| built.clone())
+            })
+            .collect();
+
         Ok(FinalizedTransaction {
             tx_id,
             source_address: self.own_address,
@@ -1014,6 +1397,7 @@ where KM: TransactionKeyManagerInterface
             transaction: tx,
             payment_id,
             change: change_output.map(|o| o.output),
+            spec_outputs,
             custom_outputs: self.custom_outputs.into_iter().map(|o| o.output).collect(),
             sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
@@ -1035,6 +1419,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
             consensus_constants: &'a ConsensusConstants,
             fee_per_gram: &'a Option<MicroMinotari>,
             fee: &'a MicroMinotari,
+            recipient_specs: usize,
             recipient_outputs: &'a Vec<RecipientDetails>,
             inputs: &'a Vec<OutputPair>,
             custom_outputs: &'a Vec<OutputPair>,
@@ -1052,6 +1437,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
             key_manager: _,
             fee_per_gram,
             fee,
+            recipient_specs,
             recipient_outputs,
             inputs,
             custom_outputs,
@@ -1064,7 +1450,13 @@ impl<KM> Debug for TransactionBuilder<KM> {
             own_address,
             partial_script_offset: _,
             pending_input_script_keys: _,
-            sender_offset_key_reserved: _,
+            phase: _,
+            spec_sender_offset_keys: _,
+            change_sender_offset_key: _,
+            fee_and_change: _,
+            outputs_before_reserve: _,
+            declared_pending_outputs: _,
+            caller_sender_offset_keys: _,
         } = self;
 
         fmt::Debug::fmt(
@@ -1072,6 +1464,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
                 consensus_constants,
                 fee_per_gram,
                 fee,
+                recipient_specs: recipient_specs.len(),
                 recipient_outputs,
                 inputs,
                 custom_outputs,
@@ -1088,6 +1481,21 @@ impl<KM> Debug for TransactionBuilder<KM> {
     }
 }
 
+/// Translate the key manager's device key limit into the output limit it really is.
+///
+/// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it will
+/// make. A caller that hits that cap needs to be told its transaction has too many outputs, not handed a key manager
+/// error - let alone a status word - to reverse engineer. Software key managers have no such cap, so nothing else
+/// is rewritten.
+fn surface_device_key_limit(e: KeyManagerError) -> TransactionBuilderError {
+    match e {
+        KeyManagerError::TooManySenderOffsetKeys { requested, max } => {
+            TransactionBuilderError::TooManyOutputsForDevice { requested, max }
+        },
+        other => other.into(),
+    }
+}
+
 /// Adds two fee amounts, returning an overflow error rather than wrapping.
 fn add_fee(fee: MicroMinotari, extra: MicroMinotari) -> Result<MicroMinotari, TransactionBuilderError> {
     fee.checked_add(extra)
@@ -1095,7 +1503,9 @@ fn add_fee(fee: MicroMinotari, extra: MicroMinotari) -> Result<MicroMinotari, Tr
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines)]
 mod test {
+    use minotari_ledger_wallet_common::script_offset::MAX_SENDER_OFFSET_KEYS;
     use tari_common_types::seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords};
     use tari_script::Opcode;
     use tari_utilities::Hidden;
@@ -1126,16 +1536,38 @@ mod test {
         test_helpers::{
             TestParams,
             UtxoTestParams,
-            add_output_with_reserved_sender_offset_key,
+            add_outputs_with_reserved_sender_offset_keys,
             create_consensus_constants,
             create_consensus_manager,
             create_test_input,
             create_wallet_output_with_data,
         },
         transaction_builder::TransactionBuilder,
-        transaction_components::{MemoField, OutputFeatures, WalletOutputBuilder},
+        transaction_components::{MemoField, OutputFeatures},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+
+    /// A wallet address to send to that is not this wallet's own.
+    fn random_address() -> TariAddress {
+        TariAddress::new_dual_address(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap()
+    }
+
+    /// Assert that a transaction is internally consistent, which includes checking that
+    /// `sum(input script keys) - sum(output sender offset keys)` equals the published script offset.
+    fn assert_validates(tx: &crate::transaction_components::Transaction) {
+        let validator =
+            TransactionInternalConsistencyValidator::new(false, create_consensus_manager(), CryptoFactories::default());
+        validator
+            .validate(tx, None, None, u64::MAX)
+            .expect("the transaction, and therefore its script offset, must be valid");
+    }
 
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
     #[test]
@@ -1177,7 +1609,7 @@ mod test {
             .unwrap()
             .with_fee_per_gram(MicroMinotari(1))
             .with_prevent_fee_gt_amount(false);
-        add_output_with_reserved_sender_offset_key(&mut builder, output).unwrap();
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap();
         let result = builder.build().unwrap();
         assert_eq!(
             result.transaction.body.kernels().first().unwrap().lock_height,
@@ -1213,16 +1645,18 @@ mod test {
         let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
         builder
             .with_lock_height(0)
-            .with_output(output, p.sender_offset_key_id, None)
-            .unwrap()
-            .with_fee_per_gram(MicroMinotari(2));
+            .with_fee_per_gram(MicroMinotari(2))
+            .with_prevent_fee_gt_amount(false);
         let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![], None);
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).unwrap();
         }
-        let _err = builder.build().unwrap_err();
-        // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
-        // assert_eq!(err, TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap();
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::ExceedsMaxInputs(_)),
+            "unexpected error: {err:?}"
+        );
     }
 
     /// A custom output can be rewritten during the build — the encrypted data records the final fee, and the metadata
@@ -1264,9 +1698,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(5))
             .with_input(input)
-            .unwrap()
-            .with_output(output, p.sender_offset_key_id.clone(), None)
             .unwrap();
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap();
 
         let finalized = builder.build().unwrap();
         let published = finalized.custom_outputs.first().expect("the custom output is returned");
@@ -1316,14 +1749,18 @@ mod test {
             .with_lock_height(0)
             .with_input(input)
             .unwrap()
-            .with_output(output, p.sender_offset_key_id.clone(), None)
-            .unwrap()
             .with_fee_per_gram(MicroMinotari(1));
-        let _err = builder.build().unwrap_err();
+        // The reservation is where the fee and the change are decided, so this is where spending more than the
+        // inputs cover is caught.
+        let err = add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::SpendingMoreThanAvailable { .. }),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]
-    fn inputs_cannot_be_added_after_a_sender_offset_key_is_reserved() {
+    fn inputs_cannot_be_added_after_the_sender_offset_keys_are_reserved() {
         let key_manager = KeyManager::new_random().unwrap();
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
         let late_input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
@@ -1333,7 +1770,7 @@ mod test {
 
         // Reserving folds in the script keys of the inputs added so far, so a later input would never be accounted
         // for and the script offset would be wrong.
-        builder.reserve_sender_offset_key().unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
 
         let err = builder.with_input(late_input).unwrap_err();
         assert!(
@@ -1342,15 +1779,16 @@ mod test {
         );
     }
 
+    /// The reservation is the only place the input script keys are folded into the script offset, so a builder that
+    /// never reserved would publish an offset that does not balance.
     #[test]
-    fn build_refuses_a_transaction_whose_input_script_keys_were_never_folded_in() {
+    fn build_refuses_a_transaction_that_never_reserved_its_keys() {
         let key_manager = KeyManager::new_random().unwrap();
         let p = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None);
         let output = p
             .create_output(
                 UtxoTestParams {
-                    // Input less fee exactly, so there is no change output and nothing reserves a sender offset key.
                     value: MicroMinotari(1900),
                     ..Default::default()
                 },
@@ -1364,16 +1802,424 @@ mod test {
             .with_prevent_fee_gt_amount(false)
             .with_input(input)
             .unwrap()
-            // The sender offset key came from `TestParams`, not from the builder, so it never drained the pending
-            // input script keys.
+            // The sender offset key came from `TestParams`, not from the builder, so nothing ever folded the input
+            // script keys in.
             .with_output(output, p.sender_offset_key_id.clone(), None)
             .unwrap();
 
         let err = builder.build().unwrap_err();
         assert!(
-            matches!(err, TransactionBuilderError::UnassignedInputScriptKeys(1)),
+            matches!(err, TransactionBuilderError::SenderOffsetKeysNotReserved),
             "unexpected error: {err:?}"
         );
+    }
+
+    /// One `get_script_offset` call per transaction is the whole design: a second call would see no input script
+    /// keys left to fold in, and its reply would be a bare sender offset private key.
+    #[test]
+    fn the_sender_offset_keys_can_only_be_reserved_once() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(20000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(2)).with_input(input).unwrap();
+
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let err = builder.reserve_sender_offset_keys(&[]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::SenderOffsetKeysAlreadyReserved),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    /// The semantic change in the two phase builder: declaring a recipient after the reservation used to silently
+    /// mint a sender offset key against no input script keys at all, which is exactly the unblinded offset the
+    /// design exists to prevent. Now it is refused.
+    #[test]
+    fn a_recipient_spec_cannot_be_declared_after_the_reservation() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(20000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(2)).with_input(input).unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let err = builder
+            .with_recipient_spec(RecipientSpec::stealth(
+                random_address(),
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            ))
+            .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::RecipientSpecAfterReserve),
+            "unexpected error: {err:?}"
+        );
+
+        // `add_stealth_recipient` is a thin wrapper over the spec, so it inherits the phase rule.
+        let err = builder
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::RecipientSpecAfterReserve),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    /// Every key the reservation hands back is subtracted from the script offset, so one that is never published
+    /// would leave the transaction unspendable. That has to be caught at build time, not on chain.
+    #[test]
+    fn build_refuses_a_reserved_key_that_was_never_placed_on_an_output() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        // Two keys are asked for, but only one output is ever attached.
+        let pending = vec![
+            PendingOutput::from_output(&output).unwrap(),
+            PendingOutput::from_output(&output).unwrap(),
+        ];
+        let mut keys = builder.reserve_sender_offset_keys(&pending).unwrap();
+        let first = keys.remove(0);
+        let mut output = output;
+        output.set_sender_offset_public_key(first.pub_key.clone());
+        output.set_metadata_signature(Default::default());
+        builder.with_output(output, first.key_id, None).unwrap();
+
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::SenderOffsetKeyPoolNotDrained {
+                remaining: 1
+            }),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    /// The fee and the change decision are made when the keys are reserved, so an output attached afterwards that
+    /// was never declared was never charged for.
+    #[test]
+    fn build_refuses_an_output_that_was_never_declared() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        builder
+            .with_output(output, p.sender_offset_key_id.clone(), None)
+            .unwrap();
+
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::UndeclaredOutputAfterReserve {
+                declared: 0,
+                added: 1
+            }),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    /// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it
+    /// will make. That has to reach the caller as an output limit, not as a key manager error - let alone a status
+    /// word - because the actionable fact is "this transaction has too many outputs for a ledger".
+    ///
+    /// The key manager side of this is covered by
+    /// `key_manager::manager::tests::get_script_offset_refuses_more_sender_offset_keys_than_the_device_will_derive`;
+    /// a ledger key manager cannot be constructed at all without the `ledger` feature, so the translation is
+    /// exercised on its own here.
+    #[test]
+    fn the_device_key_limit_surfaces_as_an_output_limit() {
+        let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap();
+        let err = surface_device_key_limit(KeyManagerError::TooManySenderOffsetKeys {
+            requested: max + 1,
+            max,
+        });
+        match err {
+            TransactionBuilderError::TooManyOutputsForDevice {
+                requested,
+                max: reported,
+            } => {
+                assert_eq!(requested, max + 1);
+                assert_eq!(reported, max);
+            },
+            other => panic!("expected TooManyOutputsForDevice, got {other:?}"),
+        }
+        assert!(
+            err.to_string().contains("outputs"),
+            "the message must name the limit the caller can act on: {err}"
+        );
+
+        // Everything else the key manager can say is passed through unchanged.
+        let other = surface_device_key_limit(KeyManagerError::UnblindedScriptOffset {
+            script_keys: 0,
+            sender_offset_keys: 1,
+        });
+        assert!(
+            matches!(other, TransactionBuilderError::KeyManagerError(_)),
+            "unexpected error: {other:?}"
+        );
+    }
+
+    /// A software key manager has no such cap - it is a guard on device work, not a protocol rule - so a large
+    /// multi-recipient transaction still builds.
+    #[test]
+    fn a_software_key_manager_has_no_output_limit() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap();
+        let input = create_test_input(MicroMinotari(10_000_000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(1));
+        builder.with_input(input).unwrap();
+        for _ in 0..=max {
+            builder
+                .add_stealth_recipient(
+                    random_address(),
+                    MicroMinotari(1000),
+                    OutputFeatures::default(),
+                    MemoField::new_empty(),
+                )
+                .unwrap();
+        }
+        assert!(builder.reserve_sender_offset_keys(&[]).is_ok());
+        let finalized = builder.build().unwrap();
+        assert_eq!(finalized.transaction.body.outputs().len(), max + 2);
+        assert_validates(&finalized.transaction);
+    }
+
+    /// A transaction that will carry change reserves exactly one more key than it has outputs, and one that will
+    /// not reserves none. The count is what the device is asked for, so it has to be exact.
+    #[test]
+    fn the_change_decision_fixes_the_number_of_keys_reserved() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+
+        // With change: a large input and a small payment.
+        let mut with_change =
+            TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+        with_change
+            .with_fee_per_gram(MicroMinotari(2))
+            .with_input(create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None))
+            .unwrap();
+        with_change
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(1000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap();
+        // The caller gets no keys back, but a change key was reserved behind the scenes, and `build` must produce
+        // an output for it.
+        assert!(with_change.reserve_sender_offset_keys(&[]).unwrap().is_empty());
+        let finalized = with_change.build().unwrap();
+        assert!(finalized.change.is_some(), "there should be a change output");
+        assert_eq!(finalized.transaction.body.outputs().len(), 2);
+        assert_validates(&finalized.transaction);
+    }
+
+    /// The change decision is deliberately conservative: a change key is reserved only when the projected change is
+    /// worth more than the fee that output would itself add. Either side of that threshold has to work, because the
+    /// decision is binding - `build` emits exactly what the reservation decided.
+    #[test]
+    #[allow(clippy::identity_op)]
+    fn the_change_threshold_is_the_cost_of_the_change_output() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+        let weighting = constants.transaction_weight_params();
+        let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
+        let fee_for_change_output = weighting.params().output_weight * uT;
+
+        // The change output pays for itself only if the remainder exceeds its own weight induced fee. Sit one
+        // micro-Minotari either side of that line and check the transaction that comes out.
+        for (label, extra, expect_change) in [
+            ("just below the threshold", MicroMinotari(0), false),
+            ("just above the threshold", MicroMinotari(2000), true),
+        ] {
+            let p = TestParams::new(&key_manager);
+            let input = create_test_input(
+                2000 * uT + tx_fee + fee_for_change_output - 1 * uT + extra,
+                0,
+                &key_manager,
+                vec![],
+                None,
+            );
+            let output = p
+                .create_output(
+                    UtxoTestParams {
+                        value: 2000 * uT,
+                        ..Default::default()
+                    },
+                    &key_manager,
+                )
+                .unwrap();
+            let mut builder =
+                TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            builder
+                .with_fee_per_gram(MicroMinotari(1))
+                .with_prevent_fee_gt_amount(false)
+                .with_input(input)
+                .unwrap();
+            add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![output]).unwrap();
+            let finalized = builder.build().unwrap();
+
+            assert_eq!(
+                finalized.change.is_some(),
+                expect_change,
+                "{label}: unexpected change decision"
+            );
+            assert_eq!(
+                finalized.transaction.body.outputs().len(),
+                if expect_change { 2 } else { 1 },
+                "{label}: unexpected output count"
+            );
+            if !expect_change {
+                // Below the threshold the excess is not lost, it goes to the fee.
+                assert!(
+                    finalized.fee > tx_fee,
+                    "{label}: the remainder should have been added to the fee"
+                );
+            }
+            assert_validates(&finalized.transaction);
+        }
+    }
+
+    /// The offset the builder publishes has to be `sum(input script keys) - sum(output sender offset keys)` for
+    /// every shape of transaction, otherwise the outputs are unspendable.
+    #[test]
+    fn the_script_offset_balances_for_every_shape_of_transaction() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+
+        for (label, input_values, recipients, expect_change) in [
+            ("one input, one output, no change", vec![MicroMinotari(3000)], 1, false),
+            (
+                "one input, one output, with change",
+                vec![MicroMinotari(100_000)],
+                1,
+                true,
+            ),
+            (
+                "several inputs and outputs, with change",
+                vec![MicroMinotari(50_000), MicroMinotari(60_000), MicroMinotari(70_000)],
+                3,
+                true,
+            ),
+        ] {
+            let mut builder =
+                TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            builder
+                .with_fee_per_gram(MicroMinotari(1))
+                .with_prevent_fee_gt_amount(false);
+            for value in &input_values {
+                builder
+                    .with_input(create_test_input(*value, 0, &key_manager, vec![], None))
+                    .unwrap();
+            }
+            let per_recipient = if expect_change {
+                MicroMinotari(1000)
+            } else {
+                // Send everything the fee leaves behind, so the remainder cannot pay for a change output.
+                let sizing_spec = RecipientSpec::stealth(
+                    random_address(),
+                    MicroMinotari::zero(),
+                    OutputFeatures::default(),
+                    MemoField::new_empty(),
+                );
+                let size = builder.spec_features_and_scripts_size(&sizing_spec).unwrap();
+                let pending = vec![PendingOutput::keyed(MicroMinotari::zero(), size); recipients];
+                let fee = builder.get_fee_estimate_with(&pending).unwrap();
+                let total: u64 = input_values.iter().map(|v| v.as_u64()).sum();
+                MicroMinotari(total.saturating_sub(fee.as_u64()) / recipients as u64)
+            };
+            for _ in 0..recipients {
+                builder
+                    .add_stealth_recipient(
+                        random_address(),
+                        per_recipient,
+                        OutputFeatures::default(),
+                        MemoField::new_empty(),
+                    )
+                    .unwrap();
+            }
+            builder.reserve_sender_offset_keys(&[]).unwrap();
+            let finalized = builder.build().unwrap();
+
+            assert_eq!(finalized.change.is_some(), expect_change, "{label}");
+            assert_eq!(finalized.transaction.body.inputs().len(), input_values.len(), "{label}");
+            assert_eq!(
+                finalized.transaction.body.outputs().len(),
+                recipients + usize::from(expect_change),
+                "{label}"
+            );
+            assert_validates(&finalized.transaction);
+        }
+    }
+
+    /// The flows that cannot express their output as a spec - because the published sender offset key is one share
+    /// of an aggregate, or because the output arrived fully formed - declare it and take a key from the same single
+    /// reservation. The offset still has to balance.
+    #[test]
+    fn keys_handed_back_to_the_caller_still_balance_the_offset() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p1 = TestParams::new(&key_manager);
+        let p2 = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
+        let outputs = vec![
+            create_wallet_output_with_data(
+                TariScript::default(),
+                OutputFeatures::default(),
+                &p1,
+                MicroMinotari(5000),
+                &key_manager,
+            )
+            .unwrap(),
+            create_wallet_output_with_data(
+                TariScript::default(),
+                OutputFeatures::default(),
+                &p2,
+                MicroMinotari(4000),
+                &key_manager,
+            )
+            .unwrap(),
+        ];
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(2)).with_input(input).unwrap();
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, outputs).unwrap();
+        let finalized = builder.build().unwrap();
+        assert_eq!(finalized.transaction.body.outputs().len(), 3, "two outputs plus change");
+        assert_validates(&finalized.transaction);
     }
 
     #[test]
@@ -1391,8 +2237,7 @@ mod test {
             .with_fee_per_gram(MicroMinotari(2))
             .with_input(input)
             .unwrap();
-        add_output_with_reserved_sender_offset_key(
-            &mut builder,
+        add_outputs_with_reserved_sender_offset_keys(&mut builder, vec![
             create_wallet_output_with_data(
                 script.clone(),
                 output_features.clone(),
@@ -1401,151 +2246,94 @@ mod test {
                 &key_manager,
             )
             .unwrap(),
-        )
-        .unwrap();
-        add_output_with_reserved_sender_offset_key(
-            &mut builder,
             create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager).unwrap(),
-        )
+        ])
         .unwrap();
         let finalized = builder.build().unwrap();
-        let tx = finalized.transaction;
-        let rules = create_consensus_manager();
-        let factories = CryptoFactories::default();
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&finalized.transaction);
     }
 
     #[test]
     fn single_recipient_no_change() {
-        let rules = create_consensus_manager();
-        let factories = CryptoFactories::default();
         let key_manager = KeyManager::new_random().unwrap();
-        let bob_key = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None);
         let utxo = input.to_transaction_input(&key_manager).unwrap();
-        let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
         let mut builder =
             TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
         let fee_per_gram = MicroMinotari(4);
-        let fee = Fee::new(*consensus_constants.transaction_weight_params()).calculate(fee_per_gram, 1, 1, 1, 0);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
+            .with_prevent_fee_gt_amount(false)
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
-        let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutputBuilder::new(
-            MicroMinotari(1200) - fee - MicroMinotari(10),
-            bob_key.commitment_mask_key_id,
-        )
-        .with_features(OutputFeatures::default())
-        .with_script(script.clone())
-        .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
-        .unwrap()
-        .with_input_data(Default::default())
-        .with_sender_offset_public_key(bob_public_key)
-        .with_script_key(bob_key.script_key_id)
-        .with_minimum_value_promise(0.into())
-        .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
-        .unwrap()
-        .try_build(&key_manager)
-        .unwrap();
-
-        builder
-            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
+        // Send everything the fee leaves behind, so there is nothing for a change output.
+        let spec = RecipientSpec::stealth(
+            random_address(),
+            MicroMinotari::zero(),
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        );
+        let size = builder.spec_features_and_scripts_size(&spec).unwrap();
+        let fee = builder
+            .get_fee_estimate_with(&[PendingOutput::keyed(MicroMinotari::zero(), size)])
             .unwrap();
+        builder
+            .with_recipient_spec(RecipientSpec {
+                amount: MicroMinotari(1200) - fee,
+                ..spec
+            })
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
 
         let finalized = builder.build().unwrap();
 
         let tx = finalized.transaction;
-        assert_eq!(tx.body.kernels().first().unwrap().fee, fee + MicroMinotari(10)); // Check the twist above
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs().first().unwrap().commitment(), utxo.commitment());
         assert_eq!(tx.body.outputs().len(), 1);
         assert!(tx.body.outputs().first().unwrap().verify_metadata_signature().is_ok());
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn single_recipient_with_change() {
-        let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
-        let factories = CryptoFactories::default();
-        // Bob's parameters
-        let bob_key = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);
         let consensus_constants = create_consensus_constants(0);
         let mut builder =
             TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
-        let script = script!(PushPubKey(Box::default())).unwrap();
-        // The correct fee accounts for: 1 recipient output (empty payment_id) + 1 change output (with change
-        // TransactionInfo memo ~130 bytes, minimum PADDING_SIZE). The change output's payment_id is included in
-        // the builder's fee estimate via add_change_if_required.
-        let base_size = script!(PushPubKey(Box::default()))
-            .unwrap()
-            .get_serialized_size()
-            .unwrap() +
-            OutputFeatures::default().get_serialized_size().unwrap();
-        let fee_weighting = Fee::new(*consensus_constants.transaction_weight_params());
-        let bob_output_size = fee_weighting.weighting().round_up_features_and_scripts_size(base_size);
-        let change_output_size = fee_weighting
-            .weighting()
-            .round_up_features_and_scripts_size(base_size + 130); // 130 = PADDING_SIZE from MemoField
-        let expected_fee = fee_weighting.calculate(MicroMinotari(20), 1, 1, 2, bob_output_size + change_output_size);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(20))
             .with_input(input)
             .unwrap();
-        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
-        let bob_public_key = bob_sender_offset.pub_key.clone();
-
-        let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
-            .with_features(OutputFeatures::default())
-            .with_script(script.clone())
-            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
-            .unwrap()
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(bob_public_key)
-            .with_script_key(bob_key.script_key_id)
-            .with_minimum_value_promise(0.into())
-            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
-            .unwrap()
-            .try_build(&key_manager)
-            .unwrap();
-
         builder
-            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
             .unwrap();
-        // Transaction should be complete
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction;
-        assert_eq!(tx.body.kernels().first().unwrap().fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 2);
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
     #[test]
     fn single_recipient_multiple_inputs_with_change() {
-        let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
-        let factories = CryptoFactories::default();
-        // Bob's parameters
-        let bob_key = TestParams::new(&key_manager);
         let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None);
         let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None);
         let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None);
         let consensus_constants = create_consensus_constants(0);
         let mut builder =
             TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
-        let script = script!(Nop).unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari(20))
@@ -1555,39 +2343,26 @@ mod test {
             .unwrap()
             .with_input(input3)
             .unwrap();
-        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
-        let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
-            .with_features(OutputFeatures::default())
-            .with_script(script.clone())
-            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
-            .unwrap()
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(bob_public_key)
-            .with_script_key(bob_key.script_key_id)
-            .with_minimum_value_promise(0.into())
-            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
-            .unwrap()
-            .try_build(&key_manager)
-            .unwrap();
-
         builder
-            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
             .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         let finalized = builder.build().unwrap();
 
         let tx = finalized.transaction;
         assert_eq!(tx.body.inputs().len(), 3);
         assert_eq!(tx.body.outputs().len(), 2);
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
     #[test]
     fn add_stealth_recipient() {
-        let rules = create_consensus_manager();
         let key_manager = KeyManager::new_random().unwrap();
-        let factories = CryptoFactories::default();
         let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None);
         let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None);
         let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None);
@@ -1603,12 +2378,7 @@ mod test {
             .unwrap()
             .with_input(input3)
             .unwrap();
-        let bob_address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
-            Network::LocalNet,
-        )
-        .unwrap();
+        let bob_address = random_address();
 
         builder
             .add_stealth_recipient(
@@ -1618,14 +2388,11 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
-        let bob_output = builder.recipient_outputs.last().unwrap().output.output.clone();
-        let bob_sender_offset = builder
-            .recipient_outputs
-            .last()
-            .unwrap()
-            .output
-            .sender_offset_key_id
-            .clone();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let finalized = builder.build().unwrap();
+
+        let bob_output = finalized.spec_outputs.first().unwrap().clone();
+        let bob_sender_offset = finalized.sent_outputs.first().unwrap().sender_offset_key_id.clone();
         let shared_secret = key_manager
             .get_diffie_hellman_shared_secret(&bob_sender_offset, bob_address.public_view_key().unwrap())
             .unwrap();
@@ -1654,22 +2421,17 @@ mod test {
                 .unwrap()
         );
 
-        let finalized = builder.build().unwrap();
-
         let tx = finalized.transaction;
         assert_eq!(tx.body.inputs().len(), 3);
         assert_eq!(tx.body.outputs().len(), 2);
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
     #[test]
     fn disallow_fee_larger_than_amount() {
-        // Alice's parameters
         let key_manager = KeyManager::new_random().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None);
-        let script = script!(Nop).unwrap();
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
         builder
@@ -1677,40 +2439,28 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_input(input)
             .unwrap();
-
-        let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
-        let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
-            .with_features(OutputFeatures::default())
-            .with_script(script.clone())
-            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
-            .unwrap()
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(bob_public_key)
-            .with_script_key(bob_key.script_key_id)
-            .with_minimum_value_promise(0.into())
-            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
-            .unwrap()
-            .try_build(&key_manager)
-            .unwrap();
-
         builder
-            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
+            .add_stealth_recipient(
+                random_address(),
+                amount,
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
             .unwrap();
-        let _err = builder.build().unwrap_err();
 
-        // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
-        // assert_eq!(err, TransactionBuilderError::FeeGreaterThanAmount);
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]
     fn allow_fee_larger_than_amount() {
-        // Alice's parameters
         let key_manager = KeyManager::new_random().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None);
-        let script = script!(Nop).unwrap();
         let mut builder =
             TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
         builder
@@ -1719,28 +2469,15 @@ mod test {
             .with_input(input)
             .unwrap()
             .with_prevent_fee_gt_amount(false);
-
-        let bob_key = TestParams::new(&key_manager);
-        let bob_sender_offset = builder.reserve_sender_offset_key().unwrap();
-        let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
-            .with_features(OutputFeatures::default())
-            .with_script(script.clone())
-            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
-            .unwrap()
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(bob_public_key)
-            .with_script_key(bob_key.script_key_id)
-            .with_minimum_value_promise(0.into())
-            .sign_metadata_signature_user_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
-            .unwrap()
-            .try_build(&key_manager)
-            .unwrap();
-
         builder
-            .add_recipient(Default::default(), bob_output, bob_sender_offset.key_id, None)
+            .add_stealth_recipient(
+                random_address(),
+                amount,
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
             .unwrap();
-        // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         match builder.build() {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {e:?}"),
@@ -1749,8 +2486,6 @@ mod test {
 
     #[test]
     fn create_multi_recipients_transaction() {
-        let rules = create_consensus_manager();
-        let factories = CryptoFactories::default();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
         let carol_key_manager = KeyManager::new_random().unwrap();
@@ -1806,16 +2541,17 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction;
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 3);
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
+    /// this test will test recovery of a pregenerated transaction alice sent bob, they both need to recover one output
+    /// each
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn recover_multi_recipients_transaction() {
         let alice_key_manager = KeyManager::new_random().unwrap();
         let alice_keys = ViewWallet::new(
@@ -1890,6 +2626,7 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction;
         let mut alice_count = 0;
@@ -2072,8 +2809,6 @@ mod test {
 
     #[test]
     fn create_very_large_multi_recipients_transaction() {
-        let rules = create_consensus_manager();
-        let factories = CryptoFactories::default();
         let alice_key_manager = KeyManager::new_random().unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
@@ -2111,13 +2846,13 @@ mod test {
                 )
                 .unwrap();
         }
+        builder.reserve_sender_offset_keys(&[]).unwrap();
 
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction;
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 101);
-        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+        assert_validates(&tx);
     }
 
     /// this test will test recovery of a pregenerated transaction alice sent bob, they both need to recover one output
@@ -2217,7 +2952,6 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
     fn transaction_details_correct() {
         let alice_key_manager = KeyManager::new_random().unwrap();
         let spend_key = alice_key_manager.get_spend_key().pub_key;
@@ -2268,6 +3002,7 @@ mod test {
             )
             .unwrap();
         builder.with_memo(payment_id);
+        builder.reserve_sender_offset_keys(&[]).unwrap();
         let finalized = builder.build().unwrap();
         let tx = finalized.transaction.clone();
         let mut alice_memo = None;

@@ -66,17 +66,20 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, T, uT},
-    test_helpers::{TestParams, create_wallet_output_with_data},
+    test_helpers::{TestParams, create_consensus_manager, create_wallet_output_with_data},
+    transaction_builder::PendingOutput,
     transaction_components::{
         MemoField,
         OutputFeatures,
         RangeProofType,
+        Transaction,
         TransactionOutput,
         WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::TxType,
     },
+    validation::transaction::TransactionInternalConsistencyValidator,
     weight::TransactionWeight,
 };
 use tari_transaction_key_manager::legacy_key_manager::{
@@ -2361,7 +2364,20 @@ async fn build_whole_input_spend(
         .unwrap();
 
     let recipient_address = random_dual_address();
-    let sender_offset = builder.reserve_sender_offset_key().unwrap();
+    // The whole input goes to one output, so declare it - with its real weight - before the keys are reserved: the
+    // reservation is what decides the fee and whether there is change, and that decision is binding.
+    let constants = create_consensus_constants(0);
+    let output_size = recipient_output_features_and_scripts_size(
+        constants.transaction_weight_params(),
+        &output_features,
+        &script!(PushPubKey(Box::default())).unwrap(),
+        &Covenant::default(),
+        &output_memo,
+    )?;
+    let sender_offset = builder
+        .reserve_sender_offset_keys(&[PendingOutput::keyed(amount, output_size)])?
+        .pop()
+        .unwrap();
     let encryption_key = key_manager.get_random_key(None, None).unwrap();
     let (commitment_mask, _script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
     let script = push_pubkey_script(
@@ -2586,4 +2602,134 @@ async fn multisig_withdraw_fee_estimate_counts_the_output_memo() {
         real_memo,
     )
     .await;
+}
+
+/// Assert that a transaction is internally consistent, which includes checking that
+/// `sum(input script keys) - sum(output sender offset keys)` equals the published script offset.
+///
+/// Every one of these flows now takes its sender offset keys from a single `get_script_offset` call, so the offset
+/// balancing is the property that would break if the key count or the change decision were ever off by one.
+fn assert_validates(tx: &Transaction) {
+    let validator =
+        TransactionInternalConsistencyValidator::new(false, create_consensus_manager(), CryptoFactories::default());
+    validator
+        .validate(tx, None, None, u64::MAX)
+        .expect("the transaction, and therefore its script offset, must be valid");
+}
+
+/// An input whose script actually runs: `make_input`'s `TariScript::default()` is a `PushPubKey` of the default
+/// public key, which leaves two items on the stack and so cannot be verified at all.
+async fn oms_with_spendable_input(value: MicroMinotari) -> (TestOmsService, tempfile::TempDir, WalletOutput) {
+    let (connection, tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let uo = spendable_test_input(&mut oms, &backend, value).await;
+    (oms, tempdir, uo)
+}
+
+async fn spendable_test_input(
+    oms: &mut TestOmsService,
+    backend: &OutputManagerSqliteDatabase,
+    value: MicroMinotari,
+) -> WalletOutput {
+    let uo = make_input_with_features(
+        &mut rand::rng(),
+        value,
+        OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
+    backend.mark_outputs_as_unspent(vec![(uo.output_hash(), true)]).unwrap();
+    uo
+}
+
+/// An even coin split puts the indivisible remainder on the last output, so the outputs are not all the same size.
+/// All of them still take their sender offset keys from the one reservation, so the offset has to balance.
+#[tokio::test]
+async fn coin_split_even_builds_a_valid_transaction() {
+    // A value that does not divide evenly by the split count, so the last output absorbs the remainder.
+    let (mut oms, _tempdir, uo) = oms_with_spendable_input(MicroMinotari::from(20_000_007)).await;
+
+    let split_count = 5;
+    let (_tx_id, tx, _amount) = oms
+        .output_manager_handle
+        .create_coin_split_even(vec![uo.commitment().clone()], split_count, MicroMinotari::from(1))
+        .await
+        .unwrap();
+
+    assert_eq!(tx.body.inputs().len(), 1);
+    assert_eq!(tx.body.outputs().len(), split_count);
+    assert_validates(&tx);
+}
+
+/// An uneven split takes a fixed amount per output and leaves the rest as change, so this exercises the case where
+/// the reservation has to draw one more key than the transaction has recipient outputs.
+#[tokio::test]
+async fn coin_split_builds_a_valid_transaction_with_change() {
+    let (mut oms, _tempdir, _uo) = oms_with_spendable_input(MicroMinotari::from(20_000_000)).await;
+
+    let split_count = 4;
+    let (_tx_id, tx, _amount) = oms
+        .output_manager_handle
+        .create_coin_split(
+            vec![],
+            MicroMinotari::from(1_000_000),
+            split_count,
+            MicroMinotari::from(1),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(tx.body.inputs().len(), 1);
+    assert_eq!(
+        tx.body.outputs().len(),
+        split_count + 1,
+        "the leftover should have become a change output"
+    );
+    assert_validates(&tx);
+}
+
+#[tokio::test]
+async fn coin_join_builds_a_valid_transaction() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let mut commitments = Vec::new();
+    for _ in 0..3 {
+        let uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(5_000_000)).await;
+        commitments.push(uo.commitment().clone());
+    }
+
+    let (_tx_id, tx, _amount) = oms
+        .output_manager_handle
+        .create_coin_join(commitments, MicroMinotari::from(1), MemoField::new_empty())
+        .await
+        .unwrap();
+
+    assert_eq!(tx.body.inputs().len(), 3);
+    assert_eq!(tx.body.outputs().len(), 1, "a join spends everything into one output");
+    assert_validates(&tx);
+}
+
+#[tokio::test]
+async fn pay_to_self_builds_a_valid_transaction() {
+    let (mut oms, _tempdir, _uo) = oms_with_spendable_input(MicroMinotari::from(20_000_000)).await;
+
+    let (_fee, tx, _tx_id) = oms
+        .output_manager_handle
+        .create_pay_to_self_transaction(
+            MicroMinotari::from(1_000_000),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(1),
+            None,
+            MemoField::new_empty(),
+            MicroMinotari::zero(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(tx.body.inputs().len(), 1);
+    assert_eq!(tx.body.outputs().len(), 2, "the payment plus change");
+    assert_validates(&tx);
 }

@@ -25,7 +25,12 @@ use std::sync::{LazyLock, Mutex};
 use log::debug;
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
-    script_offset::check_sender_offset_key_count,
+    script_offset::{
+        SCRIPT_OFFSET_REPLY_SIZE,
+        check_script_key_count,
+        check_sender_offset_key_count,
+        sender_offset_index,
+    },
 };
 use rand::Rng;
 use semver::Version;
@@ -334,7 +339,12 @@ pub fn ledger_get_script_signature(
 /// Only the script side of the sum is supplied: `partial_script_offset` is the sum of the script private keys the
 /// host already knows, `script_key_indexes` names pre-mine script keys by index and `derived_script_keys` carries
 /// the blinding factors of alpha derived script keys. The device generates `sender_offset_count` sender offset keys
-/// itself and returns their indexes, so the reply is always blinded by a key the host has never seen.
+/// itself and returns the base index it derived them from, so the reply is always blinded by keys the host has
+/// never seen.
+///
+/// Neither side of the sum may leave the device unblinded by a term the host cannot compute, so the device refuses
+/// a request with no sender offset keys *and* one with no script key it derived itself. Both refusals are mirrored
+/// here so a caller gets a legible error rather than a status word; the device check is the one that counts.
 pub fn ledger_get_script_offset(
     account: u64,
     partial_script_offset: &PrivateKey,
@@ -351,17 +361,20 @@ pub fn ledger_get_script_offset(
         script_key_indexes,
         sender_offset_count
     );
-    // The device enforces this too, and is the only enforcement that matters; this is here so a caller gets a
-    // legible error instead of a status word.
+    // The device enforces both of these too, and is the only enforcement that matters; these are here so a caller
+    // gets a legible error instead of a status word, and so that a request the device would refuse never reaches
+    // the wire.
     let count = u64::try_from(sender_offset_count)
         .map_err(|_| LedgerDeviceError::Processing("GetScriptOffset: sender offset count overflow".to_string()))?;
     check_sender_offset_key_count(count)
+        .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
+    check_script_key_count(script_key_indexes.len() as u64, derived_script_keys.len() as u64)
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     verify_ledger_application()?;
 
     // 1. data sizes
     let mut instructions: Vec<u8> = Vec::new();
-    instructions.extend_from_slice(&(sender_offset_count as u64).to_le_bytes());
+    instructions.extend_from_slice(&count.to_le_bytes());
     instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
     instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
     let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
@@ -392,11 +405,10 @@ pub fn ledger_get_script_offset(
 
     match result {
         Some(result) => {
-            let expected_len = 33usize.saturating_add(sender_offset_count.saturating_mul(8));
-            if result.data().len() < expected_len {
+            if result.data().len() < SCRIPT_OFFSET_REPLY_SIZE {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptOffset: expected {} bytes, got {} ({:?})",
-                    expected_len,
+                    SCRIPT_OFFSET_REPLY_SIZE,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
@@ -410,14 +422,12 @@ pub fn ledger_get_script_offset(
                 )));
             }
             let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
-            let mut sender_offset_indexes = Vec::with_capacity(sender_offset_count);
-            for i in 0..sender_offset_count {
-                let start = 33usize.saturating_add(i.saturating_mul(8));
-                let end = start.saturating_add(8);
-                let mut index_bytes = [0u8; 8];
-                index_bytes.copy_from_slice(data.get(start..end).expect("Index should exist"));
-                sender_offset_indexes.push(u64::from_le_bytes(index_bytes));
-            }
+            let mut base_index_bytes = [0u8; 8];
+            base_index_bytes.copy_from_slice(data.get(33..41).expect("Index should exist"));
+            let base_index = u64::from_le_bytes(base_index_bytes);
+            // The device derived `base_index..base_index + count`; `sender_offset_index` is the shared walk, so a
+            // base near the end of the range wraps identically on both sides.
+            let sender_offset_indexes = (0..count).map(|i| sender_offset_index(base_index, i)).collect();
             Ok((script_offset, sender_offset_indexes))
         },
         None => Err(LedgerDeviceError::Processing("GetScriptOffset: No result".to_string())),

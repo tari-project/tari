@@ -29,6 +29,7 @@ pub enum AppSW {
     MetadataSignatureFail = 0xB00D,
     ScriptOffsetNoSenderOffsets = 0xB00E,
     ScriptOffsetInvalidScriptBranch = 0xB00F,
+    ScriptOffsetNoDeviceScriptKeys = 0xB010,
     WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = 0x9000,
@@ -53,6 +54,7 @@ impl TryFrom<u16> for AppSW {
             0xB00D => Ok(AppSW::MetadataSignatureFail),
             0xB00E => Ok(AppSW::ScriptOffsetNoSenderOffsets),
             0xB00F => Ok(AppSW::ScriptOffsetInvalidScriptBranch),
+            0xB010 => Ok(AppSW::ScriptOffsetNoDeviceScriptKeys),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6e04 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
@@ -190,6 +192,7 @@ mod test {
             (0xB00D, AppSW::MetadataSignatureFail),
             (0xB00E, AppSW::ScriptOffsetNoSenderOffsets),
             (0xB00F, AppSW::ScriptOffsetInvalidScriptBranch),
+            (0xB010, AppSW::ScriptOffsetNoDeviceScriptKeys),
             (0x6e03, AppSW::WrongApduLength),
             (0x6e04, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
@@ -237,6 +240,9 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::ScriptOffsetInvalidScriptBranch => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetNoDeviceScriptKeys => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::WrongApduLength => {

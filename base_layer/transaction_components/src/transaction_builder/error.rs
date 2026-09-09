@@ -45,13 +45,34 @@ pub enum TransactionBuilderError {
     TransactionError(#[from] TransactionError),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
-    #[error("Inputs cannot be added after a sender offset key has been reserved")]
+    #[error("Inputs cannot be added after the sender offset keys have been reserved")]
     InputsAfterOutputs,
+    #[error("`reserve_sender_offset_keys` may only be called once per transaction")]
+    SenderOffsetKeysAlreadyReserved,
     #[error(
-        "The script keys of {0} input(s) were never folded into the script offset; at least one output must take its \
-         sender offset key from `reserve_sender_offset_key`"
+        "`reserve_sender_offset_keys` was never called, so the input script keys were never folded into the script \
+         offset and the transaction would not validate"
     )]
-    UnassignedInputScriptKeys(usize),
+    SenderOffsetKeysNotReserved,
+    #[error("An output needed a reserved sender offset key but the pool was empty")]
+    SenderOffsetKeyPoolExhausted,
+    #[error(
+        "{remaining} reserved sender offset key(s) were never placed on an output; every reserved key is subtracted \
+         from the script offset, so the transaction would not validate"
+    )]
+    SenderOffsetKeyPoolNotDrained { remaining: usize },
+    #[error("Recipient specs must all be declared before `reserve_sender_offset_keys` is called")]
+    RecipientSpecAfterReserve,
+    #[error(
+        "{added} output(s) were attached after the sender offset keys were reserved but only {declared} were \
+         declared; the fee and the change decision the reservation committed to never accounted for them"
+    )]
+    UndeclaredOutputAfterReserve { declared: usize, added: usize },
+    #[error(
+        "This transaction needs {requested} sender offset keys but the ledger device derives at most {max} in one \
+         exchange, so it is limited to {max} outputs including change"
+    )]
+    TooManyOutputsForDevice { requested: usize, max: usize },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
     #[error("Transaction builder error: {0}")]

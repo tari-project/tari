@@ -186,10 +186,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// offset keys.
     ///
     /// The offset is `sum(script keys) - sum(generated sender offset keys)`; the caller must place each returned key
-    /// on exactly one output. Partial offsets add up, so a transaction can be assembled from several calls.
+    /// on exactly one output.
     ///
-    /// `sender_offset_count` must be at least one - on a ledger wallet an unblinded result is the plain sum of the
-    /// input script private keys, which reveals the wallet's spend key.
+    /// Neither sum may leave the key manager unblinded by a term the caller cannot compute, so `script_key_ids` must
+    /// hold at least one key that contributes (`TariKeyId::Zero` does not, and is rejected rather than filtered) and
+    /// `sender_offset_count` must be at least one. An unblinded script key sum is the wallet's spend key; an
+    /// unblinded sender offset sum is a sender offset private key the device just generated.
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],

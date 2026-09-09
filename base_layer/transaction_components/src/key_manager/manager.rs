@@ -26,7 +26,7 @@ use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{KeyInit, consts::U64};
 use log::trace;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
@@ -102,6 +102,37 @@ use crate::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
+
+/// Where a script key id lands when a script offset is computed on a ledger device.
+///
+/// The distinction is what the device's second rule turns on: only the first two buckets are terms the *device*
+/// turns into key material, so only they blind the reply against the host. Host known keys are summed into the one
+/// opaque `partial_script_key_sum` scalar the host itself computed, so they blind nothing.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ScriptKeyBucket {
+    /// A pre-mine key the device derives from an index. The pre-mine branch holds the only script keys the wallet
+    /// addresses by index.
+    PreMineIndex,
+    /// A blinding factor the device folds into `alpha`, its root spend key, to derive the script key.
+    AlphaDerived,
+    /// A key the host resolves itself and sends as part of `partial_script_key_sum`.
+    HostKnown,
+}
+
+/// Classify a script key id for the ledger path.
+///
+/// Ordinary wallet script keys are `TariKeyId::Derived { key: commitment_mask_key_id }`, so they land in the alpha
+/// derived bucket and the device rule costs nothing in normal use.
+pub fn script_key_bucket(key_id: &TariKeyId) -> ScriptKeyBucket {
+    match key_id {
+        TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            ..
+        } => ScriptKeyBucket::PreMineIndex,
+        TariKeyId::Derived { .. } => ScriptKeyBucket::AlphaDerived,
+        _ => ScriptKeyBucket::HostKnown,
+    }
+}
 
 #[derive(Clone)]
 pub struct KeyManager {
@@ -280,8 +311,12 @@ impl KeyManager {
     /// Ask the ledger device for a script offset.
     ///
     /// Only the script side of the sum crosses the wire. The device generates `sender_offset_count` sender offset
-    /// keys itself and returns their indexes, so the host can neither choose nor learn the key that blinds the
-    /// result.
+    /// keys itself and returns the base index it derived them from, so the host can neither choose nor learn the
+    /// keys that blind the result.
+    ///
+    /// The device also refuses to answer unless at least one script side term was derived on the device, so this
+    /// mirrors [`script_key_bucket`]'s classification: a request whose only script keys are host known would be
+    /// answered with a sender offset private key the device just generated.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn ledger_get_script_offset_wrapper(
@@ -289,26 +324,49 @@ impl KeyManager {
         script_key_ids: &[TariKeyId],
         sender_offset_count: usize,
     ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
+        // Checked before any key material is touched, and before the transport is opened, so a request the device
+        // would refuse costs nothing and surfaces as a typed error rather than a status word.
+        let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap_or(usize::MAX);
+        if sender_offset_count > max {
+            return Err(KeyManagerError::TooManySenderOffsetKeys {
+                requested: sender_offset_count,
+                max,
+            });
+        }
+        if !script_key_ids
+            .iter()
+            .any(|k| script_key_bucket(k) != ScriptKeyBucket::HostKnown)
+        {
+            return Err(KeyManagerError::NoDeviceScriptKeys {
+                script_keys: script_key_ids.len(),
+            });
+        }
+
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let mut partial_script_offset = PrivateKey::default();
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];
             for script_key_id in script_key_ids {
-                match script_key_id {
-                    TariKeyId::LedgerKey { branch, index } => {
-                        script_key_indexes.push((*branch, *index));
+                match script_key_bucket(script_key_id) {
+                    ScriptKeyBucket::PreMineIndex => {
+                        if let TariKeyId::LedgerKey { branch, index } = script_key_id {
+                            script_key_indexes.push((*branch, *index));
+                        }
                     },
-                    TariKeyId::Derived { key } => {
-                        let key_id = TariKeyId::from_str(key.to_string().as_str())
-                            .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
-                        // Note: If the derived key is a TariKeyId::Managed, but not allowed in
-                        //       'self.get_private_key(...)' this will error.
-                        let k = self.get_private_key(&key_id)?;
-                        derived_script_keys.push(k);
+                    ScriptKeyBucket::AlphaDerived => {
+                        if let TariKeyId::Derived { key } = script_key_id {
+                            let key_id = TariKeyId::from_str(key.to_string().as_str())
+                                .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                            // Note: If the derived key is a TariKeyId::Managed, but not allowed in
+                            //       'self.get_private_key(...)' this will error.
+                            let k = self.get_private_key(&key_id)?;
+                            derived_script_keys.push(k);
+                        }
                     },
-                    TariKeyId::Zero => {},
-                    _ => partial_script_offset = &partial_script_offset + self.get_private_key(script_key_id)?,
+                    ScriptKeyBucket::HostKnown => {
+                        partial_script_offset = &partial_script_offset + self.get_private_key(script_key_id)?;
+                    },
                 }
             }
 
@@ -1040,11 +1098,21 @@ impl TransactionKeyManagerInterface for KeyManager {
     /// keys in the process.
     ///
     /// The returned offset is `sum(script keys) - sum(generated sender offset keys)`, and the caller must use each
-    /// returned key on exactly one output. Partial offsets are additive, so a transaction can be assembled from
-    /// several of these calls.
+    /// returned key on exactly one output.
     ///
-    /// At least one sender offset key must be generated: on a ledger wallet the result is otherwise the plain sum of
-    /// the input script private keys, from which the spend key can be recovered.
+    /// Neither sum may leave the key manager unblinded by a term the caller cannot compute, so both sides need at
+    /// least one key that contributes:
+    ///
+    /// - With no sender offset key the result is the plain sum of the input script private keys. Those keys are
+    ///   `H("script key", b) + alpha` for blinding factors `b` the caller chose, so the caller can subtract the hashes
+    ///   it already knows and be left with `alpha`, the wallet's root spend key.
+    /// - With no script key the result is `-k_sender` for a key the key manager just generated, which on a ledger
+    ///   wallet hands the host a `OneSidedSenderOffset` private key: enough to recompute the one sided Diffie-Hellman
+    ///   secrets for that output and re-sign its metadata signature without the device.
+    ///
+    /// `TariKeyId::Zero` is rejected rather than filtered out. It is dropped on the ledger path and yields the zero
+    /// scalar in software, so filtering would let a caller satisfy the length check with a slice that contributes
+    /// nothing.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn get_script_offset(
@@ -1052,10 +1120,14 @@ impl TransactionKeyManagerInterface for KeyManager {
         script_key_ids: &[TariKeyId],
         sender_offset_count: usize,
     ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
-        if sender_offset_count == 0 {
-            return Err(KeyManagerError::UnexpectedError(
-                "'get_script_offset' must generate at least one sender offset key".to_string(),
-            ));
+        // Checked before any key material is touched.
+        let contributing_script_keys = script_key_ids.iter().filter(|k| **k != TariKeyId::Zero).count();
+        if sender_offset_count == 0 || contributing_script_keys == 0 || contributing_script_keys != script_key_ids.len()
+        {
+            return Err(KeyManagerError::UnblindedScriptOffset {
+                script_keys: contributing_script_keys,
+                sender_offset_keys: sender_offset_count,
+            });
         }
         if self.wallet_type.is_ledger() {
             self.ledger_get_script_offset_wrapper(script_key_ids, sender_offset_count)
@@ -1538,38 +1610,187 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 
 #[cfg(test)]
 mod tests {
-    use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+    use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
+    use tari_common_types::types::PrivateKey;
 
-    use crate::key_manager::{KeyManager, TransactionKeyManagerInterface, error::KeyManagerError};
+    use super::{ScriptKeyBucket, script_key_bucket};
+    use crate::key_manager::{
+        KeyManager,
+        SecretTransactionKeyManagerInterface,
+        TransactionKeyManagerInterface,
+        error::KeyManagerError,
+        key_id::TariKeyId,
+    };
 
+    /// The plain sum of the input script private keys is `H("script key", b) + alpha` summed over blinding factors
+    /// the caller chose, so a caller that gets it back can subtract the hashes it already knows and be left with
+    /// `alpha`, the wallet's root spend key.
     #[test]
-    fn get_script_offset_refuses_to_produce_an_unblinded_offset() {
+    fn get_script_offset_refuses_an_offset_with_no_sender_offset_key() {
         let key_manager = KeyManager::new_random().unwrap();
         let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
 
-        // Without a sender offset key the result is the plain sum of the script private keys, which on a ledger
-        // wallet is enough to recover the spend key.
         let err = key_manager
-            .get_script_offset(&[script_key.key_id.clone()], 0)
+            .get_script_offset(std::slice::from_ref(&script_key.key_id), 0)
             .unwrap_err();
-        assert!(
-            matches!(err, KeyManagerError::UnexpectedError(_)),
-            "unexpected error: {err:?}"
-        );
-
-        // The same call with a key to blind it is fine, and hands back exactly the keys it generated.
-        let (_, sender_offset_keys) = key_manager.get_script_offset(&[script_key.key_id], 2).unwrap();
-        assert_eq!(sender_offset_keys.len(), 2);
-        let first = sender_offset_keys.first().unwrap();
-        let second = sender_offset_keys.last().unwrap();
-        assert_ne!(first.key_id, second.key_id);
+        assert_eq!(err, KeyManagerError::UnblindedScriptOffset {
+            script_keys: 1,
+            sender_offset_keys: 0,
+        });
     }
 
+    /// The mirror case: with no script key the reply is `-k_sender` for a key the key manager just generated, which
+    /// on a ledger wallet is a sender offset private key the host was never meant to see.
     #[test]
-    fn get_script_offset_with_no_script_keys_still_needs_a_sender_offset_key() {
+    fn get_script_offset_refuses_an_offset_with_no_script_keys() {
         let key_manager = KeyManager::new_random().unwrap();
-        assert!(key_manager.get_script_offset(&[], 0).is_err());
-        assert_eq!(key_manager.get_script_offset(&[], 1).unwrap().1.len(), 1);
+
+        let err = key_manager.get_script_offset(&[], 1).unwrap_err();
+        assert_eq!(err, KeyManagerError::UnblindedScriptOffset {
+            script_keys: 0,
+            sender_offset_keys: 1,
+        });
+    }
+
+    /// `TariKeyId::Zero` contributes nothing - it is dropped on the ledger path and yields the zero scalar in
+    /// software - so a slice of nothing but zeros must not be able to satisfy the length check.
+    #[test]
+    fn get_script_offset_refuses_a_slice_of_only_zero_script_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+
+        let err = key_manager
+            .get_script_offset(&[TariKeyId::Zero, TariKeyId::Zero], 1)
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::UnblindedScriptOffset {
+            script_keys: 0,
+            sender_offset_keys: 1,
+        });
+    }
+
+    /// ...and a zero mixed in with a real key is rejected outright rather than quietly filtered, so a caller cannot
+    /// pad a slice and be surprised by which keys were actually folded in.
+    #[test]
+    fn get_script_offset_refuses_a_zero_script_key_mixed_with_a_real_one() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+
+        let err = key_manager
+            .get_script_offset(&[TariKeyId::Zero, script_key.key_id.clone()], 1)
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::UnblindedScriptOffset {
+            script_keys: 1,
+            sender_offset_keys: 1,
+        });
+
+        // The same slice without the zero is fine, so the rejection really is about the zero.
+        assert!(key_manager.get_script_offset(&[script_key.key_id], 1).is_ok());
+    }
+
+    /// The device derives every sender offset key in a single exchange, so the count is bounded. The bound is
+    /// checked before any key is generated and before the transport is opened, so an over-large request costs
+    /// nothing and surfaces as a typed error rather than a status word.
+    #[test]
+    fn get_script_offset_refuses_more_sender_offset_keys_than_the_device_will_derive() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+        let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap();
+
+        let err = key_manager
+            .ledger_get_script_offset_wrapper(std::slice::from_ref(&script_key.key_id), max.saturating_add(1))
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::TooManySenderOffsetKeys {
+            requested: max + 1,
+            max,
+        });
+
+        // A software key manager has no such bound - the cap is a guard on device work, not a protocol rule.
+        assert_eq!(
+            key_manager
+                .get_script_offset(std::slice::from_ref(&script_key.key_id), max + 1)
+                .unwrap()
+                .1
+                .len(),
+            max + 1
+        );
+    }
+
+    /// Every returned key must be distinct, and the offset must be exactly the sum the caller can verify, otherwise
+    /// the transaction it is used in will not validate.
+    #[test]
+    fn get_script_offset_returns_distinct_keys_and_a_matching_offset() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let script_key_a = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+        let script_key_b = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+        let script_keys = [script_key_a.key_id.clone(), script_key_b.key_id.clone()];
+
+        let (offset, sender_offset_keys) = key_manager.get_script_offset(&script_keys, 3).unwrap();
+        assert_eq!(sender_offset_keys.len(), 3);
+        for (i, first) in sender_offset_keys.iter().enumerate() {
+            for second in sender_offset_keys.iter().skip(i + 1) {
+                assert_ne!(first.key_id, second.key_id, "the same key was handed out twice");
+            }
+        }
+
+        // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            let mut expected = PrivateKey::default();
+            for key_id in &script_keys {
+                expected = expected + key_manager.get_private_key(key_id).unwrap();
+            }
+            for key in &sender_offset_keys {
+                expected = expected - key_manager.get_private_key(&key.key_id).unwrap();
+            }
+            assert_eq!(offset, expected);
+        }
+    }
+
+    /// The device's second rule turns on this classification: only pre-mine indexes and alpha derived blinding
+    /// factors are terms the *device* turns into key material. Everything else is summed into the one opaque
+    /// `partial_script_key_sum` scalar the host computed itself, so it blinds nothing against the host.
+    #[test]
+    fn script_keys_are_bucketed_by_who_derives_them() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+
+        // An ordinary wallet script key is `Derived { key: commitment_mask_key_id }`, so the device rule costs
+        // nothing in normal use.
+        assert_eq!(script_key_bucket(&script_key.key_id), ScriptKeyBucket::AlphaDerived);
+        assert_eq!(
+            script_key_bucket(&TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index: 7,
+            }),
+            ScriptKeyBucket::PreMineIndex
+        );
+        for host_known in [
+            TariKeyId::Zero,
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 7,
+            },
+        ] {
+            assert_eq!(script_key_bucket(&host_known), ScriptKeyBucket::HostKnown);
+        }
+    }
+
+    /// A call whose only script term is host known would be answered with a sender offset private key the device
+    /// just generated, so the ledger path refuses it before the transport is opened. The error names the fix,
+    /// because the reachable way to get here is an output recovered by an older build.
+    #[test]
+    fn a_script_offset_whose_only_script_key_is_host_known_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+
+        let err = key_manager
+            .ledger_get_script_offset_wrapper(&[TariKeyId::SpendKey], 1)
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::NoDeviceScriptKeys { script_keys: 1 });
+        assert!(
+            err.to_string().contains("re-run wallet recovery"),
+            "the error must tell the user what to do: {err}"
+        );
     }
 
     #[test]

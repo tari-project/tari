@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, time::Instant};
+use std::time::Instant;
 
 use log::*;
-use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_crypto::keys::SecretKey;
+use tari_common_types::types::FixedHash;
 use tari_script::{ExecutionStack, Opcode, TariScript, inputs, script};
 use tari_transaction_components::{
     MicroMinotari,
@@ -189,13 +188,7 @@ where
         known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop)? {
-            // This is a nop, so we can just create a new key for the input stack.
-            let key = if let TariKeyId::Derived { key } = spending_key {
-                TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
-            } else {
-                let private_key = PrivateKey::random(&mut rand::rng());
-                self.master_key_manager.create_encrypted_key(private_key, None)?
-            };
+            let key = nop_script_key(&self.master_key_manager, spending_key)?;
             let public_key = self.master_key_manager.get_public_key_at_key_id(&key)?;
             (inputs!(public_key), key)
         } else {
@@ -251,5 +244,93 @@ where
         };
 
         Ok(Some((key, committed_value, payment_id)))
+    }
+}
+
+/// The script key a recovered `Nop` script output carries.
+///
+/// A `Nop` script places no constraint on the script key, so it is derived from the recovered commitment mask rather
+/// than invented. A random key would be host known: on a ledger wallet it lands in the opaque partial sum the device
+/// cannot verify, so spending the output would ask the device for a script offset that no key *it* derived blinds -
+/// which it refuses, because the reply would be a sender offset private key it had just generated.
+/// `Derived { key: commitment_mask }` is the same shape an ordinary wallet script key has, so the device can derive
+/// it from `alpha`.
+fn nop_script_key<KM: LegacyTransactionKeyManagerInterface>(
+    key_manager: &KM,
+    commitment_mask_key_id: &TariKeyId,
+) -> Result<TariKeyId, OutputManagerError> {
+    key_manager
+        .find_script_key_id_from_commitment_mask_key_id(commitment_mask_key_id, None)?
+        .ok_or_else(|| {
+            OutputManagerError::BuildError(
+                "Could not derive a script key from the recovered commitment mask".to_string(),
+            )
+        })
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::PrivateKey;
+    use tari_crypto::keys::SecretKey;
+    use tari_transaction_components::key_manager::{
+        ScriptKeyBucket,
+        TransactionKeyManagerInterface,
+        script_key_bucket,
+    };
+    use tari_transaction_key_manager::legacy_key_manager::create_new_random_key_manager;
+
+    use super::*;
+
+    /// `attempt_output_recovery` hands back an `Encrypted` or `DHCommitmentMask` commitment mask, which is the
+    /// common case, and the script key has to be derived from it rather than invented - otherwise the wallet cannot
+    /// spend the output on a ledger at all.
+    #[tokio::test]
+    async fn a_recovered_nop_output_carries_a_derived_script_key() {
+        let key_manager = create_new_random_key_manager().await.unwrap();
+        let commitment_mask = key_manager
+            .create_encrypted_key(PrivateKey::random(&mut rand::rng()), None)
+            .unwrap();
+
+        let script_key = nop_script_key(&key_manager, &commitment_mask).unwrap();
+        assert!(
+            matches!(script_key, TariKeyId::Derived { .. }),
+            "unexpected script key: {script_key:?}"
+        );
+
+        // ...and the derived key really is the one whose public key the input stack pushes.
+        assert_eq!(
+            key_manager.get_public_key_at_key_id(&script_key).unwrap(),
+            key_manager
+                .get_public_key_at_key_id(&TariKeyId::Derived {
+                    key: (&commitment_mask).into()
+                })
+                .unwrap()
+        );
+    }
+
+    /// The point of deriving it: a ledger device folds a `Derived` script key into `alpha` itself, so a script
+    /// offset over nothing but recovered outputs still carries a script side term the device generated. That is
+    /// what the device requires before it will hand an offset back at all - see
+    /// `key_manager::manager::tests::a_script_offset_whose_only_script_key_is_host_known_is_refused`.
+    #[tokio::test]
+    async fn a_recovered_script_key_is_one_the_device_derives() {
+        let key_manager = create_new_random_key_manager().await.unwrap();
+        let commitment_mask = key_manager
+            .create_encrypted_key(PrivateKey::random(&mut rand::rng()), None)
+            .unwrap();
+
+        let script_key = nop_script_key(&key_manager, &commitment_mask).unwrap();
+        assert_eq!(script_key_bucket(&script_key), ScriptKeyBucket::AlphaDerived);
+
+        // A script offset over nothing but recovered outputs is accepted.
+        assert!(key_manager.get_script_offset(&[script_key], 1).is_ok());
+
+        // An output recovered by an older build carries a random `Encrypted` script key instead. There is no
+        // migration for those: the device cannot derive them, so they blind nothing against the host and the
+        // device refuses the offset. The user has to re-run recovery.
+        let legacy_script_key = key_manager
+            .create_encrypted_key(PrivateKey::random(&mut rand::rng()), None)
+            .unwrap();
+        assert_eq!(script_key_bucket(&legacy_script_key), ScriptKeyBucket::HostKnown);
     }
 }

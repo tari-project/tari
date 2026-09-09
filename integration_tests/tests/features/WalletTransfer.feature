@@ -41,6 +41,27 @@ Feature: Wallet Transfer
     Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
 
 
+  # One transaction carrying several recipient outputs. Every output takes its sender offset key from a single
+  # `get_script_offset` call - splitting that call would leave the later ones with no input script keys to fold in -
+  # so this is the path the two phase transaction builder changes the shape of most.
+  Scenario: As a wallet I want to send to several recipients in a single transaction
+    Given I have a seed node NODE
+    # Add a 2nd node otherwise initial sync will not succeed
+    When I have 1 base nodes connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
+    When mining node MINER mines 10 blocks
+    Then all nodes are at height 10
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I transfer 50000 uT one-sided from WALLET_A to WALLET_B and WALLET_C at fee 20
+    When mining node MINER mines 10 blocks
+    Then all nodes are at height 20
+    # Both recipients are paid by the same transaction, so both balances have to move
+    Then I wait for wallet WALLET_B to have at least 50000 uT
+    Then I wait for wallet WALLET_C to have at least 50000 uT
+
   Scenario: As a wallet I want to submit transfers to myself
     Given I have a seed node NODE
     # Add a 2nd node otherwise initial sync will not succeed

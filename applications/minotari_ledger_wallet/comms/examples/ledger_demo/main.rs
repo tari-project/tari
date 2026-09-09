@@ -285,6 +285,90 @@ fn main() {
     }
     println!("rejected as expected: {:?}", AppSW::try_from(resume_response.retcode()));
 
+    // The mirror case. With no script key the device derived itself, the reply is `-k_sender` for a key the device
+    // just generated: enough for the host to recompute the one sided Diffie-Hellman secrets for that output and
+    // re-sign its metadata signature without the device. `partial_script_key_sum` does not count, because a host
+    // with no script keys sends the zero scalar and the device cannot tell that apart from a real sum of zero.
+    //
+    // This also goes over raw APDUs: `ledger_get_script_offset` refuses it before it opens the transport, so
+    // calling through it would never exercise the device's own rejection.
+    println!("\ntest: GetScriptOffset (no device derived script keys, must fail on the device)");
+    let mut no_script_key_header = Vec::new();
+    no_script_key_header.extend_from_slice(&1u64.to_le_bytes()); // sender_offset_count
+    no_script_key_header.extend_from_slice(&0u64.to_le_bytes()); // script_index_count
+    no_script_key_header.extend_from_slice(&0u64.to_le_bytes()); // derived_script_key_count
+    let no_script_key_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        0,
+        true,
+        no_script_key_header,
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if no_script_key_response.retcode() == AppSW::Ok as u16 {
+        println!("\nError: the device accepted a script offset header with no device derived script keys\n");
+        return;
+    }
+    println!(
+        "rejected as expected: {:?}",
+        AppSW::try_from(no_script_key_response.retcode())
+    );
+
+    // ...and that rejection must leave nothing behind either, for the same reason: a follow-up chunk numbered into
+    // a later section must not be able to resume the accumulation and read the withheld value back.
+    println!("\ntest: GetScriptOffset (resume after a rejected script key header, must fail on the device)");
+    let resume_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        2,
+        false,
+        get_random_nonce().to_vec(),
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if resume_response.retcode() == AppSW::Ok as u16 {
+        println!(
+            "\nError: the device resumed a rejected script offset and returned {} bytes\n",
+            resume_response.data().len()
+        );
+        return;
+    }
+    println!("rejected as expected: {:?}", AppSW::try_from(resume_response.retcode()));
+
+    // The host side mirrors of both device rules refuse before the transport is opened, so a caller gets a legible
+    // error rather than a status word.
+    println!("\ntest: GetScriptOffset (host side refusals)");
+    for (label, keys, indexes, count) in [
+        (
+            "no sender offset keys",
+            derived_script_keys.clone(),
+            script_key_indexes.clone(),
+            0usize,
+        ),
+        ("no device derived script keys", Vec::new(), Vec::new(), 1usize),
+    ] {
+        match ledger_get_script_offset(account, &partial_script_offset, &keys, &indexes, count) {
+            Ok(_) => {
+                println!("\nError: the host accepted a script offset with {label}\n");
+                return;
+            },
+            Err(e) => println!("rejected as expected ({label}): {e}"),
+        }
+    }
+
     // Only pre-mine script keys may be addressed by index; anything else lets the host name a key of its choosing.
     // This one does reach the device: the count is valid, so the host side guard passes it through.
     println!("\ntest: GetScriptOffset (non pre-mine script index, must fail on the device)");

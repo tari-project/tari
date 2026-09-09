@@ -885,7 +885,7 @@ mod test {
         aggregated_body::AggregateBody,
         fee::Fee,
         key_manager::KeyManager,
-        test_helpers::{TestParams, UtxoTestParams, add_output_with_reserved_sender_offset_key},
+        test_helpers::{TestParams, UtxoTestParams, add_outputs_with_reserved_sender_offset_keys},
         transaction_builder::TransactionBuilder,
         tx,
         weight::TransactionWeight,
@@ -1026,7 +1026,7 @@ mod test {
             )
             .unwrap();
         tx_builder.with_input(double_spend_input).unwrap();
-        add_output_with_reserved_sender_offset_key(&mut tx_builder, utxo).unwrap();
+        add_outputs_with_reserved_sender_offset_keys(&mut tx_builder, vec![utxo]).unwrap();
 
         let finalized = tx_builder.build().expect("Failed to finalize transaction");
 

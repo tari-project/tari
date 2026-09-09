@@ -57,7 +57,7 @@ use tari_transaction_components::{
     MicroMinotari,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
     test_helpers::{TestParams, create_wallet_output_with_data},
-    transaction_builder::TransactionBuilder,
+    transaction_builder::{PendingOutput, TransactionBuilder},
     transaction_components::{
         OutputFeatures,
         Transaction,
@@ -95,7 +95,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     };
     let public_script_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
 
-    let sender_offset = builder.reserve_sender_offset_key().unwrap();
+    let sender_offset = builder
+        .reserve_sender_offset_keys(&[PendingOutput::keyed(amount, 0)])
+        .unwrap()
+        .pop()
+        .unwrap();
     let encrypted_data = key_manager
         .encrypt_data_for_recovery(
             &commitment_mask_key.key_id,

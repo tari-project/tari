@@ -142,6 +142,7 @@ fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
 // ---------------------------------------------------------------------------
 
 pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    key_manager: &TKeyManagerInterface,
     tx_id: TxId,
     tx_builder: TransactionBuilder<TKeyManagerInterface>,
     recipients: &[PaymentRecipient],
@@ -175,7 +176,7 @@ pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: Transacti
     // The payload_signature field is excluded by construction (it covers only the data).
     let canonical = borsh_canonical_one_sided(&version, tx_id, &info)
         .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_one_sided failed: {e}")))?;
-    let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
+    let payload_signature = sign_payload(key_manager, &canonical)?;
 
     Ok(PrepareOneSidedTransactionForSigningResult {
         version,
@@ -186,6 +187,7 @@ pub fn prepare_one_sided_transaction_for_signing<TKeyManagerInterface: Transacti
 }
 
 pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    key_manager: &TKeyManagerInterface,
     tx_id: TxId,
     tx_builder: TransactionBuilder<TKeyManagerInterface>,
     amount: MicroMinotari,
@@ -232,7 +234,7 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
     let version = get_latest_version();
     let canonical = borsh_canonical_multisig(&version, tx_id, &info)
         .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_multisig failed: {e}")))?;
-    let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
+    let payload_signature = sign_payload(key_manager, &canonical)?;
 
     Ok(PrepareDepositMultisigTransactionResult {
         version,
@@ -243,6 +245,7 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
 }
 
 pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKeyManagerInterface>(
+    key_manager: &TKeyManagerInterface,
     tx_id: TxId,
     tx_builder: TransactionBuilder<TKeyManagerInterface>,
     amount: MicroMinotari,
@@ -282,7 +285,7 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
     let version = get_latest_version();
     let canonical = borsh_canonical_one_sided(&version, tx_id, &info)
         .map_err(|e| TransactionBuilderError::Other(format!("borsh_canonical_one_sided failed: {e}")))?;
-    let payload_signature = sign_payload(tx_builder.key_manager(), &canonical)?;
+    let payload_signature = sign_payload(key_manager, &canonical)?;
 
     Ok(PrepareWithdrawMultisigTransactionResult {
         version,
