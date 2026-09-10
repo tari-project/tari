@@ -950,6 +950,17 @@ pub async fn command_runner(
                         };
                     let commitment = embedded_output.commitment.clone();
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP: everywhere else these nonces would be reserved with
+                    // `reserve_ephemeral_nonce`, which yields a handle to a nonce the device generated and can only
+                    // spend once. These two cannot be, because they are created here in step 2 and signed with in
+                    // step 3, with N of them outstanding across a file rather than a device session - and the
+                    // device's nonce store is in RAM and holds eight. So they stay host indexed on the `Random`
+                    // branch, and signing with them goes through `GetRawSchnorrSignatureLegacyNonce`.
+                    //
+                    // These signatures therefore remain open to the two-signatures-one-nonce attack, which for
+                    // pre-mine outputs reaches the script key as well as the key that signed. The full cost, the
+                    // scope, and the TODO that closes it live in `minotari_ledger_wallet_common::legacy_nonce`;
+                    // read that before touching either of these lines.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let sender_offset_nonce =
                         key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
@@ -1466,6 +1477,10 @@ pub async fn command_runner(
                         &embedded_output.commitment,
                     );
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP: `script_nonce_key_id` is a host indexed nonce reserved
+                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce` and stays open to the
+                    // two-signatures-one-nonce attack. See `minotari_ledger_wallet_common::legacy_nonce` for the
+                    // full cost and the TODO that closes it, and the reservation site in step 2 for why.
                     let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.pre_mine_script_key_id,
                         &party_info.script_nonce_key_id,
@@ -1540,6 +1555,16 @@ pub async fn command_runner(
                         MicroMinotari::zero(),
                     );
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP, AND THE WORST OF THE THREE: `sender_offset_key_id` is on
+                    // the `OneSidedSenderOffset` branch - `get_script_offset` issues it - and
+                    // `sender_offset_nonce_key_id` is a host indexed nonce reserved back in step 2, so this routes
+                    // to `GetRawSchnorrSignatureLegacyNonce`.
+                    //
+                    // That branch is on the legacy whitelist deliberately, so that pre-mine spend keeps working,
+                    // and the price is that a compromised host can recover this output's sender offset private key
+                    // and then subtract it back out of the script offset to recover the script private key too.
+                    // `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope - pre-mine
+                    // only, normal spends use device issued handles - and the TODO that closes it.
                     let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.sender_offset_key_id,
                         &party_info.sender_offset_nonce_key_id,

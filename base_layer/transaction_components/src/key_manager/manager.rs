@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Shl, str::FromStr};
+use std::{
+    collections::HashMap,
+    ops::Shl,
+    str::FromStr,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
@@ -30,10 +35,12 @@ use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
+    ledger_generate_ephemeral_nonce,
     ledger_get_dh_shared_secret,
     ledger_get_one_sided_metadata_signature,
     ledger_get_public_key,
     ledger_get_raw_schnorr_signature,
+    ledger_get_raw_schnorr_signature_legacy_nonce,
     ledger_get_script_offset,
     ledger_get_script_schnorr_signature,
     ledger_get_script_signature,
@@ -103,10 +110,37 @@ const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
 
+/// How many ephemeral nonces a software wallet will hold at once.
+///
+/// A nonce only leaves this store by being signed with, and a caller that reserves and then fails before it signs
+/// abandons its entry for the life of the process. The bound stops that from growing without limit; reaching it is
+/// not an error, because the store evicts its oldest entry to make room, exactly as the device's does and for the
+/// same reason. An evicted nonce was never signed with, so no signature exists over it and there is nothing to
+/// reuse - see `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert`.
+///
+/// It is deliberately far above any real multi-party flow, so eviction should only ever be reclaiming leaks.
+const MAX_SOFTWARE_EPHEMERAL_NONCES: usize = 1024;
+
+/// The software wallet's counterpart to the Ledger device's ephemeral nonce store.
+///
+/// It exists so that there is exactly one reserve-then-sign call pattern regardless of wallet type: without it the
+/// multi-party flows would only ever exercise device-issued handles on hardware nobody runs in CI. It mirrors the
+/// device's eviction policy for the same reason, so the two cannot fail differently under the same abuse.
+#[derive(Default)]
+struct SoftwareEphemeralNonceStore {
+    nonces: HashMap<u64, PrivateKey>,
+    /// The last handle issued. Handles are never reused, and zero is never issued, so a handle that has been signed
+    /// with cannot be resurrected by a later reservation landing on the same value.
+    last_handle: u64,
+}
+
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
     wallet_type: WalletType,
+    /// Shared across clones on purpose: a nonce reserved through one handle to the key manager has to be signable
+    /// through another, because the wrappers hand out clones freely.
+    software_ephemeral_nonces: Arc<Mutex<SoftwareEphemeralNonceStore>>,
 }
 
 impl KeyManager {
@@ -123,6 +157,7 @@ impl KeyManager {
         Ok(Self {
             crypto_factories,
             wallet_type,
+            software_ephemeral_nonces: Arc::default(),
         })
     }
 
@@ -136,6 +171,7 @@ impl KeyManager {
         Ok(Self {
             crypto_factories: CryptoFactories::default(),
             wallet_type,
+            software_ephemeral_nonces: Arc::default(),
         })
     }
 
@@ -143,6 +179,7 @@ impl KeyManager {
         Ok(Self {
             crypto_factories: CryptoFactories::default(),
             wallet_type: WalletType::new_random()?,
+            software_ephemeral_nonces: Arc::default(),
         })
     }
 
@@ -362,7 +399,70 @@ impl KeyManager {
         ))
     }
 
+    /// Reserve a nonce on the ledger device.
+    ///
+    /// The device draws the scalar and keeps it; only the handle naming it and its public form come back. The host
+    /// can therefore neither choose the nonce nor use it twice, which is what stops two signatures over different
+    /// challenges from giving up the key that signed them.
+    fn ledger_generate_ephemeral_nonce_wrapper(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        #[cfg(feature = "ledger")]
+        if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            let (handle, pub_key) = ledger_generate_ephemeral_nonce(ledger.account)
+                .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
+            return Ok(TariKeyAndId {
+                key_id: TariKeyId::LedgerEphemeralNonce { handle },
+                pub_key,
+            });
+        }
+
+        trace!(target: "wallet::key_manager::ledger", "Trying to reserve a ledger ephemeral nonce");
+        Err(KeyManagerError::InvalidWalletType(
+            "Trying to access Ledger key on non-Ledger wallet".to_string(),
+        ))
+    }
+
     fn ledger_get_raw_schnorr_signature_wrapper(
+        &self,
+        private_key_index: u64,
+        private_key: LedgerKeyBranch,
+        nonce_handle: u64,
+        challenge: &[u8; 64],
+    ) -> Result<CompressedSignature, KeyManagerError> {
+        #[cfg(feature = "ledger")]
+        if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            let signature = ledger_get_raw_schnorr_signature(
+                ledger.account,
+                private_key_index,
+                private_key,
+                nonce_handle,
+                challenge,
+            )
+            .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
+            return Ok(signature);
+        }
+
+        trace!(target: "wallet::key_manager::ledger",
+            "Trying to get ledger raw schnorr signature with private_key_index: {:?}, private_key: {}, nonce_handle: {}, challenge: {:?}",
+            private_key_index,
+            private_key,
+            nonce_handle,
+            challenge);
+
+        Err(KeyManagerError::InvalidWalletType(
+            "Trying to access Ledger key on non-Ledger wallet".to_string(),
+        ))
+    }
+
+    /// DEPRECATED - DO NOT ADD CALLERS. Sign with a deterministic, host indexed nonce.
+    ///
+    /// The host picks the nonce index here, so a compromised host can ask for two signatures over the same key and
+    /// nonce with different challenges and solve for the private key. Only the pre-mine spend flow still uses it,
+    /// because its nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between.
+    ///
+    /// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs -
+    /// including why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the
+    /// exposure, and the TODO that deletes this wrapper along with the rest of the legacy path.
+    fn ledger_get_raw_schnorr_signature_legacy_nonce_wrapper(
         &self,
         private_key_index: u64,
         private_key: LedgerKeyBranch,
@@ -372,7 +472,7 @@ impl KeyManager {
     ) -> Result<CompressedSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
-            let signature = ledger_get_raw_schnorr_signature(
+            let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
                 ledger.account,
                 private_key_index,
                 private_key,
@@ -385,7 +485,7 @@ impl KeyManager {
         }
 
         trace!(target: "wallet::key_manager::ledger",
-            "Trying to get ledger raw schnorr signature with private_key_index: {:?}, private_key:{}, nonce_index: {}, nonce: {}, challenge: {:?}",
+            "Trying to get ledger legacy raw schnorr signature with private_key_index: {:?}, private_key:{}, nonce_index: {}, nonce: {}, challenge: {:?}",
             private_key_index,
             private_key,
             nonce_index,
@@ -395,6 +495,56 @@ impl KeyManager {
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
         ))
+    }
+
+    /// Poisoning means a previous holder panicked mid-update, so the store's contents cannot be trusted to say
+    /// which nonces are still unused. Surfacing that as an error is the only safe answer; recovering the guard
+    /// would risk handing out a nonce that was already signed with.
+    fn lock_software_ephemeral_nonces(&self) -> Result<MutexGuard<'_, SoftwareEphemeralNonceStore>, KeyManagerError> {
+        self.software_ephemeral_nonces
+            .lock()
+            .map_err(|_| KeyManagerError::EphemeralNonceStorePoisoned)
+    }
+
+    fn reserve_software_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        let private_nonce = PrivateKey::random(&mut rand::rng());
+        let pub_key = CompressedPublicKey::from_secret_key(&private_nonce);
+
+        let mut store = self.lock_software_ephemeral_nonces()?;
+        // Handles are issued from a strictly increasing counter and zero is never issued, so a consumed handle is
+        // dead for good rather than something a later reservation can land on again. Exhausting the counter is the
+        // only condition here that refuses, because re-issuing a handle is the only one that would be unsafe.
+        if store.last_handle == u64::MAX {
+            return Err(KeyManagerError::EphemeralNonceHandlesExhausted);
+        }
+        // A full store evicts its oldest entry instead of refusing, so that reservations abandoned by a failure
+        // between reserving and signing are reclaimed rather than wedging the wallet for the life of the process.
+        // The lowest handle is the oldest reservation. See
+        // `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert` for why this is safe.
+        if store.nonces.len() >= MAX_SOFTWARE_EPHEMERAL_NONCES &&
+            let Some(oldest) = store.nonces.keys().min().copied()
+        {
+            // Dropping the evicted nonce zeroizes it.
+            drop(store.nonces.remove(&oldest));
+        }
+        let handle = store.last_handle.saturating_add(1);
+        store.last_handle = handle;
+        store.nonces.insert(handle, private_nonce);
+
+        Ok(TariKeyAndId {
+            key_id: TariKeyId::LedgerEphemeralNonce { handle },
+            pub_key,
+        })
+    }
+
+    /// Take a reserved nonce out of the software store.
+    ///
+    /// Reading a nonce and consuming it are the same operation, so there is no way to sign with one twice.
+    fn take_software_ephemeral_nonce(&self, handle: u64) -> Result<PrivateKey, KeyManagerError> {
+        self.lock_software_ephemeral_nonces()?
+            .nonces
+            .remove(&handle)
+            .ok_or(KeyManagerError::UnknownEphemeralNonce { handle })
     }
 
     fn ledger_get_public_key_wrapper(
@@ -540,11 +690,12 @@ impl TransactionKeyManagerInterface for KeyManager {
         // the index and can strip the blinding back out of the script offset it is handed. The spend branch is
         // never addressable by index at all.
         //
-        // Note: `MetadataEphemeralNonce` is still host-indexed and is retired separately, when signing moves to
-        // device-issued ephemeral nonce handles.
+        // Note: signing nonces are no longer requested here at all. They are reserved through
+        // `reserve_ephemeral_nonce`, which issues a handle to a nonce the issuer generated, because a nonce the
+        // host indexed can be asked for twice and two signatures under one nonce give up the key that signed them.
         if let Some(branch) = ledger_key {
             match branch {
-                LedgerKeyBranch::Random | LedgerKeyBranch::PreMine | LedgerKeyBranch::MetadataEphemeralNonce => {},
+                LedgerKeyBranch::Random | LedgerKeyBranch::PreMine => {},
                 LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::Spend => {
                     return Err(KeyManagerError::InvalidKeyBranch(format!(
                         "'{branch}' keys cannot be requested through 'get_random_key'; sender offset keys are only \
@@ -574,6 +725,13 @@ impl TransactionKeyManagerInterface for KeyManager {
             key_id,
             pub_key: public_key,
         })
+    }
+
+    fn reserve_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        if self.wallet_type.is_ledger() {
+            return self.ledger_generate_ephemeral_nonce_wrapper();
+        }
+        self.reserve_software_ephemeral_nonce()
     }
 
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
@@ -648,6 +806,16 @@ impl TransactionKeyManagerInterface for KeyManager {
                     LedgerKeyBranch::Spend => Ok(self.wallet_type.get_public_spend_key()),
                     _ => self.ledger_get_public_key_wrapper(*branch, *index),
                 }
+            },
+            TariKeyId::LedgerEphemeralNonce { handle } => {
+                // The public nonce is handed out once, by the `reserve_ephemeral_nonce` call that created the
+                // handle, and is not recoverable from the handle afterwards - on a ledger wallet the device is the
+                // only thing that could recompute it, and it will not. Callers must keep the `TariKeyAndId` they
+                // were given.
+                Err(KeyManagerError::InvalidKeyId(format!(
+                    "The public nonce of ephemeral nonce handle '{handle}' is only returned by \
+                     'reserve_ephemeral_nonce' and cannot be recovered from the key id"
+                )))
             },
             TariKeyId::SpendKey => Ok(self.wallet_type.get_public_spend_key()),
             TariKeyId::ViewKey => Ok(self.wallet_type.get_public_view_key()),
@@ -1268,11 +1436,26 @@ impl TransactionKeyManagerInterface for KeyManager {
                     branch: private_key_branch,
                     index: private_key_index,
                 },
+                TariKeyId::LedgerEphemeralNonce { handle },
+            ) => self.ledger_get_raw_schnorr_signature_wrapper(
+                *private_key_index,
+                *private_key_branch,
+                *handle,
+                challenge,
+            ),
+            // DEPRECATED. A ledger key paired to a host indexed ledger nonce is the pre-mine spend flow, and only
+            // the pre-mine spend flow. See `minotari_ledger_wallet_common::legacy_nonce` for why it is still
+            // reachable, what it costs, and the TODO that deletes this arm along with the rest of that path.
+            (
+                TariKeyId::LedgerKey {
+                    branch: private_key_branch,
+                    index: private_key_index,
+                },
                 TariKeyId::LedgerKey {
                     branch: nonce_branch,
                     index: nonce_index,
                 },
-            ) => self.ledger_get_raw_schnorr_signature_wrapper(
+            ) => self.ledger_get_raw_schnorr_signature_legacy_nonce_wrapper(
                 *private_key_index,
                 *private_key_branch,
                 *nonce_index,
@@ -1282,6 +1465,22 @@ impl TransactionKeyManagerInterface for KeyManager {
             (TariKeyId::LedgerKey { .. }, _) | (_, TariKeyId::LedgerKey { .. }) => Err(KeyManagerError::LedgerError(
                 "Trying to access Ledger key paired to a non ledger key".to_string(),
             )),
+            (_, TariKeyId::LedgerEphemeralNonce { handle }) => {
+                // A ledger wallet's ephemeral nonces live on the device, so there is nothing here to look up. Say
+                // so rather than reporting the handle as unknown, which would read as a caller bug.
+                if self.wallet_type.is_ledger() {
+                    return Err(KeyManagerError::LedgerError(
+                        "Trying to access Ledger key paired to a non ledger key".to_string(),
+                    ));
+                }
+                let private_key = self.get_private_key(private_key_id)?;
+                // Consume before signing, so that no path out of here - including one a later change adds - can
+                // leave the nonce available for a second challenge.
+                let private_nonce = self.take_software_ephemeral_nonce(*handle)?;
+                let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
+
+                Ok(CompressedSignature::new_from_schnorr(signature))
+            },
             _ => {
                 let private_key = self.get_private_key(private_key_id)?;
                 let private_nonce = self.get_private_key(nonce)?;
@@ -1483,6 +1682,12 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
             TariKeyId::LedgerKey { .. } => Err(KeyManagerError::LedgerError(
                 "Cannot access ledger private keys".to_string(),
             )),
+            // An ephemeral nonce is never extractable through the generic accessor, on either wallet type. The one
+            // operation a reserved nonce supports is `sign_with_nonce_and_challenge`, which consumes it; handing
+            // the scalar out here would let a caller sign twice with it and give up the key it signed for.
+            TariKeyId::LedgerEphemeralNonce { handle } => Err(KeyManagerError::InvalidKeyId(format!(
+                "Ephemeral nonce handle '{handle}' names a one-shot signing nonce; its private key cannot be read"
+            ))),
             TariKeyId::DHCommitmentMask {
                 public_key,
                 private_key,
@@ -1518,6 +1723,7 @@ mod tests {
     use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
     use tari_common_types::types::PrivateKey;
 
+    use super::MAX_SOFTWARE_EPHEMERAL_NONCES;
     use crate::key_manager::{
         KeyManager,
         SecretTransactionKeyManagerInterface,
@@ -1712,12 +1918,223 @@ mod tests {
         }
 
         // The branches that are still host indexed are untouched by this guard.
-        for branch in [
-            LedgerKeyBranch::Random,
-            LedgerKeyBranch::PreMine,
-            LedgerKeyBranch::MetadataEphemeralNonce,
-        ] {
+        for branch in [LedgerKeyBranch::Random, LedgerKeyBranch::PreMine] {
             assert!(key_manager.get_random_key(None, Some(branch)).is_ok());
         }
+    }
+
+    fn challenge(byte: u8) -> [u8; 64] {
+        [byte; 64]
+    }
+
+    /// The pre-mine spend flow signs its script signature with a `PreMine` key and its metadata signature with the
+    /// `OneSidedSenderOffset` key `get_script_offset` issued, both against a `Random` branch nonce reserved back in
+    /// step 2. Both pairs have to reach the device call rather than being turned away by the legacy branch
+    /// whitelist - on a software wallet "reached the device call" shows up as `InvalidWalletType`, which is raised
+    /// at the transport boundary, after every guard.
+    ///
+    /// See `minotari_ledger_wallet_common::legacy_nonce` for why that whitelist is as wide as it is.
+    #[test]
+    fn the_pre_mine_signing_pairs_reach_the_ledger_call() {
+        let key_manager = KeyManager::new_random().unwrap();
+
+        for key_branch in [LedgerKeyBranch::PreMine, LedgerKeyBranch::OneSidedSenderOffset] {
+            let private_key_id = TariKeyId::LedgerKey {
+                branch: key_branch,
+                index: 7,
+            };
+            let nonce = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 9,
+            };
+
+            let err = key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &challenge(1))
+                .unwrap_err();
+            match err {
+                KeyManagerError::InvalidWalletType(message) => {
+                    assert!(message.contains("non-Ledger wallet"), "unexpected message: {message}");
+                },
+                other => panic!("'{key_branch}' was turned away before the device call: {other:?}"),
+            }
+        }
+    }
+
+    /// The software wallet mirrors the device's reserve-then-sign shape, so this is the path CI actually exercises.
+    /// It has to produce a signature that verifies against the public nonce the reservation handed back - if the
+    /// two came apart, every multi-party signature share would silently fail to aggregate.
+    #[test]
+    fn a_reserved_software_nonce_signs_and_verifies() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        let challenge = challenge(1);
+        let signature = key_manager
+            .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge)
+            .unwrap();
+
+        assert_eq!(signature.get_compressed_public_nonce(), &reserved_nonce.pub_key);
+        assert!(
+            signature
+                .to_schnorr_signature()
+                .unwrap()
+                .verify_raw_uniform(&signing_key.pub_key.to_public_key().unwrap(), &challenge)
+        );
+    }
+
+    /// The whole point of a handle: two signatures over different challenges under one nonce give up the private
+    /// key as `k = (s1 - s2) / (e1 - e2)`, so the second attempt has to fail rather than sign.
+    #[test]
+    fn a_software_nonce_handle_cannot_be_signed_with_twice() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        key_manager
+            .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(1))
+            .unwrap();
+
+        let err = key_manager
+            .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(2))
+            .unwrap_err();
+        match (err, &reserved_nonce.key_id) {
+            (
+                KeyManagerError::UnknownEphemeralNonce { handle },
+                TariKeyId::LedgerEphemeralNonce { handle: expected },
+            ) => {
+                assert_eq!(handle, *expected);
+            },
+            (other, _) => panic!("expected UnknownEphemeralNonce, got {other:?}"),
+        }
+    }
+
+    /// Handles are issued, never chosen, so a handle the key manager never handed out names nothing.
+    #[test]
+    fn a_never_issued_software_nonce_handle_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+
+        for handle in [0u64, 1, u64::MAX] {
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &signing_key.key_id,
+                    &TariKeyId::LedgerEphemeralNonce { handle },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle });
+        }
+    }
+
+    /// A reservation and the signature that spends it can arrive through different clones of the key manager,
+    /// because the wrappers hand out clones freely. If the store were per-clone, every real caller would break.
+    #[test]
+    fn a_reserved_nonce_is_visible_through_a_clone() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        let clone = key_manager.clone();
+        assert!(
+            clone
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
+        // ... and consuming it through the clone consumes it for the original too.
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(2))
+                .is_err()
+        );
+    }
+
+    /// An ephemeral nonce private key must never be readable through the generic accessor: a caller that could
+    /// read it could sign with it again outside the key manager, which is the reuse the handle exists to prevent.
+    #[test]
+    fn the_private_key_of_an_ephemeral_nonce_is_not_readable() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        for key_id in [reserved_nonce.key_id.clone(), TariKeyId::LedgerEphemeralNonce {
+            handle: 7,
+        }] {
+            match key_manager.get_private_key(&key_id).unwrap_err() {
+                KeyManagerError::InvalidKeyId(message) => {
+                    assert!(message.contains("cannot be read"), "unexpected message: {message}");
+                },
+                other => panic!("expected InvalidKeyId, got {other:?}"),
+            }
+        }
+
+        // The nonce is still there to be signed with; refusing to read it must not have consumed it.
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
+    }
+
+    /// A nonce is only released by being signed with, so a caller that reserves and then fails before it signs
+    /// leaks its entry for the life of the process. The store therefore evicts rather than refusing, so those
+    /// leaks are reclaimed instead of eventually wedging the wallet.
+    #[test]
+    fn a_full_software_nonce_store_evicts_the_oldest_entry_rather_than_refusing() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+
+        let mut reserved = Vec::with_capacity(MAX_SOFTWARE_EPHEMERAL_NONCES);
+        for _ in 0..MAX_SOFTWARE_EPHEMERAL_NONCES {
+            reserved.push(key_manager.reserve_ephemeral_nonce().unwrap());
+        }
+
+        // The store is full, and reserving again still succeeds.
+        let newest = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        // The oldest reservation is the one that went, and it is refused exactly like a consumed one.
+        let evicted = reserved.first().expect("just filled the store");
+        let err = key_manager
+            .sign_with_nonce_and_challenge(&signing_key.key_id, &evicted.key_id, &challenge(1))
+            .unwrap_err();
+        assert!(
+            matches!(err, KeyManagerError::UnknownEphemeralNonce { .. }),
+            "expected the evicted handle to be unknown, got {err:?}"
+        );
+
+        // The next oldest survived, as did the reservation that displaced the evicted one.
+        let survivor = reserved.get(1).expect("just filled the store");
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &survivor.key_id, &challenge(2))
+                .is_ok()
+        );
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &newest.key_id, &challenge(3))
+                .is_ok()
+        );
+    }
+
+    /// The leak this eviction exists for: on a ledger wallet the calls between reserving a nonce and signing with
+    /// it are device round trips, and a user rejecting one of them abandons the reservation with no way to release
+    /// it. Enough of those and a refusing store would never issue another nonce.
+    #[test]
+    fn abandoned_reservations_do_not_wedge_the_software_nonce_store() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+
+        // Reserve and walk away, many times over the bound.
+        for _ in 0..MAX_SOFTWARE_EPHEMERAL_NONCES.saturating_mul(2) {
+            key_manager.reserve_ephemeral_nonce().unwrap();
+        }
+
+        // A caller that does pair its reserve with a sign is still served.
+        let reserved = key_manager.reserve_ephemeral_nonce().unwrap();
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved.key_id, &challenge(1))
+                .is_ok()
+        );
     }
 }

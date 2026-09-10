@@ -30,6 +30,8 @@ pub enum AppSW {
     ScriptOffsetNoSenderOffsets = 0xB00E,
     ScriptOffsetInvalidScriptBranch = 0xB00F,
     ScriptOffsetNoDeviceScriptKeys = 0xB010,
+    NonceStoreFull = 0xB011,
+    NonceHandleInvalid = 0xB012,
     WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = 0x9000,
@@ -55,6 +57,8 @@ impl TryFrom<u16> for AppSW {
             0xB00E => Ok(AppSW::ScriptOffsetNoSenderOffsets),
             0xB00F => Ok(AppSW::ScriptOffsetInvalidScriptBranch),
             0xB010 => Ok(AppSW::ScriptOffsetNoDeviceScriptKeys),
+            0xB011 => Ok(AppSW::NonceStoreFull),
+            0xB012 => Ok(AppSW::NonceHandleInvalid),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6e04 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
@@ -84,6 +88,10 @@ pub enum Instruction {
     GetScriptSchnorrSignature = 0x10,
     GetOneSidedMetadataSignature = 0x11,
     GetScriptSignatureManaged = 0x12,
+    GenerateEphemeralNonce = 0x13,
+    // TODO: Delete together with `handler_get_raw_schnorr_signature_legacy_nonce`, once the pre-mine spend flow no
+    //       longer needs a nonce that outlives a single device session.
+    GetRawSchnorrSignatureLegacyNonce = 0x14,
 }
 
 impl Instruction {
@@ -105,6 +113,8 @@ impl Instruction {
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
             0x11 => Some(Instruction::GetOneSidedMetadataSignature),
             0x12 => Some(Instruction::GetScriptSignatureManaged),
+            0x13 => Some(Instruction::GenerateEphemeralNonce),
+            0x14 => Some(Instruction::GetRawSchnorrSignatureLegacyNonce),
             _ => None,
         }
     }
@@ -116,7 +126,7 @@ impl Instruction {
 #[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize, borsh::BorshDeserialize))]
 #[cfg_attr(feature = "borsh", borsh(use_discriminant = true))]
 pub enum LedgerKeyBranch {
-    MetadataEphemeralNonce = 0x01,
+    // MetadataEphemeralNonce = 0x01 Dont reuse, is retired
     OneSidedSenderOffset = 0x06,
     Random = 0x08,
     PreMine = 0x09,
@@ -130,7 +140,6 @@ impl LedgerKeyBranch {
 
     pub fn from_byte(value: u8) -> Option<Self> {
         match value {
-            0x01 => Some(LedgerKeyBranch::MetadataEphemeralNonce),
             0x06 => Some(LedgerKeyBranch::OneSidedSenderOffset),
             0x08 => Some(LedgerKeyBranch::Random),
             0x09 => Some(LedgerKeyBranch::PreMine),
@@ -145,7 +154,6 @@ impl LedgerKeyBranch {
             LedgerKeyBranch::Random => "Random",
             LedgerKeyBranch::PreMine => "PreMine",
             LedgerKeyBranch::Spend => "Spend",
-            LedgerKeyBranch::MetadataEphemeralNonce => "MetadataEphemeralNonce",
         }
     }
 }
@@ -159,7 +167,6 @@ impl FromStr for LedgerKeyBranch {
             "Random" => Ok(LedgerKeyBranch::Random),
             "PreMine" => Ok(LedgerKeyBranch::PreMine),
             "Spend" => Ok(LedgerKeyBranch::Spend),
-            "MetadataEphemeralNonce" => Ok(LedgerKeyBranch::MetadataEphemeralNonce),
             _ => Err("Invalid ledger key branch".to_string()),
         }
     }
@@ -193,6 +200,8 @@ mod test {
             (0xB00E, AppSW::ScriptOffsetNoSenderOffsets),
             (0xB00F, AppSW::ScriptOffsetInvalidScriptBranch),
             (0xB010, AppSW::ScriptOffsetNoDeviceScriptKeys),
+            (0xB011, AppSW::NonceStoreFull),
+            (0xB012, AppSW::NonceHandleInvalid),
             (0x6e03, AppSW::WrongApduLength),
             (0x6e04, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
@@ -245,6 +254,12 @@ mod test {
                 AppSW::ScriptOffsetNoDeviceScriptKeys => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
+                AppSW::NonceStoreFull => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::NonceHandleInvalid => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
                 AppSW::WrongApduLength => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
@@ -273,6 +288,8 @@ mod test {
             (0x10, Instruction::GetScriptSchnorrSignature),
             (0x11, Instruction::GetOneSidedMetadataSignature),
             (0x12, Instruction::GetScriptSignatureManaged),
+            (0x13, Instruction::GenerateEphemeralNonce),
+            (0x14, Instruction::GetRawSchnorrSignatureLegacyNonce),
         ];
 
         for (expected_byte, instruction) in &mappings {
@@ -322,6 +339,14 @@ mod test {
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
                 Instruction::GetScriptSignatureManaged => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
+                Instruction::GenerateEphemeralNonce => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
+                Instruction::GetRawSchnorrSignatureLegacyNonce => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
