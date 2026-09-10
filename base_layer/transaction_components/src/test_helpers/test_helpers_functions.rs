@@ -40,10 +40,10 @@ use crate::{
     TransactionBuilder,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
-    fee::Fee,
+    fee::{Fee, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    transaction_builder::FinalizedTransaction,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage, manager::KeyManager},
+    transaction_builder::{FinalizedTransaction, PendingOutput, TransactionBuilderError},
     transaction_components::{
         CoinBaseExtra,
         KernelBuilder,
@@ -94,6 +94,12 @@ pub struct TestParams {
     pub script_key_pk: CompressedPublicKey,
     pub sender_offset_key_id: TariKeyId,
     pub sender_offset_key_pk: CompressedPublicKey,
+    /// `script_key_id - sender_offset_key_id`, the partial script offset over this params' own pair of keys.
+    ///
+    /// A script offset may never be computed over a sender offset key alone: the reply would be the sender offset
+    /// private key itself, which on a ledger wallet is exactly what the device generated it to keep from the host.
+    /// So the pair is generated together, and the offset over the pair is what comes back.
+    pub partial_script_offset: PrivateKey,
     pub kernel_nonce_key_id: TariKeyId,
     pub kernel_nonce_key_pk: CompressedPublicKey,
     pub public_nonce_key_id: TariKeyId,
@@ -106,7 +112,10 @@ pub struct TestParams {
 impl TestParams {
     pub fn new<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
-        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let (partial_script_offset, mut sender_offset_keys) = key_manager
+            .get_script_offset(std::slice::from_ref(&script_key.key_id), 1)
+            .unwrap();
+        let sender_offset = sender_offset_keys.pop().unwrap();
         let kernel_nonce = key_manager.get_random_key(None, None).unwrap();
         let public_nonce = key_manager.get_random_key(None, None).unwrap();
         let ephemeral_public_nonce = key_manager.get_random_key(None, None).unwrap();
@@ -117,6 +126,7 @@ impl TestParams {
             script_key_pk: script_key.pub_key,
             sender_offset_key_id: sender_offset.key_id,
             sender_offset_key_pk: sender_offset.pub_key,
+            partial_script_offset,
             kernel_nonce_key_id: kernel_nonce.key_id,
             kernel_nonce_key_pk: kernel_nonce.pub_key,
             public_nonce_key_id: public_nonce.key_id,
@@ -499,8 +509,8 @@ pub fn create_tx<KM: TransactionKeyManagerInterface>(
         &Default::default(),
         key_manager,
     )?;
-    let tx = create_transaction_with(lock_height, fee_per_gram, inputs.clone(), outputs.clone(), key_manager);
-    Ok((tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect()))
+    let (tx, outputs) = create_transaction_with(lock_height, fee_per_gram, inputs.clone(), outputs, key_manager);
+    Ok((tx, inputs, outputs))
 }
 
 #[allow(clippy::type_complexity)]
@@ -581,13 +591,16 @@ pub fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
 }
 /// Create an unconfirmed transaction for testing with a valid fee, unique excess_sig, random inputs and outputs, the
 /// transaction is only partially constructed
+///
+/// The sender offset keys the outputs were built with are discarded: they are re-keyed onto keys reserved from the
+/// builder, so that the input script keys are folded into the script offset the way a real wallet folds them.
 pub fn create_transaction_with<KM: TransactionKeyManagerInterface>(
     lock_height: u64,
     fee_per_gram: MicroMinotari,
     inputs: Vec<WalletOutput>,
     outputs: Vec<(WalletOutput, TariKeyId)>,
     key_manager: &KM,
-) -> Transaction {
+) -> (Transaction, Vec<WalletOutput>) {
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let constants = rules.consensus_constants(0).clone();
     let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
@@ -596,12 +609,42 @@ pub fn create_transaction_with<KM: TransactionKeyManagerInterface>(
         tx_builder.with_input(input).unwrap();
     }
 
-    for (output, script_offset_key_id) in outputs {
-        tx_builder.with_output(output, script_offset_key_id, None).unwrap();
-    }
+    add_outputs_with_reserved_sender_offset_keys(
+        &mut tx_builder,
+        outputs
+            .into_iter()
+            .map(|(output, _discarded_sender_offset_key_id)| output)
+            .collect(),
+    )
+    .unwrap();
     let finalized = tx_builder.build().unwrap();
 
-    finalized.transaction
+    (finalized.transaction, finalized.custom_outputs)
+}
+
+/// Move already built outputs onto sender offset keys reserved from `builder`, and add them as custom outputs.
+///
+/// Every transaction needs at least one output whose sender offset key the key manager generated, otherwise the
+/// input script keys can never be folded into the script offset. Test outputs are usually built before a builder
+/// exists, so this swaps the keys out and drops each metadata signature to the placeholder the builder re-signs.
+///
+/// All the outputs go through a single reservation, because that is the only shape the builder allows: one
+/// `get_script_offset` call per transaction is what keeps both sides of that sum blinded.
+pub fn add_outputs_with_reserved_sender_offset_keys<KM: TransactionKeyManagerInterface>(
+    builder: &mut TransactionBuilder<KM>,
+    outputs: Vec<WalletOutput>,
+) -> Result<(), TransactionBuilderError> {
+    let pending = outputs
+        .iter()
+        .map(PendingOutput::from_output)
+        .collect::<Result<Vec<_>, _>>()?;
+    let sender_offsets = builder.reserve_sender_offset_keys(&pending)?;
+    for (mut output, sender_offset) in outputs.into_iter().zip(sender_offsets) {
+        output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+        output.set_metadata_signature(Default::default());
+        builder.with_output(output, sender_offset.key_id, None)?;
+    }
+    Ok(())
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -650,9 +693,34 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
     for tx_input in &schema.from {
         tx_builder.with_input(tx_input.clone()).unwrap();
     }
+    // Every output takes a key from one reservation. The builder allows exactly one `get_script_offset` call per
+    // transaction, because that call is what folds the input script keys in and blinds them, so the outputs have to
+    // be declared before any key exists.
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let recipient_size = recipient_output_features_and_scripts_size(
+        constants.transaction_weight_params(),
+        &schema.features,
+        &schema.script,
+        &schema.covenant,
+        &MemoField::new_empty(),
+    )
+    .unwrap();
+    let mut pending = schema
+        .to
+        .iter()
+        .map(|value| PendingOutput::new(*value, recipient_size))
+        .collect::<Vec<_>>();
+    for utxo in &schema.to_outputs {
+        pending.push(PendingOutput::from_output(utxo).unwrap());
+    }
+    let mut sender_offsets = tx_builder.reserve_sender_offset_keys(&pending).unwrap().into_iter();
+
     for val in schema.to {
         let commitment_mask = key_manager.get_random_key(None, None).unwrap();
-        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = sender_offsets.next().unwrap();
         let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
@@ -670,7 +738,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .with_input_data(input_data)
             .with_covenant(schema.covenant.clone())
             .with_version(version)
-            .with_sender_offset_public_key(sender_offset.pub_key)
+            .with_sender_offset_public_key(sender_offset.pub_key.clone())
             .with_script_key(script_key_id.clone())
             .sign_metadata_signature(key_manager, &sender_offset.key_id)
             .unwrap()
@@ -681,7 +749,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
         tx_builder.with_output(output, sender_offset.key_id, None).unwrap();
     }
     for mut utxo in schema.to_outputs {
-        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = sender_offsets.next().unwrap();
         let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
         utxo.set_metadata_signature(
             key_manager

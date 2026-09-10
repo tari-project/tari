@@ -33,7 +33,11 @@ use tari_utilities::ByteArray;
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-pub const MIN_LEDGER_APP_VERSION: &str = "5.0.5";
+/// The `GetScriptOffset` request and reply changed shape in this release, so older applications cannot serve this
+/// client at all. Keep this in step with the ledger application's `version` in its `Cargo.toml`.
+pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.5";
+/// The version byte the ledger application prefixes every reply with. See `RESPONSE_VERSION` in the application.
+pub const EXPECTED_RESPONSE_VERSION: u8 = 2;
 const WALLET_CLA: u8 = 0x80;
 
 struct HidManager {
@@ -114,6 +118,34 @@ impl<D: Deref<Target = [u8]>> Command<D> {
             ins: instruction.as_byte(),
             p1: 0x00,
             p2: 0x00,
+            data: base_data,
+        })
+    }
+
+    /// Build a single chunk of a chunked instruction with an explicit chunk number and continuation flag.
+    ///
+    /// [`Self::chunk_command`] always emits a well formed 0, 1, 2, ... sequence. This builds one arbitrary chunk, so
+    /// that `ledger_demo` can drive the device's own validation on real hardware - including the malformed sequences
+    /// the accessor methods refuse to send, which are exactly the ones the device has to reject.
+    pub fn build_chunk_command(
+        account: u64,
+        instruction: Instruction,
+        chunk_number: u8,
+        more: bool,
+        chunk: Vec<u8>,
+    ) -> Command<Vec<u8>> {
+        // The account is only carried on the first chunk, matching `chunk_command`.
+        let mut base_data = vec![];
+        if chunk_number == 0 {
+            base_data.extend_from_slice(&account.to_le_bytes());
+        }
+        base_data.extend_from_slice(&chunk);
+
+        Command::new(APDUCommand {
+            cla: WALLET_CLA,
+            ins: instruction.as_byte(),
+            p1: chunk_number,
+            p2: u8::from(more),
             data: base_data,
         })
     }

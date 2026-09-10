@@ -52,6 +52,7 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
 
     let mut private_key_type_bytes = [0u8; 8];
     private_key_type_bytes.clone_from_slice(&data[16..24]);
+    // Note: `KeyType::from_branch_key` rejects the spend branch, so the host cannot point this handler at `alpha`.
     let private_key_type = KeyType::from_branch_key(u64::from_le_bytes(private_key_type_bytes))?;
 
     let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;

@@ -513,7 +513,7 @@ fn inputs_not_malleable() {
     )
     .expect("Failed to create wallet outputs");
     let mut stack = inputs[0].input_data().clone();
-    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager);
+    let (mut tx, _outputs) = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager);
 
     stack
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
@@ -593,7 +593,7 @@ mod validate_internal_consistency {
         inputs[0].set_features(input_params.features.clone());
         inputs[0].set_covenant(input_params.covenant.clone());
         inputs[0].set_script(input_params.script.clone());
-        let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager);
+        let (tx, _outputs) = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager);
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());

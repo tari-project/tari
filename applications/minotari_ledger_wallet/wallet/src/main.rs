@@ -52,7 +52,7 @@ ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
 static CLA: u8 = 0x80;
-static RESPONSE_VERSION: u8 = 1;
+static RESPONSE_VERSION: u8 = 2;
 
 // Application status words.
 #[repr(u16)]
@@ -64,13 +64,15 @@ pub enum AppSW {
     ScriptSignatureFail = AppSWMapping::ScriptSignatureFail as u16,
     RawSchnorrSignatureFail = AppSWMapping::RawSchnorrSignatureFail as u16,
     SchnorrSignatureFail = AppSWMapping::SchnorrSignatureFail as u16,
-    ScriptOffsetNotUnique = AppSWMapping::ScriptOffsetNotUnique as u16,
     KeyDeriveFail = AppSWMapping::KeyDeriveFail as u16,
     KeyDeriveFromCanonical = AppSWMapping::KeyDeriveFromCanonical as u16,
     KeyDeriveFromUniform = AppSWMapping::KeyDeriveFromUniform as u16,
     RandomNonceFail = AppSWMapping::RandomNonceFail as u16,
     BadBranchKey = AppSWMapping::BadBranchKey as u16,
     MetadataSignatureFail = AppSWMapping::MetadataSignatureFail as u16,
+    ScriptOffsetNoSenderOffsets = AppSWMapping::ScriptOffsetNoSenderOffsets as u16,
+    ScriptOffsetInvalidScriptBranch = AppSWMapping::ScriptOffsetInvalidScriptBranch as u16,
+    ScriptOffsetNoDeviceScriptKeys = AppSWMapping::ScriptOffsetNoDeviceScriptKeys as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = AppSWMapping::Ok as u16,
@@ -121,6 +123,11 @@ impl KeyType {
         self as u8
     }
 
+    /// Map a host supplied branch identifier onto a key type.
+    ///
+    /// The spend branch is deliberately not reachable from here: `alpha` is the wallet's root spend key and no
+    /// handler may ever be pointed at it by the host. It stays reachable internally through
+    /// `derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)`.
     fn from_branch_key(n: u64) -> Result<Self, AppSW> {
         if n > u64::from(u8::MAX) {
             return Err(AppSW::BadBranchKey);
@@ -128,10 +135,10 @@ impl KeyType {
         if let Some(branch) = BranchMapping::from_byte(n as u8) {
             match branch {
                 BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
-                BranchMapping::Spend => Ok(Self::Spend),
                 BranchMapping::Random => Ok(Self::Random),
                 BranchMapping::PreMine => Ok(Self::PreMine),
                 BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
+                BranchMapping::Spend => Err(AppSW::BadBranchKey),
             }
         } else {
             return Err(AppSW::BadBranchKey);
@@ -229,12 +236,21 @@ extern "C" fn sample_main() {
             continue;
         };
 
+        // `offset_ctx` accumulates a `GetScriptOffset` across several exchanges, so anything that is not the next
+        // chunk of that accumulation has to invalidate it. Without this, a host whose chunk was rejected could
+        // resume with a differently numbered follow-up chunk and read back a value the rejection withheld - for an
+        // unblinded script offset, that is the wallet's spend key.
+        if !matches!(ins, Instruction::GetScriptOffset { .. }) {
+            offset_ctx.reset();
+        }
+
         let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
             },
             Err(sw) => {
+                offset_ctx.reset();
                 comm.reply(sw.clone());
                 sw
             },

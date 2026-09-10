@@ -37,7 +37,6 @@ use tari_common_types::{
         CompressedPublicKey,
         FixedHash,
         HashOutput,
-        PrivateKey,
         UncompressedCommitment,
         UncompressedPublicKey,
     },
@@ -63,7 +62,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
-    transaction_builder::FinalizedTransaction,
+    transaction_builder::{FinalizedTransaction, PendingOutput, RecipientKeys, RecipientSpec},
     transaction_components::{
         EncryptedData,
         KernelFeatures,
@@ -72,7 +71,6 @@ use tari_transaction_components::{
         Transaction,
         TransactionError,
         TransactionOutput,
-        TransactionOutputVersion,
         WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
@@ -1246,10 +1244,16 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())?
             .with_memo(payment_id);
-        let sender_offset_private_key_id_self = self
-            .resources
-            .key_manager
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
+        // The published sender offset public key is this key plus every other player's share, and the metadata
+        // signature is only a partial one, so this output cannot be declared as a recipient spec. It is declared as
+        // a pending output instead, so that the single reservation charges for it and its value is part of the
+        // change decision - there is no change here, and the reservation has to see that.
+        let sender_offset_private_key_id_self = builder
+            .reserve_sender_offset_keys(&[PendingOutput::new(amount, metadata_byte_size)])?
+            .pop()
+            .ok_or_else(|| {
+                OutputManagerError::ServiceError("No sender offset key was reserved (TxId: 0)".to_string())
+            })?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
 
         // Prepare receiver part of the transaction
@@ -1340,7 +1344,7 @@ where
         builder.add_recipient(
             recipient_address.clone(),
             output.clone(),
-            Some(sender_offset_private_key_id_self.key_id),
+            sender_offset_private_key_id_self.key_id,
             Some(encryption_key_id),
         )?;
 
@@ -1528,85 +1532,19 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_memo(payment_id.clone())
             .with_input(input.clone())?;
-        let sender_offset_private_key_id_self = self
-            .resources
-            .key_manager
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
-
-        // Prepare receiver part of the transaction
-
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending and encryption keys.
-
-        let shared_secret = self.resources.key_manager.get_diffie_hellman_shared_secret(
-            &sender_offset_private_key_id_self.key_id,
-            recipient_address
-                .public_view_key()
-                .ok_or(OutputManagerError::ServiceError(
-                    "Missing public view key (TxId: 0)".to_string(),
-                ))?,
+        // The recipient output is declared, not built. Its sender offset key is only reserved once the builder knows
+        // how many outputs the transaction has, because one `get_script_offset` call for the whole transaction is
+        // what keeps both sides of that sum blinded, and the pre-mine script key is what blinds this one on the
+        // device.
+        //
+        // The memo the output stores carries the transaction's fee; the builder overwrites it with the final one,
+        // which is why `measured_memo` above could be measured with a zero fee.
+        tx_builder.with_recipient_spec(
+            RecipientSpec::stealth(recipient_address.clone(), amount, output_features, measured_memo)
+                .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+                .with_minimum_value_promise(minimum_value_promise),
         )?;
-
-        let commitment_mask_key = public_key_to_output_spending_key(&shared_secret)?;
-        let commitment_mask_key_id = self
-            .resources
-            .key_manager
-            .create_encrypted_key(commitment_mask_key, None)?;
-
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key_id = self
-            .resources
-            .key_manager
-            .create_encrypted_key(encryption_private_key, None)?;
-
-        let sender_offset_public_key = self
-            .resources
-            .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key_id_self.key_id)?;
-
-        let script_spending_key = self
-            .resources
-            .key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
-        let payment_id = addressed_output_memo(
-            payment_id,
-            self.resources.one_sided_tari_address.clone(),
-            fee,
-            TxType::PaymentToOther,
-        )?;
-
-        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
-            .with_features(output_features
-            )
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.key_manager,
-                Some(&encryption_key_id),
-                payment_id,
-            )
-            ?
-            .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature_user_verified(
-                &self.resources.key_manager,
-                &sender_offset_private_key_id_self.key_id,
-                &recipient_address,
-            )
-
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
-            .try_build(&self.resources.key_manager)
-
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
-
-        tx_builder.add_recipient(
-            self.resources.one_sided_tari_address.clone(),
-            output.clone(),
-            Some(sender_offset_private_key_id_self.key_id),
-            Some(encryption_key_id),
-        )?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
@@ -1678,23 +1616,20 @@ where
             tx_builder.with_input(kmo.wallet_output.clone())?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(
+        // The output is declared, not built: its sender offset key is only reserved once the builder knows how many
+        // outputs the transaction has, because one `get_script_offset` call for the whole transaction is what keeps
+        // both sides of that sum blinded.
+        tx_builder.with_recipient_spec(self.output_to_self_spec(
             output_features,
             amount,
             covenant,
             payment_id,
-            input_selection.as_final_fee(),
             minimum_value_promise,
-        )?;
-
-        tx_builder
-            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone(), None)
-            .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
-
-        let mut outputs = vec![output];
+        )?)?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        refresh_custom_outputs_after_build(&mut outputs, &finalized);
+        let mut outputs = spec_outputs_to_db_outputs(&finalized);
 
         let fee = finalized.fee;
         if let Some(change) = finalized.change {
@@ -2426,7 +2361,6 @@ where
             MemoField::new_open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit)
                 .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         let output_features_and_scripts_size = self.output_to_self_features_and_scripts_size(&output_payment_id)?;
-        let mut dest_outputs = Vec::with_capacity(number_of_splits.saturating_add(1));
 
         // accumulated value amount from given source outputs
         let accumulated_amount_with_fee = src_outputs.iter().fold(MicroMinotari::zero(), |acc, x| {
@@ -2490,6 +2424,9 @@ where
             tx_builder.with_input(input.wallet_output.clone())?;
         }
 
+        // Every split output is declared up front and built inside `build`, around keys that come from a single
+        // reservation. Reserving one key per output would leave every call after the first with no input script keys
+        // left to fold in, and its reply would be a bare sender offset private key.
         for i in 1..=number_of_splits {
             // NOTE: adding the unspent `change` to the last output
             let amount_per_split = if i == number_of_splits {
@@ -2498,24 +2435,18 @@ where
                 amount_per_split
             };
 
-            let (output, sender_offset_key_id) = self.output_to_self(
+            tx_builder.with_recipient_spec(self.output_to_self_spec(
                 OutputFeatures::default(),
                 amount_per_split,
                 Covenant::default(),
                 output_payment_id.clone(),
-                fee,
                 MicroMinotari::zero(),
-            )?;
-
-            tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
-                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
-
-            dest_outputs.push(output);
+            )?)?;
         }
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        refresh_custom_outputs_after_build(&mut dest_outputs, &finalized);
+        let dest_outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2563,7 +2494,6 @@ where
             ));
         }
 
-        let mut dest_outputs = Vec::with_capacity(number_of_splits.saturating_add(1));
         let total_split_amount = MicroMinotari::from(amount_per_split.as_u64().saturating_mul(number_of_splits as u64));
 
         // accumulated value amount from given source outputs
@@ -2664,26 +2594,20 @@ where
         // initializing primary outputs
 
         for _ in 0..number_of_splits {
-            let (output, sender_offset_key_id) = self.output_to_self(
+            tx_builder.with_recipient_spec(self.output_to_self_spec(
                 OutputFeatures::default(),
                 amount_per_split,
                 Covenant::default(),
                 payment_id.clone(),
-                final_fee,
                 MicroMinotari::zero(),
-            )?;
-
-            tx_builder
-                .with_output(output.wallet_output.clone(), sender_offset_key_id, None)
-                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
-
-            dest_outputs.push(output);
+            )?)?;
         }
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let has_leftover_change = change > MicroMinotari::zero();
 
         let finalized = tx_builder.build()?;
-        refresh_custom_outputs_after_build(&mut dest_outputs, &finalized);
+        let mut dest_outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2736,74 +2660,35 @@ where
         Ok((tx_id, finalized.transaction, value))
     }
 
-    fn output_to_self(
-        &mut self,
+    /// Build an output paying back to this wallet.
+    ///
+    /// `sender_offset` must have been reserved from the transaction builder the output will be added to, so that the
+    /// key is netted out of the script offset.
+    /// Declare an output the wallet is sending to itself.
+    ///
+    /// The output cannot be built here: it needs a sender offset key, and the builder only reserves those once it
+    /// knows how many outputs the transaction has - a single `get_script_offset` call for the whole transaction is
+    /// what keeps both sides of that sum blinded. The fee the memo records is filled in by the builder, so it is
+    /// left at zero here.
+    fn output_to_self_spec(
+        &self,
         output_features: OutputFeatures,
         amount: MicroMinotari,
         covenant: Covenant,
         payment_id: MemoField,
-        fee: MicroMinotari,
         minimum_value_promise: MicroMinotari,
-    ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
-        let (commitment_mask_key, script_key) = self.resources.key_manager.get_next_commitment_mask_and_script_key()?;
-        let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
+    ) -> Result<RecipientSpec, OutputManagerError> {
         let payment_id = payment_id
             .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 false,
-                fee,
+                MicroMinotari::zero(),
                 Some(TxType::PaymentToSelf),
             )
             .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
-
-        let encrypted_data = self.resources.key_manager.encrypt_data_for_recovery(
-            &commitment_mask_key.key_id,
-            None,
-            amount.as_u64(),
-            payment_id.clone(),
-        )?;
-        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            TransactionOutputVersion::get_current_version(),
-            &script,
-            &output_features,
-            &covenant,
-            &encrypted_data,
-            &minimum_value_promise,
-        );
-        let sender_offset = self.resources.key_manager.get_random_key(None, None)?;
-        let metadata_signature = self.resources.key_manager.get_metadata_signature(
-            &commitment_mask_key.key_id,
-            &PrivateKey::from(amount),
-            &sender_offset.key_id,
-            TransactionOutputVersion::get_current_version(),
-            &metadata_message,
-            output_features.range_proof_type,
-        )?;
-
-        let output = DbWalletOutput::from_wallet_output(
-            WalletOutput::new_current_version(
-                amount,
-                commitment_mask_key.key_id,
-                output_features,
-                script,
-                ExecutionStack::default(),
-                script_key.key_id,
-                sender_offset.pub_key,
-                metadata_signature,
-                0,
-                covenant,
-                encrypted_data,
-                minimum_value_promise,
-                payment_id,
-                &self.resources.key_manager,
-            )?,
-            None,
-            OutputSource::default(),
-            None,
-            None,
-        );
-
-        Ok((output, sender_offset.key_id))
+        Ok(RecipientSpec::to_self(amount, output_features, payment_id)
+            .with_covenant(covenant)
+            .with_minimum_value_promise(minimum_value_promise))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2869,20 +2754,17 @@ where
             tx_builder.with_input(input.wallet_output.clone())?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(
+        tx_builder.with_recipient_spec(self.output_to_self_spec(
             OutputFeatures::default(),
             accumulated_amount,
             Covenant::default(),
             payment_id.clone(),
-            fee,
             MicroMinotari::zero(),
-        )?;
-
-        tx_builder.with_output(output.wallet_output.clone(), sender_offset_key_id, None)?;
+        )?)?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        let mut outputs = vec![output];
-        refresh_custom_outputs_after_build(&mut outputs, &finalized);
+        let outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2999,6 +2881,9 @@ where
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(recovered_output)?;
+                // Everything left after the fee goes to a change output, and its sender offset key comes from the
+                // one reservation this transaction makes.
+                builder.reserve_sender_offset_keys(&[])?;
 
                 let mut outputs = Vec::new();
 
@@ -3064,6 +2949,9 @@ where
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)?;
+        // Everything left after the fee goes to a change output, and its sender offset key comes from the one
+        // reservation this transaction makes.
+        builder.reserve_sender_offset_keys(&[])?;
 
         let mut outputs = Vec::new();
 
@@ -3358,38 +3246,26 @@ fn get_multi_sig_script_components(
     }
 }
 
-/// Replaces the wallet's copies of builder-supplied outputs with the versions that were actually published.
+/// The outputs the builder constructed from this wallet's own recipient specs, ready to be stored.
 ///
-/// `TransactionBuilder::build` can rewrite an output added with `with_output`: the encrypted data carries the final
-/// fee, and the metadata signature is remade when it does. A copy taken before the build then holds a stale hash and
-/// encrypted data, and since txo validation looks outputs up by hash, storing that copy would leave the wallet
-/// hunting for a UTXO the chain does not have and drop the output from the balance. The commitment survives the
-/// rewrite, so it identifies which stored output each published one belongs to.
-fn refresh_custom_outputs_after_build(stored: &mut [DbWalletOutput], finalized: &FinalizedTransaction) {
-    for output in stored.iter_mut() {
-        let Some(published) = finalized
-            .custom_outputs
-            .iter()
-            .find(|o| o.commitment() == &output.commitment)
-        else {
-            continue;
-        };
-        if published.output_hash() == output.hash {
-            continue;
-        }
-        debug!(
-            target: LOG_TARGET,
-            "Output '{}' was rewritten during build; storing the published version",
-            output.commitment.to_hex()
-        );
-        *output = DbWalletOutput::from_wallet_output(
-            published.clone(),
-            Some(output.spending_priority.clone()),
-            output.source,
-            output.received_in_tx_id,
-            output.spent_in_tx_id,
-        );
-    }
+/// A spec built output does not exist until `build` runs - its sender offset key is only reserved once the builder
+/// knows how many outputs the transaction has - and what `build` returns is the version that went into the body,
+/// after the encrypted data was written with the final fee. Storing anything else would record a hash the chain
+/// does not have, and txo validation looks outputs up by hash.
+fn spec_outputs_to_db_outputs(finalized: &FinalizedTransaction) -> Vec<DbWalletOutput> {
+    finalized
+        .spec_outputs
+        .iter()
+        .map(|output| {
+            DbWalletOutput::from_wallet_output(
+                output.clone(),
+                None,
+                OutputSource::default(),
+                Some(finalized.tx_id),
+                None,
+            )
+        })
+        .collect()
 }
 
 fn service_error_with_id(tx_id: TxId, err: String, log_error: bool) -> OutputManagerError {

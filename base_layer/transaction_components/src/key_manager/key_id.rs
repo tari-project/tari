@@ -180,6 +180,12 @@ pub enum TariKeyId {
     },
 }
 
+impl TariKeyId {
+    pub fn is_ledger_key(&self) -> bool {
+        matches!(self, TariKeyId::LedgerKey { .. } | TariKeyId::Derived { .. })
+    }
+}
+
 impl FromStr for TariKeyId {
     type Err = String;
 
@@ -348,7 +354,7 @@ impl From<&TariKeyId> for SerializedKeyString {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TariKeyAndId {
     pub pub_key: CompressedPublicKey,
     pub key_id: TariKeyId,

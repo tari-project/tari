@@ -61,7 +61,7 @@ use tari_transaction_components::{
         consensus_constants::{BlockVersion, POW_BACKOFF_DISABLED, PowAlgorithmConstants},
     },
     crypto_factories::CryptoFactories,
-    key_manager::{KeyManager, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{T, uT},
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowData},
     test_helpers::{TestParams, UtxoTestParams, create_wallet_output_with_data, schema_to_transaction, spend_utxos},
@@ -286,12 +286,18 @@ async fn inputs_are_not_malleable() {
 
     // Oh noes - they've managed to get hold of the private script and spend keys
     malicious_test_params.commitment_mask_key_id = spent_output.commitment_mask_key_id().clone();
+    // A key manager will not produce this offset - it always blinds the result with a sender offset key it generated
+    // itself - so build it by hand from the raw private keys.
+    // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     let modified_so = blockchain
         .key_manager
-        .get_script_offset(&[spent_output.script_key_id().clone()], &[malicious_test_params
-            .script_key_id
-            .clone()])
-        .unwrap();
+        .get_private_key(spent_output.script_key_id())
+        .unwrap() -
+        blockchain
+            .key_manager
+            .get_private_key(&malicious_test_params.script_key_id)
+            .unwrap();
     // so is calculated as ks-ko
     // we want to modify the so with -ks + ks
     block.header.total_script_offset = block.header.total_script_offset - &modified_so;

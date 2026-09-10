@@ -20,7 +20,6 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -34,6 +33,7 @@ use crate::{
     TransactionBuilder,
     TransactionBuilderError,
     consensus::ConsensusConstants,
+    fee::recipient_output_features_and_scripts_size,
     key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
     multisig::script::derive_multisig_ephemeral_pubkeys,
     offline_signing::models::{
@@ -42,9 +42,51 @@ use crate::{
         SignedTransaction,
         TransactionMetadata,
     },
-    transaction_builder::FinalizedTransaction,
-    transaction_components::{TransactionError, TransactionOutput, WalletOutput, WalletOutputBuilder},
+    transaction_builder::{FinalizedTransaction, PendingOutput},
+    transaction_components::{
+        MemoField,
+        OutputFeatures,
+        TransactionError,
+        TransactionOutput,
+        WalletOutput,
+        WalletOutputBuilder,
+        covenants::Covenant,
+    },
 };
+
+/// The weight a multisig recipient output will contribute, measured before its script exists.
+///
+/// The script cannot be built until the sender offset key it derives its ephemeral keys from has been reserved, but
+/// the reservation needs the weight of every output it is charging for. A placeholder of the same shape - one
+/// `CheckMultiSigVerify` over `key_count` keys followed by one `PushPubKey` - serialises to the same size.
+fn multisig_pending_output(
+    consensus_constants: &ConsensusConstants,
+    amount: MicroMinotari,
+    features: &OutputFeatures,
+    memo: &MemoField,
+    party_number: u8,
+    key_count: usize,
+) -> Result<PendingOutput, TransactionBuilderError> {
+    let script = TariScript::new(vec![
+        Opcode::CheckMultiSigVerify(
+            party_number,
+            u8::try_from(key_count).map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
+            vec![CompressedPublicKey::default(); key_count],
+            Box::new([0u8; 32]),
+        ),
+        Opcode::PushPubKey(Box::default()),
+    ])?;
+    Ok(PendingOutput::new(
+        amount,
+        recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            features,
+            &script,
+            &Covenant::default(),
+            memo,
+        )?,
+    ))
+}
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,15 +116,8 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         tx_builder.with_input(uo)?;
     }
 
-    for mut uo in info.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, None)?;
-        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
-        // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
-        // no longer verify. Reduce it to the placeholder the builder recognises, so that it re-signs the output with
-        // the key it will actually publish rather than carrying a dead signature into the transaction.
-        uo.set_metadata_signature(Default::default());
-        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
-    }
+    // The recipients belong to the collecting phase: their outputs are built inside `build`, around keys that only
+    // exist once the whole transaction's key count is known.
     for recipient in info.recipients {
         tx_builder.add_stealth_recipient(
             recipient.address.clone(),
@@ -90,6 +125,22 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
             recipient.output_features.clone(),
             recipient.payment_id.clone(),
         )?;
+    }
+    // The payload's outputs arrive fully formed, so they cannot be specs; they are declared here instead, because
+    // the single reservation has to charge for every output the transaction will carry.
+    let pending = info
+        .outputs
+        .iter()
+        .map(PendingOutput::from_output)
+        .collect::<Result<Vec<_>, _>>()?;
+    let sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?;
+    for (mut uo, sender_offset_key) in info.outputs.into_iter().zip(sender_offset_keys) {
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key.clone());
+        // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
+        // no longer verify. Reduce it to the placeholder the builder recognises, so that it re-signs the output with
+        // the key it will actually publish rather than carrying a dead signature into the transaction.
+        uo.set_metadata_signature(Default::default());
+        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
     tx_builder.with_memo(info.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
@@ -118,9 +169,9 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
-    info: OneSidedMultisigTransactionInfo,
+    mut info: OneSidedMultisigTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
-    let (output, sender_offset) = build_multisig_output(key_manager, &info)?;
+    let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.base.fee_per_gram > MicroMinotari::zero() {
         tx_builder.with_fee_per_gram(info.base.fee_per_gram);
@@ -128,19 +179,10 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         tx_builder.with_fee(info.base.fee);
     }
 
-    for uo in info.base.inputs {
+    for uo in std::mem::take(&mut info.base.inputs) {
         tx_builder.with_input(uo)?;
     }
 
-    for mut uo in info.base.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, None)?;
-        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
-        // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
-        // no longer verify. Reduce it to the placeholder the builder recognises, so that it re-signs the output with
-        // the key it will actually publish rather than carrying a dead signature into the transaction.
-        uo.set_metadata_signature(Default::default());
-        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
-    }
     if info.base.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
@@ -150,8 +192,42 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         .base
         .recipients
         .first()
-        .ok_or(TransactionBuilderError::NoRecipients)?;
-    tx_builder.add_recipient(recipient.address.clone(), output, Some(sender_offset.key_id), None)?;
+        .ok_or(TransactionBuilderError::NoRecipients)?
+        .clone();
+
+    // Every output this transaction will carry is declared up front, because the sender offset keys are reserved in
+    // a single call: splitting the reservation would leave the later calls with no input script keys to fold in, and
+    // their replies would be bare sender offset private keys.
+    let mut pending = vec![multisig_pending_output(
+        &constants,
+        recipient.amount,
+        &recipient.output_features,
+        &info.payment_id,
+        info.party_number,
+        info.public_keys.len(),
+    )?];
+    for uo in &info.base.outputs {
+        pending.push(PendingOutput::from_output(uo)?);
+    }
+    let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
+
+    let sender_offset = sender_offset_keys
+        .next()
+        .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
+    let output = build_multisig_output(key_manager, &info, &sender_offset)?;
+
+    for mut uo in info.base.outputs {
+        let sender_offset_key = sender_offset_keys
+            .next()
+            .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key.clone());
+        // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
+        // no longer verify. Reduce it to the placeholder the builder recognises, so that it re-signs the output with
+        // the key it will actually publish rather than carrying a dead signature into the transaction.
+        uo.set_metadata_signature(Default::default());
+        tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
+    }
+    tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
 
     tx_builder.with_memo(info.base.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
@@ -176,10 +252,12 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     })
 }
 
+/// Build the multisig recipient output around a sender offset key reserved from the transaction builder.
 fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedMultisigTransactionInfo,
-) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    sender_offset_key: &TariKeyAndId,
+) -> Result<WalletOutput, TransactionBuilderError> {
     if info.base.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
@@ -187,7 +265,6 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     }
     let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
-    let sender_offset_key = key_manager.get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
     let (_commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
 
     let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
@@ -232,16 +309,16 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
         .with_sender_offset_public_key(sender_offset_public_key.clone())
         .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
-    Ok((output, sender_offset_key))
+    Ok(output)
 }
 
 pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
-    info: OneSidedTransactionInfo,
+    mut info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
-    let (output, sender_offset) = build_multisig_withdraw_output(key_manager, &info)?;
+    let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {
         tx_builder.with_fee_per_gram(info.fee_per_gram);
@@ -249,26 +326,54 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         tx_builder.with_fee(info.fee);
     }
 
-    for uo in info.inputs {
+    for uo in std::mem::take(&mut info.inputs) {
         tx_builder.with_input(uo)?;
     }
 
+    if info.recipients.len() != 1 {
+        return Err(TransactionBuilderError::Other(
+            "Only one recipient is supported for multisig transactions".to_string(),
+        ));
+    }
+    let recipient = info
+        .recipients
+        .first()
+        .ok_or(TransactionBuilderError::NoRecipients)?
+        .clone();
+
+    // As above: one reservation for every output, declared before any key exists.
+    let mut pending = vec![PendingOutput::new(
+        recipient.amount,
+        recipient_output_features_and_scripts_size(
+            constants.transaction_weight_params(),
+            &recipient.output_features,
+            &push_pubkey_script(&Default::default()),
+            &Covenant::default(),
+            &info.payment_id,
+        )?,
+    )];
+    for uo in &info.outputs {
+        pending.push(PendingOutput::from_output(uo)?);
+    }
+    let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
+
+    let sender_offset = sender_offset_keys
+        .next()
+        .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
+    let output = build_multisig_withdraw_output(key_manager, &info, &sender_offset)?;
+
     for mut uo in info.outputs {
-        let sender_offset_key = key_manager.get_random_key(None, None)?;
-        uo.set_sender_offset_public_key(sender_offset_key.pub_key);
+        let sender_offset_key = sender_offset_keys
+            .next()
+            .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
+        uo.set_sender_offset_public_key(sender_offset_key.pub_key.clone());
         // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
         // no longer verify. Reduce it to the placeholder the builder recognises, so that it re-signs the output with
         // the key it will actually publish rather than carrying a dead signature into the transaction.
         uo.set_metadata_signature(Default::default());
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-    if info.recipients.len() != 1 {
-        return Err(TransactionBuilderError::Other(
-            "Only one recipient is supported for multisig transactions".to_string(),
-        ));
-    }
-    let recipient = info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
-    tx_builder.add_recipient(recipient.address.clone(), output, Some(sender_offset.key_id), None)?;
+    tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
 
     tx_builder.with_memo(info.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
@@ -293,10 +398,12 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     })
 }
 
+/// Build the multisig withdrawal recipient output around a sender offset key reserved from the transaction builder.
 fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedTransactionInfo,
-) -> Result<(WalletOutput, TariKeyAndId), TransactionBuilderError> {
+    sender_offset_key: &TariKeyAndId,
+) -> Result<WalletOutput, TransactionBuilderError> {
     if info.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
@@ -305,8 +412,6 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
     let recipient = &info.recipients.first().ok_or(TransactionBuilderError::NoRecipients)?;
 
     let (_commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key()?;
-
-    let sender_offset_key = key_manager.get_random_key(None, None)?;
 
     let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
@@ -343,5 +448,5 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
         .with_sender_offset_public_key(sender_offset_public_key.clone())
         .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
-    Ok((output, sender_offset_key))
+    Ok(output)
 }

@@ -299,6 +299,15 @@ pub fn alpha_hasher(
     Ok(private_key + alpha)
 }
 
+/// Get a uniform random `u64` from the device RNG.
+///
+/// Used to pick key indexes that the host cannot influence.
+pub fn get_random_u64() -> u64 {
+    let mut raw_bytes = [0u8; 8];
+    LedgerRng.fill_bytes(&mut raw_bytes);
+    u64::from_le_bytes(raw_bytes)
+}
+
 /// Get a uniform random nonce
 pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     let mut raw_bytes = [0u8; 64];

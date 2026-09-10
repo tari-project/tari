@@ -2528,6 +2528,7 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
             MemoField::new_empty(),
         )
         .unwrap();
+    builder.reserve_sender_offset_keys(&[]).unwrap();
 
     let finalized = builder.build().unwrap();
     let fee = finalized.transaction.body.get_total_fee().unwrap();

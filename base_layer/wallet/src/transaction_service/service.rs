@@ -31,7 +31,6 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{StreamExt, pin_mut, stream::FuturesUnordered};
 use log::*;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -80,7 +79,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyId},
+    key_manager::{SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
@@ -92,6 +91,13 @@ use tari_transaction_components::{
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
+    },
+    transaction_builder::{
+        PendingOutput,
+        RecipientKeys,
+        RecipientMetadataSignature,
+        RecipientScriptKey,
+        RecipientSpec,
     },
     transaction_components::{
         BuildInfo,
@@ -107,7 +113,6 @@ use tari_transaction_components::{
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
 };
@@ -478,6 +483,7 @@ where
                     }];
 
                     let res = prepare_one_sided_transaction_for_signing(
+                        &self.resources.transaction_key_manager_service,
                         temp_tx_id,
                         tx_builder,
                         &recipients,
@@ -542,6 +548,7 @@ where
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
 
                     let response = prepare_deposit_multisig_transaction(
+                        &self.resources.transaction_key_manager_service,
                         temp_tx_id,
                         tx_builder,
                         request.amount,
@@ -671,6 +678,7 @@ where
                     )?;
                     let tx_id = TxId::new_random();
                     let response = prepare_withdraw_multisig_transaction(
+                        &self.resources.transaction_key_manager_service,
                         tx_id,
                         tx_builder,
                         total_amount,
@@ -2240,75 +2248,27 @@ where
 
         tx_builder.with_tx_type(TxType::ClaimAtomicSwap);
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
-
-        let shared_secret = self
-            .resources
-            .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                destination
-                    .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        temp_tx_id,
-                        TransactionServiceError::InvalidAddress("Missing public view key".to_string()),
-                    ))?,
-            )?;
-        let spending_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
-
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(encryption_private_key, None)?;
-
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(spending_key, None)?;
-
-        let minimum_value_promise = MicroMinotari::zero();
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(output_features)
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&encryption_key),
-                payment_id.clone(),
-            )?
-            .with_input_data(ExecutionStack::default())
-            .with_covenant(covenant)
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(self.resources.transaction_key_manager_service.get_spend_key().key_id)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-            )
-            .unwrap()
-            .try_build(&self.resources.transaction_key_manager_service)
-            .unwrap();
-
-        tx_builder.add_recipient(
-            destination.clone(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
+        // The HTLC output is declared, not built: its sender offset key is only reserved once the builder knows how
+        // many outputs the transaction has, because one `get_script_offset` call for the whole transaction is what
+        // keeps both sides of that sum blinded. The claim script is explicit and the script key is this wallet's
+        // spend key, because this wallet is the one that can execute the refund branch.
+        tx_builder.with_recipient_spec(
+            RecipientSpec::stealth(destination.clone(), amount, output_features, payment_id.clone())
+                .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+                .with_script(script)
+                .with_covenant(covenant)
+                .with_script_key(RecipientScriptKey::OwnSpendKey)
+                .with_metadata_signature(RecipientMetadataSignature::Unverified),
         )?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         // Finalize
         let finalized = tx_builder.build()?;
+        let output = finalized
+            .spec_outputs
+            .first()
+            .cloned()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The HTLC output was not built".to_string()))?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2447,6 +2407,7 @@ where
             payment_id.clone(),
         )?;
         tx_builder.with_memo(payment_id.clone());
+        tx_builder.reserve_sender_offset_keys(&[])?;
         let finalized = tx_builder.build()?;
 
         // Finalize
@@ -2592,6 +2553,7 @@ where
             )?;
         }
         tx_builder.with_memo(payment_id.clone()).with_tx_type(TxType::CoinJoin);
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         // Finalize
         let finalized = tx_builder.build()?;
@@ -2691,56 +2653,33 @@ where
 
         // Prepare receiver part of the transaction
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
-
-        let shared_secret = self
-            .resources
-            .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                dest_address
-                    .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        temp_tx_id,
-                        TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
-                    ))?,
-            )?;
-        let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
-        let commitment_mask_key_id = &self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
-
-        let script_spending_key = self
-            .resources
-            .transaction_key_manager_service
-            .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
-
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(encryption_private_key, None)?;
-
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key, None)?;
-
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-        let amount = tx_builder.get_total_input_value()?;
-        let fee = tx_builder.get_fee_estimate_without_change()?;
+        // The whole wallet goes to one output, so the fee has to be known before the amount is - and the output does
+        // not exist yet at that point, because its sender offset key is only reserved once the builder knows how many
+        // outputs the transaction has.
         let minimum_value_promise = MicroMinotari::zero();
+        let placeholder_memo = MemoField::new_address_and_data(
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            true,
+            TxType::PaymentToOther,
+            vec![],
+        )
+        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+        let output_size = recipient_output_features_and_scripts_size(
+            self.resources
+                .consensus_manager
+                .consensus_constants(0)
+                .transaction_weight_params(),
+            &OutputFeatures::default(),
+            &push_pubkey_script(&Default::default()),
+            &Covenant::default(),
+            &placeholder_memo,
+        )?;
+        let fee = tx_builder.get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), output_size)])?;
+        let amount = tx_builder
+            .get_total_input_value()?
+            .checked_sub(fee)
+            .ok_or_else(|| TransactionServiceError::ServiceError("Not enough to cover the fee".to_string()))?;
         let payment_id = MemoField::new_address_and_data(
             self.resources.one_sided_tari_address.clone(),
             fee,
@@ -2749,33 +2688,25 @@ where
             vec![],
         )
         .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(Default::default())
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&encryption_key),
-                payment_id.clone(),
-            )?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature_user_verified(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-                &dest_address,
-            )?
-            .try_build(&self.resources.transaction_key_manager_service)?;
 
-        tx_builder.add_recipient(
-            dest_address.clone(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
+        tx_builder.with_recipient_spec(
+            RecipientSpec::stealth(
+                dest_address.clone(),
+                amount,
+                OutputFeatures::default(),
+                payment_id.clone(),
+            )
+            .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+            .with_minimum_value_promise(minimum_value_promise),
         )?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
+        let output = finalized
+            .spec_outputs
+            .first()
+            .cloned()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The scrape output was not built".to_string()))?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2978,6 +2909,7 @@ where
 
             tx_builder.add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())?;
         }
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
 
@@ -3118,7 +3050,7 @@ where
             .resources
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
-        let (sender_offset_private_key, stealth_claim_public_key) =
+        let (derived_sender_offset_key, stealth_claim_public_key) =
             if let Some(ref account_public_key) = claim_public_key {
                 let r = self
                     .resources
@@ -3128,13 +3060,9 @@ where
                     .resources
                     .transaction_key_manager_service
                     .compute_stealth_claim_public_key(&r.key_id, account_public_key)?;
-                (r, Some(c))
+                (Some(r), Some(c))
             } else {
-                let r = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_random_key(None, None)?;
-                (r, None)
+                (None, None)
             };
 
         let output_features = match stealth_claim_public_key.as_ref() {
@@ -3191,52 +3119,94 @@ where
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
 
-        // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can
-        // decrypt with DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account
-        // secret). The L1 wallet does not rely on decrypting `encrypted_data` to recover its own
-        // burns on a seed-only rescan — it traces them via the spent input outputs it owns. For
-        // plain burns there is no L2 to decrypt, so fall back to the L1 view key.
-        let recovery_key_id = if let Some(ref cp) = claim_public_key {
-            TariKeyId::DHEncryptedData {
-                public_key: cp.clone(),
-                private_key: sender_offset_private_key.key_id.clone().into(),
-            }
-        } else {
-            self.resources.transaction_key_manager_service.get_view_key().key_id
+        // Both burn shapes publish a `Nop` script and a burn output type; what differs is where the sender offset
+        // key comes from.
+        let burn_features_and_scripts_size = recipient_output_features_and_scripts_size(
+            self.resources
+                .consensus_manager
+                .consensus_constants(0)
+                .transaction_weight_params(),
+            &output_features,
+            &script!(Nop)?,
+            &Covenant::default(),
+            &payment_id,
+        )?;
+
+        match derived_sender_offset_key {
+            // An L2-bound burn's `r` is derived from the commitment mask so the burn proof can be rebuilt from seed
+            // alone, so it cannot come from the builder's reservation. The output is built here around that key, and
+            // what it contributes to the script offset is registered by hand. Such a burn therefore relies on its
+            // change output to fold in the input script keys, and will not build without one.
+            Some(r) => {
+                let r_private = self
+                    .resources
+                    .transaction_key_manager_service
+                    .key_manager()
+                    .get_private_key(&r.key_id)?;
+                // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+                #[allow(clippy::arithmetic_side_effects)]
+                let negated_r = PrivateKey::default() - r_private;
+                tx_builder.with_host_derived_partial_script_offset(negated_r);
+
+                // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can decrypt with
+                // DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account secret). The L1 wallet does
+                // not rely on decrypting `encrypted_data` to recover its own burns on a seed-only rescan - it traces
+                // them via the spent input outputs it owns.
+                let recovery_key_id = TariKeyId::DHEncryptedData {
+                    public_key: claim_public_key.clone().ok_or_else(|| {
+                        TransactionServiceError::ServiceError(
+                            "An L2 bound burn must have a claim public key".to_string(),
+                        )
+                    })?,
+                    private_key: r.key_id.clone().into(),
+                };
+                let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
+                    .with_features(output_features)
+                    .with_script(script!(Nop)?)
+                    .with_input_data(Default::default())
+                    .with_sender_offset_public_key(r.pub_key.clone())
+                    .with_script_key(TariKeyId::Zero)
+                    .with_minimum_value_promise(MicroMinotari::zero())
+                    .encrypt_data_for_recovery(
+                        &self.resources.transaction_key_manager_service,
+                        Some(&recovery_key_id),
+                        payment_id.clone(),
+                    )?
+                    .sign_metadata_signature(&self.resources.transaction_key_manager_service, &r.key_id)?
+                    .try_build(&self.resources.transaction_key_manager_service)?;
+
+                tx_builder.reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
+                    amount,
+                    burn_features_and_scripts_size,
+                )])?;
+                tx_builder.add_recipient(Default::default(), output, r.key_id.clone(), Some(recovery_key_id))?;
+            },
+            // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender
+            // offset key comes from the builder's single reservation like any other output.
+            None => {
+                tx_builder.with_recipient_spec(
+                    RecipientSpec::to_self(amount, output_features, payment_id.clone())
+                        .with_script(script!(Nop)?)
+                        .with_script_key(RecipientScriptKey::Zero),
+                )?;
+                tx_builder.reserve_sender_offset_keys(&[])?;
+            },
         };
-        let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
-            .with_features(output_features)
-            .with_script(script!(Nop)?)
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(MicroMinotari::zero());
-
-        output_builder = output_builder.encrypt_data_for_recovery(
-            &self.resources.transaction_key_manager_service,
-            Some(&recovery_key_id),
-            payment_id.clone(),
-        )?;
-
-        let output = output_builder
-            .sign_metadata_signature(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-            )?
-            .try_build(&self.resources.transaction_key_manager_service)?;
-
-        tx_builder.add_recipient(
-            Default::default(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id.clone()),
-            Some(recovery_key_id),
-        )?;
 
         let finalized = tx_builder.build()?;
+        // Either shape puts exactly one recipient output on the transaction, and this is the published version of
+        // it - the builder rewrites the encrypted data with the final fee - so it is what the wallet stores and what
+        // the burn proof is built from.
+        let burned_output = finalized
+            .sent_outputs
+            .first()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The burn output was not built".to_string()))?
+            .output
+            .clone();
 
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(temp_tx_id, output, None)
+            .add_output_with_tx_id(temp_tx_id, burned_output, None)
             .await?;
 
         let change = finalized.change.map(|change| vec![change]);
@@ -3329,7 +3299,9 @@ where
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
                 kernel_excess_nonce: burn_kernel.excess_sig.get_compressed_public_nonce().to_vec(),
                 kernel_excess_signature: burn_kernel.excess_sig.get_signature().to_vec(),
-                sender_offset_public_key: sender_offset_private_key.pub_key.clone(),
+                // The key that was actually published on the burn output. For an L2 bound burn that is the
+                // seed-derived `r`, which is what makes the proof reconstructible after recovery.
+                sender_offset_public_key: tx_output.output.sender_offset_public_key().clone(),
             };
 
             self.db.insert_burn_proof(

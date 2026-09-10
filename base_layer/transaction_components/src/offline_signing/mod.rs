@@ -107,9 +107,9 @@ mod test {
         let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -173,6 +173,7 @@ mod test {
         }];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -234,7 +235,7 @@ mod test {
         let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(50000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(50000), 0, &alice_key_manager, vec![], None);
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
@@ -252,7 +253,7 @@ mod test {
         let custom_output = create_wallet_output_with_data(
             push_pubkey_script(&bob_key_manager.get_spend_key().pub_key),
             OutputFeatures::default(),
-            &TestParams::new(&alice_view_key_manager),
+            &TestParams::new(&alice_key_manager),
             custom_value,
             &alice_view_key_manager,
         )
@@ -293,6 +294,7 @@ mod test {
         }];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -346,9 +348,9 @@ mod test {
         let bob_key_manager = KeyManager::new_random().unwrap();
         let charlie_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -432,6 +434,7 @@ mod test {
         ];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -504,7 +507,7 @@ mod test {
             recipients.push(recipient);
         }
 
-        let input = create_test_input(MicroMinotari(1000000000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(1000000000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -530,6 +533,7 @@ mod test {
         .unwrap();
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -611,9 +615,9 @@ mod test {
             bob_spend_key.clone(),
         ];
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -649,6 +653,7 @@ mod test {
 
         assert_eq!(alice_address, alice_address_s);
         let init = prepare_deposit_multisig_transaction(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             amount,
@@ -875,6 +880,7 @@ mod test {
         let total_amount = amount.checked_sub(fee).unwrap();
         assert_eq!(alice_address, alice_address_s);
         let init = prepare_withdraw_multisig_transaction(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             total_amount,
@@ -916,7 +922,7 @@ mod test {
         let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(100000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(100000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -960,6 +966,7 @@ mod test {
             payment_id: payment_id_bob.clone(),
         }];
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -1032,9 +1039,9 @@ mod test {
 
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -1098,6 +1105,7 @@ mod test {
         }];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -1143,8 +1151,8 @@ mod test {
         let bob_key_manager = KeyManager::new_random().unwrap();
         let mallory_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
@@ -1192,6 +1200,7 @@ mod test {
 
         // Prepare the transaction — the payload is signed by alice's view key.
         let mut prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -1240,7 +1249,7 @@ mod test {
         // Bob is an unrelated wallet that happens to receive the JSON.
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
@@ -1278,6 +1287,7 @@ mod test {
 
         // Alice prepares the payload (signed with alice's view key).
         let prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,

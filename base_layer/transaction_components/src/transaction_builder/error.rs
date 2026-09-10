@@ -45,8 +45,46 @@ pub enum TransactionBuilderError {
     TransactionError(#[from] TransactionError),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
-    #[error("Sender offset key ID is missing")]
-    SenderOffsetKeyIdMissing,
+    #[error("Inputs cannot be added after the sender offset keys have been reserved")]
+    InputsAfterOutputs,
+    #[error("`reserve_sender_offset_keys` may only be called once per transaction")]
+    SenderOffsetKeysAlreadyReserved,
+    #[error(
+        "`reserve_sender_offset_keys` was never called, so the input script keys were never folded into the script \
+         offset and the transaction would not validate"
+    )]
+    SenderOffsetKeysNotReserved,
+    #[error("An output needed a reserved sender offset key but the pool was empty")]
+    SenderOffsetKeyPoolExhausted,
+    #[error(
+        "{remaining} reserved sender offset key(s) were never placed on an output; every reserved key is subtracted \
+         from the script offset, so the transaction would not validate"
+    )]
+    SenderOffsetKeyPoolNotDrained { remaining: usize },
+    #[error("Recipient specs must all be declared before `reserve_sender_offset_keys` is called")]
+    RecipientSpecAfterReserve,
+    #[error(
+        "{added} output(s) were attached after the sender offset keys were reserved but only {declared} were \
+         declared; the fee and the change decision the reservation committed to never accounted for them"
+    )]
+    UndeclaredOutputAfterReserve { declared: usize, added: usize },
+    #[error(
+        "The outputs attached after the sender offset keys were reserved are worth {actual_value} across \
+         {actual_weight} weighted byte(s), but the reservation was told to expect {declared_value} across \
+         {declared_weight}. The fee and the change decision it committed to were computed for outputs this \
+         transaction does not carry."
+    )]
+    PendingOutputMismatch {
+        declared_value: MicroMinotari,
+        actual_value: MicroMinotari,
+        declared_weight: usize,
+        actual_weight: usize,
+    },
+    #[error(
+        "This transaction needs {requested} sender offset keys but the ledger device derives at most {max} in one \
+         exchange, so it is limited to {max} outputs including change"
+    )]
+    TooManyOutputsForDevice { requested: usize, max: usize },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
     #[error("Transaction builder error: {0}")]

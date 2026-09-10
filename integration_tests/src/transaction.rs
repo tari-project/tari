@@ -99,9 +99,12 @@ impl TestTransactionBuilder {
 
         let inputs = self.inputs.iter().map(|f| f.1.clone()).collect();
         let outputs = vec![(self.output.clone().unwrap().1, self.output.clone().unwrap().2)];
-        let tx = create_transaction_with(self.lock_height, self.fee_per_gram, inputs, outputs, key_manager);
+        let (tx, mut outputs) =
+            create_transaction_with(self.lock_height, self.fee_per_gram, inputs, outputs, key_manager);
 
-        (tx, self.output.clone().unwrap().1)
+        // The builder re-keys the output onto a sender offset key it generated, so hand back the output as it
+        // actually appears in the transaction.
+        (tx, outputs.pop().expect("The transaction has exactly one output"))
     }
 
     fn create_utxo(&mut self, key_manager: &KeyManager, num_inputs: usize) {
