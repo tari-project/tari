@@ -11,7 +11,13 @@ pub struct SyncUtxosByBlockRequest {
     #[validate(minimum = 1)]
     #[validate(maximum = 2000)]
     pub limit: u64,
+    // Bounded per tari-project/special_contributions#17 (GHSA-4r27-mpgm-hx3h
+    // follow-up): an unbounded `page` multiplied by `limit` previously overflowed and,
+    // via the old panic hook, killed the node. `request.validate()` runs in
+    // `fetch_utxos` before any handler work, so an over-ceiling `page` is rejected
+    // there. Ceiling = u32::MAX, far above any plausible chain height.
     #[validate(minimum = 0)]
+    #[validate(maximum = 4294967295)]
     pub page: u64,
     #[serde(default)]
     pub exclude_spent: bool,
@@ -141,4 +147,33 @@ pub struct MinimalUtxoSyncInfo {
     pub commitment: Vec<u8>,
     pub encrypted_data: Vec<u8>,
     pub sender_offset_public_key: Vec<u8>,
+}
+
+#[cfg(test)]
+mod page_validation_tests {
+    use super::SyncUtxosByBlockRequest;
+    use serde_valid::Validate;
+
+    fn request_with_page(page: u64) -> SyncUtxosByBlockRequest {
+        SyncUtxosByBlockRequest {
+            start_header_hash: vec![0u8; 32],
+            limit: 1,
+            page,
+            exclude_spent: false,
+            exclude_inputs: false,
+            version: 0,
+        }
+    }
+
+    /// tari-project/special_contributions#17 acceptance criterion 1: an over-ceiling
+    /// `page` must be rejected by validation rather than reaching the handler.
+    #[test]
+    fn page_over_ceiling_is_rejected_by_validation() {
+        assert!(request_with_page(4294967296).validate().is_err());
+    }
+
+    #[test]
+    fn page_at_ceiling_is_accepted() {
+        assert!(request_with_page(4294967295).validate().is_ok());
+    }
 }
