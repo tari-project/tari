@@ -33,7 +33,7 @@ use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
     aggregated_body::AggregateBody,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
     key_manager::{
         KeyManager,
@@ -49,10 +49,12 @@ use tari_transaction_components::{
     transaction_components::{
         EncryptedData,
         MemoField,
+        OutputFeatures,
         RangeProofType,
         TransactionError,
         WalletOutput,
         WalletOutputBuilder,
+        covenants::Covenant,
         encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     },
     txn_schema,
@@ -353,11 +355,23 @@ async fn allow_duplicate_outputs() {
     // built until the reservation has happened.
     fn build_output(
         km: &KeyManager,
+        constants: &ConsensusConstants,
         tx_builder: &mut TransactionBuilder<KeyManager>,
         value: MicroMinotari,
     ) -> (WalletOutput, TariKeyAndId) {
+        // The output does not exist yet, so it is declared from the shape it will have; `build` checks the
+        // declaration against what actually arrives.
+        let pending = PendingOutput::measured(
+            constants.transaction_weight_params(),
+            value,
+            &OutputFeatures::default(),
+            &script![Nop].unwrap(),
+            &Covenant::default(),
+            &MemoField::new_empty(),
+        )
+        .unwrap();
         let sender_offset = tx_builder
-            .reserve_sender_offset_keys(&[PendingOutput::keyed(value, 0)])
+            .reserve_sender_offset_keys(&[pending])
             .unwrap()
             .pop()
             .unwrap();
@@ -393,8 +407,13 @@ async fn allow_duplicate_outputs() {
     ) {
         let negated = PrivateKey::default() - km.get_private_key(&sender_offset.key_id).unwrap();
         tx_builder.with_host_derived_partial_script_offset(negated);
+        // This one already exists, so it can be declared from the output itself.
+        let pending = PendingOutput::from_output(output).unwrap();
         tx_builder
-            .reserve_sender_offset_keys(&[PendingOutput::host_keyed(output.value(), 0)])
+            .reserve_sender_offset_keys(&[PendingOutput::host_keyed(
+                pending.value(),
+                pending.features_and_scripts_size(),
+            )])
             .unwrap();
         tx_builder
             .with_output(output.clone(), sender_offset.key_id.clone(), None)
@@ -404,8 +423,12 @@ async fn allow_duplicate_outputs() {
     let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
     tx_builder.with_input(outputs[0].clone()).unwrap();
     tx_builder.with_fee(100.into());
-    let (output, output_sender_offset) =
-        build_output(&blockchain.km, &mut tx_builder, outputs[0].value() - MicroMinotari(200));
+    let (output, output_sender_offset) = build_output(
+        &blockchain.km,
+        &constants,
+        &mut tx_builder,
+        outputs[0].value() - MicroMinotari(200),
+    );
     tx_builder
         .with_output(output.clone(), output_sender_offset.key_id.clone(), None)
         .unwrap();
@@ -418,8 +441,12 @@ async fn allow_duplicate_outputs() {
     let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
     tx_builder.with_input(output.clone()).unwrap();
     tx_builder.with_fee(100.into());
-    let (output_2, output_2_sender_offset) =
-        build_output(&blockchain.km, &mut tx_builder, output.value() - MicroMinotari(200));
+    let (output_2, output_2_sender_offset) = build_output(
+        &blockchain.km,
+        &constants,
+        &mut tx_builder,
+        output.value() - MicroMinotari(200),
+    );
     tx_builder
         .with_output(output_2.clone(), output_2_sender_offset.key_id.clone(), None)
         .unwrap();
@@ -438,8 +465,12 @@ async fn allow_duplicate_outputs() {
     let mut tx_builder = TransactionBuilder::new(constants.clone(), blockchain.km.clone(), Network::LocalNet).unwrap();
     tx_builder.with_input(output_2.clone()).unwrap();
     tx_builder.with_fee(100.into());
-    let (output_3, output_3_sender_offset) =
-        build_output(&blockchain.km, &mut tx_builder, output_2.value() - MicroMinotari(200));
+    let (output_3, output_3_sender_offset) = build_output(
+        &blockchain.km,
+        &constants,
+        &mut tx_builder,
+        output_2.value() - MicroMinotari(200),
+    );
     tx_builder
         .with_output(output_3.clone(), output_3_sender_offset.key_id.clone(), None)
         .unwrap();

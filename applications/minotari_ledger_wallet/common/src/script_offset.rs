@@ -80,6 +80,49 @@ pub fn check_script_key_count(
     Ok(())
 }
 
+/// The chunk number of the first payload chunk, i.e. the first chunk after the header and the host's partial sum.
+const FIRST_PAYLOAD_CHUNK: u64 = 2;
+
+/// Which section of the `GetScriptOffset` payload a chunk number falls in.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ScriptKeySection {
+    /// A pre-mine script key named by index. The device derives it, so it counts towards the blinding.
+    IndexedScriptKey,
+    /// A blinding factor the device folds into `alpha`. The device derives the key, so it counts too.
+    DerivedScriptKey,
+    /// No section: this chunk carries nothing that is folded into the script offset.
+    ///
+    /// A host is free to send one of these and then terminate the exchange, which is exactly how a request can
+    /// declare script keys and fold none - see [`check_offset_is_blinded`].
+    None,
+}
+
+/// Decide which section a chunk number belongs to.
+///
+/// The sections are laid out back to back after the header and the partial sum:
+/// `[2, 2 + script_indexes)` then `[2 + script_indexes, 2 + script_indexes + derived_script_keys)`.
+///
+/// The counts are host supplied and unbounded, so the bounds saturate rather than wrap. A wrapped bound would move
+/// which chunk numbers land in which section, and could make an out of range chunk appear in range. Saturation can
+/// only ever *widen* a section up to `u64::MAX`, which at worst folds a device derived key for a chunk the host did
+/// not mean - it can never cause a chunk to fold nothing while the caller believes it did, and it can never make the
+/// two sections overlap, because the second starts where the first ends.
+pub fn script_key_section(
+    chunk_number: u64,
+    total_script_indexes: u64,
+    total_derived_script_keys: u64,
+) -> ScriptKeySection {
+    let end_script_indexes = FIRST_PAYLOAD_CHUNK.saturating_add(total_script_indexes);
+    if (FIRST_PAYLOAD_CHUNK..end_script_indexes).contains(&chunk_number) {
+        return ScriptKeySection::IndexedScriptKey;
+    }
+    let end_derived_script_keys = end_script_indexes.saturating_add(total_derived_script_keys);
+    if (end_script_indexes..end_derived_script_keys).contains(&chunk_number) {
+        return ScriptKeySection::DerivedScriptKey;
+    }
+    ScriptKeySection::None
+}
+
 /// Decide whether an accumulated script offset is safe to hand back.
 ///
 /// This is the check that guards the reply, and it is deliberately not the same check the header passes. A header
@@ -253,6 +296,110 @@ mod test {
     fn the_two_checks_are_independent_of_each_other() {
         assert!(check_sender_offset_key_count(1).is_ok() && check_script_key_count(0, 0).is_err());
         assert!(check_sender_offset_key_count(0).is_err() && check_script_key_count(1, 0).is_ok());
+    }
+
+    /// The section a chunk falls in decides whether it folds a device derived key, so it decides whether the reply
+    /// is blinded. This is the arithmetic the critical leak turned on: chunk 3 with `(0 indexes, 1 derived)` is
+    /// outside every section, so a host that terminates there folds nothing.
+    #[test]
+    fn the_poc_boundary_is_where_the_sections_end() {
+        // (0 indexes, 1 derived): the derived section is exactly chunk 2.
+        assert_eq!(script_key_section(2, 0, 1), ScriptKeySection::DerivedScriptKey);
+        assert_eq!(script_key_section(3, 0, 1), ScriptKeySection::None);
+        assert_eq!(script_key_section(250, 0, 1), ScriptKeySection::None);
+
+        // (1 index, 0 derived): the indexed section is exactly chunk 2.
+        assert_eq!(script_key_section(2, 1, 0), ScriptKeySection::IndexedScriptKey);
+        assert_eq!(script_key_section(3, 1, 0), ScriptKeySection::None);
+    }
+
+    /// Chunks 0 and 1 carry the header and the host's partial sum. Neither is ever a script key section, whatever
+    /// the counts say - which is what keeps `partial_script_key_sum` from counting towards the blinding.
+    #[test]
+    fn the_header_and_partial_sum_chunks_are_never_a_script_key_section() {
+        for counts in [(0, 0), (1, 1), (u64::MAX, u64::MAX)] {
+            assert_eq!(script_key_section(0, counts.0, counts.1), ScriptKeySection::None);
+            assert_eq!(script_key_section(1, counts.0, counts.1), ScriptKeySection::None);
+        }
+    }
+
+    /// Empty sections on either side must not swallow chunks meant for the other one.
+    #[test]
+    fn an_empty_section_folds_nothing() {
+        // Both empty: nothing is ever folded, whatever the host sends.
+        for chunk in 0..8 {
+            assert_eq!(script_key_section(chunk, 0, 0), ScriptKeySection::None);
+        }
+        // An empty indexed section leaves the derived section starting at the first payload chunk.
+        assert_eq!(script_key_section(2, 0, 2), ScriptKeySection::DerivedScriptKey);
+        assert_eq!(script_key_section(3, 0, 2), ScriptKeySection::DerivedScriptKey);
+        assert_eq!(script_key_section(4, 0, 2), ScriptKeySection::None);
+        // An empty derived section leaves nothing after the indexed one.
+        assert_eq!(script_key_section(3, 2, 0), ScriptKeySection::IndexedScriptKey);
+        assert_eq!(script_key_section(4, 2, 0), ScriptKeySection::None);
+    }
+
+    /// Adjacent sections must abut exactly: no gap that silently folds nothing, and no overlap that would make a
+    /// chunk ambiguous.
+    #[test]
+    fn adjacent_sections_abut_without_a_gap_or_an_overlap() {
+        // 2 indexed then 3 derived: chunks 2,3 indexed; 4,5,6 derived; 7 onwards nothing.
+        let expected = [
+            (2, ScriptKeySection::IndexedScriptKey),
+            (3, ScriptKeySection::IndexedScriptKey),
+            (4, ScriptKeySection::DerivedScriptKey),
+            (5, ScriptKeySection::DerivedScriptKey),
+            (6, ScriptKeySection::DerivedScriptKey),
+            (7, ScriptKeySection::None),
+        ];
+        for (chunk, section) in expected {
+            assert_eq!(script_key_section(chunk, 2, 3), section, "chunk {chunk}");
+        }
+    }
+
+    /// The counts are host supplied and unbounded, so the section bounds saturate. Pin what saturation can and
+    /// cannot do: it may widen a section, but it must never make an out of range chunk appear in range in the
+    /// *other* section, and the two must not overlap.
+    #[test]
+    fn saturated_bounds_cannot_be_played_against_each_other() {
+        // A saturated indexed section swallows every payload chunk; the derived section is then empty, so no chunk
+        // can be claimed by both.
+        for chunk in 2..8 {
+            assert_eq!(
+                script_key_section(chunk, u64::MAX, u64::MAX),
+                ScriptKeySection::IndexedScriptKey
+            );
+        }
+        // Every chunk it swallows still folds a device derived key, which is the safe direction: a chunk can be
+        // attributed to the wrong section, but it can never be attributed to no section while folding one.
+        assert_ne!(script_key_section(2, u64::MAX, 0), ScriptKeySection::None);
+
+        // A saturated derived section behaves the same way once the indexed one is empty.
+        for chunk in 2..8 {
+            assert_eq!(
+                script_key_section(chunk, 0, u64::MAX),
+                ScriptKeySection::DerivedScriptKey
+            );
+        }
+
+        // And a count that only just reaches the top of the range still ends the section where it should.
+        assert_eq!(
+            script_key_section(2, u64::MAX.saturating_sub(2), 0),
+            ScriptKeySection::IndexedScriptKey
+        );
+    }
+
+    /// The device widens a `u8` chunk number to call this, so every value it can pass is covered.
+    #[test]
+    fn every_chunk_number_the_wire_can_carry_is_classified() {
+        for chunk in 0..=u8::MAX {
+            let section = script_key_section(u64::from(chunk), 0, 1);
+            if chunk == 2 {
+                assert_eq!(section, ScriptKeySection::DerivedScriptKey);
+            } else {
+                assert_eq!(section, ScriptKeySection::None, "chunk {chunk}");
+            }
+        }
     }
 
     /// The check that guards the reply must look at what was folded, not at what was declared. A host that declares

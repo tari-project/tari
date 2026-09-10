@@ -69,6 +69,18 @@ pub enum TransactionBuilderError {
     )]
     UndeclaredOutputAfterReserve { declared: usize, added: usize },
     #[error(
+        "The outputs attached after the sender offset keys were reserved are worth {actual_value} across \
+         {actual_weight} weighted byte(s), but the reservation was told to expect {declared_value} across \
+         {declared_weight}. The fee and the change decision it committed to were computed for outputs this \
+         transaction does not carry."
+    )]
+    PendingOutputMismatch {
+        declared_value: MicroMinotari,
+        actual_value: MicroMinotari,
+        declared_weight: usize,
+        actual_weight: usize,
+    },
+    #[error(
         "This transaction needs {requested} sender offset keys but the ledger device derives at most {max} in one \
          exchange, so it is limited to {max} outputs including change"
     )]

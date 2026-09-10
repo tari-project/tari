@@ -3,9 +3,11 @@
 
 use ledger_device_sdk::io::Comm;
 use minotari_ledger_wallet_common::script_offset::{
+    ScriptKeySection,
     ScriptOffsetHeaderError,
     check_offset_is_blinded,
     parse_script_offset_header,
+    script_key_section,
     sender_offset_index,
 };
 use tari_utilities::ByteArray;
@@ -176,30 +178,30 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    let payload_offset = 2u64;
-
-    // 3. Indexed script keys. The counts are host supplied, so saturate rather than wrap: a wrapped bound would
-    //    silently move which chunk numbers land in which section.
-    let end_script_indexes = payload_offset.saturating_add(offset_ctx.total_script_indexes);
-    if (payload_offset..end_script_indexes).contains(&(chunk_number as u64)) {
-        let (branch, index) = extract_branch_and_index(data)?;
-        // The pre-mine branch holds the only script keys the wallet addresses by index; everything else would let
-        // the host name a key of its choosing and read it back out of the offset.
-        if branch != KeyType::PreMine {
-            return Err(AppSW::ScriptOffsetInvalidScriptBranch);
-        }
-        let script_key = derive_from_bip32_key(offset_ctx.account, index, branch)?;
-
+    // 3. Fold a script key, if this chunk carries one. Which section a chunk number belongs to is decided by
+    //    `script_key_section`, which lives in `minotari_ledger_wallet_common` so that its boundaries - the ones the
+    //    host picks its chunk numbers against - are unit tested without a device.
+    let script_key = match script_key_section(
+        u64::from(chunk_number),
+        offset_ctx.total_script_indexes,
+        offset_ctx.total_derived_script_keys,
+    ) {
+        ScriptKeySection::IndexedScriptKey => {
+            let (branch, index) = extract_branch_and_index(data)?;
+            // The pre-mine branch holds the only script keys the wallet addresses by index; everything else would
+            // let the host name a key of its choosing and read it back out of the offset.
+            if branch != KeyType::PreMine {
+                return Err(AppSW::ScriptOffsetInvalidScriptBranch);
+            }
+            Some(derive_from_bip32_key(offset_ctx.account, index, branch)?)
+        },
+        ScriptKeySection::DerivedScriptKey => Some(derive_key_from_alpha(offset_ctx.account, data)?),
+        // This chunk carries nothing that blinds the reply. A host is free to send one and then terminate, which
+        // is why the counter below - not the header - is what the emission check looks at.
+        ScriptKeySection::None => None,
+    };
+    if let Some(script_key) = script_key {
         offset_ctx.device_script_key_sum = &offset_ctx.device_script_key_sum + script_key;
-        offset_ctx.device_script_keys_folded = offset_ctx.device_script_keys_folded.saturating_add(1);
-    }
-
-    // 4. Alpha derived script keys
-    let end_derived_script_keys = end_script_indexes.saturating_add(offset_ctx.total_derived_script_keys);
-    if (end_script_indexes..end_derived_script_keys).contains(&(chunk_number as u64)) {
-        let k = derive_key_from_alpha(offset_ctx.account, data)?;
-
-        offset_ctx.device_script_key_sum = &offset_ctx.device_script_key_sum + k;
         offset_ctx.device_script_keys_folded = offset_ctx.device_script_keys_folded.saturating_add(1);
     }
 
@@ -207,11 +209,11 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // 5. Decide, at the point the value would actually leave, whether it is blinded on both sides. The script side
+    // 4. Decide, at the point the value would actually leave, whether it is blinded on both sides. The script side
     //    is judged on what the device folded, never on what the header declared: the host picks the chunk numbers,
     //    so it can declare a section and then terminate on a chunk outside it, folding nothing.
     //
-    //    `total_sender_offset_keys` is safe to take from the header because step 6 below derives exactly that many
+    //    `total_sender_offset_keys` is safe to take from the header because step 5 below derives exactly that many
     //    keys and sums every one of them, so declared and actual cannot diverge - and the header check already
     //    bounded it.
     check_offset_is_blinded(
@@ -220,7 +222,7 @@ pub fn handler_get_script_offset(
     )
     .map_err(header_error_to_app_sw)?;
 
-    // 6. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
+    // 5. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
     //    derived from `base..base + count`, so the host cannot replay a call and difference two replies to strip
     //    the blinding, and no per-key state has to be accumulated on the device.
     let base_index = get_random_u64();

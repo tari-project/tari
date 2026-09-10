@@ -59,6 +59,7 @@ use crate::{
         one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
+    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";
@@ -110,6 +111,33 @@ impl PendingOutput {
         }
     }
 
+    /// Declare an output that does not exist yet, measured from the shape it will have.
+    ///
+    /// `build` checks the declaration against what actually arrives, so measuring by hand is a trap; this is the
+    /// same measurement the fee calculation uses. A same-shaped placeholder script is fine - what matters is that
+    /// the declaration does not come out *smaller* than the finished output.
+    pub fn measured(
+        weighting: &TransactionWeight,
+        value: MicroMinotari,
+        features: &OutputFeatures,
+        script: &TariScript,
+        covenant: &Covenant,
+        memo: &MemoField,
+    ) -> Result<Self, TransactionBuilderError> {
+        Ok(Self::keyed(
+            value,
+            recipient_output_features_and_scripts_size(weighting, features, script, covenant, memo)?,
+        ))
+    }
+
+    pub fn value(&self) -> MicroMinotari {
+        self.value
+    }
+
+    pub fn features_and_scripts_size(&self) -> usize {
+        self.features_and_scripts_size
+    }
+
     /// Declare an output that already exists.
     pub fn from_output(output: &WalletOutput) -> Result<Self, TransactionBuilderError> {
         Ok(Self::keyed(
@@ -159,10 +187,15 @@ pub struct TransactionBuilder<KM> {
     change_sender_offset_key: Option<TariKeyAndId>,
     /// The binding fee and change amount, fixed when the keys were reserved.
     fee_and_change: Option<FeeAndChange>,
-    /// How many outputs were attached to the builder before the reservation, and how many were declared to follow
-    /// it. Anything attached beyond that was never charged for.
-    outputs_before_reserve: usize,
+    /// How many outputs of each kind were attached before the reservation, so that `build` can tell which ones
+    /// arrived afterwards and check them against what was declared.
+    custom_outputs_before_reserve: usize,
+    recipient_outputs_before_reserve: usize,
+    /// What the reservation was told would follow it, and therefore what the fee and the change decision it
+    /// committed to were computed for.
     declared_pending_outputs: usize,
+    declared_pending_value: MicroMinotari,
+    declared_pending_weight: usize,
     /// The keys handed back to the caller by the reservation. Each one is subtracted from the script offset, so
     /// each one has to end up on a published output.
     caller_sender_offset_keys: Vec<TariKeyId>,
@@ -208,8 +241,11 @@ where KM: TransactionKeyManagerInterface
             spec_sender_offset_keys: Vec::new(),
             change_sender_offset_key: None,
             fee_and_change: None,
-            outputs_before_reserve: 0,
+            custom_outputs_before_reserve: 0,
+            recipient_outputs_before_reserve: 0,
             declared_pending_outputs: 0,
+            declared_pending_value: MicroMinotari::zero(),
+            declared_pending_weight: 0,
             caller_sender_offset_keys: Vec::new(),
         })
     }
@@ -358,8 +394,18 @@ where KM: TransactionKeyManagerInterface
         self.spec_sender_offset_keys = sender_offset_keys;
 
         self.fee_and_change = Some(fee_and_change);
-        self.outputs_before_reserve = self.custom_outputs.len().saturating_add(self.recipient_outputs.len());
+        self.custom_outputs_before_reserve = self.custom_outputs.len();
+        self.recipient_outputs_before_reserve = self.recipient_outputs.len();
         self.declared_pending_outputs = pending_outputs.len();
+        self.declared_pending_value =
+            pending_outputs
+                .iter()
+                .map(|o| o.value)
+                .try_fold(MicroMinotari::zero(), |acc, x| {
+                    acc.checked_add(x)
+                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+                })?;
+        self.declared_pending_weight = self.rounded_weight(pending_outputs.iter().map(|o| o.features_and_scripts_size));
         self.caller_sender_offset_keys = caller_keys.iter().map(|k| k.key_id.clone()).collect();
         self.phase = BuilderPhase::Reserved;
         Ok(caller_keys)
@@ -546,6 +592,77 @@ where KM: TransactionKeyManagerInterface
             },
             None => self.fee,
         })
+    }
+
+    /// Round each output's features and scripts size the way the fee calculation does, and total them. Rounding is
+    /// idempotent, so a caller that measured with `recipient_output_features_and_scripts_size` and one that measured
+    /// a finished output land on the same number whenever they describe the same output.
+    fn rounded_weight(&self, sizes: impl Iterator<Item = usize>) -> usize {
+        let weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
+        sizes.fold(0usize, |acc, size| {
+            acc.saturating_add(weighting.weighting().round_up_features_and_scripts_size(size))
+        })
+    }
+
+    /// Check the outputs that were attached after the reservation against what was declared to it.
+    ///
+    /// The reservation's fee and change decision are binding, and they were computed from the declaration, so a
+    /// declaration that does not describe what actually arrived means the transaction carries a fee for outputs it
+    /// does not have. The count alone is not enough: an output of the same count but a larger value or weight is
+    /// exactly the case that under-pays the fee and over-states the change.
+    ///
+    /// Weight is checked in one direction only. An output that does not exist yet can only be measured from a
+    /// same-shaped placeholder, and the encrypted memo it ends up carrying may be a little shorter than the memo it
+    /// was measured from. Declaring more than arrives only over-pays the fee, which is the same safe direction as
+    /// the under-reserved change case; declaring less is what has to be refused.
+    fn check_pending_outputs_match_declaration(&self) -> Result<(), TransactionBuilderError> {
+        let attached_custom = self
+            .custom_outputs
+            .get(self.custom_outputs_before_reserve..)
+            .unwrap_or_default();
+        let attached_recipients = self
+            .recipient_outputs
+            .get(self.recipient_outputs_before_reserve..)
+            .unwrap_or_default();
+        let attached = attached_custom
+            .iter()
+            .chain(attached_recipients.iter().map(|r| &r.output))
+            .map(|pair| &pair.output)
+            .collect::<Vec<_>>();
+
+        if attached.len() != self.declared_pending_outputs {
+            return Err(TransactionBuilderError::UndeclaredOutputAfterReserve {
+                declared: self.declared_pending_outputs,
+                added: attached.len(),
+            });
+        }
+
+        let actual_value = attached
+            .iter()
+            .map(|output| output.value())
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x)
+                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+            })?;
+        let mut sizes = Vec::with_capacity(attached.len());
+        for output in &attached {
+            sizes.push(
+                output
+                    .features_and_scripts_byte_size()
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+            );
+        }
+        let actual_weight = self.rounded_weight(sizes.into_iter());
+
+        if actual_value != self.declared_pending_value || actual_weight > self.declared_pending_weight {
+            return Err(TransactionBuilderError::PendingOutputMismatch {
+                declared_value: self.declared_pending_value,
+                actual_value,
+                declared_weight: self.declared_pending_weight,
+                actual_weight,
+            });
+        }
+        Ok(())
     }
 
     fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
@@ -1115,19 +1232,9 @@ where KM: TransactionKeyManagerInterface
             return Err(TransactionBuilderError::SenderOffsetKeyPoolNotDrained { remaining: unplaced });
         }
 
-        // Everything the reservation charged for was either present then, declared then, or is a spec. Anything
-        // else was never in the fee it committed to.
-        let attached_after_reserve = self
-            .custom_outputs
-            .len()
-            .saturating_add(self.recipient_outputs.len())
-            .saturating_sub(self.outputs_before_reserve);
-        if attached_after_reserve != self.declared_pending_outputs {
-            return Err(TransactionBuilderError::UndeclaredOutputAfterReserve {
-                declared: self.declared_pending_outputs,
-                added: attached_after_reserve,
-            });
-        }
+        // Everything the reservation charged for was either present then, declared then, or is a spec - and what
+        // was declared has to be what actually arrived, not merely the same number of outputs.
+        self.check_pending_outputs_match_declaration()?;
 
         self.check_conditions()?;
 
@@ -1454,8 +1561,11 @@ impl<KM> Debug for TransactionBuilder<KM> {
             spec_sender_offset_keys: _,
             change_sender_offset_key: _,
             fee_and_change: _,
-            outputs_before_reserve: _,
+            custom_outputs_before_reserve: _,
+            recipient_outputs_before_reserve: _,
             declared_pending_outputs: _,
+            declared_pending_value: _,
+            declared_pending_weight: _,
             caller_sender_offset_keys: _,
         } = self;
 
@@ -1946,6 +2056,141 @@ mod test {
             }),
             "unexpected error: {err:?}"
         );
+    }
+
+    /// The reservation's fee and change decision are binding *and* were computed from the declaration, so the
+    /// declaration has to describe what actually arrives. The count alone is not enough: an output of the same
+    /// count but a larger value is exactly the case that over-states the change and leaves the transaction
+    /// unbalanced.
+    #[test]
+    fn build_refuses_an_output_worth_more_than_was_declared() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        // Declared as worth a tenth of what is actually attached.
+        let mut declared = PendingOutput::from_output(&output).unwrap();
+        declared = PendingOutput::keyed(MicroMinotari(1000), declared.features_and_scripts_size());
+        let sender_offset = builder.reserve_sender_offset_keys(&[declared]).unwrap().pop().unwrap();
+
+        let mut output = output;
+        output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+        output.set_metadata_signature(Default::default());
+        builder.with_output(output, sender_offset.key_id, None).unwrap();
+
+        let err = builder.build().unwrap_err();
+        match err {
+            TransactionBuilderError::PendingOutputMismatch {
+                declared_value,
+                actual_value,
+                ..
+            } => {
+                assert_eq!(declared_value, MicroMinotari(1000));
+                assert_eq!(actual_value, MicroMinotari(10000));
+            },
+            other => panic!("expected PendingOutputMismatch, got {other:?}"),
+        }
+    }
+
+    /// The same for weight, which is what the fee was computed from. Only the unsafe direction is refused: an
+    /// output that does not exist yet can only be measured from a same-shaped placeholder, so declaring a little
+    /// more than arrives has to stay legal - it just over-pays the fee.
+    #[test]
+    fn build_refuses_an_output_heavier_than_was_declared_but_allows_a_lighter_one() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+
+        let attach = |declared_size: usize| {
+            let p = TestParams::new(&key_manager);
+            let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+            let output = p
+                .create_output(
+                    UtxoTestParams {
+                        value: MicroMinotari(10000),
+                        script: script!(PushPubKey(Box::default())).unwrap(),
+                        ..Default::default()
+                    },
+                    &key_manager,
+                )
+                .unwrap();
+            let mut builder =
+                TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+            let sender_offset = builder
+                .reserve_sender_offset_keys(&[PendingOutput::keyed(MicroMinotari(10000), declared_size)])
+                .unwrap()
+                .pop()
+                .unwrap();
+            let mut output = output;
+            output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+            output.set_metadata_signature(Default::default());
+            builder.with_output(output, sender_offset.key_id, None).unwrap();
+            builder.build()
+        };
+
+        // Declaring nothing at all under-pays the fee for a real script and memo.
+        let err = attach(0).unwrap_err();
+        match err {
+            TransactionBuilderError::PendingOutputMismatch {
+                declared_weight,
+                actual_weight,
+                ..
+            } => {
+                assert_eq!(declared_weight, 0);
+                assert!(actual_weight > 0, "the attached output has weight");
+            },
+            other => panic!("expected PendingOutputMismatch, got {other:?}"),
+        }
+
+        // Declaring generously is the safe direction and stays legal.
+        assert!(attach(4096).is_ok());
+    }
+
+    /// ...and the disciplined path - declaring straight from the output that will be attached - must keep working,
+    /// so the check cannot regress into refusing legitimate callers.
+    #[test]
+    fn a_declaration_taken_from_the_output_itself_is_accepted() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        let sender_offset = builder
+            .reserve_sender_offset_keys(&[PendingOutput::from_output(&output).unwrap()])
+            .unwrap()
+            .pop()
+            .unwrap();
+
+        let mut output = output;
+        output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+        output.set_metadata_signature(Default::default());
+        builder.with_output(output, sender_offset.key_id, None).unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
     }
 
     /// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it
