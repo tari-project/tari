@@ -650,6 +650,115 @@ mod test {
         assert!(check_total_burned(&body2).is_err());
     }
 
+    /// `is_all_unique_and_sorted` is what makes an output commitment unique within a body: `Ord for
+    /// TransactionOutput` compares nothing but the commitment, so two outputs sharing a commitment compare `Equal`
+    /// and the check rejects them no matter what the rest of the output looks like. The same holds for inputs, which
+    /// are ordered on the hash of the output they spend.
+    mod duplicate_commitments {
+        use tari_script::{ExecutionStack, StackItem};
+
+        use super::*;
+        use crate::transaction_components::SpentOutput;
+
+        fn utxo(key_manager: &KeyManager) -> TransactionOutput {
+            let (output, _, _) = test_helpers::create_utxo(
+                100.into(),
+                key_manager,
+                &OutputFeatures::default(),
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                0.into(),
+            );
+            output
+        }
+
+        fn input_spending(output: &TransactionOutput, input_data: ExecutionStack) -> TransactionInput {
+            TransactionInput::new_current_version(
+                SpentOutput::create_from_output(output.clone()),
+                input_data,
+                Default::default(),
+            )
+        }
+
+        #[test]
+        fn it_accepts_distinct_output_commitments() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = vec![utxo(&key_manager), utxo(&key_manager), utxo(&key_manager)];
+            outputs.sort();
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, Vec::new());
+            check_sorting_and_duplicates(&body).unwrap();
+        }
+
+        #[test]
+        fn it_rejects_two_identical_outputs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![output.clone(), output], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_two_outputs_sharing_a_commitment() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            // Same commitment, different canonical hash. A duplicate check keyed on the output hash would wave this
+            // pair through; only the commitment ordering catches it. The commitment is what the UTXO set is keyed on,
+            // so letting both into a block would put two entries under one key.
+            let mut twin = output.clone();
+            twin.script = script!(Nop Nop).unwrap();
+            assert_eq!(output.commitment, twin.commitment);
+            assert_ne!(output.hash(), twin.hash());
+
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![output.clone(), twin.clone()], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+
+            // The order the two are presented in must not matter.
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![twin, output], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_a_duplicate_commitment_hidden_among_distinct_outputs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = vec![utxo(&key_manager), utxo(&key_manager), utxo(&key_manager)];
+            outputs.sort();
+            // Re-insert the middle output next to itself so the body stays sorted; only the duplicate breaks it.
+            outputs.insert(1, outputs[1].clone());
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_two_inputs_spending_the_same_output() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            let input = input_spending(&output, ExecutionStack::default());
+            // A competing double spend differs only in its witness, which `canonical_hash` distinguishes but `Ord`
+            // deliberately does not.
+            let twin = input_spending(&output, ExecutionStack::new(vec![StackItem::Number(1)]));
+            assert_eq!(input.output_hash(), twin.output_hash());
+            assert_ne!(input.canonical_hash(), twin.canonical_hash());
+
+            let body = AggregateBody::new_sorted_unchecked(vec![input, twin], Vec::new(), Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+            ));
+        }
+    }
+
     mod transaction_ordering {
         use super::*;
 

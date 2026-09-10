@@ -26,7 +26,7 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_node_components::blocks::BlockValidationError;
-use tari_script::{inputs, push_pubkey_script, script};
+use tari_script::{ExecutionStack, StackItem, inputs, push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     CoinbaseBuilder,
@@ -524,6 +524,96 @@ async fn it_checks_txo_sort_order() {
         err,
         ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
     ));
+}
+
+/// A commitment is what the UTXO set is keyed on, so a block may never create the same commitment twice. Two outputs
+/// sharing a commitment are rejected even when nothing else about them matches, because the outputs are ordered on the
+/// commitment alone.
+#[tokio::test]
+async fn it_rejects_a_block_with_two_outputs_sharing_a_commitment() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+
+    let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
+    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+
+    let (mut block, _) = blockchain.create_unmined_block(block_spec!("B->A", transactions: txs));
+    let mut outputs = block.body.outputs().clone();
+    // Same commitment, different script, so the two outputs hash differently. The hash-based duplicate check in the
+    // chain validator cannot see this pair; only the commitment ordering can.
+    let mut twin = outputs[0].clone();
+    twin.script = script!(Nop Nop).unwrap();
+    assert_eq!(outputs[0].commitment, twin.commitment);
+    assert_ne!(outputs[0].hash(), twin.hash());
+    // Insert next to its twin so the body is still ordered by commitment; the duplicate is the only thing wrong.
+    outputs.insert(1, twin);
+    let inputs = block.body.inputs().clone();
+    let kernels = block.body.kernels().clone();
+    block.body = AggregateBody::new_sorted_unchecked(inputs, outputs, kernels);
+    let block = blockchain.mine_block("A", block, Difficulty::min());
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+    ));
+}
+
+/// The same output repeated verbatim is caught earlier, by the hash-based duplicate check in the chain-linked
+/// validator, which runs before the internal consistency validator.
+#[tokio::test]
+async fn it_rejects_a_block_with_a_repeated_output() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+
+    let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
+    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+
+    let (mut block, _) = blockchain.create_unmined_block(block_spec!("B->A", transactions: txs));
+    let mut outputs = block.body.outputs().clone();
+    outputs.insert(1, outputs[0].clone());
+    let inputs = block.body.inputs().clone();
+    let kernels = block.body.kernels().clone();
+    block.body = AggregateBody::new_sorted_unchecked(inputs, outputs, kernels);
+    let block = blockchain.mine_block("A", block, Difficulty::min());
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+}
+
+/// A block may not spend the same output twice, and swapping the script input data on the second input does not hide
+/// it: inputs are deduplicated on the output they spend, not on the input's own hash.
+#[tokio::test]
+async fn it_rejects_a_block_that_spends_the_same_output_twice() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+
+    let schema1 = txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T, 12 * T]);
+    let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+
+    let (mut block, _) = blockchain.create_unmined_block(block_spec!("B->A", transactions: txs));
+    let mut inputs = block.body.inputs().clone();
+    let mut twin = inputs[0].clone();
+    twin.input_data = ExecutionStack::new(vec![StackItem::Number(1)]);
+    assert_eq!(inputs[0].output_hash(), twin.output_hash());
+    assert_ne!(inputs[0].canonical_hash(), twin.canonical_hash());
+    inputs.insert(1, twin);
+    let outputs = block.body.outputs().clone();
+    let kernels = block.body.kernels().clone();
+    block.body = AggregateBody::new_sorted_unchecked(inputs, outputs, kernels);
+    let block = blockchain.mine_block("A", block, Difficulty::min());
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, block.block().clone()).unwrap_err();
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
 }
 
 #[tokio::test]
