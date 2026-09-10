@@ -91,6 +91,13 @@ pub struct PendingOutput {
     takes_reserved_key: bool,
 }
 
+/// The declared size of an output that already exists, measured the same way the fee calculation measures one.
+fn measure_output(output: &WalletOutput) -> Result<usize, TransactionBuilderError> {
+    output
+        .features_and_scripts_byte_size()
+        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))
+}
+
 impl PendingOutput {
     /// An output that will take one of the sender offset keys the reservation returns.
     pub fn new(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
@@ -138,14 +145,14 @@ impl PendingOutput {
         self.features_and_scripts_size
     }
 
-    /// Declare an output that already exists.
+    /// Declare an output that already exists, measured from the output itself.
+    ///
+    /// Like [`Self::new`], it takes one of the sender offset keys the reservation returns: an output that arrived
+    /// fully formed carries a sender offset key of its own, but that key is replaced - and its metadata signature
+    /// re-made - by the caller that attaches it. An output that keeps a key the caller derived itself is declared
+    /// with [`Self::custom_sender_offset`] instead, and takes no key from the pool.
     pub fn from_output(output: &WalletOutput) -> Result<Self, TransactionBuilderError> {
-        Ok(Self::custom_sender_offset(
-            output.value(),
-            output
-                .features_and_scripts_byte_size()
-                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
-        ))
+        Ok(Self::new(output.value(), measure_output(output)?))
     }
 }
 
