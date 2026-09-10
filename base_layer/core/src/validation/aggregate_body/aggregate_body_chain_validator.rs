@@ -579,4 +579,97 @@ mod test {
         let err = validate_burn_commitment_not_in_db(&body, &db).unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBurnError(_)));
     }
+
+    mod duplicated_inputs_outputs {
+        use tari_script::{ExecutionStack, StackItem, script};
+
+        use super::*;
+
+        fn output_with(commitment: CompressedCommitment, script: tari_script::TariScript) -> TransactionOutput {
+            TransactionOutput {
+                commitment,
+                script,
+                ..Default::default()
+            }
+        }
+
+        fn input_spending(output: &TransactionOutput, input_data: ExecutionStack) -> TransactionInput {
+            TransactionInput::new_current_version(
+                SpentOutput::create_from_output(output.clone()),
+                input_data,
+                Default::default(),
+            )
+        }
+
+        #[test]
+        fn it_allows_distinct_inputs_and_outputs() {
+            let outputs = vec![
+                output_with(random_commitment(), script!(Nop).unwrap()),
+                output_with(random_commitment(), script!(Nop).unwrap()),
+            ];
+            let inputs = outputs
+                .iter()
+                .map(|o| input_spending(o, ExecutionStack::default()))
+                .collect();
+            let body = AggregateBody::new_unsorted(inputs, outputs, vec![]);
+            verify_no_duplicated_inputs_outputs(&body).unwrap();
+        }
+
+        #[test]
+        fn it_rejects_two_identical_outputs() {
+            let output = output_with(random_commitment(), script!(Nop).unwrap());
+            let body = AggregateBody::new_unsorted(vec![], vec![output.clone(), output], vec![]);
+            let err = verify_no_duplicated_inputs_outputs(&body).unwrap_err();
+            assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+        }
+
+        #[test]
+        fn it_rejects_duplicates_in_an_unsorted_body() {
+            // The `sorted` flag is `#[borsh(skip)]`, so a body off the wire always arrives with `sorted == false`.
+            // The check must not depend on it, and must not depend on the duplicates being adjacent either.
+            let commitment = random_commitment();
+            let duplicated = output_with(commitment, script!(Nop).unwrap());
+            let mut outputs = vec![
+                duplicated.clone(),
+                output_with(random_commitment(), script!(Nop).unwrap()),
+                output_with(random_commitment(), script!(Nop).unwrap()),
+                duplicated,
+            ];
+            outputs.reverse();
+            let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+            assert!(!body.is_sorted());
+            let err = verify_no_duplicated_inputs_outputs(&body).unwrap_err();
+            assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+        }
+
+        #[test]
+        fn it_rejects_two_inputs_spending_the_same_output_with_different_witnesses() {
+            // Exactly the shape a competing double spend takes: same output hash, different script input data. The
+            // inputs are deduplicated on the output they spend, so the differing witness must not hide the duplicate.
+            let output = output_with(random_commitment(), script!(Nop).unwrap());
+            let input = input_spending(&output, ExecutionStack::default());
+            let twin = input_spending(&output, ExecutionStack::new(vec![StackItem::Number(1)]));
+            assert_ne!(input.canonical_hash(), twin.canonical_hash());
+
+            let body = AggregateBody::new_unsorted(vec![input, twin], vec![], vec![]);
+            let err = verify_no_duplicated_inputs_outputs(&body).unwrap_err();
+            assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+        }
+
+        #[test]
+        fn it_does_not_catch_two_outputs_that_share_only_a_commitment() {
+            // This check deduplicates outputs by hash, so two outputs with the same commitment but different scripts
+            // hash differently and pass here. Commitment uniqueness within a body is enforced by
+            // `check_sorting_and_duplicates` in the internal consistency validator, which orders outputs on the
+            // commitment alone. This test pins the division of responsibility: if it ever starts failing, the
+            // hash-based check has been tightened and this is the weaker of the two guarantees, not a regression.
+            let commitment = random_commitment();
+            let output = output_with(commitment.clone(), script!(Nop).unwrap());
+            let twin = output_with(commitment, script!(Nop Nop).unwrap());
+            assert_ne!(output.hash(), twin.hash());
+
+            let body = AggregateBody::new_unsorted(vec![], vec![output, twin], vec![]);
+            verify_no_duplicated_inputs_outputs(&body).unwrap();
+        }
+    }
 }

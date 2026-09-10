@@ -277,7 +277,16 @@ impl TransactionOutput {
         // NOTE: The metadata signature must also be verified elsewhere
         let e_bytes = self.get_metadata_signature_challenge();
         // Now we can perform the balance proof
-        let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
+        // `get_metadata_signature_challenge` returns exactly the 64 bytes wide reduction needs, so this cannot
+        // currently fail. Map it rather than unwrap so that a future change to the challenge width surfaces as an
+        // invalid range proof instead of taking the node down.
+        let e = PrivateKey::from_uniform_bytes(&e_bytes).map_err(|e| RangeProofError::InvalidRangeProof {
+            reason: format!(
+                "Could not construct the metadata signature challenge scalar for commitment {}: {}",
+                self.commitment.to_hex(),
+                e
+            ),
+        })?;
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
         if self.metadata_signature.u_a() == &(commit_nonce_a + e * value_as_private_key) {
