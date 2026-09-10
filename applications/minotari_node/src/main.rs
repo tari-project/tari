@@ -101,13 +101,10 @@ fn format_system_time(time: SystemTime) -> String {
     naive.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-/// Application entry point
-fn main() {
-    #[cfg(feature = "dhat-heap")]
-    let dhat_profiler = dhat::Profiler::new_heap();
-    #[cfg(feature = "dhat-heap")]
-    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
-
+/// Installs the global panic hook. See the policy comment inside: a panic on any
+/// single task must never terminate the whole node (GHSA-4r27-mpgm-hx3h follow-up,
+/// tari-project/special_contributions#17).
+fn install_panic_hook() {
     panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
             .location()
@@ -130,17 +127,62 @@ fn main() {
         };
 
         error!(target: "minotari::base_node", "Panic occurred at {location}: {message}");
-
-        // Optionally, write a custom message directly to the file
-        let mut file = File::create("minotari-node-panic.log").unwrap();
-        file.write_all(format!("Panic at {location}: {message}").as_bytes())
-            .unwrap();
-        // if cfg!(debug_assertions) {
-        // In debug mode, we want to see the panic message
         eprintln!("Panic occurred at {location}: {message}");
-        std::process::exit(500);
-        // }
+
+        // Optionally, write a custom message directly to the file. Deliberately
+        // non-panicking: an unwrap inside a panic hook would double-panic and abort.
+        if let Ok(mut file) = File::create("minotari-node-panic.log") {
+            let _ = file.write_all(format!("Panic at {location}: {message}").as_bytes());
+        }
+
+        // Policy (see GHSA-4r27-mpgm-hx3h and tari-project/special_contributions#17):
+        // the hook must NOT call std::process::exit. The node runs many independent
+        // tasks (P2P, gRPC, HTTP request handlers, mining) and a panic on any single
+        // task — e.g. one unauthenticated HTTP request — must unwind that task only,
+        // not kill the whole process. A panic on the main thread still terminates the
+        // process through normal unwinding, so genuinely fatal failures still crash
+        // loudly. Do not reintroduce process::exit here.
     }));
+}
+
+#[cfg(test)]
+mod panic_hook_tests {
+    use super::install_panic_hook;
+
+    /// Regression test for the GHSA-4r27-mpgm-hx3h follow-up
+    /// (tari-project/special_contributions#17, acceptance criterion 3): a panic on a
+    /// request-handler-style task must NOT kill the process. With the old hook
+    /// (unconditional `std::process::exit(500)`), this test terminates the whole test
+    /// runner instead of passing.
+    #[test]
+    fn panic_on_a_task_does_not_kill_the_process() {
+        let _ = std::fs::remove_file("minotari-node-panic.log");
+        install_panic_hook();
+
+        let unwind_result = std::panic::catch_unwind(|| {
+            panic!("synthetic handler panic (GHSA-4r27 follow-up regression test)");
+        });
+
+        // Reaching this line at all proves the hook did not exit the process.
+        assert!(
+            unwind_result.is_err(),
+            "the panic must still unwind (and be caught), not abort"
+        );
+        assert!(
+            std::path::Path::new("minotari-node-panic.log").exists(),
+            "the hook must still write minotari-node-panic.log"
+        );
+        let _ = std::fs::remove_file("minotari-node-panic.log");
+    }
+}
+
+/// Application entry point
+fn main() {
+    install_panic_hook();
+    #[cfg(feature = "dhat-heap")]
+    let dhat_profiler = dhat::Profiler::new_heap();
+    #[cfg(feature = "dhat-heap")]
+    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
 
     if let Err(err) = main_inner() {
         eprintln!("{err:?}");
