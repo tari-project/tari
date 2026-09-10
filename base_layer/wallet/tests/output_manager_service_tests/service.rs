@@ -2375,7 +2375,7 @@ async fn build_whole_input_spend(
         &output_memo,
     )?;
     let sender_offset = builder
-        .reserve_sender_offset_keys(&[PendingOutput::keyed(amount, output_size)])?
+        .reserve_sender_offset_keys(&[PendingOutput::new(amount, output_size)])?
         .pop()
         .unwrap();
     let encryption_key = key_manager.get_random_key(None, None).unwrap();

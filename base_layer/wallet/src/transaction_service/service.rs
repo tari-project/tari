@@ -2675,7 +2675,7 @@ where
             &Covenant::default(),
             &placeholder_memo,
         )?;
-        let fee = tx_builder.get_fee_estimate_with(&[PendingOutput::keyed(MicroMinotari::zero(), output_size)])?;
+        let fee = tx_builder.get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), output_size)])?;
         let amount = tx_builder
             .get_total_input_value()?
             .checked_sub(fee)
@@ -3175,8 +3175,10 @@ where
                     .sign_metadata_signature(&self.resources.transaction_key_manager_service, &r.key_id)?
                     .try_build(&self.resources.transaction_key_manager_service)?;
 
-                tx_builder
-                    .reserve_sender_offset_keys(&[PendingOutput::host_keyed(amount, burn_features_and_scripts_size)])?;
+                tx_builder.reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
+                    amount,
+                    burn_features_and_scripts_size,
+                )])?;
                 tx_builder.add_recipient(Default::default(), output, r.key_id.clone(), Some(recovery_key_id))?;
             },
             // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender

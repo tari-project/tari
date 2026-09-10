@@ -410,7 +410,7 @@ async fn allow_duplicate_outputs() {
         // This one already exists, so it can be declared from the output itself.
         let pending = PendingOutput::from_output(output).unwrap();
         tx_builder
-            .reserve_sender_offset_keys(&[PendingOutput::host_keyed(
+            .reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
                 pending.value(),
                 pending.features_and_scripts_size(),
             )])

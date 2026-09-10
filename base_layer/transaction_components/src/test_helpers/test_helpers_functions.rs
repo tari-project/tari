@@ -42,7 +42,7 @@ use crate::{
     crypto_factories::CryptoFactories,
     fee::{Fee, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage, manager::KeyManager},
     transaction_builder::{FinalizedTransaction, PendingOutput, TransactionBuilderError},
     transaction_components::{
         CoinBaseExtra,
@@ -711,7 +711,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
     let mut pending = schema
         .to
         .iter()
-        .map(|value| PendingOutput::keyed(*value, recipient_size))
+        .map(|value| PendingOutput::new(*value, recipient_size))
         .collect::<Vec<_>>();
     for utxo in &schema.to_outputs {
         pending.push(PendingOutput::from_output(utxo).unwrap());

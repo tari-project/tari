@@ -180,6 +180,12 @@ pub enum TariKeyId {
     },
 }
 
+impl TariKeyId {
+    pub fn is_ledger_key(&self) -> bool {
+        matches!(self, TariKeyId::LedgerKey { .. } | TariKeyId::Derived { .. })
+    }
+}
+
 impl FromStr for TariKeyId {
     type Err = String;
 

@@ -272,11 +272,7 @@ fn nop_script_key<KM: LegacyTransactionKeyManagerInterface>(
 mod test {
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
-    use tari_transaction_components::key_manager::{
-        ScriptKeyBucket,
-        TransactionKeyManagerInterface,
-        script_key_bucket,
-    };
+    use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
     use tari_transaction_key_manager::legacy_key_manager::create_new_random_key_manager;
 
     use super::*;
@@ -320,7 +316,7 @@ mod test {
             .unwrap();
 
         let script_key = nop_script_key(&key_manager, &commitment_mask).unwrap();
-        assert_eq!(script_key_bucket(&script_key), ScriptKeyBucket::AlphaDerived);
+        assert!(script_key.is_ledger_key());
 
         // A script offset over nothing but recovered outputs is accepted.
         assert!(key_manager.get_script_offset(&[script_key], 1).is_ok());
@@ -331,6 +327,6 @@ mod test {
         let legacy_script_key = key_manager
             .create_encrypted_key(PrivateKey::random(&mut rand::rng()), None)
             .unwrap();
-        assert_eq!(script_key_bucket(&legacy_script_key), ScriptKeyBucket::HostKnown);
+        assert!(!legacy_script_key.is_ledger_key());
     }
 }

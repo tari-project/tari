@@ -76,7 +76,7 @@ fn multisig_pending_output(
         ),
         Opcode::PushPubKey(Box::default()),
     ])?;
-    Ok(PendingOutput::keyed(
+    Ok(PendingOutput::new(
         amount,
         recipient_output_features_and_scripts_size(
             consensus_constants.transaction_weight_params(),
@@ -342,7 +342,7 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         .clone();
 
     // As above: one reservation for every output, declared before any key exists.
-    let mut pending = vec![PendingOutput::keyed(
+    let mut pending = vec![PendingOutput::new(
         recipient.amount,
         recipient_output_features_and_scripts_size(
             constants.transaction_weight_params(),

@@ -1249,7 +1249,7 @@ where
         // a pending output instead, so that the single reservation charges for it and its value is part of the
         // change decision - there is no change here, and the reservation has to see that.
         let sender_offset_private_key_id_self = builder
-            .reserve_sender_offset_keys(&[PendingOutput::keyed(amount, metadata_byte_size)])?
+            .reserve_sender_offset_keys(&[PendingOutput::new(amount, metadata_byte_size)])?
             .pop()
             .ok_or_else(|| {
                 OutputManagerError::ServiceError("No sender offset key was reserved (TxId: 0)".to_string())

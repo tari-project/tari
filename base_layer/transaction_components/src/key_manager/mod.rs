@@ -33,7 +33,7 @@ pub mod error;
 use crate::consensus::DomainSeparatedConsensusHasher;
 
 pub mod manager;
-pub use manager::{KeyManager, ScriptKeyBucket, script_key_bucket};
+pub use manager::KeyManager;
 pub mod wallet_types;
 
 use tari_hashing::ConfidentialOutputHashDomain;

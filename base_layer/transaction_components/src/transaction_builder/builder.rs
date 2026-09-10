@@ -93,7 +93,7 @@ pub struct PendingOutput {
 
 impl PendingOutput {
     /// An output that will take one of the sender offset keys the reservation returns.
-    pub fn keyed(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
+    pub fn new(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
         Self {
             value,
             features_and_scripts_size,
@@ -103,7 +103,7 @@ impl PendingOutput {
 
     /// An output that publishes a sender offset key the caller derived itself and registered with
     /// [`TransactionBuilder::with_host_derived_partial_script_offset`], so it takes no key from the pool.
-    pub fn host_keyed(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
+    pub fn custom_sender_offset(value: MicroMinotari, features_and_scripts_size: usize) -> Self {
         Self {
             value,
             features_and_scripts_size,
@@ -124,7 +124,7 @@ impl PendingOutput {
         covenant: &Covenant,
         memo: &MemoField,
     ) -> Result<Self, TransactionBuilderError> {
-        Ok(Self::keyed(
+        Ok(Self::new(
             value,
             recipient_output_features_and_scripts_size(weighting, features, script, covenant, memo)?,
         ))
@@ -140,7 +140,7 @@ impl PendingOutput {
 
     /// Declare an output that already exists.
     pub fn from_output(output: &WalletOutput) -> Result<Self, TransactionBuilderError> {
-        Ok(Self::keyed(
+        Ok(Self::custom_sender_offset(
             output.value(),
             output
                 .features_and_scripts_byte_size()
@@ -474,7 +474,7 @@ where KM: TransactionKeyManagerInterface
     /// The reservation has to charge for outputs that do not exist yet, and the change decision it makes is binding,
     /// so `build` must not re-measure them against the outputs it goes on to construct - a byte of difference in
     /// either direction could flip the decision.
-    pub fn spec_features_and_scripts_size(&self, spec: &RecipientSpec) -> Result<usize, TransactionBuilderError> {
+    fn spec_features_and_scripts_size(&self, spec: &RecipientSpec) -> Result<usize, TransactionBuilderError> {
         let script = match &spec.script {
             RecipientScript::Explicit(script) => (**script).clone(),
             // Every default script is a single `PushPubKey`, whatever key ends up in it.
@@ -2082,7 +2082,7 @@ mod test {
         builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
         // Declared as worth a tenth of what is actually attached.
         let mut declared = PendingOutput::from_output(&output).unwrap();
-        declared = PendingOutput::keyed(MicroMinotari(1000), declared.features_and_scripts_size());
+        declared = PendingOutput::new(MicroMinotari(1000), declared.features_and_scripts_size());
         let sender_offset = builder.reserve_sender_offset_keys(&[declared]).unwrap().pop().unwrap();
 
         let mut output = output;
@@ -2129,7 +2129,7 @@ mod test {
                 TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
             builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
             let sender_offset = builder
-                .reserve_sender_offset_keys(&[PendingOutput::keyed(MicroMinotari(10000), declared_size)])
+                .reserve_sender_offset_keys(&[PendingOutput::new(MicroMinotari(10000), declared_size)])
                 .unwrap()
                 .pop()
                 .unwrap();
@@ -2401,7 +2401,7 @@ mod test {
                     MemoField::new_empty(),
                 );
                 let size = builder.spec_features_and_scripts_size(&sizing_spec).unwrap();
-                let pending = vec![PendingOutput::keyed(MicroMinotari::zero(), size); recipients];
+                let pending = vec![PendingOutput::new(MicroMinotari::zero(), size); recipients];
                 let fee = builder.get_fee_estimate_with(&pending).unwrap();
                 let total: u64 = input_values.iter().map(|v| v.as_u64()).sum();
                 MicroMinotari(total.saturating_sub(fee.as_u64()) / recipients as u64)
@@ -2522,7 +2522,7 @@ mod test {
         );
         let size = builder.spec_features_and_scripts_size(&spec).unwrap();
         let fee = builder
-            .get_fee_estimate_with(&[PendingOutput::keyed(MicroMinotari::zero(), size)])
+            .get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), size)])
             .unwrap();
         builder
             .with_recipient_spec(RecipientSpec {

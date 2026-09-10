@@ -103,37 +103,6 @@ const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 const CODE_TEMPLATE_AUTHOR_LABEL: &str = "code-template-author";
 const HASHER_LABEL_BURN_SENDER_OFFSET: &str = "burn-sender-offset";
 
-/// Where a script key id lands when a script offset is computed on a ledger device.
-///
-/// The distinction is what the device's second rule turns on: only the first two buckets are terms the *device*
-/// turns into key material, so only they blind the reply against the host. Host known keys are summed into the one
-/// opaque `partial_script_key_sum` scalar the host itself computed, so they blind nothing.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ScriptKeyBucket {
-    /// A pre-mine key the device derives from an index. The pre-mine branch holds the only script keys the wallet
-    /// addresses by index.
-    PreMineIndex,
-    /// A blinding factor the device folds into `alpha`, its root spend key, to derive the script key.
-    AlphaDerived,
-    /// A key the host resolves itself and sends as part of `partial_script_key_sum`.
-    HostKnown,
-}
-
-/// Classify a script key id for the ledger path.
-///
-/// Ordinary wallet script keys are `TariKeyId::Derived { key: commitment_mask_key_id }`, so they land in the alpha
-/// derived bucket and the device rule costs nothing in normal use.
-pub fn script_key_bucket(key_id: &TariKeyId) -> ScriptKeyBucket {
-    match key_id {
-        TariKeyId::LedgerKey {
-            branch: LedgerKeyBranch::PreMine,
-            ..
-        } => ScriptKeyBucket::PreMineIndex,
-        TariKeyId::Derived { .. } => ScriptKeyBucket::AlphaDerived,
-        _ => ScriptKeyBucket::HostKnown,
-    }
-}
-
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
@@ -315,8 +284,8 @@ impl KeyManager {
     /// keys that blind the result.
     ///
     /// The device also refuses to answer unless at least one script side term was derived on the device, so this
-    /// mirrors [`script_key_bucket`]'s classification: a request whose only script keys are host known would be
-    /// answered with a sender offset private key the device just generated.
+    /// mirrors [`TariKeyId::is_ledger_key`]: a request whose only script keys are host known would be answered
+    /// with a sender offset private key the device just generated.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn ledger_get_script_offset_wrapper(
@@ -333,10 +302,7 @@ impl KeyManager {
                 max,
             });
         }
-        if !script_key_ids
-            .iter()
-            .any(|k| script_key_bucket(k) != ScriptKeyBucket::HostKnown)
-        {
+        if !script_key_ids.iter().any(|k| k.is_ledger_key()) {
             return Err(KeyManagerError::NoDeviceScriptKeys {
                 script_keys: script_key_ids.len(),
             });
@@ -348,23 +314,19 @@ impl KeyManager {
             let mut derived_script_keys = vec![];
             let mut script_key_indexes = vec![];
             for script_key_id in script_key_ids {
-                match script_key_bucket(script_key_id) {
-                    ScriptKeyBucket::PreMineIndex => {
-                        if let TariKeyId::LedgerKey { branch, index } = script_key_id {
-                            script_key_indexes.push((*branch, *index));
-                        }
+                match script_key_id {
+                    TariKeyId::LedgerKey { branch, index } => {
+                        script_key_indexes.push((*branch, *index));
                     },
-                    ScriptKeyBucket::AlphaDerived => {
-                        if let TariKeyId::Derived { key } = script_key_id {
-                            let key_id = TariKeyId::from_str(key.to_string().as_str())
-                                .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
-                            // Note: If the derived key is a TariKeyId::Managed, but not allowed in
-                            //       'self.get_private_key(...)' this will error.
-                            let k = self.get_private_key(&key_id)?;
-                            derived_script_keys.push(k);
-                        }
+                    TariKeyId::Derived { key } => {
+                        let key_id = TariKeyId::from_str(key.to_string().as_str())
+                            .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                        // Note: If the derived key is a TariKeyId::Managed, but not allowed in
+                        //       'self.get_private_key(...)' this will error.
+                        let k = self.get_private_key(&key_id)?;
+                        derived_script_keys.push(k);
                     },
-                    ScriptKeyBucket::HostKnown => {
+                    _ => {
                         partial_script_offset = &partial_script_offset + self.get_private_key(script_key_id)?;
                     },
                 }
@@ -1556,7 +1518,6 @@ mod tests {
     use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
     use tari_common_types::types::PrivateKey;
 
-    use super::{ScriptKeyBucket, script_key_bucket};
     use crate::key_manager::{
         KeyManager,
         SecretTransactionKeyManagerInterface,
@@ -1688,34 +1649,31 @@ mod tests {
         }
     }
 
-    /// The device's second rule turns on this classification: only pre-mine indexes and alpha derived blinding
-    /// factors are terms the *device* turns into key material. Everything else is summed into the one opaque
-    /// `partial_script_key_sum` scalar the host computed itself, so it blinds nothing against the host.
+    /// The device's second rule turns on this classification: only a ledger branch index and an alpha derived
+    /// blinding factor are terms the *device* turns into key material. Everything else is summed into the one
+    /// opaque `partial_script_key_sum` scalar the host computed itself, so it blinds nothing against the host.
     #[test]
-    fn script_keys_are_bucketed_by_who_derives_them() {
+    fn script_keys_are_classified_by_who_derives_them() {
         let key_manager = KeyManager::new_random().unwrap();
         let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
 
         // An ordinary wallet script key is `Derived { key: commitment_mask_key_id }`, so the device rule costs
         // nothing in normal use.
-        assert_eq!(script_key_bucket(&script_key.key_id), ScriptKeyBucket::AlphaDerived);
-        assert_eq!(
-            script_key_bucket(&TariKeyId::LedgerKey {
+        assert!(script_key.key_id.is_ledger_key());
+        for device_derived in [
+            TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::PreMine,
                 index: 7,
-            }),
-            ScriptKeyBucket::PreMineIndex
-        );
-        for host_known in [
-            TariKeyId::Zero,
-            TariKeyId::SpendKey,
-            TariKeyId::ViewKey,
+            },
             TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::Random,
                 index: 7,
             },
         ] {
-            assert_eq!(script_key_bucket(&host_known), ScriptKeyBucket::HostKnown);
+            assert!(device_derived.is_ledger_key(), "expected a device key: {device_derived:?}");
+        }
+        for host_known in [TariKeyId::Zero, TariKeyId::SpendKey, TariKeyId::ViewKey] {
+            assert!(!host_known.is_ledger_key(), "expected a host known key: {host_known:?}");
         }
     }
 
