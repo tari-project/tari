@@ -1670,7 +1670,10 @@ mod tests {
                 index: 7,
             },
         ] {
-            assert!(device_derived.is_ledger_key(), "expected a device key: {device_derived:?}");
+            assert!(
+                device_derived.is_ledger_key(),
+                "expected a device key: {device_derived:?}"
+            );
         }
         for host_known in [TariKeyId::Zero, TariKeyId::SpendKey, TariKeyId::ViewKey] {
             assert!(!host_known.is_ledger_key(), "expected a host known key: {host_known:?}");
