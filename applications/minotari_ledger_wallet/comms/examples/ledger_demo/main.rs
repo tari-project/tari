@@ -348,6 +348,163 @@ fn main() {
     }
     println!("rejected as expected: {:?}", AppSW::try_from(resume_response.retcode()));
 
+    // Declaring a section and never sending a chunk that falls inside it folds nothing at all. The header's counts
+    // are what the host *asked* for; if they were what guarded the reply, this two call sequence would hand back
+    // `-k_sender` for a key the device had just generated, with the base index that names it in the same reply.
+    //
+    // Chunk numbers 2..3 are the derived script key section here (script_index_count = 0,
+    // derived_script_key_count = 1), so terminating on chunk 3 lands outside every section.
+    println!("\ntest: GetScriptOffset (declared script key never folded, must fail on the device)");
+    let mut declared_only_header = Vec::new();
+    declared_only_header.extend_from_slice(&1u64.to_le_bytes()); // sender_offset_count
+    declared_only_header.extend_from_slice(&0u64.to_le_bytes()); // script_index_count
+    declared_only_header.extend_from_slice(&1u64.to_le_bytes()); // derived_script_key_count
+    if let Err(e) = Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        0,
+        true,
+        declared_only_header.clone(),
+    )
+    .execute()
+    {
+        println!("\nError: {e}\n");
+        return;
+    }
+    let declared_only_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        3,
+        false,
+        get_random_nonce().to_vec(),
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if declared_only_response.retcode() == AppSW::Ok as u16 {
+        println!("\nError: the device emitted a script offset with no script key folded into it\n");
+        return;
+    }
+    println!(
+        "rejected as expected: {:?}",
+        AppSW::try_from(declared_only_response.retcode())
+    );
+
+    // The same sequence with the host's partial sum sent in between. `partial_script_key_sum` is one opaque scalar
+    // the host computed itself, so it blinds nothing against the host and must not count towards the script side.
+    println!("\ntest: GetScriptOffset (only the host partial sum contributes, must fail on the device)");
+    let host_partial_sum = get_random_nonce();
+    for (chunk, more, data) in [
+        (0u8, true, declared_only_header.clone()),
+        (1u8, true, host_partial_sum.to_vec()),
+    ] {
+        if let Err(e) =
+            Command::<Vec<u8>>::build_chunk_command(account, Instruction::GetScriptOffset, chunk, more, data).execute()
+        {
+            println!("\nError: {e}\n");
+            return;
+        }
+    }
+    let partial_only_response = match Command::<Vec<u8>>::build_chunk_command(
+        account,
+        Instruction::GetScriptOffset,
+        3,
+        false,
+        get_random_nonce().to_vec(),
+    )
+    .execute()
+    {
+        Ok(response) => response,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    if partial_only_response.retcode() == AppSW::Ok as u16 {
+        println!("\nError: the device counted the host supplied partial sum as a script key\n");
+        return;
+    }
+    println!(
+        "rejected as expected: {:?}",
+        AppSW::try_from(partial_only_response.retcode())
+    );
+
+    // The host also chooses the *order* of the chunks. A device derived key folded first must survive the partial
+    // sum arriving afterwards - if the partial sum overwrote the running total, this sequence would come back as
+    // `P - k_sender` and the host could read the device's sender offset private key straight out of it.
+    //
+    // This one is legitimate, so it is expected to succeed; what is checked is the value. The host knows `P` and
+    // gets `base_index` back, so it can ask the device for `K_sender` and test whether the reply really was
+    // `P - k_sender`.
+    println!("\ntest: GetScriptOffset (partial sum after a folded key must not overwrite it)");
+    for (chunk, more, data) in [
+        (0u8, true, declared_only_header),
+        (2u8, true, get_random_nonce().to_vec()),
+        (1u8, true, host_partial_sum.to_vec()),
+    ] {
+        if let Err(e) =
+            Command::<Vec<u8>>::build_chunk_command(account, Instruction::GetScriptOffset, chunk, more, data).execute()
+        {
+            println!("\nError: {e}\n");
+            return;
+        }
+    }
+    let ordering_response =
+        match Command::<Vec<u8>>::build_chunk_command(account, Instruction::GetScriptOffset, 3, false, Vec::new())
+            .execute()
+        {
+            Ok(response) => response,
+            Err(e) => {
+                println!("\nError: {e}\n");
+                return;
+            },
+        };
+    if ordering_response.retcode() != AppSW::Ok as u16 {
+        println!(
+            "\nError: the device refused a legitimate script offset: {:?}\n",
+            AppSW::try_from(ordering_response.retcode())
+        );
+        return;
+    }
+    let data = ordering_response.data();
+    if data.len() < 41 {
+        println!("\nError: expected 41 bytes, got {}\n", data.len());
+        return;
+    }
+    let script_offset = match PrivateKey::from_canonical_bytes(data.get(1..33).expect("Length already checked")) {
+        Ok(key) => key,
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+    let mut base_index_bytes = [0u8; 8];
+    base_index_bytes.copy_from_slice(data.get(33..41).expect("Length already checked"));
+    let base_index = u64::from_le_bytes(base_index_bytes);
+    let sender_offset_public_key =
+        match ledger_get_public_key(account, base_index, LedgerKeyBranch::OneSidedSenderOffset) {
+            Ok(key) => key,
+            Err(e) => {
+                println!("\nError: {e}\n");
+                return;
+            },
+        };
+    // If the folded key had been overwritten the reply would be exactly `P - k_sender`.
+    // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    let recovered_sender_offset = &host_partial_sum - &script_offset;
+    let leaked = CompressedPublicKey::from_secret_key(&recovered_sender_offset);
+    if leaked.to_hex() == sender_offset_public_key.to_hex() {
+        println!("\nError: the partial sum overwrote the folded script key; the reply leaks k_sender\n");
+        return;
+    }
+    println!("blinded as expected: script_offset {}", script_offset.to_hex());
+
     // The host side mirrors of both device rules refuse before the transport is opened, so a caller gets a legible
     // error rather than a status word.
     println!("\ntest: GetScriptOffset (host side refusals)");

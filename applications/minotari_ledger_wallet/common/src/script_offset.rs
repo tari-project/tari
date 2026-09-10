@@ -80,6 +80,33 @@ pub fn check_script_key_count(
     Ok(())
 }
 
+/// Decide whether an accumulated script offset is safe to hand back.
+///
+/// This is the check that guards the reply, and it is deliberately not the same check the header passes. A header
+/// carries the counts the *host declared*; this takes `device_script_keys_folded`, the number of script keys the
+/// device actually turned into key material and added to the sum. The two are independent, and only the second one
+/// says anything about whether the reply is blinded.
+///
+/// The gap between them is exploitable in two APDUs. A host declares `derived_script_key_count = 1`, then sends a
+/// terminating chunk whose number falls *outside* the range that section's chunks occupy: nothing is folded, the
+/// script side of the sum is still zero, and a check on the declared count would still pass. The reply would be
+/// `-k_sender` for a key the device had just generated, and the base index that names it is in the same reply -
+/// which is precisely the sender offset private key the device exists to keep from the host.
+///
+/// `partial_script_key_sum` must not count towards `device_script_keys_folded`. It is one opaque scalar the host
+/// computed itself, so it blinds nothing against the host; a host with no script keys sends zero, which the device
+/// cannot tell apart from a legitimate sum of zero.
+pub fn check_offset_is_blinded(
+    sender_offset_count: u64,
+    device_script_keys_folded: u64,
+) -> Result<(), ScriptOffsetHeaderError> {
+    check_sender_offset_key_count(sender_offset_count)?;
+    if device_script_keys_folded == 0 {
+        return Err(ScriptOffsetHeaderError::NoDeviceScriptKeys);
+    }
+    Ok(())
+}
+
 /// The index of the `i`th sender offset key derived from `base_index`.
 ///
 /// The base is drawn from the device RNG and may sit anywhere in `u64`, so the walk wraps rather than saturating.
@@ -226,6 +253,43 @@ mod test {
     fn the_two_checks_are_independent_of_each_other() {
         assert!(check_sender_offset_key_count(1).is_ok() && check_script_key_count(0, 0).is_err());
         assert!(check_sender_offset_key_count(0).is_err() && check_script_key_count(1, 0).is_ok());
+    }
+
+    /// The check that guards the reply must look at what was folded, not at what was declared. A host that declares
+    /// device script keys and then terminates the exchange on a chunk number outside every section's range folds
+    /// nothing at all, and the reply would be a bare `-k_sender` for a key the device had just generated.
+    #[test]
+    fn a_declared_script_key_that_was_never_folded_does_not_unblind_the_reply() {
+        // The proof of concept: header declares `derived_script_key_count = 1`, nothing is ever folded.
+        assert!(
+            check_script_key_count(0, 1).is_ok(),
+            "the declared counts pass, which is exactly why they cannot be what guards the reply"
+        );
+        assert_eq!(
+            check_offset_is_blinded(1, 0).unwrap_err(),
+            ScriptOffsetHeaderError::NoDeviceScriptKeys
+        );
+
+        // One key actually folded, of either kind, is enough.
+        assert!(check_offset_is_blinded(1, 1).is_ok());
+        assert!(check_offset_is_blinded(25, 3).is_ok());
+    }
+
+    /// The reply is still refused when no sender offset key would blind it, whatever was folded on the script side.
+    #[test]
+    fn the_reply_check_covers_both_sides_of_the_sum() {
+        assert_eq!(
+            check_offset_is_blinded(0, 5).unwrap_err(),
+            ScriptOffsetHeaderError::NoSenderOffsetKeys
+        );
+        assert_eq!(
+            check_offset_is_blinded(MAX_SENDER_OFFSET_KEYS.saturating_add(1), 5).unwrap_err(),
+            ScriptOffsetHeaderError::TooManySenderOffsetKeys
+        );
+        assert_eq!(
+            check_offset_is_blinded(0, 0).unwrap_err(),
+            ScriptOffsetHeaderError::NoSenderOffsetKeys
+        );
     }
 
     /// The reply names the sender offset keys by a single base index, so both sides have to walk it identically.

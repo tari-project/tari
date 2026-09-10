@@ -4,8 +4,7 @@
 use ledger_device_sdk::io::Comm;
 use minotari_ledger_wallet_common::script_offset::{
     ScriptOffsetHeaderError,
-    check_script_key_count,
-    check_sender_offset_key_count,
+    check_offset_is_blinded,
     parse_script_offset_header,
     sender_offset_index,
 };
@@ -22,7 +21,19 @@ use crate::{
 
 pub struct ScriptOffsetCtx {
     sender_offset_sum: RistrettoSecretKey,
-    script_private_key_sum: RistrettoSecretKey,
+    /// The sum of the script keys the *device* derived, from a pre-mine index or from a blinding factor folded into
+    /// `alpha`. This is the only part of the script side that blinds the reply against the host.
+    device_script_key_sum: RistrettoSecretKey,
+    /// The one opaque scalar the host computed itself. Kept apart from `device_script_key_sum` so that the chunk
+    /// carrying it cannot overwrite what the device derived: it arrives as a whole sum rather than a term, and the
+    /// host chooses which chunk numbers to send and in which order.
+    host_partial_script_key_sum: RistrettoSecretKey,
+    /// How many script keys the device actually derived and added to `device_script_key_sum`.
+    ///
+    /// This is what the emission check looks at. The counts the header declared say only what the host *asked* for;
+    /// a host is free to declare a section and then never send a chunk that falls inside it, so a check on the
+    /// declared counts would pass while the script side of the sum was still zero.
+    device_script_keys_folded: u64,
     account: u64,
     total_sender_offset_keys: u64,
     total_script_indexes: u64,
@@ -34,7 +45,9 @@ impl ScriptOffsetCtx {
     pub fn new() -> Self {
         Self {
             sender_offset_sum: RistrettoSecretKey::default(),
-            script_private_key_sum: RistrettoSecretKey::default(),
+            device_script_key_sum: RistrettoSecretKey::default(),
+            host_partial_script_key_sum: RistrettoSecretKey::default(),
+            device_script_keys_folded: 0,
             account: 0,
             total_sender_offset_keys: 0,
             total_script_indexes: 0,
@@ -50,7 +63,9 @@ impl ScriptOffsetCtx {
     /// withhold.
     pub fn reset(&mut self) {
         self.sender_offset_sum = RistrettoSecretKey::default();
-        self.script_private_key_sum = RistrettoSecretKey::default();
+        self.device_script_key_sum = RistrettoSecretKey::default();
+        self.host_partial_script_key_sum = RistrettoSecretKey::default();
+        self.device_script_keys_folded = 0;
         self.account = 0;
         self.total_sender_offset_keys = 0;
         self.total_script_indexes = 0;
@@ -126,6 +141,11 @@ fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey
 ///
 /// Reply: `version(1) | script_offset(32) | base_index(8)`, where the keys are
 /// `base_index..base_index + sender_offset_count` walked with [`sender_offset_index`].
+///
+/// The host chooses which chunk numbers it sends, in which order, and which one terminates the exchange. Nothing
+/// here may therefore depend on the host having followed the format: the counts in the header say what the host
+/// asked for, and the only thing that decides whether the reply is safe to emit is what the device actually
+/// derived. See [`check_offset_is_blinded`].
 pub fn handler_get_script_offset(
     comm: &mut Comm,
     chunk_number: u8,
@@ -142,14 +162,16 @@ pub fn handler_get_script_offset(
         return Ok(());
     }
 
-    // 2. partial sum of the script private keys the host already knows
+    // 2. Partial sum of the script private keys the host already knows. It arrives as a whole sum rather than a
+    //    term, so it is stored on its own: assigning it into the running total would let a host fold a device
+    //    derived key, wipe it with this chunk, and still satisfy a check that counted the folded key.
     if chunk_number == 1 {
         if data.len() != 32 {
             return Err(AppSW::WrongApduLength);
         }
         let partial_script_key_sum: RistrettoSecretKey =
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
-        offset_ctx.script_private_key_sum = partial_script_key_sum;
+        offset_ctx.host_partial_script_key_sum = partial_script_key_sum;
 
         return Ok(());
     }
@@ -168,7 +190,8 @@ pub fn handler_get_script_offset(
         }
         let script_key = derive_from_bip32_key(offset_ctx.account, index, branch)?;
 
-        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + script_key;
+        offset_ctx.device_script_key_sum = &offset_ctx.device_script_key_sum + script_key;
+        offset_ctx.device_script_keys_folded = offset_ctx.device_script_keys_folded.saturating_add(1);
     }
 
     // 4. Alpha derived script keys
@@ -176,20 +199,26 @@ pub fn handler_get_script_offset(
     if (end_script_indexes..end_derived_script_keys).contains(&(chunk_number as u64)) {
         let k = derive_key_from_alpha(offset_ctx.account, data)?;
 
-        offset_ctx.script_private_key_sum = &offset_ctx.script_private_key_sum + k
+        offset_ctx.device_script_key_sum = &offset_ctx.device_script_key_sum + k;
+        offset_ctx.device_script_keys_folded = offset_ctx.device_script_keys_folded.saturating_add(1);
     }
 
     if more {
         return Ok(());
     }
 
-    // 5. Re-check both counts at the point the value would actually leave the device, rather than trusting counts
-    //    that were validated in an earlier exchange. Neither sum may leave unblinded by a term the host cannot
-    //    compute: no sender offset key means the reply is the plain script key sum (the spend key), and no device
-    //    derived script key means it is a device generated sender offset private key.
-    check_sender_offset_key_count(offset_ctx.total_sender_offset_keys).map_err(header_error_to_app_sw)?;
-    check_script_key_count(offset_ctx.total_script_indexes, offset_ctx.total_derived_script_keys)
-        .map_err(header_error_to_app_sw)?;
+    // 5. Decide, at the point the value would actually leave, whether it is blinded on both sides. The script side
+    //    is judged on what the device folded, never on what the header declared: the host picks the chunk numbers,
+    //    so it can declare a section and then terminate on a chunk outside it, folding nothing.
+    //
+    //    `total_sender_offset_keys` is safe to take from the header because step 6 below derives exactly that many
+    //    keys and sums every one of them, so declared and actual cannot diverge - and the header check already
+    //    bounded it.
+    check_offset_is_blinded(
+        offset_ctx.total_sender_offset_keys,
+        offset_ctx.device_script_keys_folded,
+    )
+    .map_err(header_error_to_app_sw)?;
 
     // 6. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
     //    derived from `base..base + count`, so the host cannot replay a call and difference two replies to strip
@@ -202,7 +231,8 @@ pub fn handler_get_script_offset(
         offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + sender_offset;
     }
 
-    let script_offset = &offset_ctx.script_private_key_sum - &offset_ctx.sender_offset_sum;
+    let script_key_sum = &offset_ctx.device_script_key_sum + &offset_ctx.host_partial_script_key_sum;
+    let script_offset = &script_key_sum - &offset_ctx.sender_offset_sum;
 
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&script_offset.to_vec());
