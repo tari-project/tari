@@ -269,13 +269,21 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    // In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
-    // done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
-    // signers, this can be left as none
+    /// Sign the sender half of an output's metadata signature.
+    ///
+    /// In the case where the sender is an aggregated signer, we need to parse in the other public key shares, this is
+    /// done in: aggregated_sender_offset_public_keys and aggregated_ephemeral_public_keys. If there is no aggregated
+    /// signers, this can be left as none.
+    ///
+    /// Both keys are passed as the `TariKeyAndId` their issuer handed out, rather than as key ids to look up. The
+    /// ephemeral nonce must come from [`TransactionKeyManagerInterface::reserve_ephemeral_nonce`], and the public
+    /// form of such a nonce is returned exactly once, by that reservation - it cannot be recovered from the handle
+    /// afterwards, because on a ledger wallet only the device could recompute it and it will not. Carrying the
+    /// sender offset key the same way also spares the caller a second device round trip for a key it already has.
     fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
+        ephemeral_private_nonce: &TariKeyAndId,
+        sender_offset: &TariKeyAndId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: TransactionOutputVersion,

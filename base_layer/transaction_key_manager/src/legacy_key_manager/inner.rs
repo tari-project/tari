@@ -566,16 +566,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // signers, this can be left as none
     pub fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
+        ephemeral_private_nonce: &TariKeyAndId,
+        sender_offset: &TariKeyAndId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_sender_partial_metadata_signature(
-            ephemeral_private_nonce_id,
-            sender_offset_key_id,
+            ephemeral_private_nonce,
+            sender_offset,
             commitment,
             ephemeral_commitment,
             txo_version,
