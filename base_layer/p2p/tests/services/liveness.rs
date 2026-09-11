@@ -36,6 +36,7 @@ use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_try_recv;
 use tempfile::tempdir;
+use tokio::time;
 
 use crate::support::comms_and_services::setup_comms_services;
 
@@ -67,6 +68,24 @@ pub async fn setup_liveness_service(
     (liveness_handle, comms, dht, shutdown)
 }
 
+/// Waits until `comms` is connected to at least one peer and the connection churn around start-up has settled.
+///
+/// A node will re-dial a peer while its own dial is still in flight, because the in-progress dial is not yet in the
+/// connection pool. The extra connection that lands is resolved by a tie break which silently disconnects the loser,
+/// including any message already written to it. Liveness counts every ping, so the test may only start pinging once
+/// that has stopped happening.
+async fn wait_until_connections_settle(comms: &CommsNode) {
+    let mut connectivity = comms.connectivity();
+    let mut events = connectivity.get_event_subscription();
+    connectivity
+        .wait_for_connectivity(Duration::from_secs(30))
+        .await
+        .expect("Node did not come online");
+    // Quiet period: a tie break is reported as a connectivity event, so no events for this long means the peer
+    // connection that messaging will use is the one that survived.
+    while time::timeout(Duration::from_millis(500), events.recv()).await.is_ok() {}
+}
+
 fn make_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
@@ -83,19 +102,22 @@ async fn end_to_end() {
     let node_2_identity = make_node_identity();
 
     let alice_temp_dir = tempdir().unwrap();
-    let (mut liveness1, _, _dht_1, _shutdown) = setup_liveness_service(
+    let (mut liveness1, comms_1, _dht_1, _shutdown) = setup_liveness_service(
         node_1_identity.clone(),
         vec![node_2_identity.clone()],
         alice_temp_dir.path().to_str().unwrap(),
     )
     .await;
     let bob_temp_dir = tempdir().unwrap();
-    let (mut liveness2, _, _dht_2, _shutdown) = setup_liveness_service(
-        node_2_identity.clone(),
-        vec![node_1_identity.clone()],
-        bob_temp_dir.path().to_str().unwrap(),
-    )
-    .await;
+    // Only node 1 is seeded with its counterpart, so only node 1 dials. If both nodes dial each other they end up
+    // with two connections and the tie break silently disconnects the loser, taking any message already written to
+    // it with it - and this test counts every single ping. Node 2 learns about node 1 from the inbound connection,
+    // which is all it needs to ping back.
+    let (mut liveness2, comms_2, _dht_2, _shutdown) =
+        setup_liveness_service(node_2_identity.clone(), vec![], bob_temp_dir.path().to_str().unwrap()).await;
+
+    wait_until_connections_settle(&comms_1).await;
+    wait_until_connections_settle(&comms_2).await;
 
     let mut liveness1_event_stream = liveness1.get_event_stream();
     let mut liveness2_event_stream = liveness2.get_event_stream();
