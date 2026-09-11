@@ -25,6 +25,8 @@ use std::sync::{LazyLock, Mutex};
 use log::debug;
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
+    ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
+    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_script_key_count,
@@ -489,28 +491,75 @@ pub fn ledger_get_dh_shared_secret(
     }
 }
 
-///  Get the raw schnorr signature from the ledger device
+/// Reserve an ephemeral nonce on the ledger device.
+///
+/// The device draws the scalar, keeps it, and returns only the handle that names it together with its public form.
+/// The private nonce never crosses the wire, and the handle is opaque: the host can echo it back to
+/// [`ledger_get_raw_schnorr_signature`] exactly once, and can neither choose it nor reuse it. Without this, a host
+/// that picked the nonce could ask for two signatures over the same key and nonce with different challenges and
+/// solve for the private key.
+pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedPublicKey), LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_generate_ephemeral_nonce: account '{account}'");
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
+        Ok(result) => {
+            if result.data().len() < EPHEMERAL_NONCE_REPLY_SIZE {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GenerateEphemeralNonce: expected {} bytes, got {} ({:?})",
+                    EPHEMERAL_NONCE_REPLY_SIZE,
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let data = result.data();
+            let version = *data.first().expect("Index should exist");
+            if version != EXPECTED_RESPONSE_VERSION {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GenerateEphemeralNonce: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. \
+                     Please update the 'Minotari Wallet' application on your device."
+                )));
+            }
+            let mut handle_bytes = [0u8; 8];
+            handle_bytes.copy_from_slice(data.get(1..9).expect("Index should exist"));
+            let handle = u64::from_le_bytes(handle_bytes);
+            // Zero is the device's "no handle" value, so a reply carrying it is a reply the device never meant to
+            // send. Refusing it here keeps a handle that can never be redeemed out of a key id.
+            if handle == INVALID_NONCE_HANDLE {
+                return Err(LedgerDeviceError::Processing(
+                    "GenerateEphemeralNonce: the device returned an invalid nonce handle".to_string(),
+                ));
+            }
+            let public_nonce = CompressedPublicKey::from_canonical_bytes(data.get(9..41).expect("Index should exist"))?;
+            Ok((handle, public_nonce))
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GenerateEphemeralNonce: {e}"))),
+    }
+}
+
+///  Get the raw schnorr signature from the ledger device, using a nonce the device reserved earlier.
+///
+/// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce whether or not
+/// the signature succeeds, so a handle is good for exactly one call.
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
     private_key_branch: LedgerKeyBranch,
-    nonce_index: u64,
-    nonce_branch: LedgerKeyBranch,
+    nonce_handle: u64,
     challenge: &[u8; 64],
 ) -> Result<CompressedSignature, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}', nonce index '{}', \
-        nonce branch' {:?}', challenge '{}'",
-        account, private_key_index, private_key_branch, nonce_index, nonce_branch, challenge.to_hex()
+        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}', nonce handle '{}', \
+        challenge '{}'",
+        account, private_key_index, private_key_branch, nonce_handle, challenge.to_hex()
     );
     verify_ledger_application()?;
 
     let mut data = Vec::new();
     data.extend_from_slice(&private_key_index.to_le_bytes());
     data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&nonce_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&nonce_handle.to_le_bytes());
     data.extend_from_slice(challenge);
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
@@ -530,6 +579,74 @@ pub fn ledger_get_raw_schnorr_signature(
             Ok(signature)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetRawSchnorrSignature: {e}"))),
+    }
+}
+
+/// Get a raw schnorr signature from the ledger device using a deterministic, host indexed nonce.
+///
+/// DEPRECATED - DO NOT ADD CALLERS. The host picks the nonce index here, so two signatures over the same key and
+/// nonce with different challenges give up the private key that signed them. It exists only for the pre-mine spend
+/// flow, whose nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between -
+/// which the device's RAM backed nonce store cannot serve.
+///
+/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs - including
+/// why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the exposure, and the
+/// TODO that deletes this function along with the rest of the legacy path.
+pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
+    account: u64,
+    private_key_index: u64,
+    private_key_branch: LedgerKeyBranch,
+    nonce_index: u64,
+    nonce_branch: LedgerKeyBranch,
+    challenge: &[u8; 64],
+) -> Result<CompressedSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature_legacy_nonce: account '{}', pk index '{}', pk branch '{:?}', nonce index \
+        '{}', nonce branch '{:?}', challenge '{}'",
+        account, private_key_index, private_key_branch, nonce_index, nonce_branch, challenge.to_hex()
+    );
+    // The device enforces this too, against the same shared whitelist, and its check is the only one that
+    // matters; this is here so a caller gets a legible error instead of a status word, and so that a request the
+    // device would refuse never reaches the wire.
+    check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|e| match e {
+        LegacyNonceBranchError::KeyBranchNotAllowed => LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: '{private_key_branch}' keys cannot be signed with a host chosen \
+             nonce; only the pre-mine spend flow may use this instruction"
+        )),
+        LegacyNonceBranchError::NonceBranchNotAllowed => LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
+            LedgerKeyBranch::Random
+        )),
+    })?;
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&private_key_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&nonce_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(challenge);
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 65 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetRawSchnorrSignatureLegacyNonce: expected 65 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+
+            let signature = CompressedSignature::new(
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+            );
+            Ok(signature)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: {e}"
+        ))),
     }
 }
 

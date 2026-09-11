@@ -15,6 +15,7 @@ mod app_ui {
 }
 mod handlers {
     pub mod get_dh_shared_secret;
+    pub mod get_ephemeral_nonce;
     pub mod get_one_sided_metadata_signature;
     pub mod get_public_key;
     pub mod get_public_spend_key;
@@ -27,10 +28,15 @@ mod handlers {
 use app_ui::menu::ui_menu_main;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
+    get_ephemeral_nonce::{handler_generate_ephemeral_nonce, EphemeralNonceCtx},
     get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
-    get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
+    get_schnorr_signature::{
+        handler_get_raw_schnorr_signature,
+        handler_get_raw_schnorr_signature_legacy_nonce,
+        handler_get_script_schnorr_signature,
+    },
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::{handler_get_script_signature_derived, handler_get_script_signature_managed},
     get_version::handler_get_version,
@@ -73,6 +79,8 @@ pub enum AppSW {
     ScriptOffsetNoSenderOffsets = AppSWMapping::ScriptOffsetNoSenderOffsets as u16,
     ScriptOffsetInvalidScriptBranch = AppSWMapping::ScriptOffsetInvalidScriptBranch as u16,
     ScriptOffsetNoDeviceScriptKeys = AppSWMapping::ScriptOffsetNoDeviceScriptKeys as u16,
+    NonceStoreFull = AppSWMapping::NonceStoreFull as u16,
+    NonceHandleInvalid = AppSWMapping::NonceHandleInvalid as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = AppSWMapping::Ok as u16,
@@ -97,8 +105,10 @@ pub enum Instruction {
     GetViewKey,
     GetDHSharedSecret,
     GetRawSchnorrSignature,
+    GetRawSchnorrSignatureLegacyNonce,
     GetScriptSchnorrSignature,
     GetOneSidedMetadataSignature,
+    GenerateEphemeralNonce,
 }
 
 const P2_MORE: u8 = 0x01;
@@ -115,7 +125,7 @@ pub enum KeyType {
     OneSidedSenderOffset = 0x04,
     Random = 0x06,
     PreMine = 0x07,
-    MetadataEphemeralNonce = 0x08,
+    // MetadataEphemeralNonce = 0x08 Dont reuse, is retired
 }
 
 impl KeyType {
@@ -129,21 +139,24 @@ impl KeyType {
     /// handler may ever be pointed at it by the host. It stays reachable internally through
     /// `derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)`.
     fn from_branch_key(n: u64) -> Result<Self, AppSW> {
-        if n > u64::from(u8::MAX) {
-            return Err(AppSW::BadBranchKey);
-        }
-        if let Some(branch) = BranchMapping::from_byte(n as u8) {
-            match branch {
-                BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
-                BranchMapping::Random => Ok(Self::Random),
-                BranchMapping::PreMine => Ok(Self::PreMine),
-                BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
-                BranchMapping::Spend => Err(AppSW::BadBranchKey),
-            }
-        } else {
-            return Err(AppSW::BadBranchKey);
+        match branch_key_from_u64(n)? {
+            BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
+            BranchMapping::Random => Ok(Self::Random),
+            BranchMapping::PreMine => Ok(Self::PreMine),
+            BranchMapping::Spend => Err(AppSW::BadBranchKey),
         }
     }
+}
+
+/// Decode a host supplied branch identifier into the shared branch enum.
+///
+/// This stops short of [`KeyType::from_branch_key`] so that a handler which needs to reason about the branch the
+/// host asked for - rather than the key type it maps to - can do so against the same enum the host used.
+pub fn branch_key_from_u64(n: u64) -> Result<BranchMapping, AppSW> {
+    if n > u64::from(u8::MAX) {
+        return Err(AppSW::BadBranchKey);
+    }
+    BranchMapping::from_byte(n as u8).ok_or(AppSW::BadBranchKey)
 }
 
 impl TryFrom<ApduHeader> for Instruction {
@@ -176,6 +189,10 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
+            (InstructionMapping::GetRawSchnorrSignatureLegacyNonce, 0, 0) => {
+                Ok(Instruction::GetRawSchnorrSignatureLegacyNonce)
+            },
+            (InstructionMapping::GenerateEphemeralNonce, 0, 0) => Ok(Instruction::GenerateEphemeralNonce),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
             (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Ok(Instruction::GetOneSidedMetadataSignature),
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
@@ -189,6 +206,7 @@ fn show_status_and_home_if_needed(
     ins: &Instruction,
     status: &AppSW,
     _offset_ctx: &mut ScriptOffsetCtx,
+    _nonce_ctx: &mut EphemeralNonceCtx,
     home: &mut NbglHomeAndSettings,
 ) {
     let (show_status, _status_type) = match (ins, status) {
@@ -213,6 +231,11 @@ extern "C" fn sample_main() {
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+
+    // Also long-lived, but for the opposite reason to `offset_ctx`: an ephemeral nonce is reserved by one exchange
+    // and spent by a later one, so unrelated instructions in between must leave it alone. Entries only ever leave
+    // this store by being consumed, or by the store itself going away when the application exits.
+    let mut nonce_ctx = EphemeralNonceCtx::new();
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
@@ -244,7 +267,7 @@ extern "C" fn sample_main() {
             offset_ctx.reset();
         }
 
-        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
@@ -257,11 +280,16 @@ extern "C" fn sample_main() {
         };
 
         #[cfg(any(target_os = "stax", target_os = "flex"))]
-        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut home);
+        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut nonce_ctx, &mut home);
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetCtx) -> Result<(), AppSW> {
+fn handle_apdu(
+    comm: &mut Comm,
+    ins: Instruction,
+    offset_ctx: &mut ScriptOffsetCtx,
+    nonce_ctx: &mut EphemeralNonceCtx,
+) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
@@ -277,8 +305,10 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         },
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
-        Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),
+        Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm, nonce_ctx),
+        Instruction::GetRawSchnorrSignatureLegacyNonce => handler_get_raw_schnorr_signature_legacy_nonce(comm),
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
         Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
+        Instruction::GenerateEphemeralNonce => handler_generate_ephemeral_nonce(comm, nonce_ctx),
     }
 }

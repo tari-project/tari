@@ -78,6 +78,11 @@ pub const ENCRYPTED_BRANCH: &str = "encrypted";
 /// value supported by `minotari_ledger_wallet_common::common_types::LedgerKeyBranch`
 /// and `<index>` is a non-negative integer.
 pub const LEDGER_KEY_BRANCH: &str = "ledger_key";
+/// String prefix for `TariKeyId::LedgerEphemeralNonce` entries.
+///
+/// Display/parse form: `"ledger_ephemeral_nonce.<handle>"` where `<handle>` is a
+/// non-negative integer issued by the Ledger device.
+pub const LEDGER_EPHEMERAL_NONCE_BRANCH: &str = "ledger_ephemeral_nonce";
 /// String prefix for the code template author identity.
 ///
 /// Display/parse form: `"code-template-author"`
@@ -178,6 +183,22 @@ pub enum TariKeyId {
         /// Concrete index within the branch.
         index: u64,
     },
+    /// A one-shot nonce that a wallet reserved through `reserve_ephemeral_nonce`, named by the handle the issuer
+    /// gave it. On a Ledger wallet the private nonce lives on the device and never crosses the wire; on a software
+    /// wallet it lives in the key manager's in-memory store.
+    ///
+    /// The handle is issued, never chosen: a caller can echo back a handle it was given, but cannot name a nonce it
+    /// was never told about. Signing with the nonce consumes it, so a handle is good for exactly one signature -
+    /// two signatures over different challenges under one nonce give up the private key that signed them.
+    ///
+    /// String form: `ledger_ephemeral_nonce.<handle>`
+    ///
+    /// Note: this variant is appended last on purpose. The enum is `borsh` encoded by variant declaration order, so
+    /// inserting it anywhere else would silently renumber every variant after it.
+    LedgerEphemeralNonce {
+        /// The issuer supplied handle naming the reserved nonce.
+        handle: u64,
+    },
 }
 
 impl TariKeyId {
@@ -276,6 +297,17 @@ impl FromStr for TariKeyId {
                         .map_err(|_| "Invalid ledger key index".to_string())?;
                     Ok(TariKeyId::LedgerKey { branch, index })
                 },
+                LEDGER_EPHEMERAL_NONCE_BRANCH => {
+                    if parts.len() != 2 {
+                        return Err("Wrong ledger ephemeral nonce format".to_string());
+                    }
+                    let handle: u64 = parts
+                        .get(1)
+                        .expect("Already checked")
+                        .parse()
+                        .map_err(|_| "Invalid ledger ephemeral nonce handle".to_string())?;
+                    Ok(TariKeyId::LedgerEphemeralNonce { handle })
+                },
                 _ => Err("Wrong generic format".to_string()),
             },
         }
@@ -308,6 +340,9 @@ impl fmt::Display for TariKeyId {
             TariKeyId::CodeTemplateAuthor => write!(f, "{CODE_TEMPLATE_AUTHOR}"),
             TariKeyId::LedgerKey { branch, index } => {
                 write!(f, "{LEDGER_KEY_BRANCH}.{}.{}", branch, index)
+            },
+            TariKeyId::LedgerEphemeralNonce { handle } => {
+                write!(f, "{LEDGER_EPHEMERAL_NONCE_BRANCH}.{}", handle)
             },
         }
     }
@@ -364,6 +399,8 @@ pub struct TariKeyAndId {
 mod tests {
     use std::str::FromStr;
 
+    use borsh::BorshDeserialize;
+
     use super::*;
 
     #[test]
@@ -387,7 +424,7 @@ mod tests {
 
     #[test]
     fn roundtrip_derived_with_dots() {
-        let s = "derived.ledger_key.MetadataEphemeralNonce.0";
+        let s = "derived.ledger_key.Random.0";
         let parsed = TariKeyId::from_str(s).unwrap();
         assert!(matches!(parsed, TariKeyId::Derived { .. }));
         assert_eq!(parsed.to_string(), s);
@@ -398,7 +435,7 @@ mod tests {
         // Use a known-good 32-byte compressed public key hex from repo examples
         let pk = "28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d5c9";
         let inner = TariKeyId::LedgerKey {
-            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            branch: LedgerKeyBranch::Random,
             index: 0,
         };
         let key = TariKeyId::DHCommitmentMask {
@@ -416,7 +453,7 @@ mod tests {
         // Use a known-good 32-byte compressed public key hex from repo examples
         let pk = "5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee5a2";
         let inner = TariKeyId::LedgerKey {
-            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            branch: LedgerKeyBranch::Random,
             index: 0,
         };
         let key = TariKeyId::DHEncryptedData {
@@ -433,7 +470,7 @@ mod tests {
     fn roundtrip_encrypted() {
         let enc_hex = "deadbeef00cafebabe";
         let inner = TariKeyId::LedgerKey {
-            branch: LedgerKeyBranch::MetadataEphemeralNonce,
+            branch: LedgerKeyBranch::Random,
             index: 0,
         };
         let key = TariKeyId::Encrypted {
@@ -460,6 +497,62 @@ mod tests {
             },
             _ => panic!("Expected LedgerKey"),
         }
+    }
+
+    #[test]
+    fn roundtrip_ledger_ephemeral_nonce() {
+        let s = format!("{LEDGER_EPHEMERAL_NONCE_BRANCH}.{}", 7u64);
+        let parsed = TariKeyId::from_str(&s).unwrap();
+        assert_eq!(parsed, TariKeyId::LedgerEphemeralNonce { handle: 7 });
+        assert_eq!(parsed.to_string(), s);
+
+        // A handle may legitimately be any `u64`, including the extremes.
+        for handle in [0u64, 1, u64::MAX] {
+            let key_id = TariKeyId::LedgerEphemeralNonce { handle };
+            assert_eq!(TariKeyId::from_str(&key_id.to_string()).unwrap(), key_id);
+        }
+    }
+
+    /// The enum is `borsh` encoded by variant declaration order, so appending `LedgerEphemeralNonce` must not have
+    /// moved any existing variant. A stored key id that no longer decodes to what it was written as is silent
+    /// wallet corruption, so pin the encoding rather than only the round trip.
+    #[test]
+    fn borsh_roundtrip_and_variant_ordering() {
+        let key_ids = [
+            TariKeyId::ViewKey,
+            TariKeyId::SpendKey,
+            TariKeyId::Zero,
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 42,
+            },
+            TariKeyId::LedgerEphemeralNonce { handle: 9 },
+        ];
+        for key_id in &key_ids {
+            let bytes = borsh::to_vec(key_id).unwrap();
+            let decoded = TariKeyId::try_from_slice(&bytes).unwrap();
+            assert_eq!(&decoded, key_id);
+        }
+
+        // ViewKey is variant 0 and LedgerKey is variant 8; both must keep their tags.
+        assert_eq!(borsh::to_vec(&TariKeyId::ViewKey).unwrap().first().copied(), Some(0u8));
+        assert_eq!(
+            borsh::to_vec(&TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 42
+            })
+            .unwrap()
+            .first()
+            .copied(),
+            Some(8u8)
+        );
+        assert_eq!(
+            borsh::to_vec(&TariKeyId::LedgerEphemeralNonce { handle: 9 })
+                .unwrap()
+                .first()
+                .copied(),
+            Some(9u8)
+        );
     }
 
     #[test]
@@ -522,6 +615,19 @@ mod tests {
         assert_eq!(
             TariKeyId::from_str("ledger_key.Random.notnumber").unwrap_err(),
             "Invalid ledger key index"
+        );
+        // Ledger ephemeral nonce wrong formats
+        assert_eq!(
+            TariKeyId::from_str("ledger_ephemeral_nonce").unwrap_err(),
+            "Wrong ledger ephemeral nonce format"
+        );
+        assert_eq!(
+            TariKeyId::from_str("ledger_ephemeral_nonce.1.2").unwrap_err(),
+            "Wrong ledger ephemeral nonce format"
+        );
+        assert_eq!(
+            TariKeyId::from_str("ledger_ephemeral_nonce.notnumber").unwrap_err(),
+            "Invalid ledger ephemeral nonce handle"
         );
         // Unknown branch
         assert_eq!(

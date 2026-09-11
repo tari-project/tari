@@ -175,6 +175,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .get_random_key(encryption_key, ledger_key)
     }
 
+    fn reserve_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        self.transaction_key_manager_inner.reserve_ephemeral_nonce()
+    }
+
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         self.transaction_key_manager_inner.get_public_key_at_key_id(key_id)
     }

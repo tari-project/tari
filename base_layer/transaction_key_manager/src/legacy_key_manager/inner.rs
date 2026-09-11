@@ -251,6 +251,15 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 branch: branch.as_str().to_string(),
                 index: *index,
             },
+            // The legacy encoding has no ephemeral nonce form, and should not gain one: an ephemeral nonce is
+            // reserved and consumed inside a single signing call and is never persisted or re-derived. This
+            // deliberately produces a `Derived` key string that `LegacyTariKeyId::from_str` cannot parse, so
+            // anything that does try to convert it back fails loudly. Mapping it to `Managed` instead would be
+            // silently catastrophic - an unrecognised `Managed` branch is derived from the master seed, which would
+            // turn a one-shot nonce back into the deterministic, host-indexable one this type exists to replace.
+            TariKeyId::LedgerEphemeralNonce { .. } => LegacyTariKeyId::Derived {
+                key: key_id.to_string().into(),
+            },
         }
     }
 
@@ -260,6 +269,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
         self.key_manager.get_random_key(encryption_key, ledger_key)
+    }
+
+    pub fn reserve_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        self.key_manager.reserve_ephemeral_nonce()
     }
 
     pub fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {

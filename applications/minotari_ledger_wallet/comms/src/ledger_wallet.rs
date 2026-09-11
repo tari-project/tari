@@ -33,8 +33,9 @@ use tari_utilities::ByteArray;
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-/// The `GetScriptOffset` request and reply changed shape in this release, so older applications cannot serve this
-/// client at all. Keep this in step with the ledger application's `version` in its `Cargo.toml`.
+/// `GetRawSchnorrSignature` now takes a device issued nonce handle instead of a host chosen nonce index, so older
+/// applications cannot serve this client at all. Keep this in step with the ledger application's `version` in its
+/// `Cargo.toml`.
 pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.5";
 /// The version byte the ledger application prefixes every reply with. See `RESPONSE_VERSION` in the application.
 pub const EXPECTED_RESPONSE_VERSION: u8 = 2;

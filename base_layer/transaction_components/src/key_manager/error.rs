@@ -68,6 +68,20 @@ pub enum KeyManagerError {
         "The ledger device derives at most {max} sender offset keys in one exchange, but {requested} were requested"
     )]
     TooManySenderOffsetKeys { requested: usize, max: usize },
+    #[error(
+        "The ephemeral nonce handle counter is exhausted. This is not a full store - a full store evicts its oldest \
+         entry - it is the one case that must refuse, because re-issuing a handle that an earlier nonce still answers \
+         to would allow that nonce to be signed with twice."
+    )]
+    EphemeralNonceHandlesExhausted,
+    #[error(
+        "Ephemeral nonce handle `{handle}` was never issued, has already been signed with, or was evicted to make \
+         room for a newer reservation. A nonce may only ever be used once: two signatures over different challenges \
+         under one nonce give up the private key."
+    )]
+    UnknownEphemeralNonce { handle: u64 },
+    #[error("The ephemeral nonce store lock is poisoned")]
+    EphemeralNonceStorePoisoned,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]

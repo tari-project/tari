@@ -20,12 +20,14 @@ use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyB
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ScriptSignatureKey,
+        ledger_generate_ephemeral_nonce,
         ledger_get_app_name,
         ledger_get_dh_shared_secret,
         ledger_get_one_sided_metadata_signature,
         ledger_get_public_key,
         ledger_get_public_spend_key,
         ledger_get_raw_schnorr_signature,
+        ledger_get_raw_schnorr_signature_legacy_nonce,
         ledger_get_script_offset,
         ledger_get_script_schnorr_signature,
         ledger_get_script_signature,
@@ -569,23 +571,27 @@ fn main() {
         },
     }
 
-    // GetRawSchnorrSignature
+    // GenerateEphemeralNonce + GetRawSchnorrSignature
+    println!("\ntest: GenerateEphemeralNonce");
+    let nonce_handle = match ledger_generate_ephemeral_nonce(account) {
+        Ok((handle, public_nonce)) => {
+            println!("handle:         {handle}");
+            println!("public nonce:   {}", public_nonce.to_hex());
+            handle
+        },
+        Err(e) => {
+            println!("\nError: {e}\n");
+            return;
+        },
+    };
+
     println!("\ntest: GetRawSchnorrSignature");
     let private_key_index = rand::rng().next_u64();
     let private_key_branch = LedgerKeyBranch::PreMine;
-    let nonce_index = rand::rng().next_u64();
-    let nonce_branch = LedgerKeyBranch::Random;
     let mut challenge = [0u8; 64];
     rand::rng().fill_bytes(&mut challenge);
 
-    match ledger_get_raw_schnorr_signature(
-        account,
-        private_key_index,
-        private_key_branch,
-        nonce_index,
-        nonce_branch,
-        &challenge,
-    ) {
+    match ledger_get_raw_schnorr_signature(account, private_key_index, private_key_branch, nonce_handle, &challenge) {
         Ok(signature) => println!(
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
@@ -595,6 +601,69 @@ fn main() {
             println!("\nError: {e}\n");
             return;
         },
+    }
+
+    // The device consumes a nonce handle on use, whether or not the signature succeeded, so the same handle must
+    // never work twice. This is the check that a real device has to fail.
+    println!("\ntest: GetRawSchnorrSignature with an already consumed nonce handle (must fail)");
+    match ledger_get_raw_schnorr_signature(account, private_key_index, private_key_branch, nonce_handle, &challenge) {
+        Ok(_) => {
+            println!("\nError: the device reused a consumed nonce handle!\n");
+            return;
+        },
+        Err(e) => println!("refused as expected: {e}"),
+    }
+
+    // GetRawSchnorrSignatureLegacyNonce
+    //
+    // Both pre-mine signing shapes are exercised: `PreMine` for the script signature and `OneSidedSenderOffset`
+    // for the metadata signature, each against a `Random` branch nonce. See
+    // `minotari_ledger_wallet_common::legacy_nonce` for why this path still exists and what it costs.
+    for private_key_branch in [LedgerKeyBranch::PreMine, LedgerKeyBranch::OneSidedSenderOffset] {
+        println!("\ntest: GetRawSchnorrSignatureLegacyNonce ({private_key_branch})");
+        let private_key_index = rand::rng().next_u64();
+        let nonce_index = rand::rng().next_u64();
+        let nonce_branch = LedgerKeyBranch::Random;
+        let mut challenge = [0u8; 64];
+        rand::rng().fill_bytes(&mut challenge);
+
+        match ledger_get_raw_schnorr_signature_legacy_nonce(
+            account,
+            private_key_index,
+            private_key_branch,
+            nonce_index,
+            nonce_branch,
+            &challenge,
+        ) {
+            Ok(signature) => println!(
+                "signature:      ({},{})",
+                signature.get_signature().to_hex(),
+                signature.get_compressed_public_nonce().to_hex()
+            ),
+            Err(e) => {
+                println!("\nError: {e}\n");
+                return;
+            },
+        }
+    }
+
+    // The spend branch is never signable by index, on this instruction least of all.
+    println!("\ntest: GetRawSchnorrSignatureLegacyNonce on the spend branch (must fail)");
+    let mut challenge = [0u8; 64];
+    rand::rng().fill_bytes(&mut challenge);
+    match ledger_get_raw_schnorr_signature_legacy_nonce(
+        account,
+        rand::rng().next_u64(),
+        LedgerKeyBranch::Spend,
+        rand::rng().next_u64(),
+        LedgerKeyBranch::Random,
+        &challenge,
+    ) {
+        Ok(_) => {
+            println!("\nError: the device signed with the spend branch!\n");
+            return;
+        },
+        Err(e) => println!("refused as expected: {e}"),
     }
 
     // GetScriptSchnorrSignature
