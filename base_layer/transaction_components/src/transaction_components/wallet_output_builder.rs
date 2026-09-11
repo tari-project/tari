@@ -429,7 +429,7 @@ mod test {
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         let sender_offset = key_manager.get_random_key(None, None).unwrap();
-        let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key);
+        let kmob = kmob.with_sender_offset_public_key(sender_offset.pub_key.clone());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
         let kmob = kmob.with_script_key(script_key.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
@@ -444,7 +444,7 @@ mod test {
                 assert!(output.verify_metadata_signature().is_ok());
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures
-                let ephemeral_key = key_manager.get_random_key(None, None).unwrap();
+                let ephemeral_key = key_manager.reserve_ephemeral_nonce().unwrap();
                 let metadata_message = TransactionOutput::metadata_signature_message(&wallet_output);
 
                 let receiver_metadata_signature = key_manager
@@ -464,8 +464,8 @@ mod test {
                     .unwrap();
                 let sender_metadata_signature = key_manager
                     .get_sender_partial_metadata_signature(
-                        &ephemeral_key.key_id,
-                        &sender_offset.key_id,
+                        &ephemeral_key,
+                        &sender_offset,
                         &commitment,
                         receiver_metadata_signature.ephemeral_commitment(),
                         wallet_output.version(),
