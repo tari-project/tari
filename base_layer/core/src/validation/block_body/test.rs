@@ -576,14 +576,18 @@ async fn it_rejects_a_block_with_two_outputs_sharing_a_commitment() {
 
     let (mut block, _) = blockchain.create_unmined_block(block_spec!("B->A", transactions: txs));
     let mut outputs = block.body.outputs().clone();
+    // Twin a non-coinbase output. Outputs are ordered on the commitment, so which one sorts first is random; twinning
+    // whichever lands at index 0 gives the block two coinbases whenever that is the coinbase, and the coinbase check
+    // runs before the sort check, so the test would fail on `InvalidCoinbase` instead.
+    let idx = outputs.iter().position(|o| !o.is_coinbase()).unwrap();
     // Same commitment, different script, so the two outputs hash differently. The hash-based duplicate check in the
     // chain validator cannot see this pair; only the commitment ordering can.
-    let mut twin = outputs[0].clone();
+    let mut twin = outputs[idx].clone();
     twin.script = script!(Nop Nop).unwrap();
-    assert_eq!(outputs[0].commitment, twin.commitment);
-    assert_ne!(outputs[0].hash(), twin.hash());
+    assert_eq!(outputs[idx].commitment, twin.commitment);
+    assert_ne!(outputs[idx].hash(), twin.hash());
     // Insert next to its twin so the body is still ordered by commitment; the duplicate is the only thing wrong.
-    outputs.insert(1, twin);
+    outputs.insert(idx + 1, twin);
     let inputs = block.body.inputs().clone();
     let kernels = block.body.kernels().clone();
     block.body = AggregateBody::new_sorted_unchecked(inputs, outputs, kernels);
