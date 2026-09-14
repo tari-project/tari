@@ -828,7 +828,11 @@ impl ConsensusConstants {
         con6.effective_from_height = 869_000;
         con6.pow_backoff_cap = 2;
 
-        vec![consensus_constants1, con2, con3, con4, con5, con6]
+        let mut con7 = con6.clone();
+        con7.effective_from_height = 884_000;
+        con7.pow_backoff_cap = 8;
+
+        vec![consensus_constants1, con2, con3, con4, con5, con6, con7]
     }
 
     /// *
