@@ -15,6 +15,15 @@
 /// Example use:
 /// `cargo run --release --example ledger_demo`
 /// -----------------------------------------------------------------------------------------------
+///
+/// NOTE - this file is on its way out in its current form. It asserts nothing: it prints results and a human reads
+/// them, which means it only catches a regression if somebody happens to be looking at the right line. The plan is
+/// for it to become a thin frontend over the shared scenario library that the Speculos simulator tests run, so
+/// that hardware and simulator exercise exactly the same scenarios and the same assertions.
+///
+/// Until then: please do not add new bespoke assertions or new bespoke printing here. New coverage belongs in the
+/// scenario library, where the simulator tests get it too. Changes that keep this compiling and working are of
+/// course fine.
 use dialoguer::{Select, theme::ColorfulTheme};
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
 use minotari_ledger_wallet_comms::{
