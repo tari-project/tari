@@ -833,10 +833,10 @@ impl ConsensusConstants {
         con7.pow_backoff_cap = 8;
 
         let mut con8 = con7.clone();
-        con8.effective_from_height = 885_000;
+        con8.effective_from_height = 886_000;
         con8.max_randomx_seed_height = 6000;
 
-        vec![consensus_constants1, con2, con3, con4, con5, con6, con7]
+        vec![consensus_constants1, con2, con3, con4, con5, con6, con7, con8]
     }
 
     /// *
