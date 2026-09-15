@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.8](https://github.com/tari-project/tari/compare/v5.7.0-pre.7...v5.7.0-pre.8) (2026-09-15)
+
+### Features
+
+* esme increase max monero rx seed height
+
 ## [5.7.0-pre.6](https://github.com/tari-project/tari/compare/v5.7.0-pre.5...v5.7.0-pre.6) (2026-09-14)
 
 
