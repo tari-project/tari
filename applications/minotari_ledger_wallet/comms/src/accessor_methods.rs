@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{LazyLock, Mutex};
+use std::{
+    cell::Cell,
+    sync::{LazyLock, Mutex},
+};
 
 use log::debug;
 use minotari_ledger_wallet_common::{
@@ -58,20 +61,73 @@ pub enum ScriptSignatureKey {
     Derived { branch_key: PrivateKey },
 }
 
-/// Verify that the ledger application is working properly.
-pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
-    static VERIFIED: LazyLock<Mutex<Option<Result<(), LedgerDeviceError>>>> = LazyLock::new(|| Mutex::new(None));
-    if let Ok(mut verified) = VERIFIED.try_lock() &&
-        verified.is_none()
-    {
-        match verify() {
-            Ok(_) => {
-                debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
-                *verified = Some(Ok(()))
-            },
-            Err(e) => return Err(e),
-        }
+/// Whether the ledger application has been verified in this process. Only ever set to `true`, and only by a
+/// completed, successful [`verify`].
+static VERIFIED: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+
+thread_local! {
+    /// Set while this thread is inside [`verify`].
+    ///
+    /// [`verify`] drives the device through the ordinary accessor methods, and every one of those starts by calling
+    /// [`verify_ledger_application`]. Without this flag the first of them would deadlock on the lock its own caller
+    /// is holding.
+    static VERIFYING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Sets [`VERIFYING`] for as long as it is alive, including if [`verify`] panics.
+struct VerifyingGuard;
+
+impl VerifyingGuard {
+    fn enter() -> Self {
+        VERIFYING.with(|verifying| verifying.set(true));
+        VerifyingGuard
     }
+}
+
+impl Drop for VerifyingGuard {
+    fn drop(&mut self) {
+        VERIFYING.with(|verifying| verifying.set(false));
+    }
+}
+
+/// Verify that the ledger application is working properly.
+///
+/// The first caller runs the verification; concurrent callers block until it is finished and then see its result.
+/// That blocking is the point. This used to be a `try_lock`, which meant a second thread arriving while the first
+/// was still talking to the device took the `else` branch and returned `Ok(())` having verified nothing - and the
+/// key manager calls this from async, multi-threaded context, so that was reachable in ordinary operation and not
+/// just in theory.
+///
+/// Only success is cached. A failure is re-tried by the next caller: a device that is locked, running the wrong
+/// application, or simply unplugged is a transient condition the user can fix without restarting the wallet, and
+/// caching the failure would make it permanent for the life of the process.
+///
+/// There is deliberately no way to reset the cached success. Starting a fresh process is a free and more honest
+/// reset, and a reset hook would be one more injection point in a shipped binary for no benefit.
+///
+/// May block indefinitely - `verify` talks to the device, see
+/// [`LedgerTransport`](crate::ledger_wallet::LedgerTransport).
+pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
+    // Re-entrant call from inside `verify` itself; the verification is in progress on this very thread.
+    if VERIFYING.with(Cell::get) {
+        return Ok(());
+    }
+
+    // Held across the whole of `verify()`, so that nobody observes a half-verified device. A poisoned lock only
+    // means some earlier caller panicked mid-verification; the flag it guards is still meaningful, and the worst
+    // case is that we verify again.
+    let mut verified = VERIFIED.lock().unwrap_or_else(|e| e.into_inner());
+    if *verified {
+        return Ok(());
+    }
+
+    {
+        let _guard = VerifyingGuard::enter();
+        verify()?;
+    }
+
+    debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
+    *verified = true;
     Ok(())
 }
 

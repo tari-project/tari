@@ -50,6 +50,32 @@ members = [
     "integration_tests",
     "hashing",
 ]
+exclude = [
+    # DO NOT MOVE THIS INTO `members`. It is excluded on purpose, and the exclusion is a security property, not
+    # tidiness.
+    #
+    # `minotari_ledger_wallet_comms_testing` enables `minotari_ledger_wallet_comms/test_transport`, which compiles in
+    # the registry that lets a caller redirect the Ledger device connection (`ledger_wallet::register_transport`).
+    # Cargo resolves features once per package across the *selected package set*, so as a workspace member this crate
+    # lands in the default package selection and unifies `test_transport` into the single `comms` rlib that every
+    # other crate links - including `minotari_console_wallet`, for which `ledger` is a *default* feature. Release
+    # builds do exactly that: `.github/workflows/build_binaries.yml` runs `cargo build --bin
+    # minotari_console_wallet` with no `-p`, so the shipped binary would carry a redirectable transport.
+    #
+    # Verified with `cargo +nightly build -Z unstable-options --unit-graph --bin minotari_console_wallet`: as a
+    # member, `minotari_ledger_wallet_comms` resolves to `['default', 'test_transport']`; excluded, it resolves to
+    # `['default']`.
+    #
+    # As its own workspace the crate is never in this workspace's package selection, so the dangerous code is
+    # structurally absent from every build that does not name the crate. It is built and tested through its own
+    # manifest:
+    #
+    #     cargo test --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
+    #
+    # (`applications/minotari_ledger_wallet/wallet` is a separate workspace for its own reasons and is the in-repo
+    # precedent for this shape.)
+    "applications/minotari_ledger_wallet/comms_testing",
+]
 # Add here until we move to edition=2021
 resolver = "2"
 
@@ -93,6 +119,8 @@ minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "5.7.0-pre.8" 
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "5.7.0-pre.8" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "5.7.0-pre.8" }
+# There is deliberately no `minotari_ledger_wallet_comms_testing` entry here. That crate is an excluded, separate
+# workspace (see `[workspace] exclude` above) and nothing in this workspace may depend on it.
 minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "5.7.0-pre.8" }
 
 tari_utilities = { version = "0.10" }
