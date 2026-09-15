@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.7.0-pre.8](https://github.com/tari-project/tari/compare/v5.7.0-pre.7...v5.7.0-pre.8) (2026-09-15)
+
+### Features
+
+* esme increase max monero rx seed height
+
+## [5.7.0-pre.6](https://github.com/tari-project/tari/compare/v5.7.0-pre.5...v5.7.0-pre.6) (2026-09-14)
+
+
+### Features
+
+* esme new backoff ([02e290a](https://github.com/tari-project/tari/commit/02e290ab6996d32a1b5d2824a030180ab6e887b8))
+
+
+### Bug Fixes
+
+* **base_node/grpc:** honour get_blocks cancellation a ([#7997](https://github.com/tari-project/tari/issues/7997)) ([59009d4](https://github.com/tari-project/tari/commit/59009d4868aa25fd2fa961968e86d8bd0dfa982b)), closes [/github.com/tari-project/tari/pull/7997#discussion_r3967875363](https://github.com/tari-project//github.com/tari-project/tari/pull/7997/issues/discussion_r3967875363)
+* decouple liveness ping timeout from ping interval ([#7992](https://github.com/tari-project/tari/issues/7992)) ([6bfdb52](https://github.com/tari-project/tari/commit/6bfdb52e32f3c6871b1f8233f021602775c75005))
+* ledger nonce handling ([#8002](https://github.com/tari-project/tari/issues/8002)) ([dcc5672](https://github.com/tari-project/tari/commit/dcc567274f3db286bc44571b12ccee483bd639f0))
+* ledger wallet cannot sign a change output ([#8003](https://github.com/tari-project/tari/issues/8003)) ([e49cc8d](https://github.com/tari-project/tari/commit/e49cc8d073ae6bd6752671d6eeeacf8c9c05ff88)), closes [#8000](https://github.com/tari-project/tari/issues/8000)
+* sender offset and script key should not leave key manager ([#8000](https://github.com/tari-project/tari/issues/8000)) ([27eb720](https://github.com/tari-project/tari/commit/27eb72080529efa5b5bed734031bd6a296eeb9e6))
+
 ## [5.7.0-pre.5](https://github.com/tari-project/tari/compare/v5.7.0-pre.4...v5.7.0-pre.5) (2026-09-07)
 
 
