@@ -44,12 +44,31 @@
 //! cargo test --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
 //! cargo clippy --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml --all-targets
 //! ```
+//!
+//! # The simulator fixture
+//!
+//! Alongside the transport, this crate carries everything needed to assert that a simulated device derives the
+//! keys it is supposed to:
+//!
+//! * [`seeds`] - the two seeds the simulator is loaded with, and why there are two.
+//! * [`oracle`] - the device's key derivation, reimplemented host side from published specifications.
+//! * [`vectors`] - the one shared vector table, asserted against every device model.
+//! * [`simulator`] - locating a running simulator, and how simulator tests are gated.
+//!
+//! `scripts/ledger_speculos.sh` in the repository root builds the device application, brings Speculos up, runs the
+//! suite against it and tears it down. See [`simulator`] for why the device tests are `#[ignore]`d and what that
+//! buys.
+
+pub mod oracle;
+pub mod seeds;
+pub mod simulator;
+pub mod vectors;
 
 use std::{
     io::{ErrorKind, Read, Write},
     net::{TcpStream, ToSocketAddrs},
     sync::{Mutex, MutexGuard},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use ledger_transport::{APDUAnswer, APDUCommand};
@@ -68,9 +87,26 @@ pub const SPECULOS_DEFAULT_APDU_ADDRESS: &str = "127.0.0.1:9999";
 
 /// How long to wait for the TCP connection itself to come up.
 ///
-/// This bounds *connecting*, not exchanging. Failing to connect is a harness problem and should be reported
-/// immediately; waiting for a reply is not, and is deliberately unbounded - see [`SpeculosTransport::exchange`].
+/// This bounds *connecting*, not exchanging; for that see [`DEFAULT_READ_TIMEOUT`].
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long to wait for a peer that has gone quiet mid-reply.
+///
+/// An earlier version of this transport set no read timeout at all, reasoning that an exchange may legitimately
+/// take as long as a human takes to press a button. That rationale does not survive contact with what this crate
+/// actually connects to: Speculos under `--display headless`, driven by a test process, with nobody to press
+/// anything. What an unbounded read buys instead is a hang. A peer that accepts the request and never answers - or
+/// trickles one byte an hour, which [`read_filling`] will loop on forever - blocks the calling thread for good,
+/// and because [`SpeculosTransport::exchange`] takes the connection lock *before* reading, it blocks every other
+/// thread wanting the transport too.
+///
+/// Nothing outside this crate reliably bounds that. `slow-timeout` in `.config/nextest.toml` only applies under
+/// `--profile ci`; the documented `cargo test -- --ignored` fallback has no bound at all, and a CI job without
+/// `timeout-minutes` sits there until GitHub's six hour ceiling.
+///
+/// Generous rather than tight, because a contended runner emulating an ARM device is slow and a false timeout in a
+/// vector test is worse than a slow one.
+pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The largest reply this transport will allocate for, as a sanity bound on the peer supplied length prefix.
 ///
@@ -103,9 +139,9 @@ impl SpeculosConnection {
     }
 
     /// Get the open connection, opening one if there is none.
-    fn get_or_connect(&mut self, address: &str) -> Result<&mut TcpStream, LedgerDeviceError> {
+    fn get_or_connect(&mut self, address: &str, read_timeout: Duration) -> Result<&mut TcpStream, LedgerDeviceError> {
         if self.inner.is_none() {
-            self.inner = Some(connect(address)?);
+            self.inner = Some(connect(address, read_timeout)?);
         }
         // `is_none` was just handled, so this cannot fail.
         self.inner
@@ -122,16 +158,16 @@ impl SpeculosConnection {
     ///
     /// The old stream is cleared first so that it is closed before the new one is opened. Speculos serves a single
     /// APDU connection at a time, so a reconnect that overlapped the connection it is replacing would be refused.
-    fn refresh(&mut self, address: &str) -> Result<&mut TcpStream, LedgerDeviceError> {
+    fn refresh(&mut self, address: &str, read_timeout: Duration) -> Result<&mut TcpStream, LedgerDeviceError> {
         self.inner = None;
-        self.inner = Some(connect(address)?);
+        self.inner = Some(connect(address, read_timeout)?);
         self.inner
             .as_mut()
             .ok_or_else(|| LedgerDeviceError::TransportConnect("Speculos connection vanished".to_string()))
     }
 }
 
-fn connect(address: &str) -> Result<TcpStream, LedgerDeviceError> {
+fn connect(address: &str, read_timeout: Duration) -> Result<TcpStream, LedgerDeviceError> {
     let mut last_error = format!("No address resolved for '{address}'");
     let addresses = address
         .to_socket_addrs()
@@ -143,7 +179,13 @@ fn connect(address: &str) -> Result<TcpStream, LedgerDeviceError> {
                 if let Err(e) = stream.set_nodelay(true) {
                     debug!(target: LOG_TARGET, "Could not disable Nagle on the Speculos connection: {e}");
                 }
-                // No read timeout: an exchange may legitimately take as long as a human takes to press a button.
+                // A silent peer must not be able to hang the suite; see `DEFAULT_READ_TIMEOUT`. Failing to set it
+                // is itself a connect failure rather than something to carry on without, because carrying on
+                // would restore exactly the unbounded blocking this exists to remove.
+                if let Err(e) = stream.set_read_timeout(Some(read_timeout)) {
+                    last_error = format!("Could not set a read timeout on '{socket_address}': {e}");
+                    continue;
+                }
                 debug!(target: LOG_TARGET, "Connected to Speculos at '{socket_address}'");
                 return Ok(stream);
             },
@@ -161,14 +203,24 @@ fn connect(address: &str) -> Result<TcpStream, LedgerDeviceError> {
 /// reconnect-per-exchange transport would race with that.
 pub struct SpeculosTransport {
     address: String,
+    read_timeout: Duration,
     connection: Mutex<SpeculosConnection>,
 }
 
 impl SpeculosTransport {
     /// Create a transport for `address`, connecting lazily on the first exchange.
     pub fn new<S: Into<String>>(address: S) -> Self {
+        Self::with_read_timeout(address, DEFAULT_READ_TIMEOUT)
+    }
+
+    /// Create a transport with an explicit read timeout.
+    ///
+    /// Exists so that the timeout behaviour itself can be tested in under a second instead of two minutes. Real
+    /// callers should use [`Self::new`] or [`Self::connect`] and take [`DEFAULT_READ_TIMEOUT`].
+    pub fn with_read_timeout<S: Into<String>>(address: S, read_timeout: Duration) -> Self {
         Self {
             address: address.into(),
+            read_timeout,
             connection: Mutex::new(SpeculosConnection::new()),
         }
     }
@@ -179,7 +231,7 @@ impl SpeculosTransport {
         let transport = Self::new(address);
         {
             let mut connection = transport.lock_connection();
-            connection.get_or_connect(&transport.address)?;
+            connection.get_or_connect(&transport.address, transport.read_timeout)?;
         }
         Ok(transport)
     }
@@ -219,8 +271,11 @@ impl SpeculosTransport {
 impl LedgerTransport for SpeculosTransport {
     /// Send one APDU to Speculos and wait for its answer.
     ///
-    /// May block indefinitely: an instruction that puts a review screen up does not answer until something drives
-    /// the simulator's UI. That is why there is no read timeout on the socket. See [`LedgerTransport`].
+    /// Bounded by [`DEFAULT_READ_TIMEOUT`] (or whatever [`SpeculosTransport::with_read_timeout`] was given): a
+    /// peer that accepts the request and then goes quiet fails the exchange rather than hanging the caller. The
+    /// [`LedgerTransport`] contract allows an unbounded exchange, and the HID transport needs that because a real
+    /// device waits for a human to press a button - but this transport only ever talks to a headless simulator
+    /// with nobody to press anything, so it takes the stricter bound.
     ///
     /// # Retries never replay an instruction the device may have run
     ///
@@ -234,8 +289,8 @@ impl LedgerTransport for SpeculosTransport {
 
         let was_connected = connection.is_connected();
         let first_attempt = {
-            let stream = connection.get_or_connect(&self.address)?;
-            exchange_on(stream, &request)
+            let stream = connection.get_or_connect(&self.address, self.read_timeout)?;
+            exchange_on(stream, &request, self.read_timeout)
         };
         let failure = match first_attempt {
             Ok(answer) => return Ok(answer),
@@ -256,8 +311,8 @@ impl LedgerTransport for SpeculosTransport {
         // Nothing was delivered, so re-sending is not a replay. The old stream is in an unknown state - possibly a
         // half written request - so the retry has to be on a brand new one.
         debug!(target: LOG_TARGET, "Speculos exchange failed ({failure}), reconnecting and retrying once");
-        let stream = connection.refresh(&self.address)?;
-        exchange_on(stream, &request).map_err(ExchangeFailure::into_error)
+        let stream = connection.refresh(&self.address, self.read_timeout)?;
+        exchange_on(stream, &request, self.read_timeout).map_err(ExchangeFailure::into_error)
     }
 }
 
@@ -321,9 +376,19 @@ const STATUS_WORD_BYTES: usize = 2;
 ///
 /// This is `Read::read_exact` with the one detail it throws away kept: whether the peer said *nothing at all* or
 /// began an answer and then stopped. [`ExchangeFailure`] needs to tell those apart.
-fn read_filling(stream: &mut TcpStream, buffer: &mut [u8]) -> Result<(), (usize, std::io::Error)> {
+fn read_filling(stream: &mut TcpStream, buffer: &mut [u8], deadline: Instant) -> Result<(), (usize, std::io::Error)> {
     let mut filled = 0;
     while filled < buffer.len() {
+        // The socket's own read timeout bounds each individual `read`, which is enough for the peer that simply
+        // goes quiet. It is not enough on its own for a peer that dribbles: one byte just inside the timeout
+        // resets the clock, and `MAX_APDU_REPLY` bytes of that is days. The whole fill therefore gets a deadline
+        // as well, so the bound is on the exchange rather than on any one syscall.
+        if Instant::now() >= deadline {
+            return Err((
+                filled,
+                std::io::Error::new(ErrorKind::TimedOut, "the reply did not arrive within the read timeout"),
+            ));
+        }
         let remaining = buffer.get_mut(filled..).unwrap_or_default();
         match stream.read(remaining) {
             Ok(0) => {
@@ -340,7 +405,19 @@ fn read_filling(stream: &mut TcpStream, buffer: &mut [u8]) -> Result<(), (usize,
     Ok(())
 }
 
-fn exchange_on(stream: &mut TcpStream, request: &[u8]) -> Result<APDUAnswer<Vec<u8>>, ExchangeFailure> {
+/// Whether an I/O error is the read timeout firing.
+///
+/// Platforms disagree: a socket read timeout surfaces as `WouldBlock` on Unix and `TimedOut` on Windows, and
+/// either is possible depending on how the timeout was armed. Both mean the same thing here.
+fn is_timeout(e: &std::io::Error) -> bool {
+    matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+}
+
+fn exchange_on(
+    stream: &mut TcpStream,
+    request: &[u8],
+    read_timeout: Duration,
+) -> Result<APDUAnswer<Vec<u8>>, ExchangeFailure> {
     let length = u32::try_from(request.len()).map_err(|_| {
         ExchangeFailure::WriteFailed(LedgerDeviceError::TransportExchange(format!(
             "APDU of {} bytes is too large",
@@ -364,13 +441,28 @@ fn exchange_on(stream: &mut TcpStream, request: &[u8]) -> Result<APDUAnswer<Vec<
 
     // From here on the request is on the wire, so every failure has to assume the device ran it - except the one
     // case where the peer never said anything at all, which `exchange` weighs against the connection's age.
+    //
+    // The deadline starts once the request is out, and covers the whole reply rather than each read.
+    let deadline = Instant::now().checked_add(read_timeout).unwrap_or_else(Instant::now);
     let mut length_bytes = [0u8; LENGTH_PREFIX_BYTES];
-    if let Err((received, e)) = read_filling(stream, &mut length_bytes) {
-        let error = LedgerDeviceError::TransportExchange(format!("Could not read the reply length: {e}"));
-        return Err(if received == 0 {
-            ExchangeFailure::NoReply(error)
+    if let Err((received, e)) = read_filling(stream, &mut length_bytes, deadline) {
+        let timed_out = is_timeout(&e);
+        let error = LedgerDeviceError::TransportExchange(if timed_out {
+            format!("The device did not answer within the read timeout: {e}")
         } else {
+            format!("Could not read the reply length: {e}")
+        });
+        // A timeout is **not** a `NoReply`, even though nothing came back.
+        //
+        // `NoReply` means the peer hung up - it is gone, so it demonstrably is not sitting there having run the
+        // instruction, and on a connection that was already open the request may never have been delivered at all.
+        // A timeout is the opposite: the peer is still connected and simply has not spoken. That is exactly what a
+        // device grinding through a signature looks like, and re-sending would burn a second nonce behind the
+        // test's back. So it is a `BadAnswer`, which is never retried.
+        return Err(if timed_out || received > 0 {
             ExchangeFailure::BadAnswer(error)
+        } else {
+            ExchangeFailure::NoReply(error)
         });
     }
     let data_length = usize::try_from(u32::from_be_bytes(length_bytes)).map_err(|e| {
@@ -384,11 +476,14 @@ fn exchange_on(stream: &mut TcpStream, request: &[u8]) -> Result<APDUAnswer<Vec<
         )));
     }
 
+    // Already `BadAnswer` in every case: a length prefix arrived, so the instruction ran.
     let mut answer = vec![0u8; data_length.saturating_add(STATUS_WORD_BYTES)];
-    read_filling(stream, &mut answer).map_err(|(_, e)| {
-        ExchangeFailure::BadAnswer(LedgerDeviceError::TransportExchange(format!(
-            "Could not read the reply: {e}"
-        )))
+    read_filling(stream, &mut answer, deadline).map_err(|(_, e)| {
+        ExchangeFailure::BadAnswer(LedgerDeviceError::TransportExchange(if is_timeout(&e) {
+            format!("The device stopped partway through its reply and did not resume within the read timeout: {e}")
+        } else {
+            format!("Could not read the reply: {e}")
+        }))
     })?;
 
     APDUAnswer::from_answer(answer).map_err(|e| {
@@ -608,6 +703,76 @@ mod test {
             server.join().unwrap(),
             vec![command().serialize()],
             "the instruction was replayed after the device had already answered"
+        );
+    }
+
+    /// A peer that accepts the request and never answers must fail, not hang.
+    ///
+    /// Before there was a read timeout this blocked the calling thread for good, and because `exchange` holds the
+    /// connection lock across the read, every other thread wanting the transport blocked behind it. The only thing
+    /// bounding it was `slow-timeout` in the nextest `ci` profile, which does not apply to `cargo test`.
+    #[test]
+    fn a_silent_peer_times_out_instead_of_hanging() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_request(&mut stream);
+            // Hold the connection open and say nothing at all.
+            thread::sleep(Duration::from_secs(2));
+            drop(stream);
+            request
+        });
+
+        let transport = SpeculosTransport::with_read_timeout(address, Duration::from_millis(200));
+        let started = Instant::now();
+        match transport.exchange(&command()) {
+            Err(LedgerDeviceError::TransportExchange(message)) => {
+                assert!(
+                    message.contains("read timeout"),
+                    "expected the timeout to be named, got: {message}"
+                );
+            },
+            other => panic!("Expected a TransportExchange error, got {:?}", other.map(|_| ())),
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the exchange should have given up on its own timeout, not waited for the peer"
+        );
+        server.join().unwrap();
+    }
+
+    /// A timeout must never be retried.
+    ///
+    /// A silent-but-connected peer is exactly what a device grinding through a signature looks like, so the
+    /// instruction may well have run. That makes it a `BadAnswer`, not a `NoReply` - re-sending would burn a
+    /// second device nonce behind the test's back. The server here counts what it receives to prove it.
+    #[test]
+    fn a_timeout_is_not_replayed() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let server = thread::spawn(move || {
+            let mut received = Vec::new();
+            let (mut stream, _) = listener.accept().unwrap();
+            if let Some(request) = read_request(&mut stream) {
+                received.push(request);
+            }
+            // Stay connected and silent for longer than the client's timeout. Anything that arrives in the
+            // meantime is a replay.
+            stream.set_read_timeout(Some(Duration::from_millis(600))).unwrap();
+            if let Some(request) = read_request(&mut stream) {
+                received.push(request);
+            }
+            received
+        });
+
+        // Connected up front, which is the shape that *would* be retried if this were a `NoReply`.
+        let transport = SpeculosTransport::with_read_timeout(address, Duration::from_millis(150));
+        assert!(transport.exchange(&command()).is_err());
+        assert_eq!(
+            server.join().unwrap(),
+            vec![command().serialize()],
+            "the instruction was replayed after a timeout, when the device may have been executing it"
         );
     }
 

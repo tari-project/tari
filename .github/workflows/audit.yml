@@ -17,11 +17,96 @@ name: Security audit - daily
   # Run manually
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   security_audit:
+    name: Security audit - root workspace
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # `rustsec/audit-check` reads the lockfile at the repository root and only that one. Every workspace that is
+  # `exclude`d from the root - and there are three lockfiles in this repository, not one - is therefore scanned by
+  # nothing, while the `'**/Cargo.lock'` path filter above makes the workflow *look* like it covers them. That
+  # combination is worse than an obvious gap: it reads as coverage.
+  #
+  # `applications/minotari_ledger_wallet/wallet` is the device application, excluded because it is a `no_std` ARM
+  # build with its own pinned nightly. `applications/minotari_ledger_wallet/comms_testing` is excluded for a
+  # security reason of its own (see the comment on `[workspace] exclude` in the root `Cargo.toml`) and brings in
+  # around 190 entries of its own - `k256`, `ecdsa`, `crypto-bigint`, `der`, `sec1`, `spki`, `pkcs8`, `rfc6979` and
+  # the rest of the RustCrypto stack behind the derivation oracle.
+  #
+  # `rustsec/audit-check` has no multi-lockfile option, so this job drives `cargo audit -f` directly rather than
+  # trying to bend it. The root scan above is left exactly as it was.
+  excluded_workspaces_audit:
+    name: Security audit - workspaces excluded from the root
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Keep in step with `[workspace] exclude` in the root Cargo.toml. The completeness check below fails if this
+      # list and the repository disagree, so a new excluded workspace cannot quietly go unscanned the way these
+      # two did.
+      LOCKFILES: >-
+        applications/minotari_ledger_wallet/comms_testing/Cargo.lock
+        applications/minotari_ledger_wallet/wallet/Cargo.lock
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Every non-root lockfile is in the list
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' ${LOCKFILES} | sort)"
+          actual="$(git ls-files '*Cargo.lock' | grep -v '^Cargo.lock$' | sort)"
+          if [ "${expected}" != "${actual}" ]; then
+            echo "The audited lockfile list is out of step with the repository." >&2
+            echo "In LOCKFILES but not tracked:" >&2
+            comm -23 <(printf '%s\n' "${expected}") <(printf '%s\n' "${actual}") >&2
+            echo "Tracked but not audited:" >&2
+            comm -13 <(printf '%s\n' "${expected}") <(printf '%s\n' "${actual}") >&2
+            exit 1
+          fi
+          echo "Auditing:"
+          printf '  %s\n' ${LOCKFILES}
+
+      # Pinned, for the same reason the docker images in scripts/ledger_speculos.sh are pinned by digest: an
+      # unpinned `cargo install` is a standing grant to whoever publishes the next version. The blast radius here
+      # is small - read-only token, no secrets, no deployment - but the worst case is a tampered *audit result*,
+      # which is the one output of this job anybody trusts. Bump deliberately, and re-run the job when you do.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      # Deliberately no `--deny warnings`.
+      #
+      # `cargo audit` fails on vulnerabilities by default and merely reports the softer advisory kinds -
+      # `unmaintained`, `yanked` - which is the same policy `rustsec/audit-check` applies to the root workspace
+      # above. Denying warnings here would hold the excluded workspaces to a stricter standard than the code that
+      # actually ships: `bincode` is flagged unmaintained (RUSTSEC-2025-0141) and is in the *root* lockfile too, so
+      # this job would go red on day one for an advisory the root scan tolerates. A job that is red for a reason
+      # nobody intends to act on stops being read.
+      #
+      # Run from the repository root so that `.cargo/audit.toml` - the shared ignore list - applies here as well.
+      - name: Audit each excluded workspace
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for lockfile in ${LOCKFILES}; do
+            echo "::group::cargo audit ${lockfile}"
+            # Every lockfile is audited even if an earlier one fails, so one finding does not hide the others.
+            if ! cargo audit --file "${lockfile}"; then
+              echo "::error file=${lockfile}::cargo audit reported vulnerabilities in ${lockfile}"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${status}"
