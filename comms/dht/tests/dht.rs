@@ -37,7 +37,10 @@ use tari_comms_dht::{
     outbound::{OutboundEncryption, SendMessageParams},
 };
 use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
-use tokio::{sync::broadcast, time};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time::{self, Instant},
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
@@ -63,7 +66,16 @@ async fn test_dht_join_propagation() {
     )
     .await;
 
-    wait_for_connectivity(&[&node_A, &node_B, &node_C]).await;
+    // `wait_for_connectivity` only waits for each node to come *online*, and `min_connectivity` is 1, so a
+    // single connection satisfies it - it says nothing about the two links this join actually traverses, nor
+    // about dialling that is still in flight. Both matter: a redundant dial landing while the join is being
+    // forwarded is tie-broken against the live connection, and outbound messaging fails rather than requeues
+    // whatever it was holding (`MAX_SEND_RETRIES` is 1), so the join is simply lost. Nothing here dials - the
+    // redundant dial is the DHT's own pool refresh reissuing one before the first has been pooled - so
+    // waiting the churn out is the only lever the test has.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
     // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
     // Node C receives the join request from Node A, it will send a direct join request back
     // to A.
@@ -158,7 +170,14 @@ async fn test_dht_wallet_discover_propagation() {
         .await
         .unwrap();
 
-    wait_for_connectivity(&[&node_A, &node_B, &node_C, &client_D]).await;
+    // `wait_for_connectivity` only waits for each node to come online, and `min_connectivity` is 1, so it is
+    // satisfied by a single connection - B can be online through A alone while B->C, which this discovery
+    // traverses, is still coming up. The client's dial above stays: nothing dials a client, so it is the only
+    // dialler for that link and races nothing.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    ensure_connected(&node_C, &[client_D.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C, &client_D]).await;
 
     // Send a discover request from Node A, through B and C, to D. Once Client D
     // receives the discover request from Node A, it should send a  discovery response
@@ -251,21 +270,19 @@ async fn test_dht_node_discover_propagation() {
         node_D.node_identity().node_id().short_str(),
     );
 
-    // To receive messages, clients have to connect
-    node_D
-        .comms
-        .peer_manager()
-        .add_or_update_peer(node_C.to_peer())
-        .await
-        .unwrap();
-    node_D
-        .comms
-        .connectivity()
-        .dial_peer(node_C.comms.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
-
-    wait_for_connectivity(&[&node_A, &node_B, &node_C, &node_D]).await;
+    // Node D is a *node*, and node C was seeded with it, so C dials D at start-up. Having D dial C as well
+    // makes that a simultaneous dial from both ends: one of the two connections is tie-broken away and the
+    // discovery request travelling over it is lost rather than requeued (`MAX_SEND_RETRIES` is 1), which
+    // surfaces 60s later as `DiscoveryTimeout`. The wallet variant of this test does need its explicit dial,
+    // because its D is a *client* and nothing dials clients.
+    //
+    // `wait_for_connectivity` is also too weak to stand in for this: `min_connectivity` is 1, so a single
+    // connection satisfies it, and B can be online through A alone while B->C - which this discovery has to
+    // traverse - is not up yet.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    ensure_connected(&node_C, &[node_D.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C, &node_D]).await;
 
     // Send a discover request from Node A, through B and C, to D. Once Node D
     // receives the discover request from Node A, it should send a  discovery response
@@ -329,7 +346,7 @@ async fn test_dht_propagate_dedup() {
     // Node D knows no one
     let mut node_D = make_node("node_D", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
     // Node C knows about Node D
-    let mut node_C = make_node(
+    let node_C = make_node(
         "node_C",
         PeerFeatures::COMMUNICATION_NODE,
         config.clone(),
@@ -337,7 +354,7 @@ async fn test_dht_propagate_dedup() {
     )
     .await;
     // Node B knows about Node C
-    let mut node_B = make_node(
+    let node_B = make_node(
         "node_B",
         PeerFeatures::COMMUNICATION_NODE,
         config.clone(),
@@ -345,19 +362,11 @@ async fn test_dht_propagate_dedup() {
     )
     .await;
     // Node A knows about Node B and C
-    let mut node_A = make_node(
-        "node_A",
-        PeerFeatures::COMMUNICATION_NODE,
-        config.clone(),
-        Some(node_B.to_peer()),
-    )
+    let node_A = make_node("node_A", PeerFeatures::COMMUNICATION_NODE, config.clone(), [
+        node_B.to_peer(),
+        node_C.to_peer(),
+    ])
     .await;
-    node_A
-        .comms
-        .peer_manager()
-        .add_or_update_peer(node_C.to_peer())
-        .await
-        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
@@ -366,33 +375,17 @@ async fn test_dht_propagate_dedup() {
         node_D.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    async fn connect_nodes(node1: &mut TestNode, node2: &mut TestNode) {
-        node1
-            .comms
-            .connectivity()
-            .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
-            .await
-            .unwrap();
-    }
-    // Pre-connect nodes, this helps message passing be more deterministic
-    connect_nodes(&mut node_A, &mut node_B).await;
-    connect_nodes(&mut node_A, &mut node_C).await;
-    connect_nodes(&mut node_B, &mut node_C).await;
-    connect_nodes(&mut node_C, &mut node_D).await;
-    // `dial_peer` returning does not mean every node's connectivity pool has caught up: the dialled side
-    // learns about its new inbound connection asynchronously. Propagation picks its peers from that pool, so
-    // without this barrier a node can propagate to a subset of the peers this test assumes are wired up.
-    // `wait_for_connectivity` is not enough here - it only waits for a node to come online, which takes a
-    // single peer. Only the dialling side of each pair is waited on: an inbound connection does not need to
-    // be in the receiver's pool for delivery to work, and A is the only node that has to fan out to two.
-    wait_for_connections_to(&node_A, &[
+    // Each node is connected to the peers it has to *send* to, which is the pool lookup propagation actually
+    // performs. A receiver does not need the connection in its own pool to be delivered to, so requiring that
+    // as well would only add a way to time out on something the test never uses.
+    ensure_connected(&node_A, &[
         node_B.node_identity().node_id(),
         node_C.node_identity().node_id(),
     ])
     .await;
-    wait_for_connections_to(&node_B, &[node_C.node_identity().node_id()]).await;
-    wait_for_connections_to(&node_C, &[node_D.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    ensure_connected(&node_C, &[node_D.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C, &node_D]).await;
 
     let mut node_A_messaging = node_A.messaging_events.subscribe();
     let mut node_B_messaging = node_B.messaging_events.subscribe();
@@ -811,13 +804,14 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         node_B.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
+    // No `dial_peer` here: node A was seeded with node B, so the DHT's own connectivity dials that link at
+    // start-up, and dialling it again races that - the redundant connection is tie-broken against the live
+    // one and outbound messaging fails rather than requeues what it was holding (`MAX_SEND_RETRIES` is 1),
+    // losing the message below. Wait for the links this test sends over instead, and for the dialling to
+    // stop, so nothing is torn down mid-send.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -920,13 +914,14 @@ async fn test_dht_header_not_malleable() {
         node_B.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
+    // No `dial_peer` here: node A was seeded with node B, so the DHT's own connectivity dials that link at
+    // start-up, and dialling it again races that - the redundant connection is tie-broken against the live
+    // one and outbound messaging fails rather than requeues what it was holding (`MAX_SEND_RETRIES` is 1),
+    // losing the message below. Wait for the links this test sends over instead, and for the dialling to
+    // stop, so nothing is torn down mid-send.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -1014,23 +1009,108 @@ fn count_messages_received(events: &[MessagingEvent], node_ids: &[&NodeId]) -> u
         .count()
 }
 
-/// Wait until `node`'s connectivity pool actually holds an active connection to each of `peers`.
+/// How long the topology barriers below are prepared to wait. A loaded machine - CI runs the whole suite at
+/// once - takes noticeably longer than an idle one to work through the dial churn described in
+/// `wait_for_connectivity_to_settle`, and a barrier that gives up while that is still in progress fails a
+/// test that was about to be fine.
+const TOPOLOGY_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long connectivity has to stay silent before the topology counts as settled.
+const CONNECTIVITY_QUIET_PERIOD: Duration = Duration::from_millis(500);
+/// How long a link is given to come up on its own before `ensure_connected` dials it itself.
+const DIAL_FALLBACK_GRACE: Duration = Duration::from_secs(2);
+
+/// Ensure `node`'s connectivity pool holds an active connection to each of `peers`, dialling only what does
+/// not come up on its own.
 ///
-/// Propagation selects its peers from this pool, so a node that has not yet registered a connection it dialled
-/// will silently propagate to a subset of the topology the test set up.
-async fn wait_for_connections_to(node: &TestNode, peers: &[&NodeId]) {
+/// Propagation selects its peers from this pool, so a node that has not registered a connection yet will
+/// silently propagate to a subset of the topology the test set up. `wait_for_connectivity` is not enough -
+/// it only waits for a node to come online, which takes a single peer.
+///
+/// The dial is a fallback rather than the primary mechanism, because each node's DHT connectivity already
+/// dials the peers it was seeded with at start-up. Dialling on top of that races it, and the dialer only
+/// de-duplicates dials that are still *in flight*: one issued after the DHT's has completed but before
+/// `ConnectivityManager` has pooled it gets dialled again, tie-broken against the live connection, and the
+/// loser disconnected. Outbound messaging gives up after `MAX_SEND_RETRIES` and fails whatever it was
+/// holding rather than re-queueing it, so that churn is silent message loss - measured at 8-10 dials and
+/// 1-3 tie-breaks per run for this test's four links when it dialled every link itself.
+///
+/// Waiting alone is not enough either: the DHT tries once at start-up and then not again until
+/// `update_interval` (2 minutes), so a single failed attempt under load would otherwise hang the test for
+/// longer than it is willing to wait. `DIAL_FALLBACK_GRACE` is the compromise - long enough that the
+/// start-up dial has normally landed and no second dial is issued at all, short enough to recover from one
+/// that did not.
+async fn ensure_connected(node: &TestNode, peers: &[&NodeId]) {
     let mut connectivity = node.comms.connectivity();
-    for _ in 0..100 {
+    let start = Instant::now();
+    let deadline = start
+        .checked_add(TOPOLOGY_TIMEOUT)
+        .expect("TOPOLOGY_TIMEOUT overflows the clock");
+    let mut dialled = false;
+    loop {
         let active = connectivity.get_active_connections().await.unwrap();
-        if peers
+        let missing = peers
             .iter()
-            .all(|peer| active.iter().any(|conn| conn.peer_node_id() == *peer))
-        {
+            .filter(|peer| !active.iter().any(|conn| conn.peer_node_id() == **peer))
+            .copied()
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
             return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{} never established a connection to {missing:?} (wanted {peers:?})",
+            node.name
+        );
+        if !dialled && start.elapsed() >= DIAL_FALLBACK_GRACE {
+            dialled = true;
+            for peer in missing {
+                // A failure here is not fatal: the loop keeps waiting until `deadline` either way, and the
+                // assertion above is the one that should report a link that never comes up.
+                let _result = connectivity.dial_peer(peer.clone(), RefKind::Weak).await;
+            }
+            continue;
         }
         time::sleep(Duration::from_millis(100)).await;
     }
-    panic!("{} never established a connection to every one of {peers:?}", node.name);
+}
+
+/// Wait until none of `nodes` has reported a connectivity change for `CONNECTIVITY_QUIET_PERIOD`.
+///
+/// Having the right peers in the pool right now does not mean the topology has stopped moving. A node learns
+/// about a peer from the connection that peer opened to it, and may then dial it back before its own pool has
+/// caught up; the redundant connection is tie-broken against the live one, the loser is disconnected, and
+/// anything the outbound handler cannot re-establish within `MAX_SEND_RETRIES` is dropped rather than
+/// re-queued. Not seeding that churn in the first place is what the absence of `dial_peer` above is for -
+/// this is the backstop for whatever the test did not set up itself.
+async fn wait_for_connectivity_to_settle(nodes: &[&TestNode]) {
+    // Only the fact that something happened is forwarded, never the event itself: a lagged subscription has
+    // by definition just missed a burst of them, and that has to count as activity rather than as silence.
+    let (tx, mut rx) = mpsc::channel::<()>(100);
+    for node in nodes {
+        let mut events = node.comms.connectivity().get_event_subscription();
+        let tx = tx.clone();
+        // These outlive the call: the point is to observe the *next* quiet period, not to drain a fixed
+        // number of events, and the nodes are shut down at the end of the test either way.
+        tokio::spawn(async move {
+            while let Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) = events.recv().await {
+                if tx.send(()).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    drop(tx);
+
+    let deadline = Instant::now()
+        .checked_add(TOPOLOGY_TIMEOUT)
+        .expect("TOPOLOGY_TIMEOUT overflows the clock");
+    // `Ok(None)` means every forwarding task has gone away, which is as quiet as it gets.
+    while let Ok(Some(())) = time::timeout(CONNECTIVITY_QUIET_PERIOD, rx.recv()).await {
+        if Instant::now() >= deadline {
+            // Let the test's own assertions report what the churn actually did rather than failing here.
+            break;
+        }
+    }
 }
 
 /// Wait until `count` messages have actually been *received* by a node.
@@ -1038,24 +1118,21 @@ async fn wait_for_connections_to(node: &TestNode, peers: &[&NodeId]) {
 /// `MessagingEvent` also carries the protocol-exit variants, so a bare `recv()` can return without a single
 /// message having arrived - only `MessageReceived` is counted here.
 async fn wait_for_messages_received(events: &mut broadcast::Receiver<MessagingEvent>, count: usize, node: &str) {
-    let mut received = 0;
-    while received < count {
+    // The senders are kept so that a timeout can say *which* message went missing. Which of the two paths
+    // into a node failed is the whole diagnosis, and without this the failure is just a number.
+    let mut senders = Vec::with_capacity(count);
+    while senders.len() < count {
         let event = time::timeout(Duration::from_secs(20), events.recv())
             .await
-            .unwrap_or_else(|_| panic!("timed out waiting for {count} message(s) at {node}, got {received}"))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "timed out waiting for {count} message(s) at {node}, got {} (from {senders:?})",
+                    senders.len()
+                )
+            })
             .unwrap();
-        if matches!(event, MessagingEvent::MessageReceived(..)) {
-            received = received.saturating_add(1);
+        if let MessagingEvent::MessageReceived(sender, _tag) = event {
+            senders.push(sender);
         }
-    }
-}
-
-async fn wait_for_connectivity(nodes: &[&TestNode]) {
-    for node in nodes {
-        node.comms
-            .connectivity()
-            .wait_for_connectivity(Duration::from_secs(10))
-            .await
-            .unwrap();
     }
 }

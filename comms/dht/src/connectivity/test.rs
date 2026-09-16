@@ -161,11 +161,13 @@ async fn added_pool_peers() {
 
     dht_connectivity.spawn();
 
-    // Wait for calls to add peers
+    // Wait for the dials themselves rather than for *a* call: `call_count` counts every recorded call, and
+    // `DhtConnectivity` makes others before it gets to dialling, so waiting on it can return before the dial
+    // request has been processed - leaving the exact-count assertion below looking at a partial list.
     async_assert!(
-        connectivity.call_count().await >= 1,
-        max_attempts = 20,
-        interval = Duration::from_millis(10),
+        connectivity.get_dialed_peers().await.len() >= 5,
+        max_attempts = 50,
+        interval = Duration::from_millis(20),
     );
 
     let _calls = connectivity.take_calls().await;
