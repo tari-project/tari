@@ -311,7 +311,10 @@ impl SpeculosApi {
                 self.address
             )));
         }
-        Ok(EventStream { reader })
+        Ok(EventStream {
+            reader,
+            pending: Vec::new(),
+        })
     }
 
     fn get(&self, path: &str) -> Result<Vec<u8>, ApiError> {
@@ -388,8 +391,22 @@ impl SpeculosApi {
 /// An open subscription to the device's draw events.
 ///
 /// Dropping it closes the connection, which is how a scenario unsubscribes.
+///
+/// # HTTP chunks and SSE records are two different framings
+///
+/// The body arrives in HTTP chunks; the events in it are Server-Sent Events records, terminated by a blank line.
+/// **Nothing relates the two.** A server may put several records in one chunk, or split one record across two, and
+/// both are correct. An earlier version of this read one chunk and parsed it as one record, which worked only
+/// because Werkzeug's generator happens to yield exactly one record per chunk - an implementation detail of the
+/// server this harness pins by digest, and exactly the kind of thing that changes under an upgrade and is then
+/// diagnosed as "the device stopped drawing".
+///
+/// So chunk payloads are appended to [`Self::pending`] and records are taken out of *that*, independently of how
+/// the bytes arrived.
 pub struct EventStream {
     reader: ByteReader,
+    /// Body bytes read but not yet formed into a complete record.
+    pending: Vec<u8>,
 }
 
 impl EventStream {
@@ -404,11 +421,31 @@ impl EventStream {
         // them - which is how a bound that looks absolute turns out not to be.
         self.reader.set_deadline(deadline);
         loop {
+            // Everything already buffered first. A chunk carrying two records must yield two events, and the
+            // second of them without reading another byte - otherwise a burst of draws is silently held back
+            // until the device happens to draw again, which on the last page of a review is never.
+            while let Some(record) = take_record(&mut self.pending) {
+                let Some(data) = record_data(&record) else {
+                    continue;
+                };
+                if let Some(event) = parse_event(data.trim())? {
+                    return Ok(Some(event));
+                }
+            }
             if Instant::now() >= deadline {
                 return Ok(None);
             }
-            let line = match read_chunked_line(&mut self.reader) {
-                Ok(Some(line)) => line,
+            // The buffer only grows while a record is incomplete, so an unbounded one means a peer that has
+            // stopped terminating records. Bounded for the same reason the reply length is.
+            if self.pending.len() > MAX_RESPONSE_BYTES {
+                return Err(ApiError(format!(
+                    "Speculos has sent {} bytes without finishing an event record, more than the {MAX_RESPONSE_BYTES} \
+                     byte sanity bound",
+                    self.pending.len()
+                )));
+            }
+            match read_chunk(&mut self.reader) {
+                Ok(Some(chunk)) => self.pending.extend_from_slice(&chunk),
                 Ok(None) => {
                     return Err(ApiError(
                         "Speculos closed the event stream; the simulator has probably exited".to_string(),
@@ -416,14 +453,6 @@ impl EventStream {
                 },
                 Err(e) if e.timed_out => return Ok(None),
                 Err(e) => return Err(ApiError(e.message)),
-            };
-            // Server-Sent Events framing: `data: <payload>` lines, blank lines between records, and anything else
-            // (comments, `event:`, `id:`) is not ours to interpret.
-            let Some(payload) = line.strip_prefix("data:") else {
-                continue;
-            };
-            if let Some(event) = parse_event(payload.trim())? {
-                return Ok(Some(event));
             }
         }
     }
@@ -643,6 +672,20 @@ fn read_head(reader: &mut ByteReader) -> Result<(u16, Vec<String>), ApiError> {
 }
 
 fn read_body(reader: &mut ByteReader, headers: &[String]) -> Result<Vec<u8>, ApiError> {
+    // Chunked replies are the event stream's business and nobody else's. Reading one to EOF would hand the chunk
+    // size lines to `serde_json` along with the body, which fails - but fails complaining about JSON, several
+    // layers away from the framing that actually changed. `open_event_stream` refuses the opposite mismatch for
+    // the same reason.
+    if headers
+        .iter()
+        .any(|header| header.eq_ignore_ascii_case("transfer-encoding: chunked"))
+    {
+        return Err(ApiError(
+            "Speculos answered an ordinary request with chunked framing, which this client only decodes for the event \
+             stream"
+                .to_string(),
+        ));
+    }
     let length = headers.iter().find_map(|header| {
         let (name, value) = header.split_once(':')?;
         name.eq_ignore_ascii_case("content-length")
@@ -660,8 +703,12 @@ fn read_body(reader: &mut ByteReader, headers: &[String]) -> Result<Vec<u8>, Api
     }
 }
 
-/// Read one line of a chunked body. `Ok(None)` means the stream ended cleanly.
-fn read_chunked_line(reader: &mut ByteReader) -> Result<Option<String>, ReadError> {
+/// Read the payload of one HTTP chunk. `Ok(None)` means the stream ended cleanly.
+///
+/// The payload is returned **exactly as it arrived** - not trimmed, not decoded. The trailing blank line is what
+/// terminates a Server-Sent Events record, so trimming here would destroy the framing the caller is about to parse,
+/// and a chunk boundary may fall anywhere including the middle of a UTF-8 character.
+fn read_chunk(reader: &mut ByteReader) -> Result<Option<Vec<u8>>, ReadError> {
     let Some(size_line) = reader.read_line()? else {
         return Ok(None);
     };
@@ -669,7 +716,7 @@ fn read_chunked_line(reader: &mut ByteReader) -> Result<Option<String>, ReadErro
     let size_text = size_line.split(';').next().unwrap_or_default().trim();
     if size_text.is_empty() {
         // A stray blank line between chunks. Harmless, and reading on is the only sensible response.
-        return Ok(Some(String::new()));
+        return Ok(Some(Vec::new()));
     }
     let size = usize::from_str_radix(size_text, 16).map_err(|e| ReadError {
         message: format!("Speculos sent an unparseable chunk size {size_text:?}: {e}"),
@@ -683,7 +730,57 @@ fn read_chunked_line(reader: &mut ByteReader) -> Result<Option<String>, ReadErro
     };
     // The CRLF that terminates the chunk.
     reader.read_line()?;
-    Ok(Some(String::from_utf8_lossy(&bytes).trim_end().to_string()))
+    Ok(Some(bytes))
+}
+
+/// Split the first complete Server-Sent Events record off the front of `pending`.
+///
+/// A record ends at the first blank line. The specification allows a line to end with CRLF, LF or CR, so a blank
+/// line is any of `\r\n\r\n`, `\n\n` or `\r\r`, and the earliest wins. None of the three is a substring of
+/// another, so a terminator split across two chunks cannot be half-recognised: it is simply not found until both
+/// halves are in the buffer.
+fn take_record(pending: &mut Vec<u8>) -> Option<Vec<u8>> {
+    const TERMINATORS: [&[u8]; 3] = [b"\r\n\r\n", b"\n\n", b"\r\r"];
+    let mut found: Option<(usize, usize)> = None;
+    for terminator in TERMINATORS {
+        let Some(index) = find_subslice(pending, terminator) else {
+            continue;
+        };
+        if found.is_none_or(|(earliest, _)| index < earliest) {
+            found = Some((index, terminator.len()));
+        }
+    }
+    let (index, length) = found?;
+    let record: Vec<u8> = pending.drain(..index).collect();
+    pending.drain(..length);
+    Some(record)
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+/// The `data` field of one Server-Sent Events record, or `None` if it carries none.
+///
+/// Per the specification: every `data:` line in the record contributes, they are joined with newlines, and one
+/// optional space after the colon belongs to the framing rather than to the value. Lines beginning with `:` are
+/// comments and every other field (`event:`, `id:`, `retry:`) is not this harness's business.
+fn record_data(record: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(record);
+    let mut data: Vec<&str> = Vec::new();
+    for line in text.split(['\r', '\n']) {
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        let Some(value) = line.strip_prefix("data:") else {
+            continue;
+        };
+        data.push(value.strip_prefix(' ').unwrap_or(value));
+    }
+    if data.is_empty() {
+        return None;
+    }
+    Some(data.join("\n"))
 }
 
 #[cfg(test)]
@@ -828,6 +925,161 @@ mod test {
             },
         ];
         assert_eq!(joined(&texts), "Receiver23114wBq");
+    }
+
+    /// Serve a chunked event stream whose chunks are exactly `chunks`, so that a test can choose where the HTTP
+    /// framing falls relative to the SSE framing. The two are unrelated, and this is how that gets asserted.
+    fn sse_server(chunks: Vec<&'static str>) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut discard = [0u8; 1024];
+            let _ = stream.read(&mut discard);
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n");
+            for chunk in chunks {
+                let _ = stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes());
+                let _ = stream.write_all(chunk.as_bytes());
+                let _ = stream.write_all(b"\r\n");
+                let _ = stream.flush();
+            }
+            let _ = stream.write_all(b"0\r\n\r\n");
+            let _ = stream.flush();
+            // Hold the connection open so that the client's "the stream closed" path is not what is under test.
+            thread::sleep(Duration::from_millis(500));
+        });
+        (address, server)
+    }
+
+    fn drain(stream: &mut EventStream, count: usize) -> Vec<ScreenText> {
+        let deadline = Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .expect("five seconds from now");
+        (0..count)
+            .map(|index| {
+                stream
+                    .next_event(deadline)
+                    .unwrap_or_else(|e| panic!("event {index}: {e}"))
+                    .unwrap_or_else(|| panic!("event {index} never arrived"))
+            })
+            .collect()
+    }
+
+    /// An HTTP chunk boundary in the middle of an event must not lose the event.
+    ///
+    /// Nothing relates chunk boundaries to Server-Sent Events record boundaries; a server may split wherever it
+    /// likes. The version of this client that read one chunk and called it one record passed only because
+    /// Werkzeug's generator happens to yield one record per chunk, which is an implementation detail of a server
+    /// this harness pins by digest and would change under an upgrade.
+    #[test]
+    fn an_event_split_across_http_chunks_is_still_one_event() {
+        let (address, server) = sse_server(vec![
+            "data: {\"text\": \"Hold to ",
+            "sign\", \"x\": 24, \"y\": 496, \"w\": 183, \"h\": 40}\n",
+            "\n",
+        ]);
+        let mut stream = SpeculosApi::new(address).open_event_stream().unwrap();
+        let events = drain(&mut stream, 1);
+        assert_eq!(events[0].text, "Hold to sign");
+        assert_eq!(events[0].centre(), (115, 516));
+        drop(stream);
+        let _ = server.join();
+    }
+
+    /// Several events in one chunk must all be delivered, and without waiting for another chunk.
+    ///
+    /// The second half matters more than the first. A client that returned one event per chunk would hold the rest
+    /// back until the device drew again - and on the last page of a review it never does, so the scenario would
+    /// wait out its deadline looking at a screen it had already been told about.
+    #[test]
+    fn several_events_in_one_http_chunk_are_all_delivered() {
+        let (address, server) = sse_server(vec![
+            "data: {\"text\": \"Amount\", \"x\": 1, \"y\": 2, \"w\": 3, \"h\": 4}\n\ndata: {\"text\": \"12345 uT\", \
+             \"x\": 5, \"y\": 6, \"w\": 7, \"h\": 8}\n\ndata: {\"text\": \"Receiver\", \"x\": 9, \"y\": 10, \"w\": \
+             11, \"h\": 12}\n\n",
+        ]);
+        let mut stream = SpeculosApi::new(address).open_event_stream().unwrap();
+        let events = drain(&mut stream, 3);
+        assert_eq!(events.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(), [
+            "Amount", "12345 uT", "Receiver"
+        ]);
+        drop(stream);
+        let _ = server.join();
+    }
+
+    /// CRLF line endings, a comment line, and `data:` with no space after the colon are all legal.
+    #[test]
+    fn the_less_common_sse_framings_are_accepted() {
+        let (address, server) = sse_server(vec![
+            ": a comment nobody has to read\r\ndata:{\"text\": \"Reject\", \"x\": 43, \"y\": 610, \"w\": 73, \"h\": \
+             31}\r\n\r\n",
+        ]);
+        let mut stream = SpeculosApi::new(address).open_event_stream().unwrap();
+        let events = drain(&mut stream, 1);
+        assert_eq!(events[0].text, "Reject");
+        drop(stream);
+        let _ = server.join();
+    }
+
+    #[test]
+    fn a_record_is_taken_at_the_first_blank_line_whatever_its_line_endings() {
+        let mut pending = b"data: one\n\ndata: two\r\n\r\ndata: three\r\r".to_vec();
+        assert_eq!(take_record(&mut pending).unwrap(), b"data: one");
+        assert_eq!(take_record(&mut pending).unwrap(), b"data: two");
+        assert_eq!(take_record(&mut pending).unwrap(), b"data: three");
+        assert_eq!(take_record(&mut pending), None);
+        assert!(pending.is_empty());
+
+        // An unterminated record is left in the buffer for the bytes that finish it.
+        let mut partial = b"data: hal".to_vec();
+        assert_eq!(take_record(&mut partial), None);
+        partial.extend_from_slice(b"f\n\n");
+        assert_eq!(take_record(&mut partial).unwrap(), b"data: half");
+
+        // A terminator arriving in two pieces is not half-recognised on the way.
+        let mut split = b"data: x\r\n".to_vec();
+        assert_eq!(take_record(&mut split), None);
+        split.extend_from_slice(b"\r\n");
+        assert_eq!(take_record(&mut split).unwrap(), b"data: x");
+    }
+
+    #[test]
+    fn a_records_data_is_every_data_line_and_nothing_else() {
+        assert_eq!(record_data(b"data: hello").unwrap(), "hello");
+        // Exactly one space after the colon belongs to the framing; a second one is content.
+        assert_eq!(record_data(b"data:hello").unwrap(), "hello");
+        assert_eq!(record_data(b"data:  hello").unwrap(), " hello");
+        // Several data lines are one value, joined with newlines.
+        assert_eq!(record_data(b"data: one\ndata: two").unwrap(), "one\ntwo");
+        // Comments and other fields are not ours.
+        assert_eq!(record_data(b": keep-alive"), None);
+        assert_eq!(record_data(b"event: ping\nid: 7"), None);
+        assert_eq!(record_data(b"event: ping\ndata: yes").unwrap(), "yes");
+    }
+
+    /// Chunked framing on an ordinary reply would otherwise hand chunk size lines to the JSON parser, and the
+    /// failure would name JSON rather than the framing that actually changed.
+    #[test]
+    fn a_chunked_reply_to_an_ordinary_request_is_refused() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut discard = [0u8; 1024];
+            let _ = stream.read(&mut discard);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n\
+                  10\r\n{\"events\": []}\r\n0\r\n\r\n",
+            );
+            let _ = stream.flush();
+        });
+
+        let error = SpeculosApi::new(address)
+            .current_screen()
+            .expect_err("a chunked ordinary reply must be refused rather than misparsed");
+        assert!(error.to_string().contains("chunked"), "got: {error}");
+        let _ = server.join();
     }
 
     #[test]

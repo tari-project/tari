@@ -33,7 +33,7 @@
 //! Approving produces a real signature from a real key. Use a device with a throwaway recovery phrase, and never
 //! one holding value.
 
-use std::process::ExitCode;
+use std::{io::IsTerminal, process::ExitCode};
 
 use minotari_ledger_wallet_comms::error::LedgerDeviceError;
 use minotari_ledger_wallet_comms_testing::{
@@ -80,8 +80,27 @@ fn main() -> ExitCode {
     };
     let expected = ExpectedReview::one_sided_metadata_signature(VALUE, &receiver.to_base58(), payment_id_length);
 
+    // Checked *before* the instruction goes out, and that ordering is the whole point.
+    //
+    // `HumanApprover` cannot ask its questions without a terminal, and every one of its failure paths happens with
+    // a review already on the device and an APDU exchange already outstanding - which on the HID transport has no
+    // timeout and cannot be cancelled from this side. Discovering "there is nobody to ask" at that moment leaves
+    // the operator, if there is one, with a process that will not return until somebody presses a button. Refusing
+    // to start is free; refusing to start afterwards is not possible.
+    if !std::io::stdin().is_terminal() {
+        eprintln!(
+            "This example asks a human questions, so it needs a terminal on stdin. Run it directly rather than \
+             through a pipe or a CI step; for an unattended run use the Speculos scenarios in \
+             tests/speculos_review.rs instead."
+        );
+        return ExitCode::FAILURE;
+    }
+
     println!("Plug in a Ledger with a throwaway recovery phrase and open the MinoTari Wallet application.");
     println!("Asking it for a one sided metadata signature; it will put a review on its screen.");
+    println!("If anything is wrong, say so at the prompt - you will be asked to reject it on the device, and the");
+    println!("run will then end with what you found. Do not close this window instead: the instruction is already");
+    println!("on its way and only the device can answer it.");
 
     let (signature, review) = while_reviewing(&HumanApprover, &expected, outcome, || {
         minotari_ledger_wallet_comms::accessor_methods::ledger_get_one_sided_metadata_signature(

@@ -706,40 +706,125 @@ pub fn expectation_banner(expected: &ExpectedReview) -> String {
     banner
 }
 
+/// What to tell the operator when a scenario gives up with a review still on the device.
+///
+/// Pure, so that a test can assert the operator is actually told - see
+/// `the_abandon_instructions_tell_the_operator_to_reject_the_review`. There is no way to drive `dialoguer`
+/// non-interactively, so the only part of this that can be checked automatically is the part that is a value.
+pub fn abandon_instructions(reason: &str) -> String {
+    let mut message = String::new();
+    message.push_str("\n=========================================================================\n");
+    message.push_str("  STOPPING, AND THE DEVICE IS STILL WAITING.\n\n");
+    message.push_str(&format!("  Why: {reason}\n\n"));
+    message.push_str("  Reject the transaction on the device now.\n\n");
+    message.push_str("  This is not tidiness. The instruction is still outstanding on the\n");
+    message.push_str("  device and nothing here can cancel it - a Ledger exchange finishes when\n");
+    message.push_str("  somebody presses a button and at no other time - so until you do, this\n");
+    message.push_str("  process cannot return and tell you what it found.\n");
+    message.push_str("=========================================================================");
+    message
+}
+
+/// The finding when an operator says the device is showing something other than the scenario expected.
+///
+/// A function rather than an inline `format!` for one reason: this is the single most important sentence this
+/// type can produce - a human has just caught the device displaying an address the host did not ask for - and a
+/// test asserts that it survives the abandon path with its content intact.
+pub fn operator_mismatch_message(expected: &ExpectedReview) -> String {
+    format!(
+        "The operator says the device is not showing the expected review. Expected: {}",
+        expected.summary()
+    )
+}
+
 impl HumanApprover {
     fn prompt(&self, expected: &ExpectedReview, outcome: Outcome) -> Result<(), ReviewError> {
         println!();
         println!("{}", expectation_banner(expected));
 
-        let matches = dialoguer::Confirm::new()
+        let matches = match dialoguer::Confirm::new()
             .with_prompt("Does the device show exactly those fields?")
             .default(false)
             .interact()
-            .map_err(|e| {
-                ReviewError::Operator(format!(
+        {
+            Ok(matches) => matches,
+            Err(e) => {
+                return Err(self.abandon(format!(
                     "Could not ask the operator whether the device matched ({e}). HumanApprover needs a terminal; use \
                      SpeculosApprover for an unattended run."
-                ))
-            })?;
+                )));
+            },
+        };
         if !matches {
-            return Err(ReviewError::Operator(format!(
-                "The operator says the device is not showing the expected review. Expected: {}",
-                expected.summary()
-            )));
+            // The whole reason this type exists, arriving. Everything below is about making sure the operator can
+            // actually get this sentence out of the process.
+            return Err(self.abandon(operator_mismatch_message(expected)));
         }
 
         println!("Now {outcome} the transaction on the device itself.");
-        let done = dialoguer::Confirm::new()
+        let done = match dialoguer::Confirm::new()
             .with_prompt(format!("Have you pressed {outcome} on the device?"))
             .default(false)
             .interact()
-            .map_err(|e| ReviewError::Operator(format!("Could not ask the operator to {outcome} ({e})")))?;
+        {
+            Ok(done) => done,
+            Err(e) => return Err(self.abandon(format!("Could not ask the operator to {outcome} ({e})"))),
+        };
         if !done {
-            return Err(ReviewError::Operator(format!(
-                "The operator did not {outcome} the review on the device"
-            )));
+            return Err(self.abandon(format!("The operator did not {outcome} the review on the device")));
         }
         Ok(())
+    }
+
+    /// Give up on a scenario, but not before the device has been answered.
+    ///
+    /// # Why every error path has to come through here
+    ///
+    /// Each of the four ways [`Self::prompt`] can fail happens while the review is still on the device and the
+    /// instruction that raised it is still parked in an APDU exchange. On the HID transport that exchange has no
+    /// bound at all and is documented as having none - see `LedgerTransport::exchange` in
+    /// `minotari_ledger_wallet_comms`, which says in as many words that it may block indefinitely and must never
+    /// be wrapped in a timeout, because a timeout abandons the reply without cancelling anything on the device.
+    /// `while_reviewing` then joins that thread. So returning an error from here without the review being answered
+    /// does not report the operator's finding, it *hangs* - and the finding it swallows is the most valuable one
+    /// this harness can produce, a human catching the device displaying something the host did not ask for.
+    ///
+    /// # The returned error is always the original finding
+    ///
+    /// Not a secondary error about the cleanup. Somebody reading the failure needs to know that the address was
+    /// wrong, not that a confirmation prompt was declined afterwards.
+    ///
+    /// # If the operator will not, or cannot, confirm
+    ///
+    /// Asking again is the right answer to "not yet" - it costs nothing and each round trip blocks on a human, so
+    /// it cannot spin. It is the wrong answer to a prompt that *failed*, which will fail identically for ever, so
+    /// that case stops asking and falls back to printing what has to be pressed. The process may then block in the
+    /// join until somebody touches the device, and that is not a bug that can be fixed from this side: the device
+    /// holds the only cancel button there is. `examples/human_review.rs` refuses to start without a terminal,
+    /// which is what keeps that case off the table in the one place this type is actually used.
+    fn abandon(&self, reason: String) -> ReviewError {
+        println!("{}", abandon_instructions(&reason));
+        loop {
+            match dialoguer::Confirm::new()
+                .with_prompt("Have you rejected the review on the device?")
+                .default(false)
+                .interact()
+            {
+                Ok(true) => break,
+                Ok(false) => println!(
+                    "Still waiting. Reject the transaction on the device - nothing here can do it for you, and this \
+                     process cannot return until it is done."
+                ),
+                Err(e) => {
+                    println!(
+                        "Cannot ask any more ({e}). Reject the transaction on the device; until you do, this process \
+                         is blocked waiting for the device to answer an instruction it was already sent."
+                    );
+                    break;
+                },
+            }
+        }
+        ReviewError::Operator(reason)
     }
 }
 
@@ -943,6 +1028,47 @@ mod test {
         assert!(banner.contains("2.50 T"), "{banner}");
         assert!(banner.contains("16 bytes"), "{banner}");
         assert!(!banner.contains("must NOT appear"), "{banner}");
+    }
+
+    /// Every `HumanApprover` failure leaves a review outstanding on a device that nothing here can cancel, so the
+    /// operator has to be told to reject it - and told *why*, because the reason is the finding the whole exercise
+    /// exists to produce.
+    ///
+    /// `dialoguer` cannot be driven without a terminal, so the assertion is on the message, which is a value for
+    /// exactly this reason. The mismatch path is the one checked in full: it is the operator-as-oracle catching
+    /// the device showing an address the host never asked for, and it must survive the cleanup with its content
+    /// intact rather than being replaced by a complaint about a confirmation prompt.
+    #[test]
+    fn the_abandon_instructions_tell_the_operator_to_reject_the_review() {
+        let receiver = "232F5WN4VC6zJL3f2YbGw8w8kFNmL5XvN6nKkUrwWuArLd5k4P9oCBsafEyQXkxCGSa89o74R18Aw5reCSKwVFtgLg5";
+        let expected = ExpectedReview::one_sided_metadata_signature(12_345, receiver, 0);
+
+        let finding = operator_mismatch_message(&expected);
+        assert!(finding.contains(receiver), "{finding}");
+        assert!(finding.contains("12345 uT"), "{finding}");
+
+        let instructions = abandon_instructions(&finding);
+        assert!(
+            instructions.contains("Reject the transaction on the device"),
+            "the operator must be told what to press, got:\n{instructions}"
+        );
+        assert!(
+            instructions.contains("cannot return"),
+            "and why they have to, got:\n{instructions}"
+        );
+        // The finding survives into the cleanup message rather than being replaced by it.
+        assert!(instructions.contains(receiver), "{instructions}");
+        assert!(
+            instructions.contains("not showing the expected review"),
+            "{instructions}"
+        );
+
+        // And the error a caller finally receives is the finding, not a report about the cleanup.
+        assert_eq!(
+            ReviewError::Operator(finding.clone()).to_string(),
+            finding,
+            "the returned error must still be the operator's finding"
+        );
     }
 
     #[test]
