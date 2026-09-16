@@ -1,0 +1,66 @@
+[package]
+name = "minotari_miner"
+description = "The tari miner implementation"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tari_core = { path = "../../base_layer/core", default-features = false }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_transaction_components = { workspace = true}
+tari_node_components = { workspace = true }
+
+tari_max_size = { path = "../../infrastructure/max_size" }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = [
+    "miner_input",
+] }
+minotari_app_grpc = { path = "../minotari_app_grpc" }
+tari_utilities = { version = "0.10" }
+
+base64 = { workspace = true }
+borsh = { workspace = true }
+bufstream = "0.1"
+chrono = { version = "0.4", default-features = false }
+clap = { version = "4", features = ["derive"] }
+crossbeam = "0.8"
+crossterm = { version = "0.28" }
+derivative = "2.2.0"
+futures = "0.3"
+hex = "0.4.2"
+log = { workspace = true, features = ["std"] }
+log4rs = { workspace = true, default-features = false, features = [
+    "config_parsing",
+    "threshold_filter",
+    "yaml_format",
+    "console_appender",
+    "rolling_file_appender",
+    "compound_policy",
+    "size_trigger",
+    "fixed_window_roller",
+] }
+native-tls = "0.2"
+num_cpus = "1.13"
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+] }
+tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }
+
+[dev-dependencies]
+prost-types = "0.13.3"
+chrono = { version = "0.4", default-features = false }
+config = "0.14.0"
+
+[package.metadata.cargo-machete]
+ignored = [
+    # We need to specify extra features for log4rs even though it is not used directly in this crate
+    "log4rs",
+    "prost",
+]

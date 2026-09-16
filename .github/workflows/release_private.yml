@@ -1,0 +1,88 @@
+---
+name: Private Release (manual) — replicate a v* tag from a private repo
+
+# One manual dispatch that fans out to the same four builds a `v*` tag push
+# triggers: binaries, FFI, Ledger, and (optionally) Docker. Each is a private,
+# workflow_call copy that builds from `repo_name`@`branch` instead of this repo.
+#
+# Binaries + FFI + Ledger all draft into ONE release keyed on `version`
+# (draft: true, allowUpdates, updateOnlyUnreleased) — nothing is public until you
+# press Publish, and no git tag is created until then.
+#
+# Docker is DIFFERENT: it pushes images straight to public ghcr.io — there is no
+# draft/hold. Building Docker therefore DISCLOSES the fix. It is gated behind
+# `include_docker` (default false); only enable it at the public-disclosure moment.
+#
+# Requires a repo/org secret PRIV_SRC_TOKEN (fine-grained, read-only, single-repo)
+# granting read access to the private source repo. If unset, everything falls back
+# to building THIS repo.
+'on':
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version / tag for the draft release, e.g. v1.2.3"
+        required: true
+      repo_name:
+        description: "Source repo to BUILD FROM, e.g. tari-project/tari-build (blank = this repo)"
+        required: false
+        default: ""
+      branch:
+        description: "Branch/ref in the source repo to build"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build + sign only; do NOT create the draft release"
+        type: boolean
+        required: false
+        default: false
+      include_docker:
+        description: "Also build AND PUSH docker images. WARNING: pushes to PUBLIC ghcr.io — this discloses the fix."
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  binaries:
+    uses: ./.github/workflows/release_private_binaries.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.version }}
+      repo_name: ${{ inputs.repo_name }}
+      branch: ${{ inputs.branch }}
+      dry_run: ${{ inputs.dry_run }}
+
+  libffis:
+    uses: ./.github/workflows/release_private_libffis.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.version }}
+      repo_name: ${{ inputs.repo_name }}
+      branch: ${{ inputs.branch }}
+      dry_run: ${{ inputs.dry_run }}
+
+  ledger:
+    uses: ./.github/workflows/release_private_ledger.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.version }}
+      repo_name: ${{ inputs.repo_name }}
+      branch: ${{ inputs.branch }}
+      dry_run: ${{ inputs.dry_run }}
+
+  # Public-push. Off unless explicitly requested AND not a dry run.
+  dockers:
+    if: ${{ inputs.include_docker && inputs.dry_run == false }}
+    uses: ./.github/workflows/release_private_dockers.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.version }}
+      repo_name: ${{ inputs.repo_name }}
+      branch: ${{ inputs.branch }}
+      tari_network: mainnet
+      tag_alias: ${{ inputs.version }}
+      platforms: linux/amd64,linux/arm64
+      build_items: minotari_node,minotari_console_wallet,minotari_sha3_miner,minotari_merge_mining_proxy

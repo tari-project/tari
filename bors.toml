@@ -1,0 +1,9 @@
+status = [
+    "clippy",
+    "check nightly",
+    "check stable",
+    "test",
+    "ci/circleci: run-integration-tests",
+    "ci/circleci: run-ffi-integration-tests",
+]
+timeout_sec = 7200

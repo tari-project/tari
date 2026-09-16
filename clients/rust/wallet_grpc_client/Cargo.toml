@@ -1,0 +1,20 @@
+[package]
+name = "minotari_wallet_grpc_client"
+description = "Base node GRPC client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+minotari_app_grpc = { workspace = true }
+tari_common_types = { workspace = true }
+tari_common = { workspace = true }
+
+thiserror = { workspace = true }
+tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }

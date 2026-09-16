@@ -1,0 +1,25 @@
+[package]
+name = "tari_sidechain"
+description = "The Tari sidechain utilities and types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tari_hashing = { workspace = true }
+tari_crypto = { workspace = true, features = ["borsh"] }
+tari_utilities = { workspace = true }
+tari_common_types = { workspace = true }
+tari_jellyfish = { workspace = true }
+
+log = { workspace = true }
+thiserror = { workspace = true }
+borsh = { workspace = true }
+hex = "0.4.3"
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0.108"

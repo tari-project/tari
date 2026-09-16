@@ -1,0 +1,331 @@
+{
+  "proof": {
+    "V1": {
+      "command": {
+        "public_key": "30eb54ee0d290e0fd9f8a6c6cbc84e3a516645fe1be77429987375498aee8641"
+      },
+      "commit_proof": {
+        "header": {
+          "network": 16,
+          "parent_id": "5a428b774d4c591f9a15a17b94c75d57d8c83921a7a283538fa538064b1361a5",
+          "justify_id": "a4a7916a22aa03b1f111e03e82bfc82eed04d57122f818588b7399737ace9866",
+          "height": 20,
+          "epoch": 1,
+          "epoch_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "shard_group": {
+            "start": 1,
+            "end_inclusive": 256
+          },
+          "proposed_by": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+          "state_merkle_root": "1203a47d22a6005c7aea28251f6e0ff99c945db28c3580ebffb9d21315286dbd",
+          "command_merkle_root": "09a05c7cf2498e067f9f270eb3464ddfc1342f79ef42c11d20829c8c4f6b815e",
+          "signature": {
+            "public_nonce": "62006b26e394e3a520d6f18a2239c0bc4b456f35e5a61b18fa4b057423122d5f",
+            "signature": "05fe06dac441b1777c90ed2fc8034c59e2aaec59967db21106619a736594790f"
+          },
+          "accumulated_data": {
+            "total_exhaust_burn": 0
+          },
+          "metadata_hash": "99acde2324e02c66d4b2f4341a72e00b29755bf7523095c7a67e9a1ba121189c"
+        },
+        "proof_elements": [
+          {
+            "QuorumCertificate": {
+              "header_hash": "7426b2711db5ace80104b10dba867d8ffeb9a238282c5363b9aacd0651ea9d37",
+              "parent_id": "50d17a8b1c1354d154a5b33f01bad26ce8fe2112eff7fdd9b06f53dcb897fd95",
+              "signatures": [
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "e8e3b0aca98f57690cf2b2546a07fe53abc309b2ce65e59b393e7944c2cb316a",
+                    "signature": "e6f0a3dda83521f926eb26604c19928e02246f3029347ef7b3441a506d31dd09"
+                  }
+                },
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "d85bedf7b4793950ec435e880a1f41c29e65a40a75fe15e195a65327365a9f6c",
+                    "signature": "6fee4e3a764270090f809acca4d8be6c5f6347fa9084b55162293766a5cf330c"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "96161f546fc95019d272c1d950732e8e7ae291f1c65970f3705746d935e90932",
+                    "signature": "58ab4abcd5340d833f73642c8f08217e253fe656a2db49d6f64fb584385ee205"
+                  }
+                },
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "b8788d29da0134aa0d451c1d03730597776d9d00fe7e5f08711a974b0b529743",
+                    "signature": "12f9803f3063646d94edd8aa3bbede36320e95bf696c3ed92293d8aeff51f509"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          },
+          {
+            "QuorumCertificate": {
+              "header_hash": "cac42461be726177697c79eac99a57955b9c94e78c131274e8c7fb8b15d8f279",
+              "parent_id": "de20d47e42ab85620d5623c4ab526b55ae5919b962238c63e29782027a3208a5",
+              "signatures": [
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "90f50e93d9218eb92da6befa9a09df476627dce388f305c70fe1a4c67faaeb00",
+                    "signature": "95c4fb9af500af2d66cc4b6476657315da43b9ab13032c28706744e38534d807"
+                  }
+                },
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "9247ee8ede92f20d411e19dc053bdd3916a141ac5f38313e3388bc4ecdda4c36",
+                    "signature": "11eec34fb8101c84794e2d616a794b35924ae53dd951ac345b67f5120caffd03"
+                  }
+                },
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "cca8f25fbc5d3722a7ff327944f72f3159bb221c0e363a8d10786ba3413ac85d",
+                    "signature": "351e39c88854229cab2df4fd2bf078be98511fe61a93949074a0546b12988e0a"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "0659de5188e683adf1d517578da6316736ea2b0204df76cc49dd676029e39b71",
+                    "signature": "4056376a76161b995bed1408709cbbb2acd56521e64cdc0c843545ae0a69cc0f"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          },
+          {
+            "QuorumCertificate": {
+              "header_hash": "386694d688ba886e253bbd1c3014ac334af1f5ec61a2e6f471efaf4e3803f4d8",
+              "parent_id": "5a428b774d4c591f9a15a17b94c75d57d8c83921a7a283538fa538064b1361a5",
+              "signatures": [
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "f4f81ca73f5827857b217855a2492db3ead0a4fe32d0bba769b4896b281e236b",
+                    "signature": "dbce2a8232b7c195ea3cd3a6ca35cdd474946f3c21f9ac69bfffef411c71b609"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "a2754753d0d13af4e5d2af0da68518db0227df43bd48ee36f589950d6ced5461",
+                    "signature": "cbd152faade419ce02e4f6ff2091e6b7fb2de3beb8448553f5a2e45d117c3c00"
+                  }
+                },
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "406dc7519173b18501addce24e17055bf7f0af6ae1c52932d3af2c3c3470b803",
+                    "signature": "894f2513c9132fba5fa887b9f219cff796e20dcedec0fba6791bdd42065b6e05"
+                  }
+                },
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "80a509c17ec60851a6df72083257a826d3fc316d5eaf9d07edfdb1df64e0b257",
+                    "signature": "e5131f1dab6f3e9b3d98a2f6bc4b62e8d129590d83e7f1d8f0ebb20c756d1709"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          }
+        ]
+      },
+      "inclusion_proof": {
+        "leaf": {
+          "key": {
+            "bytes": [
+              70,
+              239,
+              169,
+              64,
+              241,
+              144,
+              114,
+              105,
+              0,
+              3,
+              76,
+              71,
+              72,
+              155,
+              188,
+              238,
+              131,
+              123,
+              24,
+              99,
+              2,
+              183,
+              154,
+              80,
+              45,
+              244,
+              46,
+              78,
+              74,
+              201,
+              61,
+              29
+            ]
+          },
+          "value_hash": [
+            70,
+            239,
+            169,
+            64,
+            241,
+            144,
+            114,
+            105,
+            0,
+            3,
+            76,
+            71,
+            72,
+            155,
+            188,
+            238,
+            131,
+            123,
+            24,
+            99,
+            2,
+            183,
+            154,
+            80,
+            45,
+            244,
+            46,
+            78,
+            74,
+            201,
+            61,
+            29
+          ]
+        },
+        "siblings": [
+          {
+            "Other": [
+              198,
+              1,
+              207,
+              131,
+              105,
+              57,
+              85,
+              84,
+              206,
+              111,
+              179,
+              179,
+              46,
+              165,
+              231,
+              51,
+              212,
+              136,
+              110,
+              207,
+              255,
+              148,
+              94,
+              74,
+              133,
+              229,
+              54,
+              117,
+              18,
+              221,
+              210,
+              191
+            ]
+          },
+          {
+            "Other": [
+              102,
+              156,
+              37,
+              118,
+              94,
+              183,
+              57,
+              61,
+              113,
+              35,
+              218,
+              137,
+              94,
+              29,
+              206,
+              162,
+              6,
+              120,
+              111,
+              131,
+              236,
+              136,
+              223,
+              134,
+              210,
+              135,
+              213,
+              122,
+              158,
+              15,
+              119,
+              82
+            ]
+          },
+          {
+            "Other": [
+              245,
+              51,
+              176,
+              183,
+              134,
+              97,
+              158,
+              175,
+              204,
+              169,
+              82,
+              235,
+              224,
+              52,
+              172,
+              67,
+              244,
+              129,
+              47,
+              17,
+              163,
+              224,
+              76,
+              57,
+              119,
+              29,
+              135,
+              101,
+              156,
+              171,
+              159,
+              9
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

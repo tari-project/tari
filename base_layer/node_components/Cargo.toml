@@ -1,0 +1,44 @@
+[package]
+name = "tari_node_components"
+description = "Tari Base Layer Node Components"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = []
+wasm = ["wasm-bindgen"]
+
+[dependencies]
+tari_common_types = { workspace = true }
+tari_hashing = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_utilities = { workspace = true, features = ["borsh"] }
+
+blake2 = "0.10"
+borsh = { workspace = true, features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
+digest = "0.10"
+primitive-types = { version = "0.12", features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+wasm-bindgen = { version = "0.2.100", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+getrandom = { version = "0.2", features = ["js"] }
+js-sys = { version = "0.3.55" }
+
+[dev-dependencies]
+
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+
+[package.metadata.cargo-machete]
+ignored = [
+] # this is so we can run cargo machete without getting false positive about macro dependancies

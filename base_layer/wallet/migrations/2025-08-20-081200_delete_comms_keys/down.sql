@@ -1,0 +1,1 @@
+-- This file should not undo anything in `up.sql` - comms service has been removed

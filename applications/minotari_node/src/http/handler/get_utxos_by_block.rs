@@ -1,0 +1,99 @@
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+use std::{fmt::Display, sync::Arc};
+
+use axum::{
+    Extension,
+    Json,
+    extract::Query,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use log::debug;
+use serde::Deserialize;
+use tari_common_types::types::HashOutput;
+use tari_core::{
+    base_node::rpc::{BaseNodeWalletQueryService, query_service},
+    chain_storage::BlockchainBackend,
+};
+use tari_transaction_components::rpc::models::{GetUtxosByBlockRequest, GetUtxosByBlockResponse};
+use tari_utilities::hex::Hex;
+use tonic::service::AxumBody;
+
+use crate::{
+    HttpCacheConfig,
+    http::{
+        cache_config::{RouteKey, apply_cache_control},
+        handler::{ErrorResponse, error_handler_with_message, util::from_hex},
+    },
+};
+
+const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_by_block";
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GetUtxosByBlockQueryParams {
+    #[serde(deserialize_with = "from_hex")]
+    #[param(value_type = String, example = "1a8da4213566e3cda06958c7ee46b87870a587fabb1c7f050f553b6da36cccb3")]
+    pub header_hash: Vec<u8>,
+}
+
+impl From<GetUtxosByBlockQueryParams> for GetUtxosByBlockRequest {
+    fn from(params: GetUtxosByBlockQueryParams) -> Self {
+        Self {
+            header_hash: params.header_hash,
+        }
+    }
+}
+
+#[utoipa::path(
+    get,
+    operation_id = "get_utxos_by_block",
+    params(GetUtxosByBlockQueryParams),
+    path = "/get_utxos_by_block",
+    responses(
+        (status = 200, description = "UTXOs returned successfully for the header", body = GetUtxosByBlockResponse),
+        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
+    ),
+)]
+pub async fn handle<B: BlockchainBackend + 'static>(
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
+    Query(params): Query<GetUtxosByBlockQueryParams>,
+    Extension(cache_cfg): Extension<Arc<HttpCacheConfig>>,
+) -> Result<Response<AxumBody>, (StatusCode, Json<ErrorResponse>)> {
+    debug!(target: LOG_TARGET, "Received get_utxos_by_block request: {params}");
+
+    let tip_info = query_service.get_tip_info().await.map_err(error_handler_with_message)?;
+    let tip_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+
+    let request = params.into();
+
+    let response = query_service
+        .get_utxos_by_block(request)
+        .await
+        .map_err(error_handler_with_message)?;
+    let height = response.height;
+    let body = Json(response);
+    let mut response = body.into_response();
+    apply_cache_control(
+        response.headers_mut(),
+        &cache_cfg,
+        RouteKey::GetUtxosByBlock,
+        tip_height,
+        height,
+    );
+    Ok(response)
+}
+
+impl Display for GetUtxosByBlockQueryParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GetUtxosByBlockQueryParams {{ header_hash: {} }}",
+            HashOutput::try_from(self.header_hash.as_slice())
+                .unwrap_or_default()
+                .to_hex()
+        )
+    }
+}

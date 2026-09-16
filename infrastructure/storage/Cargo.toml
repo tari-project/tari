@@ -1,0 +1,21 @@
+[package]
+name = "tari_storage"
+description = "Key-Value store API for the Tari project"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+bincode = "1.1"
+log = { workspace = true }
+lmdb-zero = "0.4.4"
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rand = { workspace = true }
+tari_utilities = { workspace = true, features = ["borsh"] }

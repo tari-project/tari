@@ -1,0 +1,49 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+package tari.types;
+
+// Define the data type that is used to store results of `Blake2b<U32>`
+message HashOutput {
+    bytes data = 1;
+}
+
+// Commitment wrapper
+message Commitment {
+    bytes data = 1;
+}
+
+// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+// employed by redefining this type.
+message Signature {
+    bytes public_nonce = 1;
+    bytes signature = 2;
+}
+
+// Signature containing the signer that signed it
+message SignerSignature {
+    bytes signer = 1;
+    Signature signature = 2;
+}
+
+// Define the explicit ComAndPubSignature implementation for the Tari base layer. A different signature scheme 
+// can be employed by redefining this type.
+message ComAndPubSignature {
+    bytes ephemeral_commitment = 1;
+    bytes ephemeral_pubkey = 2;
+    bytes u_a = 3;
+    bytes u_x = 4;
+    bytes u_y = 5;
+}
+
+// PrivateKey wrapper
+message PrivateKey {
+    bytes data = 1;
+}
+
+/// Range proof
+message RangeProof {
+    bytes proof_bytes = 1;
+}

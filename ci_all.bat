@@ -1,0 +1,1 @@
+cargo +nightly ci-fmt && cargo machete && cargo ci-test && cargo ci-cucumber

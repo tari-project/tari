@@ -1,0 +1,20 @@
+{
+  "name": "@tari/base-node-grpc-client",
+  "version": "0.0.1",
+  "description": "GRPC client for Tari Base Node",
+  "main": "./src/index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "author": "Tari development community",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.2.3",
+    "@grpc/proto-loader": "^0.7.0",
+    "fs": "^0.0.1-security",
+    "grpc-promise": "^1.4.0",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "jest": "^27.1.1"
+  }
+}

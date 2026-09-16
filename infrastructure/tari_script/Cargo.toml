@@ -1,0 +1,28 @@
+[package]
+name = "tari_script"
+description = "Tari script library"
+categories = ["cryptography"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tari_crypto = { workspace = true }
+tari_max_size = { workspace = true }
+tari_utilities = { workspace = true }
+
+blake2 = "0.10"
+borsh = { workspace = true }
+digest = "0.10"
+integer-encoding = "3.0.2"
+serde = { workspace = true }
+sha2 = "0.10"
+sha3 = "0.10"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

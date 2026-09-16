@@ -1,0 +1,180 @@
+// Copyright 2019. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{marker::PhantomData, sync::Arc};
+
+use log::*;
+use tari_common::configuration::Network;
+use tari_comms::NodeIdentity;
+use tari_service_framework::{
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+    async_trait,
+    reply_channel,
+};
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+use tari_transaction_key_manager::legacy_key_manager::{
+    LegacyTransactionKeyManagerInterface,
+    wallet_types::LegacyWalletType,
+};
+use tokio::sync::broadcast;
+
+use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::HttpClientFactory,
+    connectivity_service::WalletConnectivityHandle,
+    output_manager_service::handle::OutputManagerHandle,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        handle::TransactionServiceHandle,
+        service::TransactionService,
+        storage::database::{TransactionBackend, TransactionDatabase},
+    },
+    utxo_scanner_service::handle::UtxoScannerHandle,
+};
+
+pub mod config;
+pub mod error;
+pub mod handle;
+pub mod protocols;
+pub mod service;
+pub mod storage;
+mod utc;
+
+const LOG_TARGET: &str = "wallet::transaction_service";
+
+pub struct TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
+where
+    T: TransactionBackend,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
+{
+    config: TransactionServiceConfig,
+    tx_backend: Option<T>,
+    node_identity: Arc<NodeIdentity>,
+    network: Network,
+    consensus_manager: ConsensusManager,
+    factories: CryptoFactories,
+    wallet_type: Arc<LegacyWalletType>,
+    _phantom_data_key_manager: PhantomData<TKeyManagerInterface>,
+    _phantom_data_http_interface: PhantomData<THttpClientFactory>,
+}
+
+impl<T, TKeyManagerInterface, THttpClientFactory>
+    TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
+where
+    T: TransactionBackend,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
+{
+    pub fn new(
+        config: TransactionServiceConfig,
+        backend: T,
+        node_identity: Arc<NodeIdentity>,
+        network: Network,
+        consensus_manager: ConsensusManager,
+        factories: CryptoFactories,
+        wallet_type: Arc<LegacyWalletType>,
+    ) -> Self {
+        Self {
+            config,
+            tx_backend: Some(backend),
+            node_identity,
+            network,
+            consensus_manager,
+            factories,
+            wallet_type,
+            _phantom_data_key_manager: Default::default(),
+            _phantom_data_http_interface: Default::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl<T, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
+    for TransactionServiceInitializer<T, TKeyManagerInterface, THttpClientFactory>
+where
+    T: TransactionBackend + 'static,
+    TKeyManagerInterface: LegacyTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
+{
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        let (sender, receiver) = reply_channel::unbounded();
+
+        let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
+
+        let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
+
+        // Register handle before waiting for handles to be ready
+        context.register_handle(transaction_handle);
+
+        let tx_backend = self
+            .tx_backend
+            .take()
+            .expect("Cannot start Transaction Service without providing a backend");
+
+        let node_identity = self.node_identity.clone();
+        let consensus_manager = self.consensus_manager.clone();
+        let factories = self.factories.clone();
+        let config = self.config.clone();
+        let wallet_type = self.wallet_type.clone();
+        let network = self.network;
+
+        context.spawn_when_ready(move |handles| async move {
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
+            let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
+            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+            let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
+
+            let result = TransactionService::new(
+                config,
+                TransactionDatabase::new(tx_backend),
+                receiver,
+                output_manager_service,
+                core_key_manager_service,
+                connectivity,
+                publisher,
+                node_identity,
+                network,
+                consensus_manager,
+                factories,
+                handles.get_shutdown_signal(),
+                base_node_service_handle,
+                wallet_type,
+                utxo_scanner_handle,
+            )
+            .await
+            .expect("Could not initialize Transaction Manager Service")
+            .start()
+            .await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Transaction Service error: {e}");
+            }
+            info!(target: LOG_TARGET, "Transaction Service shutdown");
+        });
+
+        Ok(())
+    }
+}

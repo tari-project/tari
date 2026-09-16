@@ -1,0 +1,1 @@
+ALTER TABLE dht_settings RENAME TO dht_metadata;

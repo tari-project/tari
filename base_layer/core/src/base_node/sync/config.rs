@@ -1,0 +1,97 @@
+//  Copyright 2020, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
+use tari_comms::peer_manager::NodeId;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlockchainSyncConfig {
+    /// The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer
+    /// will be selected. If there are no further peers the sync will be restarted with an increased by
+    /// `max_latency_increase`.
+    #[serde(with = "serializers::seconds")]
+    pub initial_max_sync_latency: Duration,
+    /// If all sync peers exceed latency, increase allowed latency by this value
+    #[serde(with = "serializers::seconds")]
+    pub max_latency_increase: Duration,
+    /// Longer ban period for potentially malicious infractions (protocol violations etc.)
+    #[serde(with = "serializers::seconds")]
+    pub ban_period: Duration,
+    /// Short ban period for infractions that are likely not malicious (slow to respond, spotty connections etc)
+    #[serde(with = "serializers::seconds")]
+    pub short_ban_period: Duration,
+    /// An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty, sync peers
+    /// are chosen based on their advertised chain metadata.
+    pub forced_sync_peers: Vec<NodeId>,
+    /// An allowed list of nodes which should always be connected to
+    pub monitored_peers: Vec<NodeId>,
+    /// Number of threads to use for validation
+    pub validation_concurrency: usize,
+    /// The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for
+    /// sync.
+    #[serde(with = "serializers::seconds")]
+    pub rpc_deadline: Duration,
+    /// The number of initial rounds of seed peer based bootstrapping.
+    #[serde(default = "default_num_initial_sync_rounds_seed_bootstrap")]
+    pub num_initial_sync_rounds_seed_bootstrap: usize,
+    /// The maximum reorg depth allowed during header synchronization.
+    #[serde(default = "max_reorg_depth_allowed")]
+    pub max_reorg_depth_allowed: usize,
+}
+
+fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
+    // This should ideally match or be related to DhtConfig.network_discovery.max_seed_peer_sync_count
+    // For now, a sensible default. This will be overridden by DhtEvent if DhtNetworkDiscoveryRoundInfo provides
+    // total_rounds.
+    5
+}
+
+fn max_reorg_depth_allowed() -> usize {
+    10000
+}
+
+impl Default for BlockchainSyncConfig {
+    fn default() -> Self {
+        Self {
+            initial_max_sync_latency: Duration::from_secs(240), // Syncing many full blocks over tor require this
+            max_latency_increase: Duration::from_secs(10),      // Syncing many full blocks over tor require this
+            ban_period: Duration::from_secs(60 * 60 * 2),       // 2 hours
+            short_ban_period: Duration::from_secs(240),         // 4 mins
+            forced_sync_peers: Default::default(),
+            monitored_peers: Default::default(),
+            validation_concurrency: 6,
+            rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
+            num_initial_sync_rounds_seed_bootstrap: default_num_initial_sync_rounds_seed_bootstrap(),
+            max_reorg_depth_allowed: max_reorg_depth_allowed(),
+        }
+    }
+}
+
+impl BlockchainSyncConfig {
+    // Add an accessor if one doesn't exist for the new field
+    pub fn num_initial_sync_rounds_seed_bootstrap(&self) -> usize {
+        self.num_initial_sync_rounds_seed_bootstrap
+    }
+}

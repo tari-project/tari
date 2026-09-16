@@ -1,0 +1,39 @@
+[package]
+name = "minotari_ledger_wallet_comms"
+description = "Communication utilities for the Minotari Ledger Wallet application"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Allows a test harness to register its own `LedgerTransport` (see `ledger_wallet::register_transport`), so that the
+# ledger client can be pointed at a Speculos simulator instead of at a HID device.
+#
+# NEVER enable this for a shipped build. It is off by default and the only crate that turns it on is
+# `minotari_ledger_wallet_comms_testing`, which is deliberately NOT a member of this workspace - if it were, Cargo
+# would unify this feature into the one `comms` rlib the shipped console wallet links. See the comment on
+# `[workspace] exclude` in the root `Cargo.toml`. On its own the feature adds a registry that nothing calls; it is
+# the pairing with that crate that makes a connection redirectable.
+test_transport = []
+
+[dependencies]
+tari_utilities = { workspace = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true }
+tari_script = { workspace = true }
+tari_crypto = { workspace = true }
+
+minotari_ledger_wallet_common = { workspace = true }
+semver = "1.0"
+borsh = { workspace = true }
+dialoguer = { version = "0.11" }
+ledger-transport = { version = "0.11" }
+ledger-transport-hid = { version = "0.11" }
+log = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = {  workspace = true }

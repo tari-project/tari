@@ -1,0 +1,99 @@
+// Copyright 2024 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+use blake2::Blake2b;
+use digest::consts::U64;
+use tari_crypto::{hash_domain, hasher};
+// These are the hash domains that are also used in tari-ootle.
+
+hash_domain!(ConfidentialOutputHashDomain, "com.tari.ootle.output", 0);
+
+// Hash domain used to derive the final AEAD encryption key for encrypted data in UTXOs
+hash_domain!(
+    TransactionSecureNonceKdfDomain,
+    "com.tari.base_layer.core.transactions.secure_nonce_kdf",
+    0
+);
+
+hash_domain!(
+    ValidatorNodeMerkleHashDomain,
+    "com.tari.base_layer.core.validator_node_mmr",
+    1
+);
+
+hash_domain!(
+    WalletOutputEncryptionKeysDomain,
+    "com.tari.base_layer.wallet.output_encryption_keys",
+    1
+);
+
+// Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
+// signature challenge
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);
+
+// Hash domain for Payment Reference (PayRef) generation
+hash_domain!(
+    PaymentReferenceHashDomain,
+    "com.tari.base_layer.wallet.payment_reference",
+    1
+);
+
+hash_domain!(
+    ValidatorNodeHashDomain,
+    "com.tari.base_layer.core.transactions.side_chain.validator_node",
+    0
+);
+
+hash_domain!(KeyManagerDomain, "com.tari.base_layer.key_manager", 1);
+
+hash_domain!(
+    WalletOutputRewindKeysDomain,
+    "com.tari.base_layer.wallet.output_rewind_keys",
+    1
+);
+
+hash_domain!(
+    WalletOutputSpendingKeysDomain,
+    "com.tari.base_layer.wallet.output_spending_keys",
+    1
+);
+
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);
+
+hasher!(
+    Blake2b<U64>,
+    WalletHasher,
+    "com.tari.base_layer.wallet",
+    1,
+    wallet_hasher
+);
+
+hash_domain!(
+    BulletRangeProofHashDomain,
+    "com.tari.base_layer.common_types.bullet_rangeproofs",
+    1
+);
+
+hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
+
+hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
+
+// Hash domain for the offline signing JSON payload integrity signature.
+// The view wallet signs the serialised payload bytes under this domain so
+// the offline signer can verify authenticity before committing the spend keys.
+hash_domain!(
+    OfflineSigningPayloadHashDomain,
+    "com.tari.base_layer.wallet.offline_signing.payload_integrity",
+    1
+);

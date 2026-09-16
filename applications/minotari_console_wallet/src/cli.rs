@@ -1,0 +1,717 @@
+//  Copyright 2022. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fmt::{Debug, Display, Formatter},
+    path::PathBuf,
+    str::FromStr,
+    time::Duration,
+};
+
+use chrono::{DateTime, Utc};
+use clap::{Args, Parser, Subcommand};
+use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
+use tari_common::configuration::{ConfigOverrideProvider, Network};
+use tari_common_types::{
+    epoch::VnEpoch,
+    seeds::seed_words::SeedWords,
+    tari_address::TariAddress,
+    types::CompressedCommitment,
+};
+use tari_comms::multiaddr::Multiaddr;
+use tari_transaction_components::tari_amount::{self, MicroMinotari};
+use tari_utilities::{
+    SafePassword,
+    hex::{Hex, HexError},
+};
+use thiserror::Error;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct Cli {
+    #[clap(flatten)]
+    pub common: CommonCliArgs,
+    /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
+    /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
+    /// possible.
+    #[clap(long, env = "MINOTARI_WALLET_PASSWORD", hide_env_values = true)]
+    pub password: Option<SafePassword>,
+    /// Change the password for the console wallet and exit
+    #[clap(long, alias = "update-password")]
+    pub change_password: bool,
+    /// Force wallet recovery
+    #[clap(long, alias = "recover")]
+    pub recovery: bool,
+    /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
+    /// separated. e.g. --seed-words "seed1 seed2 ..."
+    #[clap(
+        long,
+        alias = "seed-words",
+        env = "MINOTARI_WALLET_SEED_WORDS",
+        hide_env_values = true
+    )]
+    pub seed_words: Option<SeedWords>,
+    /// Supply the optional file name to save the wallet seed words into
+    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"])]
+    pub seed_words_file_name: Option<PathBuf>,
+    /// Run in non-interactive mode, with no UI.
+    #[clap(short, long, alias = "non-interactive")]
+    pub non_interactive_mode: bool,
+    /// Path to input file of commands
+    #[clap(short, long, aliases = &["input", "script"])]
+    pub input_file: Option<PathBuf>,
+    /// Single input command
+    #[clap(long)]
+    pub command: Option<String>,
+    /// Wallet notify script
+    #[clap(long, alias = "notify")]
+    pub wallet_notify: Option<PathBuf>,
+    /// Automatically exit wallet command/script mode when done
+    #[clap(long, alias = "auto-exit")]
+    pub command_mode_auto_exit: bool,
+    #[clap(long, env = "MINOTARI_WALLET_ENABLE_GRPC", alias = "enable-grpc")]
+    pub grpc_enabled: bool,
+    #[clap(long, env = "MINOTARI_WALLET_GRPC_ADDRESS")]
+    pub grpc_address: Option<String>,
+    #[clap(subcommand)]
+    pub command2: Option<CliCommands>,
+    #[clap(long, alias = "profile")]
+    pub profile_with_tokio_console: bool,
+    // For read only wallets
+    #[clap(long, env = "MINOTARI_WALLET_VIEW_PRIVATE_KEY", hide_env_values = true)]
+    pub view_private_key: Option<String>,
+    #[clap(long, env = "MINOTARI_WALLET_SPEND_KEY", hide_env_values = true)]
+    pub spend_key: Option<String>,
+    #[clap(long)]
+    pub birthday: Option<u16>,
+    /// Path to the libtor data directory
+    #[clap(short = 'z', long)]
+    pub libtor_data_dir: Option<PathBuf>,
+    /// Directory where burn proof files are written after a burn transaction completes. If relative, resolved against
+    /// base-dir. Defaults to the platform shared data directory (e.g. ~/.local/share/tari/burn_proofs).
+    #[clap(long, alias = "burn-proof-out")]
+    pub burn_proof_out: Option<PathBuf>,
+    /// Skip wallet recovery
+    #[clap(long)]
+    pub skip_recovery: bool,
+    /// Print all TARI_* and MINOTARI_* environment variables and exit.
+    /// Useful for verifying which environment variables are set before starting the wallet.
+    #[clap(long)]
+    pub print_env: bool,
+}
+
+impl ConfigOverrideProvider for Cli {
+    /// Get the configuration property overrides for the given network. In case of duplicates, the final override
+    /// added to the list will have preference.
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
+        // Config file overrides
+        let mut overrides = vec![("wallet.network".to_string(), network.to_string())];
+        overrides.push(("wallet.override_from".to_string(), network.to_string()));
+        overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
+        // Command-line overrides
+        let command_line_overrides = self.common.get_config_property_overrides(network);
+        command_line_overrides.iter().for_each(|(k, v)| {
+            replace_or_add_override(&mut overrides, k, v);
+        });
+        // Logical overrides based on command-line flags - Either of these configs enable grpc
+        if let Some(ref addr) = self.grpc_address {
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
+            replace_or_add_override(&mut overrides, "wallet.grpc_address", addr);
+        } else if self.grpc_enabled {
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
+        } else {
+            // GRPC is disabled
+        }
+        if let Some(ref path) = self.burn_proof_out {
+            replace_or_add_override(&mut overrides, "wallet.burn_proofs_dir", &path.display().to_string());
+        }
+        overrides
+    }
+}
+
+fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
+        overrides.remove(index);
+    }
+    overrides.push((key.to_string(), value.to_string()));
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Subcommand, Clone)]
+pub enum CliCommands {
+    GetBalance,
+    PreMineSpendGetOutputStatus,
+    PreMineStart(PreMineStartSessionArgs),
+    PreMineStartParty(PreMineSpendPartyDetailsArgs),
+    PreMineEncumber(PreMineSpendEncumberAggregateUtxoArgs),
+    PreMineSigs(PreMineSpendInputOutputSigArgs),
+    PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
+    PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
+    SendOneSidedToStealthAddress(SendMinotariArgs),
+    ReplaceByFee(ReplaceByFeeArgs),
+    UserPayForFee(UserPayForFeeArgs),
+    MakeItRain(MakeItRainArgs),
+    CoinSplit(CoinSplitArgs),
+    Whois(WhoisArgs),
+    ExportUtxos(ExportUtxosArgs),
+    ExportTx(ExportTxArgs),
+    ImportTx(ImportTxArgs),
+    ExportSpentUtxos(ExportUtxosArgs),
+    CountUtxos,
+    InitShaAtomicSwap(SendMinotariArgs),
+    FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
+    ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
+    RegisterValidatorNode(RegisterValidatorNodeArgs),
+    CreateTlsCerts,
+    Sync(SyncArgs),
+    ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
+    ImportPaperWallet(ImportPaperWalletArgs),
+
+    GetMultisigUtxoData(GetMultisigUtxoDataArgs),
+    SendMultisigUtxo(SendMultisigUtxoArgs),
+    CreateMultisigUtxo(CreateMultisigUtxoArgs),
+
+    ShowPayRef(ShowPayRefArgs),
+    FindPayRef(FindPayRefArgs),
+    ListTx,
+
+    PrepareDepositMultisigTransaction(PrepareDepositMultisigTransactionArgs),
+    PrepareWithdrawMultisigTransaction(PrepareWithdrawMultisigTransactionArgs),
+
+    PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
+    SignOneSidedTransaction(SignOneSidedTransactionArgs),
+
+    SignOneSidedDepositMultisigTransaction(SignOneSidedTransactionArgs),
+    SignOneSidedWithdrawMultisigTransaction(SignOneSidedTransactionArgs),
+
+    BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
+
+    SignMessage(SignMessageArgs),
+    SignScriptMessage(SignScriptMessageArgs),
+    RescanWallet(RescanWalletArgs),
+    ExportAudit(ExportAuditArgs),
+    DebugTransaction(DebugTransactionArgs),
+    ValidateTransaction(ValidateTransactionArgs),
+    ValidateOutputs(ValidateOutputsArgs),
+    RevalidateAllTransactions,
+    RevalidateAllOutputs,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareDepositMultisigTransactionArgs {
+    #[clap(long)]
+    pub amount: MicroMinotari,
+    /// The number of required signatures
+    #[clap(long)]
+    pub party_number: u8,
+    #[clap(long, num_args = 1..)]
+    /// list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+    #[clap(long)]
+    /// The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareWithdrawMultisigTransactionArgs {
+    #[clap(long)]
+    pub utxo_commitment: String,
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+    #[clap(long)]
+    /// The recipient address that will receive the funds
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareOneSidedTransactionForSigningArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct BroadcastSignedOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignScriptMessageArgs {
+    /// The message to be signed (UTF-8 string)
+    #[clap(long)]
+    pub message: String,
+    /// Optional output file path
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    /// Optional sender offset public key to use for signing
+    #[clap(long)]
+    pub sender_offset_key: Option<UniPublicKey>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SendMinotariArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ReplaceByFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    #[clap(short, long)]
+    pub fee_increase: MicroMinotari,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UserPayForFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    pub fee: MicroMinotari,
+    pub destination: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineStartSessionArgs {
+    #[clap(long, default_value = "1")]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub recipient_info: Vec<CliRecipientInfo>,
+    #[clap(long)]
+    pub verify_unspent_outputs: bool,
+    #[clap(long)]
+    pub use_pre_mine_input_file: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CliRecipientInfo {
+    pub output_indexes: Vec<usize>,
+    pub recipient_address: TariAddress,
+}
+
+impl FromStr for CliRecipientInfo {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Parse 'RecipientInfo' from "[<v1>,<v2>,<v3>]:<recipient_address>"
+        if !s.contains(':') {
+            return Err("Invalid 'recipient-info', could not find address separator ':'".to_string());
+        }
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() != 2 {
+            return Err(format!(
+                "Invalid 'recipient-info', needs exactly 2 parts, found {}",
+                parts.len()
+            ));
+        }
+
+        // Parse output indexes
+        if !parts.first().expect("Already checked").starts_with('[') &&
+            !parts.first().expect("Already checked").ends_with(']')
+        {
+            return Err("Invalid 'recipient-info' part 1; array bounds must be indicated with '[' and ']'".to_string());
+        }
+        let binding = parts
+            .first()
+            .expect("Already checked")
+            .replace("[", "")
+            .replace("]", "");
+        let parts_0 = binding.split(',').collect::<Vec<&str>>();
+        let output_indexes = parts_0
+            .iter()
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| format!("'recipient_info' - invalid output_index: {e}"))
+            })
+            .collect::<Result<Vec<usize>, String>>()?;
+
+        // Parse recipient address
+        let recipient_address = TariAddress::from_base58(parts.get(1).expect("Already checked"))
+            .map_err(|e| format!("'recipient_info' - invalid recipient address: {e}"))?;
+
+        Ok(CliRecipientInfo {
+            output_indexes,
+            recipient_address,
+        })
+    }
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendPartyDetailsArgs {
+    #[clap(long)]
+    pub input_file: Option<String>,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(long, default_value = "")]
+    pub alias: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendEncumberAggregateUtxoArgs {
+    #[clap(long, default_value = "")]
+    pub session_id: String,
+    #[clap(long)]
+    pub member: Vec<String>,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine encumber aggregate UTXO")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendInputOutputSigArgs {
+    #[clap(long, default_value = "")]
+    pub session_id: String,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendAggregateTransactionArgs {
+    #[clap(long, default_value = "")]
+    pub session_id: String,
+    #[clap(long)]
+    pub member: Vec<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendBackupUtxoArgs {
+    #[clap(long, default_value = "1")]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(long)]
+    pub output_index: usize,
+    #[clap(long)]
+    pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine backup UTXO")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct MakeItRainArgs {
+    pub destination: TariAddress,
+    #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
+    pub start_amount: MicroMinotari,
+    #[clap(short, long, alias = "tps", default_value_t = 25.0)]
+    pub transactions_per_second: f64,
+    #[clap(short, long, value_parser = parse_duration, default_value = "60")]
+    pub duration: Duration,
+    #[clap(long, default_value_t=tari_amount::T)]
+    pub increase_amount: MicroMinotari,
+    #[clap(long, value_parser = parse_start_time)]
+    pub start_time: Option<DateTime<Utc>>,
+    #[clap(long, alias = "stealth-one-sided")]
+    pub one_sided: bool,
+    #[clap(short, long, default_value = "Make it rain")]
+    pub payment_id: String,
+}
+
+impl MakeItRainArgs {
+    pub const fn transaction_type(&self) -> MakeItRainTransactionType {
+        MakeItRainTransactionType::StealthOneSided
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MakeItRainTransactionType {
+    StealthOneSided,
+}
+
+impl Display for MakeItRainTransactionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    let mut start_time = Utc::now();
+    if !arg.is_empty() && arg.to_uppercase() != "NOW" {
+        start_time = arg.parse()?;
+    }
+    Ok(start_time)
+}
+
+fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
+    let seconds = arg.parse()?;
+    Ok(std::time::Duration::from_secs(seconds))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CoinSplitArgs {
+    pub amount_per_split: MicroMinotari,
+    pub num_splits: usize,
+    #[clap(short, long, default_value = "1")]
+    pub fee_per_gram: MicroMinotari,
+    #[clap(short, long, default_value = "Coin split")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct WhoisArgs {
+    pub public_key: UniPublicKey,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportUtxosArgs {
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+    pub with_private_keys: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportTxArgs {
+    pub tx_id: u64,
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportViewKeyAndSpendKeyArgs {
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+fn parse_utc_datetime(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    if arg.to_uppercase() == "NOW" {
+        return Ok(Utc::now());
+    }
+    // Try RFC3339 first, then a few common formats
+    if let Ok(dt) = DateTime::parse_from_rfc3339(arg) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    for fmt in &["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"] {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(arg, fmt) {
+            return Ok(dt.and_utc());
+        }
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(arg, fmt) {
+            return Ok(d.and_hms_opt(0, 0, 0).expect("valid hms").and_utc());
+        }
+    }
+    // Trigger a parse error by parsing with rfc3339 to return the right error type
+    DateTime::parse_from_rfc3339(arg).map(|dt| dt.with_timezone(&Utc))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ExportAuditArgs {
+    /// Output file path for the audit CSV
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+    /// Optional start date/time filter (RFC3339, e.g. "2021-01-01T00:00:00Z" or "2021-01-01")
+    #[clap(long, value_parser = parse_utc_datetime)]
+    pub start_date: Option<DateTime<Utc>>,
+    /// Optional end date/time filter (RFC3339, e.g. "2021-12-31T23:59:59Z" or "2021-12-31")
+    #[clap(long, value_parser = parse_utc_datetime)]
+    pub end_date: Option<DateTime<Utc>>,
+    /// Conversion rate from XTM to the selected fiat currency (e.g. 3130.0)
+    #[clap(long)]
+    pub conversion_rate: Option<f64>,
+    /// Fiat currency ticker for conversion (default: USD)
+    #[clap(long, default_value = "USD")]
+    pub currency: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ImportPaperWalletArgs {
+    #[clap(short, long, default_value = "")]
+    pub seed_words: String,
+    #[clap(short, long, default_value = "")]
+    pub cipher_seed: String,
+    #[clap(short, long, default_value = "")]
+    pub passphrase: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ImportTxArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SetBaseNodeArgs {
+    pub public_key: UniPublicKey,
+    pub address: Multiaddr,
+}
+
+#[derive(Debug, Error, PartialEq)]
+enum CliParseError {
+    #[error("Could not convert into hex: `{0}`")]
+    HexError(String),
+}
+
+impl From<HexError> for CliParseError {
+    fn from(e: HexError) -> Self {
+        CliParseError::HexError(e.to_string())
+    }
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FinaliseShaAtomicSwapArgs {
+    #[clap(short, long, value_parser = parse_hex, required = true)]
+    pub output_hash: Vec<Vec<u8>>,
+    #[clap(long)]
+    pub pre_image: UniPublicKey,
+    #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
+    pub payment_id: String,
+}
+
+fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
+    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{e}")))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ClaimShaAtomicSwapRefundArgs {
+    #[clap(short, long, value_parser = parse_hex, required = true)]
+    pub output_hash: Vec<Vec<u8>>,
+    #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RegisterValidatorNodeArgs {
+    pub amount: MicroMinotari,
+    pub validator_node_public_key: UniPublicKey,
+    pub validator_node_public_nonce: UniPublicKey,
+    #[clap(long, value_parser = parse_hex, required = true)]
+    pub validator_node_signature: Vec<Vec<u8>>,
+    pub validator_node_claim_public_key: UniPublicKey,
+    pub epoch: VnEpoch,
+    #[clap(long, value_parser = parse_hex, required = false)]
+    pub sidechain_deployment_key: Vec<Vec<u8>>,
+    #[clap(short, long, default_value = "Registering VN")]
+    pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SyncArgs {
+    #[clap(short, long, default_value = "0")]
+    pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ShowPayRefArgs {
+    pub transaction_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FindPayRefArgs {
+    pub payment_reference_hex: String,
+}
+
+// Helper function to parse CompressedCommitment from hex string
+fn parse_compressed_commitment(s: &str) -> Result<CompressedCommitment, String> {
+    CompressedCommitment::from_hex(s).map_err(|e| format!("Invalid CompressedCommitment: {}", e))
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SendMultisigUtxoArgs {
+    #[clap(long, value_parser = parse_compressed_commitment)]
+    //  The commitment of the multisig UTXO
+    pub utxo_commitment: CompressedCommitment,
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+
+    // signatures
+    #[clap(short, long, value_parser = parse_hex, value_delimiter = ',', num_args = 1..)]
+    pub schnorr_signatures: Vec<Vec<u8>>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct GetMultisigUtxoDataArgs {
+    //  The commitment of the multisig UTXO
+    #[clap(long, value_parser = parse_compressed_commitment)]
+    pub utxo_commitment: CompressedCommitment,
+
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct CreateMultisigUtxoArgs {
+    #[clap(long)]
+    //  amount on microtari
+    pub amount: MicroMinotari,
+
+    // How many signatures are required to spend the multisig UTXO
+    #[clap(long, default_value = "2")]
+    pub party_number: u8,
+
+    #[clap(long, num_args = 1..)]
+    // list of public keys of the parties involved in the multisig
+    pub public_keys: Vec<UniPublicKey>,
+
+    #[clap(long)]
+    // The recipient address of the multisig UTXO
+    pub recipient_address: TariAddress,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct DebugTransactionArgs {
+    pub tx_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateTransactionArgs {
+    pub tx_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct RescanWalletArgs {
+    #[clap(short, long, default_value = "0")]
+    pub from_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ValidateOutputsArgs {
+    /// Hex-encoded commitments of outputs to validate
+    #[clap(long, num_args = 1.., required = true)]
+    pub commitments: Vec<String>,
+}

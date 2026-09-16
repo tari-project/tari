@@ -1,0 +1,322 @@
+// Copyright 2020. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{sync::Arc, time::Duration};
+
+use log::*;
+use minotari_wallet::{
+    base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
+    output_manager_service::handle::OutputManagerEvent,
+    transaction_service::handle::TransactionEvent,
+    utxo_scanner_service::handle::UtxoScannerEvent,
+};
+use tari_common_types::transaction::TxId;
+use tokio::sync::{RwLock, broadcast};
+
+use crate::{
+    notifier::Notifier,
+    ui::state::{AppStateInner, EventListItem},
+};
+
+const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
+
+pub struct WalletEventMonitor {
+    app_state_inner: Arc<RwLock<AppStateInner>>,
+    balance_enquiry_debounce_tx: broadcast::Sender<()>,
+}
+
+impl WalletEventMonitor {
+    pub fn new(
+        app_state_inner: Arc<RwLock<AppStateInner>>,
+        balance_enquiry_debounce_tx: broadcast::Sender<()>,
+    ) -> Self {
+        Self {
+            app_state_inner,
+            balance_enquiry_debounce_tx,
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub async fn run(mut self, notifier: Notifier) {
+        let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
+        let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
+
+        let mut output_manager_service_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_output_manager_service_event_stream();
+
+        let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
+
+        let mut utxo_scanner_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_wallet_utxo_scanner()
+            .get_event_receiver();
+
+        info!(target: LOG_TARGET, "Wallet Event Monitor starting");
+        loop {
+            tokio::select! {
+                result = transaction_service_events.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Wallet Event Monitor received wallet transaction service event {msg:?}"
+                            );
+                            self.app_state_inner.write().await.add_event(EventListItem{
+                                event_type: "TransactionEvent".to_string(),
+                                desc: (*msg).to_string()
+                            });
+                            match (*msg).clone() {
+                                TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_received(tx_id);
+                                    self.add_notification(
+                                        format!("Finalized Transaction Received - TxId: {tx_id}")
+                                    ).await;
+                                },
+                                TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
+                                TransactionEvent::DetectedTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
+                                    self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
+                                    self.add_notification(
+                                        format!(
+                                            "Transaction Mined Unconfirmed with {num_confirmations} confirmations - TxId: {tx_id}"
+                                        )
+                                    ).await;
+                                },
+                                TransactionEvent::TransactionMined{tx_id, is_valid: _} |
+                                TransactionEvent::DetectedTransactionConfirmed{tx_id, is_valid: _}=> {
+                                    self.trigger_confirmations_cleanup(tx_id).await;
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_mined(tx_id);
+                                    self.add_notification(format!("Transaction Confirmed - TxId: {tx_id}")).await;
+                                },
+                                TransactionEvent::TransactionCancelled(tx_id, _, _) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_cancelled(tx_id);
+                                },
+                                TransactionEvent::ReceivedTransaction(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(format!("Transaction Received - TxId: {tx_id}")).await;
+                                },
+                                TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(
+                                        format!("Transaction Reply Received - TxId: {tx_id}")
+                                    ).await;
+                                },
+                                TransactionEvent::TransactionBroadcast(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(
+                                        format!("Transaction Broadcast to Mempool - TxId: {tx_id}")
+                                    ).await;
+                                },
+                                TransactionEvent::TransactionCompletedImmediately(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_sent_or_queued(tx_id, true);
+                                },
+                                TransactionEvent::TransactionSendResult(tx_id, status) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    notifier.transaction_sent_or_queued(tx_id, status.direct_send_result || status.store_and_forward_send_result);
+                                },
+                                TransactionEvent::TransactionValidationStateChanged{..} => {
+                                    self.trigger_full_tx_state_refresh().await;
+                                    self.trigger_balance_refresh();
+                                },
+                                TransactionEvent::TransactionImported(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(
+                                        format!("Transaction Imported - TxId: {tx_id}")
+                                    ).await;
+                                },
+                                // Only the above variants trigger state refresh
+                                _ => (),
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {n} from Transaction events");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
+                    }
+                },
+                result = utxo_scanner_events.recv() => match result {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::Progress {
+                                    current_height,tip_height, latency, current_node
+                                }=> {
+                                    self.trigger_wallet_scanned_height_update(current_height, tip_height).await;
+                                    self.trigger_wallet_latency_node_update(latency, current_node).await;
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                latency, current_node,
+                                    ..
+                                }=> {
+                                    self.trigger_wallet_scanned_height_update(final_height,final_height).await;
+                                    self.trigger_wallet_latency_node_update(latency, current_node).await;
+                                    if self.should_we_trigger_tx_update_for_payref().await{
+                                        self.trigger_full_tx_state_refresh().await;
+                                    }
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {e}");
+                        },
+                },
+                result = base_node_events.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {msg:?}");
+                            let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone();
+                                self.trigger_base_node_state_refresh(state).await;
+                                if self.should_we_trigger_tx_update_for_payref().await{
+                                    self.trigger_full_tx_state_refresh().await;
+                                }
+
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {n} from Base node Service events");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
+                    }
+                },
+                result = output_manager_service_events.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {msg:?}");
+                            if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {
+                                self.trigger_balance_refresh();
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {n} from Output Manager Service events");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
+                    }
+                },
+                _ = shutdown_signal.wait() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Wallet Event Monitor shutting down because the shutdown signal was received"
+                    );
+                    break;
+                },
+            }
+        }
+    }
+
+    async fn trigger_tx_state_refresh(&mut self, tx_id: TxId) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_single_transaction_state(tx_id).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn trigger_confirmations_refresh(&mut self, tx_id: TxId, confirmations: u64) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_single_confirmation_state(tx_id, confirmations).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn trigger_confirmations_cleanup(&mut self, tx_id: TxId) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.cleanup_single_confirmation_state(tx_id).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn should_we_trigger_tx_update_for_payref(&self) -> bool {
+        let inner = self.app_state_inner.read().await;
+        inner.should_we_trigger_tx_update_for_payref()
+    }
+
+    async fn trigger_full_tx_state_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_full_transaction_state().await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn trigger_base_node_state_refresh(&mut self, state: BaseNodeState) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_base_node_state(state).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+
+        if inner.has_time_locked_balance() &&
+            let Err(e) = self.balance_enquiry_debounce_tx.send(())
+        {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn trigger_wallet_scanned_height_update(&mut self, height: u64, tip_height: u64) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.trigger_wallet_scanned_height_update(height, tip_height).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn trigger_wallet_latency_node_update(&mut self, latency: Duration, name: String) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.trigger_wallet_latency_node_update(latency, name).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    fn trigger_balance_refresh(&mut self) {
+        if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
+        }
+    }
+
+    async fn add_notification(&mut self, notification: String) {
+        let mut inner = self.app_state_inner.write().await;
+        inner.add_notification(notification);
+    }
+}

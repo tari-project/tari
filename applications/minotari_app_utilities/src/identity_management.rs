@@ -1,0 +1,385 @@
+// Copyright 2020. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{fs, io, path::Path, sync::Arc};
+
+use log::*;
+use serde::{Serialize, de::DeserializeOwned};
+use tari_common::{
+    configuration::bootstrap::prompt,
+    exit_codes::{ExitCode, ExitError},
+};
+use tari_comms::{
+    NodeIdentity,
+    multiaddr::{Multiaddr, Protocol},
+    peer_manager::PeerFeatures,
+    tor::TorIdentity,
+};
+use tari_p2p::TransportType;
+use tari_utilities::hex::Hex;
+
+pub const LOG_TARGET: &str = "minotari_application";
+
+const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
+
+/// Loads the node identity, or creates a new one if create_id is true
+///
+/// ## Parameters
+/// - `identity_file` - Reference to file path
+/// - `public_address` - Network address of the base node
+/// - `create_id` - Only applies if the identity_file does not exist or is malformed. If true, a new identity will be
+///   created, otherwise the user will be prompted to create a new ID
+/// - `peer_features` - Enables features of the base node
+///
+/// # Return
+/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
+pub fn setup_node_identity<P: AsRef<Path>>(
+    identity_file: P,
+    public_addresses: Vec<Multiaddr>,
+    create_id: bool,
+    peer_features: PeerFeatures,
+    transport_type: TransportType,
+) -> Result<Arc<NodeIdentity>, ExitError> {
+    match load_node_identity(&identity_file, transport_type) {
+        Ok(mut id) => {
+            id.set_peer_features(peer_features);
+            // Filter addresses based on transport type
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            for public_address in filtered_addresses {
+                id.add_public_address(public_address.clone());
+                debug!(
+                    target: LOG_TARGET,
+                    "Added address: {}",
+                    public_address
+                );
+            }
+            Ok(Arc::new(id))
+        },
+        Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
+            ExitCode::ConfigError,
+            format!(
+                "{path} has incorrect permissions. You can update the identity file with the correct permissions \
+                 using 'chmod 600 {path}', or delete the identity file and a new one will be created on next start",
+                path = identity_file.as_ref().to_string_lossy()
+            ),
+        )),
+        Err(e) => {
+            warn!(target: LOG_TARGET, "Failed to load node identity: {e}");
+            if !create_id {
+                let prompt = prompt("Node identity does not exist.\nWould you like to create one (Y/n)?");
+                if !prompt {
+                    error!(
+                        target: LOG_TARGET,
+                        "Node identity not found. {e}. You can update the configuration file to point to a valid node \
+                         identity file, or re-run the node and create a new one."
+                    );
+                    return Err(ExitError::new(
+                        ExitCode::ConfigError,
+                        format!(
+                            "Node identity information not found. {e}. You can update the configuration file to point \
+                             to a valid node identity file, or re-run the node to create a new one"
+                        ),
+                    ));
+                };
+            }
+            debug!(target: LOG_TARGET, "Existing node id not found. {e}. Creating new ID");
+
+            let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
+            match create_new_node_identity(&identity_file, filtered_addresses, peer_features) {
+                Ok(id) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "New node identity [{}] with public key {} has been created at {}.",
+                        id.node_id(),
+                        id.public_key(),
+                        identity_file.as_ref().to_str().unwrap_or("?"),
+                    );
+                    Ok(Arc::new(id))
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Could not create new node id. {e}.");
+                    Err(ExitError::new(
+                        ExitCode::ConfigError,
+                        format!("Could not create new node id. {e}."),
+                    ))
+                },
+            }
+        },
+    }
+}
+
+/// Tries to construct a node identity by loading the secret key and other metadata from disk and calculating the
+/// missing fields from that information.
+///
+/// ## Parameters
+/// `path` - Reference to a path
+///
+/// ## Returns
+/// Result containing a NodeIdentity on success, string indicates the reason on failure
+fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) -> Result<NodeIdentity, IdentityError> {
+    check_identity_file(&path)?;
+
+    let id_str = fs::read_to_string(path.as_ref())?;
+    let id = json5::from_str::<NodeIdentity>(&id_str)?;
+
+    let id = if transport_type == TransportType::Tcp {
+        let current_addresses = id.public_addresses();
+        debug!(
+            target: LOG_TARGET,
+            "Filtering addresses for TCP transport. Current addresses: {:?}",
+            current_addresses
+        );
+        // For TCP transport remove all onion addresses
+        let filtered_addresses: Vec<Multiaddr> = current_addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "After filtering for TCP transport, {} addresses remain: {:?}",
+            filtered_addresses.len(),
+            filtered_addresses
+        );
+        id.set_public_addresses(filtered_addresses);
+        id
+    } else {
+        id
+    };
+
+    // Check whether the previous version has a signature and sign if necessary
+    if !id.is_signed() {
+        id.sign();
+    }
+    debug!(
+        target: LOG_TARGET,
+        "Node ID loaded with public key {} and Node id {}",
+        id.public_key().to_hex(),
+        id.node_id().to_hex()
+    );
+    save_as_json(&path, &id)?;
+    Ok(id)
+}
+
+/// Filter addresses based on transport type
+fn filter_addresses_for_transport(addresses: Vec<Multiaddr>, transport_type: TransportType) -> Vec<Multiaddr> {
+    if transport_type == TransportType::Tcp {
+        // Filter out onion addresses for TCP transport
+        let filtered: Vec<Multiaddr> = addresses
+            .into_iter()
+            .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .collect();
+        debug!(
+            target: LOG_TARGET,
+            "Filtered addresses for TCP transport: {:?}",
+            filtered
+        );
+        filtered
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "No filtering for {:?} transport, keeping all {} addresses",
+            transport_type,
+            addresses.len()
+        );
+        addresses
+    }
+}
+
+/// Create a new node id and save it to disk
+///
+/// ## Parameters
+/// `path` - Reference to path to save the file
+/// `public_addr` - Network address of the base node
+/// `peer_features` - The features enabled for the base node
+///
+/// ## Returns
+/// Result containing the node identity, string will indicate reason on error
+fn create_new_node_identity<P: AsRef<Path>>(
+    path: P,
+    public_addresses: Vec<Multiaddr>,
+    features: PeerFeatures,
+) -> Result<NodeIdentity, IdentityError> {
+    let node_identity = NodeIdentity::random_multiple_addresses(&mut rand::rng(), public_addresses, features);
+    save_as_json(&path, &node_identity)?;
+    Ok(node_identity)
+}
+
+/// Loads the node identity from json at the given path
+///
+/// ## Parameters
+/// `path` - Path to file from which to load the node identity
+///
+/// ## Returns
+/// Result containing an object on success, string will indicate reason on error
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Option<T>, IdentityError> {
+    if !path.as_ref().exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(path)?;
+    let object = json5::from_str(&contents)?;
+    Ok(Some(object))
+}
+
+/// Attempts to load the TorIdentity from the JSON file at the given path.
+///
+/// ## Parameters
+/// `path` - Path to the `TorIdentity` JSON file
+///
+/// ## Returns
+/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,
+pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, IdentityError> {
+    check_identity_file(&path)?;
+    let identity = load_from_json(path)?;
+    Ok(identity)
+}
+
+/// Saves the identity as json at a given path with 0600 file permissions (UNIX-only), creating it if it does not
+/// already exist.
+///
+/// ## Parameters
+/// `path` - Path to save the file
+/// `object` - Data to be saved
+///
+/// ## Returns
+/// Result to check if successful or not, string will indicate reason on error
+pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
+    let json = json5::to_string(object)?;
+    if let Some(p) = path.as_ref().parent() &&
+        !p.exists()
+    {
+        fs::create_dir_all(p)?;
+    }
+    let json_with_comment =
+        format!("// This file is generated by the Minotari base node. Any changes will be overwritten.\n{json}");
+    write_identity_file(path.as_ref(), json_with_comment.as_bytes())?;
+    Ok(())
+}
+
+/// Writes the identity file. On unix the permissions are applied before any contents are written, so that there is
+/// never a window (as there would be with `fs::write` followed by a chmod) during which the identity is readable by
+/// other users.
+#[cfg(target_family = "unix")]
+fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> io::Result<()> {
+    use std::{
+        io::Write,
+        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    };
+    // `mode()` and `chmod` only take the permission bits, so mask off the file type bits.
+    let mode = REQUIRED_IDENTITY_PERMS & 0o7777;
+    // `mode()` covers a newly created file (the process umask does not apply to it) ...
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(mode)
+        .open(path)?;
+    // ... and it is ignored when the file already exists, so also `fchmod` an existing file that was created with
+    // wider permissions. Both happen while the file is still empty.
+    file.set_permissions(fs::Permissions::from_mode(mode))?;
+    file.write_all(contents)?;
+    Ok(())
+}
+
+#[cfg(target_family = "windows")]
+fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> io::Result<()> {
+    fs::write(path, contents)
+}
+
+/// Check that the given path exists, is a file and has the correct file permissions (mac/linux only)
+fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
+    if !path.as_ref().exists() {
+        return Err(IdentityError::NotFound);
+    }
+
+    if !path.as_ref().metadata()?.is_file() {
+        return Err(IdentityError::NotFile);
+    }
+
+    if !has_permissions(&path, REQUIRED_IDENTITY_PERMS)? {
+        return Err(IdentityError::InvalidPermissions);
+    }
+    Ok(())
+}
+
+#[cfg(target_family = "unix")]
+fn has_permissions<P: AsRef<Path>>(path: P, perms: u32) -> io::Result<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path)?;
+    Ok(metadata.permissions().mode() == perms)
+}
+
+#[cfg(target_family = "windows")]
+fn has_permissions<P: AsRef<Path>>(_: P, _: u32) -> io::Result<bool> {
+    Ok(true)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum IdentityError {
+    #[error("Identity file has invalid permissions")]
+    InvalidPermissions,
+    #[error("Identity file was not found")]
+    NotFound,
+    #[error("Path is not a file")]
+    NotFile,
+    #[error("Malformed identity file: {0}")]
+    JsonError(#[from] json5::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+}
+
+#[cfg(all(test, target_family = "unix"))]
+mod test {
+    use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+
+    use super::*;
+
+    fn temp_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("identity_management_test_{name}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("identity.json")
+    }
+
+    #[test]
+    fn it_creates_the_identity_file_with_the_required_permissions() {
+        let path = temp_path("create");
+        let _unused = fs::remove_file(&path);
+
+        save_as_json(&path, &"identity").unwrap();
+
+        assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
+        check_identity_file(&path).unwrap();
+    }
+
+    #[test]
+    fn it_tightens_the_permissions_of_an_existing_file_before_writing() {
+        let path = temp_path("existing");
+        fs::write(&path, b"old contents").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        save_as_json(&path, &"identity").unwrap();
+
+        assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.ends_with("\"identity\""), "unexpected contents: {contents}");
+    }
+}

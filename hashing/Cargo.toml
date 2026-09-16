@@ -1,0 +1,18 @@
+[package]
+name = "tari_hashing"
+description = "Tari hash domains"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tari_crypto = { workspace = true, features = ["borsh"] }
+borsh = { workspace = true}
+digest = { version = "0.10" }
+blake2 = { version = "0.10", default-features = false }

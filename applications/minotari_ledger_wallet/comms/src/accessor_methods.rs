@@ -1,0 +1,836 @@
+// Copyright 2024 The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    cell::Cell,
+    sync::{LazyLock, Mutex},
+};
+
+use log::debug;
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
+    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
+    script_offset::{
+        SCRIPT_OFFSET_REPLY_SIZE,
+        check_script_key_count,
+        check_sender_offset_key_count,
+        sender_offset_index,
+    },
+};
+use rand::Rng;
+use semver::Version;
+use tari_common::configuration::Network;
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
+};
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_script::CompressedCheckSigSchnorrSignature;
+use tari_utilities::{ByteArray, hex::Hex};
+
+use crate::{
+    error::LedgerDeviceError,
+    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_RESPONSE_VERSION, MIN_LEDGER_APP_VERSION},
+};
+
+const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
+
+/// The script signature key
+pub enum ScriptSignatureKey {
+    Managed { branch: LedgerKeyBranch, index: u64 },
+    Derived { branch_key: PrivateKey },
+}
+
+/// Whether the ledger application has been verified in this process. Only ever set to `true`, and only by a
+/// completed, successful [`verify`].
+static VERIFIED: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+
+thread_local! {
+    /// Set while this thread is inside [`verify`].
+    ///
+    /// [`verify`] drives the device through the ordinary accessor methods, and every one of those starts by calling
+    /// [`verify_ledger_application`]. Without this flag the first of them would deadlock on the lock its own caller
+    /// is holding.
+    static VERIFYING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Sets [`VERIFYING`] for as long as it is alive, including if [`verify`] panics.
+struct VerifyingGuard;
+
+impl VerifyingGuard {
+    fn enter() -> Self {
+        VERIFYING.with(|verifying| verifying.set(true));
+        VerifyingGuard
+    }
+}
+
+impl Drop for VerifyingGuard {
+    fn drop(&mut self) {
+        VERIFYING.with(|verifying| verifying.set(false));
+    }
+}
+
+/// Verify that the ledger application is working properly.
+///
+/// The first caller runs the verification; concurrent callers block until it is finished and then see its result.
+/// That blocking is the point. This used to be a `try_lock`, which meant a second thread arriving while the first
+/// was still talking to the device took the `else` branch and returned `Ok(())` having verified nothing - and the
+/// key manager calls this from async, multi-threaded context, so that was reachable in ordinary operation and not
+/// just in theory.
+///
+/// Only success is cached. A failure is re-tried by the next caller: a device that is locked, running the wrong
+/// application, or simply unplugged is a transient condition the user can fix without restarting the wallet, and
+/// caching the failure would make it permanent for the life of the process.
+///
+/// There is deliberately no way to reset the cached success. Starting a fresh process is a free and more honest
+/// reset, and a reset hook would be one more injection point in a shipped binary for no benefit.
+///
+/// May block indefinitely - `verify` talks to the device, see
+/// [`LedgerTransport`](crate::ledger_wallet::LedgerTransport).
+pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
+    // Re-entrant call from inside `verify` itself; the verification is in progress on this very thread.
+    if VERIFYING.with(Cell::get) {
+        return Ok(());
+    }
+
+    // Held across the whole of `verify()`, so that nobody observes a half-verified device. A poisoned lock only
+    // means some earlier caller panicked mid-verification; the flag it guards is still meaningful, and the worst
+    // case is that we verify again.
+    let mut verified = VERIFIED.lock().unwrap_or_else(|e| e.into_inner());
+    if *verified {
+        return Ok(());
+    }
+
+    {
+        let _guard = VerifyingGuard::enter();
+        verify()?;
+    }
+
+    debug!(target: LOG_TARGET, "Ledger application 'Minotari Wallet' running and verified");
+    *verified = true;
+    Ok(())
+}
+
+fn verify() -> Result<(), LedgerDeviceError> {
+    match ledger_get_app_name() {
+        Ok(app_name) => {
+            if app_name != EXPECTED_NAME {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "Ledger application is not the 'Minotari Wallet' application: expected '{EXPECTED_NAME}', running \
+                     '{app_name}'."
+                )));
+            }
+        },
+        Err(e) => {
+            return Err(LedgerDeviceError::Processing(format!(
+                "Ledger application is not the 'Minotari Wallet' application ({e})"
+            )));
+        },
+    }
+
+    match ledger_get_version() {
+        Ok(version) => {
+            let req = Version::parse(MIN_LEDGER_APP_VERSION)
+                .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
+            let ledger_version =
+                Version::parse(&version).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
+            if ledger_version < req {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "'Minotari Wallet' application version check failed: min version '{MIN_LEDGER_APP_VERSION}', \
+                     running '{version}'."
+                )));
+            }
+        },
+        Err(e) => {
+            return Err(LedgerDeviceError::Processing(format!(
+                "'Minotari Wallet' application version check ({e})",
+            )));
+        },
+    }
+
+    let account = rand::rng().next_u64();
+    let private_key_index = rand::rng().next_u64();
+    let private_key_branch = LedgerKeyBranch::OneSidedSenderOffset;
+    let mut nonce = [0u8; 32];
+    rand::rng().fill_bytes(&mut nonce);
+    let signature_a = match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce)
+    {
+        Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
+            Ok(public_key) => {
+                let schnorr_signature = signature.to_schnorr_signature().map_err(|e| {
+                    LedgerDeviceError::Processing(format!(
+                        "Error 0: 'Minotari Wallet' application could not convert the compressed signature to a \
+                         Schnorr signature ({e:?}). Please update the firmware on your device.",
+                    ))
+                })?;
+                if !schnorr_signature.verify(&public_key, nonce) {
+                    return Err(LedgerDeviceError::Processing(
+                        "Error 1: 'Minotari Wallet' application could not create a valid signature. Please update the \
+                         firmware on your device."
+                            .to_string(),
+                    ));
+                }
+                signature
+            },
+            Err(e) => {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "Error 2: 'Minotari Wallet' application could not retrieve a public key ({e:?}). Please update \
+                     the firmware on your device."
+                )));
+            },
+        },
+        Err(e) => {
+            return Err(LedgerDeviceError::Processing(format!(
+                "Error 3: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
+                 firmware on your device."
+            )));
+        },
+    };
+    match ledger_get_script_schnorr_signature(account, private_key_index, private_key_branch, &nonce) {
+        Ok(signature_b) => {
+            if signature_a == signature_b {
+                return Err(LedgerDeviceError::Processing(
+                    "Error 4: 'Minotari Wallet' application is not creating unique signatures. Please update the \
+                     firmware on your device."
+                        .to_string(),
+                ));
+            }
+        },
+        Err(e) => {
+            return Err(LedgerDeviceError::Processing(format!(
+                "Error 5: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
+                 firmware on your device."
+            )));
+        },
+    }
+
+    Ok(())
+}
+
+/// Get the app name from the ledger device
+pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
+        Ok(response) => {
+            let name = match std::str::from_utf8(response.data()) {
+                Ok(val) => {
+                    if val.is_empty() {
+                        return Err(LedgerDeviceError::ApplicationNotStarted);
+                    }
+                    val
+                },
+                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetAppName: {e}"))),
+            };
+            Ok(name.to_string())
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetAppName: {e}"))),
+    }
+}
+
+/// Get the version from the ledger device
+pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
+        Ok(response) => {
+            let name = match std::str::from_utf8(response.data()) {
+                Ok(val) => {
+                    if val.is_empty() {
+                        return Err(LedgerDeviceError::ApplicationNotStarted);
+                    }
+                    val
+                },
+                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetVersion: {e}"))),
+            };
+            Ok(name.to_string())
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetVersion: {e}"))),
+    }
+}
+
+/// Get the public alpha key from the ledger device
+pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{account}'");
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
+        Ok(result) => {
+            if result.data().len() < 33 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetPublicSpendKey: expected 1 + 32 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let public_alpha =
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            Ok(public_alpha)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {e}"))),
+    }
+}
+
+pub fn ledger_get_public_key(
+    account: u64,
+    index: u64,
+    branch: LedgerKeyBranch,
+) -> Result<RistrettoPublicKey, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_public_key: account '{account}', index '{index}', branch '{branch:?}'"
+    );
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&index.to_le_bytes());
+    let branch_u64 = u64::from(branch.as_byte()).to_le_bytes();
+    data.extend_from_slice(&branch_u64);
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicKey, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 33 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetPublicKey: expected 1 + 32 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let public_key =
+                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            Ok(public_key)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {e}"))),
+    }
+}
+
+/// Get the script signature from the ledger device
+pub fn ledger_get_script_signature(
+    account: u64,
+    network: Network,
+    version: u8,
+    signature_key: &ScriptSignatureKey,
+    value: &PrivateKey,
+    commitment_private_key: &PrivateKey,
+    commitment: &CompressedCommitment,
+    message: [u8; 32],
+) -> Result<ComAndPubSignature, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{account}', message '{}'", message.to_hex());
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    let network = u64::from(network.as_byte()).to_le_bytes();
+    data.extend_from_slice(&network);
+    let version = u64::from(version).to_le_bytes();
+    data.extend_from_slice(&version);
+
+    let value = value.to_vec();
+    data.extend_from_slice(&value);
+    let commitment_private_key = commitment_private_key.to_vec();
+    data.extend_from_slice(&commitment_private_key);
+    let commitment = commitment.to_vec();
+    data.extend_from_slice(&commitment);
+    data.extend_from_slice(&message);
+
+    match signature_key {
+        ScriptSignatureKey::Managed { branch, index } => {
+            let branch = u64::from(branch.as_byte()).to_le_bytes();
+            data.extend_from_slice(&branch);
+            let index = index.to_le_bytes();
+            data.extend_from_slice(&index);
+        },
+        ScriptSignatureKey::Derived { branch_key } => {
+            data.extend_from_slice(&branch_key.to_vec());
+        },
+    }
+
+    let instruction = match signature_key {
+        ScriptSignatureKey::Managed { .. } => Instruction::GetScriptSignatureManaged,
+        ScriptSignatureKey::Derived { .. } => Instruction::GetScriptSignatureDerived,
+    };
+
+    match Command::<Vec<u8>>::build_command(account, instruction, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 161 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetScriptSignature: expected 161 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let data = result.data();
+            let signature = ComAndPubSignature::new(
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))?,
+            );
+            Ok(signature)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetScriptSignature: {e}"))),
+    }
+}
+
+/// Get the script offset from the ledger device.
+///
+/// Only the script side of the sum is supplied: `partial_script_offset` is the sum of the script private keys the
+/// host already knows, `script_key_indexes` names pre-mine script keys by index and `derived_script_keys` carries
+/// the blinding factors of alpha derived script keys. The device generates `sender_offset_count` sender offset keys
+/// itself and returns the base index it derived them from, so the reply is always blinded by keys the host has
+/// never seen.
+///
+/// Neither side of the sum may leave the device unblinded by a term the host cannot compute, so the device refuses
+/// a request with no sender offset keys *and* one with no script key it derived itself. Both refusals are mirrored
+/// here so a caller gets a legible error rather than a status word; the device check is the one that counts.
+pub fn ledger_get_script_offset(
+    account: u64,
+    partial_script_offset: &PrivateKey,
+    derived_script_keys: &[PrivateKey],
+    script_key_indexes: &[(LedgerKeyBranch, u64)],
+    sender_offset_count: usize,
+) -> Result<(PrivateKey, Vec<u64>), LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_script_offset: account '{}', derived_script_keys: '{}', \
+        script_key_indexes: '{:?}', sender_offset_count '{}'",
+        account,
+        derived_script_keys.len(),
+        script_key_indexes,
+        sender_offset_count
+    );
+    // The device enforces both of these too, and is the only enforcement that matters; these are here so a caller
+    // gets a legible error instead of a status word, and so that a request the device would refuse never reaches
+    // the wire.
+    let count = u64::try_from(sender_offset_count)
+        .map_err(|_| LedgerDeviceError::Processing("GetScriptOffset: sender offset count overflow".to_string()))?;
+    check_sender_offset_key_count(count)
+        .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
+    check_script_key_count(script_key_indexes.len() as u64, derived_script_keys.len() as u64)
+        .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
+    verify_ledger_application()?;
+
+    // 1. data sizes
+    let mut instructions: Vec<u8> = Vec::new();
+    instructions.extend_from_slice(&count.to_le_bytes());
+    instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
+    instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
+    let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
+
+    // 2. partial_script_offset
+    data.push(partial_script_offset.to_vec());
+
+    // 3. script_key_indexes
+    for (branch, index) in script_key_indexes {
+        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
+        payload.extend_from_slice(&index.to_le_bytes());
+        data.push(payload);
+    }
+    // 4. derived_script_keys
+    for script_key in derived_script_keys {
+        data.push(script_key.to_vec());
+    }
+
+    let commands = Command::<Vec<u8>>::chunk_command(account, Instruction::GetScriptOffset, data);
+
+    let mut result = None;
+    for command in commands {
+        match command.execute() {
+            Ok(r) => result = Some(r),
+            Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {e}"))),
+        }
+    }
+
+    match result {
+        Some(result) => {
+            if result.data().len() < SCRIPT_OFFSET_REPLY_SIZE {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetScriptOffset: expected {} bytes, got {} ({:?})",
+                    SCRIPT_OFFSET_REPLY_SIZE,
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let data = result.data();
+            let version = *data.first().expect("Index should exist");
+            if version != EXPECTED_RESPONSE_VERSION {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetScriptOffset: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. Please \
+                     update the 'Minotari Wallet' application on your device."
+                )));
+            }
+            let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
+            let mut base_index_bytes = [0u8; 8];
+            base_index_bytes.copy_from_slice(data.get(33..41).expect("Index should exist"));
+            let base_index = u64::from_le_bytes(base_index_bytes);
+            // The device derived `base_index..base_index + count`; `sender_offset_index` is the shared walk, so a
+            // base near the end of the range wraps identically on both sides.
+            let sender_offset_indexes = (0..count).map(|i| sender_offset_index(base_index, i)).collect();
+            Ok((script_offset, sender_offset_indexes))
+        },
+        None => Err(LedgerDeviceError::Processing("GetScriptOffset: No result".to_string())),
+    }
+}
+
+/// Get the view key from the ledger device
+pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_get_view_key: account '{account}'");
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
+        Ok(result) => {
+            if result.data().len() < 33 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetViewKey: expected 1 + 32 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let view_key = PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            Ok(view_key)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {e}"))),
+    }
+}
+
+pub fn ledger_get_dh_shared_secret(
+    account: u64,
+    index: u64,
+    branch: LedgerKeyBranch,
+    public_key: &CompressedPublicKey,
+) -> Result<CompressedPublicKey, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_dh_shared_secret: account '{account}', index '{index}', branch '{branch:?}'"
+    );
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&index.to_le_bytes());
+    data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&public_key.to_vec());
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 33 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let shared_secret =
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            Ok(shared_secret)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),
+    }
+}
+
+/// Reserve an ephemeral nonce on the ledger device.
+///
+/// The device draws the scalar, keeps it, and returns only the handle that names it together with its public form.
+/// The private nonce never crosses the wire, and the handle is opaque: the host can echo it back to
+/// [`ledger_get_raw_schnorr_signature`] exactly once, and can neither choose it nor reuse it. Without this, a host
+/// that picked the nonce could ask for two signatures over the same key and nonce with different challenges and
+/// solve for the private key.
+pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedPublicKey), LedgerDeviceError> {
+    debug!(target: LOG_TARGET, "ledger_generate_ephemeral_nonce: account '{account}'");
+    verify_ledger_application()?;
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
+        Ok(result) => {
+            if result.data().len() < EPHEMERAL_NONCE_REPLY_SIZE {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GenerateEphemeralNonce: expected {} bytes, got {} ({:?})",
+                    EPHEMERAL_NONCE_REPLY_SIZE,
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+            let data = result.data();
+            let version = *data.first().expect("Index should exist");
+            if version != EXPECTED_RESPONSE_VERSION {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GenerateEphemeralNonce: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. \
+                     Please update the 'Minotari Wallet' application on your device."
+                )));
+            }
+            let mut handle_bytes = [0u8; 8];
+            handle_bytes.copy_from_slice(data.get(1..9).expect("Index should exist"));
+            let handle = u64::from_le_bytes(handle_bytes);
+            // Zero is the device's "no handle" value, so a reply carrying it is a reply the device never meant to
+            // send. Refusing it here keeps a handle that can never be redeemed out of a key id.
+            if handle == INVALID_NONCE_HANDLE {
+                return Err(LedgerDeviceError::Processing(
+                    "GenerateEphemeralNonce: the device returned an invalid nonce handle".to_string(),
+                ));
+            }
+            let public_nonce = CompressedPublicKey::from_canonical_bytes(data.get(9..41).expect("Index should exist"))?;
+            Ok((handle, public_nonce))
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GenerateEphemeralNonce: {e}"))),
+    }
+}
+
+///  Get the raw schnorr signature from the ledger device, using a nonce the device reserved earlier.
+///
+/// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce whether or not
+/// the signature succeeds, so a handle is good for exactly one call.
+pub fn ledger_get_raw_schnorr_signature(
+    account: u64,
+    private_key_index: u64,
+    private_key_branch: LedgerKeyBranch,
+    nonce_handle: u64,
+    challenge: &[u8; 64],
+) -> Result<CompressedSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}', nonce handle '{}', \
+        challenge '{}'",
+        account, private_key_index, private_key_branch, nonce_handle, challenge.to_hex()
+    );
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&private_key_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&nonce_handle.to_le_bytes());
+    data.extend_from_slice(challenge);
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 65 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetRawSchnorrSignature: expected 65 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+
+            let signature = CompressedSignature::new(
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+            );
+            Ok(signature)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetRawSchnorrSignature: {e}"))),
+    }
+}
+
+/// Get a raw schnorr signature from the ledger device using a deterministic, host indexed nonce.
+///
+/// DEPRECATED - DO NOT ADD CALLERS. The host picks the nonce index here, so two signatures over the same key and
+/// nonce with different challenges give up the private key that signed them. It exists only for the pre-mine spend
+/// flow, whose nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between -
+/// which the device's RAM backed nonce store cannot serve.
+///
+/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs - including
+/// why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the exposure, and the
+/// TODO that deletes this function along with the rest of the legacy path.
+pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
+    account: u64,
+    private_key_index: u64,
+    private_key_branch: LedgerKeyBranch,
+    nonce_index: u64,
+    nonce_branch: LedgerKeyBranch,
+    challenge: &[u8; 64],
+) -> Result<CompressedSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature_legacy_nonce: account '{}', pk index '{}', pk branch '{:?}', nonce index \
+        '{}', nonce branch '{:?}', challenge '{}'",
+        account, private_key_index, private_key_branch, nonce_index, nonce_branch, challenge.to_hex()
+    );
+    // The device enforces this too, against the same shared whitelist, and its check is the only one that
+    // matters; this is here so a caller gets a legible error instead of a status word, and so that a request the
+    // device would refuse never reaches the wire.
+    check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|e| match e {
+        LegacyNonceBranchError::KeyBranchNotAllowed => LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: '{private_key_branch}' keys cannot be signed with a host chosen \
+             nonce; only the pre-mine spend flow may use this instruction"
+        )),
+        LegacyNonceBranchError::NonceBranchNotAllowed => LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
+            LedgerKeyBranch::Random
+        )),
+    })?;
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&private_key_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(&nonce_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
+    data.extend_from_slice(challenge);
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 65 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetRawSchnorrSignatureLegacyNonce: expected 65 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+
+            let signature = CompressedSignature::new(
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+            );
+            Ok(signature)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: {e}"
+        ))),
+    }
+}
+
+/// Get the script schnorr signature from the ledger device
+pub fn ledger_get_script_schnorr_signature(
+    account: u64,
+    private_key_index: u64,
+    private_key_branch: LedgerKeyBranch,
+    nonce: &[u8],
+) -> Result<CompressedCheckSigSchnorrSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_raw_schnorr_signature: account '{account}', pk index '{private_key_index}', pk branch '{private_key_branch:?}'"
+    );
+    verify_ledger_application()?;
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&private_key_index.to_le_bytes());
+    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
+    if nonce.len() != 32 {
+        return Err(LedgerDeviceError::Processing("Nonce must be 32 bytes".to_string()));
+    }
+    data.extend_from_slice(nonce);
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetScriptSchnorrSignature, data).execute() {
+        Ok(result) => {
+            if result.data().len() < 65 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetScriptSchnorrSignature: expected 65 bytes, got {} ({:?})",
+                    result.data().len(),
+                    AppSW::try_from(result.retcode())?
+                )));
+            }
+
+            let signature = CompressedCheckSigSchnorrSignature::new(
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+            );
+            Ok(signature)
+        },
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetScriptSchnorrSignature: {e}"))),
+    }
+}
+
+/// Get the one sided metadata signature
+pub fn ledger_get_one_sided_metadata_signature(
+    account: u64,
+    network: Network,
+    txo_version: u8,
+    value: u64,
+    sender_offset_key_index: u64,
+    commitment_mask: &PrivateKey,
+    receiver_address: &TariAddress,
+    message: &[u8; 32],
+) -> Result<ComAndPubSignature, LedgerDeviceError> {
+    debug!(
+        target: LOG_TARGET,
+        "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
+        account, message.to_hex()
+    );
+    verify_ledger_application()?;
+
+    // Ensure the receiver address is valid
+    if let TariAddress::Single(_) = receiver_address {
+        return Err(LedgerDeviceError::Processing(
+            "Receiver address must be a Dual address".to_string(),
+        ));
+    }
+
+    // Check for integrated address support
+    if receiver_address
+        .features()
+        .contains(tari_common_types::tari_address::TariAddressFeatures::PAYMENT_ID)
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Processing integrated address with embedded payment ID"
+        );
+    }
+
+    let mut data = Vec::new();
+    data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
+    data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
+    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+    data.extend_from_slice(&value.to_le_bytes());
+    data.extend_from_slice(&commitment_mask.to_vec());
+
+    // Add address size prefix and address data
+    let address_bytes = receiver_address.to_vec();
+    let address_size = u16::try_from(address_bytes.len()).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "Address size {} exceeds maximum u16 value",
+            address_bytes.len()
+        ))
+    })?;
+    data.extend_from_slice(&address_size.to_le_bytes());
+    data.extend_from_slice(&address_bytes);
+
+    data.extend_from_slice(&message.to_vec());
+
+    match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
+        Ok(result) => {
+            if result.retcode() == AppSW::UserCancelled as u16 {
+                return Err(LedgerDeviceError::UserCancelled);
+            }
+            if result.data().len() < 161 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
+                    result.data().len(),
+                    result
+                )));
+            }
+            let data = result.data();
+            Ok(ComAndPubSignature::new(
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))
+                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+            ))
+        },
+        Err(e) => Err(LedgerDeviceError::Instruction(format!(
+            "GetOneSidedMetadataSignature: {e}"
+        ))),
+    }
+}

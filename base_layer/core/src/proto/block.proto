@@ -1,0 +1,96 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+import "transaction.proto";
+import "types.proto";
+
+package tari.core;
+
+// The proof of work data structure that is included in the block header.
+message ProofOfWork {
+    // The algorithm used to mine this block
+    //   0 = Monero RandomX
+    //   1 = Sha3X
+    //   2 = Tari RandomX
+    //   3 = Cuckaroo
+    uint64 pow_algo = 1;
+    // Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
+    // required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
+    bytes pow_data = 4;
+}
+
+// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+// and the transaction kernels.
+message BlockHeader {
+    // Version of the block
+    uint32 version = 1;
+    // Height of this block since the genesis block (height 0)
+    uint64 height = 2;
+    // Hash of the block previous to this in the chain.
+    bytes prev_hash = 4;
+    // Timestamp at which the block was built.
+    uint64 timestamp = 5;
+    // This is the UTXO merkle root of the outputs in the blockchain
+    bytes output_mr = 6;
+    // This is the merkle root of all outputs in this block
+    bytes block_output_mr = 7;
+    // This is the MMR root of the kernels
+    bytes kernel_mr = 8;
+    // This is the Merkle root of the inputs in this block
+    bytes input_mr = 9;
+    // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+    // block from the total kernel offset of the previous block header.
+    bytes total_kernel_offset = 10;
+    // Nonce increment used to mine this block.
+    uint64 nonce = 11;
+    // Proof of work metadata
+    ProofOfWork pow = 12;
+    // The size of the kernel MMR
+    uint64 kernel_mmr_size = 13;
+    // The size of the output MMR
+    uint64 output_mmr_size = 14;
+    // Sum of script offsets for all kernels in this block.
+    bytes total_script_offset = 15;
+    // Merkle root of validator nodes
+    bytes validator_node_merkle_root = 16;
+    // Validator size
+    uint64 validator_node_size = 17;
+}
+
+// A Tari block. Blocks are linked together into a blockchain.
+message Block {
+    // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+    // and the transaction kernels.
+    BlockHeader header = 1;
+    // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+    // blocks consist of inputs, outputs and kernels, rather than transactions.
+    tari.types.AggregateBody body = 2;
+}
+
+// A new block message. This is the message that is propagated around the network. It contains the
+// minimal information required to identify and optionally request the full block.
+message NewBlock {
+    // The block header.
+    BlockHeader header = 1;
+    // Coinbase kernel of the block.
+    repeated tari.types.TransactionKernel coinbase_kernels = 2;
+    // Coinbase output of the block.
+    repeated tari.types.TransactionOutput coinbase_outputs = 3;
+    // The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
+    repeated bytes kernel_excess_sigs = 4;
+}
+
+// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
+// block but contains some extra metadata that clients such as Block Explorers will find interesting.
+message HistoricalBlock {
+    // The number of blocks that have been mined since this block, including this one. The current tip will have one
+    // confirmation.
+    uint64 confirmations = 1;
+    // The underlying block
+    Block block = 3;
+    reserved 2,4;
+    reserved "accumulated_data";
+}

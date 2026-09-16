@@ -1,0 +1,12 @@
+## Notice of Third-Party Code
+
+This project is primarily licensed under the MIT License.
+
+However, it includes or derives from code originally developed by The Grin Developers, 
+which is licensed under the Apache License, Version 2.0.
+
+The following file(s) are subject to the Apache 2.0 License:
+
+- [base_layer/core/src/proof_of_work/siphash.rs]
+
+See LICENSE-APACHE for the full license text.

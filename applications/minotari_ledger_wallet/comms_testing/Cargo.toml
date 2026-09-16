@@ -1,0 +1,31 @@
+# This crate is its own workspace, and is `exclude`d from the repository root workspace. That is deliberate and is a
+# security property - see the comment on `[workspace] exclude` in the root `Cargo.toml`, and the crate docs in
+# `src/lib.rs`. In short: as a member of the root workspace it lands in the default package selection, and Cargo
+# then unifies the `test_transport` feature it enables into the one `minotari_ledger_wallet_comms` rlib that the
+# shipped `minotari_console_wallet` links.
+#
+# Because it is its own workspace, the fields below cannot be inherited from the root `[workspace.package]` and are
+# written out literally. Keep them in step with the root workspace when it moves.
+[workspace]
+
+[package]
+name = "minotari_ledger_wallet_comms_testing"
+description = "Speculos simulator transport for the Minotari Ledger Wallet. Test harness only - never depend on this from a shipped binary."
+version = "5.7.0-pre.5"
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+publish = false
+
+[dependencies]
+# `test_transport` is enabled here and nowhere else. That is the whole reason this crate exists as a separate crate,
+# in a separate workspace, rather than as a feature of `minotari_ledger_wallet_comms`: `ledger` is a *default*
+# feature of the console wallet, so a redirectable transport that lived in `comms` would ship to users the moment
+# some feature unification turned its gate on. Living out here, it is structurally absent from any build that does
+# not name it.
+minotari_ledger_wallet_comms = { path = "../comms", version = "5.7.0-pre.5", features = ["test_transport"] }
+
+ledger-transport = { version = "0.11" }
+log = { version = "0.4" }

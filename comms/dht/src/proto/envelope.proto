@@ -1,0 +1,55 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+package tari.dht.envelope;
+
+import "google/protobuf/timestamp.proto";
+
+enum DhtMessageType {
+    // Indicated this message is not a DHT message
+    DhtMessageTypeNone = 0;
+    // Join Request
+    DhtMessageTypeJoin = 1;
+    // Discovery request
+    DhtMessageTypeDiscovery = 2;
+    // Response to a discovery request
+    DhtMessageTypeDiscoveryResponse = 3;
+    // Request stored messages from a node
+    DhtMessageTypeSafRequestMessages = 20;
+    // Stored messages response
+    DhtMessageTypeSafStoredMessages = 21;
+}
+
+message DhtHeader {
+    uint32 major = 1;
+//    uint32 minor = 2;
+    oneof destination {
+        // The sender has chosen not to disclose the message destination
+        bool unknown = 3;
+        // Destined for a particular public key
+        bytes public_key = 4;
+    }
+
+    // Origin public key of the message. This can be the same peer that sent the message
+    // or another peer if the message should be forwarded. This is optional but MUST be specified
+    // if the ENCRYPTED flag is set.
+    // If an ephemeral_public_key is specified, this MUST be encrypted using a derived ECDH shared key
+    bytes message_signature = 6;
+    // Ephemeral public key component of the ECDH shared key. MUST be specified if the ENCRYPTED flag is set.
+    bytes ephemeral_public_key = 7;
+    // The type of message
+    DhtMessageType message_type = 8;
+    uint32 flags = 10;
+    // Message trace ID
+    uint64 message_tag = 11;
+    // Expiry timestamp for the message
+    uint64 expires = 12;
+}
+
+message DhtEnvelope {
+    DhtHeader header = 1;
+    bytes body = 2;
+}
+
