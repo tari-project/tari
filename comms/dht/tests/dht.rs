@@ -170,7 +170,14 @@ async fn test_dht_wallet_discover_propagation() {
         .await
         .unwrap();
 
-    wait_for_connectivity(&[&node_A, &node_B, &node_C, &client_D]).await;
+    // `wait_for_connectivity` only waits for each node to come online, and `min_connectivity` is 1, so it is
+    // satisfied by a single connection - B can be online through A alone while B->C, which this discovery
+    // traverses, is still coming up. The client's dial above stays: nothing dials a client, so it is the only
+    // dialler for that link and races nothing.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    ensure_connected(&node_C, &[client_D.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C, &client_D]).await;
 
     // Send a discover request from Node A, through B and C, to D. Once Client D
     // receives the discover request from Node A, it should send a  discovery response
@@ -263,21 +270,19 @@ async fn test_dht_node_discover_propagation() {
         node_D.node_identity().node_id().short_str(),
     );
 
-    // To receive messages, clients have to connect
-    node_D
-        .comms
-        .peer_manager()
-        .add_or_update_peer(node_C.to_peer())
-        .await
-        .unwrap();
-    node_D
-        .comms
-        .connectivity()
-        .dial_peer(node_C.comms.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
-
-    wait_for_connectivity(&[&node_A, &node_B, &node_C, &node_D]).await;
+    // Node D is a *node*, and node C was seeded with it, so C dials D at start-up. Having D dial C as well
+    // makes that a simultaneous dial from both ends: one of the two connections is tie-broken away and the
+    // discovery request travelling over it is lost rather than requeued (`MAX_SEND_RETRIES` is 1), which
+    // surfaces 60s later as `DiscoveryTimeout`. The wallet variant of this test does need its explicit dial,
+    // because its D is a *client* and nothing dials clients.
+    //
+    // `wait_for_connectivity` is also too weak to stand in for this: `min_connectivity` is 1, so a single
+    // connection satisfies it, and B can be online through A alone while B->C - which this discovery has to
+    // traverse - is not up yet.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    ensure_connected(&node_C, &[node_D.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C, &node_D]).await;
 
     // Send a discover request from Node A, through B and C, to D. Once Node D
     // receives the discover request from Node A, it should send a  discovery response
@@ -799,13 +804,14 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         node_B.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
+    // No `dial_peer` here: node A was seeded with node B, so the DHT's own connectivity dials that link at
+    // start-up, and dialling it again races that - the redundant connection is tie-broken against the live
+    // one and outbound messaging fails rather than requeues what it was holding (`MAX_SEND_RETRIES` is 1),
+    // losing the message below. Wait for the links this test sends over instead, and for the dialling to
+    // stop, so nothing is torn down mid-send.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -908,13 +914,14 @@ async fn test_dht_header_not_malleable() {
         node_B.node_identity().node_id().short_str(),
     );
 
-    // Connect the peers that should be connected
-    node_A
-        .comms
-        .connectivity()
-        .dial_peer(node_B.node_identity().node_id().clone(), RefKind::Weak)
-        .await
-        .unwrap();
+    // No `dial_peer` here: node A was seeded with node B, so the DHT's own connectivity dials that link at
+    // start-up, and dialling it again races that - the redundant connection is tie-broken against the live
+    // one and outbound messaging fails rather than requeues what it was holding (`MAX_SEND_RETRIES` is 1),
+    // losing the message below. Wait for the links this test sends over instead, and for the dialling to
+    // stop, so nothing is torn down mid-send.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -1127,15 +1134,5 @@ async fn wait_for_messages_received(events: &mut broadcast::Receiver<MessagingEv
         if let MessagingEvent::MessageReceived(sender, _tag) = event {
             senders.push(sender);
         }
-    }
-}
-
-async fn wait_for_connectivity(nodes: &[&TestNode]) {
-    for node in nodes {
-        node.comms
-            .connectivity()
-            .wait_for_connectivity(Duration::from_secs(10))
-            .await
-            .unwrap();
     }
 }
