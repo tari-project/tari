@@ -26,6 +26,29 @@ publish = false
 # some feature unification turned its gate on. Living out here, it is structurally absent from any build that does
 # not name it.
 minotari_ledger_wallet_comms = { path = "../comms", version = "5.7.0-pre.5", features = ["test_transport"] }
+minotari_ledger_wallet_common = { path = "../common" }
 
 ledger-transport = { version = "0.11" }
 log = { version = "0.4" }
+
+# The independent key derivation oracle (`src/oracle.rs`). Versions are kept in step with the root workspace so
+# that the oracle hashes bytes the same way the rest of the repository does - `tari_crypto` in particular, whose
+# `DomainSeparatedHasher` the device application carries a byte-for-byte copy of.
+tari_crypto = { version = "0.23.2" }
+tari_utilities = { version = "0.10" }
+blake2 = { version = "0.10" }
+digest = { version = "0.10" }
+zeroize = { version = "1" }
+# BIP-32 has non-hardened steps in the Tari path (`.../0/{index}'/{key_type}`), and those need real secp256k1 point
+# arithmetic - a hardened-only path would need none. BIP-32 and BIP-39 themselves are written out in `oracle.rs`
+# rather than taken from a crate: they are about a hundred lines between them, and an oracle exists to be checked
+# by eye against the specification it claims to implement.
+k256 = { version = "0.13" }
+hmac = { version = "0.12" }
+sha2 = { version = "0.10" }
+
+[dev-dependencies]
+# Only the device-facing integration tests need this, to assert that whatever version string the application
+# reports is a semantic version, without pinning the test to a version that moves every release.
+semver = "1.0"
+

@@ -1,0 +1,41 @@
+# cargo-nextest configuration for the Speculos fixture.
+#
+# JUnit output comes from here and nowhere else. `cargo test` has no JUnit of its own, so a `cargo test` based
+# harness would need a second tool to parse its stdout back into XML - a conversion that silently loses information
+# whenever libtest's output format shifts. nextest writes the XML itself.
+
+[profile.ci]
+# Speculos serves one APDU connection at a time. nextest runs each test in its own process, so two tests in flight
+# means two processes each wanting that connection; the second is refused. One at a time is not a performance
+# compromise here, it is the simulator's actual concurrency.
+test-threads = 1
+
+# A device test blocks on a reply that only arrives when the device answers. If the simulator wedges, the useful
+# outcome is a named test that timed out, not a job that sits at its 6 hour ceiling. Generous, because a contended
+# CI runner emulating an ARM device is slow, but finite.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Retries are deliberately off. These assertions are deterministic - same seed, same path, same key - so a retry
+# could only ever turn a real disagreement into an intermittent one, which is the single worst thing that can
+# happen to a vector table.
+retries = 0
+
+# Print the failure output for anything that fails, rather than only a summary.
+failure-output = "immediate-final"
+fail-fast = false
+
+# Keep the output of tests that *pass*, which nextest discards by default.
+#
+# `simulator::connect` prints the address it resolved, and that line only matters on a green run: a run that
+# pointed at the wrong simulator and passed is the one failure mode that leaves no other trace, because no
+# assertion fires and nothing else prints. Discarding successful output would mean the single piece of evidence
+# that makes "I tested the wrong device" self-diagnosing exists only when it is least needed.
+#
+# Cheap, because almost nothing here prints on success: one line per device test, five lines a run.
+success-output = "immediate"
+
+[profile.ci.junit]
+path = "junit.xml"
+# Same reason as `success-output` above, for the artifact rather than the console. The JUnit file is what gets
+# uploaded and read weeks later, so it is the copy that has to carry the address.
+store-success-output = true
