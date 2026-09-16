@@ -66,7 +66,16 @@ async fn test_dht_join_propagation() {
     )
     .await;
 
-    wait_for_connectivity(&[&node_A, &node_B, &node_C]).await;
+    // `wait_for_connectivity` only waits for each node to come *online*, and `min_connectivity` is 1, so a
+    // single connection satisfies it - it says nothing about the two links this join actually traverses, nor
+    // about dialling that is still in flight. Both matter: a redundant dial landing while the join is being
+    // forwarded is tie-broken against the live connection, and outbound messaging fails rather than requeues
+    // whatever it was holding (`MAX_SEND_RETRIES` is 1), so the join is simply lost. Nothing here dials - the
+    // redundant dial is the DHT's own pool refresh reissuing one before the first has been pooled - so
+    // waiting the churn out is the only lever the test has.
+    ensure_connected(&node_A, &[node_B.node_identity().node_id()]).await;
+    ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
+    wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
     // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
     // Node C receives the join request from Node A, it will send a direct join request back
     // to A.
