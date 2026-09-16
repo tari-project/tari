@@ -31,6 +31,25 @@ minotari_ledger_wallet_common = { path = "../common" }
 ledger-transport = { version = "0.11" }
 log = { version = "0.4" }
 
+# The review screen scenarios (`src/review.rs`, `src/approver.rs`) drive `ledger_get_one_sided_metadata_signature`,
+# whose receiver argument is a `TariAddress`. A path dependency on the root workspace's own crate, kept at the same
+# version as the rest of the repository - the same arrangement as `minotari_ledger_wallet_comms` above.
+#
+# `tari_common` is deliberately *not* declared alongside it. The `Network` the accessor also takes comes out of the
+# address itself (`receiver.network()`), so the type is never named here and the dependency would be unused - and
+# `cargo machete` in `.github/workflows/ci.yml` walks the filesystem rather than the workspace graph, so it reaches
+# this excluded crate and would fail the `ci` job over it.
+tari_common_types = { path = "../../../base_layer/common_types", version = "5.7.0-pre.5" }
+
+# `dialoguer` is what `HumanApprover` asks its two questions with. It is here rather than a second prompting crate
+# because `minotari_ledger_wallet_comms` already depends on this exact version for `examples/ledger_demo`.
+dialoguer = { version = "0.11" }
+
+# Speculos' control API speaks JSON. Only the reading side needs a parser - the request bodies this sends are four
+# fixed shapes and are written out literally in `speculos_api.rs` - but a screen's text can contain anything the
+# device chose to draw, quotes and backslashes included, so decoding it by hand would be a parser with a bug in it.
+serde_json = { version = "1" }
+
 # The independent key derivation oracle (`src/oracle.rs`). Versions are kept in step with the root workspace so
 # that the oracle hashes bytes the same way the rest of the repository does - `tari_crypto` in particular, whose
 # `DomainSeparatedHasher` the device application carries a byte-for-byte copy of.

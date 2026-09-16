@@ -86,6 +86,24 @@ pub enum AppSW {
     Ok = AppSWMapping::Ok as u16,
 }
 
+// The two status words above come from the SDK rather than from `minotari_ledger_wallet_common`, so they are the
+// only two that can disagree with the host's copy - and when they disagree nothing says so. The host's
+// `AppSW::try_from` simply fails to recognise the value, so a rejected review arrives at
+// `ledger_get_one_sided_metadata_signature` as "insufficient data" rather than as `UserCancelled`.
+//
+// That is not hypothetical: `StatusWords::UserCancelled` moved from 0x6e04 to 0x6985 in the SDK and the host's
+// copy stayed where it was, which left `LedgerDeviceError::UserCancelled` unreachable. A pair of `const`
+// assertions costs nothing and turns the next such move into a build failure in the crate that has to change.
+const _: () = assert!(
+    AppSW::UserCancelled as u16 == AppSWMapping::UserCancelled as u16,
+    "minotari_ledger_wallet_common's AppSW::UserCancelled no longer matches ledger_device_sdk's StatusWords; the \
+     host cannot recognise a rejected review until they agree"
+);
+const _: () = assert!(
+    AppSW::WrongApduLength as u16 == AppSWMapping::WrongApduLength as u16,
+    "minotari_ledger_wallet_common's AppSW::WrongApduLength no longer matches ledger_device_sdk's StatusWords"
+);
+
 impl From<AppSW> for Reply {
     fn from(sw: AppSW) -> Reply {
         Reply(sw as u16)
@@ -209,8 +227,18 @@ fn show_status_and_home_if_needed(
     _nonce_ctx: &mut EphemeralNonceCtx,
     home: &mut NbglHomeAndSettings,
 ) {
+    // `UserCancelled` belongs here as much as `Deny` and `Ok` do. Without it, a Stax or Flex user who taps
+    // "Yes, reject" is left looking at the rejection dialog for ever: the handler returns, the main loop replies
+    // and goes back to waiting for the next command, but nothing ever redraws the home screen. The device is
+    // still perfectly usable - the next instruction is served normally - which is exactly what makes it hard to
+    // notice, and what makes it indistinguishable on screen from a device that has hung.
+    //
+    // BAGL models do not have this problem: their main loop redraws the home menu itself on every pass.
     let (show_status, _status_type) = match (ins, status) {
-        (Instruction::GetOneSidedMetadataSignature, AppSW::Deny | AppSW::Ok) => (true, StatusType::Transaction),
+        (
+            Instruction::GetOneSidedMetadataSignature,
+            AppSW::Deny | AppSW::Ok | AppSW::UserCancelled,
+        ) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
     };
 
