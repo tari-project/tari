@@ -580,7 +580,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(request.utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources
@@ -1586,7 +1586,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources
@@ -1637,7 +1637,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources

@@ -37,9 +37,9 @@ use minotari_wallet::{
         service::OutputManagerService,
         storage::{
             OutputStatus,
-            database::{OutputManagerBackend, OutputManagerDatabase},
+            database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::SpendingPriority,
-            sqlite_db::OutputManagerSqliteDatabase,
+            sqlite_db::{OutputManagerSqliteDatabase, SpentOutputInfoForBatch},
         },
     },
     test_utils::create_consensus_constants,
@@ -2732,4 +2732,173 @@ async fn pay_to_self_builds_a_valid_transaction() {
     assert_eq!(tx.body.inputs().len(), 1);
     assert_eq!(tx.body.outputs().len(), 2, "the payment plus change");
     assert_validates(&tx);
+}
+
+/// Regression test for a bug where `OutputManagerRequest::GetOutputsByQuery` was handled by wrapping the query
+/// result in a status-specific `OutputManagerResponse` variant (originally `SpentOutputs`, then a status-mismatched
+/// `UnspentOutputs`) instead of the generic `OutputManagerResponse::Outputs(outputs)` variant. Since
+/// `GetOutputsByQuery` can return outputs of ANY status depending on the query filter, wrapping it in a
+/// status-specific variant caused `OutputManagerHandle::get_outputs_by_query` (which matches on `Outputs`) to fail
+/// with `OutputManagerError::UnexpectedApiResponse` whenever the actual response variant didn't match. This broke
+/// the multisig withdrawal path (`GetMultisigUtxoData`, `PrepareWithdrawMultisigTransaction`, `SendMultisigUtxo`)
+/// which all call `get_outputs_by_query` internally. See also
+/// `get_outputs_by_query_returns_matching_spent_output` and `get_outputs_by_query_returns_empty_for_non_matching_status`
+/// below for the negative-path cases this test alone would not have caught.
+#[tokio::test]
+async fn get_outputs_by_query_returns_matching_unspent_output() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    // Add a real unspent output to the OMS.
+    let uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(5_000_000)).await;
+    let commitment = uo.commitment().clone();
+
+    let mut query = OutputBackendQuery::default();
+    query.status = vec![OutputStatus::Unspent];
+    query.commitments.push(commitment.clone());
+
+    let result = oms
+        .output_manager_handle
+        .get_outputs_by_query(query)
+        .await
+        .expect("get_outputs_by_query should succeed for a query matching an existing unspent output");
+
+    assert_eq!(result.len(), 1, "expected exactly one output matching the query");
+    assert_eq!(result[0].commitment, commitment);
+    assert_eq!(result[0].hash, uo.output_hash());
+    assert_eq!(result[0].status, OutputStatus::Unspent);
+}
+
+/// Companion regression test to `get_outputs_by_query_returns_matching_unspent_output`, covering the reviewer's
+/// point directly: "Your test passes because you only specified unspent." `GetOutputsByQuery` can return outputs
+/// of ANY status depending on the query filter, so it must not be wrapped in a status-specific response variant.
+/// This test builds a real SPENT output and queries for it with `OutputStatus::Spent`. Together with the unspent
+/// test above, it guards against a future regression where either the service (`service.rs`) or the handle
+/// (`handle.rs`) side of `GetOutputsByQuery` reverts to wrapping/matching a status-specific variant
+/// (`SpentOutputs`/`UnspentOutputs`) instead of the generic `Outputs` variant: if only one side is changed back,
+/// every call - including the unspent test above - fails with `OutputManagerError::UnexpectedApiResponse`
+/// (verified locally by temporarily reverting only the `handle.rs` match arm).
+#[tokio::test]
+async fn get_outputs_by_query_returns_matching_spent_output() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    // Add a real output to the OMS and then mark it as spent directly in the backend.
+    let uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(5_000_000)).await;
+    let commitment = uo.commitment().clone();
+
+    backend
+        .mark_outputs_as_spent(vec![SpentOutputInfoForBatch {
+            commitment: commitment.clone(),
+            confirmed: true,
+            mark_deleted_at_height: 1,
+            mark_deleted_in_block: FixedHash::zero(),
+        }])
+        .unwrap();
+
+    let mut query = OutputBackendQuery::default();
+    query.status = vec![OutputStatus::Spent];
+    query.commitments.push(commitment.clone());
+
+    let result = oms
+        .output_manager_handle
+        .get_outputs_by_query(query)
+        .await
+        .expect("get_outputs_by_query should succeed for a query matching an existing spent output");
+
+    assert_eq!(result.len(), 1, "expected exactly one output matching the query");
+    assert_eq!(result[0].commitment, commitment);
+    assert_eq!(result[0].hash, uo.output_hash());
+    assert_eq!(result[0].status, OutputStatus::Spent);
+}
+
+/// Guards against the enum-variant mismatch masking a genuine "no results" case as an error: querying for a
+/// SPENT output using a non-matching `OutputStatus::Unspent` filter must return an empty result, not an error.
+#[tokio::test]
+async fn get_outputs_by_query_returns_empty_for_non_matching_status() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(5_000_000)).await;
+    let commitment = uo.commitment().clone();
+
+    backend
+        .mark_outputs_as_spent(vec![SpentOutputInfoForBatch {
+            commitment: commitment.clone(),
+            confirmed: true,
+            mark_deleted_at_height: 1,
+            mark_deleted_in_block: FixedHash::zero(),
+        }])
+        .unwrap();
+
+    // The output is now Spent, but we query for Unspent with the exact commitment - this should return an empty
+    // Vec, not an error.
+    let mut query = OutputBackendQuery::default();
+    query.status = vec![OutputStatus::Unspent];
+    query.commitments.push(commitment.clone());
+
+    let result = oms
+        .output_manager_handle
+        .get_outputs_by_query(query)
+        .await
+        .expect("get_outputs_by_query should succeed (with an empty result) for a non-matching status filter");
+
+    assert!(
+        result.is_empty(),
+        "expected no outputs to match a status filter that doesn't match the output's actual status"
+    );
+}
+
+/// Regression test for the vulnerability flagged by `greptile-apps[bot]` on PR #8028:
+/// `OutputBackendQuery::default()` seeds `status: vec![OutputStatus::Spent]`, so a caller that does
+/// `query.status.push(OutputStatus::Unspent)` ends up with `status == [Spent, Unspent]` and unintentionally
+/// matches outputs of EITHER status, not just `Unspent`. Combined with `GetOutputsByQuery` now actually
+/// succeeding (see `get_outputs_by_query_returns_matching_unspent_output` above), this meant a
+/// caller-supplied commitment for an ALREADY-SPENT output could be selected via `.first()` in the multisig
+/// withdrawal handlers (`PrepareWithdrawMultisigTransaction`, `GetMultisigUtxoData`, `SendMultisigUtxo`) and
+/// used to build/sign/submit a transaction that spends an already-spent multisig UTXO. The fix is for those
+/// callers to *replace* the default status list (`query.status = vec![OutputStatus::Unspent]`) instead of
+/// pushing onto it. This test builds a real output, marks it `Spent`, then queries for it using that same
+/// fixed (replace, not push) pattern with the exact matching commitment, and asserts the result is EMPTY -
+/// the spent output must NOT be returned when filtering for `Unspent` only.
+#[tokio::test]
+async fn get_outputs_by_query_excludes_spent_output_when_filtering_unspent_only() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    // Add a real output to the OMS and then mark it as spent directly in the backend.
+    let uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(5_000_000)).await;
+    let commitment = uo.commitment().clone();
+
+    backend
+        .mark_outputs_as_spent(vec![SpentOutputInfoForBatch {
+            commitment: commitment.clone(),
+            confirmed: true,
+            mark_deleted_at_height: 1,
+            mark_deleted_in_block: FixedHash::zero(),
+        }])
+        .unwrap();
+
+    // Build the query exactly the way the (fixed) multisig callers do: start from the `Spent`-seeded
+    // default, then *replace* (not push onto) the status list with `Unspent` before filtering by the
+    // exact matching commitment of the now-spent output.
+    let mut query = OutputBackendQuery::default();
+    query.commitments.push(commitment.clone());
+    query.status = vec![OutputStatus::Unspent];
+
+    let result = oms
+        .output_manager_handle
+        .get_outputs_by_query(query)
+        .await
+        .expect("get_outputs_by_query should succeed (with an empty result) when filtering for Unspent only");
+
+    assert!(
+        result.is_empty(),
+        "a Spent output must not be returned by a caller filtering for OutputStatus::Unspent only - this is \
+         the exact multisig double-spend vulnerability greptile-apps flagged on PR #8028"
+    );
 }
