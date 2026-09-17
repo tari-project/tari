@@ -130,11 +130,16 @@ pub struct ScenarioModule {
 
 /// Every scenario module, in the order a frontend should run them.
 ///
-/// `handshake` is first and that is load bearing. Every other scenario assumes the ledger application has been
-/// verified - `raw::send` deliberately does not verify, so that a malformed-APDU probe cannot interleave five
-/// verification exchanges into the device state it was setting up - and `handshake` is what performs that
-/// verification. It also has to run while `verify_ledger_application`'s process wide cache is still cold, which is
-/// the only moment its concurrency assertion means anything.
+/// `handshake` is first because every other scenario assumes the ledger application has been verified -
+/// `raw::send` deliberately does not verify, so that a malformed-APDU probe cannot interleave five verification
+/// exchanges into the device state it was setting up.
+///
+/// It does **not** get a cold `verify_ledger_application` cache, and nothing here depends on one: both frontends
+/// call `vectors::identify_seed` as a run level precondition before any module, which reaches the device through
+/// an accessor and so verifies first. That costs nothing, because the concurrency scenario is already documented
+/// as unable to distinguish the pre-fix implementation from the fixed one either way - see
+/// [`handshake::MODULE`]'s scenario docs, and `comms/tests/verify_ledger_application_concurrency.rs` for the test
+/// that can.
 pub const MODULES: &[ScenarioModule] = &[
     handshake::MODULE,
     vectors::MODULE,

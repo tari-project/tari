@@ -104,6 +104,18 @@ fn run_module(module: &ScenarioModule) {
     // The APDU transport and the control API are two different sockets on the same simulator, and both are needed:
     // the instructions go down one and the buttons down the other.
     simulator::connect();
+
+    // The "is this a device whose answers may be written down" gate, before any module rather than inside the one
+    // that happens to need it.
+    //
+    // `vectors` used to be the only caller, which was sound only for as long as it stayed the only module that
+    // transcribes a device secret - today `ledger_get_view_key` is the sole accessor returning a `PrivateKey` and
+    // `vectors::ask_device` is its only caller. That is an invariant nobody is reminded of: the next scenario that
+    // returns a secret would have to remember to ask. Under nextest each module is its own *process*, so a
+    // `vectors` failure could not have stopped the others anyway.
+    //
+    // It aborts rather than being recorded, because everything after it prints what the device said.
+    vectors::identify_seed().unwrap_or_else(|e| panic!("{e}"));
     let approver = SpeculosApprover::from_env().expect("SPECULOS_API_ADDRESS / SPECULOS_MODEL");
     println!(
         "Running the '{}' scenarios against a {} at '{}'",

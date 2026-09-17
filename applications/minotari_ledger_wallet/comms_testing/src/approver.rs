@@ -109,10 +109,21 @@ pub struct Transcript {
 }
 
 impl fmt::Display for Transcript {
+    /// # Device text is always written with `{:?}`
+    ///
+    /// Everything in here is a string the *device* drew, reconstructed from Speculos' JSON with no constraint on
+    /// what characters it may contain, and this `Display` ends up in an assertion message - so in a terminal, and
+    /// in the JUnit `<failure>` body `scripts/ledger_speculos.sh` copies into an artifact directory for CI to
+    /// upload. Written plainly, a device could put terminal escapes in front of whoever reads that.
+    ///
+    /// `{:?}` escapes them and is free. [`ScreenText`]'s own `Display` already does the same for its text, and so
+    /// does [`ReviewError::NotAtHome`]; this was the one place left writing a screen raw. The impact is low - it
+    /// takes a device you chose to point this at - but the sink is wide enough that fixing it narrowly would just
+    /// leave the next one open.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "  Screens seen ({}):", self.screens.len())?;
         for (index, screen) in self.screens.iter().enumerate() {
-            writeln!(f, "    [{index}] {screen}")?;
+            writeln!(f, "    [{index}] {screen:?}")?;
         }
         writeln!(f, "  Full event log ({} events):", self.event_log.len())?;
         for event in &self.event_log {

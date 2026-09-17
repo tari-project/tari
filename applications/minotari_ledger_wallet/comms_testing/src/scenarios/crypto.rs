@@ -120,12 +120,20 @@ const SCENARIOS: &[Scenario] = &[
     },
 ];
 
-/// The network the script signature scenarios sign under.
+/// The networks the managed script signature scenario signs under.
 ///
-/// Opaque to the device, which only folds `as_byte()` into a hash label (`"script_challenge.n{network}"`), so any
-/// network works as long as the host uses the same one on both sides. `LocalNet` because these scenarios sign
-/// nothing that belongs on a real chain. A constant rather than a random draw, so that a challenge mismatch is a
-/// mismatch about the *construction* rather than about which byte went out.
+/// The device folds `as_byte()` into a hash label (`"script_challenge.n{network}"`) and does nothing else with it,
+/// so the property worth checking is that the byte the host puts in its challenge is the byte the device put in
+/// its own. A single value cannot show that: with one network on both sides, a device that ignored the field
+/// entirely would agree just as well.
+///
+/// So the managed scenario signs under two, and they must produce *different* signatures over otherwise identical
+/// inputs. Two rather than a random draw, because a network is a small closed set and a mismatch should be a
+/// mismatch about the construction rather than about which byte happened to go out. Neither belongs on a real
+/// chain.
+const NETWORKS: [Network; 2] = [Network::LocalNet, Network::NextNet];
+
+/// The network the other signature scenarios sign under, where the point is the key rather than the label.
 const NETWORK: Network = Network::LocalNet;
 
 /// The transaction output/input version the script signature scenarios send. The device parses and then ignores
@@ -242,34 +250,56 @@ fn managed_script_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
     let commitment = fixtures::script_commitment(&commitment_private_key, &value);
     let message = fixtures::random_bytes_32();
 
-    let signature = ledger_get_script_signature(
-        account,
-        NETWORK,
-        TXI_VERSION,
-        &ScriptSignatureKey::Managed { branch, index },
-        &value,
-        &commitment_private_key,
-        &CompressedCommitment::from_commitment(commitment.clone()),
-        message,
-    )
-    .context(|| "GetScriptSignature (managed)".to_string())?;
+    // Once per network, with everything else held fixed. See `NETWORKS`: one value cannot show that the device
+    // put the host's network byte into its own challenge, because a device that ignored the field would agree.
+    let mut responses = Vec::with_capacity(NETWORKS.len());
+    for network in NETWORKS {
+        let signature = ledger_get_script_signature(
+            account,
+            network,
+            TXI_VERSION,
+            &ScriptSignatureKey::Managed { branch, index },
+            &value,
+            &commitment_private_key,
+            &CompressedCommitment::from_commitment(commitment.clone()),
+            message,
+        )
+        .context(|| format!("GetScriptSignature (managed) on {network}"))?;
 
-    verify_com_and_pub_signature(
-        "the managed script signature",
-        &signature.to_vec(),
-        &commitment,
-        &script_public_key,
-        |ephemeral_commitment, ephemeral_pubkey| {
-            fixtures::script_signature_challenge(
-                NETWORK.as_byte(),
-                ephemeral_commitment,
-                ephemeral_pubkey,
-                &script_public_key,
-                &commitment,
-                &message,
-            )
-        },
-    )
+        verify_com_and_pub_signature(
+            &format!("the managed script signature on {network}"),
+            &signature.to_vec(),
+            &commitment,
+            &script_public_key,
+            |ephemeral_commitment, ephemeral_pubkey| {
+                fixtures::script_signature_challenge(
+                    network.as_byte(),
+                    ephemeral_commitment,
+                    ephemeral_pubkey,
+                    &script_public_key,
+                    &commitment,
+                    &message,
+                )
+            },
+        )?;
+        responses.push((network, signature.u_x().clone()));
+    }
+
+    // Each verified against its own network's challenge above, so a device that ignored the network would have
+    // had to satisfy two different challenges with one construction. `u_x` is compared rather than the whole
+    // signature because the ephemeral values are fresh nonces and would differ regardless - it is the response
+    // scalar, which is `r_x + e * x`, and `e` is the only thing the network moves.
+    let differ = match responses.as_slice() {
+        [(_, first), (_, second)] => first != second,
+        _ => return Err(super::fail("expected exactly one response per network")),
+    };
+    require(differ, || {
+        format!(
+            "signing the same script signature under {} and {} produced the same response scalar, so the network \
+             never reached the device's challenge",
+            NETWORKS[0], NETWORKS[1]
+        )
+    })
 }
 
 /// Acceptance: `GetScriptSignatureDerived` signs with `H("script key", b) + alpha` for the blinding factor `b` the
@@ -365,8 +395,15 @@ const DERIVED_SCRIPT_KEYS: u64 = 1;
 /// wire. Between them the shipped assembly and the device's tolerance of a hostile one are both covered; a suite
 /// that re-implemented the chunking for its happy path would have left the shipped version untested.
 ///
-/// The sender offset indexes are taken from the accessor's own return value rather than recomputed here, which
-/// also puts its `sender_offset_index` walk under test.
+/// The sender offset indexes are taken from the accessor's own return value rather than recomputed here. Be
+/// precise about what that does and does not check: the accessor and the device call the *same*
+/// `sender_offset_index` out of `minotari_ledger_wallet_common`, so a change to that function moves both sides
+/// together and the group equation below still balances. What is under test is that the accessor keeps using the
+/// shared walk rather than growing a private reimplementation of it - which is worth having, and is all it is.
+///
+/// The wrap in that walk is likewise not exercised. The base index is drawn by the device, so reaching a base
+/// within `SENDER_OFFSET_KEYS` of `u64::MAX` has probability around 2^-62; `script_offset`'s own unit tests cover
+/// the wrap directly, without a device.
 fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
@@ -470,6 +507,12 @@ fn the_shared_secret_is_the_product(_context: &ScenarioContext<'_>) -> ScenarioR
 
 /// The amount the review shows. Under a million, so the device renders it in microTari - see
 /// [`crate::review::minotari_amount`], which has to make the same choice.
+///
+/// That leaves the other branch of that function - `{:.2} T`, at or above one million - **never compared against a
+/// device**. It is covered host side by `review::test::the_amount_is_formatted_the_way_the_device_formats_it`, so
+/// the formatter is tested; what is untested is that the *device* agrees with it above a million. Closing that
+/// would take a second approval scenario, which costs a human interaction on every hardware run and would break
+/// the "exactly one approval scenario" invariant in `scenarios::mod`. Recorded rather than hidden.
 const REVIEW_VALUE: u64 = 12_345;
 
 /// Acceptance: the device signs what it showed, and the signature is a valid metadata signature.

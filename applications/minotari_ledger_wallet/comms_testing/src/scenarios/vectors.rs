@@ -192,6 +192,11 @@ pub fn identify_seed() -> Result<SeedId, ScenarioError> {
 }
 
 /// Ask the device for whatever `vector` describes, and return the 32 bytes it answered with, hex encoded.
+///
+/// Hex encoded rather than raw, and that is load bearing beyond readability: every caller interpolates this into a
+/// failure message that reaches a terminal and the JUnit XML CI uploads. `to_hex` emits `[0-9a-f]` and nothing
+/// else, so a device cannot put terminal escapes through it. Anything added here that returns *unencoded* device
+/// bytes has to be written with `{:?}` at its print sites, the way `approver::Transcript` handles screen text.
 fn ask_device(vector: &DerivationVector) -> Result<String, ScenarioError> {
     let bytes = match vector.call {
         DeviceCall::PublicKey { index, branch } => ledger_get_public_key(vector.account, index, branch)

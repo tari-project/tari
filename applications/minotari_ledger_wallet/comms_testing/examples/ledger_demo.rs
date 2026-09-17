@@ -68,7 +68,7 @@ use minotari_ledger_wallet_comms::{accessor_methods::ledger_get_view_key, error:
 use minotari_ledger_wallet_comms_testing::{
     approver::HumanApprover,
     fixtures,
-    scenarios::{Approval, MODULES, ScenarioContext, ScenarioModule},
+    scenarios::{self, Approval, MODULES, ScenarioContext, ScenarioModule},
 };
 
 fn main() -> ExitCode {
@@ -119,6 +119,15 @@ fn main() -> ExitCode {
     );
     if runs_transport_probes {
         println!("Then four transport probes, each asking you to close, unplug, reconnect or reopen the device.");
+    }
+
+    // The same run-level gate the simulator frontend applies, and for the same reason: everything below prints
+    // what the device said, including - through `vectors` - a `GetViewKey` secret scalar. It aborts rather than
+    // being recorded with the other failures, because "carry on and report at the end" is exactly wrong for a
+    // device this run has not established it may quote.
+    if let Err(e) = scenarios::vectors::identify_seed() {
+        eprintln!("\n{e}");
+        return ExitCode::FAILURE;
     }
 
     let approver = HumanApprover;

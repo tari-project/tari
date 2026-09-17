@@ -566,6 +566,45 @@ EOF
 
 # Build every model, then run the whole suite against every model x seed combination.
 #
+# Copy a JUnit report with the run's resolved configuration attached as `<properties>`.
+#
+# A report that says "124 passed" and nothing else cannot be read six weeks later: it does not say which models ran,
+# which seeds, or which emulator produced them - and `MODELS`, `SEEDS` and both image pins are all overridable, so
+# `MODELS=nanosplus SEEDS=default` runs one of the four cells and produces a report indistinguishable from a full
+# one. Cross-model agreement is the stated reason a single vector table is shared across models, so a report that
+# cannot say which models it covered is not evidence for the thing it exists to evidence.
+#
+# `<properties>` is the JUnit element for exactly this and every consumer ignores what it does not recognise. It is
+# inserted after the opening `<testsuites ...>` tag, which nextest writes as a single line.
+#
+# The values are ours - model and seed are validated by `speculos_model`/`seed_argument`, the images are constants
+# here - but they are still XML-escaped rather than trusted to be attribute-safe, because a future `SPECULOS_IMAGE`
+# holding a quote would otherwise produce a file no parser accepts.
+annotate_junit() {
+  local report="$1" model="$2" seed="$3"
+  awk -v model="${model}" -v seed="${seed}" \
+      -v models="${MODELS}" -v seeds="${SEEDS}" \
+      -v speculos="${SPECULOS_IMAGE}" -v builder="${BUILDER_IMAGE}" \
+      -v probe="${BLOCKING_PROBE}" '
+    function esc(v) {
+      gsub(/&/, "\\&amp;", v); gsub(/</, "\\&lt;", v)
+      gsub(/>/, "\\&gt;", v); gsub(/"/, "\\&quot;", v)
+      return v
+    }
+    function prop(k, v) { printf "    <property name=\"%s\" value=\"%s\"/>\n", esc(k), esc(v) }
+    { print }
+    /^<testsuites/ && !done {
+      done = 1
+      print "  <properties>"
+      prop("speculos.model", model);      prop("speculos.seed", seed)
+      prop("speculos.models", models);    prop("speculos.seeds", seeds)
+      prop("speculos.image", speculos);   prop("speculos.builder_image", builder)
+      prop("speculos.skipped_test", probe)
+      print "  </properties>"
+    }
+  ' "${report}"
+}
+
 # One table and one scenario library, every model. If stax disagrees with nanosplus about a derived key that is a
 # bug in the device application - a user moving their recovery phrase between Ledger models would find a different
 # wallet - and it is never fixed by giving stax its own table. The same argument applies to the scenarios: they are
@@ -671,7 +710,7 @@ cmd_test() {
       # next one is red.
       save_log "${model}" "${seed}"
       if junit_report="$(find_junit_report)"; then
-        cp "${junit_report}" "${JUNIT_DIR}/${model}-${seed}.xml"
+        annotate_junit "${junit_report}" "${model}" "${seed}" >"${JUNIT_DIR}/${model}-${seed}.xml"
       else
         # A missing report is a failure of the run, not a cosmetic gap. Producing JUnit is part of what this
         # script is for, and a green build that quietly uploaded nothing is worse than a red one: the next person
@@ -684,14 +723,22 @@ cmd_test() {
     done
   done
 
+  # Name what was actually covered. `MODELS` and `SEEDS` are overridable, so "all combinations passed" on its own
+  # is true of a one cell run and reads like a four cell one - and the images are pinned by digest precisely so
+  # that a green run is attributable to an emulator, which only helps if the run says which.
   echo
+  echo "==> Covered models:   ${models}"
+  echo "==> Covered seeds:    ${SEEDS}"
+  echo "==> Speculos image:   ${SPECULOS_IMAGE}"
+  echo "==> Builder image:    ${BUILDER_IMAGE}"
+  echo "==> Skipped by name:  ${BLOCKING_PROBE}"
   echo "==> JUnit XML: ${JUNIT_DIR}"
   echo "==> Simulator logs: ${SPECULOS_LOG_DIR}"
   if [ "${failures}" -ne 0 ]; then
-    echo "==> ${failures} failure(s) across the model/seed matrix" >&2
+    echo "==> ${failures} failure(s) across ${models} x ${SEEDS}" >&2
     return 1
   fi
-  echo "==> All model/seed combinations passed"
+  echo "==> All model/seed combinations passed for ${models} x ${SEEDS}"
 }
 
 main() {

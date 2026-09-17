@@ -3,17 +3,17 @@
 
 //! `verify_ledger_application`, end to end against a device, plus the version floor that gates it.
 //!
-//! # This module runs first, and that is load bearing
+//! # This module runs first
 //!
-//! Two reasons, and only the second is obvious.
+//! Every other scenario assumes a verified application. [`crate::raw::send`] deliberately skips verification, so
+//! that a malformed-APDU probe cannot interleave five unrelated exchanges into whatever device state the scenario
+//! was setting up - and the script offset context is invalidated by exactly that.
 //!
-//! 1. Every other scenario assumes a verified application. [`crate::raw::send`] deliberately skips verification, so
-//!    that a malformed-APDU probe cannot interleave five unrelated exchanges into whatever device state the scenario
-//!    was setting up - and the script offset context is invalidated by exactly that. Something has to do the
-//!    verification once, and this is it.
-//! 2. `verify_ledger_application` caches its success in a process wide `static` with no way to reset it, by design. Its
-//!    concurrency behaviour is therefore only observable while that cache is still cold, which is the first call in the
-//!    process and nowhere else.
+//! What it does **not** get is a cold `verify_ledger_application` cache. Both frontends call
+//! `vectors::identify_seed` as a run level precondition before any module, and that reaches the device through an
+//! accessor, so verification has already happened by the time anything here runs. Nothing below depends on it: the
+//! concurrency scenario is explicit that it could not have distinguished the pre-fix implementation from the fixed
+//! one even with a cold cache.
 
 use std::{sync::Barrier, thread};
 
@@ -66,8 +66,13 @@ const RACING_CALLERS: usize = 8;
 /// trailing `Ok(())` and returned `Ok` without the device having been checked - so "all eight callers returned
 /// `Ok`", which is all a scenario can observe from here, was true then and is true now.
 ///
-/// Detecting it needs the *number of device exchanges* each caller saw before being told the device was fine, and
-/// that needs a transport wrapped in a counter. `comms/tests/verify_ledger_application_concurrency.rs` does exactly
+/// The cache is in fact already warm by the time this runs - `vectors::identify_seed` is a run level precondition
+/// in both frontends and reaches the device through an accessor - so the eight callers mostly contend on a lock
+/// and return the cached answer. That costs this scenario nothing it still claims, and the follow-up instruction
+/// below is what keeps it touching the device at all.
+///
+/// Detecting the bug needs the *number of device exchanges* each caller saw before being told the device was fine,
+/// and that needs a transport wrapped in a counter. `comms/tests/verify_ledger_application_concurrency.rs` does exactly
 /// that against a stub device, asserts the five-instruction sequence ran exactly once, and is where that property
 /// lives. It cannot move here: this scenario also runs on hardware through `examples/ledger_demo.rs`, where
 /// registering a wrapping transport is precisely the thing that file guarantees it never does - that guarantee is
@@ -112,7 +117,7 @@ fn verification_survives_concurrent_callers(_context: &ScenarioContext<'_>) -> S
     // scenario happened to run next.
     let name = ledger_get_app_name().context(|| "GetAppName after the concurrent verification".to_string())?;
     require(name == EXPECTED_NAME, || {
-        format!("after concurrent verification the device answered '{name}', not '{EXPECTED_NAME}'")
+        format!("after concurrent verification the device answered {name:?}, not {EXPECTED_NAME:?}")
     })
 }
 
@@ -126,12 +131,12 @@ fn verification_survives_concurrent_callers(_context: &ScenarioContext<'_>) -> S
 fn name_and_version(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let name = ledger_get_app_name().context(|| "GetAppName".to_string())?;
     require(name == EXPECTED_NAME, || {
-        format!("the device is running '{name}', not '{EXPECTED_NAME}'")
+        format!("the device is running {name:?}, not {EXPECTED_NAME:?}")
     })?;
 
     let version = ledger_get_version().context(|| "GetVersion".to_string())?;
     let reported = semver::Version::parse(&version)
-        .context(|| format!("the device reported '{version}', which is not a semantic version"))?;
+        .context(|| format!("the device reported {version:?}, which is not a semantic version"))?;
     let minimum = semver::Version::parse(MIN_LEDGER_APP_VERSION)
         .context(|| format!("MIN_LEDGER_APP_VERSION is '{MIN_LEDGER_APP_VERSION}', which is not a semantic version"))?;
     require(reported >= minimum, || {

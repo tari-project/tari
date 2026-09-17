@@ -43,8 +43,14 @@
 //! exactly that. The `handshake` scenarios verify the application once, first, and everything after them relies on
 //! that having happened.
 
+use std::fmt;
+
 use ledger_transport::APDUCommand;
-use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE,
+    script_offset::SCRIPT_OFFSET_REPLY_SIZE,
+};
 use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
     ledger_wallet::{Command, LedgerTransport},
@@ -174,6 +180,23 @@ impl RawReply {
         }
     }
 }
+
+// The field layouts above have to add up to the reply sizes the shared crate declares, or one of the two has
+// moved. `minotari_ledger_wallet_common` is what the device firmware itself compiles against, so a protocol change
+// lands in those constants first; without these the change would move the length guards and leave the offsets
+// behind, and this crate would keep compiling.
+//
+// **Module scope on purpose.** An equivalent `const _: () = assert!(..)` written inside the `impl` blocks is only
+// evaluated if something names it, so it compiles happily while being wrong - checked by perturbing an offset and
+// watching the build stay green. These fire.
+const _: () = assert!(
+    ScriptOffsetReply::BASE_INDEX_AT + U64_BYTES == SCRIPT_OFFSET_REPLY_SIZE,
+    "the GetScriptOffset field offsets no longer add up to SCRIPT_OFFSET_REPLY_SIZE"
+);
+const _: () = assert!(
+    EphemeralNonceReply::PUBLIC_NONCE_AT + KEY_BYTES == EPHEMERAL_NONCE_REPLY_SIZE,
+    "the GenerateEphemeralNonce field offsets no longer add up to EPHEMERAL_NONCE_REPLY_SIZE"
+);
 
 /// Send one APDU. See the module docs for why this does not verify the application first.
 pub fn send(request: &RawRequest) -> Result<RawReply, LedgerDeviceError> {
@@ -387,31 +410,54 @@ fn branch_bytes(branch: LedgerKeyBranch) -> [u8; 8] {
     u64::from(branch.as_byte()).to_le_bytes()
 }
 
+/// The response version byte every reply but `GetVersion` and `GetAppName` starts with.
+const RESPONSE_VERSION_BYTES: usize = 1;
+/// A Ristretto key or scalar on the wire.
+const KEY_BYTES: usize = 32;
+/// A `u64` field on the wire.
+const U64_BYTES: usize = 8;
+
+/// Read a fixed width field, or say what ran past the end.
+///
+/// `try_into` rather than `copy_from_slice` on a `get(..).unwrap_or_default()`: the latter yields an empty slice
+/// on a short reply and then **panics** inside `copy_from_slice`, which is the opposite of what it reads like. The
+/// length guards in each parser make that unreachable today, but they are written against constants from
+/// `minotari_ledger_wallet_common` - the crate the device firmware itself compiles against - so a firmware
+/// protocol change moves the guard and leaves these offsets behind. When that happens this must produce the
+/// legible error the guard was written to produce, not a panic inside a test harness.
+fn field<const N: usize>(what: &str, data: &[u8], start: usize) -> Result<[u8; N], String> {
+    data.get(start..start.saturating_add(N))
+        .and_then(|slice| <[u8; N]>::try_from(slice).ok())
+        .ok_or_else(|| {
+            format!(
+                "{what}: the {N} bytes at offset {start} run past the end of a {} byte reply",
+                data.len()
+            )
+        })
+}
+
 /// The `GetScriptOffset` reply: `version(1) | script_offset(32) | base_index(8)`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ScriptOffsetReply {
     pub script_offset: [u8; 32],
     pub base_index: u64,
 }
 
 impl ScriptOffsetReply {
+    const BASE_INDEX_AT: usize = Self::SCRIPT_OFFSET_AT + KEY_BYTES;
+    const SCRIPT_OFFSET_AT: usize = RESPONSE_VERSION_BYTES;
+
     /// Parse a reply, or say what was wrong with it.
     pub fn parse(data: &[u8]) -> Result<Self, String> {
-        use minotari_ledger_wallet_common::script_offset::SCRIPT_OFFSET_REPLY_SIZE;
-
         if data.len() < SCRIPT_OFFSET_REPLY_SIZE {
             return Err(format!(
                 "GetScriptOffset reply is {} bytes, expected at least {SCRIPT_OFFSET_REPLY_SIZE}",
                 data.len()
             ));
         }
-        let mut script_offset = [0u8; 32];
-        script_offset.copy_from_slice(data.get(1..33).unwrap_or_default());
-        let mut base_index = [0u8; 8];
-        base_index.copy_from_slice(data.get(33..41).unwrap_or_default());
         Ok(Self {
-            script_offset,
-            base_index: u64::from_le_bytes(base_index),
+            script_offset: field("GetScriptOffset", data, Self::SCRIPT_OFFSET_AT)?,
+            base_index: u64::from_le_bytes(field("GetScriptOffset", data, Self::BASE_INDEX_AT)?),
         })
     }
 }
@@ -424,28 +470,25 @@ pub struct EphemeralNonceReply {
 }
 
 impl EphemeralNonceReply {
-    pub fn parse(data: &[u8]) -> Result<Self, String> {
-        use minotari_ledger_wallet_common::ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE;
+    const HANDLE_AT: usize = RESPONSE_VERSION_BYTES;
+    const PUBLIC_NONCE_AT: usize = Self::HANDLE_AT + U64_BYTES;
 
+    pub fn parse(data: &[u8]) -> Result<Self, String> {
         if data.len() < EPHEMERAL_NONCE_REPLY_SIZE {
             return Err(format!(
                 "GenerateEphemeralNonce reply is {} bytes, expected at least {EPHEMERAL_NONCE_REPLY_SIZE}",
                 data.len()
             ));
         }
-        let mut handle = [0u8; 8];
-        handle.copy_from_slice(data.get(1..9).unwrap_or_default());
-        let mut public_nonce = [0u8; 32];
-        public_nonce.copy_from_slice(data.get(9..41).unwrap_or_default());
         Ok(Self {
-            handle: u64::from_le_bytes(handle),
-            public_nonce,
+            handle: u64::from_le_bytes(field("GenerateEphemeralNonce", data, Self::HANDLE_AT)?),
+            public_nonce: field("GenerateEphemeralNonce", data, Self::PUBLIC_NONCE_AT)?,
         })
     }
 }
 
 /// A `version(1) | public_nonce(32) | signature(32)` reply, which all three Schnorr instructions share.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SchnorrReply {
     pub public_nonce: [u8; 32],
     pub signature: [u8; 32],
@@ -456,13 +499,9 @@ impl SchnorrReply {
         if data.len() < 65 {
             return Err(format!("Schnorr reply is {} bytes, expected at least 65", data.len()));
         }
-        let mut public_nonce = [0u8; 32];
-        public_nonce.copy_from_slice(data.get(1..33).unwrap_or_default());
-        let mut signature = [0u8; 32];
-        signature.copy_from_slice(data.get(33..65).unwrap_or_default());
         Ok(Self {
-            public_nonce,
-            signature,
+            public_nonce: field("a Schnorr reply", data, RESPONSE_VERSION_BYTES)?,
+            signature: field("a Schnorr reply", data, RESPONSE_VERSION_BYTES + KEY_BYTES)?,
         })
     }
 }
@@ -500,18 +539,40 @@ impl ComAndPubSigReply {
         if body.len() < 160 {
             return Err(format!("{what} is {} bytes, expected at least 160", body.len()));
         }
-        let field = |start: usize| {
-            let mut out = [0u8; 32];
-            out.copy_from_slice(body.get(start..start.saturating_add(32)).unwrap_or_default());
-            out
-        };
         Ok(Self {
-            ephemeral_commitment: field(0),
-            ephemeral_pubkey: field(32),
-            u_a: field(64),
-            u_x: field(96),
-            u_y: field(128),
+            ephemeral_commitment: field(what, body, 0)?,
+            ephemeral_pubkey: field(what, body, KEY_BYTES)?,
+            u_a: field(what, body, 2 * KEY_BYTES)?,
+            u_x: field(what, body, 3 * KEY_BYTES)?,
+            u_y: field(what, body, 4 * KEY_BYTES)?,
         })
+    }
+}
+
+/// Both replies above carry a scalar that is a **secret on real hardware**: `ScriptOffsetReply::script_offset` is
+/// the script offset itself, and `SchnorrReply::signature` is the `s` of a Schnorr signature, from which the
+/// private key follows if the nonce is ever known twice - which is exactly what the legacy instruction's whole
+/// module is about.
+///
+/// Nothing formats either today. These `Debug` implementations exist so that the day something does - a `{:?}` in
+/// a new assertion message, an `unwrap` on a `Result` holding one - it cannot put that scalar into a terminal or
+/// into the JUnit XML `scripts/ledger_speculos.sh` uploads. The public halves stay visible, because they are what
+/// makes a failure diagnosable.
+impl fmt::Debug for ScriptOffsetReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScriptOffsetReply")
+            .field("script_offset", &"<redacted>")
+            .field("base_index", &self.base_index)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SchnorrReply {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SchnorrReply")
+            .field("public_nonce", &self.public_nonce)
+            .field("signature", &"<redacted>")
+            .finish()
     }
 }
 
@@ -520,9 +581,7 @@ pub fn parse_key_reply(what: &str, data: &[u8]) -> Result<[u8; 32], String> {
     if data.len() < 33 {
         return Err(format!("{what} reply is {} bytes, expected at least 33", data.len()));
     }
-    let mut key = [0u8; 32];
-    key.copy_from_slice(data.get(1..33).unwrap_or_default());
-    Ok(key)
+    field(what, data, RESPONSE_VERSION_BYTES)
 }
 
 #[cfg(test)]
@@ -663,6 +722,30 @@ mod test {
         assert!(EphemeralNonceReply::parse(&[2, 0]).is_err());
         assert!(SchnorrReply::parse(&[2; 64]).is_err());
         assert!(parse_key_reply("GetViewKey", &[2; 32]).is_err());
+    }
+
+    /// The two replies carrying a secret scalar do not print it. Cheap to assert, and the whole value of a hand
+    /// written `Debug` is that nobody has to remember it is there.
+    #[test]
+    fn a_secret_scalar_is_not_in_its_own_debug_output() {
+        let offset = ScriptOffsetReply {
+            script_offset: [0xab; 32],
+            base_index: 7,
+        };
+        let rendered = format!("{offset:?}");
+        assert!(!rendered.contains("171") && !rendered.contains("ab"), "{rendered}");
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        // The public half stays, or a failure stops being diagnosable.
+        assert!(rendered.contains('7'), "{rendered}");
+
+        let schnorr = SchnorrReply {
+            public_nonce: [0x11; 32],
+            signature: [0xcd; 32],
+        };
+        let rendered = format!("{schnorr:?}");
+        assert!(!rendered.contains("205"), "{rendered}");
+        assert!(rendered.contains("<redacted>"), "{rendered}");
+        assert!(rendered.contains("17"), "{rendered}");
     }
 
     #[test]

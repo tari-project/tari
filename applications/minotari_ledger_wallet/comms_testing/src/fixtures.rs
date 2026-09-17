@@ -174,8 +174,7 @@ pub fn script_signature_challenge(
         script_public_key.as_bytes(),
         commitment.as_public_key().as_bytes(),
     ] {
-        let length = u32::try_from(key.len()).unwrap_or_default();
-        Digest::update(&mut digest, length.to_le_bytes());
+        Digest::update(&mut digest, borsh_slice_length(key));
         Digest::update(&mut digest, key);
     }
     // ...then one borsh array, with no length at all.
@@ -261,7 +260,7 @@ pub fn published_receiver(payment_id_length: usize) -> Result<tari_common_types:
 /// place of a blinding factor - which is not a coincidence, it is the same stealth address construction applied to
 /// a different secret, and sharing the function here is what keeps the two from drifting.
 ///
-/// Those 35 bytes reach the hasher raw, with no length prefix: the device's `Script` borsh implementation writes
+/// All 34 bytes reach the hasher raw, with no length prefix: the device's `Script` borsh implementation writes
 /// each `u8` individually rather than serialising the `Vec`, so borsh's usual slice length prefix never appears.
 pub fn stealth_script(commitment_mask: &RistrettoSecretKey, receiver_public_spend_key: &RistrettoPublicKey) -> Vec<u8> {
     let stealth_key = receiver_public_spend_key.clone() +
@@ -314,8 +313,7 @@ pub fn metadata_signature_challenge(
         sender_offset_public_key.as_bytes(),
         commitment.as_public_key().as_bytes(),
     ] {
-        let length = u32::try_from(key.len()).unwrap_or_default();
-        Digest::update(&mut digest, length.to_le_bytes());
+        Digest::update(&mut digest, borsh_slice_length(key));
         Digest::update(&mut digest, key);
     }
     Digest::update(&mut digest, message);
@@ -325,10 +323,34 @@ pub fn metadata_signature_challenge(
     challenge
 }
 
+/// The `u32` little endian length borsh writes before a slice.
+///
+/// **Not a fail-open conversion.** An earlier version wrote `u32::try_from(key.len()).unwrap_or_default()`, which
+/// on a key that was not `u32`-sized would have silently hashed a length prefix of **zero** into a signature
+/// challenge preimage. That produces a challenge which hashes perfectly well and verifies against nothing, and the
+/// failure would surface as "the device's signature does not verify" - pointing at the device rather than at this
+/// line. A hashing path is the last place to degrade gracefully, so this states the invariant instead: every
+/// length-prefixed field in these challenges is a 32 byte Ristretto point.
+fn borsh_slice_length(key: &[u8]) -> [u8; 4] {
+    assert_eq!(
+        key.len(),
+        32,
+        "a borsh length prefixed field in a signature challenge must be a 32 byte key, got {} bytes",
+        key.len()
+    );
+    32u32.to_le_bytes()
+}
+
+/// The 32 bytes of a key, as an array.
+///
+/// Every caller passes `as_bytes()` of a Ristretto key, which is always 32 bytes, so this cannot fail in practice.
+/// It panics rather than truncating or zero-filling when it does, and it says so: the previous
+/// `bytes.get(..32).unwrap_or_default()` read as "degrade gracefully" while doing the opposite - `copy_from_slice`
+/// panics on a length mismatch, so the fallback bought a worse message rather than a safer path.
 fn to_array_32(bytes: &[u8]) -> [u8; 32] {
-    let mut out = [0u8; 32];
-    out.copy_from_slice(bytes.get(..32).unwrap_or_default());
-    out
+    <[u8; 32]>::try_from(bytes).unwrap_or_else(|_| {
+        panic!("expected a 32 byte key, got {} bytes", bytes.len());
+    })
 }
 
 #[cfg(test)]
