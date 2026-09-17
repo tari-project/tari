@@ -127,10 +127,12 @@ const SCENARIOS: &[Scenario] = &[
 /// its own. A single value cannot show that: with one network on both sides, a device that ignored the field
 /// entirely would agree just as well.
 ///
-/// So the managed scenario signs under two, and they must produce *different* signatures over otherwise identical
-/// inputs. Two rather than a random draw, because a network is a small closed set and a mismatch should be a
-/// mismatch about the construction rather than about which byte happened to go out. Neither belongs on a real
-/// chain.
+/// So the managed scenario signs under two, and verifies each against a challenge built from *its own* network -
+/// that pairing is what a device ignoring the field cannot satisfy. Comparing the two signatures to each other
+/// would prove nothing, because the device draws fresh nonces every call and they would differ regardless.
+///
+/// Two rather than a random draw, because a network is a small closed set and a mismatch should be a mismatch
+/// about the construction rather than about which byte happened to go out. Neither belongs on a real chain.
 const NETWORKS: [Network; 2] = [Network::LocalNet, Network::NextNet];
 
 /// The network the other signature scenarios sign under, where the point is the key rather than the label.
@@ -250,8 +252,10 @@ fn managed_script_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
     let commitment = fixtures::script_commitment(&commitment_private_key, &value);
     let message = fixtures::random_bytes_32();
 
-    // Once per network, with everything else held fixed. See `NETWORKS`: one value cannot show that the device
-    // put the host's network byte into its own challenge, because a device that ignored the field would agree.
+    // Once per network, with everything else held fixed, and **each verified against a challenge built from that
+    // iteration's network**. That pairing is the assertion: a single value cannot show the device put the host's
+    // network byte into its own challenge, because a device that ignored the field would agree just as well;
+    // two values with two challenges means one construction would have to satisfy both.
     let mut responses = Vec::with_capacity(NETWORKS.len());
     for network in NETWORKS {
         let signature = ledger_get_script_signature(
@@ -285,20 +289,31 @@ fn managed_script_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
         responses.push((network, signature.u_x().clone()));
     }
 
-    // Each verified against its own network's challenge above, so a device that ignored the network would have
-    // had to satisfy two different challenges with one construction. `u_x` is compared rather than the whole
-    // signature because the ephemeral values are fresh nonces and would differ regardless - it is the response
-    // scalar, which is `r_x + e * x`, and `e` is the only thing the network moves.
-    let differ = match responses.as_slice() {
-        [(_, first), (_, second)] => first != second,
+    // # What carries the network property, and what this last check actually detects
+    //
+    // **The verification loop above is what proves the device consumed the network byte.** Each signature is
+    // verified against a challenge this scenario built from *that iteration's* network, so a device that ignored
+    // the field would produce one construction that has to satisfy two different challenges, and would fail the
+    // second pass. Nothing below adds to that.
+    //
+    // What is below is a nonce reuse check, and it is worth keeping on its own terms - but it must not be read as
+    // the network assertion. `u_x` is `r_x + e * x`, and `r_x` is a nonce the device draws afresh on every call
+    // (`get_script_signature.rs`, `let r_x = get_random_nonce()?`, with a "Nonces not unique" guard below it). So
+    // two calls give different `u_x` whether or not the network ever reached `e`: this cannot fail *because* of a
+    // network bug, and it is not evidence for one.
+    //
+    // Equal `u_x` across two calls means `r_x` repeated, which is the disclosure the whole nonce design exists to
+    // prevent - so the check earns its place, just not the place its first version claimed.
+    let reused_nonce = match responses.as_slice() {
+        [(_, first), (_, second)] => first == second,
         _ => return Err(super::fail("expected exactly one response per network")),
     };
-    require(differ, || {
-        format!(
-            "signing the same script signature under {} and {} produced the same response scalar, so the network \
-             never reached the device's challenge",
-            NETWORKS[0], NETWORKS[1]
-        )
+    require(!reused_nonce, || {
+        "two script signatures returned the same `u_x`. `u_x` is `r_x + e * x` over a nonce the device is supposed to \
+         draw afresh each call, so an identical value means the nonce repeated - and two signatures over a reused \
+         nonce give up the private key that signed them. (This says nothing about the network byte: the per-network \
+         verification above is what covers that.)"
+            .to_string()
     })
 }
 

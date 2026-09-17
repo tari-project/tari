@@ -580,10 +580,16 @@ EOF
 # The values are ours - model and seed are validated by `speculos_model`/`seed_argument`, the images are constants
 # here - but they are still XML-escaped rather than trusted to be attribute-safe, because a future `SPECULOS_IMAGE`
 # holding a quote would otherwise produce a file no parser accepts.
+# `covered_models` is passed in rather than read from `${MODELS}`, and that is the whole point of the function.
+# `cmd_test` takes a positional model list - `./scripts/ledger_speculos.sh test nanosplus`, which the usage text
+# documents - and resolves it into a *local* `models`. Reading the global here would have written the default
+# "nanosplus stax" into the XML of a run that only covered nanosplus: precisely the misattribution this annotator
+# exists to prevent, arriving through the one override the console summary already handled correctly. `seeds` has
+# no positional form, so the global is the resolved value.
 annotate_junit() {
-  local report="$1" model="$2" seed="$3"
+  local report="$1" model="$2" seed="$3" covered_models="$4"
   awk -v model="${model}" -v seed="${seed}" \
-      -v models="${MODELS}" -v seeds="${SEEDS}" \
+      -v models="${covered_models}" -v seeds="${SEEDS}" \
       -v speculos="${SPECULOS_IMAGE}" -v builder="${BUILDER_IMAGE}" \
       -v probe="${BLOCKING_PROBE}" '
     function esc(v) {
@@ -710,7 +716,7 @@ cmd_test() {
       # next one is red.
       save_log "${model}" "${seed}"
       if junit_report="$(find_junit_report)"; then
-        annotate_junit "${junit_report}" "${model}" "${seed}" >"${JUNIT_DIR}/${model}-${seed}.xml"
+        annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" >"${JUNIT_DIR}/${model}-${seed}.xml"
       else
         # A missing report is a failure of the run, not a cosmetic gap. Producing JUnit is part of what this
         # script is for, and a green build that quietly uploaded nothing is worse than a red one: the next person
