@@ -41,8 +41,29 @@ log = { version = "0.4" }
 # this excluded crate and would fail the `ci` job over it.
 tari_common_types = { path = "../../../base_layer/common_types", version = "5.7.0-pre.5" }
 
-# `dialoguer` is what `HumanApprover` asks its two questions with. It is here rather than a second prompting crate
-# because `minotari_ledger_wallet_comms` already depends on this exact version for `examples/ledger_demo`.
+# `tari_script` is deliberately *not* declared. The crypto scenarios do decompress a
+# `tari_script::CompressedCheckSigSchnorrSignature`, but only through inherent methods on a value an accessor
+# method handed back, so the type is never named here and the dependency would be unused - and `cargo machete` in
+# `.github/workflows/ci.yml` walks the filesystem rather than the workspace graph, so it reaches this excluded
+# crate and would fail the `ci` job over it. The same argument as `tari_common` above.
+#
+# It would also be the wrong tool for the one place a script *is* built. `fixtures::stealth_script` reproduces the
+# bytes the device hashes, and the device serialises its script byte by byte with no length prefix - which is not
+# what `tari_script::Script`'s own borsh encoding produces. Using the real type there would silently change the
+# preimage.
+
+# Scenario inputs are drawn randomly on purpose: a fixture that was a frozen constant would let a device that
+# ignores its arguments pass, and re-running the suite would re-ask exactly the same question. Locked decision 2 of
+# the scenario spec - hand build the inputs from `tari_crypto`, never through the key manager's test helpers, so a
+# key manager change cannot turn this suite red at the wrong layer.
+#
+# `tari_crypto`'s own signature verification also wants an RNG for its batched verification equation.
+rand = { version = "0.10.1" }
+
+# `dialoguer` is what `HumanApprover` asks its two questions with, in `examples/ledger_demo.rs` and
+# `examples/human_review.rs`. It used to live in `minotari_ledger_wallet_comms` for the old `examples/ledger_demo`;
+# that example moved here when it became a frontend over the shared scenario library, and the dependency moved with
+# it rather than being left behind in a crate the shipped console wallet links.
 dialoguer = { version = "0.11" }
 
 # Speculos' control API speaks JSON. Only the reading side needs a parser - the request bodies this sends are four
@@ -66,8 +87,13 @@ k256 = { version = "0.13" }
 hmac = { version = "0.12" }
 sha2 = { version = "0.10" }
 
-[dev-dependencies]
-# Only the device-facing integration tests need this, to assert that whatever version string the application
-# reports is a semantic version, without pinning the test to a version that moves every release.
+# Version comparison, in two places that both matter. The `handshake` scenarios assert that whatever version string
+# the device reports is a semantic version at or above `MIN_LEDGER_APP_VERSION`, without pinning the assertion to a
+# version that moves every release. A host-only unit test in the same module asserts that the same floor is not
+# above the device application's own `version` in `wallet/Cargo.toml` - the two are kept in step by a comment today
+# and by nothing else, and a floor above the application refuses every device including a freshly built one.
+#
+# A real dependency rather than a dev-dependency, because the scenario library is part of the crate and is linked by
+# `examples/ledger_demo.rs` as well as by the tests.
 semver = "1.0"
 

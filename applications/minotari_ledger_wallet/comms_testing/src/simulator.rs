@@ -85,8 +85,23 @@ pub fn seed_id() -> Result<SeedId, LedgerDeviceError> {
     seed_id_from(env::var(SPECULOS_SEED_ID).ok().as_deref())
 }
 
-// The two functions above are thin `env::var` wrappers on purpose, with all of the behaviour in the pure functions
-// below, because that is what makes the behaviour testable **without touching the process environment**.
+/// Which seed the harness *said* the device holds, if it said anything at all.
+///
+/// [`seed_id`] folds "unset" into the default, which is right for a simulator the harness started: the default seed
+/// is what Speculos loads when it is given no `--seed`. It is wrong for the one caller that needs to tell "the
+/// harness declared the default seed" apart from "nobody declared anything", which is
+/// `scenarios::vectors::identify_seed`. That function works the seed out by asking the device, so it needs no
+/// declaration - but when there *is* one it cross checks against it, because a harness that started the alternate
+/// simulator and then declared the default one would otherwise sail through every vector scenario while the
+/// model/seed matrix reported a seed it never ran.
+///
+/// A set-but-unrecognised value is still a hard error, for the reason [`seed_id`] gives.
+pub fn seed_id_if_set() -> Result<Option<SeedId>, LedgerDeviceError> {
+    seed_id_if_set_from(env::var(SPECULOS_SEED_ID).ok().as_deref())
+}
+
+// The three functions above are thin `env::var` wrappers on purpose, with all of the behaviour in the pure
+// functions below, because that is what makes the behaviour testable **without touching the process environment**.
 //
 // `std::env::set_var` is `unsafe` in edition 2024 for a reason that is easy to talk yourself out of: the hazard is
 // not "another test reads *this* variable", it is that `setenv` can reallocate `environ` while any thread is in
@@ -122,6 +137,16 @@ fn seed_id_from(value: Option<&str>) -> Result<SeedId, LedgerDeviceError> {
                 "{SPECULOS_SEED_ID} is '{name}', which is not 'default' or 'alternate'"
             ))
         }),
+    }
+}
+
+/// Which seed was declared, given the raw value of [`SPECULOS_SEED_ID`] if it was set.
+///
+/// The three cases [`seed_id_from`] has, with the first one kept distinct instead of folded into the default.
+fn seed_id_if_set_from(value: Option<&str>) -> Result<Option<SeedId>, LedgerDeviceError> {
+    match value {
+        None => Ok(None),
+        Some(name) => seed_id_from(Some(name)).map(Some),
     }
 }
 
@@ -248,5 +273,24 @@ mod test {
         assert!(seed_id_from(Some("alternative")).is_err());
         assert!(seed_id_from(Some("")).is_err());
         assert!(seed_id_from(Some("DEFAULT")).is_err());
+    }
+
+    /// The "was anything declared at all" reading keeps unset distinct from the default, while treating every other
+    /// case exactly as `seed_id_from` does. A version that quietly reported `Some(SpeculosDefault)` for an unset
+    /// variable would turn the vector scenarios' cross check into an assertion that every hardware device holds the
+    /// default seed.
+    #[test]
+    fn an_unset_seed_id_declares_nothing() {
+        assert_eq!(seed_id_if_set_from(None).unwrap(), None);
+        assert_eq!(
+            seed_id_if_set_from(Some("default")).unwrap(),
+            Some(SeedId::SpeculosDefault)
+        );
+        assert_eq!(
+            seed_id_if_set_from(Some(" alternate\n")).unwrap(),
+            Some(SeedId::Alternate)
+        );
+        assert!(seed_id_if_set_from(Some("")).is_err());
+        assert!(seed_id_if_set_from(Some("alternative")).is_err());
     }
 }
