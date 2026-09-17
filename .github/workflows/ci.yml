@@ -83,6 +83,20 @@ jobs:
         run: |
           cargo install cargo-machete@0.7.0
           cargo machete
+      # `minotari_ledger_wallet_comms_testing` is its own workspace and is deliberately `exclude`d from the root
+      # one - see the comment on `[workspace] exclude` in the root Cargo.toml, which is a security property, not a
+      # packaging accident. The consequence is that no other job in this file compiles or runs a line of it.
+      #
+      # This step is a *minimal* guard, and it is here because a change to the shipped device firmware
+      # (`wallet/src/main.rs`, `common/src/common_types.rs`) landed alongside that crate's tests and nothing else
+      # would notice it regressing. Every test that needs a device is `#[ignore]`d, so this needs no Docker and no
+      # simulator and finishes in a couple of seconds.
+      #
+      # It is deliberately NOT the Speculos job. Building the `.elf` and running the suite against an emulator -
+      # `./scripts/ledger_speculos.sh test` - is Spec 5's work and belongs in its own job with its own timeout and
+      # artifact uploads. Until that lands, none of the device-facing assertions in that crate run after merge.
+      - name: ledger comms_testing unit tests
+        run: cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
       - name: cargo vet
         # Disable cargo vet
         if: ${{ false }}

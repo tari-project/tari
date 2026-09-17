@@ -32,8 +32,17 @@ pub enum AppSW {
     ScriptOffsetNoDeviceScriptKeys = 0xB010,
     NonceStoreFull = 0xB011,
     NonceHandleInvalid = 0xB012,
-    WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
-    UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    // The two below are not this application's to choose: the device returns `ledger_device_sdk`'s own
+    // `StatusWords` values for them (see `AppSW` in `wallet/src/main.rs`, which defines these two from
+    // `StatusWords` rather than from here). A value written here that the SDK disagrees with is not a cosmetic
+    // mismatch - it is a status word the host can never recognise. `wallet/src/main.rs` carries a `const _:`
+    // assertion that holds the two definitions together, so this cannot drift again without failing the build.
+    WrongApduLength = 0x6e03, // ledger_device_sdk::io::StatusWords::BadLen
+    // 0x6985, not 0x6e04. This was 0x6e04 until the Speculos harness noticed that a rejected review reaches the
+    // host as an unrecognised status word and is reported as a malformed reply - `ledger_get_one_sided_metadata_
+    // signature`'s `retcode() == AppSW::UserCancelled` test could never be true, so `LedgerDeviceError::
+    // UserCancelled` was unreachable and a user who pressed Reject got "insufficient data" instead.
+    UserCancelled = 0x6985, // ledger_device_sdk::io::StatusWords::UserCancelled
     Ok = 0x9000,
 }
 
@@ -60,7 +69,7 @@ impl TryFrom<u16> for AppSW {
             0xB011 => Ok(AppSW::NonceStoreFull),
             0xB012 => Ok(AppSW::NonceHandleInvalid),
             0x6e03 => Ok(AppSW::WrongApduLength),
-            0x6e04 => Ok(AppSW::UserCancelled),
+            0x6985 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
             _ => {
                 let mut msg = String::from("Invalid value for AppSW (");
@@ -203,7 +212,7 @@ mod test {
             (0xB011, AppSW::NonceStoreFull),
             (0xB012, AppSW::NonceHandleInvalid),
             (0x6e03, AppSW::WrongApduLength),
-            (0x6e04, AppSW::UserCancelled),
+            (0x6985, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
         ];
 

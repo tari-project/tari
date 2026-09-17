@@ -14,6 +14,7 @@
 #   ./scripts/ledger_speculos.sh build [model...]       Build the device .elf for each model
 #   ./scripts/ledger_speculos.sh up [model] [seed]      Start one simulator and leave it running
 #   ./scripts/ledger_speculos.sh address [model] [seed] Print a running simulator's APDU host address
+#   ./scripts/ledger_speculos.sh api-address [m] [seed] Print a running simulator's HTTP API host address
 #   ./scripts/ledger_speculos.sh logs [model] [seed]    Print a running simulator's log
 #   ./scripts/ledger_speculos.sh down [--all]           Remove this run's simulators (--all: every run's)
 #   ./scripts/ledger_speculos.sh test [model...]        Build, run the suite over every model x seed, tear down
@@ -372,13 +373,26 @@ cmd_up() {
     return 1
   fi
   echo "==> ${name} is ready after ${attempt} attempt(s): APDU ${apdu}, API ${api}"
-  echo "    SPECULOS_APDU_ADDRESS=${apdu} SPECULOS_SEED_ID=${seed}"
+  # All four, because the review screen tests need all four: the instruction goes down the APDU socket and the
+  # button presses go down the API one, and the model decides whether they are buttons or taps.
+  echo "    SPECULOS_APDU_ADDRESS=${apdu} SPECULOS_API_ADDRESS=${api} SPECULOS_MODEL=${model} SPECULOS_SEED_ID=${seed}"
 }
 
 cmd_address() {
   local model="${1:-nanosplus}" seed="${2:-default}"
   validate "${model}" "${seed}"
   host_address "$(container_name "${model}" "${seed}")" "${CONTAINER_APDU_PORT}"
+}
+
+# The HTTP control API, which is a different socket on the same simulator from the APDU port above.
+#
+# The review screen tests need both: the instruction goes down the APDU socket and blocks until somebody presses a
+# button, and the button press goes down this one. The port has always been published - `cmd_up` maps both - but
+# until the UI tests existed nothing asked for it.
+cmd_api_address() {
+  local model="${1:-nanosplus}" seed="${2:-default}"
+  validate "${model}" "${seed}"
+  host_address "$(container_name "${model}" "${seed}")" "${CONTAINER_API_PORT}"
 }
 
 cmd_logs() {
@@ -526,8 +540,11 @@ cargo-nextest is not installed, and it is what produces the JUnit output.
 Or, without JUnit, run the suite directly against a simulator you started yourself:
 
   ./scripts/ledger_speculos.sh up nanosplus default
-  SPECULOS_APDU_ADDRESS=$(./scripts/ledger_speculos.sh address nanosplus default) SPECULOS_SEED_ID=default \
-    cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- --ignored
+  SPECULOS_APDU_ADDRESS=$(./scripts/ledger_speculos.sh address nanosplus default) \
+  SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
+  SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
+    cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
+      --ignored --test-threads=1
 EOF
     return 1
   fi
@@ -540,7 +557,7 @@ EOF
 # never fixed by giving stax its own table.
 cmd_test() {
   local models="${*:-${MODELS}}" model seed failures=0
-  local junit_report apdu
+  local junit_report apdu api
   # Everything this command starts belongs to the run scope, so a concurrent copy of the script - or an
   # interactive `up` sitting in another shell - is invisible to it and safe from it.
   SCOPE="${RUN_SCOPE}"
@@ -581,11 +598,25 @@ cmd_test() {
         continue
       fi
 
+      # The same argument as for the APDU address above, and it matters more here: an empty SPECULOS_API_ADDRESS
+      # would leave the review tests driving Speculos' conventional port, which is the single most likely place
+      # for somebody else's simulator to be listening. The crate refuses to fall back, but only if the variable
+      # is set-and-empty rather than never set at all, so it must not be resolved in an env prefix.
+      if ! api="$(cmd_api_address "${model}" "${seed}")" || [ -z "${api}" ]; then
+        echo "==> Could not find the HTTP API address for ${model} / ${seed}" >&2
+        save_log "${model}" "${seed}"
+        failures=$((failures + 1))
+        remove_container "${model}" "${seed}"
+        continue
+      fi
+
       clear_junit_reports
 
       # --run-ignored all, not ignored-only: the device tests and the oracle/table unit tests both matter, and
       # running them in one invocation keeps them in one JUnit file.
       if SPECULOS_APDU_ADDRESS="${apdu}" \
+        SPECULOS_API_ADDRESS="${api}" \
+        SPECULOS_MODEL="${model}" \
         SPECULOS_SEED_ID="${seed}" \
         cargo nextest run \
         --locked \
@@ -632,6 +663,7 @@ main() {
     build) cmd_build "$@" ;;
     up) cmd_up "$@" ;;
     address) cmd_address "$@" ;;
+    api-address) cmd_api_address "$@" ;;
     logs) cmd_logs "$@" ;;
     down) cmd_down "$@" ;;
     test) cmd_test "$@" ;;

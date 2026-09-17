@@ -58,10 +58,29 @@
 //! `scripts/ledger_speculos.sh` in the repository root builds the device application, brings Speculos up, runs the
 //! suite against it and tears it down. See [`simulator`] for why the device tests are `#[ignore]`d and what that
 //! buys.
+//!
+//! # Driving and asserting the device's screen
+//!
+//! Exactly one instruction - `GetOneSidedMetadataSignature` - puts a review screen in front of a human and refuses
+//! to answer until somebody presses a button. Three more modules exist to drive and assert that screen:
+//!
+//! * [`speculos_api`] - Speculos' HTTP control API: what the device is showing, and how to press it.
+//! * [`review`] - what the device is supposed to be showing, and whether it is.
+//! * [`approver`] - the [`approver::Approver`] trait, its simulator and human implementations, and
+//!   [`approver::while_reviewing`], which runs a blocking instruction and answers its review at the same time.
+//!
+//! The assertion is on the **text of the fields**, never on a screenshot, and the reasoning for that - along with
+//! the measured limits of what Speculos can report on a BAGL model - is in [`review`]'s module documentation.
+//!
+//! The simulator is deliberately **not** restarted between scenarios. See
+//! [`approver::SpeculosApprover::expect_home`] for what a restart would destroy.
 
+pub mod approver;
 pub mod oracle;
+pub mod review;
 pub mod seeds;
 pub mod simulator;
+pub mod speculos_api;
 pub mod vectors;
 
 use std::{
