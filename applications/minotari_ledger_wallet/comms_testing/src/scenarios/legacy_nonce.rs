@@ -47,7 +47,10 @@ use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     legacy_nonce::check_legacy_nonce_branches,
 };
-use minotari_ledger_wallet_comms::accessor_methods::ledger_get_public_key;
+use minotari_ledger_wallet_comms::accessor_methods::{
+    ledger_get_public_key,
+    ledger_get_raw_schnorr_signature_legacy_nonce,
+};
 
 use crate::{
     fixtures,
@@ -86,12 +89,6 @@ const SCENARIOS: &[Scenario] = &[
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::NotNeeded,
         run: disallowed_pairs_are_refused,
-    },
-    Scenario {
-        name: "a spend key branch is refused as a key branch failure, before the nonce branch is looked at",
-        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
-        approval: Approval::NotNeeded,
-        run: the_key_branch_is_checked_first,
     },
     Scenario {
         name: "the legacy nonce really is deterministic, which is why the whitelist exists",
@@ -162,25 +159,27 @@ fn allowed_pairs_are_accepted(_context: &ScenarioContext<'_>) -> ScenarioResult 
 
         let key_index = fixtures::random_u64();
         let challenge = fixtures::random_challenge();
-        let reply = legacy_signature(
+
+        // Through the accessor, not over raw APDUs. This is the pre-mine spend flow's own call, and it is the only
+        // place in the repository that exercises it: the accessor lays out the 104 byte payload, applies the host
+        // mirror of the whitelist, and parses the reply into a `CompressedSignature`. The refusal scenarios below
+        // have to bypass it - that is the whole point of them - but the accepting path must not, or a regression in
+        // shipped code would be invisible while this suite stayed green.
+        let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
             account,
             key_index,
-            key_branch.as_byte(),
+            key_branch,
             fixtures::random_u64(),
-            LedgerKeyBranch::Random.as_byte(),
+            LedgerKeyBranch::Random,
             &challenge,
-        )?;
-        expect_ok(&format!("a legacy signature on the {key_branch} branch"), &reply)?;
+        )
+        .context(|| format!("GetRawSchnorrSignatureLegacyNonce on the {key_branch} branch"))?;
 
-        let parsed = SchnorrReply::parse(&reply.data).map_err(fail)?;
         let public_key = ledger_get_public_key(account, key_index, key_branch)
             .context(|| format!("GetPublicKey for the {key_branch} key"))?;
-        let signature = tari_common_types::types::CompressedSignature::new(
-            tari_common_types::types::CompressedPublicKey::new(&parsed.public_nonce),
-            fixtures::secret_key_from_bytes("the signature", &parsed.signature).map_err(fail)?,
-        )
-        .to_schnorr_signature()
-        .context(|| "the device's compressed signature would not decompress".to_string())?;
+        let signature = signature
+            .to_schnorr_signature()
+            .context(|| "the device's compressed signature would not decompress".to_string())?;
 
         require(signature.verify_raw_uniform(&public_key, &challenge), || {
             format!("the legacy signature on the {key_branch} branch does not verify against that branch's key")
@@ -198,17 +197,39 @@ fn allowed_pairs_are_accepted(_context: &ScenarioContext<'_>) -> ScenarioResult 
 /// force - and a change that widened the whitelist would show up as a device scenario that started sending a pair
 /// it used to refuse.
 ///
-/// Both refusals map to `BadBranchKey` on the device: `handler_get_raw_schnorr_signature_legacy_nonce` does
-/// `check_legacy_nonce_branches(..).map_err(|_| AppSW::BadBranchKey)`, so the key branch and nonce branch cases are
-/// not distinguishable from the host. The status word is still asserted exactly rather than as "some failure",
-/// because a refusal for a *different* reason - a length check, say - would mean the whitelist was never consulted
-/// at all, which is the failure this module exists to catch.
+/// # Every refusal is the same status word, so *which rule* refused is not host-observable
+///
+/// `handler_get_raw_schnorr_signature_legacy_nonce` does
+/// `check_legacy_nonce_branches(..).map_err(|_| AppSW::BadBranchKey)`, and `KeyType::from_branch_key` independently
+/// answers `BadBranchKey` for the spend branch. Every refusal path for this instruction therefore yields
+/// `BadBranchKey`, and no scenario can tell the whitelist's refusal apart from the branch mapping's, or a key
+/// branch refusal from a nonce branch one. Nothing here claims otherwise.
+///
+/// The status word is still asserted *exactly* rather than as "some failure", because a refusal for a different
+/// reason - a length check, say - would mean the whitelist was never reached at all.
+///
+/// # Which pairs only the whitelist can be refusing
+///
+/// That distinction cannot be observed pair by pair, but it can be observed in aggregate, and it is the half that
+/// matters. Split the 13 disallowed pairs by what would happen if `check_legacy_nonce_branches` were deleted from
+/// the handler tomorrow:
+///
+/// * the 7 pairs with `Spend` on either side would still be refused, by `KeyType::from_branch_key`, which has no
+///   mapping for that branch;
+/// * the remaining **6** - key branch in `{PreMine, OneSidedSenderOffset, Random}` against a nonce branch of `PreMine`
+///   or `OneSidedSenderOffset` - would be **accepted and signed**. `from_branch_key` maps all of those happily, so the
+///   whitelist is the only thing standing between a host and a deterministic-nonce signature over a pre-mine or sender
+///   offset key, which is the disclosure this module's docs describe.
+///
+/// Those 6 are counted separately below. They are the load bearing ones; a change that left the other 7 passing and
+/// silently dropped these would be the change this scenario exists to catch.
 ///
 /// A branch byte the shared enum does not name is checked too. It is refused earlier, by `branch_key_from_u64`, but
 /// it is refused with the same status word and it is the shape an attacker would try first.
 fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let mut checked = 0usize;
+    let mut whitelist_only = 0usize;
 
     for key_branch in ALL_BRANCHES {
         for nonce_branch in ALL_BRANCHES {
@@ -229,6 +250,11 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
                 AppSW::BadBranchKey,
             )?;
             checked = checked.saturating_add(1);
+            // A pair the device's *other* check would wave through. See the doc comment: these are the ones the
+            // whitelist alone refuses, and the only ones whose refusal says anything about the whitelist.
+            if key_branch != LedgerKeyBranch::Spend && nonce_branch != LedgerKeyBranch::Spend {
+                whitelist_only = whitelist_only.saturating_add(1);
+            }
         }
     }
 
@@ -241,6 +267,17 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
              `minotari_ledger_wallet_common::legacy_nonce` has changed shape; make sure the new shape is the one you \
              meant before updating this number.",
             ALL_BRANCHES.len() * ALL_BRANCHES.len()
+        )
+    })?;
+
+    // And of those 13, six must have been pairs that only the whitelist refuses. Without this the scenario could
+    // stay green on a device that had lost `check_legacy_nonce_branches` entirely, because the seven pairs
+    // involving `Spend` would still be refused by the branch mapping.
+    require(whitelist_only == 6, || {
+        format!(
+            "expected 6 of the disallowed pairs to be ones only `check_legacy_nonce_branches` refuses, found \
+             {whitelist_only}. Those are the pairs `KeyType::from_branch_key` would otherwise sign; if that number \
+             has fallen, the whitelist is covering less than it did."
         )
     })?;
 
@@ -263,36 +300,6 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
         &reply,
         AppSW::BadBranchKey,
     )
-}
-
-/// Acceptance: `Spend` as the key branch is refused even when the nonce branch is *also* wrong.
-///
-/// Called out as its own scenario because it is the one case where the order of two checks is part of the
-/// containment. `alpha` - the wallet's root spend key - is never signable by index, on this instruction least of
-/// all, and it is refused twice over: once by the whitelist and again by `KeyType::from_branch_key`, which has no
-/// mapping for the spend branch. Sending a bad nonce branch alongside it makes sure the request is not being turned
-/// away by the *nonce* rule and leaving the key rule untested - which is exactly how a future refactor that dropped
-/// the key branch check would slip past [`disallowed_pairs_are_refused`], since that scenario would still see
-/// `BadBranchKey` from the nonce rule.
-fn the_key_branch_is_checked_first(_context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
-
-    for nonce_branch in ALL_BRANCHES {
-        let reply = legacy_signature(
-            account,
-            fixtures::random_u64(),
-            LedgerKeyBranch::Spend.as_byte(),
-            fixtures::random_u64(),
-            nonce_branch.as_byte(),
-            &fixtures::random_challenge(),
-        )?;
-        expect_status(
-            &format!("a legacy signature on the spend branch with a {nonce_branch} nonce"),
-            &reply,
-            AppSW::BadBranchKey,
-        )?;
-    }
-    Ok(())
 }
 
 /// Acceptance: the nonce really is re-derived rather than drawn, which is the property the whitelist contains.

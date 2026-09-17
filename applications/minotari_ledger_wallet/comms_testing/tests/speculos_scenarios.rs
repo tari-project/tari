@@ -58,6 +58,7 @@ use minotari_ledger_wallet_common::common_types::{AppSW, Instruction, LedgerKeyB
 use minotari_ledger_wallet_comms_testing::{
     approver::SpeculosApprover,
     raw::{self, payload},
+    review::UiToolkit,
     scenarios::{
         MODULES,
         ScenarioContext,
@@ -70,6 +71,7 @@ use minotari_ledger_wallet_comms_testing::{
         vectors,
     },
     simulator,
+    speculos_api::Button,
 };
 
 /// Only one scenario may drive the device at a time - within **this process**. See the module docs for what that
@@ -234,7 +236,7 @@ fn the_test_functions_cover_every_module() {
 /// that side. A host does not have to be malicious to send one; a truncated write does it, and `ledger` is a
 /// default feature of the console wallet.
 ///
-/// There are 25 such call sites across nine files - `grep -rn 'show_and_wait()\|\.event_loop()' wallet/src`. Three
+/// There are 26 such call sites across nine files - `grep -rn 'show_and_wait()\|\.event_loop()' wallet/src`. Three
 /// groups of them are reachable from the host, and this probe demonstrates the first:
 ///
 /// * the nine handlers' payload length checks - `get_public_key`, `get_public_spend_key`, `get_view_key`,
@@ -249,23 +251,36 @@ fn the_test_functions_cover_every_module() {
 /// at all. That is the behaviour the rest should have, and it is why
 /// `scenarios::protocol::a_wrong_length_payload_is_refused` can run unattended at all.
 ///
-/// # Measured, not inferred
+/// # Measured, not inferred - and **both** toolkits are affected
 ///
-/// Against the Speculos image pinned in `scripts/ledger_speculos.sh`:
+/// Against the Speculos image pinned in `scripts/ledger_speculos.sh`. The two halves fail differently, and the
+/// NBGL half is the one that is easy to get wrong by reading the source:
 ///
-/// * **`nanosplus` (BAGL): fails.** The device never answers. The exchange sits for the transport's full 120 second
-///   `DEFAULT_READ_TIMEOUT` and then reports "The device did not answer within the read timeout".
-/// * **`stax` (NBGL): passes in about three seconds.** `NbglStatus::show` draws and returns, so the status word comes
-///   straight back and the next instruction succeeds.
+/// * **`nanosplus` (BAGL): the test fails.** The device never answers. The exchange sits for the transport's full 120
+///   second `DEFAULT_READ_TIMEOUT` and then reports "The device did not answer within the read timeout". The device is
+///   left on the modal, which a button press from the host can at least clear.
+/// * **`stax` (NBGL): the test passes in about three seconds, and wedges the run anyway.** `NbglStatus::show` draws and
+///   returns, so the status word comes straight back and the next instruction succeeds - both of this test's assertions
+///   hold. But the "Invalid data length" status screen stays up, and **nothing puts the device back at its home
+///   screen**: `show_status_and_home_if_needed` in `wallet/src/main.rs` calls `home.show_and_return()` only for
+///   `GetOneSidedMetadataSignature`. Measured consequence: the next module's scenarios all fail in `expect_home` - 3 of
+///   3 vector scenarios, with "The device is not at its home screen, it is showing \"Invalid data length\"".
 ///
-/// So this is a BAGL-only defect, and the NBGL path is what the BAGL path should look like.
+/// So "it passes on stax" is true of the test and false of the run. That is why `ledger_speculos.sh` excludes it
+/// on **every** model rather than only on BAGL, and why [`dismiss_any_modal`] does not try to tidy up on NBGL:
+/// there is no host side action that restores that home screen.
+///
+/// It also widens what the fix has to cover. Making the BAGL handlers non-blocking is necessary and is not
+/// sufficient; the NBGL side additionally has to return home after a failed instruction, which is the same gap
+/// that `UserCancelled` was already added to `show_status_and_home_if_needed` to close.
 ///
 /// # Why this is `#[ignore]`d rather than in the scenario library
 ///
 /// Three reasons, and the last is the important one.
 ///
-/// 1. It cannot pass unattended on BAGL. Under a headless simulator nobody presses the button.
-/// 2. It is model dependent, and a scenario is not: the suite runs one scenario library against every model, on
+/// 1. It cannot run unattended on either toolkit - on BAGL it never returns, on NBGL it leaves the device somewhere
+///    every following scenario refuses to start from.
+/// 2. It is toolkit dependent, and a scenario is not: the suite runs one scenario library against every model, on
 ///    purpose, because "the models agree" is itself one of the things being asserted. A scenario that had to know which
 ///    toolkit it was talking to would be the first crack in that.
 /// 3. Changing device behaviour is out of scope for the change that introduces this suite. A pull request that both
@@ -273,10 +288,9 @@ fn the_test_functions_cover_every_module() {
 ///    failing assertion has two candidate explanations. The fix is a separate change, and this test is the thing that
 ///    says exactly what the fix has to make true.
 ///
-/// **This is the only `#[ignore]` in this crate that is not the "needs a simulator" gate.** Everything else runs
-/// on every pull request. When the BAGL handlers stop blocking - dropping `show_and_wait` for a non-blocking
-/// `SingleMessage::show`, or simply returning the status word as `get_script_offset` already does - delete this
-/// test and move the probe into `scenarios::protocol`, where it belongs, aimed at all eleven handlers.
+/// **This is the only `#[ignore]` in this crate that is not the "needs a simulator" gate**, and the only thing in
+/// it that does not run on a merge. When the device stops wedging itself on both toolkits, delete this test and
+/// move the probe into `scenarios::protocol`, where it belongs, aimed at all eleven handlers.
 #[test]
 #[ignore = "device bug: on BAGL models a wrong payload length blocks on a button press; see this test's doc comment"]
 fn a_wrong_length_payload_does_not_block_on_a_button_press() {
@@ -291,9 +305,20 @@ fn a_wrong_length_payload_does_not_block_on_a_button_press() {
     );
     let short = request.clone().with_data_length(request.data.len().saturating_sub(1));
 
-    let reply = short
-        .send()
-        .expect("the device must answer a wrong length APDU without waiting for a human");
+    let reply = short.send();
+
+    // Clean up before asserting, not after.
+    //
+    // On BAGL this call has just timed out with the device sitting on a modal that only a button press dismisses,
+    // and nothing else in the suite can dismiss it. Left there, the failure this test is *supposed* to report
+    // becomes a wall of unrelated ones: every later module fails in `approver.expect_home()` against a device
+    // showing "Invalid data length". Pressing the button here contains the damage to the one test that found it.
+    //
+    // Deliberately best-effort and deliberately before the assertions, because an `assert!` unwinds and would skip
+    // it. On NBGL there is nothing to dismiss and the press lands on the home screen, which is harmless.
+    dismiss_any_modal();
+
+    let reply = reply.expect("the device must answer a wrong length APDU without waiting for a human");
     assert_eq!(
         reply.status,
         AppSW::WrongApduLength as u16,
@@ -304,4 +329,30 @@ fn a_wrong_length_payload_does_not_block_on_a_button_press() {
     // And the device is immediately usable, rather than stuck behind a modal.
     let next = request.send().expect("the instruction after a wrong length one");
     assert!(next.is_ok(), "the device did not recover: {}", next.describe_status());
+}
+
+/// Press whatever dismisses a modal, and wait for the home screen. Best effort; every failure is swallowed.
+///
+/// Only used by the test above, which is the only thing in this crate that can leave a device wedged. It is a
+/// Speculos-only action by nature - a real device needs a thumb - which is another reason that test is not a
+/// scenario.
+///
+/// **BAGL only, and that is a limitation rather than an optimisation.** A button press clears the BAGL modal and
+/// the device comes home. NBGL has no equivalent: the status screen is cleared by the next NBGL draw, and the only
+/// thing in the application that draws one is the `GetOneSidedMetadataSignature` review. So on NBGL this does
+/// nothing, the device stays off its home screen, and the test's exclusion from `ledger_speculos.sh` is what
+/// prevents the cascade instead. See the test's doc comment.
+fn dismiss_any_modal() {
+    let Ok(approver) = SpeculosApprover::from_env() else {
+        return;
+    };
+    match approver.model().toolkit() {
+        UiToolkit::Bagl => {
+            let _pressed = approver.api().press_button(Button::Both);
+            let _home = approver.wait_for_home();
+        },
+        // NBGL cannot be cleaned up from the host at all - see the test's doc comment. Waiting for home here would
+        // just burn the approver's full deadline before the assertions ran.
+        UiToolkit::Nbgl => {},
+    }
 }

@@ -20,6 +20,17 @@
 //! Because those build their fixtures through the key manager, and this suite exists to be independent of it. See
 //! [`crate::fixtures`], which is where the inputs come from instead.
 //!
+//! # Happy paths go through the shipped accessors; rejections go over raw APDUs
+//!
+//! `minotari_ledger_wallet_comms::accessor_methods` is what the console wallet calls, and several of those methods
+//! are more than a payload layout - they assemble chunk sequences, choose instructions, and parse replies. Every
+//! scenario the device is meant to *accept* therefore drives the accessor, so that a regression in shipped code
+//! fails this suite.
+//!
+//! Every scenario the device is meant to *refuse* has to go over [`crate::raw`] instead, because the accessors
+//! mirror the device's rules and turn those requests away before they reach the wire - and the device's copy of
+//! each rule is the one that counts.
+//!
 //! # Why a scenario returns an error instead of asserting
 //!
 //! A scenario is a function, not a test. `assert!` inside one would unwind out of whichever frontend called it, and

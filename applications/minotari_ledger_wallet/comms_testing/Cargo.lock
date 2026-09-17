@@ -1349,6 +1349,7 @@ dependencies = [
  "semver",
  "serde_json",
  "sha2",
+ "tari_common",
  "tari_common_types",
  "tari_crypto",
  "tari_utilities",

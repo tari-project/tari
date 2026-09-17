@@ -14,6 +14,17 @@
 //!
 //! That is what this module is for, and it is deliberately the *only* thing in this crate that does it.
 //!
+//! # Rejections here, happy paths through the accessors
+//!
+//! The division is strict and runs the other way for anything the device accepts. A **happy path** scenario drives
+//! the accessor method the console wallet actually calls, because those accessors are shipped code with real logic
+//! in them - `ledger_get_script_offset` decides the chunk layout and walks `sender_offset_index`,
+//! `ledger_get_script_signature` picks its instruction off a `ScriptSignatureKey` variant - and a suite that
+//! re-implemented that for its own happy path would stay green while the shipped version regressed.
+//!
+//! So: if the device is meant to refuse it, build it here. If the device is meant to accept it, send it the way
+//! the wallet does.
+//!
 //! # The Spec 0 seam
 //!
 //! A shared wire-format codec is a separate piece of work. When it lands, this module is reimplemented over it and

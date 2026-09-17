@@ -33,14 +33,19 @@
 
 use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
 use minotari_ledger_wallet_comms::accessor_methods::{
+    ScriptSignatureKey,
     ledger_generate_ephemeral_nonce,
     ledger_get_dh_shared_secret,
     ledger_get_one_sided_metadata_signature,
     ledger_get_public_key,
     ledger_get_public_spend_key,
     ledger_get_raw_schnorr_signature,
+    ledger_get_script_offset,
     ledger_get_script_schnorr_signature,
+    ledger_get_script_signature,
 };
+use tari_common::configuration::Network;
+use tari_common_types::types::CompressedCommitment;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     keys::PublicKey,
@@ -52,19 +57,9 @@ use tari_utilities::hex::Hex;
 use crate::{
     approver::{Outcome, while_reviewing},
     fixtures,
-    raw::{self, ComAndPubSigReply, ScriptOffsetReply, payload},
+    raw::ComAndPubSigReply,
     review::ExpectedReview,
-    scenarios::{
-        Approval,
-        Scenario,
-        ScenarioContext,
-        ScenarioError,
-        ScenarioModule,
-        ScenarioResult,
-        WithContext,
-        expect_ok,
-        require,
-    },
+    scenarios::{Approval, Scenario, ScenarioContext, ScenarioModule, ScenarioResult, WithContext, require},
 };
 
 pub const MODULE: ScenarioModule = ScenarioModule {
@@ -125,12 +120,13 @@ const SCENARIOS: &[Scenario] = &[
     },
 ];
 
-/// The network tag the script signature scenarios send.
+/// The network the script signature scenarios sign under.
 ///
-/// Opaque here: the device only folds it into a hash label (`"script_challenge.n{network}"`), so any byte works as
-/// long as the host uses the same one. A constant rather than a random draw so that a challenge mismatch is a
+/// Opaque to the device, which only folds `as_byte()` into a hash label (`"script_challenge.n{network}"`), so any
+/// network works as long as the host uses the same one on both sides. `LocalNet` because these scenarios sign
+/// nothing that belongs on a real chain. A constant rather than a random draw, so that a challenge mismatch is a
 /// mismatch about the *construction* rather than about which byte went out.
-const NETWORK: u8 = 0x02;
+const NETWORK: Network = Network::LocalNet;
 
 /// The transaction output/input version the script signature scenarios send. The device parses and then ignores
 /// it - `finalize_script_signature_challenge` takes it as `_version` - so it is a constant.
@@ -222,9 +218,17 @@ fn raw_schnorr_signature_verifies(_context: &ScenarioContext<'_>) -> ScenarioRes
 /// the script public key, which the host reads out of `GetPublicKey` for the same branch and index. Both come from
 /// the device or from the scenario, never from a stored expectation.
 ///
-/// Sent over raw APDUs rather than through `ledger_get_script_signature`, for one reason: the accessor takes a
-/// `tari_common::Network`, and this crate deliberately does not depend on `tari_common` - see the comment on
-/// `tari_common_types` in `Cargo.toml`. The network is an opaque byte in the challenge either way.
+/// # Through `ledger_get_script_signature`, not over raw APDUs
+///
+/// Every **happy path** in this suite goes through the accessor method the console wallet actually calls, and that
+/// is a deliberate division of labour with [`crate::raw`]:
+///
+/// * a **rejection** scenario has to use raw APDUs, because the accessors mirror the device's rules and refuse the
+///   malformed request before it reaches the wire - a probe driven through one would test the mirror;
+/// * a **happy path** has to use the accessor, because the accessor is shipped code. It lays out the payload, picks the
+///   instruction from the [`ScriptSignatureKey`] variant, and parses the 161 byte reply. A re-implementation of that in
+///   the test suite would stay green while the shipped one regressed, which is the one failure a device suite most
+///   needs not to have.
 fn managed_script_signature_verifies(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let index = fixtures::random_u64();
@@ -238,32 +242,26 @@ fn managed_script_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
     let commitment = fixtures::script_commitment(&commitment_private_key, &value);
     let message = fixtures::random_bytes_32();
 
-    let reply = raw::command(
+    let signature = ledger_get_script_signature(
         account,
-        Instruction::GetScriptSignatureManaged,
-        payload::script_signature_managed(
-            NETWORK,
-            TXI_VERSION,
-            &fixtures::secret_key_bytes(&value),
-            &fixtures::secret_key_bytes(&commitment_private_key),
-            &fixtures::public_key_bytes(commitment.as_public_key()),
-            &message,
-            branch,
-            index,
-        ),
+        NETWORK,
+        TXI_VERSION,
+        &ScriptSignatureKey::Managed { branch, index },
+        &value,
+        &commitment_private_key,
+        &CompressedCommitment::from_commitment(commitment.clone()),
+        message,
     )
-    .send()
-    .context(|| "GetScriptSignatureManaged".to_string())?;
-    expect_ok("GetScriptSignatureManaged", &reply)?;
+    .context(|| "GetScriptSignature (managed)".to_string())?;
 
     verify_com_and_pub_signature(
         "the managed script signature",
-        &reply.data,
+        &signature.to_vec(),
         &commitment,
         &script_public_key,
         |ephemeral_commitment, ephemeral_pubkey| {
             fixtures::script_signature_challenge(
-                NETWORK,
+                NETWORK.as_byte(),
                 ephemeral_commitment,
                 ephemeral_pubkey,
                 &script_public_key,
@@ -297,31 +295,31 @@ fn derived_script_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
     let commitment = fixtures::script_commitment(&commitment_private_key, &value);
     let message = fixtures::random_bytes_32();
 
-    let reply = raw::command(
+    let signature = ledger_get_script_signature(
         account,
-        Instruction::GetScriptSignatureDerived,
-        payload::script_signature_derived(
-            NETWORK,
-            TXI_VERSION,
-            &fixtures::secret_key_bytes(&value),
-            &fixtures::secret_key_bytes(&commitment_private_key),
-            &fixtures::public_key_bytes(commitment.as_public_key()),
-            &message,
-            &fixtures::secret_key_bytes(&blinding_factor),
-        ),
+        NETWORK,
+        TXI_VERSION,
+        // The accessor sends this key as the blinding factor, and picks `GetScriptSignatureDerived` off the
+        // variant. Driving it from here rather than building the payload is what keeps that branch of shipped code
+        // exercised.
+        &ScriptSignatureKey::Derived {
+            branch_key: blinding_factor.clone(),
+        },
+        &value,
+        &commitment_private_key,
+        &CompressedCommitment::from_commitment(commitment.clone()),
+        message,
     )
-    .send()
-    .context(|| "GetScriptSignatureDerived".to_string())?;
-    expect_ok("GetScriptSignatureDerived", &reply)?;
+    .context(|| "GetScriptSignature (derived)".to_string())?;
 
     verify_com_and_pub_signature(
         "the derived script signature",
-        &reply.data,
+        &signature.to_vec(),
         &commitment,
         &script_public_key,
         |ephemeral_commitment, ephemeral_pubkey| {
             fixtures::script_signature_challenge(
-                NETWORK,
+                NETWORK.as_byte(),
                 ephemeral_commitment,
                 ephemeral_pubkey,
                 &script_public_key,
@@ -355,48 +353,66 @@ const DERIVED_SCRIPT_KEYS: u64 = 1;
 /// running total would fail here - and the last of those is not hypothetical: it would make the reply
 /// `partial − k_sender`, from which the host recovers a sender offset private key by subtraction.
 ///
-/// Sent over raw APDUs because the chunk numbering is the point of several sibling scenarios in
-/// [`super::stateful`], and building both shapes the same way keeps them comparable.
+/// # Through `ledger_get_script_offset`, which is the only test of the shipped chunking
+///
+/// This instruction is the one whose host side is more than a payload layout: `ledger_get_script_offset` decides
+/// how many chunks there are, what goes in each, which one carries the account, which one sets the continuation
+/// flag, and it walks `sender_offset_index` to turn the base index the device returns back into the list of key
+/// indexes the caller gets. `chunk_command` is shipped code with real logic in it.
+///
+/// So the happy path is driven through the accessor, and the malformed sequences in [`super::stateful`] are driven
+/// over raw APDUs - because those are shapes `chunk_command` cannot express and the accessor refuses before the
+/// wire. Between them the shipped assembly and the device's tolerance of a hostile one are both covered; a suite
+/// that re-implemented the chunking for its happy path would have left the shipped version untested.
+///
+/// The sender offset indexes are taken from the accessor's own return value rather than recomputed here, which
+/// also puts its `sender_offset_index` walk under test.
 fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
-    let script_indexes: Vec<u64> = (0..SCRIPT_INDEXES).map(|_| fixtures::random_u64()).collect();
-    let blinding_factor = fixtures::random_secret_key();
+    let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
+        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64()))
+        .collect();
+    let derived_script_keys: Vec<RistrettoSecretKey> = (0..DERIVED_SCRIPT_KEYS)
+        .map(|_| fixtures::random_secret_key())
+        .collect();
 
-    let mut chunks: Vec<Vec<u8>> = vec![
-        payload::script_offset_header(SENDER_OFFSET_KEYS, SCRIPT_INDEXES, DERIVED_SCRIPT_KEYS),
-        payload::script_offset_partial_sum(&fixtures::secret_key_bytes(&partial_sum)),
-    ];
-    for index in &script_indexes {
-        chunks.push(payload::script_offset_script_index(LedgerKeyBranch::PreMine, *index));
-    }
-    chunks.push(payload::script_offset_derived_script_key(&fixtures::secret_key_bytes(
-        &blinding_factor,
-    )));
+    let sender_offset_count =
+        usize::try_from(SENDER_OFFSET_KEYS).map_err(|_| super::fail("SENDER_OFFSET_KEYS does not fit in a usize"))?;
+    let (script_offset, sender_offset_indexes) = ledger_get_script_offset(
+        account,
+        &partial_sum,
+        &derived_script_keys,
+        &script_indexes,
+        sender_offset_count,
+    )
+    .context(|| "GetScriptOffset".to_string())?;
 
-    let reply = send_script_offset_chunks(account, &chunks)?;
-    expect_ok("GetScriptOffset", &reply)?;
-    let parsed = ScriptOffsetReply::parse(&reply.data).map_err(super::fail)?;
-    let script_offset =
-        fixtures::secret_key_from_bytes("the script offset", &parsed.script_offset).map_err(super::fail)?;
+    require(sender_offset_indexes.len() == sender_offset_count, || {
+        format!(
+            "the accessor returned {} sender offset indexes for a request of {sender_offset_count}",
+            sender_offset_indexes.len()
+        )
+    })?;
 
     // The script side of the sum, as points.
     let public_spend_key = ledger_get_public_spend_key(account)
         .context(|| "GetPublicSpendKey".to_string())?
         .to_public_key()
         .context(|| "the device's public spend key would not decompress".to_string())?;
-    let mut expected = fixtures::alpha_derived_script_public_key(&blinding_factor, &public_spend_key);
-    expected = expected + RistrettoPublicKey::from_secret_key(&partial_sum);
-    for index in &script_indexes {
-        let key = ledger_get_public_key(account, *index, LedgerKeyBranch::PreMine)
+    let mut expected = RistrettoPublicKey::from_secret_key(&partial_sum);
+    for blinding_factor in &derived_script_keys {
+        expected = expected + fixtures::alpha_derived_script_public_key(blinding_factor, &public_spend_key);
+    }
+    for (branch, index) in &script_indexes {
+        let key = ledger_get_public_key(account, *index, *branch)
             .context(|| format!("GetPublicKey for the pre-mine script key at index {index}"))?;
         expected = expected + key;
     }
 
-    // ...minus the sender offset side, which the device chose the indexes for and told the host about.
-    for i in 0..SENDER_OFFSET_KEYS {
-        let index = minotari_ledger_wallet_common::script_offset::sender_offset_index(parsed.base_index, i);
-        let key = ledger_get_public_key(account, index, LedgerKeyBranch::OneSidedSenderOffset)
+    // ...minus the sender offset side, at the indexes the accessor derived from the base the device chose.
+    for index in &sender_offset_indexes {
+        let key = ledger_get_public_key(account, *index, LedgerKeyBranch::OneSidedSenderOffset)
             .context(|| format!("GetPublicKey for the sender offset key at index {index}"))?;
         expected = expected - key;
     }
@@ -404,12 +420,11 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
     require(RistrettoPublicKey::from_secret_key(&script_offset) == expected, || {
         format!(
             "the script offset is not the sum it claims to be. The device returned a scalar whose public key is {}, \
-             but the script keys minus the sender offset keys the device itself named come to {}. Base index {}, \
-             {SCRIPT_INDEXES} pre-mine script keys, {DERIVED_SCRIPT_KEYS} derived script key, {SENDER_OFFSET_KEYS} \
-             sender offset keys.",
+             but the script keys minus the sender offset keys the device itself named come to {}. Sender offset \
+             indexes {sender_offset_indexes:?}, {SCRIPT_INDEXES} pre-mine script keys, {DERIVED_SCRIPT_KEYS} derived \
+             script key.",
             RistrettoPublicKey::from_secret_key(&script_offset).to_hex(),
             expected.to_hex(),
-            parsed.base_index
         )
     })
 }
@@ -509,7 +524,7 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
     let network = receiver.network().as_byte();
     let message = fixtures::metadata_signature_message(network, &script, &common_message);
 
-    verify_com_and_pub_signature_body(
+    verify_com_and_pub_signature(
         "the one sided metadata signature",
         &signature.to_vec(),
         &commitment,
@@ -527,55 +542,19 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
     )
 }
 
-/// Send a `GetScriptOffset` exchange as a well formed 0, 1, 2, ... sequence and return the last reply.
+/// Verify a commitment and public key signature against a challenge the caller builds from the ephemeral values
+/// the device chose.
 ///
-/// The continuation flag is set on every chunk but the last, which is what `chunk_command` does. Malformed
-/// sequences are [`super::stateful`]'s business and build their chunks one at a time.
-fn send_script_offset_chunks(account: u64, chunks: &[Vec<u8>]) -> Result<crate::raw::RawReply, ScenarioError> {
-    let last = chunks.len().saturating_sub(1);
-    let mut reply = None;
-    for (number, chunk) in chunks.iter().enumerate() {
-        let number = u8::try_from(number)
-            .map_err(|_| super::fail("a script offset scenario asked for more chunks than a u8 can number"))?;
-        reply = Some(
-            raw::chunk(
-                account,
-                Instruction::GetScriptOffset,
-                number,
-                usize::from(number) != last,
-                chunk.clone(),
-            )
-            .send()
-            .context(|| format!("GetScriptOffset chunk {number}"))?,
-        );
-    }
-    reply.ok_or_else(|| super::fail("a script offset scenario sent no chunks at all"))
-}
-
-/// Parse a `version(1) | 160 byte` signature reply and verify it against a challenge the caller builds from the
-/// ephemeral values the device chose.
+/// Takes the 160 byte body rather than a reply, because every caller here drives an accessor method and so has a
+/// parsed signature rather than bytes off the wire; `to_vec` on the compressed signature reproduces exactly those
+/// 160 bytes, in `ComAndPubSigReply`'s field order.
 ///
 /// The challenge cannot be built before the exchange, because two of its inputs - the ephemeral commitment and the
 /// ephemeral public key - are nonces the device draws. So the caller passes the rest of the challenge in as a
-/// closure and this fills in the two it just read off the wire. That structure is also what makes the assertion
+/// closure and this fills in the two it just read back. That structure is also what makes the assertion
 /// meaningful: the device's own nonces go into the challenge its own signature has to satisfy, so there is no
 /// value here that both sides could be wrong about in the same way.
 fn verify_com_and_pub_signature(
-    what: &str,
-    reply_data: &[u8],
-    commitment: &HomomorphicCommitment<RistrettoPublicKey>,
-    public_key: &RistrettoPublicKey,
-    challenge: impl FnOnce(&HomomorphicCommitment<RistrettoPublicKey>, &RistrettoPublicKey) -> [u8; 64],
-) -> ScenarioResult {
-    let body = reply_data
-        .get(1..)
-        .ok_or_else(|| super::fail(format!("{what} reply is empty")))?;
-    verify_com_and_pub_signature_body(what, body, commitment, public_key, challenge)
-}
-
-/// [`verify_com_and_pub_signature`] without the leading response version byte, for a signature that has already
-/// been parsed by an accessor method and handed back as a type rather than as a reply.
-fn verify_com_and_pub_signature_body(
     what: &str,
     body: &[u8],
     commitment: &HomomorphicCommitment<RistrettoPublicKey>,

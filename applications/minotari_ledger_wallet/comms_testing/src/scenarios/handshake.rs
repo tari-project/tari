@@ -32,7 +32,7 @@ pub const MODULE: ScenarioModule = ScenarioModule {
 
 const SCENARIOS: &[Scenario] = &[
     Scenario {
-        name: "concurrent callers are all told the device is verified only once it is",
+        name: "verification succeeds against a real application, and survives concurrent callers",
         covers: &[
             Instruction::GetAppName,
             Instruction::GetVersion,
@@ -40,7 +40,7 @@ const SCENARIOS: &[Scenario] = &[
             Instruction::GetScriptSchnorrSignature,
         ],
         approval: Approval::NotNeeded,
-        run: concurrent_verification,
+        run: verification_survives_concurrent_callers,
     },
     Scenario {
         name: "the application names itself and reports a version the host will accept",
@@ -56,23 +56,35 @@ const SCENARIOS: &[Scenario] = &[
 /// a stub device with the exchange sequence instrumented.
 const RACING_CALLERS: usize = 8;
 
-/// Acceptance: `verify_ledger_application` against a real application, from several threads at once.
+/// Acceptance: the whole `verify_ledger_application` sequence is one a real application satisfies, and concurrent
+/// callers do not break it.
 ///
-/// `verify_ledger_application` used to guard its cache with `try_lock`: the first caller took the lock and talked to
-/// the device, and a second caller arriving while that was in flight failed the `try_lock`, fell through to the
-/// trailing `Ok(())`, and went on to use a device nothing had checked. The key manager calls this from async, multi
-/// threaded context, so that was reachable in ordinary operation.
+/// # What this does *not* check, stated plainly
 ///
-/// The host side test in `minotari_ledger_wallet_comms` proves the *sequencing* - it counts exchanges and asserts
-/// every caller saw all five before being told the device was fine - which needs an instrumented stub and so cannot
-/// be done here. What this adds is the half the stub cannot give: that the sequence the fix runs is one a real
-/// application actually satisfies. A device that failed the signature step, or answered a version below the floor,
-/// would pass every stub test in the repository and fail here.
+/// **This scenario cannot detect the `try_lock` bug that `verify_ledger_application` was fixed for**, and it is not
+/// named as though it can. Under the old implementation a caller that lost the `try_lock` fell through to a
+/// trailing `Ok(())` and returned `Ok` without the device having been checked - so "all eight callers returned
+/// `Ok`", which is all a scenario can observe from here, was true then and is true now.
 ///
-/// Note that the racing threads do not race on the *device*: the lock is held across the whole of `verify()`, so
-/// exactly one thread performs I/O and the rest block. That is the point - a transport is not being exercised for
-/// thread safety here, a cache is.
-fn concurrent_verification(_context: &ScenarioContext<'_>) -> ScenarioResult {
+/// Detecting it needs the *number of device exchanges* each caller saw before being told the device was fine, and
+/// that needs a transport wrapped in a counter. `comms/tests/verify_ledger_application_concurrency.rs` does exactly
+/// that against a stub device, asserts the five-instruction sequence ran exactly once, and is where that property
+/// lives. It cannot move here: this scenario also runs on hardware through `examples/ledger_demo.rs`, where
+/// registering a wrapping transport is precisely the thing that file guarantees it never does - that guarantee is
+/// what makes it impossible for the hardware frontend to reach a simulator by accident.
+///
+/// # What it does check, which the stub cannot
+///
+/// That the sequence the fix runs is one a **real application** actually satisfies end to end: the name, the
+/// version floor, a signature, the public key it must verify against, and a second signature that has to differ
+/// from the first. A device that failed the signature step, or answered a version below the floor, would pass every
+/// stub test in the repository and fail here.
+///
+/// The concurrency is kept because it is free and because a handshake that desynchronised the transport under
+/// contention would show up in the follow-up instruction below. Note the racing threads do not race on the
+/// *device*: the lock is held across the whole of `verify()`, so exactly one thread performs I/O and the rest
+/// block.
+fn verification_survives_concurrent_callers(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let barrier = Barrier::new(RACING_CALLERS);
     let results = thread::scope(|scope| {
         let handles: Vec<_> = (0..RACING_CALLERS)
@@ -94,7 +106,14 @@ fn concurrent_verification(_context: &ScenarioContext<'_>) -> ScenarioResult {
         let verification = result.context(|| format!("caller {index}"))?;
         verification.context(|| format!("caller {index} could not verify the ledger application"))?;
     }
-    Ok(())
+
+    // The device is still answering afterwards. A handshake that left the transport desynchronised under
+    // contention - a reply read by the wrong caller, say - would surface here rather than in whichever unrelated
+    // scenario happened to run next.
+    let name = ledger_get_app_name().context(|| "GetAppName after the concurrent verification".to_string())?;
+    require(name == EXPECTED_NAME, || {
+        format!("after concurrent verification the device answered '{name}', not '{EXPECTED_NAME}'")
+    })
 }
 
 /// Acceptance: the device is the MinoTari Wallet application, at a version this host is willing to drive.

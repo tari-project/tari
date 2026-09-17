@@ -15,7 +15,7 @@
 //!
 //! # Several rejection paths cannot be probed unattended on BAGL models, and that is a device bug
 //!
-//! Most of the device application's error paths look like this on BAGL models (`nanosplus`, `nanox`) - 25 call
+//! Most of the device application's error paths look like this on BAGL models (`nanosplus`, `nanox`) - 26 call
 //! sites across nine files, by `grep -rn 'show_and_wait()\|\.event_loop()' wallet/src`:
 //!
 //! ```text
@@ -50,7 +50,8 @@
 //!
 //! * the length probes aim at the handlers that answer `WrongApduLength` with **no UI at all** - the `GetScriptOffset`
 //!   chunks and `GetOneSidedMetadataSignature`'s minimum size check. Those are genuine fixed length payloads and
-//!   genuine length rules; what they are not is the whole set.
+//!   genuine length rules; what they are not is the whole set. Drawing no UI is also why they leave the device at its
+//!   home screen on both toolkits, which is what lets them sit in a scenario at all.
 //! * `KeyDeriveFromCanonical` and `MetadataSignatureFail` have no scenario at all, despite being the two status words
 //!   in `AppSW` that a host can otherwise provoke directly. When the blocking goes, they are the first two scenarios to
 //!   add here.

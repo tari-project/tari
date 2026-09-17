@@ -117,22 +117,44 @@ fn require_table_is_populated() -> ScenarioResult {
 
 /// Which of the two published test seeds this device holds.
 ///
-/// Probed once per process and cached, because it costs an exchange and because a device that changes its answer
-/// mid-run is not a case any assertion here could sensibly report.
-///
 /// See the module docs: this doubles as the "is this a device whose answers may be written down" precondition, and
-/// its failure message carries no device output at all.
+/// the verdict it produces on failure carries no device output at all.
+///
+/// # Only a success is cached
+///
+/// The probe costs an exchange, so a *successful* identification is remembered for the rest of the process; a
+/// device does not change its seed mid-run.
+///
+/// A failure is not cached, and that distinction matters more than it looks. `ask_device` returns an error for any
+/// reason at all - a transport timeout, a dropped connection, the application not being open - and an earlier
+/// version of this function turned every one of those into the "did not answer with either published test seed's
+/// value" verdict, then remembered it. That verdict is the most alarming message this crate can produce: it tells
+/// an operator their device may be holding a real recovery phrase and that its output was withheld for safety.
+/// Producing it because a socket blipped is wrong on its own, and caching it means one blip poisons every vector
+/// scenario for the rest of the run with a message pointing at entirely the wrong problem.
+///
+/// So a failure to *ask* is propagated with its own context and the next caller tries again. Only "the device
+/// answered, and the answer matched neither seed" reaches the security verdict.
 pub fn identify_seed() -> Result<SeedId, ScenarioError> {
-    static SEED: OnceLock<Option<SeedId>> = OnceLock::new();
+    static SEED: OnceLock<SeedId> = OnceLock::new();
 
-    let identified = *SEED.get_or_init(|| {
-        // A public-key row on purpose: the probe itself must not be the thing that extracts a secret.
-        let canonical = DERIVATION_VECTORS
-            .iter()
-            .find(|vector| matches!(vector.call, DeviceCall::PublicKey { .. }))?;
-        let actual = ask_device(canonical).ok()?;
-        SeedId::ALL.into_iter().find(|seed| canonical.expected(*seed) == actual)
-    });
+    if let Some(seed) = SEED.get() {
+        return Ok(*seed);
+    }
+
+    // A public-key row on purpose: the probe itself must not be the thing that extracts a secret.
+    let canonical = DERIVATION_VECTORS
+        .iter()
+        .find(|vector| matches!(vector.call, DeviceCall::PublicKey { .. }))
+        .ok_or_else(|| fail("the vector table has no GetPublicKey row to identify the device with"))?;
+    // Not `.ok()?`. An error here is a failure to *ask*, and it must not be reported as an answer.
+    let actual = ask_device(canonical).context(|| {
+        format!(
+            "could not ask the device for '{}' to work out which seed it holds",
+            canonical.name
+        )
+    })?;
+    let identified = SeedId::ALL.into_iter().find(|seed| canonical.expected(*seed) == actual);
 
     let Some(seed) = identified else {
         return Err(fail(format!(
@@ -146,6 +168,9 @@ pub fn identify_seed() -> Result<SeedId, ScenarioError> {
             simulator::apdu_address().unwrap_or_else(|_| "<unset>".to_string())
         )));
     };
+    // `set` rather than `get_or_init`, because the work above can fail and a `OnceLock` initialiser cannot. A
+    // racing caller may already have won the race; either way the value is the same seed.
+    let _first = SEED.set(seed);
 
     // Cross checked rather than trusted, and only when it is set. A harness that started the alternate-seed
     // simulator and then told the suite it was the default one would otherwise sail through every scenario here,

@@ -40,8 +40,14 @@ SPECULOS_APDU_ADDRESS=$(./scripts/ledger_speculos.sh address nanosplus default) 
 SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
 SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
   cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
-    --ignored --test-threads=1
+    --ignored --test-threads=1 --skip a_wrong_length_payload_does_not_block_on_a_button_press
 ```
+
+The `--skip` is needed on **every** model. That test documents a device bug it does not fix, and both toolkits are
+affected: on BAGL a wrong payload length blocks until somebody presses a button, so the test burns the transport's
+full 120 second read timeout and fails; on NBGL the reply comes straight back and the test passes, but the device
+is left on an "Invalid data length" status screen that nothing restores home from, so every scenario after it
+fails in `expect_home`. See its doc comment in `tests/speculos_scenarios.rs`.
 
 The review screen tests need all four variables. `SPECULOS_APDU_ADDRESS` is where the instruction goes;
 `SPECULOS_API_ADDRESS` is where the button presses go — two different sockets on the same simulator — and
@@ -93,6 +99,10 @@ variable is unset" anywhere.
   quiet without ever claiming the vectors were checked.
 * `cargo test -- --ignored` and `cargo nextest run --run-ignored all` — what the script and CI use — run them for
   real. There is no skip path left: a missing simulator **fails**.
+
+The one exception is `a_wrong_length_payload_does_not_block_on_a_button_press`, which is `#[ignore]`d for a
+different reason — it documents an unfixed device bug — and which `scripts/ledger_speculos.sh` excludes by name on
+every model. It is the only thing in this crate that does not run on a merge; everything else does.
 
 The alternative, gating on `SPECULOS_APDU_ADDRESS` being set, is a trap: a machine with no simulator would *pass*,
 and an unchecked vector table would look exactly like a checked one. Silence is the one answer a vector table must

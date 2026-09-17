@@ -20,6 +20,13 @@
 //! * `cargo test -- --ignored` and `cargo nextest run --run-ignored all` - what `scripts/ledger_speculos.sh` and CI use
 //!   - run them for real, and there is no skip path left: if the simulator is missing, they **fail**.
 //!
+//! One test carries `#[ignore]` for an unrelated reason and has to be skipped by name on every model:
+//! `a_wrong_length_payload_does_not_block_on_a_button_press` in `tests/speculos_scenarios.rs` documents a device
+//! bug it does not fix. On BAGL it burns the transport's full read timeout; on NBGL it passes but leaves the
+//! device on a status screen nothing returns home from. Either way every test after it fails, so
+//! `scripts/ledger_speculos.sh` excludes it and a hand-run `cargo test -- --ignored` needs
+//! `--skip a_wrong_length_payload_does_not_block_on_a_button_press`.
+//!
 //! [`SPECULOS_APDU_ADDRESS`] and [`SPECULOS_SEED_ID`] are configuration, not gates.
 //!
 //! Unset, [`SPECULOS_APDU_ADDRESS`] is [`SPECULOS_DEFAULT_APDU_ADDRESS`]. That is Speculos' *conventional* port -

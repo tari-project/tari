@@ -34,12 +34,13 @@ log = { version = "0.4" }
 # The review screen scenarios (`src/review.rs`, `src/approver.rs`) drive `ledger_get_one_sided_metadata_signature`,
 # whose receiver argument is a `TariAddress`. A path dependency on the root workspace's own crate, kept at the same
 # version as the rest of the repository - the same arrangement as `minotari_ledger_wallet_comms` above.
-#
-# `tari_common` is deliberately *not* declared alongside it. The `Network` the accessor also takes comes out of the
-# address itself (`receiver.network()`), so the type is never named here and the dependency would be unused - and
-# `cargo machete` in `.github/workflows/ci.yml` walks the filesystem rather than the workspace graph, so it reaches
-# this excluded crate and would fail the `ci` job over it.
 tari_common_types = { path = "../../../base_layer/common_types", version = "5.7.0-pre.5" }
+
+# `Network`, which `ledger_get_script_signature` and `ledger_get_one_sided_metadata_signature` both take. The
+# scenarios that exercise those accessors have to name the type to pass it, and they have to name it to get the
+# same `as_byte()` back out for the host side challenge - so this is now a used dependency rather than the unused
+# one an earlier version of this file explained the absence of.
+tari_common = { path = "../../../common", version = "5.7.0-pre.5" }
 
 # `tari_script` is deliberately *not* declared. The crypto scenarios do decompress a
 # `tari_script::CompressedCheckSigSchnorrSignature`, but only through inherent methods on a value an accessor

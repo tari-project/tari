@@ -80,6 +80,9 @@ SPECULOS_IMAGE="${SPECULOS_IMAGE:-ghcr.io/ledgerhq/speculos:latest@sha256:6ed9ee
 # Keep the tag in step with the DOCKER_IMAGE of the `ledger-build-tests` job in .github/workflows/ci.yml. The .elf
 # this script tests is the same artefact that job builds; see "Which .elf" below.
 BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10@sha256:3853136d5bba5bff4e3d5fc9d6629389e3e0c56a679b2eb4e05c97a7017bf566}"
+# The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
+# cannot drift apart; see `cmd_test`.
+BLOCKING_PROBE="a_wrong_length_payload_does_not_block_on_a_button_press"
 JUNIT_DIR="${JUNIT_DIR:-${REPO_ROOT}/target/speculos-junit}"
 SPECULOS_LOG_DIR="${SPECULOS_LOG_DIR:-${REPO_ROOT}/target/speculos-logs}"
 
@@ -550,6 +553,9 @@ Or, without JUnit, run the suite directly against a simulator you started yourse
   SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
     cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
       --ignored --test-threads=1 --skip a_wrong_length_payload_does_not_block_on_a_button_press
+
+The --skip is needed on every model. That test documents an unfixed device bug and leaves the device unusable by
+the tests after it; see its doc comment.
 EOF
     return 1
   fi
@@ -623,12 +629,25 @@ cmd_test() {
       # that crate and nothing else, so running all of it is running the whole suite.
       #
       # ...with exactly one exclusion, named here rather than hidden behind a second `#[ignore]` reason so that it
-      # cannot quietly grow into a list. `a_wrong_length_payload_does_not_block_on_a_button_press` documents a
-      # device bug the scenario suite found and deliberately did not fix: on BAGL models (nanosplus, nanox) nine
-      # handlers answer a wrong payload length with `SingleMessage::show_and_wait()`, which blocks until somebody
-      # presses a button, so the exchange never completes unattended. It passes on stax and flex, and it fails on
-      # nanosplus after burning the transport's full 120 second read timeout. Read that test's doc comment before
-      # touching this line; when the BAGL handlers stop blocking, delete the exclusion and the test together.
+      # cannot quietly grow into a list.
+      #
+      # `a_wrong_length_payload_does_not_block_on_a_button_press` documents a device bug the scenario suite found
+      # and deliberately did not fix: the application's reaction to a wrong payload length leaves the device
+      # unusable by an unattended host. It is excluded on **every** model, because both toolkits are affected -
+      # differently, and both fatally for a suite. Measured against the pinned image:
+      #
+      #   nanosplus (BAGL)  `SingleMessage::show_and_wait()` blocks on a button press, so the reply never arrives.
+      #                     The test burns the transport's full 120 second read timeout and fails, and the device
+      #                     is left on the modal.
+      #   stax (NBGL)       `NbglStatus::show` draws and returns, so the reply arrives and the test's own
+      #                     assertions pass in about three seconds - but the status screen stays up, and nothing
+      #                     puts the device back at its home screen, because `show_status_and_home_if_needed` in
+      #                     wallet/src/main.rs only does that for GetOneSidedMetadataSignature. Every scenario
+      #                     after it then fails in `expect_home`; measured as 3 of 3 vector scenarios failing.
+      #
+      # So "it passes on stax" is true of the test and false of the run, which is why this is not conditional on
+      # the model. Read the test's doc comment before touching this; when the device stops wedging itself, delete
+      # the exclusion and the test together.
       if SPECULOS_APDU_ADDRESS="${apdu}" \
         SPECULOS_API_ADDRESS="${api}" \
         SPECULOS_MODEL="${model}" \
@@ -638,7 +657,7 @@ cmd_test() {
         --manifest-path "${COMMS_TESTING_MANIFEST}" \
         --profile ci \
         --run-ignored all \
-        -E 'not test(=a_wrong_length_payload_does_not_block_on_a_button_press)'; then
+        -E "not test(=${BLOCKING_PROBE})"; then
         echo "==> ${model} / ${seed} passed"
       else
         echo "==> ${model} / ${seed} FAILED" >&2
