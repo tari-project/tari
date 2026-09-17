@@ -540,7 +540,10 @@ find_junit_report() {
 # tool, and the fix is one documented line.
 require_nextest() {
   if ! cargo nextest --version >/dev/null 2>&1; then
-    cat >&2 <<'EOF'
+    # Piped through `sed` rather than interpolated by an unquoted heredoc: the command examples below contain
+    # `$(...)` that must reach the reader literally, so the heredoc stays quoted and the one name that has to stay
+    # in step with the filter in `cmd_test` is substituted by token instead.
+    sed "s/@BLOCKING_PROBE@/${BLOCKING_PROBE}/g" >&2 <<'EOF'
 cargo-nextest is not installed, and it is what produces the JUnit output.
 
   cargo install cargo-nextest --locked
@@ -552,7 +555,7 @@ Or, without JUnit, run the suite directly against a simulator you started yourse
   SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
   SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
     cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
-      --ignored --test-threads=1 --skip a_wrong_length_payload_does_not_block_on_a_button_press
+      --ignored --test-threads=1 --skip @BLOCKING_PROBE@
 
 The --skip is needed on every model. That test documents an unfixed device bug and leaves the device unusable by
 the tests after it; see its doc comment.

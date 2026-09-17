@@ -30,10 +30,15 @@
 //! ever exercised the copy that is actually load bearing - a device application that dropped the call entirely
 //! would pass every test in this repository. **That is the gap this module closes.**
 //!
-//! Which is why every request here goes out over [`crate::raw`] rather than through
+//! Which is why every **rejection** here goes out over [`crate::raw`] rather than through
 //! `ledger_get_raw_schnorr_signature_legacy_nonce`. That accessor refuses a disallowed pair *before it opens the
 //! transport*, so a scenario driven through it would only ever re-test the mirror, from a second angle, and would
 //! report green against a device with no check in it at all.
+//!
+//! The two **accepting** scenarios do the opposite and drive the accessor, which is the rule stated in
+//! [`crate::raw`] with no exception in this module: the pair is on the whitelist, so the mirror passes it through,
+//! and the accessor is the shipped code the pre-mine spend flow calls. It is also the only caller of that accessor
+//! anywhere in the repository.
 //!
 //! # Testing this does not entrench it
 //!
@@ -54,7 +59,7 @@ use minotari_ledger_wallet_comms::accessor_methods::{
 
 use crate::{
     fixtures,
-    raw::{self, SchnorrReply, payload},
+    raw::{self, payload},
     scenarios::{
         Approval,
         Scenario,
@@ -62,9 +67,7 @@ use crate::{
         ScenarioModule,
         ScenarioResult,
         WithContext,
-        expect_ok,
         expect_status,
-        fail,
         require,
     },
 };
@@ -319,36 +322,35 @@ fn the_nonce_is_deterministic(_context: &ScenarioContext<'_>) -> ScenarioResult 
     let key_index = fixtures::random_u64();
     let nonce_index = fixtures::random_u64();
 
-    let first = legacy_signature(
-        account,
-        key_index,
-        LedgerKeyBranch::PreMine.as_byte(),
-        nonce_index,
-        LedgerKeyBranch::Random.as_byte(),
-        &fixtures::random_challenge(),
-    )?;
-    expect_ok("the first legacy signature", &first)?;
-    let second = legacy_signature(
-        account,
-        key_index,
-        LedgerKeyBranch::PreMine.as_byte(),
-        nonce_index,
-        LedgerKeyBranch::Random.as_byte(),
-        &fixtures::random_challenge(),
-    )?;
-    expect_ok("the second legacy signature", &second)?;
+    // Both calls go through the accessor. This is an *accepting* path - the pair is on the whitelist, so the host
+    // mirror passes it through - and the rule in `crate::raw` is that accepting paths use the shipped accessor.
+    let sign = |challenge: [u8; 64]| {
+        ledger_get_raw_schnorr_signature_legacy_nonce(
+            account,
+            key_index,
+            LedgerKeyBranch::PreMine,
+            nonce_index,
+            LedgerKeyBranch::Random,
+            &challenge,
+        )
+    };
 
-    let first = SchnorrReply::parse(&first.data).map_err(fail)?;
-    let second = SchnorrReply::parse(&second.data).map_err(fail)?;
+    let first =
+        sign(fixtures::random_challenge()).context(|| "the first GetRawSchnorrSignatureLegacyNonce".to_string())?;
+    let second =
+        sign(fixtures::random_challenge()).context(|| "the second GetRawSchnorrSignatureLegacyNonce".to_string())?;
 
-    require(first.public_nonce == second.public_nonce, || {
-        "the legacy instruction returned a different public nonce for the same nonce index. That is a *safer* device \
-         than the one documented, but it means this instruction is no longer what \
-         `minotari_ledger_wallet_common::legacy_nonce` describes - read that module, and check whether the whitelist \
-         and this whole instruction can now be deleted rather than just updating this assertion."
-            .to_string()
-    })?;
-    require(first.signature != second.signature, || {
+    require(
+        first.get_compressed_public_nonce() == second.get_compressed_public_nonce(),
+        || {
+            "the legacy instruction returned a different public nonce for the same nonce index. That is a *safer* \
+             device than the one documented, but it means this instruction is no longer what \
+             `minotari_ledger_wallet_common::legacy_nonce` describes - read that module, and check whether the \
+             whitelist and this whole instruction can now be deleted rather than just updating this assertion."
+                .to_string()
+        },
+    )?;
+    require(first.get_signature() != second.get_signature(), || {
         "two legacy signatures over different challenges produced the same `s`, which cannot happen for a correct \
          signature over a reused nonce"
             .to_string()

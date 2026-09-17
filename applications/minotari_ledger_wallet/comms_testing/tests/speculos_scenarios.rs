@@ -292,7 +292,8 @@ fn the_test_functions_cover_every_module() {
 /// it that does not run on a merge. When the device stops wedging itself on both toolkits, delete this test and
 /// move the probe into `scenarios::protocol`, where it belongs, aimed at all eleven handlers.
 #[test]
-#[ignore = "device bug: on BAGL models a wrong payload length blocks on a button press; see this test's doc comment"]
+#[ignore = "device bug on both toolkits: a wrong payload length blocks on a button press (BAGL) or leaves the device \
+            off its home screen (NBGL); see this test's doc comment"]
 fn a_wrong_length_payload_does_not_block_on_a_button_press() {
     let _device = device();
     simulator::connect();

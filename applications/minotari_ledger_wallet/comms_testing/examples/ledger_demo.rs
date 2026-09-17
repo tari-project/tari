@@ -59,7 +59,10 @@
 //!
 //! Naming any module on the command line skips them, so iterating on one module does not cost four prompts.
 
-use std::{io::IsTerminal, process::ExitCode};
+use std::{
+    io::{self, IsTerminal, Write},
+    process::ExitCode,
+};
 
 use minotari_ledger_wallet_comms::{accessor_methods::ledger_get_view_key, error::LedgerDeviceError};
 use minotari_ledger_wallet_comms_testing::{
@@ -189,12 +192,12 @@ fn transport_probes() -> Result<usize, String> {
     let account = fixtures::random_u64();
     let probes: [(&str, &str); 3] = [
         (
-            "Exit the 'MinoTari Wallet' application on the device, then press Enter",
+            "Exit the 'MinoTari Wallet' application on the device",
             "with the application closed",
         ),
-        ("Unplug the device, then press Enter", "with the device unplugged"),
+        ("Unplug the device", "with the device unplugged"),
         (
-            "Plug the device back in, leave it locked or at its dashboard, then press Enter",
+            "Plug the device back in, and leave it locked or at its dashboard",
             "with the device reconnected but the application not open",
         ),
     ];
@@ -228,7 +231,7 @@ fn transport_probes() -> Result<usize, String> {
 
     // And the device recovers: reopening the application makes the same call work again. Without this the three
     // probes above would pass just as happily against a client that had permanently wedged itself.
-    ask("Open the 'MinoTari Wallet' application again, then press Enter")?;
+    ask("Open the 'MinoTari Wallet' application again")?;
     match ledger_get_view_key(account) {
         Ok(_) => {
             println!("      ok: the application is back and GetViewKey succeeds again");
@@ -241,21 +244,38 @@ fn transport_probes() -> Result<usize, String> {
     }
 }
 
-/// Ask the operator to do something physical and wait until they say they have.
-fn ask(prompt: &str) -> Result<(), String> {
+/// Tell the operator to do something physical, and wait until they have done it.
+///
+/// # Not a `Confirm`, and that is the whole point
+///
+/// This reads a line. It looks like the obvious place for `dialoguer::Confirm`, which is what the rest of this
+/// crate prompts with, and using it here is a bug that costs the operator the entire probe set:
+///
+/// * `Confirm` maps Enter to the **default** (`confirm.rs`: `Key::Enter if self.default.is_some()`). With
+///   `.default(false)` - the fail-closed choice that is correct for a genuine yes/no question - an operator who unplugs
+///   the device and then presses Enter, exactly as told, answers *no*.
+/// * It renders `[y/N]`, so the rendered prompt contradicts an instruction that says to press Enter.
+///
+/// `HumanApprover` in `src/approver.rs` uses `Confirm` with `.default(false)` correctly, because what it asks is a
+/// real question - "Does the device show exactly those fields?" - where refusing to assume yes is the safe
+/// reading. These four are imperatives, not questions, and the same construct inverts their meaning.
+///
+/// So: any line, including an empty one, means "done". End-of-file means stop, which is the only way to abort
+/// without killing the process, and is reported as the operator's decision rather than as a device failure.
+fn ask(instruction: &str) -> Result<(), String> {
     println!();
-    dialoguer::Confirm::new()
-        .with_prompt(prompt)
-        .default(false)
-        .interact()
-        .map_err(|e| format!("could not prompt the operator ({e})"))
-        .and_then(|done| {
-            if done {
-                Ok(())
-            } else {
-                Err(format!("the operator did not do it: {prompt}"))
-            }
-        })
+    print!("  {instruction}, then press Enter (Ctrl-D to stop): ");
+    io::stdout()
+        .flush()
+        .map_err(|e| format!("could not write the prompt ({e})"))?;
+
+    let mut answer = String::new();
+    match io::stdin().read_line(&mut answer) {
+        // End of input. Not a failure of the device, so it says who stopped and where.
+        Ok(0) => Err(format!("the operator stopped at: {instruction}")),
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("could not read the operator's confirmation ({e})")),
+    }
 }
 
 /// The modules named on the command line, or a message naming the ones that exist.
