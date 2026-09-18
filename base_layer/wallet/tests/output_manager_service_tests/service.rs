@@ -2797,14 +2797,14 @@ async fn get_outputs_by_query_returns_matching_spent_output() {
             confirmed: true,
             mark_deleted_at_height: 1,
             mark_deleted_in_block: FixedHash::zero(),
-         }])
-         .unwrap();
+        }])
+        .unwrap();
 
-     let mut query = OutputBackendQuery {
-         status: vec![OutputStatus::Spent],
-         ..Default::default()
-     };
-     query.commitments.push(commitment.clone());
+    let mut query = OutputBackendQuery {
+        status: vec![OutputStatus::Spent],
+        ..Default::default()
+    };
+    query.commitments.push(commitment.clone());
 
     let result = oms
         .output_manager_handle
@@ -2838,13 +2838,13 @@ async fn get_outputs_by_query_returns_empty_for_non_matching_status() {
         }])
         .unwrap();
 
-     // The output is now Spent, but we query for Unspent with the exact commitment - this should return an empty
-     // Vec, not an error.
-     let mut query = OutputBackendQuery {
-         status: vec![OutputStatus::Unspent],
-         ..Default::default()
-     };
-     query.commitments.push(commitment.clone());
+    // The output is now Spent, but we query for Unspent with the exact commitment - this should return an empty
+    // Vec, not an error.
+    let mut query = OutputBackendQuery {
+        status: vec![OutputStatus::Unspent],
+        ..Default::default()
+    };
+    query.commitments.push(commitment.clone());
 
     let result = oms
         .output_manager_handle
