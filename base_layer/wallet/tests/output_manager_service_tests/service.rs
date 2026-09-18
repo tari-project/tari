@@ -2742,8 +2742,9 @@ async fn pay_to_self_builds_a_valid_transaction() {
 /// with `OutputManagerError::UnexpectedApiResponse` whenever the actual response variant didn't match. This broke
 /// the multisig withdrawal path (`GetMultisigUtxoData`, `PrepareWithdrawMultisigTransaction`, `SendMultisigUtxo`)
 /// which all call `get_outputs_by_query` internally. See also
-/// `get_outputs_by_query_returns_matching_spent_output` and `get_outputs_by_query_returns_empty_for_non_matching_status`
-/// below for the negative-path cases this test alone would not have caught.
+/// `get_outputs_by_query_returns_matching_spent_output` and
+/// `get_outputs_by_query_returns_empty_for_non_matching_status` below for the negative-path cases this test alone would
+/// not have caught.
 #[tokio::test]
 async fn get_outputs_by_query_returns_matching_unspent_output() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -2904,7 +2905,7 @@ async fn get_outputs_by_query_excludes_spent_output_when_filtering_unspent_only(
 
     assert!(
         result.is_empty(),
-        "a Spent output must not be returned by a caller filtering for OutputStatus::Unspent only - this is \
-         the exact multisig double-spend vulnerability greptile-apps flagged on PR #8028"
+        "a Spent output must not be returned by a caller filtering for OutputStatus::Unspent only - this is the exact \
+         multisig double-spend vulnerability greptile-apps flagged on PR #8028"
     );
 }
