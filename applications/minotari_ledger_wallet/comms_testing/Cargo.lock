@@ -1317,7 +1317,6 @@ name = "minotari_ledger_wallet_comms"
 version = "5.7.0-pre.9"
 dependencies = [
  "borsh",
- "dialoguer",
  "ledger-transport",
  "ledger-transport-hid",
  "log",
@@ -1346,9 +1345,11 @@ dependencies = [
  "log",
  "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",
+ "rand 0.10.2",
  "semver",
  "serde_json",
  "sha2",
+ "tari_common",
  "tari_common_types",
  "tari_crypto",
  "tari_utilities",

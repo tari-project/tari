@@ -319,6 +319,17 @@ impl ExpectedReview {
     ///
     /// Every mismatch is reported, not just the first. A run that says "the receiver is wrong" and stops leaves
     /// you wondering whether the amount was wrong too, and a review is cheap to read in full.
+    ///
+    /// # Device text is written with `{:?}`
+    ///
+    /// Every problem below that quotes the screen quotes it escaped. These strings are whatever the *device* drew,
+    /// reconstructed from Speculos' JSON with no constraint on their characters, and they end up in a scenario
+    /// failure message - so in a terminal, and in the JUnit `<failure>` body `scripts/ledger_speculos.sh` copies
+    /// into an artifact directory for CI to upload. This module is the densest source of device strings in the
+    /// crate, which is exactly why it should not be the one place that forgets.
+    ///
+    /// The *expected* side is this crate's own text and stays unescaped, which has the side benefit of making the
+    /// two halves of a mismatch tell themselves apart at a glance.
     pub fn check(&self, toolkit: UiToolkit, screens: &[String]) -> Result<(), Vec<String>> {
         let names: Vec<String> = self
             .present
@@ -351,8 +362,12 @@ impl ExpectedReview {
             if !review.contains(&name) {
                 problems.push(format!("'{}' does not appear on the review at all", field.name));
             } else if !review.contains(&format!("{name}{value}")) {
+                // The `on screen` half is text the *device* drew; see the note on `check` about why it is written
+                // with `{:?}`. The expected half is this scenario's own and is quoted plainly, which also makes
+                // the two visually distinguishable in a failure - useful, because telling them apart is the whole
+                // task when one of them is wrong.
                 problems.push(format!(
-                    "'{}' is not followed by the expected value.\n     expected: {}\n     on screen: {}",
+                    "'{}' is not followed by the expected value.\n     expected: {}\n     on screen: {:?}",
                     field.name,
                     field.value,
                     shown_after(&review, &name)
@@ -364,7 +379,7 @@ impl ExpectedReview {
             let reported = toolkit.as_reported(name);
             if review.contains(&reported) {
                 problems.push(format!(
-                    "'{name}' must not appear on this review, but it does: {}",
+                    "'{name}' must not appear on this review, but it does: {:?}",
                     shown_after(&review, &reported)
                 ));
             }
@@ -379,8 +394,8 @@ impl ExpectedReview {
                     .to_string(),
             );
         }
-        problems.push(format!("expected the review to read: {expected}"));
-        problems.push(format!("the review read:             {review}"));
+        problems.push(format!("expected the review to read: {expected:?}"));
+        problems.push(format!("the review read:             {review:?}"));
         Err(problems)
     }
 }

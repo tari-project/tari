@@ -269,12 +269,31 @@ errors:
 
 ### Testing all functions on the ledger application
 
-From the main Tari project root, run the following demo program. The Ledger application can be started or not started, 
-as the demo program will prompt the user to perform the necessary actions.
+From the main Tari project root, with the Ledger application open, run the scenario suite against the device. This
+is the **same** scenario library that the Speculos simulator tests run, with the same assertions, so hardware and
+simulator cannot drift apart; it asserts rather than printing, and exits non-zero if anything disagrees.
 
 ```
-cargo run --release --example ledger_demo
-``` 
+cargo run --release --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml --example ledger_demo
+```
+
+Two things it needs, and they are not optional:
+
+- **One of the two published test mnemonics in `comms_testing/src/seeds.rs` restored onto the device.** The key
+  derivation scenarios assert derived keys, so they refuse - loudly, and without printing anything the device
+  returned - against a device whose seed they cannot identify.
+- **A device that will never hold value.** Those mnemonics are public, so anything sent to an address derived from
+  them can be swept by anyone.
+
+Exactly one scenario puts a review on the screen and asks you to confirm what it says; everything else, including
+the malformed-APDU and nonce store probes, runs unattended. Pass module names to run a subset:
+
+```
+cargo run --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml --example ledger_demo -- protocol stateful
+```
+
+To review one transaction on hardware without running the rest of the suite, use
+`--example human_review` instead.
 
 ## Testing via the emulator
 

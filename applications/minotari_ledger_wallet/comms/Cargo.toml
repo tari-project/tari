@@ -30,7 +30,11 @@ tari_crypto = { workspace = true }
 minotari_ledger_wallet_common = { workspace = true }
 semver = "1.0"
 borsh = { workspace = true }
-dialoguer = { version = "0.11" }
+# No `dialoguer` here. It was only ever used by `examples/ledger_demo`, which moved to
+# `minotari_ledger_wallet_comms_testing` when it became a frontend over the shared scenario library - an example in
+# this crate cannot depend on the crate that holds that library, because that crate depends on this one. Leaving
+# the dependency behind would fail `cargo machete` in `.github/workflows/ci.yml`, and would put a terminal
+# prompting library in the dependency graph of the shipped console wallet for nothing.
 ledger-transport = { version = "0.11" }
 ledger-transport-hid = { version = "0.11" }
 log = { workspace = true }

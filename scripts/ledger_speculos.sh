@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 #
-# Build the Minotari Ledger application and run the key derivation vector suite against it in a Speculos simulator.
+# Build the Minotari Ledger application and run the scenario suite against it in a Speculos simulator.
 #
-# NOTHING IN CI RUNS THIS YET. No workflow references this script or the crate it tests, so the vector table has
-# never been checked by anything except a developer running the command below by hand. Wiring it up is Spec 5's
-# job; until that lands, a green pull request says nothing whatsoever about the key derivation vectors.
+# That suite is the key derivation vector table plus the scenario library in `comms_testing/src/scenarios`:
+# cryptographic verification of every signature the device returns, the malformed-APDU probes, the script offset
+# context and ephemeral nonce store behaviour that only exists between exchanges, and the legacy nonce branch
+# whitelist. `comms_testing/examples/ledger_demo.rs` runs the same scenarios against real hardware.
+#
+# NOTHING IN CI RUNS THIS YET. No workflow references this script or the crate it tests, so none of it has ever
+# been checked by anything except a developer running the command below by hand. Wiring it up is Spec 5's job;
+# until that lands, a green pull request says nothing whatsoever about the device.
 #
 # This script is intended to be the *only* definition of how Speculos is started, so that when CI does arrive it
 # calls these subcommands rather than repeating the `docker run` in a workflow file - which is how "it passes
@@ -75,6 +80,9 @@ SPECULOS_IMAGE="${SPECULOS_IMAGE:-ghcr.io/ledgerhq/speculos:latest@sha256:6ed9ee
 # Keep the tag in step with the DOCKER_IMAGE of the `ledger-build-tests` job in .github/workflows/ci.yml. The .elf
 # this script tests is the same artefact that job builds; see "Which .elf" below.
 BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10@sha256:3853136d5bba5bff4e3d5fc9d6629389e3e0c56a679b2eb4e05c97a7017bf566}"
+# The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
+# cannot drift apart; see `cmd_test`.
+BLOCKING_PROBE="a_wrong_length_payload_does_not_block_on_a_button_press"
 JUNIT_DIR="${JUNIT_DIR:-${REPO_ROOT}/target/speculos-junit}"
 SPECULOS_LOG_DIR="${SPECULOS_LOG_DIR:-${REPO_ROOT}/target/speculos-logs}"
 
@@ -532,7 +540,10 @@ find_junit_report() {
 # tool, and the fix is one documented line.
 require_nextest() {
   if ! cargo nextest --version >/dev/null 2>&1; then
-    cat >&2 <<'EOF'
+    # Piped through `sed` rather than interpolated by an unquoted heredoc: the command examples below contain
+    # `$(...)` that must reach the reader literally, so the heredoc stays quoted and the one name that has to stay
+    # in step with the filter in `cmd_test` is substituted by token instead.
+    sed "s/@BLOCKING_PROBE@/${BLOCKING_PROBE}/g" >&2 <<'EOF'
 cargo-nextest is not installed, and it is what produces the JUnit output.
 
   cargo install cargo-nextest --locked
@@ -544,7 +555,10 @@ Or, without JUnit, run the suite directly against a simulator you started yourse
   SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
   SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
     cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
-      --ignored --test-threads=1
+      --ignored --test-threads=1 --skip @BLOCKING_PROBE@
+
+The --skip is needed on every model. That test documents an unfixed device bug and leaves the device unusable by
+the tests after it; see its doc comment.
 EOF
     return 1
   fi
@@ -552,9 +566,55 @@ EOF
 
 # Build every model, then run the whole suite against every model x seed combination.
 #
-# One table, every model. If stax disagrees with nanosplus about a derived key that is a bug in the device
-# application - a user moving their recovery phrase between Ledger models would find a different wallet - and it is
-# never fixed by giving stax its own table.
+# Copy a JUnit report with the run's resolved configuration attached as `<properties>`.
+#
+# A report that says "124 passed" and nothing else cannot be read six weeks later: it does not say which models ran,
+# which seeds, or which emulator produced them - and `MODELS`, `SEEDS` and both image pins are all overridable, so
+# `MODELS=nanosplus SEEDS=default` runs one of the four cells and produces a report indistinguishable from a full
+# one. Cross-model agreement is the stated reason a single vector table is shared across models, so a report that
+# cannot say which models it covered is not evidence for the thing it exists to evidence.
+#
+# `<properties>` is the JUnit element for exactly this and every consumer ignores what it does not recognise. It is
+# inserted after the opening `<testsuites ...>` tag, which nextest writes as a single line.
+#
+# The values are ours - model and seed are validated by `speculos_model`/`seed_argument`, the images are constants
+# here - but they are still XML-escaped rather than trusted to be attribute-safe, because a future `SPECULOS_IMAGE`
+# holding a quote would otherwise produce a file no parser accepts.
+# `covered_models` is passed in rather than read from `${MODELS}`, and that is the whole point of the function.
+# `cmd_test` takes a positional model list - `./scripts/ledger_speculos.sh test nanosplus`, which the usage text
+# documents - and resolves it into a *local* `models`. Reading the global here would have written the default
+# "nanosplus stax" into the XML of a run that only covered nanosplus: precisely the misattribution this annotator
+# exists to prevent, arriving through the one override the console summary already handled correctly. `seeds` has
+# no positional form, so the global is the resolved value.
+annotate_junit() {
+  local report="$1" model="$2" seed="$3" covered_models="$4"
+  awk -v model="${model}" -v seed="${seed}" \
+      -v models="${covered_models}" -v seeds="${SEEDS}" \
+      -v speculos="${SPECULOS_IMAGE}" -v builder="${BUILDER_IMAGE}" \
+      -v probe="${BLOCKING_PROBE}" '
+    function esc(v) {
+      gsub(/&/, "\\&amp;", v); gsub(/</, "\\&lt;", v)
+      gsub(/>/, "\\&gt;", v); gsub(/"/, "\\&quot;", v)
+      return v
+    }
+    function prop(k, v) { printf "    <property name=\"%s\" value=\"%s\"/>\n", esc(k), esc(v) }
+    { print }
+    /^<testsuites/ && !done {
+      done = 1
+      print "  <properties>"
+      prop("speculos.model", model);      prop("speculos.seed", seed)
+      prop("speculos.models", models);    prop("speculos.seeds", seeds)
+      prop("speculos.image", speculos);   prop("speculos.builder_image", builder)
+      prop("speculos.skipped_test", probe)
+      print "  </properties>"
+    }
+  ' "${report}"
+}
+
+# One table and one scenario library, every model. If stax disagrees with nanosplus about a derived key that is a
+# bug in the device application - a user moving their recovery phrase between Ledger models would find a different
+# wallet - and it is never fixed by giving stax its own table. The same argument applies to the scenarios: they are
+# written once and run against every model, which is how "the two builds behave the same" gets asserted at all.
 cmd_test() {
   local models="${*:-${MODELS}}" model seed failures=0
   local junit_report apdu api
@@ -613,7 +673,29 @@ cmd_test() {
       clear_junit_reports
 
       # --run-ignored all, not ignored-only: the device tests and the oracle/table unit tests both matter, and
-      # running them in one invocation keeps them in one JUnit file.
+      # running them in one invocation keeps them in one JUnit file. `#[ignore]` is the "needs a device" gate in
+      # that crate and nothing else, so running all of it is running the whole suite.
+      #
+      # ...with exactly one exclusion, named here rather than hidden behind a second `#[ignore]` reason so that it
+      # cannot quietly grow into a list.
+      #
+      # `a_wrong_length_payload_does_not_block_on_a_button_press` documents a device bug the scenario suite found
+      # and deliberately did not fix: the application's reaction to a wrong payload length leaves the device
+      # unusable by an unattended host. It is excluded on **every** model, because both toolkits are affected -
+      # differently, and both fatally for a suite. Measured against the pinned image:
+      #
+      #   nanosplus (BAGL)  `SingleMessage::show_and_wait()` blocks on a button press, so the reply never arrives.
+      #                     The test burns the transport's full 120 second read timeout and fails, and the device
+      #                     is left on the modal.
+      #   stax (NBGL)       `NbglStatus::show` draws and returns, so the reply arrives and the test's own
+      #                     assertions pass in about three seconds - but the status screen stays up, and nothing
+      #                     puts the device back at its home screen, because `show_status_and_home_if_needed` in
+      #                     wallet/src/main.rs only does that for GetOneSidedMetadataSignature. Every scenario
+      #                     after it then fails in `expect_home`; measured as 3 of 3 vector scenarios failing.
+      #
+      # So "it passes on stax" is true of the test and false of the run, which is why this is not conditional on
+      # the model. Read the test's doc comment before touching this; when the device stops wedging itself, delete
+      # the exclusion and the test together.
       if SPECULOS_APDU_ADDRESS="${apdu}" \
         SPECULOS_API_ADDRESS="${api}" \
         SPECULOS_MODEL="${model}" \
@@ -622,7 +704,8 @@ cmd_test() {
         --locked \
         --manifest-path "${COMMS_TESTING_MANIFEST}" \
         --profile ci \
-        --run-ignored all; then
+        --run-ignored all \
+        -E "not test(=${BLOCKING_PROBE})"; then
         echo "==> ${model} / ${seed} passed"
       else
         echo "==> ${model} / ${seed} FAILED" >&2
@@ -633,7 +716,7 @@ cmd_test() {
       # next one is red.
       save_log "${model}" "${seed}"
       if junit_report="$(find_junit_report)"; then
-        cp "${junit_report}" "${JUNIT_DIR}/${model}-${seed}.xml"
+        annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" >"${JUNIT_DIR}/${model}-${seed}.xml"
       else
         # A missing report is a failure of the run, not a cosmetic gap. Producing JUnit is part of what this
         # script is for, and a green build that quietly uploaded nothing is worse than a red one: the next person
@@ -646,14 +729,22 @@ cmd_test() {
     done
   done
 
+  # Name what was actually covered. `MODELS` and `SEEDS` are overridable, so "all combinations passed" on its own
+  # is true of a one cell run and reads like a four cell one - and the images are pinned by digest precisely so
+  # that a green run is attributable to an emulator, which only helps if the run says which.
   echo
+  echo "==> Covered models:   ${models}"
+  echo "==> Covered seeds:    ${SEEDS}"
+  echo "==> Speculos image:   ${SPECULOS_IMAGE}"
+  echo "==> Builder image:    ${BUILDER_IMAGE}"
+  echo "==> Skipped by name:  ${BLOCKING_PROBE}"
   echo "==> JUnit XML: ${JUNIT_DIR}"
   echo "==> Simulator logs: ${SPECULOS_LOG_DIR}"
   if [ "${failures}" -ne 0 ]; then
-    echo "==> ${failures} failure(s) across the model/seed matrix" >&2
+    echo "==> ${failures} failure(s) across ${models} x ${SEEDS}" >&2
     return 1
   fi
-  echo "==> All model/seed combinations passed"
+  echo "==> All model/seed combinations passed for ${models} x ${SEEDS}"
 }
 
 main() {

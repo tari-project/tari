@@ -38,16 +38,11 @@ use std::{io::IsTerminal, process::ExitCode};
 use minotari_ledger_wallet_comms::error::LedgerDeviceError;
 use minotari_ledger_wallet_comms_testing::{
     approver::{HumanApprover, Outcome, while_reviewing},
+    fixtures,
     review::ExpectedReview,
 };
-use tari_common_types::{
-    tari_address::{TariAddress, TariAddressFeatures},
-    types::PrivateKey,
-};
+use tari_common_types::{tari_address::TariAddress, types::PrivateKey};
 
-/// The same published address the simulator scenarios use, so that the two paths review the same transaction.
-const RECEIVER_BASE58: &str =
-    "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt";
 const ACCOUNT: u64 = 0;
 const SENDER_OFFSET_KEY_INDEX: u64 = 7;
 const VALUE: u64 = 12_345;
@@ -140,21 +135,7 @@ fn main() -> ExitCode {
     }
 }
 
+/// The same published address every other review path uses, so that they all review one transaction.
 fn receiver(payment_id_length: usize) -> Result<TariAddress, String> {
-    let published = TariAddress::from_base58(RECEIVER_BASE58).map_err(|e| format!("{e}"))?;
-    if payment_id_length == 0 {
-        return Ok(published);
-    }
-    let view_key = published
-        .public_view_key()
-        .ok_or_else(|| "a dual address must have a view key".to_string())?
-        .clone();
-    TariAddress::new_dual_address(
-        view_key,
-        published.public_spend_key().clone(),
-        published.network(),
-        TariAddressFeatures::default() | TariAddressFeatures::PAYMENT_ID,
-        Some(vec![0xAB; payment_id_length]),
-    )
-    .map_err(|e| format!("{e}"))
+    fixtures::published_receiver(payment_id_length)
 }
