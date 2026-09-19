@@ -89,14 +89,16 @@ use tari_core::base_node::{
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SK};
 use tari_p2p::Network;
-use tari_script::{ExecutionStack, push_pubkey_script};
+use tari_script::{ExecutionStack, Opcode, TariScript, push_pubkey_script};
 use tari_service_framework::{RegisterHandle, StackBuilder, reply_channel};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
-    key_manager::{ConfidentialOutputHasher, TransactionKeyManagerInterface},
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
+    key_manager::{ConfidentialOutputHasher, TariKeyId, TransactionKeyManagerInterface},
+    offline_signing::prepare_withdraw_multisig_transaction,
     rpc::models::TipInfoResponse,
     tari_amount::*,
     transaction_builder::TransactionBuilder,
@@ -106,6 +108,8 @@ use tari_transaction_components::{
         OutputFeatures,
         RangeProofType,
         Transaction,
+        WalletOutputBuilder,
+        covenants::Covenant,
         memo_field::{MemoField, TxType},
         one_sided::{diffie_hellman_stealth_domain_hasher, public_key_to_output_encryption_key},
     },
@@ -2586,5 +2590,142 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         ),
         "Expected OutputManagerError, got: {:?}",
         err
+    );
+}
+
+/// Regression test for a bug where `TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction` re-derived
+/// a fresh `TariKeyId::DHCommitmentMask{ private_key: view_key, public_key: sender_offset_public_key }` for every
+/// withdrawn input, instead of using the key id already attached to the `WalletOutput`
+/// (`WalletOutput::commitment_mask_key_id()`). For a real multisig-locked UTXO the attached key id is whatever the
+/// wallet actually resolved when the output was recovered/created - e.g. a `TariKeyId::Encrypted{..}` wrapping a
+/// freshly generated commitment-mask private key (the same shape produced by
+/// `KeyManager::get_next_commitment_mask_and_script_key`, which every existing multisig test in
+/// `tari_transaction_components::multisig::session::test` and `tari_transaction_components::offline_signing::test`
+/// uses to build a "this UTXO is already in the wallet" fixture). Fabricating a brand new key id from the wallet's
+/// raw view key computes a *different* public key than the one baked into the deposit's script `PushPubKey` opcode,
+/// so the handler's own consistency check ("Script-spend key mismatch") fails for every such input.
+///
+/// This test builds a real multisig-scripted `WalletOutput` whose `commitment_mask_key_id` is a genuine
+/// `TariKeyId::Encrypted{..}` (produced by the real key manager's `get_next_commitment_mask_and_script_key`/
+/// `get_random_key`, not a hand-rolled fake), packages it into a `PrepareWithdrawMultisigTransactionResult` via the
+/// same `prepare_withdraw_multisig_transaction` helper the wallet's `PrepareWithdrawMultisigTransaction` handler
+/// uses, and dispatches `SignOneSidedWithdrawMultisigTransaction` against it through the real
+/// `TransactionServiceHandle`. It must succeed.
+#[tokio::test]
+async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commitment_mask_key_id() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let key_manager = alice_ts_interface.key_manager_handle.key_manager();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_constants = consensus_manager.consensus_constants(0).clone();
+
+    let own_address = TariAddress::new_dual_address_with_default_features(
+        key_manager.get_view_key().pub_key,
+        key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    // Build a real multisig-locked WalletOutput exactly like the existing
+    // `spend_multisig_utxo_fee_estimate_counts_the_output_memo`/`offline_withdraw_multisign_is_valid` tests do: the
+    // commitment mask key id is a genuine, freshly generated `TariKeyId::Encrypted{..}`, resolved through the real
+    // key manager - not a fabricated `DHCommitmentMask`.
+    let spend_key = key_manager.get_spend_key();
+    let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let sender_offset = key_manager.get_random_key(None, None).unwrap();
+
+    let script_pubkey = key_manager
+        .stealth_address_script_spending_key(&commitment_mask.key_id, &spend_key.pub_key)
+        .unwrap();
+
+    let party_pubkeys = vec![spend_key.pub_key.clone()];
+    let script = TariScript::new(vec![
+        Opcode::CheckMultiSigVerify(1, 1, party_pubkeys, Box::new([0u8; 32])),
+        Opcode::PushPubKey(Box::new(script_pubkey)),
+    ])
+    .unwrap();
+
+    let input_amount = MicroMinotari(100_000);
+    let input = WalletOutputBuilder::new(input_amount, commitment_mask.key_id.clone())
+        .with_script(script)
+        .with_features(OutputFeatures::default())
+        .with_input_data(ExecutionStack::default())
+        .with_script_key(script_key.key_id)
+        .encrypt_data_for_recovery(key_manager, None, MemoField::default())
+        .unwrap()
+        .with_sender_offset_public_key(sender_offset.pub_key.clone())
+        .sign_metadata_signature(key_manager, &sender_offset.key_id)
+        .unwrap()
+        .try_build(key_manager)
+        .unwrap();
+
+    // The commitment mask key id genuinely attached to the UTXO must not be re-derivable from the wallet's view
+    // key and the output's sender offset public key - that is exactly the fabrication the old buggy handler did.
+    let fabricated_key_id = TariKeyId::DHCommitmentMask {
+        private_key: key_manager.get_view_key().key_id.clone().into(),
+        public_key: input.sender_offset_public_key().clone(),
+    };
+    assert_ne!(
+        input.commitment_mask_key_id(),
+        &fabricated_key_id,
+        "test fixture must not coincide with the buggy re-derivation, or it would not exercise the bug"
+    );
+
+    // Package the input into a `PrepareWithdrawMultisigTransactionResult` via the same helper the wallet's
+    // `PrepareWithdrawMultisigTransaction` handler uses, so the payload signature is genuine.
+    let fee_per_gram = MicroMinotari(5);
+    let mut tx_builder =
+        TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_fee_per_gram(fee_per_gram);
+    tx_builder.with_input(input).unwrap();
+
+    let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
+    let recipient_script = push_pubkey_script(&Default::default());
+    let measured_memo = addressed_output_memo(
+        MemoField::default(),
+        own_address.clone(),
+        MicroMinotari::zero(),
+        TxType::PaymentToOther,
+    )
+    .unwrap();
+    let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+        consensus_constants.transaction_weight_params(),
+        &OutputFeatures::default(),
+        &recipient_script,
+        &Covenant::default(),
+        &measured_memo,
+    )
+    .unwrap();
+    let fee = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+    let output_payment_id =
+        addressed_output_memo(MemoField::default(), own_address.clone(), fee, TxType::PaymentToOther).unwrap();
+    let total_amount = input_amount.checked_sub(fee).unwrap();
+
+    let prepared = prepare_withdraw_multisig_transaction(
+        key_manager,
+        TxId::new_random(),
+        tx_builder,
+        total_amount,
+        output_payment_id,
+        OutputFeatures::default(),
+        own_address.clone(),
+        own_address,
+    )
+    .unwrap();
+
+    // Dispatch the real request through the transaction service. With the bug in place this fails with
+    // "Script-spend key mismatch: script[1]=... derived(k')=...".
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_withdraw_multisig_transaction(prepared)
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own commitment_mask_key_id, \
+         got: {:?}",
+        result.err()
     );
 }

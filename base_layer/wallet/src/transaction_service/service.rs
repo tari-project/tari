@@ -737,13 +737,9 @@ where
                     let mut request = request;
 
                     for pair_output in &mut request.info.inputs.iter_mut() {
-                        let view_key = key_manager.get_view_key();
                         let spend_key = key_manager.get_spend_key();
 
-                        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-                            private_key: view_key.key_id.clone().into(),
-                            public_key: pair_output.sender_offset_public_key().clone(),
-                        };
+                        let commitment_mask_key_id = pair_output.commitment_mask_key_id().clone();
                         let script_pubkey = key_manager
                             .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
                         let script_key = TariKeyId::Derived {
