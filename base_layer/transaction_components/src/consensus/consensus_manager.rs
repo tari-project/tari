@@ -157,20 +157,25 @@ impl ConsensusManager {
         //                                     | 10080 -> 15120 - 1 | (360) |
         //                                                          | 15120 -> | (180) |
 
+        // `get_maturity_tranches` maps the consensus constants vector one to one and in order, so the index of the
+        // active constants entry is also the index of the active tranche. Going through
+        // `ConsensusConstants::active_index_at_height` keeps this on the single authoritative definition of
+        // "active" rather than adding another lookup that has to be kept in step, and it is exact where searching
+        // the tranche vector by value was not: `max_by_key` returns the *last* entry of a tie while `position`
+        // returns the *first* equal one, so two entries sharing an `effective_from_height` - which the
+        // GHSA-3qmx-q9pv-f3m4 activation entries are the first to do at a live scheduled height - selected the
+        // tranche *before* the active one. This mirrors the already corrected copy in
+        // `BaseNodeConsensusManager::block_rewards_spendable_at_height`.
         let maturity_tranches = self.get_maturity_tranches();
-
+        let last_effective_index =
+            ConsensusConstants::active_index_at_height(self.consensus_constants_vec(), height)
+                .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
         let last_effective_tranche = maturity_tranches
-            .iter()
-            .filter(|v| v.effective_from_height <= height)
-            .max_by_key(|v| v.effective_from_height)
+            .get(last_effective_index)
             .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
-        let last_effective_index = maturity_tranches
-            .iter()
-            .position(|v| v == last_effective_tranche)
-            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?;
         let previous_effective_tranch = maturity_tranches
             .get(last_effective_index.saturating_sub(1))
-            .expect("Index should exist")
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?
             .clone();
 
         // We have to adjust the matured rewards at height to account for the effective from height of the last
@@ -252,5 +257,73 @@ impl ConsensusManagerBuilder {
             emission,
         };
         ConsensusManager { inner: Arc::new(inner) }
+    }
+}
+
+#[cfg(test)]
+mod maturity_tranche_selection {
+    use tari_common::configuration::Network;
+
+    use crate::consensus::{ConsensusConstants, ConsensusManager};
+
+    const ALL_NETWORKS: [Network; 6] = [
+        Network::LocalNet,
+        Network::Igor,
+        Network::Esmeralda,
+        Network::NextNet,
+        Network::StageNet,
+        Network::MainNet,
+    ];
+
+    /// The tranche vector and the constants vector must stay index aligned, because
+    /// `block_rewards_spendable_at_height` now indexes the former with an index derived from the latter.
+    #[test]
+    fn the_tranche_vector_is_index_aligned_with_the_constants_vector() {
+        for network in ALL_NETWORKS {
+            let constants = ConsensusConstants::for_network(network);
+            let tranches = ConsensusManager::builder(network).build().get_maturity_tranches();
+            assert_eq!(tranches.len(), constants.len(), "{network}");
+            for (index, entry) in constants.iter().enumerate() {
+                let tranche = tranches.get(index).expect("same length");
+                assert_eq!(
+                    tranche.effective_from_height,
+                    entry.effective_from_height(),
+                    "{network} [{index}]"
+                );
+                assert_eq!(tranche.maturity, entry.coinbase_min_maturity(), "{network} [{index}]");
+            }
+        }
+    }
+
+    /// Selecting the active tranche by *value* was not exact: `max_by_key` returns the last entry of a tie while
+    /// `position` returns the first equal one, so two constants entries sharing an `effective_from_height` picked
+    /// the tranche *before* the active one, and with it the wrong `previous_effective_tranch`. The
+    /// GHSA-3qmx-q9pv-f3m4 activation entries are the first to duplicate a height at a live scheduled height
+    /// (MainNet 352,600; Esmeralda 903,000).
+    ///
+    /// Today every duplicated height carries an identical maturity, so the old and new selections agreed on the
+    /// only thing the arithmetic reads. This test pins that: if a future fork ever changes `coinbase_min_maturity`
+    /// at a duplicated height, the emission arithmetic would silently start depending on which of the two tied
+    /// entries won, and that must be a deliberate decision rather than a tie-break accident.
+    #[test]
+    fn duplicated_effective_heights_carry_an_identical_maturity() {
+        for network in ALL_NETWORKS {
+            let constants = ConsensusConstants::for_network(network);
+            for window in constants.windows(2) {
+                let (first, second) = (
+                    window.first().expect("windows(2) is never short"),
+                    window.get(1).expect("windows(2) is never short"),
+                );
+                if first.effective_from_height() == second.effective_from_height() {
+                    assert_eq!(
+                        first.coinbase_min_maturity(),
+                        second.coinbase_min_maturity(),
+                        "{network}: two entries are effective from height {} with different maturities, so the \
+                         spendable supply now depends on which one wins the tie",
+                        first.effective_from_height()
+                    );
+                }
+            }
+        }
     }
 }

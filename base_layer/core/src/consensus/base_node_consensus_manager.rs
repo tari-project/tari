@@ -102,6 +102,14 @@ impl BaseNodeConsensusManager {
         self.inner.consensus_manager.consensus_constants_vec()
     }
 
+    /// The height from which the GHSA-3qmx-q9pv-f3m4 proof of work rules are consensus on this network, or
+    /// `u64::MAX` (`UNSCHEDULED_ACTIVATION_HEIGHT`) where the advisory's fork is not scheduled.
+    ///
+    /// Read off the constants vector, so there is no second place to keep in step with the activation entries.
+    pub fn derived_monero_coinbase_activation_height(&self) -> u64 {
+        ConsensusConstants::derived_monero_coinbase_activation_height(self.consensus_constants_vec())
+    }
+
     pub fn consensus_manager(&self) -> ConsensusManager {
         self.inner.consensus_manager.clone()
     }

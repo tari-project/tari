@@ -2050,7 +2050,12 @@ impl LMDBDatabase {
                     self.fetch_orphan_header_accumulated_data(txn, orphan.header.version, parent_hash.as_slice())?;
                 match orphan_parent_accum {
                     Some(val) => {
-                        lmdb_insert(
+                        // `lmdb_replace` rather than `lmdb_insert`: the promotion has to be idempotent. A parent
+                        // with more than one child that is a tip - an ordinary branched fork - is promoted once
+                        // per child deleted, and `lmdb_insert` fails the second time with `KeyExists`, aborting
+                        // the whole write transaction. The value written is the same either way, because it is
+                        // derived from the parent's own accumulated data.
+                        lmdb_replace(
                             txn,
                             &self.orphan_chain_tips_db,
                             parent_hash.as_slice(),
@@ -2058,7 +2063,7 @@ impl LMDBDatabase {
                                 hash: parent_hash,
                                 total_accumulated_difficulty: val.total_accumulated_difficulty,
                             },
-                            "orphan_chain_tips_db",
+                            None,
                         )?;
                     },
                     None => {

@@ -22,6 +22,7 @@
 
 use std::{
     fs,
+    io,
     path::{Path, PathBuf},
 };
 
@@ -43,32 +44,55 @@ impl ConsensusConstantsTracker {
         Self { storage_path }
     }
 
-    /// Load the previously stored consensus constants
+    /// Load the previously stored consensus constants.
+    ///
+    /// `None` means "nothing to compare against", and `check_for_changes` then skips the fork alarm entirely. That
+    /// makes it important to distinguish the three ways of getting there. A missing file is the ordinary first-run
+    /// case and is quiet. An unreadable file and an unparseable file are not: they silently disable the CRITICAL
+    /// "constants changed and are already active" check on the very start where it is most likely to fire, so both
+    /// are logged at error level. A file written by a binary that predates a newly added field is the usual cause
+    /// of the unparseable case, which is why new `ConsensusConstants` fields carry `#[serde(default)]`.
     pub fn load_previous(&self) -> Option<Vec<ConsensusConstants>> {
-        match fs::read_to_string(&self.storage_path) {
-            Ok(content) => match serde_json::from_str(&content) {
-                Ok(constants) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Loaded previous consensus constants from {}",
-                        self.storage_path.display()
-                    );
-                    Some(constants)
-                },
-                Err(e) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Failed to parse consensus constants file: {}",
-                        e
-                    );
-                    None
-                },
-            },
-            Err(_) => {
+        let content = match fs::read_to_string(&self.storage_path) {
+            Ok(content) => content,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 debug!(
                     target: LOG_TARGET,
                     "No previous consensus constants file found at {}",
                     self.storage_path.display()
+                );
+                return None;
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not read the consensus constants file at {}: {}. The check for consensus constants that \
+                     changed while already active is DISABLED for this start.",
+                    self.storage_path.display(),
+                    e
+                );
+                return None;
+            },
+        };
+
+        match serde_json::from_str(&content) {
+            Ok(constants) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Loaded previous consensus constants from {}",
+                    self.storage_path.display()
+                );
+                Some(constants)
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not parse the consensus constants file at {}: {}. The check for consensus constants that \
+                     changed while already active is DISABLED for this start; if this node was just upgraded, that \
+                     is exactly the start where it would have fired. The file will now be overwritten with the \
+                     current constants.",
+                    self.storage_path.display(),
+                    e
                 );
                 None
             },
@@ -219,8 +243,9 @@ mod tests {
     /// what an upgrading node has persisted from its previous run.
     fn nextnet_constants_before_the_sort_fix() -> Vec<ConsensusConstants> {
         let mut previous = ConsensusConstants::for_network(Network::NextNet);
-        // Drop the TIP-RFC-MT-0004 activation entry, which did not exist then
-        previous.pop();
+        while previous.last().expect("nextnet is never empty").effective_from_height() > 5_500 {
+            previous.pop();
+        }
         let con_5 = previous.pop().expect("nextnet has five entries");
         assert_eq!(con_5.effective_from_height(), 5_500);
         previous.push(
@@ -327,6 +352,68 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The first start after an upgrade is exactly when the "constants changed and are already active" alarm
+    /// matters, and it is also the only start where the persisted file was written by a binary that did not know
+    /// about the new fields. Without `#[serde(default)]` the parse fails, `load_previous` returns `None`, and the
+    /// alarm is silently skipped. This reproduces that start: an on-disk file in the previous release's shape,
+    /// against current constants, at a height the fork is already active at.
+    #[test]
+    fn an_upgrade_from_the_previous_releases_file_shape_still_raises_the_alarm() {
+        // v5.6.0 is the last public release, and therefore the binary most nodes upgrade from.
+        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 3] = [
+            "bipartite_cuckaroo_verification",
+            "aux_chain_merkle_proof_depth_binding",
+            "pow_backoff_cap",
+        ];
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let tracker = ConsensusConstantsTracker::new(temp_dir.path());
+
+        let current = ConsensusConstants::for_network(Network::MainNet);
+        let activation = current.last().expect("mainnet is never empty").effective_from_height();
+
+        // The file the previous release would have written: the current shape minus the fields it never had.
+        let mut json: serde_json::Value = serde_json::to_value(&current).expect("serializes");
+        for entry in json.as_array_mut().expect("a vector of constants") {
+            let map = entry.as_object_mut().expect("constants are a JSON object");
+            for field in FIELDS_ABSENT_FROM_THE_LAST_RELEASE {
+                assert!(map.remove(field).is_some(), "{field} is not in the serialized shape");
+            }
+        }
+        std::fs::write(&tracker.storage_path, serde_json::to_string_pretty(&json).unwrap()).expect("write");
+
+        let previous = tracker
+            .load_previous()
+            .expect("the previous release's file shape must still parse, or the alarm below is skipped");
+        assert_ne!(previous, current, "the stripped file must really differ");
+
+        let err = tracker
+            .check_for_changes(&current, activation)
+            .expect_err("the fork is already active, so the alarm must fire");
+        assert!(
+            err.contains("CRITICAL"),
+            "expected the already-active alarm, got: {err}"
+        );
+    }
+
+    /// A file that cannot be parsed at all must not be mistaken for a missing file. Both return `None`, but only
+    /// one of them means "there was nothing to compare against".
+    #[test]
+    fn an_unparseable_file_is_not_treated_as_a_missing_one() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let tracker = ConsensusConstantsTracker::new(temp_dir.path());
+
+        assert!(tracker.load_previous().is_none(), "no file yet");
+
+        std::fs::write(&tracker.storage_path, "{ this is not consensus constants").expect("write");
+        assert!(tracker.load_previous().is_none(), "garbage must not parse");
+
+        // ...and the tracker recovers: the next run overwrites the file with something readable.
+        let current = ConsensusConstants::for_network(Network::MainNet);
+        tracker.check_for_changes(&current, 0).expect("must not hard fail");
+        assert_eq!(tracker.load_previous().as_ref(), Some(&current));
     }
 
     #[test]

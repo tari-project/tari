@@ -136,6 +136,43 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
     }
 }
 
+/// The branch length an honest merkle proof has for the leaf at `pos` in a Monero tree over `aux_chain_count`
+/// leaves.
+///
+/// Monero's tree (see `tree_hash` / `create_merkle_proof`, ports of `tree-hash.c` and `tree_branch`) is *not*
+/// balanced. `tree_hash_count` rounds the leaf count *down* to a power of two, so with `depth = ceil(log2(n))` and
+/// `k = 2^depth - n`, the first `k` leaves are carried straight into the second level and therefore sit one level
+/// higher than the remaining `n - k` leaves, which are paired up first. Consequently:
+///
+/// * `n == 1` - the leaf is the root, so the branch is empty;
+/// * `pos < k` - the leaf is one of the promoted ones, branch length `depth - 1`;
+/// * `pos >= k` - branch length `depth`.
+///
+/// This is exactly the invariant `get_position_from_path` assumes when it consumes `depth - 1` path bits and only
+/// reads one more when the partial position lands at or above `k`.
+///
+/// `aux_chain_count` is a `u8` because that is what the merge mining tag encodes
+/// (`MerkleTreeParameters::number_of_chains`). The narrowing is not cosmetic: the loop below doubles `k` until it
+/// reaches the chain count, so a count above `2^31` would make `k <<= 1` wrap to zero and the loop spin forever. A
+/// `u8` caps `k` at 256 and `depth` at 8, which makes termination structural rather than incidental.
+pub fn expected_branch_len(aux_chain_count: u8, pos: u32) -> usize {
+    if aux_chain_count <= 1 {
+        return 0;
+    }
+
+    let aux_chain_count = u32::from(aux_chain_count);
+    let mut depth = 0usize;
+    let mut k = 1u32;
+    while k < aux_chain_count {
+        depth = depth.saturating_add(1);
+        k <<= 1;
+    }
+
+    // `k` is 2^depth here; the number of leaves promoted a level is 2^depth - n.
+    let promoted = k.saturating_sub(aux_chain_count);
+    if pos < promoted { depth.saturating_sub(1) } else { depth }
+}
+
 /// The Monero merkle proof
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -207,11 +244,61 @@ impl MerkleProof {
         false
     }
 
-    /// Calculates the merkle root hash from the provide Monero hash
-    pub fn calculate_root_with_pos(&self, hash: &Hash, aux_chain_count: u8) -> (Hash, u32) {
-        let root = self.calculate_root(hash);
-        let pos = self.get_position_from_path(u32::from(aux_chain_count));
-        (root, pos)
+    /// Calculates the merkle root hash from the provide Monero hash, together with the leaf position the proof's
+    /// path bitmap encodes.
+    ///
+    /// When `enforce_depth_binding` is set, the branch length is required to match the length an honest proof for
+    /// that leaf position in a tree of `aux_chain_count` leaves would have. Without that binding `calculate_root`
+    /// walks an attacker-chosen number of levels while `get_position_from_path` derives its own depth from the
+    /// chain count, and the two are never reconciled - which lets one Monero proof of work commit to many distinct
+    /// Tari headers at the same height.
+    ///
+    /// The same flag also requires the path bitmap to be canonical: no bit may be set at or above the expected
+    /// branch length. Only the low `expected` bits are ever read - `calculate_root` walks `branch.len()` levels and
+    /// `get_position_from_path` consumes at most `depth` bits - so every higher bit is free space that changes the
+    /// serialized proof, and therefore `BlockHeader::hash()` (which chains `pow`), without changing the merge
+    /// mining hash, the root, the position or the proof of work. That is a malleability: a peer can take an honest
+    /// block off the wire, flip a high bit, and produce a distinct but still valid block hash for free, missing
+    /// every hash keyed dedup, bad block cache and reconciliation lock and forcing a fresh RandomX hash. In
+    /// production `aux_chain_count == 1` the branch is empty and neither reader touches the bitmap at all, so all
+    /// 32 bits are free.
+    ///
+    /// This mirrors `MerkleProof::check_coinbase_path`, which already requires exactly `path_bitmap == 0` for the
+    /// *coinbase* proof (enforced in `MoneroPowData::is_coinbase_valid_merkle_root`). The aux proof is now held to
+    /// the same standard; this is consistency with an existing rule, not a new design.
+    pub fn calculate_root_with_pos(
+        &self,
+        hash: &Hash,
+        aux_chain_count: u8,
+        enforce_depth_binding: bool,
+    ) -> Result<(Hash, u32), MergeMineError> {
+        let pos = self.get_position_from_path(aux_chain_count);
+        if enforce_depth_binding {
+            let expected = expected_branch_len(aux_chain_count, pos);
+            if self.branch.len() != expected {
+                return Err(MergeMineError::ValidationError(format!(
+                    "Aux chain merkle proof branch length ({}) does not match the length implied by the aux chain \
+                     count ({aux_chain_count}) at position {pos} ({expected})",
+                    self.branch.len(),
+                )));
+            }
+            // Bits at or above `expected` are never read. `checked_shr` yields `None` once the shift reaches the
+            // width of the type, in which case every bit is below the branch length and there is nothing to reject,
+            // so an unreadable shift can neither panic nor wrap into a false accept.
+            let unread_bits = u32::try_from(expected)
+                .ok()
+                .and_then(|shift| self.path_bitmap.checked_shr(shift))
+                .unwrap_or(0);
+            if unread_bits != 0 {
+                return Err(MergeMineError::ValidationError(format!(
+                    "Aux chain merkle proof path bitmap ({:#010x}) has bits set at or above the branch length \
+                     ({expected}) implied by the aux chain count ({aux_chain_count}) at position {pos}; those bits \
+                     are never read, so they are pure block hash malleability",
+                    self.path_bitmap,
+                )));
+            }
+        }
+        Ok((self.calculate_root(hash), pos))
     }
 
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
@@ -232,13 +319,18 @@ impl MerkleProof {
         root
     }
 
-    pub fn get_position_from_path(&self, aux_chain_count: u32) -> u32 {
+    /// The leaf position the path bitmap encodes, for a Monero tree over `aux_chain_count` leaves.
+    ///
+    /// `aux_chain_count` is a `u8` for the same reason as in `expected_branch_len`: the doubling loop below only
+    /// terminates while the count stays under `2^31`, and the merge mining tag never encodes more than a `u8`.
+    pub fn get_position_from_path(&self, aux_chain_count: u8) -> u32 {
         if aux_chain_count <= 1 {
             return 0;
         }
 
+        let aux_chain_count = u32::from(aux_chain_count);
         let mut depth = 0usize;
-        let mut k = 1;
+        let mut k = 1u32;
 
         while k < aux_chain_count {
             depth = depth.saturating_add(1);
@@ -440,6 +532,207 @@ mod test {
             quickcheck(proof_random as fn(Vec<QuickHash>, QuickHash, u32) -> bool);
         }
     }
+    /// Binding the aux-chain merkle proof's branch length to the depth implied by the chain count.
+    ///
+    /// Monero's tree is the "narrow" tree: with `depth = ceil(log2(n))` and `k = 2^depth - n`, the first `k` leaves
+    /// sit one level higher than the rest, so the honest branch length is position-dependent. A flat
+    /// `ceil(log2(n))` rule would reject honest proofs for every non-power-of-two chain count.
+    mod depth_binding {
+        use super::*;
+
+        /// `n` distinct leaf hashes. Distinctness matters: `create_merkle_proof` locates the leaf by value.
+        fn distinct_hashes(n: usize) -> Vec<Hash> {
+            (0..n)
+                .map(|i| {
+                    let mut buf = [0u8; 32];
+                    buf[..4].copy_from_slice(&u32::try_from(i).unwrap().to_le_bytes());
+                    Hash::from_slice(&buf)
+                })
+                .collect()
+        }
+
+        /// The per-position lengths, pinned as literals. n = 3 and n = 5 are the cases a flat `ceil(log2(n))` rule
+        /// gets wrong, and the cases where testing a single position passes by luck.
+        #[test]
+        fn the_narrow_tree_branch_lengths_are_pinned() {
+            assert_eq!(expected_branch_len(1, 0), 0, "a single chain is its own root");
+            // depth 1, k = 0: a balanced pair.
+            assert_eq!([0, 1].map(|pos| expected_branch_len(2, pos)), [1, 1]);
+            // depth 2, k = 1: leaf 0 is promoted a level.
+            assert_eq!([0, 1, 2].map(|pos| expected_branch_len(3, pos)), [1, 2, 2]);
+            // depth 2, k = 0: balanced.
+            assert_eq!([0, 1, 2, 3].map(|pos| expected_branch_len(4, pos)), [2, 2, 2, 2]);
+            // depth 3, k = 3: leaves 0, 1 and 2 are promoted a level.
+            assert_eq!([0, 1, 2, 3, 4].map(|pos| expected_branch_len(5, pos)), [2, 2, 2, 3, 3]);
+            // depth 3, k = 2, the shape the pre-existing `simple_proof_construction` test walks by hand.
+            assert_eq!([0, 1, 2, 3, 4, 5].map(|pos| expected_branch_len(6, pos)), [
+                2, 2, 3, 3, 3, 3
+            ]);
+            // depth 8, k = 1.
+            assert_eq!(expected_branch_len(255, 0), 7);
+            assert_eq!([1, 2, 254].map(|pos| expected_branch_len(255, pos)), [8, 8, 8]);
+        }
+
+        /// The round trip: for every leaf of every tree size, the proof `create_merkle_proof` actually produces
+        /// must be accepted, and the position and root must be exactly what the unbound code returned.
+        #[test]
+        fn honest_proofs_are_accepted_at_every_leaf_position() {
+            for n in (1..=17u32).chain([64, 255]) {
+                let hashes = distinct_hashes(n as usize);
+                let expected_root = tree_hash(&hashes).unwrap();
+                let count = u8::try_from(n).unwrap();
+                for pos in 0..n {
+                    let leaf = hashes[pos as usize];
+                    let proof = create_merkle_proof(&hashes, &leaf).unwrap();
+                    assert_eq!(
+                        proof.branch().len(),
+                        expected_branch_len(count, pos),
+                        "n={n} pos={pos}: create_merkle_proof disagrees with expected_branch_len"
+                    );
+                    // The canonical bitmap rule must hold for proofs the honest producer really emits, otherwise
+                    // enforcing it would reject real blocks.
+                    assert_eq!(
+                        proof.path() >> u32::try_from(proof.branch().len()).unwrap(),
+                        0,
+                        "n={n} pos={pos}: create_merkle_proof set a path bit at or above the branch length"
+                    );
+
+                    let bound = proof
+                        .calculate_root_with_pos(&leaf, count, true)
+                        .unwrap_or_else(|e| panic!("n={n} pos={pos} honest proof rejected: {e}"));
+                    assert_eq!(bound, (expected_root, pos), "n={n} pos={pos}");
+                    // The binding must not change the answer for an honest proof, only reject dishonest ones.
+                    let unbound = proof.calculate_root_with_pos(&leaf, count, false).unwrap();
+                    assert_eq!(bound, unbound, "n={n} pos={pos}: binding changed an honest result");
+                }
+            }
+        }
+
+        /// A single chain is a zero-depth tree, so any branch at all is a forgery. This is the case the
+        /// `VarInt(0)` encoding makes reachable with a vacuous position check.
+        #[test]
+        fn a_single_chain_with_a_non_empty_branch_is_rejected() {
+            let leaf = distinct_hashes(1)[0];
+            for len in 1..5 {
+                let forged = MerkleProof::try_construct(vec![Hash::null(); len], 0).unwrap();
+                assert!(
+                    forged.calculate_root_with_pos(&leaf, 1, true).is_err(),
+                    "single chain accepted a branch of length {len}"
+                );
+                // ...and this is exactly what the pre-fork rules let through.
+                assert!(forged.calculate_root_with_pos(&leaf, 1, false).is_ok());
+            }
+        }
+
+        /// Every off-by-one and every over-long branch, for every leaf of every listed tree size.
+        #[test]
+        fn a_branch_length_that_does_not_match_the_chain_count_is_rejected() {
+            for n in [1u32, 2, 3, 4, 255] {
+                let hashes = distinct_hashes(n as usize);
+                let count = u8::try_from(n).unwrap();
+                for pos in 0..n {
+                    let leaf = hashes[pos as usize];
+                    let honest = create_merkle_proof(&hashes, &leaf).unwrap();
+                    let honest_len = honest.branch().len();
+                    for len in 0..(honest_len + 3).min(MAX_MERKLE_TREE_PROOF_SIZE) {
+                        if len == honest_len {
+                            continue;
+                        }
+                        // Keep the honest path bitmap, so the derived position is unchanged and the length is the
+                        // only thing that differs.
+                        let mut branch = honest.branch().to_vec();
+                        branch.resize(len, Hash::null());
+                        let forged = MerkleProof::try_construct(branch, honest.path()).unwrap();
+                        assert!(
+                            forged.calculate_root_with_pos(&leaf, count, true).is_err(),
+                            "n={n} pos={pos}: branch of length {len} accepted, honest length is {honest_len}"
+                        );
+                    }
+                }
+            }
+        }
+
+        /// The bits of the path bitmap at or above the branch length are never read: `calculate_root` walks
+        /// `branch.len()` levels and `get_position_from_path` stops at `depth`. Flipping one therefore leaves the
+        /// root, the position and the proof of work identical while changing the serialized proof - and with it
+        /// `BlockHeader::hash()`, which chains `pow` where `merge_mining_hash()` does not. Post-fork they must be
+        /// rejected; pre-fork they were free, and must stay accepted so no existing block is retroactively invalid.
+        #[test]
+        fn path_bitmap_bits_above_the_branch_length_are_rejected() {
+            for n in (1..=17u32).chain([64, 255]) {
+                let hashes = distinct_hashes(n as usize);
+                let count = u8::try_from(n).unwrap();
+                for pos in 0..n {
+                    let leaf = hashes[pos as usize];
+                    let honest = create_merkle_proof(&hashes, &leaf).unwrap();
+                    let honest_unbound = honest.calculate_root_with_pos(&leaf, count, false).unwrap();
+                    let len = u32::try_from(honest.branch().len()).unwrap();
+                    for bit in len..32 {
+                        let forged =
+                            MerkleProof::try_construct(honest.branch().to_vec(), honest.path() | (1 << bit)).unwrap();
+                        assert_ne!(
+                            forged, honest,
+                            "n={n} pos={pos} bit={bit}: the forgery must really differ"
+                        );
+                        assert!(
+                            forged.calculate_root_with_pos(&leaf, count, true).is_err(),
+                            "n={n} pos={pos}: an unread path bit {bit} was accepted"
+                        );
+                        // ...and this is the malleability itself: pre-fork the forgery is accepted and is
+                        // indistinguishable from the honest proof in every value the validator looks at.
+                        assert_eq!(
+                            forged.calculate_root_with_pos(&leaf, count, false).unwrap(),
+                            honest_unbound,
+                            "n={n} pos={pos} bit={bit}: the unread bit changed a checked value"
+                        );
+                    }
+                }
+            }
+        }
+
+        /// The production case. With one aux chain the branch is empty, `calculate_root` returns early and
+        /// `get_position_from_path` returns 0 without reading the bitmap at all, so all 32 bits are free.
+        #[test]
+        fn a_single_chain_leaves_no_free_path_bits() {
+            let leaf = distinct_hashes(1)[0];
+            let honest = create_merkle_proof(&[leaf], &leaf).unwrap();
+            assert_eq!(honest.path(), 0, "the honest single-chain proof has an empty bitmap");
+            assert!(honest.calculate_root_with_pos(&leaf, 1, true).is_ok());
+
+            let mut roots = std::collections::HashSet::new();
+            for bit in 0..32 {
+                let forged = MerkleProof::try_construct(vec![], 1 << bit).unwrap();
+                assert!(
+                    forged.calculate_root_with_pos(&leaf, 1, true).is_err(),
+                    "single chain accepted free path bit {bit}"
+                );
+                let (root, pos) = forged.calculate_root_with_pos(&leaf, 1, false).unwrap();
+                assert_eq!((root, pos), (leaf, 0), "bit {bit} is genuinely unread pre-fork");
+                roots.insert(root);
+            }
+            assert_eq!(
+                roots.len(),
+                1,
+                "all 32 bits produce the same root - which is what makes them free malleability"
+            );
+        }
+
+        /// The attack the binding closes: without it, one leaf hash and one chain count admit many branch lengths,
+        /// each producing a different root - i.e. one Monero solution committing to many distinct Tari headers.
+        #[test]
+        fn without_the_binding_one_leaf_yields_many_distinct_roots() {
+            let leaf = distinct_hashes(1)[0];
+            let mut roots = std::collections::HashSet::new();
+            for len in 0..8 {
+                let forged = MerkleProof::try_construct(vec![Hash::from([7u8; 32]); len], 0).unwrap();
+                let (root, pos) = forged.calculate_root_with_pos(&leaf, 1, false).unwrap();
+                assert_eq!(pos, 0, "the position check is vacuous for a single chain");
+                roots.insert(root);
+            }
+            assert_eq!(roots.len(), 8, "expected a distinct root per branch length");
+        }
+    }
+
     mod tree_hash {
         use super::*;
 

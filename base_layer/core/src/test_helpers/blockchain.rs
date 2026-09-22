@@ -714,6 +714,22 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
     blocks: T,
     genesis_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    create_chained_blocks_with_range_proof_type(db, blocks, genesis_block, None)
+}
+
+/// As [`create_chained_blocks`], but lets the caller choose the coinbase range proof type.
+///
+/// The default, `BulletProofPlus`, costs roughly 60 ms per block in a debug build, which is fine for the
+/// handful of blocks most tests need and painful for a test that needs hundreds of them (the deep reorg anchor
+/// has to build a chain longer than its confirmation window before the rule can engage at all).
+/// `RangeProofType::RevealedValue` produces the same chain shape about five times faster, and is sound for any
+/// test whose validators are mocks or which does not exercise range proof verification.
+pub fn create_chained_blocks_with_range_proof_type<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
+    db: &BlockchainDatabase<TDB>,
+    blocks: T,
+    genesis_block: Arc<ChainBlock>,
+    range_proof_type: Option<RangeProofType>,
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let mut block_hashes = HashMap::new();
     let gb_height = genesis_block.header().height;
     block_hashes.insert("GB".to_string(), genesis_block);
@@ -766,7 +782,7 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
             &km,
             &script_key_id,
             &wallet_payment_address,
-            None,
+            range_proof_type,
         );
         let updates = update_block_and_smt(&mut block, &jmt);
 
@@ -796,13 +812,23 @@ pub fn create_main_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
     blocks: T,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    create_main_chain_with_range_proof_type(db, blocks, None)
+}
+
+/// As [`create_main_chain`], but lets the caller choose the coinbase range proof type. See
+/// [`create_chained_blocks_with_range_proof_type`] for when that is worth doing.
+pub fn create_main_chain_with_range_proof_type<T: Into<BlockSpecs>>(
+    db: &BlockchainDatabase<TempDatabase>,
+    blocks: T,
+    range_proof_type: Option<RangeProofType>,
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let genesis_block = db
         .fetch_block(0, true)
         .unwrap()
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let (names, chain) = { create_chained_blocks(db, blocks, genesis_block) };
+    let (names, chain) = { create_chained_blocks_with_range_proof_type(db, blocks, genesis_block, range_proof_type) };
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();

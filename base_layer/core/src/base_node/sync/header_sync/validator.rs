@@ -37,8 +37,11 @@ use crate::{
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
         DifficultyCalculator,
+        HeaderChainContext,
         HeaderChainLinkedValidator,
+        MoneroSeedHeights,
         TARI_RX_VM_KEY_BLOCK_SWAP,
+        ValidatedHeader,
         ValidationError,
         header::HeaderFullValidator,
         tari_rx_vm_key_height,
@@ -71,6 +74,16 @@ struct State {
     /// The height of the chain split this sync started from. The local database is only a trustworthy source of VM
     /// keys at or below this height; above it, it still holds the chain that is about to be rewound.
     chain_split_height: u64,
+    /// The heights at which the peer's chain first used each Monero RandomX seed, for the part of that chain this
+    /// sync has already proven. The same reasoning as `vm_key` applies: above the chain split the database's seed
+    /// index belongs to the chain that is about to be rewound, so the seed age rule has to be measured against the
+    /// chain being validated. Only headers that have passed validation are recorded, so this cannot be grown
+    /// cheaply by a peer.
+    ///
+    /// Entries must not be evicted by age. An entry older than `max_randomx_seed_height` is not stale, it is
+    /// precisely the one that has to keep rejecting further re-use of that seed; dropping it would turn a rejection
+    /// into an acceptance.
+    monero_seeds: MoneroSeedHeights,
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
@@ -150,6 +163,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             valid_headers: Vec::with_capacity(HEADER_SYNC_INITIAL_MAX_HEADERS),
             vm_key,
             chain_split_height,
+            monero_seeds: MoneroSeedHeights::default(),
         });
 
         Ok(())
@@ -157,6 +171,36 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
     pub fn current_valid_chain_tip_header(&self) -> Option<&ChainHeader> {
         self.valid_headers().last()
+    }
+
+    /// Records a header that failed validation in the bad block list, unless the verdict is one that can
+    /// legitimately come out differently later, in which case the header is only discarded and the peer banned.
+    async fn blacklist_unless_verdict_can_change(
+        &self,
+        header: &BlockHeader,
+        err: &ValidationError,
+    ) -> Result<(), BlockHeaderSyncError> {
+        match err {
+            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+            // for now and ban the peer, but wont blacklist the block.
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
+            // The RandomX seed age rule is measured against the chain being validated, and while this sync runs the
+            // database still holds the chain that is about to be rewound. The chain context keeps that honest, but a
+            // chain dependent verdict must not outlive the sync that made it: discard the header and ban the peer,
+            // and let a later sync judge it on its own chain.
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) |
+            // We dont want to mark a block as bad for internal failures
+            ValidationError::FatalStorageError(_) |
+            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            // We dont have to mark the block twice
+            ValidationError::BadBlockFound { .. } => Ok(()),
+            _ => {
+                let mut txn = self.db.write_transaction();
+                txn.insert_bad_block(header.hash(), header.height, err.to_string());
+                txn.commit().await?;
+                Ok(())
+            },
+        }
     }
 
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
@@ -221,34 +265,26 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                     .into());
                 },
             };
+            // Above the chain split the database holds the chain that is about to be rewound, so it is not a source
+            // of anything chain dependent; what this sync has proven about the peer's chain is.
+            let chain_context =
+                HeaderChainContext::candidate_chain(vm_key, state.chain_split_height, Some(&state.monero_seeds));
             self.validator.validate(
                 &*txn,
                 &header,
                 &state.previous_header,
                 &state.timestamps,
                 Some(target_difficulty),
-                vm_key,
+                chain_context,
             )
         };
-        let achieved_target = match result {
-            Ok(achieved_target) => achieved_target,
-            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
-            // for now and ban the peer, but wont blacklist the block.
-            Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
-                return Err(e.into());
-            },
-            // We dont want to mark a block as bad for internal failures
-            Err(
-                e @ ValidationError::FatalStorageError(_) |
-                e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. },
-            ) => return Err(e.into()),
-            // We dont have to mark the block twice
-            Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
-
+        let ValidatedHeader {
+            achieved_target,
+            monero_seed,
+        } = match result {
+            Ok(validated) => validated,
             Err(e) => {
-                let mut txn = self.db.write_transaction();
-                txn.insert_bad_block(header.hash(), header.height, e.to_string());
-                txn.commit().await?;
+                self.blacklist_unless_verdict_can_change(&header, &e).await?;
                 return Err(e.into());
             },
         };
@@ -288,6 +324,11 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
+        if let Some(seed) = monero_seed {
+            // Nothing is committed until the whole chain has been validated, so this is the only record of when the
+            // peer's chain first used this seed.
+            state.monero_seeds.record(seed, chain_header.header().height);
+        }
         if chain_header.header().height.is_multiple_of(TARI_RX_VM_KEY_BLOCK_SWAP) {
             // we need to save the hash of this header and height
             state.vm_key.push((chain_header.header().height, *chain_header.hash()));
@@ -775,6 +816,326 @@ mod test {
             // have missed the target and the peer would have been banned for it.
             assert!(tari_randomx_difficulty(&tip, &fork.factory, &local_boundary).unwrap() < target);
             assert!(tari_randomx_difficulty(&tip, &fork.factory, &peer_boundary).unwrap() >= target);
+        }
+    }
+
+    /// The Monero RandomX seed age rule is chain dependent: "has this chain used this seed before, and how long
+    /// ago". Header sync validates the peer's chain in full *before* `switch_to_pending_chain` rewinds, so for the
+    /// whole of validation the database still holds this node's own (possibly losing) fork, and the seed index is
+    /// keyed by seed alone with no record of which chain recorded it.
+    ///
+    /// Reading that index directly would let a purely local fork reject an honest peer's headers - costing that peer
+    /// a `BanPeriod::Long` ban and, because a failed header is normally written to the bad block list, keeping the
+    /// header rejected for as long as that list holds it. The rule must therefore be measured against the chain being
+    /// validated: the database at or below the chain split, and what this sync has proven above it.
+    mod monero_seed {
+        // Test-only chain building: heights are small `u64` constants indexed into `Vec`s, and any overflow or
+        // out-of-range index is a bug in the test that should panic loudly.
+        #![allow(clippy::indexing_slicing, clippy::cast_possible_truncation)]
+
+        use borsh::BorshSerialize;
+        use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
+        use tari_transaction_components::{
+            consensus::{ConsensusConstantsBuilder, consensus_constants::PowAlgorithmConstants},
+            tari_proof_of_work::{Difficulty, PowData},
+        };
+        use tiny_keccak::{Hasher, Keccak};
+
+        use super::*;
+        use crate::{
+            proof_of_work::monero_rx::{self, CoinbasePrefix, CoinbasePrefixMode, FixedByteArray, MoneroPowData},
+            test_helpers::blockchain::create_custom_blockchain,
+        };
+
+        /// A seed may be re-used one block after the block that first used it, and no longer.
+        const MAX_SEED_AGE: u64 = 1;
+        /// Both chains run to this height.
+        const TIP: u64 = 6;
+        /// The peer's chain forks here, so heights above it are this node's own losing fork.
+        const SPLIT: u64 = 1;
+
+        const SEED_A: &str = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
+        const SEED_B: &str = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
+
+        fn seed_bytes(seed_key: &str) -> Vec<u8> {
+            FixedByteArray::from_hex(seed_key).unwrap().to_vec()
+        }
+
+        /// LocalNet with merge mined PoW allowed and every difficulty pinned at 1, so that the seed age rule is the
+        /// only thing that can reject a header.
+        fn rules() -> BaseNodeConsensusManager {
+            let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+                .clear_proof_of_work()
+                .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+                    min_difficulty: Difficulty::min(),
+                    max_difficulty: Difficulty::min(),
+                    target_time: 300,
+                })
+                .add_proof_of_work(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+                    min_difficulty: Difficulty::min(),
+                    max_difficulty: Difficulty::min(),
+                    target_time: 200,
+                })
+                .with_max_randomx_seed_height(MAX_SEED_AGE)
+                .build();
+            BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(constants)
+                .build()
+                .unwrap()
+        }
+
+        /// Gives `header` merge mined PoW data that validates, keyed by `seed_key`. Every other field of the header
+        /// must already be final: the Monero data commits to the header's merge mining hash.
+        fn add_monero_data(rules: &BaseNodeConsensusManager, header: &mut BlockHeader, seed_key: &str) {
+            let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000";
+            let bytes = hex::decode(blocktemplate_blob).unwrap();
+            let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+            let hash = monero::Hash::from_slice(header.merge_mining_hash().as_slice());
+            monero_rx::insert_aux_chain_mr_and_info_into_block(&mut mblock, hash, 1, 0).unwrap();
+            let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
+            let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
+            let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+            let aux_hashes = vec![hash];
+            let aux_chain_merkle_proof = monero_rx::create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+            let coinbase = mblock.miner_tx.clone();
+            let extra = coinbase.prefix.extra.clone();
+            let mut encoder_prefix = Vec::new();
+            coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+            coinbase
+                .prefix
+                .unlock_time
+                .consensus_encode(&mut encoder_prefix)
+                .unwrap();
+            coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+            coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+            // GHSA-3qmx-q9pv-f3m4: which coinbase wire format is legal is a function of the height, so ask the
+            // same question the node will ask rather than hard coding an answer.
+            let coinbase_prefix = match CoinbasePrefixMode::for_height(rules, header.height) {
+                CoinbasePrefixMode::Legacy => {
+                    let mut keccak = Keccak::v256();
+                    keccak.update(&encoder_prefix);
+                    CoinbasePrefix::Legacy(keccak)
+                },
+                CoinbasePrefixMode::Derived => CoinbasePrefix::Prefix(encoder_prefix.try_into().unwrap()),
+            };
+
+            let monero_data = MoneroPowData {
+                header: mblock.header,
+                randomx_key: FixedByteArray::from_hex(seed_key).unwrap(),
+                transaction_count: hashes.len() as u16,
+                merkle_root,
+                coinbase_merkle_proof,
+                coinbase_tx_extra: extra,
+                coinbase_prefix,
+                aux_chain_merkle_proof,
+            };
+            let mut serialized = Vec::new();
+            BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
+            header.pow.pow_algo = PowAlgorithm::RandomXM;
+            header.pow.pow_data = PowData::try_from(serialized).unwrap();
+        }
+
+        /// Builds the headers for `parent.height + 1 ..= to_height`. `seed_at` decides which heights are merge mined
+        /// headers and which seed each of them uses. `timestamp_offset` is what makes two chains built over the same
+        /// heights differ.
+        fn build_headers(
+            rules: &BaseNodeConsensusManager,
+            parent: &BlockHeader,
+            to_height: u64,
+            base_timestamp: u64,
+            timestamp_offset: u64,
+            seed_at: impl Fn(u64) -> Option<&'static str>,
+        ) -> Vec<BlockHeader> {
+            let mut headers = Vec::new();
+            let mut prev = parent.clone();
+            for height in (parent.height + 1)..=to_height {
+                let mut header = BlockHeader::from_previous(&prev);
+                header.version = rules.consensus_constants(height).blockchain_version().into();
+                // Strictly increasing, and comfortably in the past so the future time limit is never hit.
+                header.timestamp = EpochTime::from(base_timestamp + height * 10 + timestamp_offset);
+                // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
+                header.kernel_mmr_size = prev.kernel_mmr_size + 1;
+                header.output_smt_size = prev.output_smt_size + 1;
+                if let Some(seed) = seed_at(height) {
+                    add_monero_data(rules, &mut header, seed);
+                }
+                headers.push(header.clone());
+                prev = header;
+            }
+            headers
+        }
+
+        fn to_chain_headers(headers: &[BlockHeader]) -> Vec<ChainHeader> {
+            headers
+                .iter()
+                .map(|header| {
+                    let accum = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
+                    ChainHeader::try_construct(header.clone(), accum).unwrap()
+                })
+                .collect()
+        }
+
+        struct Fork {
+            validator: BlockHeaderSyncValidator<TempDatabase>,
+            db: AsyncBlockchainDb<TempDatabase>,
+            /// This node's chain. `local[i]` is the header at height `i + 1`.
+            local: Vec<BlockHeader>,
+            /// The peer's chain, from the split (exclusive) to `TIP`.
+            peer: Vec<BlockHeader>,
+        }
+
+        /// Writes `local_seeds` as this node's chain and builds (but does not write) a peer chain that forks at
+        /// `SPLIT` and uses `peer_seeds`. Only the local chain reaches the database: that is exactly the state header
+        /// sync validates in, before any rewind has happened.
+        async fn setup_fork(
+            local_seeds: impl Fn(u64) -> Option<&'static str>,
+            peer_seeds: impl Fn(u64) -> Option<&'static str>,
+        ) -> Fork {
+            let rules = rules();
+            let db: AsyncBlockchainDb<TempDatabase> = create_custom_blockchain(rules.clone()).into();
+            let genesis = db.fetch_chain_header(0).await.unwrap();
+            let base_timestamp = genesis.header().timestamp.as_u64();
+
+            let local = build_headers(&rules, genesis.header(), TIP, base_timestamp, 0, local_seeds);
+            db.insert_valid_headers(to_chain_headers(&local)).await.unwrap();
+
+            let peer = build_headers(&rules, &local[(SPLIT - 1) as usize], TIP, base_timestamp, 5, peer_seeds);
+
+            let validator = BlockHeaderSyncValidator::new(db.clone(), rules, RandomXFactory::default());
+            Fork {
+                validator,
+                db,
+                local,
+                peer,
+            }
+        }
+
+        impl Fork {
+            fn split_hash(&self) -> FixedHash {
+                self.local[(SPLIT - 1) as usize].hash()
+            }
+
+            /// What the database - this node's own chain - has recorded for `seed_key`.
+            fn recorded_seed_height(&self, seed_key: &str) -> u64 {
+                self.db
+                    .inner()
+                    .db_read_access()
+                    .unwrap()
+                    .fetch_monero_seed_first_seen_height(&seed_bytes(seed_key))
+                    .unwrap()
+            }
+        }
+
+        /// Regression test for the seed age rule being measured against the chain that is about to be rewound.
+        ///
+        /// The seed the peer's chain uses was first used by this node's own fork, above the split, long enough ago
+        /// that the age rule would fire. The peer has never used it before, so it must be accepted - and must not be
+        /// blacklisted, which would keep it rejected well past the sync that misjudged it.
+        #[tokio::test]
+        async fn an_honest_peer_is_not_rejected_for_a_seed_only_its_own_fork_has_used() {
+            // This node's fork uses SEED_A at height 2, the peer's chain uses it for the first time at the tip.
+            let mut fork = setup_fork(
+                |height| (height == 2).then_some(SEED_A),
+                |height| (height == TIP).then_some(SEED_A),
+            )
+            .await;
+
+            // The counterfactual: read straight from the database, the seed is far too old for the peer's tip.
+            let recorded = fork.recorded_seed_height(SEED_A);
+            assert_eq!(recorded, 2, "this node's own fork must have recorded the seed");
+            assert!(
+                TIP - recorded > MAX_SEED_AGE,
+                "the database would have to reject the peer's tip for this test to mean anything"
+            );
+
+            fork.validator.initialize_state(&fork.split_hash()).await.unwrap();
+            for header in fork.peer.clone() {
+                let (height, hash) = (header.height, header.hash());
+                if let Err(err) = fork.validator.validate(header).await {
+                    panic!(
+                        "header #{height} from the honest peer was rejected ({err}), ban reason: {:?}",
+                        err.get_ban_reason()
+                    );
+                }
+                let (is_bad_block, reason) = fork.db.bad_block_exists(hash).await.unwrap();
+                assert!(!is_bad_block, "header #{height} was recorded as a bad block: {reason}");
+            }
+            assert_eq!(fork.validator.valid_headers().len(), (TIP - SPLIT) as usize);
+        }
+
+        /// Nothing is committed until the whole of the peer's chain has been validated, so a chain that re-uses one
+        /// seed forever can only be cut off by what this sync has proven about that chain. The rule must bite
+        /// exactly on the limit, not a commit batch later.
+        #[tokio::test]
+        async fn a_stale_seed_on_the_peers_own_chain_is_rejected_before_anything_is_committed() {
+            // The peer uses the same seed at heights 2, 3 and 4: ages 0, 1 and 2 against a limit of 1.
+            let mut fork = setup_fork(|_| None, |height| (2..=4).contains(&height).then_some(SEED_B)).await;
+            assert_eq!(
+                fork.recorded_seed_height(SEED_B),
+                0,
+                "nothing the peer uses may be in the database for this test to mean anything"
+            );
+
+            fork.validator.initialize_state(&fork.split_hash()).await.unwrap();
+
+            // First use, and a re-use exactly on the limit
+            fork.validator.validate(fork.peer[0].clone()).await.unwrap();
+            fork.validator.validate(fork.peer[1].clone()).await.unwrap();
+            assert_eq!(
+                fork.validator.state().monero_seeds.first_seen(&seed_bytes(SEED_B)),
+                Some(2),
+                "the sync must remember when the peer's chain first used the seed"
+            );
+
+            // One block past the limit
+            let stale = fork.peer[2].clone();
+            let (height, hash) = (stale.height, stale.hash());
+            assert_eq!(height, 4);
+            let err = fork.validator.validate(stale).await.unwrap_err();
+            unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = &err);
+            assert!(
+                matches!(
+                    val_err,
+                    ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash)
+                ),
+                "expected OldSeedHash, got {val_err:?}"
+            );
+            assert!(val_err.get_ban_reason().is_some(), "a stale seed must be bannable");
+
+            // A chain dependent verdict must not outlive the sync that made it: this header may be perfectly valid
+            // on another chain, or on this one once the local fork has been rewound.
+            let (is_bad_block, reason) = fork.db.bad_block_exists(hash).await.unwrap();
+            assert!(
+                !is_bad_block,
+                "header #{height} must not be blacklisted for a chain dependent failure: {reason}"
+            );
+        }
+
+        /// The seed index is still consulted for the part of the chain both chains agree on, so a peer that re-uses
+        /// a seed from the shared history is rejected exactly as it would be on the `add_block` path.
+        #[tokio::test]
+        async fn a_seed_used_at_or_below_the_split_still_counts() {
+            // Height 1 is the split itself, so this use is on the shared part of both chains.
+            let mut fork = setup_fork(
+                |height| (height == SPLIT).then_some(SEED_A),
+                |height| (height == 4).then_some(SEED_A),
+            )
+            .await;
+            assert_eq!(fork.recorded_seed_height(SEED_A), SPLIT);
+
+            fork.validator.initialize_state(&fork.split_hash()).await.unwrap();
+            fork.validator.validate(fork.peer[0].clone()).await.unwrap();
+            fork.validator.validate(fork.peer[1].clone()).await.unwrap();
+            let err = fork.validator.validate(fork.peer[2].clone()).await.unwrap_err();
+            unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = &err);
+            assert!(
+                matches!(
+                    val_err,
+                    ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash)
+                ),
+                "expected OldSeedHash, got {val_err:?}"
+            );
         }
     }
 }
