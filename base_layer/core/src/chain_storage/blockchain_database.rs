@@ -4300,9 +4300,9 @@ async fn throttle_then_process_one_height<B: BlockchainBackend + 'static>(
     header_validator: &HeaderFullValidator,
     rules: &BaseNodeConsensusManager,
     height: u64,
-    strict: Option<u64>,
+    activation: u64,
 ) -> Result<Result<RebuildStep, ChainStorageError>, tokio::task::JoinError> {
-    let throttle_ms = if strict.is_some() {
+    let throttle_ms = if height >= activation {
         STRICT_REBUILD_THROTTLE_MS
     } else {
         REBUILD_THROTTLE_MS
@@ -4322,7 +4322,7 @@ async fn throttle_then_process_one_height<B: BlockchainBackend + 'static>(
             &rules,
             height,
             &consensus_constants,
-            strict,
+            activation,
         )
     })
     .await
@@ -4378,21 +4378,16 @@ async fn run_accumulated_data_rebuild<B: BlockchainBackend + 'static>(
     let mut retries: u32 = 0;
     let mut resumes: u32 = 0;
     loop {
-        // Strict mode is decided per height, not per task. That is what keeps the pre-fork path intact: a
-        // node walking 150,000 blocks from an earlier migration keeps its full throttle until it actually
-        // reaches the fork.
-        let strict = if height >= strict_from_height {
-            Some(strict_from_height)
-        } else {
-            None
-        };
+        // Strict mode is decided per height, not per task, from `height >= strict_from_height`. That is what
+        // keeps the pre-fork path intact: a node walking 150,000 blocks from an earlier migration keeps its
+        // full throttle until it actually reaches the fork.
         let res = throttle_then_process_one_height(
             &db_rw_lock,
             &difficulty_calculator,
             &header_validator,
             &rules,
             height,
-            strict,
+            strict_from_height,
         )
         .await;
         match res {
@@ -4512,15 +4507,20 @@ enum RebuildStep {
 
 /// Process the accumulated data rebuild for the given height.
 ///
-/// `strict` selects between the two behaviours the walk needs, and is decided by the caller per height:
+/// `height >= activation` selects between the two behaviours the walk needs, so the choice is per height and not
+/// per task:
 ///
-/// * `false` (below the fork) - recompute the target with `check_achieved_and_target_difficulty` and rewrite the
-///   accumulated data. The stored data was computed under the rules in force at that height, so the only thing being
-///   repaired is an earlier corruption; a failure here is the caller's to log and stop on.
-/// * `true` (at or above the fork) - the stored data may have been computed under rules that no longer apply, so the
+/// * below the fork - recompute the target with `check_achieved_and_target_difficulty` and rewrite the accumulated
+///   data. The stored data was computed under the rules in force at that height, so the only thing being repaired is an
+///   earlier corruption; a failure here is the caller's to log and stop on.
+/// * at or above the fork ("strict") - the stored data may have been computed under rules that no longer apply, so the
 ///   header is put through the full header validator first. A header that no longer validates *for a reason that is a
 ///   permanent property of the block* is not a corruption to repair but a block this node should never have accepted,
 ///   and the chain is rewound below it.
+///
+/// `activation` is passed rather than an `Option` that is `None` below the fork, because both halves need it: the
+/// pre-fork half can be the one that finishes the walk (on a chain that has since been rewound below the fork),
+/// and finishing means purging the orphans at or above the activation height. See `finish_rebuild`.
 fn process_accumulated_data_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     difficulty_calculator: DifficultyCalculator,
@@ -4528,11 +4528,12 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
     rules: &BaseNodeConsensusManager,
     height: u64,
     consensus_constants: &ConsensusConstants,
-    strict: Option<u64>,
+    activation: u64,
 ) -> Result<RebuildStep, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height} (strict: {strict:?})");
+    let strict = height >= activation;
+    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height} (strict: {strict}, activation: {activation})");
 
-    if let Some(activation) = strict {
+    if strict {
         return process_accumulated_data_for_height_strict(
             db,
             header_validator,
@@ -4543,7 +4544,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         );
     }
 
-    let write_lock = db
+    let mut write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
     let last_chain_header = write_lock.fetch_last_chain_header()?;
@@ -4563,9 +4564,16 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_total_kernel_offset(header.total_kernel_offset.clone())
         .build(consensus_constants)?;
 
-    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, true)?;
-
-    Ok(RebuildStep::Processed(status))
+    // Made explicit for the same reason as in the strict half: `is_rebuilt: true` is one-way, so the orphan purge
+    // has to be attached to it. The pre-fork half reaches this only on a chain whose *header* tip has fallen
+    // below the activation height, which is precisely the case where a rewind has just filled the orphan pool
+    // with post-fork blocks carrying unrepaired accumulated data.
+    let is_final = height == last_chain_header.height();
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, !is_final)?;
+    if !is_final {
+        return Ok(RebuildStep::Processed(status));
+    }
+    finish_rebuild(&mut *write_lock, height, activation).map(RebuildStep::Processed)
 }
 
 /// The strict half of `process_accumulated_data_for_height`, split out because it is the half that has to be
@@ -4694,7 +4702,7 @@ fn process_accumulated_data_for_height_strict<B: BlockchainBackend>(
         },
         StrictAction::Rewind => {
             let e = validation.expect_err("StrictAction::Rewind is only reached with a verdict");
-            return rewind_below_invalid_header(&mut *write_lock, height, &e).map(RebuildStep::Processed);
+            return rewind_below_invalid_header(&mut *write_lock, height, activation, &e).map(RebuildStep::Processed);
         },
         StrictAction::Rewrite => {},
     }
@@ -4707,9 +4715,23 @@ fn process_accumulated_data_for_height_strict<B: BlockchainBackend>(
         .with_total_kernel_offset(header.total_kernel_offset.clone())
         .build(consensus_constants)?;
 
-    write_lock
-        .update_accumulated_difficulty(height, accumulated_data, last_chain_header, true)
-        .map(RebuildStep::Processed)
+    // The finish line used to be implicit: `update_accumulated_difficulty` writes
+    // `is_rebuilt: height == last_chain_header.height()` itself. It is taken out here instead so the orphan purge
+    // can be attached to it - see `finish_rebuild`. The predicate is unchanged, and so is the property it rests
+    // on: `last_chain_header` was read under *this* write lock, which is still held, and `header_moved` has
+    // already established that `height <= last_chain_header.height()` and that the header there is the one that
+    // was validated. The walk therefore still cannot declare itself finished against a tip that has moved.
+    //
+    // Two transactions rather than one, and in this order on purpose. If the process dies between them the
+    // accumulated data at `height` is correct and the status still says `is_rebuilt: false` with the watermark at
+    // `height - 1`, so the next startup simply redoes this height. The reverse order could latch "finished" over
+    // a height whose data was never written.
+    let is_final = height == last_chain_header.height();
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, !is_final)?;
+    if !is_final {
+        return Ok(RebuildStep::Processed(status));
+    }
+    finish_rebuild(&mut *write_lock, height, activation).map(RebuildStep::Processed)
 }
 
 /// What to do when the strict walk finds itself at a height above the header tip.
@@ -4731,7 +4753,7 @@ fn resume_or_finish_above_the_header_tip<B: BlockchainBackend>(
     height: u64,
     activation: u64,
 ) -> Result<RebuildStep, ChainStorageError> {
-    let write_lock = db
+    let mut write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
     let header_tip = write_lock.fetch_last_header()?.height;
@@ -4749,12 +4771,13 @@ fn resume_or_finish_above_the_header_tip<B: BlockchainBackend>(
         "[AccData] The header tip {header_tip} is below the activation height {activation}; there is no post-fork \
         accumulated data left to repair."
     );
-    let status = AccumulatedDataRebuildStatus {
-        is_rebuilt: true,
-        last_rebuild_height: Some(header_tip),
-    };
-    write_lock.set_accumulated_data_rebuild_status(status.clone())?;
-    Ok(RebuildStep::Processed(status))
+    // "No post-fork *chain* left" is not "no post-fork data left". Whatever shortened the chain below the
+    // activation height did it with `rewind_to_height`, which keeps the heights it removed as chained orphans
+    // carrying the accumulated data they had - stale, if the walk had not reached them. Latching here without
+    // purging those would leave the strongest thing in the orphan pool holding an inflated
+    // `total_accumulated_difficulty` from pre-fork targets, ready to be reorged straight back in with the repair
+    // already marked finished.
+    finish_rebuild(&mut *write_lock, header_tip, activation).map(RebuildStep::Processed)
 }
 
 /// What the write phase of a strict height should do, given the state the decision in the read phase was taken
@@ -4947,6 +4970,77 @@ fn refuse_if_rewind_is_impossible<B: BlockchainBackend>(db: &B, rewind_to: u64) 
     Ok(())
 }
 
+/// The write operations that finish the rebuild: purge `orphan_hashes`, then write `is_rebuilt: true` at
+/// `height`.
+///
+/// Split out from `finish_rebuild` as a pure, infallible function so that the one caller which must not make a
+/// fallible call between a rewind and its cleanup - `rewind_below_invalid_header` - can still share it.
+///
+/// The orphan *chain tip* entries are removed with `remove_orphan_chain_tip_if_exists` rather than left to
+/// `delete_orphan`, which returns early when the block is absent from `orphans_db`, and rather than probed first
+/// with `fetch_orphan_chain_tip_by_hash`, which returns `Err(ValueNotFound)` rather than `Ok(None)` for exactly
+/// the dangling-tip case that makes the explicit removal necessary. Duplicates in `orphan_hashes` are harmless:
+/// both operations are idempotent.
+fn finish_rebuild_txn(orphan_hashes: &[HashOutput], height: u64) -> (DbTransaction, AccumulatedDataRebuildStatus) {
+    let status = AccumulatedDataRebuildStatus {
+        is_rebuilt: true,
+        last_rebuild_height: Some(height),
+    };
+    let mut txn = DbTransaction::new();
+    for hash in orphan_hashes {
+        txn.remove_orphan_chain_tip_if_exists(*hash);
+        txn.delete_orphan(*hash);
+    }
+    txn.set_accumulated_data_rebuild_status(status.clone());
+    (txn, status)
+}
+
+/// Write `is_rebuilt: true` at `height`, and in the same transaction purge every orphan at or above `activation`.
+///
+/// This is the only place the completion latch is written on the paths that finish by reaching the tip, and the
+/// purge is what makes the latch mean something. `is_rebuilt: true` is one-way - the background task returns
+/// immediately on it and nothing ever re-arms it - so whatever is true of the database when it is written stays
+/// assumed forever.
+///
+/// The migration purges orphans at or above the activation height when it *arms* the rebuild, for the reason
+/// spelled out there: a stale orphan tip carries a `total_accumulated_difficulty` built from pre-fork targets and
+/// can win an `AccumulatedDifficultySquaredComparer` comparison it should lose. That purge alone is not enough,
+/// because arming and finishing are not the same instant. The walk takes a minute or so on MainNet and much
+/// longer on a node that is also still finishing an earlier rebuild, and any ordinary reorg in that window puts
+/// the hazard straight back: `rewind_to_height` keeps the heights it removes as chained orphans via
+/// `insert_chained_orphan`, which copies the main chain's accumulated data verbatim - unrepaired, if the walk had
+/// not reached those heights yet. Hours later a reorg back onto that branch runs `restore_reorged_chain`, which
+/// calls `insert_best_block` with the orphan's stored data and validates nothing, reinstating pre-fork-window
+/// targets and an inflated `total_accumulated_difficulty` into the main chain with the repair already marked
+/// finished.
+///
+/// So the invariant the latch is required to carry is: *when `is_rebuilt: true` is written, no orphan at or above
+/// the activation height holds accumulated data this repair never looked at.* Re-running the arming purge here,
+/// atomically with the status, is what establishes it. Discarding an orphan is safe: it is re-fetched if it ever
+/// mattered.
+///
+/// There is exactly one walk - `rebuild_accumulated_data_background_task` has a single caller, at startup - so no
+/// locking is needed to keep a second walk from re-populating the pool behind this one. The caller holds the
+/// write lock across the read and the write, so nothing else can insert an orphan in between either.
+fn finish_rebuild<B: BlockchainBackend>(
+    write_lock: &mut B,
+    height: u64,
+    activation: u64,
+) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+    let orphan_hashes = write_lock.fetch_orphan_hashes_at_or_above(activation)?;
+    if !orphan_hashes.is_empty() {
+        info!(
+            target: LOG_TARGET,
+            "[AccData] Purging {} orphan(s) at or above the activation height {activation} in the same \
+            transaction that marks the rebuild finished at height {height}",
+            orphan_hashes.len()
+        );
+    }
+    let (txn, status) = finish_rebuild_txn(&orphan_hashes, height);
+    write_lock.write(txn)?;
+    Ok(status)
+}
+
 /// Rewind the chain to just below `height`, because the block at `height` no longer validates under the rules that
 /// are now in force, and finish the rebuild there.
 ///
@@ -4963,13 +5057,15 @@ fn refuse_if_rewind_is_impossible<B: BlockchainBackend>(db: &B, rewind_to: u64) 
 /// short-circuits on a hash already in the orphan pool - so the removed blocks would go straight back with their
 /// stale accumulated data, and with the walk finished nothing would re-arm.
 ///
-/// The orphan *chain tip* entries are removed with `remove_orphan_chain_tip_if_exists` rather than left to
-/// `delete_orphan`, which returns early when the block is absent from `orphans_db`, and rather than probed first
-/// with `fetch_orphan_chain_tip_by_hash`, which returns `Err(ValueNotFound)` rather than `Ok(None)` for exactly the
-/// dangling-tip case that makes the explicit removal necessary.
+/// This is also a place `is_rebuilt: true` is written, so it owes the same invariant as `finish_rebuild`: every
+/// orphan at or above the activation height goes too, not only the ones this rewind just created. Those are read
+/// *before* the rewind so that the no-fallible-call property above still holds; the rewind creates no orphan that
+/// is not already in `removed_blocks`, and every removed block is at or above `height` and so at or above the
+/// activation height in any case, so the union of the two lists is exactly the set that must go.
 fn rewind_below_invalid_header<B: BlockchainBackend>(
     write_lock: &mut B,
     height: u64,
+    activation: u64,
     reason: &ValidationError,
 ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
     let rewind_to = height.saturating_sub(1);
@@ -4978,6 +5074,7 @@ fn rewind_below_invalid_header<B: BlockchainBackend>(
     // to the top of the walk permanently excluded every pruned node.
     refuse_if_rewind_is_impossible(&*write_lock, rewind_to)?;
 
+    let stale_orphans = write_lock.fetch_orphan_hashes_at_or_above(activation)?;
     let metadata = write_lock.fetch_chain_metadata()?;
     let tip = metadata.best_block_height();
     let header_tip = write_lock.fetch_last_header()?.height;
@@ -4997,18 +5094,13 @@ fn rewind_below_invalid_header<B: BlockchainBackend>(
     // genuinely mattered is re-fetched.
     //
     // One transaction, and not a single fallible call between the rewind and it: the chain being rewound, the
-    // orphans being gone and the rebuild being finished are one outcome, never two thirds of one.
-    let status = AccumulatedDataRebuildStatus {
-        is_rebuilt: true,
-        last_rebuild_height: Some(rewind_to),
-    };
-    let mut txn = DbTransaction::new();
-    for block in &removed_blocks {
-        let hash = *block.hash();
-        txn.remove_orphan_chain_tip_if_exists(hash);
-        txn.delete_orphan(hash);
-    }
-    txn.set_accumulated_data_rebuild_status(status.clone());
+    // orphans being gone and the rebuild being finished are one outcome, never two thirds of one. `chain` and
+    // `collect` are infallible, and `stale_orphans` was read before the rewind for exactly that reason.
+    let orphan_hashes: Vec<HashOutput> = stale_orphans
+        .into_iter()
+        .chain(removed_blocks.iter().map(|block| *block.hash()))
+        .collect();
+    let (txn, status) = finish_rebuild_txn(&orphan_hashes, rewind_to);
     write_lock.write(txn)?;
     Ok(status)
 }
@@ -7187,7 +7279,7 @@ mod test {
                     rules,
                     height,
                     &cc,
-                    (height >= strict_from).then_some(strict_from),
+                    strict_from,
                 )
                 .unwrap_or_else(|e| panic!("rebuild failed at height {height}: {e}"));
             }
@@ -7648,6 +7740,7 @@ mod test {
                 rewind_below_invalid_header(
                     &mut *access,
                     INVALID_AT,
+                    ACTIVATION,
                     &ValidationError::ConsensusError("planted by a test".to_string()),
                 )
             };
@@ -7832,7 +7925,7 @@ mod test {
                     &post_fork,
                     height,
                     &post_fork.consensus_constants(height).clone(),
-                    Some(ACTIVATION),
+                    ACTIVATION,
                 )
                 .unwrap_or_else(|e| {
                     panic!("a pruned node must not be refused the repair, but height {height} failed: {e}")
@@ -7882,7 +7975,7 @@ mod test {
                 &post_fork,
                 CHAIN_LEN + 1,
                 &post_fork.consensus_constants(CHAIN_LEN + 1).clone(),
-                Some(ACTIVATION),
+                ACTIVATION,
             )
             .unwrap();
 
@@ -7909,7 +8002,7 @@ mod test {
                 &far_fork,
                 CHAIN_LEN + 6,
                 &far_fork.consensus_constants(CHAIN_LEN + 6).clone(),
-                Some(CHAIN_LEN + 5),
+                CHAIN_LEN + 5,
             )
             .unwrap();
             match step {
@@ -8135,7 +8228,7 @@ mod test {
                     &post_fork,
                     height,
                     &post_fork.consensus_constants(height).clone(),
-                    Some(ACTIVATION),
+                    ACTIVATION,
                 )
             };
             for height in ACTIVATION..WEAK {
@@ -8229,7 +8322,7 @@ mod test {
                 &post_fork,
                 CHAIN_LEN,
                 &post_fork.consensus_constants(CHAIN_LEN).clone(),
-                Some(ACTIVATION),
+                ACTIVATION,
             )
             .unwrap();
 
@@ -8421,6 +8514,112 @@ mod test {
                 );
             }
             await_rebuild(&db).await;
+        }
+
+        /// A reorg that lands while the walk is still climbing must not leave a stale orphan behind once the walk
+        /// finishes.
+        ///
+        /// The migration's orphan purge runs once, at arming. On a real node the walk then takes a minute or so
+        /// (longer on a node still finishing an earlier rebuild), and an ordinary reorg anywhere in that window
+        /// re-creates exactly what the purge exists to remove: `rewind_to_height` stores the heights it removes
+        /// as chained orphans via `insert_chained_orphan`, which copies the main chain's accumulated data
+        /// verbatim - unrepaired, if the walk had not reached those heights yet. Because `is_rebuilt: true` is a
+        /// one-way latch with nothing to re-arm it, a reorg back onto that branch hours later would run
+        /// `restore_reorged_chain`, which validates nothing, and reinstate pre-fork-window targets and an
+        /// inflated `total_accumulated_difficulty` into the main chain for good.
+        ///
+        /// So the purge is re-run in the transaction that writes the latch, and this is the test of that: the
+        /// latch has to be a statement about the orphan pool, not only about the main chain.
+        #[tokio::test]
+        async fn a_reorg_during_the_walk_leaves_no_stale_orphan_behind() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (_, _, chain) = build_pre_fork_chain(&path, None);
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Opened under rules the migration skips, so neither the arming purge nor the background walk runs on
+            // its own. The whole point is that the orphan arrives *after* arming, so the test drives the walk by
+            // hand and plants the orphan part way through it.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            let walk = |height: u64| {
+                process_accumulated_data_for_height(
+                    db.db.clone(),
+                    difficulty_calculator.clone(),
+                    &validator,
+                    &post_fork,
+                    height,
+                    &post_fork.consensus_constants(height).clone(),
+                    ACTIVATION,
+                )
+                .unwrap_or_else(|e| panic!("the walk failed at height {height}: {e}"))
+            };
+
+            // Climb the strict suffix, but stop one short of the tip: the walk is still in flight.
+            for height in ACTIVATION..CHAIN_LEN {
+                let step = walk(height);
+                assert!(
+                    matches!(step, RebuildStep::Processed(_)),
+                    "height {height} was not repaired, got {step:?}"
+                );
+            }
+            assert!(
+                !rebuild_status(&db).is_rebuilt,
+                "the fixture is only meaningful while the walk is unfinished"
+            );
+
+            // The reorg lands. What it leaves behind is a chained orphan branch carrying accumulated data the
+            // walk never looked at, plus the chain tip entry that is what actually carries the stale
+            // `total_accumulated_difficulty` into a chain strength comparison. One branch above the activation
+            // height and one below it, so the test can tell a purge from a wipe.
+            let (below_hash, above_hash) = {
+                let (_, below) =
+                    create_orphan_chain(&db, &[("LO1->GB", 1, 120)][..], chain.get("M50").unwrap().clone());
+                let (_, above) =
+                    create_orphan_chain(&db, &[("HO1->GB", 1, 120)][..], chain.get("M105").unwrap().clone());
+                let below = below.get("LO1").unwrap().clone();
+                let above = above.get("HO1").unwrap().clone();
+                let mut txn = DbTransaction::new();
+                txn.insert_orphan_chain_tip(*below.hash(), below.accumulated_data().total_accumulated_difficulty);
+                txn.insert_orphan_chain_tip(*above.hash(), above.accumulated_data().total_accumulated_difficulty);
+                db.write(txn).unwrap();
+                (*below.hash(), *above.hash())
+            };
+            {
+                let access = db.db_read_access().unwrap();
+                for hash in [&below_hash, &above_hash] {
+                    assert!(access.contains(&DbKey::OrphanBlock(*hash)).unwrap());
+                    assert!(access.fetch_orphan_chain_tip_by_hash(hash).unwrap().is_some());
+                }
+            }
+
+            // The last height finishes the walk.
+            let step = walk(CHAIN_LEN);
+            match step {
+                RebuildStep::Processed(status) => assert_eq!(status, AccumulatedDataRebuildStatus {
+                    is_rebuilt: true,
+                    last_rebuild_height: Some(CHAIN_LEN),
+                }),
+                other => panic!("expected the walk to finish, got {other:?}"),
+            }
+
+            let access = db.db_read_access().unwrap();
+            assert!(
+                !access.contains(&DbKey::OrphanBlock(above_hash)).unwrap(),
+                "an orphan at or above the fork that appeared after arming must be purged before the latch is written"
+            );
+            assert!(
+                access.fetch_orphan_chain_tip_by_hash(&above_hash).unwrap().is_none(),
+                "the stale orphan chain tip is the half that wins a comparison it should lose; it must go too"
+            );
+            assert!(
+                access.contains(&DbKey::OrphanBlock(below_hash)).unwrap(),
+                "an orphan below the fork was computed under rules that have not changed and must be left alone"
+            );
+            assert!(
+                access.fetch_orphan_chain_tip_by_hash(&below_hash).unwrap().is_some(),
+                "the pre-fork orphan chain tip must be left alone"
+            );
         }
     }
 

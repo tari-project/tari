@@ -603,6 +603,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_orphan_children_of(hash)
     }
 
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_orphan_hashes_at_or_above(height)
+    }
+
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_orphan_chain_block(hash)
     }

@@ -4061,6 +4061,17 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(res)
     }
 
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.orphans_db, |block: Block| {
+            if block.header.height >= height {
+                Some(block.hash())
+            } else {
+                None
+            }
+        })
+    }
+
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         let txn = self.read_transaction()?;
         match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
@@ -5594,16 +5605,15 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 // would reorg onto a stale-target side chain the moment the main chain is repaired. Discarding an
                 // orphan is safe: it is re-fetched if it ever mattered. Orphans below the activation height are
                 // left alone; their accumulated data was computed under the rules in force at their height.
-                let orphan_hashes: Vec<HashOutput> = {
-                    let txn = db.read_transaction()?;
-                    lmdb_filter_map_values(&txn, &db.orphans_db, |block: Block| {
-                        if block.header.height >= activation {
-                            Some(block.hash())
-                        } else {
-                            None
-                        }
-                    })?
-                };
+                //
+                // This is only the *first* of two purges. Arming and finishing are hours apart on a real node, and
+                // an ordinary reorg in between seeds the orphan pool with exactly the same hazard all over again -
+                // `rewind_to_height` stores the heights it removes as chained orphans carrying their unrepaired
+                // accumulated data. So the walk runs the same scan again in the transaction that writes
+                // `is_rebuilt: true` (`finish_rebuild` in `blockchain_database.rs`), which is what makes the latch
+                // a statement about the orphan pool and not only about the main chain. Both purges go through
+                // `fetch_orphan_hashes_at_or_above` so the two can never drift apart.
+                let orphan_hashes: Vec<HashOutput> = db.fetch_orphan_hashes_at_or_above(activation)?;
                 if orphan_hashes.is_empty() {
                     info!(
                         target: LOG_TARGET,
