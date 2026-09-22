@@ -5489,17 +5489,31 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let activation = ConsensusConstants::bipartite_cuckaroo_activation_height(
                 db.consensus_manager.consensus_constants_vec(),
             );
-            let chain_height = {
+            // The tip that decides whether there is anything to repair is the *header* tip, not the block tip.
+            // `fetch_chain_height` reads `MetadataKey::ChainHeight`, which is the height of the last *block*, and
+            // header sync routinely runs ahead of block sync - that is its normal steady state, not an edge case.
+            // A node whose blocks stop at 349,990 while its headers already reach 350,053 has post-fork
+            // accumulated data on disk, written by the old binary under the old window, and skipping here would
+            // leave it there forever: header sync never re-validates or rewrites a header it already has, and
+            // block sync writes the stored `BlockHeaderAccumulatedData` back verbatim as each body arrives,
+            // promoting its inflated `total_accumulated_difficulty` straight into chain metadata.
+            //
+            // `max` rather than just the header tip so that a database which somehow has a block tip above its
+            // last header still arms rather than silently skipping.
+            let tip = {
                 let txn = db.read_transaction()?;
-                fetch_chain_height(&txn, &db.metadata_db).ok()
+                let block_tip = fetch_chain_height(&txn, &db.metadata_db).ok();
+                let header_tip = db.fetch_last_header_in_txn(&txn)?.map(|header| header.height);
+                block_tip.into_iter().chain(header_tip).max()
             };
 
             // Reasons there is nothing to repair:
             // - The fork is not scheduled on this network (Igor / Stagenet / NextNet), so no stored target was ever
             //   computed under rules that have since changed.
             // - The fork is active from height 0 (LocalNet), so nothing was ever mined under the old rules.
-            // - There is no chain, or the tip has not reached the fork (Esmeralda today). Everything synced from here
-            //   on is computed under the new rules by the normal add-block path.
+            // - There is no chain, or the highest header this node holds has not reached the fork (Esmeralda today).
+            //   Everything synced from here on is computed under the new rules by the normal add-block and header sync
+            //   paths.
             // `==` rather than `>=`: `UNSCHEDULED_ACTIVATION_HEIGHT` is `u64::MAX`, so the two are the same
             // test and clippy rejects the inequality as absurd.
             let skip_reason = if activation == UNSCHEDULED_ACTIVATION_HEIGHT {
@@ -5507,10 +5521,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             } else if activation == 0 {
                 Some("the fork has been active since the genesis block".to_string())
             } else {
-                match chain_height {
+                match tip {
                     None => Some("this database holds no chain".to_string()),
                     Some(tip) if tip < activation => Some(format!(
-                        "the chain tip {tip} is below the activation height {activation}"
+                        "the highest header {tip} is below the activation height {activation}"
                     )),
                     Some(_) => None,
                 }
