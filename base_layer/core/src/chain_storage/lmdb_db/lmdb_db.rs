@@ -5471,8 +5471,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // no longer validates under the post-fork rules.
         //
         // Deliberately not wrapped in `continue` on the skip path, unlike the earlier migrations: this is the last
-        // block in the loop, so skipping the version bump below would leave the database at the old version and
-        // re-run every migration on the next startup.
+        // block in the loop, so skipping the version bump below would leave the database at version 8 and re-run
+        // this block on the next startup.
         if migrate_from_version == 8 {
             let activation = ConsensusConstants::bipartite_cuckaroo_activation_height(
                 db.consensus_manager.consensus_constants_vec(),
@@ -5504,34 +5504,42 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 }
             };
 
+            let existing = db.fetch_accumulated_data_rebuild_status()?;
+
             if let Some(reason) = skip_reason {
+                // The skip path must leave the row exactly as it found it. Every migration block runs inside the
+                // same `run_migrations` loop, so a database at version 5 reaches this block in the same call that
+                // armed the v5 repair a few iterations earlier, and `is_rebuilt: true` is a one-way latch - the
+                // background task returns immediately on it and nothing ever sets it back. Writing "rebuilt" here
+                // because *this* fork has nothing to repair would therefore silently abandon an unrelated repair
+                // that is still owed, on exactly the nodes that need it: a NextNet node at v5 (unscheduled fork),
+                // or a MainNet node whose tip is still below 350,000.
                 info!(
                     target: LOG_TARGET,
-                    "[MIGRATIONS] v{migrate_from_version}: No accumulated data repair needed - {reason}"
+                    "[MIGRATIONS] v{migrate_from_version}: No accumulated data repair needed - {reason} \
+                    (leaving the rebuild status untouched: {existing:?})"
                 );
-                let write_txn = db.write_transaction()?;
-                lmdb_replace(
-                    &write_txn,
-                    &db.metadata_db,
-                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
-                    &MetadataValue::AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus {
-                        is_rebuilt: true,
-                        last_rebuild_height: None,
-                    }),
-                    None,
-                )?;
-                write_txn.commit()?;
             } else {
-                let existing = db.fetch_accumulated_data_rebuild_status()?;
-                // The `min` is load-bearing. A node part way through the v5 rebuild carries a watermark far below
-                // the activation height, and overwriting it with `activation - 1` would silently abandon the rest
-                // of that repair. Taking the minimum means a finished v5 rebuild restarts at `activation - 1` and
-                // re-walks only the post-fork suffix, while one still in flight continues uninterrupted and rolls
-                // into strict mode by itself once it reaches the activation height.
-                let watermark = min(
-                    existing.last_rebuild_height.unwrap_or(u64::MAX),
-                    activation.saturating_sub(1),
-                );
+                // The `min` is load-bearing, but only against a rebuild that is still in flight. A node part way
+                // through the v5 rebuild carries a watermark far below the activation height, and overwriting it
+                // with `activation - 1` would silently abandon the rest of that repair; taking the minimum lets
+                // that walk continue uninterrupted and roll into strict mode by itself once it reaches the
+                // activation height.
+                //
+                // A *finished* rebuild is the opposite case and must not be folded in.
+                // `update_accumulated_difficulty` records `is_rebuilt: height == last_chain_header.height()`, so
+                // the watermark a completed rebuild leaves behind is the tip as it was when that rebuild
+                // finished, which may be a hundred thousand blocks below today's tip. Folding that in would send
+                // the walk back over a prefix that is already correct - heights below the fork were computed
+                // under rules that have not changed - at 100 ms per height.
+                let watermark = if existing.is_rebuilt {
+                    activation.saturating_sub(1)
+                } else {
+                    min(
+                        existing.last_rebuild_height.unwrap_or(u64::MAX),
+                        activation.saturating_sub(1),
+                    )
+                };
                 let status = AccumulatedDataRebuildStatus {
                     is_rebuilt: false,
                     last_rebuild_height: Some(watermark),
