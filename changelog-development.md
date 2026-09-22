@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.0.0](https://github.com/tari-project/tari/compare/v5.7.0-pre.8...v6.0.0) (2026-09-22)
+
+### Bug Fixes
+* fixes C29 mining verification
+* fixes critical bug in RxM mining by exploiting keccak sponge data
+* Fixes Rxt header mutability
+* Fixes merkle root decoding
+
 ## [5.7.0-pre.8](https://github.com/tari-project/tari/compare/v5.7.0-pre.7...v5.7.0-pre.8) (2026-09-15)
 
 ### Features
