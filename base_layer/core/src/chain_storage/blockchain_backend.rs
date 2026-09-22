@@ -174,6 +174,15 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the stored accumulated data rebuild status.
     fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
+    /// Stores the accumulated data rebuild status verbatim.
+    ///
+    /// [`BlockchainBackend::update_accumulated_difficulty`] derives the status from the height it just wrote, which
+    /// covers the ordinary forward walk. The strict-mode rewind path has no height to write - every height from the
+    /// failure upwards has just been deleted - so it needs to record where the walk stopped directly.
+    fn set_accumulated_data_rebuild_status(
+        &self,
+        status: AccumulatedDataRebuildStatus,
+    ) -> Result<(), ChainStorageError>;
     /// Returns the stored burn commitment index rebuild status.
     fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError>;
     /// Resets the stored blockchain consistency check status.

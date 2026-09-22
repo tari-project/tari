@@ -820,6 +820,26 @@ impl ConsensusConstants {
         self.bipartite_cuckaroo_verification
     }
 
+    /// The first height in `constants` at which the bipartite Cuckaroo verifier is in force, or
+    /// [`UNSCHEDULED_ACTIVATION_HEIGHT`] if no entry ever turns it on.
+    ///
+    /// This is the height of the GHSA-3qmx-q9pv-f3m4 fork, and therefore the height from which stored
+    /// `target_difficulty` values may have been computed under rules that no longer apply: the activation entry is
+    /// also where a network may change `difficulty_block_window` or `pow_backoff_cap`, and `target_difficulty` is
+    /// the only quantity that accumulates, so one stale entry poisons chain strength for every block above it. The
+    /// accumulated-data rebuild migration keys on this height.
+    ///
+    /// Derived from the constants vector rather than declared as a separate per-network constant, for the same
+    /// reason as [`ConsensusConstants::derived_monero_coinbase_activation_height`]: whatever height the entry that
+    /// carries the rule is scheduled at *is* the activation height, by construction, so it cannot go stale. The
+    /// vector is sorted by effective height (`active_at_height` relies on that), so the first match is the earliest.
+    pub fn bipartite_cuckaroo_activation_height(constants: &[ConsensusConstants]) -> u64 {
+        constants
+            .iter()
+            .find(|c| c.bipartite_cuckaroo_verification)
+            .map_or(UNSCHEDULED_ACTIVATION_HEIGHT, |c| c.effective_from_height)
+    }
+
     /// True once the aux-chain merkle proof's branch length must equal the length an honest proof for the
     /// independently derived leaf position in a tree of `number_of_chains` leaves would have. False below the fork
     /// height selects the pre-fork behaviour, which accepted any branch length up to the generic cap.
@@ -2639,6 +2659,88 @@ mod test {
         tari_amount::{MicroMinotari, uT},
         transaction_components::{OutputType, RangeProofType},
     };
+
+    /// The boundary the accumulated-data repair migration keys on.
+    ///
+    /// MainNet's GHSA-3qmx-q9pv-f3m4 entry also takes `difficulty_block_window` from 90 to 45, which makes the fix
+    /// retroactive for anyone already past the fork: their stored `target_difficulty` was computed with the long
+    /// window and no longer recomputes to the same value. `pow_backoff_cap` deliberately does *not* move with it -
+    /// MainNet carries half a TIP-004 activation, with `MAINNET_TIP004_ACTIVATION_HEIGHT` still unscheduled - and
+    /// if it is ever scheduled that is a second retroactive target change needing a second migration.
+    ///
+    /// `pow_backoff.rs::activation_matches_the_agreed_network_rollout` pins the window at height 0 and at the
+    /// TIP-004 fork. MainNet now changes its window at a *different* height from that fork, so this boundary is
+    /// not covered there.
+    #[test]
+    fn mainnet_narrows_the_difficulty_window_at_the_c29_fork_without_touching_the_backoff() {
+        use tari_common::configuration::Network;
+
+        use crate::consensus::consensus_constants::{
+            MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            POW_BACKOFF_DISABLED,
+            TIP004_DIFFICULTY_BLOCK_WINDOW,
+            UNSCHEDULED_ACTIVATION_HEIGHT,
+        };
+
+        const ACTIVATION: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+        for height in [0, 1, ACTIVATION - 1] {
+            let below = ConsensusConstants::for_network_at_height(Network::MainNet, height);
+            assert_eq!(below.difficulty_block_window(), 90, "MainNet window at {height}");
+            assert_eq!(below.pow_backoff_cap(), POW_BACKOFF_DISABLED, "MainNet cap at {height}");
+            assert!(
+                !below.bipartite_cuckaroo_verification(),
+                "MainNet bipartite verifier at {height}"
+            );
+        }
+
+        for height in [ACTIVATION, ACTIVATION + 1, ACTIVATION + 1_000_000] {
+            let at_or_above = ConsensusConstants::for_network_at_height(Network::MainNet, height);
+            assert_eq!(
+                at_or_above.difficulty_block_window(),
+                TIP004_DIFFICULTY_BLOCK_WINDOW,
+                "MainNet window at {height}"
+            );
+            // Deliberately unchanged across the boundary: the C29 entry narrows the window without scheduling the
+            // TIP-004 backoff.
+            assert_eq!(
+                at_or_above.pow_backoff_cap(),
+                POW_BACKOFF_DISABLED,
+                "MainNet cap at {height}"
+            );
+            assert!(
+                at_or_above.bipartite_cuckaroo_verification(),
+                "MainNet bipartite verifier at {height}"
+            );
+        }
+
+        // The migration derives the fork height off the constants vector rather than off a per-network constant, so
+        // it cannot go stale. Pin what it derives for every network.
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::mainnet()),
+            ACTIVATION
+        );
+        // LocalNet is ephemeral and carries the rule on its height-0 entry, so there is nothing to repair there.
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::localnet()),
+            0
+        );
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::esmeralda()),
+            crate::consensus::consensus_constants::ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT
+        );
+        // Unscheduled networks: the migration skips them entirely.
+        for constants in [
+            ConsensusConstants::igor(),
+            ConsensusConstants::stagenet(),
+            ConsensusConstants::nextnet(),
+        ] {
+            assert_eq!(
+                ConsensusConstants::bipartite_cuckaroo_activation_height(&constants),
+                UNSCHEDULED_ACTIVATION_HEIGHT
+            );
+        }
+    }
 
     #[test]
     fn hybrid_pow_constants_are_well_formed() {
