@@ -14,8 +14,27 @@ name: Private Release (manual) — replicate a v* tag from a private repo
 # `include_docker` (default false); only enable it at the public-disclosure moment.
 #
 # Requires a repo/org secret PRIV_SRC_TOKEN (fine-grained, read-only, single-repo)
-# granting read access to the private source repo. If unset, everything falls back
-# to building THIS repo.
+# granting read access to the private source repo.
+#
+# `preflight` resolves and VERIFIES the source before anything is built, because
+# the failure mode here is silent: a run that builds this public repo produces
+# artefacts named after the advisory version that contain none of the fix. It
+# enforces three things:
+#
+#   1. `repo_name` must be given. Building this repo needs `allow_public_source`,
+#      and is refused outright when `include_docker` is on — a public-source image
+#      published under an advisory version number is the exact mis-release this
+#      guard exists to prevent. Use the `v*` tag push for ordinary releases.
+#   2. `branch` must be given whenever `repo_name` is, because the old fallback
+#      resolved to THIS repo's ref, which generally does not exist in the fork.
+#   3. The source's workspace `Cargo.toml` version must equal `version` minus its
+#      leading `v`. Nothing downstream injects a version — the banner, `--version`
+#      and the gRPC `GetVersion` all come from `env!("CARGO_PKG_VERSION")` — so a
+#      tag placed on a commit that was never version-bumped yields artefacts
+#      labelled with one version and reporting another.
+#
+# Children then build the resolved commit SHA, not a moving ref, so every artefact
+# in one release comes from one immutable commit.
 'on':
   workflow_dispatch:
     inputs:
@@ -23,11 +42,11 @@ name: Private Release (manual) — replicate a v* tag from a private repo
         description: "Release version / tag for the draft release, e.g. v1.2.3"
         required: true
       repo_name:
-        description: "Source repo to BUILD FROM, e.g. tari-project/tari-build (blank = this repo)"
+        description: "Source repo to BUILD FROM, e.g. tari-project/tari-build"
         required: false
         default: ""
       branch:
-        description: "Branch/ref in the source repo to build"
+        description: "Branch/ref in the source repo to build (required with repo_name)"
         required: false
         default: ""
       dry_run:
@@ -40,48 +59,174 @@ name: Private Release (manual) — replicate a v* tag from a private repo
         type: boolean
         required: false
         default: false
+      allow_public_source:
+        description: "Deliberately build THIS public repo instead of a private source. Never valid with include_docker."
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
   packages: write
 
 jobs:
+  preflight:
+    name: Resolve and verify the source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      source_repo: ${{ steps.inputs.outputs.repo }}
+      source_sha: ${{ steps.verify.outputs.sha }}
+      source_sha_short: ${{ steps.verify.outputs.sha_short }}
+      source_visibility: ${{ steps.inputs.outputs.visibility }}
+
+    steps:
+      - name: Validate inputs and resolve the source
+        id: inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          REPO_NAME: ${{ inputs.repo_name }}
+          BRANCH: ${{ inputs.branch }}
+          ALLOW_PUBLIC: ${{ inputs.allow_public_source }}
+          INCLUDE_DOCKER: ${{ inputs.include_docker }}
+          THIS_REPO: ${{ github.repository }}
+          THIS_REF: ${{ github.ref }}
+          HAVE_PRIV_TOKEN: ${{ secrets.PRIV_SRC_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          if [[ ! "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ; then
+            fail "version must look like v1.2.3 or v1.2.3-pre.4, got '${VERSION}'"
+          fi
+
+          if [ -z "${REPO_NAME}" ] ; then
+            if [ "${INCLUDE_DOCKER}" = "true" ] ; then
+              fail "include_docker with a blank repo_name would publish PUBLIC-source images under '${VERSION}'. For an ordinary release, push the v* tag and let build_dockers.yml run."
+            fi
+            if [ "${ALLOW_PUBLIC}" != "true" ] ; then
+              fail "repo_name is blank. This workflow replicates a tag from a PRIVATE source; leaving it blank silently builds '${THIS_REPO}' and produces artefacts named '${VERSION}' that contain none of the fix. Set repo_name, or set allow_public_source to build this repo on purpose."
+            fi
+            repo="${THIS_REPO}"
+            ref="${BRANCH:-${THIS_REF}}"
+            visibility="public"
+            echo "::warning::Building the public repo ${THIS_REPO}@${ref} on purpose (allow_public_source)."
+          else
+            if [ -z "${BRANCH}" ] ; then
+              fail "branch is required when repo_name is set: the fallback resolves to this repo's ref ('${THIS_REF}'), which usually does not exist in ${REPO_NAME}."
+            fi
+            if [ "${HAVE_PRIV_TOKEN}" != "true" ] ; then
+              fail "PRIV_SRC_TOKEN is not set, so ${REPO_NAME} cannot be read. Refusing to fall back to GITHUB_TOKEN, which would build a different repo than requested."
+            fi
+            repo="${REPO_NAME}"
+            ref="${BRANCH}"
+            if [ "${REPO_NAME}" = "${THIS_REPO}" ] ; then visibility="public" ; else visibility="private" ; fi
+          fi
+
+          {
+            echo "repo=${repo}"
+            echo "ref=${ref}"
+            echo "visibility=${visibility}"
+            echo "expected_version=${VERSION#v}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.inputs.outputs.repo }}
+          ref: ${{ steps.inputs.outputs.ref }}
+          token: ${{ secrets.PRIV_SRC_TOKEN != '' && secrets.PRIV_SRC_TOKEN || github.token }}
+          fetch-depth: 1
+          sparse-checkout: Cargo.toml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Verify the crate version matches the release version
+        id: verify
+        env:
+          EXPECTED: ${{ steps.inputs.outputs.expected_version }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_REPO: ${{ steps.inputs.outputs.repo }}
+          SOURCE_REF: ${{ steps.inputs.outputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          cargo_version="$(awk -F ' = ' '$1 ~ /^version/ \
+            { gsub(/["]/, "", $2); printf("%s", $2); exit }' Cargo.toml)"
+
+          if [ -z "${cargo_version}" ] ; then
+            echo "::error::could not read a workspace version out of Cargo.toml at ${sha}"
+            exit 1
+          fi
+
+          if [ "${cargo_version}" != "${EXPECTED}" ] ; then
+            echo "::error::${SOURCE_REPO}@${sha} has workspace version '${cargo_version}', but this release is '${VERSION}'. Every artefact would be named '${VERSION}' while reporting '${cargo_version}' at runtime. Commit the version bump on the source ref and re-dispatch."
+            exit 1
+          fi
+
+          {
+            echo "sha=${sha}"
+            echo "sha_short=${sha:0:7}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Private release source"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| release version | \`${VERSION}\` |"
+            echo "| source repo | \`${SOURCE_REPO}\` |"
+            echo "| requested ref | \`${SOURCE_REF}\` |"
+            echo "| resolved commit | \`${sha}\` |"
+            echo "| workspace version | \`${cargo_version}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   binaries:
+    needs: preflight
     uses: ./.github/workflows/release_private_binaries.yml
     secrets: inherit
     with:
       version: ${{ inputs.version }}
-      repo_name: ${{ inputs.repo_name }}
-      branch: ${{ inputs.branch }}
+      repo_name: ${{ needs.preflight.outputs.source_repo }}
+      branch: ${{ needs.preflight.outputs.source_sha }}
       dry_run: ${{ inputs.dry_run }}
 
   libffis:
+    needs: preflight
     uses: ./.github/workflows/release_private_libffis.yml
     secrets: inherit
     with:
       version: ${{ inputs.version }}
-      repo_name: ${{ inputs.repo_name }}
-      branch: ${{ inputs.branch }}
+      repo_name: ${{ needs.preflight.outputs.source_repo }}
+      branch: ${{ needs.preflight.outputs.source_sha }}
       dry_run: ${{ inputs.dry_run }}
 
   ledger:
+    needs: preflight
     uses: ./.github/workflows/release_private_ledger.yml
     secrets: inherit
     with:
       version: ${{ inputs.version }}
-      repo_name: ${{ inputs.repo_name }}
-      branch: ${{ inputs.branch }}
+      repo_name: ${{ needs.preflight.outputs.source_repo }}
+      branch: ${{ needs.preflight.outputs.source_sha }}
       dry_run: ${{ inputs.dry_run }}
 
   # Public-push. Off unless explicitly requested AND not a dry run.
   dockers:
+    needs: preflight
     if: ${{ inputs.include_docker && inputs.dry_run == false }}
     uses: ./.github/workflows/release_private_dockers.yml
     secrets: inherit
     with:
       version: ${{ inputs.version }}
-      repo_name: ${{ inputs.repo_name }}
-      branch: ${{ inputs.branch }}
+      repo_name: ${{ needs.preflight.outputs.source_repo }}
+      branch: ${{ needs.preflight.outputs.source_sha }}
+      source_sha: ${{ needs.preflight.outputs.source_sha }}
+      source_sha_short: ${{ needs.preflight.outputs.source_sha_short }}
+      source_visibility: ${{ needs.preflight.outputs.source_visibility }}
       tari_network: mainnet
       tag_alias: ${{ inputs.version }}
       platforms: linux/amd64,linux/arm64

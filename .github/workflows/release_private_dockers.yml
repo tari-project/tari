@@ -31,6 +31,21 @@ name: Private Release Docker (reusable)
         required: false
         default: ""
         description: 'branch/ref in the source repo'
+      source_sha:
+        type: string
+        required: false
+        default: ""
+        description: 'resolved commit actually built, stamped into image provenance'
+      source_sha_short:
+        type: string
+        required: false
+        default: ""
+        description: 'short form of source_sha, published as a src-<sha> tag'
+      source_visibility:
+        type: string
+        required: false
+        default: ""
+        description: "'private' or 'public'; recorded so a build's origin is auditable without naming a private repo"
       tag_alias:
         type: string
         description: 'build minotari tag alias'
@@ -136,6 +151,11 @@ jobs:
             echo "APP_NAME=${{ matrix.builds.app_name }}" >> $GITHUB_ENV
             echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
 
+            if [ ! -z "${{ inputs.source_sha_short }}" ] ; then
+              echo "Setup src tag for the commit actually built"
+              echo "SRC_TAGQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:src-${{ inputs.source_sha_short }}-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "SRC_TAGG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:src-${{ inputs.source_sha_short }}-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+            fi
             if [ ! -z "${{ inputs.tag_alias }}" ] ; then
               echo "Setup tag_alias with network"
               echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
@@ -175,7 +195,9 @@ jobs:
             type=ref,event=pr,enable=${{ startsWith(matrix.builds.image_name, 'minotari_') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # A prerelease must never take over `latest`: operators pulling
+            # `latest-<network>` would silently move onto it.
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(inputs.version, '-') }}
             type=sha
           labels: |
             maintainer=${{ github.actor }}
@@ -231,7 +253,17 @@ jobs:
             ${{ steps.meta.outputs.tags }}
             ${{ env.TAG_ALIASQ }}
             ${{ env.TAG_ALIASG }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ env.SRC_TAGQ }}
+            ${{ env.SRC_TAGG }}
+          # metadata-action derives org.opencontainers.image.revision from `github.sha`,
+          # which is THIS repo's ref, not the source that `actions/checkout` pulled. On a
+          # private-source build that stamps an unrelated public commit onto the image, so
+          # neither a correct nor an incorrect build can be told apart from its metadata.
+          # These come last, and buildx takes the last value for a repeated --label.
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.revision=${{ inputs.source_sha != '' && inputs.source_sha || github.sha }}
+            org.tari.source.visibility=${{ inputs.source_visibility != '' && inputs.source_visibility || 'public' }}
           annotations: ${{ steps.meta.outputs.annotations }}
 
       - name: Image digest
@@ -335,7 +367,9 @@ jobs:
                   docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:${GITHUB_REF_NAME} || true
                 fi
 
-                if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+                # Release-only: the trailing `.*` used to match `v1.2.3-pre.4` too, so
+                # every prerelease republished `latest-<network>`.
+                if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                   echo "Latest Release Multi-Arch tag - $GITHUB_REF_NAME for $GITHUB_REF using ${DVERSION}${DSUFFIX}"
                   docker manifest create \
                     ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} \
