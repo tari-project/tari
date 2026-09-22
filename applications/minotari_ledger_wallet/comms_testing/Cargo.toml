@@ -11,7 +11,7 @@
 [package]
 name = "minotari_ledger_wallet_comms_testing"
 description = "Speculos simulator transport for the Minotari Ledger Wallet. Test harness only - never depend on this from a shipped binary."
-version = "6.0.0-pre.0"
+version = "6.0.1-pre.0"
 edition = "2024"
 rust-version = "1.93.0"
 authors = ["The Tari Development Community"]
@@ -25,7 +25,7 @@ publish = false
 # feature of the console wallet, so a redirectable transport that lived in `comms` would ship to users the moment
 # some feature unification turned its gate on. Living out here, it is structurally absent from any build that does
 # not name it.
-minotari_ledger_wallet_comms = { path = "../comms", version = "6.0.0-pre.0", features = ["test_transport"] }
+minotari_ledger_wallet_comms = { path = "../comms", version = "6.0.1-pre.0", features = ["test_transport"] }
 minotari_ledger_wallet_common = { path = "../common" }
 
 ledger-transport = { version = "0.11" }
@@ -39,7 +39,7 @@ log = { version = "0.4" }
 # address itself (`receiver.network()`), so the type is never named here and the dependency would be unused - and
 # `cargo machete` in `.github/workflows/ci.yml` walks the filesystem rather than the workspace graph, so it reaches
 # this excluded crate and would fail the `ci` job over it.
-tari_common_types = { path = "../../../base_layer/common_types", version = "6.0.0-pre.0" }
+tari_common_types = { path = "../../../base_layer/common_types", version = "6.0.1-pre.0" }
 
 # `dialoguer` is what `HumanApprover` asks its two questions with. It is here rather than a second prompting crate
 # because `minotari_ledger_wallet_comms` already depends on this exact version for `examples/ledger_demo`.

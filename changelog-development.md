@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.0.1-pre.0](https://github.com/tari-project/tari/compare/v6.0.0-pre.0...v6.0.1-pre.0) (2026-09-22)
+
+
+### Bug Fixes
+
+* private builds ([#8045](https://github.com/tari-project/tari/issues/8045)) ([88bc501](https://github.com/tari-project/tari/commit/88bc501c52680aafa4f1565bf999a70ec37e8529))
+* stored target difficulty ([#8046](https://github.com/tari-project/tari/issues/8046)) ([d88fd75](https://github.com/tari-project/tari/commit/d88fd758e774b42a81abea0599a83acd2a3250ac))
+
 ## [6.0.0](https://github.com/tari-project/tari/compare/v5.7.0-pre.8...v6.0.0) (2026-09-22)
 
 ### Bug Fixes
