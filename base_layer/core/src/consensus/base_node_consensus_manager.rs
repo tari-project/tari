@@ -110,6 +110,16 @@ impl BaseNodeConsensusManager {
         ConsensusConstants::derived_monero_coinbase_activation_height(self.consensus_constants_vec())
     }
 
+    /// The height from which the GHSA-3qmx-q9pv-f3m4 bipartite Cuckaroo verifier is consensus on this network, or
+    /// `u64::MAX` (`UNSCHEDULED_ACTIVATION_HEIGHT`) where the advisory's fork is not scheduled.
+    ///
+    /// Read off the constants vector, so there is no second place to keep in step with the activation entries. The
+    /// accumulated-data rebuild migration uses this as the height from and above which stored `target_difficulty`
+    /// values must be recomputed and re-validated under the post-fork rules.
+    pub fn bipartite_cuckaroo_activation_height(&self) -> u64 {
+        ConsensusConstants::bipartite_cuckaroo_activation_height(self.consensus_constants_vec())
+    }
+
     pub fn consensus_manager(&self) -> ConsensusManager {
         self.inner.consensus_manager.clone()
     }

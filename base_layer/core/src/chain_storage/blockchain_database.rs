@@ -135,6 +135,7 @@ use crate::{
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{
+        AchievedTargetDifficulty,
         MAX_BACKOFF_RUN_LOOKBACK,
         PowBackoffTracker,
         TargetDifficultyWindow,
@@ -148,6 +149,7 @@ use crate::{
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
         ValidationError,
+        header::HeaderFullValidator,
         helpers::calc_median_timestamp,
         tari_rx_vm_key_height,
     },
@@ -155,6 +157,13 @@ use crate::{
 
 const LOG_TARGET: &str = "c::cs::database";
 
+/// Pause between heights in the accumulated data rebuild below the GHSA-3qmx-q9pv-f3m4 activation height, where
+/// the walk may be a hundred thousand heights long and none of it is urgent.
+const REBUILD_THROTTLE_MS: u64 = 100;
+/// Pause between heights at and above the activation height. Much shorter, because that suffix is the part that
+/// has to be repaired before the node can be trusted to compare chain strength, and it is short in practice - but
+/// not zero, because each strict height runs a RandomX-backed validation and takes the backend write lock.
+const STRICT_REBUILD_THROTTLE_MS: u64 = 10;
 /// Configuration for the BlockchainDatabase.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -534,64 +543,18 @@ where B: BlockchainBackend
 
         let db_rw_lock = self.db.clone();
         let rules = self.consensus_manager.clone();
+        // At and above this height the stored accumulated data was computed under rules that have since changed
+        // (GHSA-3qmx-q9pv-f3m4, and the `difficulty_block_window` the activation entry may carry with it), so the
+        // walk cannot merely recompute there - it has to re-validate, and rewind if a block no longer holds up.
+        // `UNSCHEDULED_ACTIVATION_HEIGHT` on a network without the fork means strict mode never engages.
+        let strict_from_height = rules.bipartite_cuckaroo_activation_height();
 
-        tokio::task::spawn(async move {
-            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
-            // The genesis block will not be at fault - start at height 1 if no data exists.
-            let start_height = initial_status.last_rebuild_height.unwrap_or(1);
-            let mut last_status = initial_status.clone();
-            debug!(
-                target: LOG_TARGET,
-                "[AccData] Start rebuilding accumulated data from height {start_height}"
-
-            );
-
-            let mut height = start_height;
-            loop {
-                // Add a small tokio sleep to allow other tasks to run more freely - this will push out the rebuild a
-                // bit, for example, 80_000 blocks will take at least 8_000 seconds longer, just over two hours.
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let db = db_rw_lock.clone();
-                let difficulty_calculator = difficulty_calculator.clone();
-                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
-                // shut down when base node shutdown is triggered
-                let cc = rules.consensus_constants(height).clone();
-                let res = tokio::task::spawn_blocking(move || {
-                    process_accumulated_data_for_height(db, difficulty_calculator, height, &cc)
-                })
-                .await;
-                match res {
-                    Ok(Ok(current_status)) => {
-                        last_status = current_status;
-                    },
-                    Ok(Err(e)) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
-                            Last updated status: {last_status:?} ({e})"
-                        );
-                        break;
-                    },
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
-                            Last updated status: {last_status:?} ({e})",
-                        );
-                        break;
-                    },
-                }
-
-                if last_status.is_rebuilt {
-                    debug!(
-                        target: LOG_TARGET,
-                        "[AccData] Rebuilding accumulated data from height {start_height} completed, Final status: {last_status:?}"
-                    );
-                    break;
-                }
-                height = height.saturating_add(1);
-            }
-        });
+        tokio::task::spawn(run_accumulated_data_rebuild(
+            db_rw_lock,
+            rules,
+            initial_status,
+            strict_from_height,
+        ));
 
         Ok(())
     }
@@ -3784,7 +3747,7 @@ fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
 /// index in the database may be trusted up to (see [`HeaderChainContext::candidate_chain`]); 0 is returned when the
 /// walk never meets the main chain, which trusts nothing.
 fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
-    db: &mut T,
+    db: &T,
     header: BlockHeader,
 ) -> Result<(FixedHash, u64), ChainStorageError> {
     let vm_height = tari_rx_vm_key_height(header.height);
@@ -4062,7 +4025,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     Ok(res)
 }
 fn get_previous_timestamps<T: BlockchainBackend>(
-    db: &mut T,
+    db: &T,
     header: &BlockHeader,
     rules: &BaseNodeConsensusManager,
 ) -> Result<RollingVec<EpochTime>, ChainStorageError> {
@@ -4320,16 +4283,268 @@ fn process_burn_commitment_index_for_height<B: BlockchainBackend>(
     Ok(status)
 }
 
-// Process accumulated data rebuild for the given height
+/// Yield for one throttle interval, then process a single height off the blocking pool.
+///
+/// The throttle lets other tasks run: below the fork it pushes the rebuild out noticeably - 80,000 blocks take at
+/// least 8,000 seconds longer, just over two hours - which is the accepted price of not monopolising the write
+/// lock. The strict suffix is throttled far more lightly, because it is short in every case that exists today
+/// (MainNet's tip is ~50 blocks above the fork), but not to zero: the strict path runs a RandomX-backed header
+/// validation and holds the write lock to rewrite the data, so an Esmeralda-sized suffix (§5, if its tip ever
+/// passes the activation height) would otherwise sit on the lock back to back for its whole duration.
+///
+/// `spawn_blocking` with `.await` rather than a plain blocking call, so the spawned task can still shut down when
+/// the base node does.
+async fn throttle_then_process_one_height<B: BlockchainBackend + 'static>(
+    db_rw_lock: &Arc<RwLock<B>>,
+    difficulty_calculator: &DifficultyCalculator,
+    header_validator: &HeaderFullValidator,
+    rules: &BaseNodeConsensusManager,
+    height: u64,
+    activation: u64,
+) -> Result<Result<RebuildStep, ChainStorageError>, tokio::task::JoinError> {
+    let throttle_ms = if height >= activation {
+        STRICT_REBUILD_THROTTLE_MS
+    } else {
+        REBUILD_THROTTLE_MS
+    };
+    tokio::time::sleep(Duration::from_millis(throttle_ms)).await;
+
+    let db = db_rw_lock.clone();
+    let difficulty_calculator = difficulty_calculator.clone();
+    let header_validator = header_validator.clone();
+    let consensus_constants = rules.consensus_constants(height).clone();
+    let rules = rules.clone();
+    tokio::task::spawn_blocking(move || {
+        process_accumulated_data_for_height(
+            db,
+            difficulty_calculator,
+            &header_validator,
+            &rules,
+            height,
+            &consensus_constants,
+            activation,
+        )
+    })
+    .await
+}
+
+/// The accumulated data rebuild walk itself, split out of `rebuild_accumulated_data_background_task` so that the
+/// decision to spawn it and the walk it spawns can be read separately.
+///
+/// Climbs from the persisted watermark, one height per iteration, until a height reports itself as the last one.
+/// The interesting part is what a single height can report - `RebuildStep::Processed`, `Retry`, `Resume`, or an
+/// error - and the two bounds, `MAX_CONSECUTIVE_RETRIES` and `MAX_RESUMES`, on the two of those that can repeat.
+/// Every way out other than `Processed` with `is_rebuilt: true` leaves `is_rebuilt: false`, so the next startup
+/// resumes from the persisted watermark.
+async fn run_accumulated_data_rebuild<B: BlockchainBackend + 'static>(
+    db_rw_lock: Arc<RwLock<B>>,
+    rules: BaseNodeConsensusManager,
+    initial_status: AccumulatedDataRebuildStatus,
+    strict_from_height: u64,
+) {
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+    let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone());
+    // The genesis block will not be at fault - start at height 1 if no data exists.
+    let start_height = initial_status.last_rebuild_height.unwrap_or(1);
+    let mut last_status = initial_status.clone();
+    debug!(
+        target: LOG_TARGET,
+        "[AccData] Start rebuilding accumulated data from height {start_height} \
+        (strict from height {strict_from_height})"
+    );
+
+    // The walk deliberately does not gate the add-block path while it runs, in either mode.
+    // `disable_add_block_flag` would be the wrong instrument: the state machine sets it and clears it
+    // around the whole header-sync to block-sync span, so two owners would silently overwrite each other -
+    // this task's release would drop the state machine's gate mid-sync. And it is read in exactly one
+    // place, the inbound propagated-block path; block sync and header sync never consult it.
+    //
+    // The write lock only makes a single operation atomic, so the strict path instead detects that the
+    // chain moved under it and re-decides rather than proceeding - see
+    // `process_accumulated_data_for_height_strict`, which compares both tips before it rewinds and comes
+    // back as `RebuildStep::Retry` (a tip moved) or `RebuildStep::Resume` (this height's header moved) instead of
+    // acting on a verdict it reached against a chain that is no longer there.
+    let mut height = start_height;
+    // A chain that is moving under the walk is normal (block sync appends, a reorg lands); a chain that
+    // never settles long enough for one height to be validated against a stable state is not, and the
+    // walk must not spin on it forever. After this many consecutive retries at the same height it stops,
+    // leaving `is_rebuilt: false` so the next startup resumes from the persisted watermark.
+    const MAX_CONSECUTIVE_RETRIES: u32 = 20;
+    // A reorg that replaces a height the walk has already passed sends it back to the activation height,
+    // because the walk is monotonic and cannot otherwise know that what it climbed is still there. A chain
+    // reorganising that often is not one this walk can finish against, so the number of restarts is
+    // bounded too; exceeding it stops with `is_rebuilt: false` and the next startup tries again.
+    const MAX_RESUMES: u32 = 20;
+    let mut retries: u32 = 0;
+    let mut resumes: u32 = 0;
+    loop {
+        // Strict mode is decided per height, not per task, from `height >= strict_from_height`. That is what
+        // keeps the pre-fork path intact: a node walking 150,000 blocks from an earlier migration keeps its
+        // full throttle until it actually reaches the fork.
+        let res = throttle_then_process_one_height(
+            &db_rw_lock,
+            &difficulty_calculator,
+            &header_validator,
+            &rules,
+            height,
+            strict_from_height,
+        )
+        .await;
+        match res {
+            Ok(Ok(RebuildStep::Processed(current_status))) => {
+                last_status = current_status;
+                retries = 0;
+            },
+            // A tip moved while this height was being validated, but the height itself is untouched. The
+            // height is deliberately *not* skipped - the verdict was simply reached against a chain that
+            // has moved on, so it is reached again.
+            Ok(Ok(RebuildStep::Retry)) => {
+                retries = retries.saturating_add(1);
+                if retries >= MAX_CONSECUTIVE_RETRIES {
+                    error!(
+                        target: LOG_TARGET,
+                        "[AccData] Height {height} changed underneath the rebuild \
+                        {MAX_CONSECUTIVE_RETRIES} times in a row; stopping. The next startup will resume \
+                        from the persisted watermark. Last updated status: {last_status:?}"
+                    );
+                    break;
+                }
+                continue;
+            },
+            // A reorg replaced the header at this height, so it may have replaced any part of the prefix
+            // the walk has already climbed. Climb it again from `from` rather than carrying on, so that
+            // `is_rebuilt: true` is only ever written about a chain this walk has actually walked.
+            Ok(Ok(RebuildStep::Resume { from })) => {
+                resumes = resumes.saturating_add(1);
+                if resumes >= MAX_RESUMES {
+                    error!(
+                        target: LOG_TARGET,
+                        "[AccData] The chain reorganised underneath the rebuild {MAX_RESUMES} times; \
+                        stopping. The next startup will resume from the persisted watermark. Last updated \
+                        status: {last_status:?}"
+                    );
+                    break;
+                }
+                debug!(
+                    target: LOG_TARGET,
+                    "[AccData] Resuming the rebuild from height {from} (was at {height}), restart \
+                    {resumes} of {MAX_RESUMES}"
+                );
+                height = from;
+                retries = 0;
+                continue;
+            },
+            // Any failure that is not a permanent-verdict validation failure - lock poisoning, an LMDB
+            // error, a `spawn_blocking` join error, a verdict that can legitimately come out differently
+            // later - leaves `is_rebuilt: false`, so the next startup resumes from the persisted
+            // watermark. Deliberately not a rewind: that would turn a slow clock or a transient read into
+            // a multi-hour resync. Until that restart the database holds corrected data below the failure
+            // height and stale data above it, which is transient and self-healing.
+            Ok(Err(e)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                    Last updated status: {last_status:?} ({e})"
+                );
+                break;
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                    Last updated status: {last_status:?} ({e})",
+                );
+                break;
+            },
+        }
+
+        if last_status.is_rebuilt {
+            debug!(
+                target: LOG_TARGET,
+                "[AccData] Rebuilding accumulated data from height {start_height} completed, Final status: {last_status:?}"
+            );
+            break;
+        }
+        height = height.saturating_add(1);
+    }
+}
+
+/// What the rebuild walk should do next after one height.
+#[derive(Debug)]
+enum RebuildStep {
+    /// The height was validated and its accumulated data rewritten. `status` carries the persisted watermark, and
+    /// `is_rebuilt` on it tells the walk whether that was the last height.
+    Processed(AccumulatedDataRebuildStatus),
+    /// A tip moved underneath this height while it was being validated, but the header at this height and its
+    /// parent are still the ones that were validated. Nothing was written, the watermark was not advanced, and the
+    /// *same* height has to be read and validated again.
+    Retry,
+    /// The header at this height, or its parent, is not the one that was validated: a reorg replaced it. The walk
+    /// goes back to `from` and climbs again from there.
+    ///
+    /// Deliberately not "skip and carry on", and deliberately not "retry this height in place" either.
+    ///
+    /// Not a skip, because the replacement header is not re-validated by the path that put it there:
+    /// `rewind_to_height` seeds the orphan pool with `insert_chained_orphan`, which stores the pre-fork accumulated
+    /// data verbatim, `reorganize_chain` feeds those back through `insert_best_block` which writes
+    /// `header.accumulated_data()` as it found it and re-validates only the body, `insert_orphan_and_find_new_tips`
+    /// returns early for a hash already in the orphan pool so the header never goes through the validator, and
+    /// `restore_reorged_chain` does it with no validation at all. Skipping would therefore leave a stale row in
+    /// place, and because the next height chains `from_previous(prev.accumulated_data())` it would carry that stale
+    /// value forward over the whole rest of the suffix - and then mark the walk finished.
+    ///
+    /// Not a retry in place either, because the walk only ever moves up, so "this header changed" is evidence
+    /// about the whole prefix and not just about this height. A reorg that splits *below* the walk's current
+    /// height replaces every height from the split upwards, and `rewind_to_height` stores the heights it removed
+    /// as chained orphans carrying their unrepaired accumulated data. Retrying in place would re-validate this one
+    /// height on the new branch, run on to the tip and latch `is_rebuilt: true` over a prefix that was repaired on
+    /// a branch that is no longer there - and a later reorg back onto it (`restore_reorged_chain` validates
+    /// nothing) would re-insert exactly those stale rows into the main chain with the repair already marked
+    /// finished. Going back to `from` and climbing again is what makes the finish line a statement about the chain
+    /// the walk actually ended on.
+    Resume { from: u64 },
+}
+
+/// Process the accumulated data rebuild for the given height.
+///
+/// `height >= activation` selects between the two behaviours the walk needs, so the choice is per height and not
+/// per task:
+///
+/// * below the fork - recompute the target with `check_achieved_and_target_difficulty` and rewrite the accumulated
+///   data. The stored data was computed under the rules in force at that height, so the only thing being repaired is an
+///   earlier corruption; a failure here is the caller's to log and stop on.
+/// * at or above the fork ("strict") - the stored data may have been computed under rules that no longer apply, so the
+///   header is put through the full header validator first. A header that no longer validates *for a reason that is a
+///   permanent property of the block* is not a corruption to repair but a block this node should never have accepted,
+///   and the chain is rewound below it.
+///
+/// `activation` is passed rather than an `Option` that is `None` below the fork, because both halves need it: the
+/// pre-fork half can be the one that finishes the walk (on a chain that has since been rewound below the fork),
+/// and finishing means purging the orphans at or above the activation height. See `finish_rebuild`.
 fn process_accumulated_data_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     difficulty_calculator: DifficultyCalculator,
+    header_validator: &HeaderFullValidator,
+    rules: &BaseNodeConsensusManager,
     height: u64,
     consensus_constants: &ConsensusConstants,
-) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height}");
+    activation: u64,
+) -> Result<RebuildStep, ChainStorageError> {
+    let strict = height >= activation;
+    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height} (strict: {strict}, activation: {activation})");
 
-    let write_lock = db
+    if strict {
+        return process_accumulated_data_for_height_strict(
+            db,
+            header_validator,
+            rules,
+            height,
+            consensus_constants,
+            activation,
+        );
+    }
+
+    let mut write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
     let last_chain_header = write_lock.fetch_last_chain_header()?;
@@ -4349,8 +4564,544 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_total_kernel_offset(header.total_kernel_offset.clone())
         .build(consensus_constants)?;
 
-    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, true)?;
+    // Made explicit for the same reason as in the strict half: `is_rebuilt: true` is one-way, so the orphan purge
+    // has to be attached to it. The pre-fork half reaches this only on a chain whose *header* tip has fallen
+    // below the activation height, which is precisely the case where a rewind has just filled the orphan pool
+    // with post-fork blocks carrying unrepaired accumulated data.
+    let is_final = height == last_chain_header.height();
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, !is_final)?;
+    if !is_final {
+        return Ok(RebuildStep::Processed(status));
+    }
+    finish_rebuild(&mut *write_lock, height, activation).map(RebuildStep::Processed)
+}
 
+/// The strict half of `process_accumulated_data_for_height`, split out because it is the half that has to be
+/// careful with the write lock, with what it is allowed to conclude, and with what it is allowed to leave behind.
+///
+/// The validation is the expensive part - `strict_validate_header` runs the full header validator, which spins up a
+/// RandomX VM - and it is read-only, so it runs under the *read* lock. Holding the write lock across it would freeze
+/// every gRPC query, RPC sync server and mempool read for the duration, per height, for the whole suffix.
+///
+/// Dropping the lock in between means the chain may move underneath us, so the write phase re-reads the state the
+/// decision was taken against and compares it before acting. What has to match depends on the decision: rewriting
+/// the accumulated data at `height` only needs `height` and its parent to be unchanged, while a *rewind* is a
+/// statement about the whole chain above `height` and is only carried out against exactly the tips it was decided
+/// against. A tip that moved under an otherwise stable height comes back as `RebuildStep::Retry` and the height is
+/// validated again; a header that moved comes back as `RebuildStep::Resume` and the walk climbs the strict suffix
+/// again, because the walk is monotonic and a reorg below it invalidates the prefix too.
+fn process_accumulated_data_for_height_strict<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    header_validator: &HeaderFullValidator,
+    rules: &BaseNodeConsensusManager,
+    height: u64,
+    consensus_constants: &ConsensusConstants,
+    activation: u64,
+) -> Result<RebuildStep, ChainStorageError> {
+    // Phase 1, under the read lock: pick the height, classify it, and validate the header there.
+    let (header, prev_hash, snapshot, header_only, validation) = {
+        let read_lock = db
+            .read()
+            .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
+
+        let snapshot = ChainTips::read(&*read_lock)?;
+
+        // Which heights to repair, and where a rewind is legal, are two different questions. This is the first
+        // one, and the answer is every height up to the *header* tip.
+        //
+        // Stopping at the block tip instead is wrong on the only path that matters here, the upgrade path. Header
+        // sync running ahead of block sync is the ordinary steady state, not an edge case, and nothing ever goes
+        // back over the headers it left behind: header sync neither re-validates nor rewrites a header it already
+        // has, and takes the *stored* accumulated data at the split as its accumulation base; nothing at startup
+        // rewinds headers above the block tip; and block sync writes the stored `BlockHeaderAccumulatedData` back
+        // verbatim as each body arrives, promoting its `total_accumulated_difficulty` straight into chain
+        // metadata. A node that upgraded with blocks at 350,020 and headers at 350,053 would therefore have
+        // [350,000, 350,020] repaired and 350,021-350,053 left carrying the old binary's pre-fork-window targets -
+        // chained off the repaired prefix, and with the walk marked finished so nothing ever returns to it.
+        //
+        // The second question is answered further down: a permanent verdict at a height above the block tip is
+        // *not* rewound, because the guards that bound a rewind are all computed from the block tip. See
+        // `StrictAction::StopHeaderOnly`.
+        let header_only = height > snapshot.block_height;
+
+        if height > snapshot.header_height {
+            drop(read_lock);
+            return resume_or_finish_above_the_header_tip(db, height, activation);
+        }
+
+        let header = read_lock.fetch_chain_header_by_height(height)?.header().clone();
+        let prev_chain_header = read_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
+        let validation = strict_validate_header(&*read_lock, header_validator, rules, &header, &prev_chain_header);
+        (header, *prev_chain_header.hash(), snapshot, header_only, validation)
+    };
+
+    // Phase 2, under the write lock: confirm the state the decision was taken against still holds, then act.
+    let mut write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let last_chain_header = write_lock.fetch_last_chain_header()?;
+    let header_moved = height > last_chain_header.height() ||
+        *write_lock.fetch_chain_header_by_height(height)?.hash() != header.hash() ||
+        *write_lock
+            .fetch_chain_header_by_height(height.saturating_sub(1))?
+            .hash() !=
+            prev_hash;
+    let tips_moved = ChainTips::read(&*write_lock)? != snapshot;
+
+    match decide_strict_action(header_moved, tips_moved, header_only, validation.as_ref().err()) {
+        StrictAction::Retry => {
+            info!(
+                target: LOG_TARGET,
+                "[AccData] A chain tip moved underneath height {height} while it was being validated; validating \
+                it again rather than advancing past it."
+            );
+            return Ok(RebuildStep::Retry);
+        },
+        StrictAction::Resume => {
+            info!(
+                target: LOG_TARGET,
+                "[AccData] The header at height {height} (or its parent) is no longer the one that was validated, \
+                so a reorg replaced it while it was being validated. The split may be anywhere below this height, \
+                and the heights the walk has already passed were repaired on a branch that may be gone, so the \
+                strict suffix is walked again from the activation height {activation}."
+            );
+            return Ok(RebuildStep::Resume { from: activation });
+        },
+        StrictAction::StopHeaderOnly => {
+            // Repairing a header-only height is well defined; rewinding at one is not. `rewind_to_height`
+            // measures its block removals from the block tip, so every guard that bounds a rewind - the pruned
+            // node refusal, the "how many blocks are about to go" accounting - is computed against a chain that
+            // does not reach up here, while the header deletion it *would* perform is measured from the header
+            // tip and could run tens of thousands of headers deep on one verdict. Stop instead, leaving
+            // `is_rebuilt: false`. This is not a dead end: once block sync brings the body in, the same header is
+            // reached again at a height where the rewind is a bounded, well defined operation.
+            let e = validation.expect_err("StrictAction::StopHeaderOnly is only reached with a verdict");
+            warn!(
+                target: LOG_TARGET,
+                "[AccData] The header at height {height} is above the block tip {} and no longer validates under \
+                the current consensus rules ({e}). A rewind is not attempted at a header-only height, so the \
+                rebuild stops here and resumes on the next startup.",
+                snapshot.block_height
+            );
+            return Err(ChainStorageError::ValidationError { source: e });
+        },
+        StrictAction::Stop => {
+            // Not a property of the block: a wall clock that is behind the network, a seed age rule that belongs
+            // to the chain rather than to the header, a transient LMDB read, a missing row. Rewinding on these
+            // would delete a perfectly good chain because a container had not finished talking to NTP yet. Stop
+            // instead, leaving `is_rebuilt: false`, so the next startup resumes from the persisted watermark and
+            // tries the same height again.
+            let e = validation.expect_err("StrictAction::Stop is only reached with a verdict");
+            warn!(
+                target: LOG_TARGET,
+                "[AccData] Validation of the block at height {height} could not be completed ({e}). This verdict \
+                is not a permanent property of the block, so the rebuild stops here and resumes on the next \
+                startup rather than rewinding the chain."
+            );
+            return Err(ChainStorageError::ValidationError { source: e });
+        },
+        StrictAction::Rewind => {
+            let e = validation.expect_err("StrictAction::Rewind is only reached with a verdict");
+            return rewind_below_invalid_header(&mut *write_lock, height, activation, &e).map(RebuildStep::Processed);
+        },
+        StrictAction::Rewrite => {},
+    }
+
+    let achieved_difficulty = validation.expect("StrictAction::Rewrite is only reached with a valid header");
+    let prev_chain_header = write_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
+    let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_chain_header.accumulated_data())
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_difficulty)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build(consensus_constants)?;
+
+    // The finish line used to be implicit: `update_accumulated_difficulty` writes
+    // `is_rebuilt: height == last_chain_header.height()` itself. It is taken out here instead so the orphan purge
+    // can be attached to it - see `finish_rebuild`. The predicate is unchanged, and so is the property it rests
+    // on: `last_chain_header` was read under *this* write lock, which is still held, and `header_moved` has
+    // already established that `height <= last_chain_header.height()` and that the header there is the one that
+    // was validated. The walk therefore still cannot declare itself finished against a tip that has moved.
+    //
+    // Two transactions rather than one, and in this order on purpose. If the process dies between them the
+    // accumulated data at `height` is correct and the status still says `is_rebuilt: false` with the watermark at
+    // `height - 1`, so the next startup simply redoes this height. The reverse order could latch "finished" over
+    // a height whose data was never written.
+    let is_final = height == last_chain_header.height();
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header, !is_final)?;
+    if !is_final {
+        return Ok(RebuildStep::Processed(status));
+    }
+    finish_rebuild(&mut *write_lock, height, activation).map(RebuildStep::Processed)
+}
+
+/// What to do when the strict walk finds itself at a height above the header tip.
+///
+/// The walk only ever climbs, and the ordinary way it finishes is by rewriting the header tip itself, where
+/// `update_accumulated_difficulty` records `is_rebuilt: height == last_chain_header.height()`. So arriving *above*
+/// the header tip means the chain got shorter underneath the walk: a reorg replaced heights it had already
+/// passed, and the branch it repaired them on is gone. Nothing may be concluded from that, least of all
+/// "finished" - the strict suffix is walked again from the activation height.
+///
+/// The one exception is a chain that no longer reaches the fork at all. There is then no strict height left to
+/// repair, and re-walking would only spin until the resume budget ran out.
+///
+/// The tip is re-read under the write lock rather than taken from the read phase's snapshot, so that the decision
+/// to write `is_rebuilt: true` - a one-way latch - is never taken against a chain that has since grown back past
+/// the activation height.
+fn resume_or_finish_above_the_header_tip<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    height: u64,
+    activation: u64,
+) -> Result<RebuildStep, ChainStorageError> {
+    let mut write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let header_tip = write_lock.fetch_last_header()?.height;
+    if header_tip >= activation {
+        info!(
+            target: LOG_TARGET,
+            "[AccData] The strict rebuild reached height {height}, above the header tip {header_tip}, so the \
+            chain grew shorter underneath it. Resuming from the activation height {activation} rather than \
+            declaring the repair finished over a branch that is no longer there."
+        );
+        return Ok(RebuildStep::Resume { from: activation });
+    }
+    debug!(
+        target: LOG_TARGET,
+        "[AccData] The header tip {header_tip} is below the activation height {activation}; there is no post-fork \
+        accumulated data left to repair."
+    );
+    // "No post-fork *chain* left" is not "no post-fork data left". Whatever shortened the chain below the
+    // activation height did it with `rewind_to_height`, which keeps the heights it removed as chained orphans
+    // carrying the accumulated data they had - stale, if the walk had not reached them. Latching here without
+    // purging those would leave the strongest thing in the orphan pool holding an inflated
+    // `total_accumulated_difficulty` from pre-fork targets, ready to be reorged straight back in with the repair
+    // already marked finished.
+    finish_rebuild(&mut *write_lock, header_tip, activation).map(RebuildStep::Processed)
+}
+
+/// What the write phase of a strict height should do, given the state the decision in the read phase was taken
+/// against and the state the database is actually in now.
+#[derive(Debug, PartialEq, Eq)]
+enum StrictAction {
+    /// The header is unchanged and it validated: rewrite its accumulated data.
+    Rewrite,
+    /// Re-read and re-validate the same height. Nothing may be written and the watermark may not advance.
+    Retry,
+    /// The header at this height is not the one that was validated. Go back to the activation height and climb
+    /// again, so the finish line is a statement about the chain the walk actually ended on.
+    Resume,
+    /// The header is unchanged, it failed on a permanent property of the block, and the chain is exactly the one
+    /// that verdict was reached against: rewind below it.
+    Rewind,
+    /// Stop the walk with `is_rebuilt` still false, so the next startup resumes from the persisted watermark.
+    Stop,
+    /// The same, for a permanent verdict at a height above the block tip, where a rewind is not a bounded
+    /// operation. Split out from `Stop` only so the two can be told apart in the log and in the tests.
+    StopHeaderOnly,
+}
+
+/// The whole write-phase decision, as a pure function so that every branch of it can be tested directly rather
+/// than raced into existence.
+///
+/// * `header_moved` - the header at this height, or its parent, is not the one that was validated. The verdict,
+///   whatever it was, belongs to a header that is no longer there, so nothing may be concluded from it. Critically this
+///   is neither a skip nor a retry in place but a `Resume`, for the reasons on `RebuildStep::Resume`: the walk is
+///   monotonic, so a changed header is evidence that a reorg may have replaced any part of the prefix the walk has
+///   already climbed, and only re-climbing it makes `is_rebuilt: true` a statement about the chain the walk ended on.
+/// * `tips_moved` - either chain tip changed, but this height and its parent did not. Only a rewind cares: rewriting
+///   one height's accumulated data is a statement about that height, while a rewind is a statement about every block
+///   above it, and must not be executed against a chain that is no longer the one it was decided against. This is what
+///   stands in for the add-block gate that is deliberately not reintroduced: sync is not held off, it is detected.
+/// * `header_only` - this height is above the block tip. Its accumulated data is repaired like any other, but a
+///   permanent verdict here stops the walk instead of rewinding, because a rewind at a header-only height is not a
+///   bounded operation. Ordered *after* the `tips_moved` row on purpose: `header_only` was read from the phase 1
+///   snapshot, and the only rows that consult it are the ones where the snapshot has been confirmed to still hold.
+fn decide_strict_action(
+    header_moved: bool,
+    tips_moved: bool,
+    header_only: bool,
+    verdict: Option<&ValidationError>,
+) -> StrictAction {
+    if header_moved {
+        return StrictAction::Resume;
+    }
+    match verdict {
+        None => StrictAction::Rewrite,
+        Some(e) if verdict_can_change(e) => StrictAction::Stop,
+        Some(_) if tips_moved => StrictAction::Retry,
+        Some(_) if header_only => StrictAction::StopHeaderOnly,
+        Some(_) => StrictAction::Rewind,
+    }
+}
+
+/// The block tip and the header tip, as one comparable snapshot.
+///
+/// Both are needed: the block tip is what a rewind removes blocks down to, and the header tip is what it removes
+/// *headers* down from, which during header sync can be tens of thousands of heights higher.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChainTips {
+    block_height: u64,
+    block_hash: HashOutput,
+    header_height: u64,
+    header_hash: HashOutput,
+}
+
+impl ChainTips {
+    fn read<B: BlockchainBackend>(db: &B) -> Result<Self, ChainStorageError> {
+        let metadata = db.fetch_chain_metadata()?;
+        let last_header = db.fetch_last_header()?;
+        Ok(Self {
+            block_height: metadata.best_block_height(),
+            block_hash: *metadata.best_block_hash(),
+            header_height: last_header.height,
+            header_hash: last_header.hash(),
+        })
+    }
+}
+
+/// Whether a validation verdict is one that can legitimately come out differently later, and therefore must never
+/// be allowed to destroy blocks.
+///
+/// This is the same notion the rest of the codebase already uses to decide whether a failed header may be memoed in
+/// `bad_blocks` - see `BlockHeaderSyncValidator::blacklist_unless_verdict_can_change` and the equivalent match in
+/// `insert_orphan_and_find_new_tips` - and it is reused rather than restated so the three cannot drift apart. A
+/// verdict that can change stops the walk with `is_rebuilt` still false, so the next startup tries again.
+///
+/// The two named cases are the ones that are about the *environment* or the *chain* rather than the header:
+/// `InvalidTimestampFutureTimeLimit` is measured against `Utc::now()`, so a node whose clock is more than the
+/// future time limit slow - a VM resumed from suspend, a container that has not finished talking to NTP - fails it
+/// on every recent header, and `OldSeedHash` is measured against the chain the header is on.
+///
+/// Everything else defers to `ValidationError::get_ban_reason`, whose `None` arm is precisely the set of verdicts
+/// that are not the block's fault: `FatalStorageError` (which is what *any* `ChainStorageError` becomes when it
+/// crosses into validation, so a transient LMDB read failure lands here), `IncorrectNumberOfTimestampsProvided`,
+/// the missing-row errors, and the hash/height mismatches that describe the query rather than the block.
+fn verdict_can_change(err: &ValidationError) -> bool {
+    match err {
+        ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
+        ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) => true,
+        e => e.get_ban_reason().is_none(),
+    }
+}
+
+/// Run the full header validator over a header that is already committed to the main chain.
+///
+/// `target_difficulty: None` routes the validator through the same `check_achieved_and_target_difficulty` the
+/// non-strict path calls, so the returned `AchievedTargetDifficulty` is identical - but it *additionally* enforces
+/// the activation rules the difficulty calculator cannot see on its own (`require_canonical_randomxt_pow_data`,
+/// `aux_chain_merkle_proof_depth_binding` and `strict_merkle_tree_parameter_decoding`). Without that, a block above
+/// the activation height that is invalid for one of those three would pass the rebuild, and the node would stay on
+/// a chain it would reject if it ever re-synced from scratch.
+///
+/// The chain context is built the same way the orphan path builds it. The header is on the main chain, so its
+/// ancestry meets the main chain at `height - 1` and that is what the database may be trusted up to; anything
+/// recorded at `height` itself is this header's own contribution and must not be read back as evidence against it.
+///
+/// Everything here is read-only, hence `&B`: the caller runs it under the read lock, because the RandomX work
+/// inside the validator is much too long to hold the write lock across.
+fn strict_validate_header<B: BlockchainBackend>(
+    db: &B,
+    header_validator: &HeaderFullValidator,
+    rules: &BaseNodeConsensusManager,
+    header: &BlockHeader,
+    prev_chain_header: &ChainHeader,
+) -> Result<AchievedTargetDifficulty, ValidationError> {
+    let prev_timestamps = get_previous_timestamps(db, header, rules)?;
+    let (vm_key, fork_height) = get_vm_key_for_candidate_header(db, header.clone())?;
+    let chain_context = HeaderChainContext::candidate_chain(vm_key, fork_height, None);
+    let validated = header_validator.validate(
+        db,
+        header,
+        prev_chain_header.header(),
+        &prev_timestamps,
+        None,
+        chain_context,
+    )?;
+    Ok(validated.achieved_target)
+}
+
+/// Decide whether the rewind that is about to be performed is one this node is able to perform. Returns an error -
+/// and rewinds nothing - if it is not.
+///
+/// The one refusal is a pruned node whose history no longer reaches the rewind target: `rewind_to_height` silently
+/// turns a rewind deeper than `best_block_height - pruned_height` into a rewind to height 0, a full destructive
+/// wipe, and in that branch it skips `insert_chained_orphan` but still calls `insert_orphan_chain_tip`, leaving a
+/// tip whose hash resolves to nothing. A background task must never do that on its own.
+///
+/// Deliberately asked here, about the rewind actually being attempted, and deliberately *not* hoisted to the top of
+/// the walk. An earlier revision hoisted it by expanding the condition for the deepest rewind the walk could ever
+/// need, `activation - 1`: `tip - (activation - 1) > tip - pruned_height` reduces to `pruned_height >= activation`.
+/// That predicate is independent of the tip, which is exactly what makes it useless as an up-front guard - on a
+/// pruned node `pruned_height ~ tip - pruning_horizon`, so it is false at rollout and becomes *permanently* true
+/// once the chain has advanced one pruning horizon past the fork. From then on every startup refused the repair at
+/// its very first strict height, forever, logging that the node had to be resynced, on a node where in all
+/// likelihood nothing failed validation and no rewind would ever have been attempted. Pruned nodes are the majority
+/// of the network; excluding all of them permanently to pre-empt a rewind that is rare is the wrong trade.
+///
+/// What checking late costs is that `[activation, H-1]` is left with recomputed targets while `[H, tip]` still
+/// carries the old ones. That is not a new state: `StrictAction::Stop`, `StrictAction::StopHeaderOnly` and the
+/// consecutive-retry bound all produce it deliberately, and the up-front check produced it anyway whenever a pruner
+/// crossed the activation height mid-walk. It is transient in all of those cases for the same reason - `is_rebuilt`
+/// stays false, so the next startup resumes from the persisted watermark and walks the suffix again.
+///
+/// There is deliberately no cap on how many blocks the rewind may remove. An earlier revision had one, at 4,096
+/// blocks, which is about five days of MainNet block time - so it would have refused precisely the late upgraders
+/// the repair exists for, and been a wall-clock race against the fork.
+fn refuse_if_rewind_is_impossible<B: BlockchainBackend>(db: &B, rewind_to: u64) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let tip = metadata.best_block_height();
+    let steps_back = tip.saturating_sub(rewind_to);
+    let effective_pruning_horizon = tip.saturating_sub(metadata.pruned_height());
+    if metadata.is_pruned_node() && steps_back > effective_pruning_horizon {
+        error!(
+            target: LOG_TARGET,
+            "[AccData] The accumulated data repair needs to rewind this chain to height {rewind_to} \
+            ({steps_back} blocks), which is past this pruned node's effective pruning horizon of \
+            {effective_pruning_horizon}; `rewind_to_height` would turn that into a wipe to height 0. Refusing the \
+            rewind: the chain is left as it is and the repair stops unfinished, so it is attempted again on the \
+            next startup. The blocks it needs are genuinely gone, so this node has to be resynced to complete it."
+        );
+        return Err(ChainStorageError::InvalidOperation(format!(
+            "Accumulated data rebuild needs to rewind {steps_back} blocks to height {rewind_to}, past this pruned \
+             node's effective pruning horizon of {effective_pruning_horizon}"
+        )));
+    }
+    Ok(())
+}
+
+/// The write operations that finish the rebuild: purge `orphan_hashes`, then write `is_rebuilt: true` at
+/// `height`.
+///
+/// Split out from `finish_rebuild` as a pure, infallible function so that the one caller which must not make a
+/// fallible call between a rewind and its cleanup - `rewind_below_invalid_header` - can still share it.
+///
+/// The orphan *chain tip* entries are removed with `remove_orphan_chain_tip_if_exists` rather than left to
+/// `delete_orphan`, which returns early when the block is absent from `orphans_db`, and rather than probed first
+/// with `fetch_orphan_chain_tip_by_hash`, which returns `Err(ValueNotFound)` rather than `Ok(None)` for exactly
+/// the dangling-tip case that makes the explicit removal necessary. Duplicates in `orphan_hashes` are harmless:
+/// both operations are idempotent.
+fn finish_rebuild_txn(orphan_hashes: &[HashOutput], height: u64) -> (DbTransaction, AccumulatedDataRebuildStatus) {
+    let status = AccumulatedDataRebuildStatus {
+        is_rebuilt: true,
+        last_rebuild_height: Some(height),
+    };
+    let mut txn = DbTransaction::new();
+    for hash in orphan_hashes {
+        txn.remove_orphan_chain_tip_if_exists(*hash);
+        txn.delete_orphan(*hash);
+    }
+    txn.set_accumulated_data_rebuild_status(status.clone());
+    (txn, status)
+}
+
+/// Write `is_rebuilt: true` at `height`, and in the same transaction purge every orphan at or above `activation`.
+///
+/// This is the only place the completion latch is written on the paths that finish by reaching the tip, and the
+/// purge is what makes the latch mean something. `is_rebuilt: true` is one-way - the background task returns
+/// immediately on it and nothing ever re-arms it - so whatever is true of the database when it is written stays
+/// assumed forever.
+///
+/// The migration purges orphans at or above the activation height when it *arms* the rebuild, for the reason
+/// spelled out there: a stale orphan tip carries a `total_accumulated_difficulty` built from pre-fork targets and
+/// can win an `AccumulatedDifficultySquaredComparer` comparison it should lose. That purge alone is not enough,
+/// because arming and finishing are not the same instant. The walk takes a minute or so on MainNet and much
+/// longer on a node that is also still finishing an earlier rebuild, and any ordinary reorg in that window puts
+/// the hazard straight back: `rewind_to_height` keeps the heights it removes as chained orphans via
+/// `insert_chained_orphan`, which copies the main chain's accumulated data verbatim - unrepaired, if the walk had
+/// not reached those heights yet. Hours later a reorg back onto that branch runs `restore_reorged_chain`, which
+/// calls `insert_best_block` with the orphan's stored data and validates nothing, reinstating pre-fork-window
+/// targets and an inflated `total_accumulated_difficulty` into the main chain with the repair already marked
+/// finished.
+///
+/// So the invariant the latch is required to carry is: *when `is_rebuilt: true` is written, no orphan at or above
+/// the activation height holds accumulated data this repair never looked at.* Re-running the arming purge here,
+/// atomically with the status, is what establishes it. Discarding an orphan is safe: it is re-fetched if it ever
+/// mattered.
+///
+/// There is exactly one walk - `rebuild_accumulated_data_background_task` has a single caller, at startup - so no
+/// locking is needed to keep a second walk from re-populating the pool behind this one. The caller holds the
+/// write lock across the read and the write, so nothing else can insert an orphan in between either.
+fn finish_rebuild<B: BlockchainBackend>(
+    write_lock: &mut B,
+    height: u64,
+    activation: u64,
+) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+    let orphan_hashes = write_lock.fetch_orphan_hashes_at_or_above(activation)?;
+    if !orphan_hashes.is_empty() {
+        info!(
+            target: LOG_TARGET,
+            "[AccData] Purging {} orphan(s) at or above the activation height {activation} in the same \
+            transaction that marks the rebuild finished at height {height}",
+            orphan_hashes.len()
+        );
+    }
+    let (txn, status) = finish_rebuild_txn(&orphan_hashes, height);
+    write_lock.write(txn)?;
+    Ok(status)
+}
+
+/// Rewind the chain to just below `height`, because the block at `height` no longer validates under the rules that
+/// are now in force, and finish the rebuild there.
+///
+/// There is deliberately nothing left for the walk to do afterwards - every height above the rewind point no longer
+/// exists - so the status is written as rebuilt at `height - 1` and the caller terminates.
+///
+/// The outcome is a single one. `refuse_if_rewind_is_impossible` has already run, read-only, before this walk wrote
+/// anything, so by the time execution reaches here the answer is "rewind", and the orphan cleanup and the status
+/// that record it are committed in one transaction built without a single fallible call in it. That matters more
+/// than it looks: the cleanup is the only thing standing between the repaired chain and an immediate reorg back
+/// onto the blocks just removed. `rewind_to_height` inserts an orphan chain tip for the former tip carrying its
+/// inflated pre-fork `total_accumulated_difficulty`, `swap_to_highest_pow_chain` ranks that above the repaired
+/// (lower) main tip, and `reorganize_chain` validates only bodies while `insert_orphan_and_find_new_tips`
+/// short-circuits on a hash already in the orphan pool - so the removed blocks would go straight back with their
+/// stale accumulated data, and with the walk finished nothing would re-arm.
+///
+/// This is also a place `is_rebuilt: true` is written, so it owes the same invariant as `finish_rebuild`: every
+/// orphan at or above the activation height goes too, not only the ones this rewind just created. Those are read
+/// *before* the rewind so that the no-fallible-call property above still holds; the rewind creates no orphan that
+/// is not already in `removed_blocks`, and every removed block is at or above `height` and so at or above the
+/// activation height in any case, so the union of the two lists is exactly the set that must go.
+fn rewind_below_invalid_header<B: BlockchainBackend>(
+    write_lock: &mut B,
+    height: u64,
+    activation: u64,
+    reason: &ValidationError,
+) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+    let rewind_to = height.saturating_sub(1);
+
+    // Asked here, about this rewind, and nowhere else - see `refuse_if_rewind_is_impossible` for why hoisting it
+    // to the top of the walk permanently excluded every pruned node.
+    refuse_if_rewind_is_impossible(&*write_lock, rewind_to)?;
+
+    let stale_orphans = write_lock.fetch_orphan_hashes_at_or_above(activation)?;
+    let metadata = write_lock.fetch_chain_metadata()?;
+    let tip = metadata.best_block_height();
+    let header_tip = write_lock.fetch_last_header()?.height;
+    warn!(
+        target: LOG_TARGET,
+        "[AccData] Block at height {height} no longer validates under the current consensus rules ({reason}); \
+        rewinding the chain to height {rewind_to} ({} block(s), and {} header(s) from the header tip {header_tip})",
+        tip.saturating_sub(rewind_to),
+        header_tip.saturating_sub(cmp::max(tip, rewind_to)),
+    );
+    let removed_blocks = rewind_to_height(write_lock, rewind_to)?;
+
+    // `rewind_to_height` keeps the blocks it removes as orphans, so an ordinary reorg can restore them. These are
+    // being removed precisely because they do not validate, and their accumulated data was built from pre-fork
+    // targets, so keeping them would leave an orphan tip whose inflated `total_accumulated_difficulty` can win an
+    // `AccumulatedDifficultySquaredComparer` comparison it should lose. Delete them instead; anything that
+    // genuinely mattered is re-fetched.
+    //
+    // One transaction, and not a single fallible call between the rewind and it: the chain being rewound, the
+    // orphans being gone and the rebuild being finished are one outcome, never two thirds of one. `chain` and
+    // `collect` are infallible, and `stale_orphans` was read before the rewind for exactly that reason.
+    let orphan_hashes: Vec<HashOutput> = stale_orphans
+        .into_iter()
+        .chain(removed_blocks.iter().map(|block| *block.hash()))
+        .collect();
+    let (txn, status) = finish_rebuild_txn(&orphan_hashes, rewind_to);
+    write_lock.write(txn)?;
     Ok(status)
 }
 
@@ -4669,8 +5420,8 @@ mod test {
             let (_, next) = create_chained_blocks(&db, &[("C->GB", 1, 120)], tip);
             let candidate = next.get("C").unwrap().clone();
 
-            let mut access = db.db_write_access().unwrap();
-            let (_, fork_height) = get_vm_key_for_candidate_header(&mut *access, candidate.header().clone()).unwrap();
+            let access = db.db_write_access().unwrap();
+            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, candidate.header().clone()).unwrap();
             assert_eq!(candidate.height(), 3);
             assert_eq!(fork_height, 2);
         }
@@ -4694,7 +5445,7 @@ mod test {
 
             let orphan_tip = orphan_chain.get("C2").unwrap().clone();
             assert_eq!(orphan_tip.height(), 3);
-            let (_, fork_height) = get_vm_key_for_candidate_header(&mut *access, orphan_tip.header().clone()).unwrap();
+            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, orphan_tip.header().clone()).unwrap();
             assert_eq!(fork_height, 1, "the orphan forks at A, not at its own parent");
         }
 
@@ -4710,8 +5461,8 @@ mod test {
             header.height = 0;
             assert_eq!(tari_rx_vm_key_height(header.height), header.height);
 
-            let mut access = db.db_write_access().unwrap();
-            let (_, fork_height) = get_vm_key_for_candidate_header(&mut *access, header).unwrap();
+            let access = db.db_write_access().unwrap();
+            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, header).unwrap();
             assert_eq!(fork_height, 0);
         }
 
@@ -6351,6 +7102,1525 @@ mod test {
             results.push(test.handle_possible_reorg(block.to_arc_block()).unwrap());
         }
         Ok((results, chain))
+    }
+
+    // ---------------------------------------------------------------------------------------------------------
+    // GHSA-3qmx-q9pv-f3m4 accumulated data repair: LMDB migration v8 plus the strict rebuild it arms
+    // ---------------------------------------------------------------------------------------------------------
+
+    /// These tests meet the migration the way the field meets it: a chain is built and brought to the state a
+    /// pre-fork binary would have left it in, the database is closed, its migration version is put back, and it is
+    /// reopened under the post-fork rules. Reopening is what runs the migration, and - when the migration arms the
+    /// rebuild - what starts the background walk, so most of them are `#[tokio::test]`.
+    mod c29_target_difficulty_repair {
+        use std::{path::Path, time::Duration as StdDuration};
+
+        use tari_transaction_components::consensus::ConsensusConstants;
+
+        use super::*;
+        use crate::{
+            chain_storage::{AccumulatedDataRebuildStatus, lmdb_db::rewind_migration_version_for_test},
+            test_helpers::blockchain::{
+                create_custom_blockchain_at_path,
+                create_main_chain_with_range_proof_type,
+                create_orphan_chain,
+            },
+        };
+
+        /// The window MainNet used before the fork, and the one its activation entry moves it to.
+        const PRE_FORK_WINDOW: u64 = 90;
+        const POST_FORK_WINDOW: u64 = 45;
+        /// Above `PRE_FORK_WINDOW`, so the long window is full by the time the fork arrives. That is the only way
+        /// the two windows can be averaging different samples, which is the whole mechanism under test.
+        const ACTIVATION: u64 = 100;
+        const CHAIN_LEN: u64 = 110;
+        /// The version the migration must be put back to for the v8 block to run on reopen.
+        const PRE_MIGRATION_VERSION: u64 = 8;
+
+        /// Every block is mined to exactly this. `mine_to_difficulty` searches for an *exact* match against a
+        /// 20,000 nonce budget, and the chance of hitting difficulty `d` on a given nonce is `1/(d(d+1))`, so the
+        /// value has to stay low enough that 110 blocks in a row all land. It also has to stay above every target
+        /// the LWMA can produce here, or a block would fail its own difficulty check during the rebuild.
+        const ACHIEVED: u64 = 40;
+        /// Keeps the LWMA off its lower clamp. Clamped targets are equal whatever the window length is, which
+        /// would make the whole fixture vacuous.
+        const MIN_TARGET: u64 = 15;
+        /// A burst of fast blocks, placed so that it falls *inside* the 90 block window at the activation height
+        /// and *outside* the 45 block one (which only reaches back to `ACTIVATION - POST_FORK_WINDOW`). Relying on
+        /// a drift instead does not work: the LWMA damps a constant solve time away, and anything steep enough to
+        /// survive the damping runs the target past `ACHIEVED` within a few blocks of the genesis block.
+        const BURST: u64 = 40;
+        const BURST_LEN: u64 = 14;
+
+        fn constants(bipartite: bool, window: u64, from: u64) -> ConsensusConstants {
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .clear_proof_of_work()
+                // `BlockSpec` mines at a fixed difficulty regardless of the consensus target, so the backoff would
+                // reject the second consecutive Sha3x block for not clearing its 2x target. MainNet leaves the cap
+                // disabled across this fork in any case.
+                .with_pow_backoff_cap(POW_BACKOFF_DISABLED)
+                .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+                    min_difficulty: Difficulty::from_u64(MIN_TARGET).unwrap(),
+                    max_difficulty: Difficulty::max(),
+                    target_time: 120,
+                })
+                .with_difficulty_block_window(window)
+                .with_bipartite_cuckaroo_verification(bipartite)
+                .with_effective_from_height(from)
+                .build()
+        }
+
+        /// Two entries, the second carrying the fork: the bipartite verifier (which is what
+        /// `bipartite_cuckaroo_activation_height` reads) and the narrower difficulty window, exactly as MainNet's
+        /// `con_7` does.
+        fn rules(activation: u64, post_fork_window: u64) -> BaseNodeConsensusManager {
+            BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(constants(false, PRE_FORK_WINDOW, 0))
+                .add_consensus_constants(constants(true, post_fork_window, activation))
+                .build()
+                .unwrap()
+        }
+
+        /// Rules in which nothing ever turns the bipartite verifier on, i.e. an unscheduled network.
+        fn rules_unscheduled() -> BaseNodeConsensusManager {
+            BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(constants(false, PRE_FORK_WINDOW, 0))
+                .build()
+                .unwrap()
+        }
+
+        /// Rules in which the base entry already carries the fix, i.e. LocalNet: activation height 0.
+        fn rules_active_from_genesis() -> BaseNodeConsensusManager {
+            BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(constants(true, POST_FORK_WINDOW, 0))
+                .build()
+                .unwrap()
+        }
+
+        /// A block time large enough that the block carrying it lands far beyond any plausible future time limit,
+        /// whatever the genesis timestamp of the test fixture happens to be. A hundred years.
+        const FAR_FUTURE_BLOCK_TIME: u64 = 100 * 365 * 24 * 60 * 60;
+
+        /// `weak_height` is mined far below every target the LWMA produces, so it passes the mock validator that
+        /// builds the chain and fails the real one the strict rebuild uses.
+        ///
+        /// `future_height` is given a block time far enough ahead that the block fails `check_timestamp_ftl`. The
+        /// mock validator that builds the chain does not check the future time limit, so the block goes in
+        /// regardless - which is exactly the shape of a node whose own clock is behind the network.
+        fn chain_specs(weak_height: Option<u64>) -> Vec<crate::test_helpers::BlockSpec> {
+            chain_specs_with(weak_height, None)
+        }
+
+        fn chain_specs_with(
+            weak_height: Option<u64>,
+            future_height: Option<u64>,
+        ) -> Vec<crate::test_helpers::BlockSpec> {
+            (1..=CHAIN_LEN)
+                .map(|height| {
+                    let name = if height == 1 {
+                        leaked("M1->GB".to_string())
+                    } else {
+                        leaked(format!("M{height}->M{}", height - 1))
+                    };
+                    let block_time = if future_height == Some(height) {
+                        FAR_FUTURE_BLOCK_TIME
+                    } else if (BURST..BURST.saturating_add(BURST_LEN)).contains(&height) {
+                        60
+                    } else {
+                        120
+                    };
+                    let difficulty = if weak_height == Some(height) { 2 } else { ACHIEVED };
+                    fixture_spec(name, difficulty, block_time)
+                })
+                .collect()
+        }
+
+        fn stored_targets(db: &BlockchainDatabase<TempDatabase>) -> Vec<u64> {
+            let access = db.db_read_access().unwrap();
+            let tip = access.fetch_last_chain_header().unwrap().height();
+            (0..=tip)
+                .map(|h| {
+                    access
+                        .fetch_chain_header_by_height(h)
+                        .unwrap()
+                        .accumulated_data()
+                        .target_difficulty
+                        .as_u64()
+                })
+                .collect()
+        }
+
+        fn stored_accumulated_difficulties(db: &BlockchainDatabase<TempDatabase>) -> Vec<U512> {
+            let access = db.db_read_access().unwrap();
+            let tip = access.fetch_last_chain_header().unwrap().height();
+            (0..=tip)
+                .map(|h| {
+                    access
+                        .fetch_chain_header_by_height(h)
+                        .unwrap()
+                        .accumulated_data()
+                        .total_accumulated_difficulty
+                })
+                .collect()
+        }
+
+        /// Walk the whole chain through the rebuild by hand, so the stored targets become the ones `rules` implies
+        /// rather than the placeholders the mock header validator wrote while the chain was being built. Passing
+        /// `u64::MAX` for `strict_from` keeps every height on the pre-fork path.
+        fn rebuild_all(db: &BlockchainDatabase<TempDatabase>, rules: &BaseNodeConsensusManager, strict_from: u64) {
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone());
+            for height in 1..=CHAIN_LEN {
+                let cc = rules.consensus_constants(height).clone();
+                process_accumulated_data_for_height(
+                    db.db.clone(),
+                    difficulty_calculator.clone(),
+                    &validator,
+                    rules,
+                    height,
+                    &cc,
+                    strict_from,
+                )
+                .unwrap_or_else(|e| panic!("rebuild failed at height {height}: {e}"));
+            }
+        }
+
+        /// Build a chain across the fork and leave it exactly as a pre-fork binary would have: every stored target
+        /// recomputed with the long window. The database is left on disk with its migration version put back, so
+        /// the caller can reopen it under post-fork rules and meet the migration.
+        fn build_pre_fork_chain(
+            path: &Path,
+            weak_height: Option<u64>,
+        ) -> (Vec<u64>, Vec<U512>, HashMap<String, Arc<ChainBlock>>) {
+            build_pre_fork_chain_from(path, chain_specs(weak_height), weak_height.is_none())
+        }
+
+        fn build_pre_fork_chain_from(
+            path: &Path,
+            specs: Vec<crate::test_helpers::BlockSpec>,
+            rebuild: bool,
+        ) -> (Vec<u64>, Vec<U512>, HashMap<String, Arc<ChainBlock>>) {
+            let rules = rules(ACTIVATION, PRE_FORK_WINDOW);
+            let db = create_custom_blockchain_at_path(path, rules.clone(), false);
+            let (_, chain) = create_main_chain_with_range_proof_type(&db, specs, Some(RangeProofType::RevealedValue));
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+            if rebuild {
+                rebuild_all(&db, &rules, u64::MAX);
+            }
+            let targets = stored_targets(&db);
+            let accumulated = stored_accumulated_difficulties(&db);
+            rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            (targets, accumulated, chain)
+        }
+
+        fn mark_bad_block(db: &BlockchainDatabase<TempDatabase>, height: u64) {
+            let access = db.db_read_access().unwrap();
+            let header = access.fetch_chain_header_by_height(height).unwrap();
+            let hash = *header.hash();
+            drop(access);
+            let mut txn = DbTransaction::new();
+            txn.insert_bad_block(hash, height, "planted by a test".to_string());
+            db.write(txn).unwrap();
+        }
+
+        /// Put the database into the ordinary upgrade-path shape: headers all the way to `CHAIN_LEN`, blocks
+        /// stopping at `block_tip`. Header sync running ahead of block sync is the normal steady state on a node
+        /// that is catching up, not an edge case, and it is the state in which the stale post-fork accumulated
+        /// data this repair exists for is most likely to be sitting on disk.
+        ///
+        /// What makes a height "header only" to everything in the walk is `MetadataKey::ChainHeight`, which is
+        /// what `set_best_block` moves; the bodies are left on disk because nothing under test reads them.
+        fn set_block_tip_below_the_header_tip(db: &BlockchainDatabase<TempDatabase>, block_tip: u64) {
+            let access = db.db_read_access().unwrap();
+            let previous_best = *access.fetch_chain_metadata().unwrap().best_block_hash();
+            let chain_header = access.fetch_chain_header_by_height(block_tip).unwrap();
+            let hash = chain_header.accumulated_data().hash;
+            let accumulated = chain_header.accumulated_data().total_accumulated_difficulty;
+            let timestamp = chain_header.timestamp();
+            drop(access);
+            let mut txn = DbTransaction::new();
+            txn.set_best_block(block_tip, hash, accumulated, previous_best, timestamp);
+            db.write(txn).unwrap();
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), block_tip);
+        }
+
+        fn rebuild_status(db: &BlockchainDatabase<TempDatabase>) -> AccumulatedDataRebuildStatus {
+            db.db_read_access()
+                .unwrap()
+                .fetch_accumulated_data_rebuild_status()
+                .unwrap()
+        }
+
+        /// Wait for the background rebuild to report itself finished. The pre-fork path sleeps 100 ms per height,
+        /// so a walk that starts well below the activation height genuinely takes seconds.
+        async fn await_rebuild(db: &BlockchainDatabase<TempDatabase>) {
+            for _ in 0..600 {
+                if rebuild_status(db).is_rebuilt {
+                    return;
+                }
+                tokio::time::sleep(StdDuration::from_millis(50)).await;
+            }
+            panic!("background rebuild did not finish: {:?}", rebuild_status(db));
+        }
+
+        /// Recompute every target at and above the activation height under `rules`, and report the heights where
+        /// the answer differs from what is stored.
+        fn divergences_from_stored(
+            db: &BlockchainDatabase<TempDatabase>,
+            rules: &BaseNodeConsensusManager,
+            from_height: u64,
+        ) -> Vec<(u64, u64, u64)> {
+            let tip = db.db_read_access().unwrap().fetch_last_chain_header().unwrap().height();
+            divergences_in_range(db, rules, from_height, tip)
+        }
+
+        /// The same, bounded above. Needed wherever the chain carries a header that cannot be recomputed at all -
+        /// a block mined below every target the LWMA can produce fails its own difficulty check here, which is a
+        /// panic rather than a divergence.
+        fn divergences_in_range(
+            db: &BlockchainDatabase<TempDatabase>,
+            rules: &BaseNodeConsensusManager,
+            from_height: u64,
+            to_height: u64,
+        ) -> Vec<(u64, u64, u64)> {
+            let stored = stored_targets(db);
+            let calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+            let access = db.db_read_access().unwrap();
+            let mut diverged = vec![];
+            for height in from_height..=to_height {
+                let header = access.fetch_chain_header_by_height(height).unwrap().header().clone();
+                let achieved = calculator
+                    .check_achieved_and_target_difficulty(&*access, &header)
+                    .unwrap_or_else(|e| panic!("recompute failed at height {height}: {e}"));
+                let stored_target = stored[usize::try_from(height).unwrap()];
+                if achieved.target().as_u64() != stored_target {
+                    diverged.push((height, stored_target, achieved.target().as_u64()));
+                }
+            }
+            diverged
+        }
+
+        /// §6.1 - the bug this whole change exists for.
+        ///
+        /// A chain synced on a pre-fork binary stored each target computed with the 90 block window. Under the
+        /// post-fork constants the same headers recompute to different targets at and above the activation height,
+        /// and only there: below it the rules at each height are unchanged, so the stored values are still right.
+        /// `target_difficulty` is the only quantity that accumulates, so leaving this alone corrupts chain strength
+        /// for every block above the fork.
+        #[test]
+        fn stored_targets_diverge_from_recomputed_ones_above_the_activation_height() {
+            // Deliberately built and inspected in a single open: this test is about the divergence itself, not
+            // about the migration, and reopening would arm the rebuild and spawn a task there is no runtime for.
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let pre_fork = rules(ACTIVATION, PRE_FORK_WINDOW);
+            let db = create_custom_blockchain_at_path(&path, pre_fork.clone(), true);
+            create_main_chain_with_range_proof_type(&db, chain_specs(None), Some(RangeProofType::RevealedValue));
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+            rebuild_all(&db, &pre_fork, u64::MAX);
+
+            // Nothing diverges while the window is the one the targets were computed with.
+            assert!(
+                divergences_from_stored(&db, &rules(ACTIVATION, PRE_FORK_WINDOW), 1).is_empty(),
+                "the pre-fork rules must reproduce their own stored targets"
+            );
+
+            // Narrowing the window at the activation height changes the answer above it...
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            let diverged = divergences_from_stored(&db, &post_fork, ACTIVATION);
+            assert!(
+                diverged.len() >= 5,
+                "expected the narrowed window to change several targets above the fork, got {diverged:?}"
+            );
+
+            // ...and nothing below it, because those heights keep the 90 block window.
+            let below: Vec<_> = divergences_from_stored(&db, &post_fork, 1)
+                .into_iter()
+                .filter(|(height, _, _)| *height < ACTIVATION)
+                .collect();
+            assert!(below.is_empty(), "targets below the fork must not move, got {below:?}");
+        }
+
+        /// §6.2 - the repair, on a chain where every block still holds up.
+        #[tokio::test]
+        async fn the_rebuild_repairs_the_suffix_and_leaves_the_prefix_alone() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (targets_before, accumulated_before, _) = build_pre_fork_chain(&path, None);
+
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            let db = create_custom_blockchain_at_path(&path, post_fork.clone(), true);
+            // Opening under the post-fork rules runs the migration, which arms the rebuild just below the fork.
+            assert_eq!(rebuild_status(&db).last_rebuild_height, Some(ACTIVATION - 1));
+            await_rebuild(&db).await;
+
+            let targets_after = stored_targets(&db);
+            let accumulated_after = stored_accumulated_difficulties(&db);
+
+            // The tip is untouched: nothing here failed, so nothing was rewound.
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+
+            // Below the fork the rules at each height never changed, so the stored targets were already right.
+            let prefix = usize::try_from(ACTIVATION).unwrap();
+            assert_eq!(
+                targets_before[..prefix],
+                targets_after[..prefix],
+                "targets below the fork must be byte identical"
+            );
+
+            // At and above it they have been rewritten to what the post-fork rules say...
+            assert_ne!(targets_before[prefix..], targets_after[prefix..]);
+            assert!(
+                divergences_from_stored(&db, &post_fork, 1).is_empty(),
+                "after the rebuild nothing may recompute to a different target"
+            );
+
+            // ...and because `target_difficulty` is what accumulates, the running total moved with them.
+            assert_eq!(accumulated_before[..prefix], accumulated_after[..prefix]);
+            assert_ne!(
+                accumulated_before[usize::try_from(CHAIN_LEN).unwrap()],
+                accumulated_after[usize::try_from(CHAIN_LEN).unwrap()],
+                "total accumulated difficulty at the tip must be recomputed"
+            );
+        }
+
+        /// §6.3 - a block above the fork whose proof of work no longer clears the corrected target.
+        #[tokio::test]
+        async fn a_block_that_no_longer_clears_its_target_rewinds_the_chain() {
+            const WEAK: u64 = ACTIVATION + 3;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (_, _, chain) = build_pre_fork_chain(&path, Some(WEAK));
+            let removed: Vec<_> = (WEAK..=CHAIN_LEN)
+                .map(|h| *chain.get(&format!("M{h}")).unwrap().hash())
+                .collect();
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            await_rebuild(&db).await;
+
+            assert_eq!(
+                db.get_chain_metadata().unwrap().best_block_height(),
+                WEAK - 1,
+                "the chain must be rewound to exactly one below the offending block"
+            );
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                WEAK - 1
+            );
+            assert_eq!(rebuild_status(&db), AccumulatedDataRebuildStatus {
+                is_rebuilt: true,
+                last_rebuild_height: Some(WEAK - 1),
+            });
+
+            // The rewind must not leave the blocks behind as orphans: their accumulated data was built from
+            // pre-fork targets, and an orphan tip carrying that can win a comparison it should lose - which would
+            // reorg the node straight back onto the chain it just rewound off, with the walk already finished and
+            // nothing left to re-arm. The rewind, this cleanup and the status above are one committed outcome, so
+            // observing any of them means observing all three.
+            let access = db.db_read_access().unwrap();
+            assert!(
+                access.fetch_strongest_orphan_chain_tips().unwrap().is_empty(),
+                "a strict rewind must not leave stale orphan tips behind"
+            );
+            for hash in &removed {
+                assert!(
+                    !access.contains(&DbKey::OrphanBlock(*hash)).unwrap(),
+                    "a strict rewind must not leave the removed blocks behind as orphans"
+                );
+            }
+        }
+
+        /// §6.4 - the rewind has to be reachable by a rule the difficulty calculator cannot see.
+        ///
+        /// This is what §4.2 buys: the rebuild runs the *full* header validator, not just
+        /// `check_achieved_and_target_difficulty`. Without it a block that is invalid for one of the activation
+        /// rules would pass the repair, and the node would sit on a chain it would reject if it re-synced.
+        #[tokio::test]
+        async fn a_block_that_fails_a_non_difficulty_rule_rewinds_the_chain() {
+            const BAD: u64 = ACTIVATION + 3;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            {
+                let rules = rules(ACTIVATION, PRE_FORK_WINDOW);
+                let db = create_custom_blockchain_at_path(&path, rules.clone(), false);
+                create_main_chain_with_range_proof_type(&db, chain_specs(None), Some(RangeProofType::RevealedValue));
+                rebuild_all(&db, &rules, u64::MAX);
+                mark_bad_block(&db, BAD);
+
+                // The difficulty calculator on its own is perfectly happy with this block - it clears its target.
+                // Only the full validator's `check_not_bad_block` sees anything wrong, which is the point.
+                let access = db.db_read_access().unwrap();
+                let header = access.fetch_chain_header_by_height(BAD).unwrap().header().clone();
+                DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1))
+                    .check_achieved_and_target_difficulty(&*access, &header)
+                    .expect("the difficulty calculator alone cannot see this");
+                drop(access);
+
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            await_rebuild(&db).await;
+
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), BAD - 1);
+            assert_eq!(rebuild_status(&db), AccumulatedDataRebuildStatus {
+                is_rebuilt: true,
+                last_rebuild_height: Some(BAD - 1),
+            });
+        }
+
+        /// §6.5 - coexistence with a v5 rebuild that is still in flight.
+        ///
+        /// The `min` in the migration is load-bearing: overwriting a watermark that is below the activation height
+        /// would silently abandon the rest of that repair. And strict mode is decided per height, not per task, so
+        /// the part of the walk below the fork keeps its full throttle and its non-validating behaviour.
+        #[tokio::test]
+        async fn a_v5_rebuild_in_flight_is_not_abandoned_and_keeps_the_pre_fork_behaviour() {
+            /// Well below the activation height, as a node part way through the earlier rebuild would be.
+            const V5_WATERMARK: u64 = 50;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (targets_before, _, _) = build_pre_fork_chain(&path, None);
+            {
+                // Opened under rules the migration skips. An armed migration spawns the rebuild task, which holds
+                // its own handle on the backend, so the LMDB environment would outlive this block and the next
+                // open would fail on the file lock.
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+                db.db_read_access()
+                    .unwrap()
+                    .set_accumulated_data_rebuild_status(AccumulatedDataRebuildStatus {
+                        is_rebuilt: false,
+                        last_rebuild_height: Some(V5_WATERMARK),
+                    })
+                    .unwrap();
+                // A header below the fork that the full validator would reject. Strict mode must not reach it: if
+                // it engaged for the whole task rather than per height, this would rewind the chain to
+                // `V5_WATERMARK + 2` instead of running to completion.
+                mark_bad_block(&db, V5_WATERMARK + 3);
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+
+            // The migration must not raise the watermark past where the earlier rebuild had got to.
+            assert_eq!(rebuild_status(&db), AccumulatedDataRebuildStatus {
+                is_rebuilt: false,
+                last_rebuild_height: Some(V5_WATERMARK),
+            });
+
+            await_rebuild(&db).await;
+
+            // It ran to completion: the bad block below the fork was never looked at, because strict mode only
+            // engages at and above the activation height.
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+
+            // And it did the repair: the prefix is untouched, the suffix is now self-consistent.
+            let targets_after = stored_targets(&db);
+            let prefix = usize::try_from(ACTIVATION).unwrap();
+            assert_eq!(targets_before[..prefix], targets_after[..prefix]);
+            assert!(divergences_from_stored(&db, &rules(ACTIVATION, POST_FORK_WINDOW), 1).is_empty());
+        }
+
+        /// The skip path must not touch a rebuild that is still owed.
+        ///
+        /// Every migration block runs inside one `run_migrations` loop, so a database at version 5 arms the v5
+        /// repair and then reaches this block in the same call. Marking the rebuild done here - because *this*
+        /// fork has nothing to repair on this network - would latch `is_rebuilt: true` and silently abandon the
+        /// v5 repair, on exactly the nodes that still need it.
+        ///
+        /// Each case needs its own database: leaving the in-flight status alone is the whole point, so the open
+        /// under test arms the background walk, and that task holds the backend open past the end of the case.
+        async fn skip_path_leaves_an_in_flight_rebuild_alone(case_rules: BaseNodeConsensusManager) {
+            const IN_FLIGHT_WATERMARK: u64 = 50;
+
+            let in_flight = AccumulatedDataRebuildStatus {
+                is_rebuilt: false,
+                last_rebuild_height: Some(IN_FLIGHT_WATERMARK),
+            };
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            {
+                // Put the database into "the v5 repair is still in flight" and back to version 8. Opened under
+                // rules the migration skips, and against a status that is already finished, so this open neither
+                // arms nor spawns anything itself.
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+                db.db_read_access()
+                    .unwrap()
+                    .set_accumulated_data_rebuild_status(in_flight.clone())
+                    .unwrap();
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let db = create_custom_blockchain_at_path(&path, case_rules, true);
+            // Read synchronously, before the test yields: `#[tokio::test]` is a current-thread runtime, so the
+            // rebuild task this open spawned cannot have run a single height yet.
+            assert_eq!(
+                rebuild_status(&db),
+                in_flight,
+                "the skip path must leave both the watermark and `is_rebuilt: false` untouched"
+            );
+        }
+
+        /// A NextNet node at MigrationVersion 5: the fork is unscheduled, so the v8 block skips - in the same
+        /// `run_migrations` call that armed the v5 repair three iterations earlier.
+        #[tokio::test]
+        async fn the_skip_path_leaves_an_in_flight_rebuild_alone_when_the_fork_is_unscheduled() {
+            skip_path_leaves_an_in_flight_rebuild_alone(rules_unscheduled()).await;
+        }
+
+        /// The same, for a MainNet node whose tip has not reached 350,000 yet.
+        #[tokio::test]
+        async fn the_skip_path_leaves_an_in_flight_rebuild_alone_when_the_tip_is_below_the_fork() {
+            skip_path_leaves_an_in_flight_rebuild_alone(rules(CHAIN_LEN + 50, POST_FORK_WINDOW)).await;
+        }
+
+        /// A *finished* rebuild must not drag the walk back over its stale watermark.
+        ///
+        /// `update_accumulated_difficulty` records `is_rebuilt: height == last_chain_header.height()`, so a
+        /// completed rebuild leaves the watermark at the tip *as it was when it completed*. A MainNet node that
+        /// finished the v5 rebuild at height 200,000 and then synced to 350,053 carries
+        /// `{is_rebuilt: true, last_rebuild_height: Some(200_000)}`; folding that into the `min` would re-walk
+        /// 150,000 already-correct heights at 100 ms each - over four hours - before reaching the fork.
+        #[tokio::test]
+        async fn a_finished_rebuild_with_a_stale_watermark_arms_at_the_activation_height() {
+            const STALE_WATERMARK: u64 = 50;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            {
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+                db.db_read_access()
+                    .unwrap()
+                    .set_accumulated_data_rebuild_status(AccumulatedDataRebuildStatus {
+                        is_rebuilt: true,
+                        last_rebuild_height: Some(STALE_WATERMARK),
+                    })
+                    .unwrap();
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+
+            // Armed at the fork, not at the stale watermark: the finished rebuild is evidence about a tip that
+            // has since moved, not about the prefix being unrepaired.
+            assert_eq!(rebuild_status(&db), AccumulatedDataRebuildStatus {
+                is_rebuilt: false,
+                last_rebuild_height: Some(ACTIVATION - 1),
+            });
+
+            await_rebuild(&db).await;
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+            assert!(divergences_from_stored(&db, &rules(ACTIVATION, POST_FORK_WINDOW), 1).is_empty());
+        }
+
+        /// A background task must never wipe a pruned node's chain.
+        ///
+        /// `rewind_to_height` turns a rewind that reaches past a pruned node's effective pruning horizon into a
+        /// rewind to height 0 - a full destructive wipe - and in that branch it also writes an orphan chain tip
+        /// without the matching orphan block. `rewind_below_invalid_header` must recognise that case before it
+        /// starts, refuse it, and leave the rebuild unfinished so the operator sees it again.
+        #[tokio::test]
+        async fn a_rewind_that_would_wipe_a_pruned_node_is_refused() {
+            const INVALID_AT: u64 = ACTIVATION;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            // Make it a pruned node with only a few blocks of history: `is_pruned_node()` reads the pruning
+            // horizon, and the effective horizon is `tip - pruned_height`, so the rewind to `INVALID_AT - 1`
+            // reaches well past it.
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(5);
+            txn.set_pruned_height(CHAIN_LEN - 5);
+            db.write(txn).unwrap();
+
+            let status_before = rebuild_status(&db);
+            let result = {
+                let mut access = db.db_write_access().unwrap();
+                rewind_below_invalid_header(
+                    &mut *access,
+                    INVALID_AT,
+                    ACTIVATION,
+                    &ValidationError::ConsensusError("planted by a test".to_string()),
+                )
+            };
+
+            assert!(
+                result.is_err(),
+                "the rewind must be refused, got {:?}",
+                result.map(|s| format!("{s:?}"))
+            );
+            // Nothing was removed, and nothing claims the repair is finished.
+            assert_eq!(
+                db.get_chain_metadata().unwrap().best_block_height(),
+                CHAIN_LEN,
+                "a refused rewind must not touch the chain"
+            );
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN
+            );
+            assert_eq!(
+                rebuild_status(&db),
+                status_before,
+                "a refused rewind must not mark the rebuild done"
+            );
+            assert!(
+                db.db_read_access()
+                    .unwrap()
+                    .fetch_strongest_orphan_chain_tips()
+                    .unwrap()
+                    .is_empty(),
+                "a refused rewind must not leave an orphan chain tip behind"
+            );
+        }
+
+        /// Header sync ahead of block sync: the heights that have a header but no block yet must be armed for,
+        /// and repaired, exactly like the ones that do.
+        ///
+        /// This is the shape of the upgrade path, not an exotic one. Nothing ever goes back over a header that is
+        /// already on disk - header sync neither re-validates nor rewrites one, and takes the *stored* accumulated
+        /// data at the split as its accumulation base - and block sync writes that stored value back verbatim as
+        /// each body arrives, promoting it into chain metadata. So a post-fork header left holding the old
+        /// binary's pre-fork-window target is not a transient state that block sync cleans up; it is the exact
+        /// corruption this change exists to remove, and it would be chained off a repaired prefix.
+        ///
+        /// Two separate defects are covered here, because they compound. The block tip is below the activation
+        /// height, so a migration that arms off `MetadataKey::ChainHeight` never arms at all; and once it does
+        /// arm, a walk that stops at the block tip repairs nothing above it and latches `is_rebuilt: true`.
+        #[tokio::test]
+        async fn header_only_heights_above_the_block_tip_are_armed_for_and_repaired() {
+            /// Below the fork, so the arming decision cannot be made from the block tip either.
+            const BLOCK_TIP: u64 = ACTIVATION - 10;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (targets_before, _, _) = build_pre_fork_chain(&path, None);
+            {
+                // Opened under rules the migration skips, so this open neither arms nor spawns anything.
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+                set_block_tip_below_the_header_tip(&db, BLOCK_TIP);
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            let db = create_custom_blockchain_at_path(&path, post_fork.clone(), true);
+
+            // Armed, even though the block tip is ten heights below the fork.
+            assert_eq!(
+                rebuild_status(&db).last_rebuild_height,
+                Some(ACTIVATION - 1),
+                "the arming decision must be taken on the header tip, not the block tip"
+            );
+            await_rebuild(&db).await;
+
+            // Every post-fork height was repaired, including the eleven that have no block.
+            assert!(
+                divergences_from_stored(&db, &post_fork, 1).is_empty(),
+                "header-only heights must be repaired, not skipped"
+            );
+            assert_eq!(rebuild_status(&db), AccumulatedDataRebuildStatus {
+                is_rebuilt: true,
+                last_rebuild_height: Some(CHAIN_LEN),
+            });
+
+            // Repairing a header-only height rewrites it; it never removes it, and it never moves the block tip.
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN
+            );
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), BLOCK_TIP);
+
+            // And the prefix below the fork is still byte identical.
+            let prefix = usize::try_from(ACTIVATION).unwrap();
+            assert_eq!(targets_before[..prefix], stored_targets(&db)[..prefix]);
+        }
+
+        /// A header above the block tip that no longer validates must stop the walk, not rewind it.
+        ///
+        /// Repairing a header-only height is well defined; rewinding at one is not. `rewind_to_height` measures
+        /// its block removals from the block tip, so the pruned-node refusal and the "how many blocks are about
+        /// to go" accounting are all computed against a chain that does not reach up here, while the headers it
+        /// would delete are counted from the *header* tip and could run tens of thousands deep on one verdict.
+        #[tokio::test]
+        async fn a_permanent_verdict_above_the_block_tip_stops_instead_of_rewinding() {
+            const WEAK: u64 = ACTIVATION + 3;
+            /// Above the fork but below `WEAK`, so the walk enters strict mode on heights that have blocks and
+            /// then meets the offending header at a height that does not.
+            const BLOCK_TIP: u64 = ACTIVATION + 1;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, Some(WEAK));
+            {
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+                set_block_tip_below_the_header_tip(&db, BLOCK_TIP);
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            for _ in 0..600 {
+                if rebuild_status(&db).last_rebuild_height == Some(WEAK - 1) {
+                    break;
+                }
+                tokio::time::sleep(StdDuration::from_millis(50)).await;
+            }
+            // Give it long enough to do the wrong thing if it were going to.
+            tokio::time::sleep(StdDuration::from_millis(500)).await;
+
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN,
+                "a header-only height must not delete a single header"
+            );
+            assert_eq!(
+                db.get_chain_metadata().unwrap().best_block_height(),
+                BLOCK_TIP,
+                "a header-only height must not move the block tip"
+            );
+            assert_eq!(
+                rebuild_status(&db),
+                AccumulatedDataRebuildStatus {
+                    is_rebuilt: false,
+                    last_rebuild_height: Some(WEAK - 1),
+                },
+                "the walk must stop unfinished, so it is tried again once block sync has brought the body in"
+            );
+        }
+
+        /// A pruned node whose pruned height has advanced past the fork must still be repaired.
+        ///
+        /// An earlier revision hoisted the pruned-node rewind refusal to the top of the walk, where the predicate
+        /// reduces to `pruned_height >= activation`. That is independent of the tip, so on a pruned node - where
+        /// `pruned_height ~ tip - pruning_horizon` - it is false at rollout and *permanently* true once the chain
+        /// has advanced one pruning horizon past the fork. Every startup from then on refused the repair at its
+        /// first strict height and left the node with its stale post-fork data, although nothing here fails
+        /// validation and no rewind is ever attempted.
+        #[tokio::test]
+        async fn a_pruned_node_past_the_activation_height_is_still_repaired() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (targets_before, _, _) = build_pre_fork_chain(&path, None);
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Opened under rules the migration skips, so the walk does not start on its own and the test drives
+            // it. It has to be driven from the same open the pruned-node state is set up in: `start_new`
+            // rewrites `pruning_horizon` from the config on every open, so a reopen would quietly turn this back
+            // into an archival node and the test would pass without testing anything.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(5);
+            txn.set_pruned_height(CHAIN_LEN - 5);
+            db.write(txn).unwrap();
+            let metadata = db.get_chain_metadata().unwrap();
+            assert!(metadata.is_pruned_node());
+            assert!(
+                metadata.pruned_height() >= ACTIVATION,
+                "the point of the fixture is a pruned height that has advanced past the fork"
+            );
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            for height in ACTIVATION..=CHAIN_LEN {
+                let step = process_accumulated_data_for_height(
+                    db.db.clone(),
+                    difficulty_calculator.clone(),
+                    &validator,
+                    &post_fork,
+                    height,
+                    &post_fork.consensus_constants(height).clone(),
+                    ACTIVATION,
+                )
+                .unwrap_or_else(|e| {
+                    panic!("a pruned node must not be refused the repair, but height {height} failed: {e}")
+                });
+                assert!(
+                    matches!(step, RebuildStep::Processed(_)),
+                    "height {height} was not repaired, got {step:?}"
+                );
+            }
+
+            assert!(
+                divergences_from_stored(&db, &post_fork, 1).is_empty(),
+                "a pruned node's post-fork targets must be repaired like any other node's"
+            );
+            assert_eq!(
+                db.get_chain_metadata().unwrap().best_block_height(),
+                CHAIN_LEN,
+                "nothing here fails validation, so nothing may be rewound"
+            );
+            let prefix = usize::try_from(ACTIVATION).unwrap();
+            assert_eq!(targets_before[..prefix], stored_targets(&db)[..prefix]);
+        }
+
+        /// A walk that finds itself above the header tip has been overtaken by a reorg that shortened the chain.
+        /// It must not call that "finished".
+        ///
+        /// The walk only ever climbs, so the ordinary way it ends is by rewriting the header tip itself. Arriving
+        /// *above* the header tip therefore means the branch it repaired the heights below on is gone, and the
+        /// heights that replaced them were not re-validated by whatever put them there. Latching
+        /// `is_rebuilt: true` here would mark the repair finished over a suffix that was never repaired, one-way,
+        /// with nothing left to re-arm it.
+        #[tokio::test]
+        async fn a_walk_that_climbs_above_the_header_tip_resumes_instead_of_finishing() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Opened under rules the migration skips, so the walk does not start on its own and the test drives it.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+            let status_before = rebuild_status(&db);
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            let step = process_accumulated_data_for_height(
+                db.db.clone(),
+                difficulty_calculator.clone(),
+                &validator,
+                &post_fork,
+                CHAIN_LEN + 1,
+                &post_fork.consensus_constants(CHAIN_LEN + 1).clone(),
+                ACTIVATION,
+            )
+            .unwrap();
+
+            match step {
+                RebuildStep::Resume { from } => assert_eq!(
+                    from, ACTIVATION,
+                    "the whole strict suffix has to be climbed again, because the split may be anywhere in it"
+                ),
+                other => panic!("expected the walk to resume, got {other:?}"),
+            }
+            assert_eq!(
+                rebuild_status(&db),
+                status_before,
+                "a resume must not write a status, least of all a finished one"
+            );
+
+            // The one case where there is genuinely nothing left: the chain no longer reaches the fork at all.
+            // Re-walking there would only spin until the resume budget ran out, so this really is finished.
+            let far_fork = rules(CHAIN_LEN + 5, POST_FORK_WINDOW);
+            let step = process_accumulated_data_for_height(
+                db.db.clone(),
+                DifficultyCalculator::new(far_fork.clone(), RandomXFactory::new(1)),
+                &validator,
+                &far_fork,
+                CHAIN_LEN + 6,
+                &far_fork.consensus_constants(CHAIN_LEN + 6).clone(),
+                CHAIN_LEN + 5,
+            )
+            .unwrap();
+            match step {
+                RebuildStep::Processed(status) => assert_eq!(status, AccumulatedDataRebuildStatus {
+                    is_rebuilt: true,
+                    last_rebuild_height: Some(CHAIN_LEN),
+                }),
+                other => panic!("expected the walk to finish, got {other:?}"),
+            }
+        }
+
+        /// The write-phase decision, branch by branch.
+        ///
+        /// Raced into existence it would be untestable, so it is a pure function and this is the whole truth
+        /// table. The rows that matter most are the ones earlier revisions got wrong: a moved header is never a
+        /// skip and never a retry in place, a permanent verdict reached against tips that have since moved is a
+        /// `Retry` and never a rewind, and a permanent verdict above the block tip is never a rewind at all.
+        #[test]
+        fn the_write_phase_decision_covers_every_branch() {
+            let permanent = ValidationError::ConsensusError("a permanent property of the block".to_string());
+            let can_change = ValidationError::FatalStorageError("a transient read".to_string());
+
+            // Nothing moved and the header validated: rewrite its accumulated data. Whether the height has a
+            // block or only a header makes no difference - repairing accumulated data is the same operation.
+            assert_eq!(decide_strict_action(false, false, false, None), StrictAction::Rewrite);
+            assert_eq!(decide_strict_action(false, false, true, None), StrictAction::Rewrite);
+
+            // The header at this height (or its parent) is not the one that was validated. Whatever the verdict
+            // was, it belongs to a header that is no longer there. Never a skip: the replacement is not
+            // re-validated by the reorg paths that put it there, so skipping would leave a stale row in place and
+            // chain it forward over the rest of the suffix. And never a retry in place either: the walk is
+            // monotonic, so a reorg that split below this height replaced heights it has already passed, and only
+            // climbing them again makes the finish line true of the chain the walk ended on.
+            assert_eq!(decide_strict_action(true, false, false, None), StrictAction::Resume);
+            assert_eq!(
+                decide_strict_action(true, false, false, Some(&permanent)),
+                StrictAction::Resume
+            );
+            assert_eq!(
+                decide_strict_action(true, true, false, Some(&permanent)),
+                StrictAction::Resume
+            );
+            assert_eq!(
+                decide_strict_action(true, true, false, Some(&can_change)),
+                StrictAction::Resume
+            );
+            assert_eq!(
+                decide_strict_action(true, true, true, Some(&permanent)),
+                StrictAction::Resume
+            );
+
+            // A permanent verdict against exactly the chain it was reached on, at a height that has a block:
+            // rewind.
+            assert_eq!(
+                decide_strict_action(false, false, false, Some(&permanent)),
+                StrictAction::Rewind
+            );
+
+            // The same verdict, but sync or a reorg moved a tip while the header was being validated. A rewind is
+            // a statement about every block above this height, so it must not be executed against a chain that is
+            // no longer the one it was decided against. This is what stands in for the add-block gate that is
+            // deliberately not reintroduced. Checked before `header_only`, because `header_only` was read from
+            // the same snapshot and a moved tip is exactly what invalidates it.
+            assert_eq!(
+                decide_strict_action(false, true, false, Some(&permanent)),
+                StrictAction::Retry
+            );
+            assert_eq!(
+                decide_strict_action(false, true, true, Some(&permanent)),
+                StrictAction::Retry
+            );
+
+            // The same verdict again, at a height above the block tip. The repair applies there, but a rewind
+            // does not: `rewind_to_height` measures its block removals from the block tip, so every guard that
+            // bounds one is computed against a chain that does not reach up here, while the headers it would
+            // delete are counted from the header tip. Stop and let block sync bring the body in.
+            assert_eq!(
+                decide_strict_action(false, false, true, Some(&permanent)),
+                StrictAction::StopHeaderOnly
+            );
+
+            // A verdict that can come out differently later never destroys blocks, moved tips or not, block or
+            // no block.
+            assert_eq!(
+                decide_strict_action(false, false, false, Some(&can_change)),
+                StrictAction::Stop
+            );
+            assert_eq!(
+                decide_strict_action(false, true, false, Some(&can_change)),
+                StrictAction::Stop
+            );
+            assert_eq!(
+                decide_strict_action(false, false, true, Some(&can_change)),
+                StrictAction::Stop
+            );
+        }
+
+        /// Which verdicts are a permanent property of the block, and which are not.
+        ///
+        /// The discriminator is deliberately the one the codebase already has - `get_ban_reason() == None`, plus
+        /// the two chain/environment dependent cases `BlockHeaderSyncValidator::blacklist_unless_verdict_can_change`
+        /// and `insert_orphan_and_find_new_tips` already special-case - so that the three cannot drift apart.
+        #[test]
+        fn only_permanent_verdicts_are_allowed_to_destroy_blocks() {
+            // A wall clock behind the network: a VM resumed from suspend, a container before NTP settles. This
+            // fails on every recent header, and rewinding on it would delete the whole post-fork suffix for a
+            // clock problem.
+            assert!(verdict_can_change(&ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidTimestampFutureTimeLimit
+            )));
+            // Measured against the chain the header is on, not against the header.
+            assert!(verdict_can_change(&ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::OldSeedHash
+            )));
+            // Every `ChainStorageError` becomes this when it crosses into validation, so a transient LMDB read
+            // failure inside `get_previous_timestamps` or `check_not_bad_block` lands here.
+            assert!(verdict_can_change(&ValidationError::FatalStorageError(
+                "transient".to_string()
+            )));
+            assert!(verdict_can_change(
+                &ValidationError::IncorrectNumberOfTimestampsProvided {
+                    expected: 11,
+                    actual: 3
+                }
+            ));
+            assert!(verdict_can_change(&ValidationError::HeaderHashMismatch(
+                "mismatch".to_string()
+            )));
+            assert!(verdict_can_change(&ValidationError::HeaderHeightMismatch(
+                "7 != 8".to_string()
+            )));
+
+            // ...and the ones that really are about this block and cannot come out differently later.
+            assert!(!verdict_can_change(&ValidationError::ConsensusError(
+                "nope".to_string()
+            )));
+            assert!(!verdict_can_change(&ValidationError::BadBlockFound {
+                hash: FixedHash::zero().to_hex(),
+                reason: "already known bad".to_string(),
+            }));
+            assert!(!verdict_can_change(&ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidHeight { expected: 5, actual: 9 }
+            )));
+        }
+
+        /// A verdict that can change must stop the walk, not rewind the chain.
+        ///
+        /// The block above the fork is dated a century into the future, which is what a node whose own clock is
+        /// far behind the network sees on every recent header. Before this, *every* `ValidationError` rewound -
+        /// including this one - so such a node would boot, walk to the fork, delete its whole post-fork suffix and
+        /// latch `is_rebuilt: true`, leaving it to resync across a fork most of its peers have not taken yet.
+        #[tokio::test]
+        async fn a_verdict_that_can_change_stops_the_walk_instead_of_rewinding() {
+            const FUTURE: u64 = ACTIVATION + 3;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain_from(&path, chain_specs_with(None, Some(FUTURE)), true);
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            // The walk repairs up to the block below the offending one and then stops.
+            for _ in 0..600 {
+                if rebuild_status(&db).last_rebuild_height == Some(FUTURE - 1) {
+                    break;
+                }
+                tokio::time::sleep(StdDuration::from_millis(50)).await;
+            }
+            // Give it long enough to do the wrong thing if it were going to.
+            tokio::time::sleep(StdDuration::from_millis(500)).await;
+
+            assert_eq!(
+                db.get_chain_metadata().unwrap().best_block_height(),
+                CHAIN_LEN,
+                "a verdict that can change must not rewind a single block"
+            );
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN,
+                "a verdict that can change must not delete a single header"
+            );
+            assert_eq!(
+                rebuild_status(&db),
+                AccumulatedDataRebuildStatus {
+                    is_rebuilt: false,
+                    last_rebuild_height: Some(FUTURE - 1),
+                },
+                "the walk must stop unfinished so the next startup retries the same height"
+            );
+        }
+
+        /// A pruned node that genuinely cannot perform the rewind repairs everything up to it and then stops.
+        ///
+        /// The refusal is asked about the rewind actually being attempted, so a pruned node is not excluded from
+        /// the repair for a rewind that may never happen - it gets the whole repair up to the height that needs
+        /// one. What it does not get is the rewind, and the walk stops there with `is_rebuilt` still false.
+        ///
+        /// Leaving `[activation, H-1]` rewritten and `[H, tip]` stale is the accepted outcome here, not a new
+        /// one: `StrictAction::Stop`, `StrictAction::StopHeaderOnly` and the consecutive-retry bound all produce
+        /// it deliberately, and it is transient for the same reason - the next startup resumes from the
+        /// persisted watermark.
+        #[tokio::test]
+        async fn a_pruned_node_that_cannot_rewind_repairs_up_to_the_refusal_and_stops() {
+            const WEAK: u64 = ACTIVATION + 3;
+
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, Some(WEAK));
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Driven by hand, and from the same open the pruned-node state is set up in - see
+            // `a_pruned_node_past_the_activation_height_is_still_repaired`.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+            // A pruned node whose history no longer reaches `WEAK - 1`.
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(5);
+            txn.set_pruned_height(CHAIN_LEN - 5);
+            db.write(txn).unwrap();
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            let step_at = |height: u64| {
+                process_accumulated_data_for_height(
+                    db.db.clone(),
+                    difficulty_calculator.clone(),
+                    &validator,
+                    &post_fork,
+                    height,
+                    &post_fork.consensus_constants(height).clone(),
+                    ACTIVATION,
+                )
+            };
+            for height in ACTIVATION..WEAK {
+                step_at(height).unwrap_or_else(|e| {
+                    panic!("the repair must not be refused before the rewind, got {e} at {height}")
+                });
+            }
+            let refused = step_at(WEAK);
+            assert!(
+                refused.is_err(),
+                "the rewind this pruned node cannot perform must be refused, got {:?}",
+                refused.map(|s| format!("{s:?}"))
+            );
+
+            // The refusal is about the rewind, so everything below it was still repaired.
+            let diverged_below_the_refusal = divergences_in_range(&db, &post_fork, ACTIVATION, WEAK - 1);
+            assert!(
+                diverged_below_the_refusal.is_empty(),
+                "a pruned node must still be repaired up to the height that needs a rewind, got \
+                 {diverged_below_the_refusal:?}"
+            );
+
+            // And the rewind itself was refused, so not a block and not a header went.
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN);
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN
+            );
+            assert_eq!(
+                rebuild_status(&db),
+                AccumulatedDataRebuildStatus {
+                    is_rebuilt: false,
+                    last_rebuild_height: Some(WEAK - 1),
+                },
+                "a refused rewind must leave the repair unfinished"
+            );
+            assert!(
+                db.db_read_access()
+                    .unwrap()
+                    .fetch_strongest_orphan_chain_tips()
+                    .unwrap()
+                    .is_empty(),
+                "a refused rewind must not leave an orphan chain tip behind"
+            );
+        }
+
+        /// The walk climbs to the header tip, and a height that has only a header is repaired like any other.
+        ///
+        /// The companion to `header_only_heights_above_the_block_tip_are_armed_for_and_repaired`, driven by hand
+        /// so that the single step at the header-only height can be inspected directly: it must come back
+        /// `Processed`, with the accumulated data rewritten, and with the header still there.
+        #[tokio::test]
+        async fn the_strict_walk_repairs_up_to_the_header_tip() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Opened under rules the migration skips, so the walk does not start on its own and the test drives it.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            // Drop the tip *block* but keep its header, which is exactly the shape header sync leaves behind.
+            {
+                let access = db.db_read_access().unwrap();
+                let tip = access.fetch_chain_header_by_height(CHAIN_LEN).unwrap();
+                let new_tip = access.fetch_chain_header_by_height(CHAIN_LEN - 1).unwrap();
+                let expected_best = *access.fetch_chain_metadata().unwrap().best_block_hash();
+                drop(access);
+                let mut txn = DbTransaction::new();
+                txn.delete_tip_block(*tip.hash());
+                txn.set_best_block(
+                    new_tip.height(),
+                    new_tip.accumulated_data().hash,
+                    new_tip.accumulated_data().total_accumulated_difficulty,
+                    expected_best,
+                    new_tip.timestamp(),
+                );
+                db.write(txn).unwrap();
+            }
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN - 1);
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN,
+                "the header must survive so that this really is a header-only height"
+            );
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            let step = process_accumulated_data_for_height(
+                db.db.clone(),
+                difficulty_calculator,
+                &validator,
+                &post_fork,
+                CHAIN_LEN,
+                &post_fork.consensus_constants(CHAIN_LEN).clone(),
+                ACTIVATION,
+            )
+            .unwrap();
+
+            match step {
+                RebuildStep::Processed(status) => assert_eq!(
+                    status,
+                    AccumulatedDataRebuildStatus {
+                        is_rebuilt: true,
+                        last_rebuild_height: Some(CHAIN_LEN),
+                    },
+                    "the walk must repair the header-only height and finish at the header tip"
+                ),
+                other => panic!("expected the header-only height to be repaired, got {other:?}"),
+            }
+            // Repairing it rewrites it; it does not remove it, and it does not move the block tip.
+            assert_eq!(
+                db.db_read_access().unwrap().fetch_last_header().unwrap().height,
+                CHAIN_LEN,
+                "repairing a header-only height must not delete it"
+            );
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), CHAIN_LEN - 1);
+            assert!(
+                divergences_from_stored(&db, &post_fork, CHAIN_LEN).is_empty(),
+                "the header-only height's target must have been recomputed under the post-fork rules"
+            );
+        }
+
+        /// The orphan cleanup after a rewind may not be able to fail part way, so it may not probe first.
+        ///
+        /// `remove_orphan_chain_tip` fails the whole transaction on a hash that is not a tip, and the obvious
+        /// guard - `fetch_orphan_chain_tip_by_hash` - returns `Err(ValueNotFound)` rather than `Ok(None)` for a
+        /// tip entry whose orphan block is missing, which is the very case the guard was there for.
+        #[tokio::test]
+        async fn removing_an_orphan_chain_tip_that_is_not_there_is_not_an_error() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            let mut txn = DbTransaction::new();
+            txn.remove_orphan_chain_tip(FixedHash::zero());
+            assert!(
+                db.write(txn).is_err(),
+                "the strict variant must still fail, or the `if_exists` one would be pointless"
+            );
+
+            let mut txn = DbTransaction::new();
+            txn.remove_orphan_chain_tip_if_exists(FixedHash::zero());
+            db.write(txn).unwrap();
+        }
+
+        /// §6.6 - the three cases where there is nothing to repair.
+        #[tokio::test]
+        async fn the_migration_is_a_no_op_where_there_is_nothing_to_repair() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (targets_before, _, _) = build_pre_fork_chain(&path, None);
+
+            let cases: Vec<(&str, BaseNodeConsensusManager)> = vec![
+                // Igor / Stagenet / NextNet: no entry ever turns the verifier on.
+                ("unscheduled", rules_unscheduled()),
+                // LocalNet: the base entry carries the rule, so nothing was mined under the old rules.
+                ("active from genesis", rules_active_from_genesis()),
+                // Esmeralda today: the chain has not reached the fork.
+                ("tip below activation", rules(CHAIN_LEN + 50, POST_FORK_WINDOW)),
+            ];
+
+            // What `build_pre_fork_chain` left behind: a rebuild that ran to completion at the tip.
+            let status_before = AccumulatedDataRebuildStatus {
+                is_rebuilt: true,
+                last_rebuild_height: Some(CHAIN_LEN),
+            };
+
+            for (name, case_rules) in cases {
+                let db = create_custom_blockchain_at_path(&path, case_rules, false);
+                assert_eq!(
+                    rebuild_status(&db),
+                    status_before,
+                    "{name}: the migration must arm nothing and leave the status exactly as it found it"
+                );
+                assert_eq!(
+                    db.get_chain_metadata().unwrap().best_block_height(),
+                    CHAIN_LEN,
+                    "{name}"
+                );
+                assert_eq!(stored_targets(&db), targets_before, "{name}: nothing may be rewritten");
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+            }
+
+            // The control: with the fork actually scheduled and reached, the same database *is* armed.
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            assert_eq!(rebuild_status(&db).last_rebuild_height, Some(ACTIVATION - 1));
+            assert!(!rebuild_status(&db).is_rebuilt);
+            await_rebuild(&db).await;
+        }
+
+        /// §6.7 - orphans at or above the fork are purged, orphans below it are left alone.
+        ///
+        /// A stale orphan tip carries a `total_accumulated_difficulty` built from pre-fork targets and can win an
+        /// accumulated difficulty comparison it should lose, reorging the node onto a stale-target side chain the
+        /// moment the main chain is repaired.
+        #[tokio::test]
+        async fn orphans_at_or_above_the_activation_height_are_purged() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (_, _, chain) = build_pre_fork_chain(&path, None);
+
+            let (below_hashes, above_hashes) = {
+                // See the note in the v5 coexistence test: an armed migration would keep this environment open.
+                let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), false);
+
+                // Forks off height 50 and off height 105, so the orphans themselves sit at 51/52 and 106/107.
+                let (_, below) = create_orphan_chain(
+                    &db,
+                    &[("LO1->GB", 1, 120), ("LO2->LO1", 1, 120)][..],
+                    chain.get("M50").unwrap().clone(),
+                );
+                let (_, above) = create_orphan_chain(
+                    &db,
+                    &[("HO1->GB", 1, 120), ("HO2->HO1", 1, 120)][..],
+                    chain.get("M105").unwrap().clone(),
+                );
+                let below_hashes: Vec<_> = ["LO1", "LO2"].iter().map(|n| *below.get(*n).unwrap().hash()).collect();
+                let above_hashes: Vec<_> = ["HO1", "HO2"].iter().map(|n| *above.get(*n).unwrap().hash()).collect();
+
+                // `create_orphan_chain` chains the orphans but does not record either branch as a tip, and the tip
+                // entry is the half that actually matters here - it is what carries the stale
+                // `total_accumulated_difficulty` into a chain strength comparison.
+                let mut txn = DbTransaction::new();
+                for (name, chain) in [("LO2", &below), ("HO2", &above)] {
+                    let block = chain.get(name).unwrap();
+                    txn.insert_orphan_chain_tip(*block.hash(), block.accumulated_data().total_accumulated_difficulty);
+                }
+                db.write(txn).unwrap();
+
+                let access = db.db_read_access().unwrap();
+                for hash in below_hashes.iter().chain(above_hashes.iter()) {
+                    assert!(access.contains(&DbKey::OrphanBlock(*hash)).unwrap());
+                }
+                assert!(
+                    access
+                        .fetch_orphan_chain_tip_by_hash(&below_hashes[1])
+                        .unwrap()
+                        .is_some()
+                );
+                assert!(
+                    access
+                        .fetch_orphan_chain_tip_by_hash(&above_hashes[1])
+                        .unwrap()
+                        .is_some()
+                );
+                drop(access);
+
+                rewind_migration_version_for_test(db.db_read_access().unwrap().db(), PRE_MIGRATION_VERSION).unwrap();
+                (below_hashes, above_hashes)
+            };
+
+            let db = create_custom_blockchain_at_path(&path, rules(ACTIVATION, POST_FORK_WINDOW), true);
+            {
+                let access = db.db_read_access().unwrap();
+                for hash in &above_hashes {
+                    assert!(
+                        !access.contains(&DbKey::OrphanBlock(*hash)).unwrap(),
+                        "an orphan at or above the fork must be purged"
+                    );
+                }
+                for hash in &below_hashes {
+                    assert!(
+                        access.contains(&DbKey::OrphanBlock(*hash)).unwrap(),
+                        "an orphan below the fork must be left alone"
+                    );
+                }
+                // The stale tip is gone and the pre-fork one is untouched. `delete_orphan` promotes a parent when
+                // it removes a tip, but both purged orphans are above the fork, so the promotion is itself purged
+                // and the branch leaves no tip behind at all.
+                assert!(
+                    access
+                        .fetch_orphan_chain_tip_by_hash(&above_hashes[1])
+                        .unwrap()
+                        .is_none(),
+                    "the stale orphan chain tip above the fork must be purged"
+                );
+                for hash in &above_hashes {
+                    assert!(access.fetch_orphan_chain_tip_by_hash(hash).unwrap().is_none());
+                }
+                assert!(
+                    access
+                        .fetch_orphan_chain_tip_by_hash(&below_hashes[1])
+                        .unwrap()
+                        .is_some(),
+                    "the pre-fork orphan chain tip must be left alone"
+                );
+            }
+            await_rebuild(&db).await;
+        }
+
+        /// A reorg that lands while the walk is still climbing must not leave a stale orphan behind once the walk
+        /// finishes.
+        ///
+        /// The migration's orphan purge runs once, at arming. On a real node the walk then takes a minute or so
+        /// (longer on a node still finishing an earlier rebuild), and an ordinary reorg anywhere in that window
+        /// re-creates exactly what the purge exists to remove: `rewind_to_height` stores the heights it removes
+        /// as chained orphans via `insert_chained_orphan`, which copies the main chain's accumulated data
+        /// verbatim - unrepaired, if the walk had not reached those heights yet. Because `is_rebuilt: true` is a
+        /// one-way latch with nothing to re-arm it, a reorg back onto that branch hours later would run
+        /// `restore_reorged_chain`, which validates nothing, and reinstate pre-fork-window targets and an
+        /// inflated `total_accumulated_difficulty` into the main chain for good.
+        ///
+        /// So the purge is re-run in the transaction that writes the latch, and this is the test of that: the
+        /// latch has to be a statement about the orphan pool, not only about the main chain.
+        #[tokio::test]
+        async fn a_reorg_during_the_walk_leaves_no_stale_orphan_behind() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            let (_, _, chain) = build_pre_fork_chain(&path, None);
+            let post_fork = rules(ACTIVATION, POST_FORK_WINDOW);
+            // Opened under rules the migration skips, so neither the arming purge nor the background walk runs on
+            // its own. The whole point is that the orphan arrives *after* arming, so the test drives the walk by
+            // hand and plants the orphan part way through it.
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            let difficulty_calculator = DifficultyCalculator::new(post_fork.clone(), RandomXFactory::new(1));
+            let validator = HeaderFullValidator::new(post_fork.clone(), difficulty_calculator.clone());
+            let walk = |height: u64| {
+                process_accumulated_data_for_height(
+                    db.db.clone(),
+                    difficulty_calculator.clone(),
+                    &validator,
+                    &post_fork,
+                    height,
+                    &post_fork.consensus_constants(height).clone(),
+                    ACTIVATION,
+                )
+                .unwrap_or_else(|e| panic!("the walk failed at height {height}: {e}"))
+            };
+
+            // Climb the strict suffix, but stop one short of the tip: the walk is still in flight.
+            for height in ACTIVATION..CHAIN_LEN {
+                let step = walk(height);
+                assert!(
+                    matches!(step, RebuildStep::Processed(_)),
+                    "height {height} was not repaired, got {step:?}"
+                );
+            }
+            assert!(
+                !rebuild_status(&db).is_rebuilt,
+                "the fixture is only meaningful while the walk is unfinished"
+            );
+
+            // The reorg lands. What it leaves behind is a chained orphan branch carrying accumulated data the
+            // walk never looked at, plus the chain tip entry that is what actually carries the stale
+            // `total_accumulated_difficulty` into a chain strength comparison. One branch above the activation
+            // height and one below it, so the test can tell a purge from a wipe.
+            let (below_hash, above_hash) = {
+                let (_, below) =
+                    create_orphan_chain(&db, &[("LO1->GB", 1, 120)][..], chain.get("M50").unwrap().clone());
+                let (_, above) =
+                    create_orphan_chain(&db, &[("HO1->GB", 1, 120)][..], chain.get("M105").unwrap().clone());
+                let below = below.get("LO1").unwrap().clone();
+                let above = above.get("HO1").unwrap().clone();
+                let mut txn = DbTransaction::new();
+                txn.insert_orphan_chain_tip(*below.hash(), below.accumulated_data().total_accumulated_difficulty);
+                txn.insert_orphan_chain_tip(*above.hash(), above.accumulated_data().total_accumulated_difficulty);
+                db.write(txn).unwrap();
+                (*below.hash(), *above.hash())
+            };
+            {
+                let access = db.db_read_access().unwrap();
+                for hash in [&below_hash, &above_hash] {
+                    assert!(access.contains(&DbKey::OrphanBlock(*hash)).unwrap());
+                    assert!(access.fetch_orphan_chain_tip_by_hash(hash).unwrap().is_some());
+                }
+            }
+
+            // The last height finishes the walk.
+            let step = walk(CHAIN_LEN);
+            match step {
+                RebuildStep::Processed(status) => assert_eq!(status, AccumulatedDataRebuildStatus {
+                    is_rebuilt: true,
+                    last_rebuild_height: Some(CHAIN_LEN),
+                }),
+                other => panic!("expected the walk to finish, got {other:?}"),
+            }
+
+            let access = db.db_read_access().unwrap();
+            assert!(
+                !access.contains(&DbKey::OrphanBlock(above_hash)).unwrap(),
+                "an orphan at or above the fork that appeared after arming must be purged before the latch is written"
+            );
+            assert!(
+                access.fetch_orphan_chain_tip_by_hash(&above_hash).unwrap().is_none(),
+                "the stale orphan chain tip is the half that wins a comparison it should lose; it must go too"
+            );
+            assert!(
+                access.contains(&DbKey::OrphanBlock(below_hash)).unwrap(),
+                "an orphan below the fork was computed under rules that have not changed and must be left alone"
+            );
+            assert!(
+                access.fetch_orphan_chain_tip_by_hash(&below_hash).unwrap().is_some(),
+                "the pre-fork orphan chain tip must be left alone"
+            );
+        }
     }
 
     fn create_consensus_rules() -> BaseNodeConsensusManager {

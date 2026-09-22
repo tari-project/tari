@@ -185,6 +185,43 @@ pub fn create_test_db() -> TempDatabase {
     TempDatabase::new()
 }
 
+/// As [`create_custom_blockchain`], but the LMDB behind it is opened under `rules` as well, at `path`.
+///
+/// [`create_custom_blockchain`] gives the `BlockchainDatabase` the caller's rules while the LMDB underneath keeps
+/// stock LocalNet, which is invisible to most tests but not to one that exercises a consensus-gated migration:
+/// `run_migrations` reads the constants vector off the *database's* consensus manager. Taking a path as well lets a
+/// test close the store and reopen the same directory under a different rule set, which is how a migration is
+/// actually met in the field.
+///
+/// `delete_on_drop` should be false on every handle but the last one opened on a given path.
+pub fn create_custom_blockchain_at_path<P: AsRef<Path>>(
+    path: P,
+    rules: BaseNodeConsensusManager,
+    delete_on_drop: bool,
+) -> BlockchainDatabase<TempDatabase> {
+    let mut backend = TempDatabase::from_path_with_rules(path, rules.clone());
+    if !delete_on_drop {
+        backend.disable_delete_on_drop();
+    }
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    BlockchainDatabase::start_new(
+        backend,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig {
+            cleanup_orphans_at_startup: false,
+            clear_bad_blocks_at_startup: false,
+            ..Default::default()
+        },
+        DifficultyCalculator::new(rules, Default::default()),
+    )
+    .unwrap()
+}
+
 /// Open an existing LMDB database at the given path and wrap it in a `BlockchainDatabase`.
 ///
 /// This uses mock validators and disables orphan/bad-block cleanup at startup so that the
@@ -232,6 +269,22 @@ impl TempDatabase {
 
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
         let rules = create_consensus_rules();
+        Self {
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            path: temp_path.as_ref().to_path_buf(),
+            delete_on_drop: true,
+        }
+    }
+
+    /// As [`TempDatabase::from_path`], but opens the LMDB under a caller supplied rule set.
+    ///
+    /// `run_migrations` reads the constants vector off the database's own consensus manager, and so does
+    /// `LMDBDatabase::get_consensus_constants`, so a test that exercises a consensus-gated migration has to be able
+    /// to choose it - the other constructors hardcode stock LocalNet.
+    ///
+    /// `delete_on_drop` is left on, so a test that reopens the same directory must call
+    /// [`TempDatabase::disable_delete_on_drop`] on every handle but the last.
+    pub fn from_path_with_rules<P: AsRef<Path>>(temp_path: P, rules: BaseNodeConsensusManager) -> Self {
         Self {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
@@ -455,6 +508,13 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
     }
 
+    fn set_accumulated_data_rebuild_status(
+        &self,
+        status: AccumulatedDataRebuildStatus,
+    ) -> Result<(), ChainStorageError> {
+        self.db.as_ref().unwrap().set_accumulated_data_rebuild_status(status)
+    }
+
     fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_burn_commitment_rebuild_status()
     }
@@ -541,6 +601,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_orphan_children_of(hash)
+    }
+
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_orphan_hashes_at_or_above(height)
     }
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
