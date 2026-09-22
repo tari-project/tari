@@ -1050,6 +1050,18 @@ impl LMDBDatabase {
                         "orphan_chain_tips_db",
                     )?;
                 },
+                DeleteOrphanChainTipIfExists(hash) => {
+                    lmdb_delete_if_exists(&write_txn, &self.orphan_chain_tips_db, hash.deref())?;
+                },
+                SetAccumulatedDataRebuildStatus(status) => {
+                    lmdb_replace(
+                        &write_txn,
+                        &self.metadata_db,
+                        &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                        &MetadataValue::AccumulatedDataRebuildStatus(status.clone()),
+                        None,
+                    )?;
+                },
                 InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                     lmdb_insert(
                         &write_txn,
