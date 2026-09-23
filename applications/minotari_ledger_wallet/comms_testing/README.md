@@ -15,11 +15,10 @@ packaging accident.
 Builds the device application for every model, starts Speculos on each model with each seed, runs the suite against
 it, saves the log and the JUnit XML, and tears the container down.
 
-> **Nothing in CI runs any of this yet.** No workflow references this script or this crate, so the vector table has
-> only ever been checked by someone running the command above by hand. Wiring it up is Spec 5's job; until that
-> lands, a green pull request says nothing about the key derivation vectors. The script is written to be the single
-> definition of how Speculos is started so that CI, when it arrives, calls these subcommands instead of repeating
-> the `docker run` — but that is a design intent, not a thing that is true today.
+CI runs exactly this command on every pull request — the `ledger speculos tests` job in
+`.github/workflows/ledger_tests.yml` — so a green pull request now does say something about the device. The script is
+the single definition of how Speculos is started and how the `.elf` is built; the workflow calls its subcommands
+rather than repeating the `docker run`. See [In CI](#in-ci) below.
 
 Other subcommands:
 
@@ -126,53 +125,33 @@ than installing it for you.
 * JUnit: `target/speculos-junit/<model>-<seed>.xml`
 * Speculos logs: `target/speculos-logs/<model>-<seed>.log`, saved for every run, pass or fail
 
-## In CI — not wired up yet
+## In CI
 
-There is no workflow for any of this. `grep -rn "comms_testing\|ledger_speculos" .github/` returns nothing, and
-that is the current state, not an oversight in this document: the workflow is Spec 5's job. What follows is the
-sketch Spec 5 needs, not a description of something that runs.
+`.github/workflows/ledger_tests.yml`, job **`ledger speculos tests`**, on every pull request, merge group and push to
+`development`. In order:
 
-Until it lands, none of the hardening in this crate — the vector table, the oracle, the seed checks — is verified
-by anything after merge.
+1. Restore the device build cache (`wallet/target`, which holds the builder's `CARGO_HOME` as well).
+2. `./scripts/ledger_speculos.sh build nanosplus stax` — all four models on `development`, which is the only place
+   the cache is saved from, so that the `ledger build tests` job in `ci.yml` (which restores the same key and builds
+   all four through the same `build` subcommand) is warm too.
+3. Install `cargo-nextest` (prebuilt, pinned), compile this crate.
+4. `./scripts/ledger_speculos.sh test` with `MODELS="nanosplus stax"`, under a 40 minute step timeout.
+5. `./scripts/ledger_speculos.sh down` under `if: always()` — success, failure and cancellation.
+6. Upload `target/speculos-junit/` as `junit-ledger-speculos` always, and `target/speculos-logs/` as
+   `speculos-logs` on failure. `.github/workflows/publish_test_results_ci.yml` publishes the JUnit the same way it
+   does the cucumber suite's.
 
-```yaml
-- name: ledger speculos vector tests
-  # A wedged simulator must not sit until GitHub's six hour ceiling. The transport has its own 120s read timeout
-  # and the nextest `ci` profile has a slow-timeout, but a job-level bound is the one that holds regardless of
-  # which of them is in play.
-  timeout-minutes: 45
-  run: ./scripts/ledger_speculos.sh test
+There is no `continue-on-error`, best-effort entry or skip label: a red here is a red.
 
-- name: tear down speculos
-  if: always()
-  run: ./scripts/ledger_speculos.sh down
-
-- name: upload junit
-  if: always()
-  uses: actions/upload-artifact@v7
-  with:
-    name: junit-ledger-speculos
-    path: ${{ github.workspace }}/target/speculos-junit/
-
-- name: upload speculos logs
-  if: failure()
-  uses: actions/upload-artifact@v7
-  with:
-    name: speculos-logs
-    path: ${{ github.workspace }}/target/speculos-logs/
-    retention-days: 7
-    if-no-files-found: warn
-```
-
-`cargo-nextest` must be installed on the runner (`cargo install cargo-nextest --locked`); the script fails with
-that instruction rather than installing it itself.
+If a run is interrupted — a step timeout or a cancelled workflow — the `test` trap saves the log of the simulator
+that was still running before removing it, so the interrupted cell's log is in `speculos-logs` too.
 
 ### Which `.elf`
 
-The one `cargo ledger build <model> -- --locked` produces — byte for byte the command the `ledger-build-tests` job
-in `.github/workflows/ci.yml` already runs. There is deliberately **no** artifact handoff between a build job and a
-test job. Split them when `ledger-build-tests` exceeds 15 minutes and not before; until then a split buys a slower
-pipeline and an upload/download round trip for nothing.
+The one `cargo ledger build <model> -- --locked` produces — `./scripts/ledger_speculos.sh build`, which is also what
+the `ledger-build-tests` job in `.github/workflows/ci.yml` runs. There is deliberately **no** artifact handoff between
+a build job and a test job: the Speculos job builds its own `.elf`. Split them when that job exceeds 15 minutes and
+not before; until then a split buys a slower pipeline and an upload/download round trip for nothing.
 
 Speculos is started with `docker run -d` plus a readiness poll, **not** with GitHub Actions `services:`. Service
 containers start before any step in the job runs, so they can never load an `.elf` that a later step builds.

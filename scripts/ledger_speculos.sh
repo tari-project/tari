@@ -7,11 +7,11 @@
 # context and ephemeral nonce store behaviour that only exists between exchanges, and the legacy nonce branch
 # whitelist. `comms_testing/examples/ledger_demo.rs` runs the same scenarios against real hardware.
 #
-# NOTHING IN CI RUNS THIS YET. No workflow references this script or the crate it tests, so none of it has ever
-# been checked by anything except a developer running the command below by hand. Wiring it up is Spec 5's job;
-# until that lands, a green pull request says nothing whatsoever about the device.
+# CI runs this on every pull request: the `ledger speculos tests` job in .github/workflows/ledger_tests.yml calls
+# `build` and `test` below, and the `ledger build tests` job in .github/workflows/ci.yml calls `build` for all four
+# models.
 #
-# This script is intended to be the *only* definition of how Speculos is started, so that when CI does arrive it
+# This script is the *only* definition of how Speculos is started and how the device application is built, and CI
 # calls these subcommands rather than repeating the `docker run` in a workflow file - which is how "it passes
 # locally" and "it passes in CI" stop meaning the same thing without anyone noticing.
 #
@@ -77,8 +77,9 @@ SEEDS="${SEEDS:-default alternate}"
 # Both digests are multi-arch manifest lists (linux/amd64 + linux/arm64), so they resolve on CI and on an Apple
 # silicon laptop alike.
 SPECULOS_IMAGE="${SPECULOS_IMAGE:-ghcr.io/ledgerhq/speculos:latest@sha256:6ed9eefd51cddd862b746719af4cd7a3265fe43d0588c388359753cab8d46d11}"
-# Keep the tag in step with the DOCKER_IMAGE of the `ledger-build-tests` job in .github/workflows/ci.yml. The .elf
-# this script tests is the same artefact that job builds; see "Which .elf" below.
+# Both CI build jobs - `ledger-build-tests` in .github/workflows/ci.yml and the Speculos job in ledger_tests.yml -
+# build through `cmd_build` below, so this pin is theirs too. .github/workflows/build_ledger_wallet.yml, the release
+# build, still names the image by tag in its own DOCKER_IMAGE; keep that tag in step with this one.
 BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10@sha256:3853136d5bba5bff4e3d5fc9d6629389e3e0c56a679b2eb4e05c97a7017bf566}"
 # The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
 # cannot drift apart; see `cmd_test`.
@@ -470,8 +471,25 @@ cmd_down() {
 on_exit() {
   local status=$?
   trap - EXIT
+  save_scope_logs "${RUN_SCOPE}"
   remove_scope "${RUN_SCOPE}"
   exit "${status}"
+}
+
+# Keep the log of every simulator still standing in a scope, before `remove_scope` takes it away.
+#
+# The normal path saves each log itself and removes its container straight after, so on a clean exit there is
+# nothing left here and this does nothing. What it catches is the run that is *interrupted* - a CI step timeout or a
+# cancelled workflow sends INT/TERM mid-scenario, and without this the one simulator that was actually running when
+# things went wrong is removed with its log unread, leaving the `if: failure()` upload with every log except the one
+# that matters. The file name matches `save_log`'s `<model>-<seed>.log`. Never fails, for the same reason as
+# `remove_scope`.
+save_scope_logs() {
+  local scope="$1" name
+  for name in $(docker ps -a --filter "label=${SCOPE_LABEL}=${scope}" --format '{{.Names}}' 2>/dev/null || true); do
+    mkdir -p "${SPECULOS_LOG_DIR}" 2>/dev/null || true
+    docker logs "${name}" >"${SPECULOS_LOG_DIR}/${name#"${scope}"-}.log" 2>&1 || true
+  done
 }
 
 arm_teardown() {

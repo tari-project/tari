@@ -93,8 +93,8 @@ jobs:
       # simulator and finishes in a couple of seconds.
       #
       # It is deliberately NOT the Speculos job. Building the `.elf` and running the suite against an emulator -
-      # `./scripts/ledger_speculos.sh test` - is Spec 5's work and belongs in its own job with its own timeout and
-      # artifact uploads. Until that lands, none of the device-facing assertions in that crate run after merge.
+      # `./scripts/ledger_speculos.sh test` - is the `ledger speculos tests` job in .github/workflows/ledger_tests.yml,
+      # with its own timeout and artifact uploads.
       - name: ledger comms_testing unit tests
         run: cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
       - name: cargo vet

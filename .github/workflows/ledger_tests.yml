@@ -1,0 +1,183 @@
+---
+# Build the Minotari Ledger device application and run the Speculos scenario suite against it, on nanosplus and stax.
+#
+# Everything device-shaped here goes through scripts/ledger_speculos.sh - the build, the simulator start-up and
+# readiness poll, the per model x seed runs, the JUnit and log files, and the teardown. This file only decides *when*
+# those subcommands run and what is uploaded afterwards, so that "it passes locally" and "it passes in CI" are the
+# same command. See applications/minotari_ledger_wallet/comms_testing/README.md.
+#
+# There is no escape hatch in this file on purpose: no `continue-on-error`, no best-effort matrix entry and no skip
+# label. A red here is a red.
+name: "Ledger Tests"
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      # `development` is where the build cache is written - see "save ledger build cache" below.
+      - development
+      - "ci-*"
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  merge_group:
+
+permissions: {}
+
+env:
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTUP_PERMIT_COPY_RENAME: true
+  TERM: unknown
+
+concurrency:
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  # A newer push to a pull request supersedes the older run. Pushes to `development` are never cancelled, because
+  # they are the cache's only writer.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Build and test in one job. Split them into two jobs only if this one exceeds 15 minutes: until then a split buys
+  # an artifact upload/download round trip and a second runner for nothing.
+  ledger-speculos-tests:
+    name: ledger speculos tests
+    runs-on: [ubuntu-latest]
+    # The test step has its own, tighter bound; this one also covers the build and the tool installs.
+    timeout-minutes: 60
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v7
+
+      # The device application build cache: registry and target directory of the builder container, which
+      # `cmd_build` in scripts/ledger_speculos.sh keeps together under wallet/target (CARGO_HOME is
+      # wallet/target/cargo-home). The `ledger build tests` job in ci.yml restores the same key, and it must stay
+      # byte for byte the same as the one there.
+      #
+      # Keyed on the two files that decide what the builder compiles: the lockfile (a changed dependency means a
+      # different registry and different artifacts) and the toolchain pin (a different compiler invalidates every
+      # artifact, build-std's core and alloc included). `--locked` is still passed to every build, so a stale
+      # restore can only ever cost a rebuild, never change what is built.
+      - name: restore ledger build cache
+        id: ledger-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            applications/minotari_ledger_wallet/wallet/target
+            !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
+          key: ledger-wallet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('applications/minotari_ledger_wallet/wallet/Cargo.lock', 'applications/minotari_ledger_wallet/wallet/rust-toolchain.toml') }}
+          restore-keys: |
+            ledger-wallet-${{ runner.os }}-${{ runner.arch }}-
+
+      # A separate step from the test run below, for two reasons: the cache is saved from what this step leaves
+      # behind, before any test can fail the job; and the job's timings then show build and test separately, which
+      # is what the 15 minute split rule above needs to be measured against.
+      #
+      # On `development` this run is the cache's only writer, so it builds all four models - the set the
+      # `ledger build tests` job in ci.yml builds - and that job's flex and nanox builds are warm as well. Pull
+      # requests build only the two models the suite runs on; flex and nanox are built on every pull request by
+      # that job already.
+      - name: build the device application
+        shell: bash
+        env:
+          LEDGER_BUILD_MODELS: ${{ github.ref == 'refs/heads/development' && 'stax flex nanosplus nanox' || 'nanosplus stax' }}
+        run: |
+          read -r -a models <<< "${LEDGER_BUILD_MODELS}"
+          ./scripts/ledger_speculos.sh build "${models[@]}"
+
+      # Saved only from `development`. A cache saved from a pull request is visible to that pull request alone, and
+      # one saved from a merge queue ref to nobody at all, while every one of them spends the repository's shared
+      # cache quota - which Tari already runs at the limit, so a per-PR save would mostly evict somebody else's
+      # cache. `development`'s caches are visible to every pull request.
+      - name: save ledger build cache
+        if: github.ref == 'refs/heads/development' && steps.ledger-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            applications/minotari_ledger_wallet/wallet/target
+            !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
+          key: ${{ steps.ledger-cache.outputs.cache-primary-key }}
+
+      # The host half: the comms_testing crate that drives the simulator, built with the repository's stable
+      # toolchain on the runner rather than in the builder image.
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+
+      # Same save policy as the device build cache, for the same reason.
+      - name: cache comms_testing build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: applications/minotari_ledger_wallet/comms_testing -> target
+          save-if: ${{ github.ref == 'refs/heads/development' }}
+
+      # cargo-nextest is what writes the JUnit report (see comms_testing/.config/nextest.toml); the script requires
+      # it and deliberately does not install it. A prebuilt binary rather than `cargo install`, which would compile
+      # it from source on every run. Pinned to the version the script's JUnit path handling was measured against.
+      - name: install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.78
+
+      # Compiled up front so that compile time is neither charged to the test step's timeout nor mixed into its
+      # timing. nextest reuses these artifacts.
+      - name: compile the scenario suite
+        run: cargo test --locked --no-run --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
+
+      # Every model x seed cell: `test` starts each simulator, runs the suite against it, keeps its log and JUnit
+      # file, and removes it. It tears its simulators down itself on any exit - an EXIT/INT/TERM trap, so a step
+      # timeout or a cancelled run cleans up too, and keeps the log of whichever simulator was interrupted.
+      #
+      # A wedged simulator must not sit until the job's ceiling. The transport has a 120 second read timeout and
+      # the nextest `ci` profile kills a test after 5 minutes, but this bound holds whichever of them is in play.
+      - name: run the scenario suite on nanosplus and stax
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MODELS: nanosplus stax
+          SEEDS: default alternate
+        run: ./scripts/ledger_speculos.sh test
+
+      # Belt and braces for the trap above - a runner that SIGKILLs the step would skip it. Scoped to this job's run
+      # id (GITHUB_RUN_ID, GITHUB_JOB and the attempt, which the script reads), so it cannot touch another job's
+      # simulators on a shared Docker host. Runs on success, failure and cancellation alike.
+      - name: tear down speculos
+        if: always()
+        shell: bash
+        run: ./scripts/ledger_speculos.sh down
+
+      - name: upload junit
+        uses: actions/upload-artifact@v7 # upload test results as artifact
+        if: always()
+        with:
+          name: junit-ledger-speculos
+          path: ${{ github.workspace }}/target/speculos-junit/
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: upload speculos logs on failure
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: speculos-logs
+          path: ${{ github.workspace }}/target/speculos-logs/
+          retention-days: 7
+          if-no-files-found: warn
+          overwrite: true
+
+  # needed for test results - see .github/workflows/publish_test_results_ci.yml
+  event_file:
+    name: "Upload Event File for Test Results"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: Event File
+          path: ${{ github.event_path }}
