@@ -68,8 +68,13 @@ jobs:
             applications/minotari_ledger_wallet/wallet/target
             !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
           key: ledger-wallet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('applications/minotari_ledger_wallet/wallet/Cargo.lock', 'applications/minotari_ledger_wallet/wallet/rust-toolchain.toml') }}
-          restore-keys: |
-            ledger-wallet-${{ runner.os }}-${{ runner.arch }}-
+          # No fallback on `development`, where this job is the cache's writer. A writer that restored an older
+          # entry would build on top of it and save the union under the new key, so every lockfile or toolchain
+          # bump would carry forward the previous entry's stale dependencies, old-toolchain artifacts and old .crate
+          # files - growing without bound in a repository already at its cache quota. So the writer builds cold on
+          # an exact miss and saves a clean entry; pull requests (and ci.yml) keep the fallback, because they only
+          # read. An empty `restore-keys` is no restore keys.
+          restore-keys: ${{ github.ref != 'refs/heads/development' && format('ledger-wallet-{0}-{1}-', runner.os, runner.arch) || '' }}
 
       # A separate step from the test run below, for two reasons: the cache is saved from what this step leaves
       # behind, before any test can fail the job; and the job's timings then show build and test separately, which
@@ -131,8 +136,10 @@ jobs:
         run: cargo test --locked --no-run --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
 
       # Every model x seed cell: `test` starts each simulator, runs the suite against it, keeps its log and JUnit
-      # file, and removes it. It tears its simulators down itself on any exit - an EXIT/INT/TERM trap, so a step
-      # timeout or a cancelled run cleans up too, and keeps the log of whichever simulator was interrupted.
+      # file, and removes it. Its EXIT/INT/TERM trap does the same on Ctrl-C locally, but do not count on it here:
+      # on a step timeout or cancellation the runner signals only this step's top-level shell, not the script, and
+      # kills the process tree seconds later - so the teardown step below is what cleans up and saves the log of the
+      # simulator that was interrupted.
       #
       # A wedged simulator must not sit until the job's ceiling. The transport has a 120 second read timeout and
       # the nextest `ci` profile kills a test after 5 minutes, but this bound holds whichever of them is in play.
@@ -144,9 +151,11 @@ jobs:
           SEEDS: default alternate
         run: ./scripts/ledger_speculos.sh test
 
-      # Belt and braces for the trap above - a runner that SIGKILLs the step would skip it. Scoped to this job's run
-      # id (GITHUB_RUN_ID, GITHUB_JOB and the attempt, which the script reads), so it cannot touch another job's
-      # simulators on a shared Docker host. Runs on success, failure and cancellation alike.
+      # The teardown that actually holds on the runner, see above. `down` saves the log of any simulator still
+      # standing into target/speculos-logs before removing it, which after a timeout or cancellation is the one
+      # that was mid-scenario. Scoped to this job's run id (GITHUB_RUN_ID, GITHUB_JOB and the attempt, which the
+      # script reads), so it cannot touch another job's simulators on a shared Docker host. Runs on success,
+      # failure and cancellation alike.
       - name: tear down speculos
         if: always()
         shell: bash
@@ -161,9 +170,11 @@ jobs:
           if-no-files-found: warn
           overwrite: true
 
+      # `failure()` is false on a cancelled run, and a cancellation - or a timeout that cancels the job - is exactly
+      # when the interrupted simulator's log, saved by `down` above, is most wanted.
       - name: upload speculos logs on failure
         uses: actions/upload-artifact@v7
-        if: failure()
+        if: failure() || cancelled()
         with:
           name: speculos-logs
           path: ${{ github.workspace }}/target/speculos-logs/

@@ -136,15 +136,19 @@ than installing it for you.
    all four through the same `build` subcommand) is warm too.
 3. Install `cargo-nextest` (prebuilt, pinned), compile this crate.
 4. `./scripts/ledger_speculos.sh test` with `MODELS="nanosplus stax"`, under a 40 minute step timeout.
-5. `./scripts/ledger_speculos.sh down` under `if: always()` — success, failure and cancellation.
+5. `./scripts/ledger_speculos.sh down` under `if: always()` — success, failure and cancellation. `down` saves the
+   log of any simulator still standing before it removes it.
 6. Upload `target/speculos-junit/` as `junit-ledger-speculos` always, and `target/speculos-logs/` as
-   `speculos-logs` on failure. `.github/workflows/publish_test_results_ci.yml` publishes the JUnit the same way it
+   `speculos-logs` on failure or cancellation. `.github/workflows/publish_test_results_ci.yml` publishes the JUnit the same way it
    does the cucumber suite's.
 
 There is no `continue-on-error`, best-effort entry or skip label: a red here is a red.
 
-If a run is interrupted — a step timeout or a cancelled workflow — the `test` trap saves the log of the simulator
-that was still running before removing it, so the interrupted cell's log is in `speculos-logs` too.
+If a run is interrupted — a step timeout or a cancelled workflow — the interrupted cell's log still reaches
+`speculos-logs`, but not through the `test` trap: on a runner the signal goes to the step's shell rather than to the
+script, and bash would defer the trap until the running `cargo nextest` returned anyway, so the runner kills the
+process tree first and the simulator is left standing. The `down` step then finds it, saves its log and removes it.
+The trap is what cleans up after Ctrl-C in a terminal.
 
 ### Which `.elf`
 

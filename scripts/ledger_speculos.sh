@@ -435,7 +435,8 @@ remove_all_scopes() {
   fi
 }
 
-# `down` removes the interactive simulators and this run's, which between them are everything the *caller* started.
+# `down` saves the logs of, then removes, the interactive simulators and this run's, which between them are
+# everything the *caller* started.
 # It deliberately leaves a concurrent run's alone - that is what the run scope is for.
 #
 # `down --all` is the big hammer for when a run was killed so hard its trap never fired and nobody knows its run id
@@ -444,8 +445,12 @@ cmd_down() {
   case "${1:-}" in
     --all) remove_all_scopes ;;
     "")
+      # Logs first: after an interrupted `test` - a CI step timeout or cancellation - this is the only thing that
+      # ever sees the simulator that was mid-scenario. See `save_scope_logs`.
+      save_scope_logs "${INTERACTIVE_SCOPE}"
       remove_scope "${INTERACTIVE_SCOPE}"
       if [ "${RUN_SCOPE}" != "${INTERACTIVE_SCOPE}" ]; then
+        save_scope_logs "${RUN_SCOPE}"
         remove_scope "${RUN_SCOPE}"
       fi
       ;;
@@ -479,11 +484,19 @@ on_exit() {
 # Keep the log of every simulator still standing in a scope, before `remove_scope` takes it away.
 #
 # The normal path saves each log itself and removes its container straight after, so on a clean exit there is
-# nothing left here and this does nothing. What it catches is the run that is *interrupted* - a CI step timeout or a
-# cancelled workflow sends INT/TERM mid-scenario, and without this the one simulator that was actually running when
-# things went wrong is removed with its log unread, leaving the `if: failure()` upload with every log except the one
-# that matters. The file name matches `save_log`'s `<model>-<seed>.log`. Never fails, for the same reason as
-# `remove_scope`.
+# nothing left here and this does nothing. What it catches is the run that is *interrupted*, where the one simulator
+# that was actually running when things went wrong would otherwise be removed with its log unread - leaving the
+# failure upload with every log except the one that matters. The file name matches `save_log`'s
+# `<model>-<seed>.log`. Never fails, for the same reason as `remove_scope`.
+#
+# Called from two places, and on a CI runner it is the second that does the work:
+#
+#   on_exit   Ctrl-C in a terminal, where the signal reaches this script. On GitHub Actions it usually does *not*
+#             fire: a step timeout or cancellation signals only the step's top-level shell, not this script, and
+#             bash defers a trap until the foreground `cargo nextest` returns anyway - the runner kills the whole
+#             process tree a few seconds later, long before that.
+#   cmd_down  The `if: always()` teardown step in .github/workflows/ledger_tests.yml, which runs after the killed
+#             step and finds the simulator still standing, because the trap never got to remove it.
 save_scope_logs() {
   local scope="$1" name
   for name in $(docker ps -a --filter "label=${SCOPE_LABEL}=${scope}" --format '{{.Names}}' 2>/dev/null || true); do
