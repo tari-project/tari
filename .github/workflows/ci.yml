@@ -111,23 +111,45 @@ jobs:
   ledger-build-tests:
     name: ledger build tests
     runs-on: [ubuntu-latest]
-    env:
-      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10"
+    timeout-minutes: 30
     steps:
       - name: checkout tari
         uses: actions/checkout@v7
 
+      # Restore only - this job never saves. The one writer of this cache is the `ledger speculos tests` job in
+      # .github/workflows/ledger_tests.yml, on pushes to `development`, and the key below must stay byte for byte the
+      # same as the one there. Why:
+      #
+      # * A cache saved from a pull request is visible to that pull request only, and one saved from a merge queue
+      #   ref to nobody else at all; only `development`'s are visible to every PR. This workflow never runs on a push
+      #   to `development`, so anything it saved would be seen by one PR at most while spending the repository's
+      #   shared 10 GB cache quota, which Tari already runs at the limit.
+      # * Both jobs build the same crate with the same toolchain, into the same target directory, so one entry
+      #   serves both. The writer builds all four models on `development` precisely so that this job's flex and
+      #   nanox builds are warm too.
+      #
+      # `cargo-home/registry/src` is left out: it is the unpacked copy of `registry/cache`, which cargo re-extracts
+      # offline in seconds, and it is about half the cache by size.
+      #
+      # Ownership: the builder runs as the runner's own uid (see `cmd_build` in scripts/ledger_speculos.sh), so
+      # nothing in these paths is root-owned - which is what lets a later `actions/cache/save` read them and a
+      # restored cache be written over by the next build.
+      - name: restore ledger build cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            applications/minotari_ledger_wallet/wallet/target
+            !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
+          key: ledger-wallet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('applications/minotari_ledger_wallet/wallet/Cargo.lock', 'applications/minotari_ledger_wallet/wallet/rust-toolchain.toml') }}
+          restore-keys: |
+            ledger-wallet-${{ runner.os }}-${{ runner.arch }}-
+
+      # Built through scripts/ledger_speculos.sh so that this job, the Speculos job and a developer's machine run the
+      # same `docker run`: the builder image pinned by digest, run as the invoking user rather than root, with
+      # CARGO_HOME inside the cached target directory, and `cargo ledger build <model> -- --locked`.
       - name: ledger build tests
         shell: bash
-        run: |
-          for ledger_target in stax flex nanosplus nanox; do
-            echo "Building for ${ledger_target}"
-            docker run --rm \
-              -v "${GITHUB_WORKSPACE}:/app" \
-              -w /app/applications/minotari_ledger_wallet/wallet \
-              "${DOCKER_IMAGE}" \
-              cargo ledger build "${ledger_target}" -- --locked
-          done
+        run: ./scripts/ledger_speculos.sh build stax flex nanosplus nanox
 
   wasm-build-tests:
     name: wasm build tests

@@ -205,10 +205,10 @@ host_address() {
   echo "${mapped}"
 }
 
-# Which .elf: the one `cargo ledger build <model> -- --locked` produces, byte for byte the command the
-# `ledger-build-tests` job in .github/workflows/ci.yml already runs. There is deliberately no artefact handoff
-# between a build job and a test job - see Spec 2, which says to split them only once that job exceeds 15 minutes.
-# Until then a split buys a slower pipeline and an upload/download step for nothing.
+# Which .elf: the one `cargo ledger build <model> -- --locked` produces - this function, which is also what the
+# `ledger-build-tests` job in .github/workflows/ci.yml runs. There is deliberately no artefact handoff between a
+# build job and a test job - see Spec 2, which says to split them only once that job exceeds 15 minutes. Until then
+# a split buys a slower pipeline and an upload/download step for nothing.
 cmd_build() {
   local models="${*:-${MODELS}}" model
   for model in ${models}; do
@@ -233,17 +233,14 @@ cmd_build() {
     #
     # The residual risk is the mount itself, and it is deliberately not narrowed. The correct narrowing is
     # `applications/minotari_ledger_wallet` - note *not* `.../wallet`, which would break the build, because the
-    # wallet crate depends on `../common` by path. But `.github/workflows/ci.yml` mounts `${GITHUB_WORKSPACE}:/app`,
-    # so narrowing only here would mean the local and CI builds stopped being the same command. Narrow it there and
-    # here in one change, or not at all.
-    #
-    # For whoever does that: `ci.yml`'s ledger-build-tests job currently runs this builder **as root** and refers to
-    # the image **by tag only**. This script is therefore strictly more hardened than CI right now - parity is
-    # broken, but in the safe direction. Pinning the digest and narrowing the mount there belong in the same change.
+    # wallet crate depends on `../common` by path. Both CI build jobs call this function, so narrowing it here
+    # narrows it there too.
     #
     # CARGO_HOME moves because the image's default is under /opt and is not writable by a non-root uid. It points
     # into `target/`, which is gitignored, so the registry cache survives between runs instead of being
-    # re-downloaded each time.
+    # re-downloaded each time - and so that CI's `actions/cache` of `wallet/target` carries the registry with it.
+    # Running as the invoking uid is also what makes that cache work at all: a root-owned target directory could
+    # be neither read by the cache save nor overwritten by the next build on top of a restore.
     docker run --rm \
       --user "$(id -u):$(id -g)" \
       --cap-drop ALL \
