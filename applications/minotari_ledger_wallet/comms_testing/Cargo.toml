@@ -45,7 +45,7 @@ tari_common_types = { path = "../../../base_layer/common_types", version = "6.0.
 # scenarios that exercise those accessors have to name the type to pass it, and they have to name it to get the
 # same `as_byte()` back out for the host side challenge - so this is now a used dependency rather than the unused
 # one an earlier version of this file explained the absence of.
-tari_common = { path = "../../../common", version = "5.7.0-pre.5" }
+tari_common = { path = "../../../common", version = "6.0.1-pre.0" }
 
 # `tari_script` is deliberately *not* declared. The crypto scenarios do decompress a
 # `tari_script::CompressedCheckSigSchnorrSignature`, but only through inherent methods on a value an accessor
