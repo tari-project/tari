@@ -11,7 +11,7 @@
 [package]
 name = "minotari_ledger_wallet_comms_testing"
 description = "Speculos simulator transport for the Minotari Ledger Wallet. Test harness only - never depend on this from a shipped binary."
-version = "5.7.0-pre.5"
+version = "6.0.1-pre.0"
 edition = "2024"
 rust-version = "1.93.0"
 authors = ["The Tari Development Community"]
@@ -25,7 +25,7 @@ publish = false
 # feature of the console wallet, so a redirectable transport that lived in `comms` would ship to users the moment
 # some feature unification turned its gate on. Living out here, it is structurally absent from any build that does
 # not name it.
-minotari_ledger_wallet_comms = { path = "../comms", version = "5.7.0-pre.5", features = ["test_transport"] }
+minotari_ledger_wallet_comms = { path = "../comms", version = "6.0.1-pre.0", features = ["test_transport"] }
 minotari_ledger_wallet_common = { path = "../common" }
 
 ledger-transport = { version = "0.11" }
@@ -34,7 +34,12 @@ log = { version = "0.4" }
 # The review screen scenarios (`src/review.rs`, `src/approver.rs`) drive `ledger_get_one_sided_metadata_signature`,
 # whose receiver argument is a `TariAddress`. A path dependency on the root workspace's own crate, kept at the same
 # version as the rest of the repository - the same arrangement as `minotari_ledger_wallet_comms` above.
-tari_common_types = { path = "../../../base_layer/common_types", version = "5.7.0-pre.5" }
+#
+# `tari_common` is deliberately *not* declared alongside it. The `Network` the accessor also takes comes out of the
+# address itself (`receiver.network()`), so the type is never named here and the dependency would be unused - and
+# `cargo machete` in `.github/workflows/ci.yml` walks the filesystem rather than the workspace graph, so it reaches
+# this excluded crate and would fail the `ci` job over it.
+tari_common_types = { path = "../../../base_layer/common_types", version = "6.0.1-pre.0" }
 
 # `Network`, which `ledger_get_script_signature` and `ledger_get_one_sided_metadata_signature` both take. The
 # scenarios that exercise those accessors have to name the type to pass it, and they have to name it to get the

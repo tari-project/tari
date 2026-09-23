@@ -174,6 +174,15 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the stored accumulated data rebuild status.
     fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
+    /// Stores the accumulated data rebuild status verbatim.
+    ///
+    /// [`BlockchainBackend::update_accumulated_difficulty`] derives the status from the height it just wrote, which
+    /// covers the ordinary forward walk. The strict-mode rewind path has no height to write - every height from the
+    /// failure upwards has just been deleted - so it needs to record where the walk stopped directly.
+    fn set_accumulated_data_rebuild_status(
+        &self,
+        status: AccumulatedDataRebuildStatus,
+    ) -> Result<(), ChainStorageError>;
     /// Returns the stored burn commitment index rebuild status.
     fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError>;
     /// Resets the stored blockchain consistency check status.
@@ -226,6 +235,14 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
+
+    /// Fetch the hash of every orphan block at or above `height`.
+    ///
+    /// Deliberately not `fetch_all_orphans`, which reconstructs a `ChainHeader` per orphan and therefore fails
+    /// outright on an orphan that has no accumulated data stored (an unchained one). The callers of this are
+    /// purging orphans, so an orphan with no accumulated data is one of the things they want to find, not a
+    /// reason to give up.
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(

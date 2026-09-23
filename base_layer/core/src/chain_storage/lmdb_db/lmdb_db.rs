@@ -86,7 +86,7 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
-    cmp::max,
+    cmp::{max, min},
     convert::TryFrom,
     fmt,
     fs::{self, File},
@@ -137,7 +137,10 @@ use tari_storage::lmdb_store::{BYTES_PER_MB, LMDBBuilder, LMDBConfig, LMDBStore,
 use tari_transaction_components::{
     MicroMinotari,
     aggregated_body::AggregateBody,
-    consensus::{ConsensusConstants, consensus_constants::BlockVersion},
+    consensus::{
+        ConsensusConstants,
+        consensus_constants::{BlockVersion, UNSCHEDULED_ACTIVATION_HEIGHT},
+    },
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
         OutputType,
@@ -1045,6 +1048,18 @@ impl LMDBDatabase {
                         &self.orphan_chain_tips_db,
                         hash.deref(),
                         "orphan_chain_tips_db",
+                    )?;
+                },
+                DeleteOrphanChainTipIfExists(hash) => {
+                    lmdb_delete_if_exists(&write_txn, &self.orphan_chain_tips_db, hash.deref())?;
+                },
+                SetAccumulatedDataRebuildStatus(status) => {
+                    lmdb_replace(
+                        &write_txn,
+                        &self.metadata_db,
+                        &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                        &MetadataValue::AccumulatedDataRebuildStatus(status.clone()),
+                        None,
                     )?;
                 },
                 InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
@@ -2050,7 +2065,12 @@ impl LMDBDatabase {
                     self.fetch_orphan_header_accumulated_data(txn, orphan.header.version, parent_hash.as_slice())?;
                 match orphan_parent_accum {
                     Some(val) => {
-                        lmdb_insert(
+                        // `lmdb_replace` rather than `lmdb_insert`: the promotion has to be idempotent. A parent
+                        // with more than one child that is a tip - an ordinary branched fork - is promoted once
+                        // per child deleted, and `lmdb_insert` fails the second time with `KeyExists`, aborting
+                        // the whole write transaction. The value written is the same either way, because it is
+                        // derived from the parent's own accumulated data.
+                        lmdb_replace(
                             txn,
                             &self.orphan_chain_tips_db,
                             parent_hash.as_slice(),
@@ -2058,7 +2078,7 @@ impl LMDBDatabase {
                                 hash: parent_hash,
                                 total_accumulated_difficulty: val.total_accumulated_difficulty,
                             },
-                            "orphan_chain_tips_db",
+                            None,
                         )?;
                     },
                     None => {
@@ -3692,6 +3712,22 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    fn set_accumulated_data_rebuild_status(
+        &self,
+        status: AccumulatedDataRebuildStatus,
+    ) -> Result<(), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        lmdb_replace(
+            &write_txn,
+            &self.metadata_db,
+            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+            &MetadataValue::AccumulatedDataRebuildStatus(status),
+            None,
+        )?;
+        write_txn.commit()?;
+        Ok(())
+    }
+
     // Returns the burn commitment index rebuild status.
     fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
         let txn = self.read_transaction()?;
@@ -4023,6 +4059,17 @@ impl BlockchainBackend for LMDBDatabase {
             })?)
         }
         Ok(res)
+    }
+
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.orphans_db, |block: Block| {
+            if block.header.height >= height {
+                Some(block.hash())
+            } else {
+                None
+            }
+        })
     }
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
@@ -5032,11 +5079,32 @@ impl fmt::Display for MetadataValue {
     }
 }
 
+/// Rewind the recorded migration version, so that reopening the same directory runs the migrations from
+/// `version` again.
+///
+/// Migrations are the one piece of startup behaviour a test cannot reach by building a database and looking at it:
+/// they run once, inside `LMDBDatabase::new`, and a database built by a test is already at the current version by
+/// the time the test can touch it. Meeting a migration the way the field meets it - an existing chain, opened by a
+/// binary that has moved on - means putting the version back first.
+#[cfg(test)]
+pub(crate) fn rewind_migration_version_for_test(db: &LMDBDatabase, version: u64) -> Result<(), ChainStorageError> {
+    let txn = db.write_transaction()?;
+    lmdb_replace(
+        &txn,
+        &db.metadata_db,
+        &MetadataKey::MigrationVersion.as_u32(),
+        &MetadataValue::MigrationVersion(version),
+        None,
+    )?;
+    txn.commit()?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let _unused = verify_metadata_keys(db);
 
-    const MIGRATION_VERSION: u64 = 8;
+    const MIGRATION_VERSION: u64 = 9;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -5402,6 +5470,168 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 },
             }
             write_txn.commit()?;
+        }
+
+        // MIGRATION: Repair `target_difficulty`, and everything that accumulates out of it, at and above the
+        // GHSA-3qmx-q9pv-f3m4 activation height.
+        //
+        // That activation entry is a consensus change which is retroactive for any node that already synced past
+        // it. The entry may also move `difficulty_block_window` (MainNet takes it from 90 to 45 at height 350,000,
+        // to halve the recovery time from the hash rate the fix costs the network), so a node that walked those
+        // heights on a pre-fork binary computed each target under the old window and persisted it, while the new
+        // binary computes a different answer for the same header.
+        //
+        // This is worse than a stale display field, because `target_difficulty` is the only quantity that
+        // accumulates: `BlockHeaderAccumulatedDataBuilder::build` sums the unadjusted per-algo target into
+        // `total_accumulated_difficulty`, so one wrong entry corrupts chain strength for every block above it. It
+        // is also self-propagating, because `target_difficulty_for_next_block` reads stored targets out of the
+        // window as its inputs, so a wrong entry poisons the next `difficulty_block_window` targets as well.
+        //
+        // Rather than walking the chain inline and holding up startup, this arms the existing
+        // `rebuild_accumulated_data_background_task` by pushing its watermark back to just below the activation
+        // height. That task already recomputes and rewrites the accumulated data per height, resumably, and it
+        // gains a strict mode at and above the activation height: full header validation, and a rewind if a block
+        // no longer validates under the post-fork rules.
+        //
+        // Deliberately not wrapped in `continue` on the skip path, unlike the earlier migrations: this is the last
+        // block in the loop, so skipping the version bump below would leave the database at version 8 and re-run
+        // this block on the next startup.
+        if migrate_from_version == 8 {
+            let activation = ConsensusConstants::bipartite_cuckaroo_activation_height(
+                db.consensus_manager.consensus_constants_vec(),
+            );
+            // The tip that decides whether there is anything to repair is the *header* tip, not the block tip.
+            // `fetch_chain_height` reads `MetadataKey::ChainHeight`, which is the height of the last *block*, and
+            // header sync routinely runs ahead of block sync - that is its normal steady state, not an edge case.
+            // A node whose blocks stop at 349,990 while its headers already reach 350,053 has post-fork
+            // accumulated data on disk, written by the old binary under the old window, and skipping here would
+            // leave it there forever: header sync never re-validates or rewrites a header it already has, and
+            // block sync writes the stored `BlockHeaderAccumulatedData` back verbatim as each body arrives,
+            // promoting its inflated `total_accumulated_difficulty` straight into chain metadata.
+            //
+            // `max` rather than just the header tip so that a database which somehow has a block tip above its
+            // last header still arms rather than silently skipping.
+            let tip = {
+                let txn = db.read_transaction()?;
+                let block_tip = fetch_chain_height(&txn, &db.metadata_db).ok();
+                let header_tip = db.fetch_last_header_in_txn(&txn)?.map(|header| header.height);
+                block_tip.into_iter().chain(header_tip).max()
+            };
+
+            // Reasons there is nothing to repair:
+            // - The fork is not scheduled on this network (Igor / Stagenet / NextNet), so no stored target was ever
+            //   computed under rules that have since changed.
+            // - The fork is active from height 0 (LocalNet), so nothing was ever mined under the old rules.
+            // - There is no chain, or the highest header this node holds has not reached the fork (Esmeralda today).
+            //   Everything synced from here on is computed under the new rules by the normal add-block and header sync
+            //   paths.
+            // `==` rather than `>=`: `UNSCHEDULED_ACTIVATION_HEIGHT` is `u64::MAX`, so the two are the same
+            // test and clippy rejects the inequality as absurd.
+            let skip_reason = if activation == UNSCHEDULED_ACTIVATION_HEIGHT {
+                Some("the fork is not scheduled on this network".to_string())
+            } else if activation == 0 {
+                Some("the fork has been active since the genesis block".to_string())
+            } else {
+                match tip {
+                    None => Some("this database holds no chain".to_string()),
+                    Some(tip) if tip < activation => Some(format!(
+                        "the highest header {tip} is below the activation height {activation}"
+                    )),
+                    Some(_) => None,
+                }
+            };
+
+            let existing = db.fetch_accumulated_data_rebuild_status()?;
+
+            if let Some(reason) = skip_reason {
+                // The skip path must leave the row exactly as it found it. Every migration block runs inside the
+                // same `run_migrations` loop, so a database at version 5 reaches this block in the same call that
+                // armed the v5 repair a few iterations earlier, and `is_rebuilt: true` is a one-way latch - the
+                // background task returns immediately on it and nothing ever sets it back. Writing "rebuilt" here
+                // because *this* fork has nothing to repair would therefore silently abandon an unrelated repair
+                // that is still owed, on exactly the nodes that need it: a NextNet node at v5 (unscheduled fork),
+                // or a MainNet node whose tip is still below 350,000.
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{migrate_from_version}: No accumulated data repair needed - {reason} \
+                    (leaving the rebuild status untouched: {existing:?})"
+                );
+            } else {
+                // The `min` is load-bearing, but only against a rebuild that is still in flight. A node part way
+                // through the v5 rebuild carries a watermark far below the activation height, and overwriting it
+                // with `activation - 1` would silently abandon the rest of that repair; taking the minimum lets
+                // that walk continue uninterrupted and roll into strict mode by itself once it reaches the
+                // activation height.
+                //
+                // A *finished* rebuild is the opposite case and must not be folded in.
+                // `update_accumulated_difficulty` records `is_rebuilt: height == last_chain_header.height()`, so
+                // the watermark a completed rebuild leaves behind is the tip as it was when that rebuild
+                // finished, which may be a hundred thousand blocks below today's tip. Folding that in would send
+                // the walk back over a prefix that is already correct - heights below the fork were computed
+                // under rules that have not changed - at 100 ms per height.
+                let watermark = if existing.is_rebuilt {
+                    activation.saturating_sub(1)
+                } else {
+                    min(
+                        existing.last_rebuild_height.unwrap_or(u64::MAX),
+                        activation.saturating_sub(1),
+                    )
+                };
+                let status = AccumulatedDataRebuildStatus {
+                    is_rebuilt: false,
+                    last_rebuild_height: Some(watermark),
+                };
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{migrate_from_version}: Arming the accumulated data rebuild from height \
+                    {watermark} for the fork at height {activation} (previous status: {existing:?})"
+                );
+                let write_txn = db.write_transaction()?;
+                lmdb_replace(
+                    &write_txn,
+                    &db.metadata_db,
+                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                    &MetadataValue::AccumulatedDataRebuildStatus(status),
+                    None,
+                )?;
+                write_txn.commit()?;
+
+                // Purge every orphan at or above the activation height, along with its accumulated data, its
+                // parent-map entry and its chain tip entry (`delete_orphan` does all four, and promotes the parent
+                // to a tip where that applies).
+                //
+                // A stale orphan tip carries a `total_accumulated_difficulty` built from pre-fork targets, and can
+                // therefore win an `AccumulatedDifficultySquaredComparer` comparison it should lose - the node
+                // would reorg onto a stale-target side chain the moment the main chain is repaired. Discarding an
+                // orphan is safe: it is re-fetched if it ever mattered. Orphans below the activation height are
+                // left alone; their accumulated data was computed under the rules in force at their height.
+                //
+                // This is only the *first* of two purges. Arming and finishing are hours apart on a real node, and
+                // an ordinary reorg in between seeds the orphan pool with exactly the same hazard all over again -
+                // `rewind_to_height` stores the heights it removes as chained orphans carrying their unrepaired
+                // accumulated data. So the walk runs the same scan again in the transaction that writes
+                // `is_rebuilt: true` (`finish_rebuild` in `blockchain_database.rs`), which is what makes the latch
+                // a statement about the orphan pool and not only about the main chain. Both purges go through
+                // `fetch_orphan_hashes_at_or_above` so the two can never drift apart.
+                let orphan_hashes: Vec<HashOutput> = db.fetch_orphan_hashes_at_or_above(activation)?;
+                if orphan_hashes.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: No orphans at or above height {activation} to purge"
+                    );
+                } else {
+                    let write_txn = db.write_transaction()?;
+                    for hash in &orphan_hashes {
+                        db.delete_orphan(&write_txn, hash)?;
+                    }
+                    write_txn.commit()?;
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Purged {} orphan(s) at or above height {activation}",
+                        orphan_hashes.len()
+                    );
+                }
+            }
         }
 
         // Let's update the migration version

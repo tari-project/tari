@@ -20,10 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, FixedHash},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
@@ -31,7 +28,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     chain_storage::BlockchainBackend,
     proof_of_work::{AchievedTargetDifficulty, AdjustedTarget},
-    validation::error::ValidationError,
+    validation::{chain_context::HeaderChainContext, error::ValidationError},
 };
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
@@ -62,6 +59,22 @@ pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
 }
 
+/// What header validation found out about a header, beyond the fact that it is valid.
+#[derive(Debug, Clone)]
+pub struct ValidatedHeader {
+    /// The difficulty the header achieved, and the target it had to clear.
+    pub achieved_target: AchievedTargetDifficulty,
+    /// The Monero RandomX seed the header is keyed by, for a merge mined header, and `None` for any other proof of
+    /// work.
+    ///
+    /// This is handed back rather than left for the caller to work out because recovering it means parsing the
+    /// header's PoW data, and `MoneroPowData::from_header` deliberately does an expensive job of it: it Borsh
+    /// deserializes the structure and then re-serializes it to prove the encoding was canonical. A caller that
+    /// tracks the seeds of a chain the database does not hold yet (see [`crate::validation::MoneroSeedHeights`])
+    /// would otherwise pay for that a second time on every merge mined header of a sync.
+    pub monero_seed: Option<Vec<u8>>,
+}
+
 pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
     fn validate(
         &self,
@@ -70,8 +83,8 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<AdjustedTarget>,
-        vm_key: FixedHash,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>;
+        chain_context: HeaderChainContext<'_>,
+    ) -> Result<ValidatedHeader, ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

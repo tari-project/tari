@@ -66,8 +66,14 @@ mod header_validators {
         block_specs,
         consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
         test_helpers::blockchain::{create_main_chain, create_new_blockchain},
-        validation::{HeaderChainLinkedValidator, header::HeaderFullValidator},
+        validation::{HeaderChainContext, HeaderChainLinkedValidator, header::HeaderFullValidator},
     };
+    /// Header validation always runs against a candidate chain. These tests validate headers that extend what is in the
+    /// database, so the candidate and the database agree right up to the previous header.
+    fn chain_context(prev_header: &BlockHeader) -> HeaderChainContext<'static> {
+        HeaderChainContext::candidate_chain(FixedHash::zero(), prev_header.height, None)
+    }
+
     #[test]
     fn header_iter_empty_and_invalid_height() {
         let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -135,7 +141,7 @@ mod header_validators {
                 genesis.header(),
                 &[],
                 None,
-                FixedHash::zero(),
+                chain_context(genesis.header()),
             )
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
@@ -164,7 +170,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
-                FixedHash::zero(),
+                chain_context(last_block.header()),
             )
             .unwrap();
 
@@ -177,7 +183,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
-                FixedHash::zero(),
+                chain_context(last_block.header()),
             )
             .unwrap_err();
         assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {

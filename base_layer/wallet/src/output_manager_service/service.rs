@@ -439,7 +439,7 @@ where
             },
             OutputManagerRequest::GetOutputsByQuery(query) => {
                 let outputs = self.fetch_outputs_by_query(query)?;
-                Ok(OutputManagerResponse::SpentOutputs(outputs))
+                Ok(OutputManagerResponse::Outputs(outputs))
             },
             OutputManagerRequest::ValidateTxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)

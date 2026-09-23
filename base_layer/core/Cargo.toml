@@ -12,6 +12,10 @@ license.workspace = true
 [features]
 default = []
 benches = []
+c29_audit = []
+# GHSA-3qmx-q9pv-f3m4 audit tooling: builds `examples/audit_rxt_pow_data.rs`, the read-only LMDB scanner that finds
+# RandomXT headers carrying a non-canonical (non-empty) `pow_data` in an existing chain.
+rxt_pow_data_audit = []
 metrics = ["tari_metrics"]
 sqlite_bundled = ["tari_common_sqlite/bundled"]
 
@@ -106,3 +110,14 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [package.metadata.cargo-machete]
 ignored = ["hickory-proto"]
+
+[[example]]
+name = "audit_c29"
+required-features = ["c29_audit"]
+# The exit-status rules in `report()` are the tool's only defence against an audit that silently covered nothing or
+# ran against the wrong network, so they carry their own tests rather than shipping unexercised.
+test = true
+
+[[example]]
+name = "audit_rxt_pow_data"
+required-features = ["rxt_pow_data_audit"]

@@ -44,7 +44,12 @@ use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::BaseNodeConsensusManager,
-    proof_of_work::{monero_randomx_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
+    proof_of_work::{
+        monero_randomx_difficulty,
+        monero_rx,
+        monero_rx::{CoinbasePrefixMode, FixedByteArray},
+        randomx_factory::RandomXFactory,
+    },
 };
 use tari_utilities::hex::Hex;
 use tokio::time::timeout;
@@ -211,11 +216,21 @@ impl InnerService {
                     continue;
                 },
             };
+            // GHSA-3qmx-q9pv-f3m4: which coinbase wire format the node will accept is a function of the Tari
+            // header's height, so the height has to be read before the pow data is built.
+            let tari_header_height = block_data
+                .template
+                .tari_block
+                .header
+                .as_ref()
+                .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header".to_string()))?
+                .height;
             let monero_data = monero_rx::construct_monero_data(
                 monero_block,
                 block_data.template.monero_seed.clone(),
                 block_data.aux_chain_hashes.clone(),
                 block_data.template.tari_merge_mining_hash,
+                CoinbasePrefixMode::for_height(&self.consensus_manager, tari_header_height),
             )?;
 
             debug!(target: LOG_TARGET, "Monero PoW Data: {:?}", monero_data);

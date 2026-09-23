@@ -143,11 +143,13 @@ pub fn check_target_difficulty(
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
         PowAlgorithm::Cuckaroo => {
-            let cuckaroo_cycle_length = consensus
-                .consensus_constants(block_header.height)
-                .cuckaroo_cycle_length();
-            let cuckaroo_bits = consensus.consensus_constants(block_header.height).cuckaroo_edge_bits();
-            cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
+            let constants = consensus.consensus_constants(block_header.height);
+            cuckaroo_difficulty(
+                block_header,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+                constants.bipartite_cuckaroo_verification(),
+            )?
         },
     };
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {

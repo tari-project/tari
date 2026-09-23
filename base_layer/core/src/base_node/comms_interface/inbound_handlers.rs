@@ -68,12 +68,12 @@ use crate::{
     proof_of_work::{
         AdjustedTarget,
         cuckaroo_pow::cuckaroo_difficulty,
-        monero_randomx_difficulty,
+        monero_randomx_difficulty_at_rules_height,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
     },
-    validation::{ValidationError, helpers, tari_rx_vm_key_height},
+    validation::{ValidationError, header::check_randomxt_pow_data, helpers, tari_rx_vm_key_height},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -633,6 +633,17 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
+        // GHSA-3qmx-q9pv-f3m4. The canonical `pow_data` test reads at most one byte and needs no chain state, so it
+        // runs before the existence and bad-block lookups, before `fetch_last_chain_header` and the backwards chain
+        // walk in `check_min_block_difficulty`, and before the RandomX VM hash. A zero-extended variant is free for
+        // an attacker to mint, so it must be as close to free for us to discard.
+        if new_block.header.pow_algo() == PowAlgorithm::RandomXT {
+            let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+            check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data()).map_err(
+                |e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)),
+            )?;
+        }
+
         // Lets check if the block exists before we try and ask for a complete block
         if self.check_exists_and_not_bad_block(block_hash).await? {
             return Ok(());
@@ -693,11 +704,43 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    /// Pre-validation anti-spam gate for a gossiped block announcement.
+    ///
+    /// This runs on an *unlinked* header: nothing here has checked that `new_block.header.height` follows from
+    /// `prev_hash`, or that the header connects to our chain at all. The height is a peer's assertion.
+    ///
+    /// That matters because several consensus rules are height-gated, and the GHSA-3qmx-q9pv-f3m4 rules in
+    /// particular replace verifiers that were forgeable - the merged-namespace Cuckaroo verifier and the Monero
+    /// coinbase Keccak sponge that the sender chose. Selecting the constants from the claimed height let a peer
+    /// name a pre-activation height and be handed the forgeable verifiers, clearing this gate at no proof of work
+    /// cost whatsoever - which is precisely the thing the gate exists to prevent ("bad blocks are not free to
+    /// make, and they are more expensive to make than they are to validate").
+    ///
+    /// So the rules are selected from `max(our tip height, the claimed height)`:
+    ///
+    ///   * the tip height is a fact about our own chain, so a peer cannot talk its way *below* our current rules;
+    ///   * taking the max still honours a plausible claim above our tip - we may simply be behind - and cannot weaken
+    ///     anything, because every flag these rules gate on is monotone in height: it goes false to true at the
+    ///     activation entry and never back;
+    ///   * so `max` is always the stricter of the two candidate rule sets, which is the right default for a gate.
+    ///
+    /// This is deliberately stricter than consensus and it is *not* consensus: it decides only whether we spend
+    /// effort reconciling an announcement. Whether the block is ultimately accepted is decided later by the full
+    /// validators, which run against the block's real, linked height.
+    ///
+    /// Being stricter here does reject announcements, and bans for them: `verify_header_at_rules_height` returns
+    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, and on
+    /// the depth 0 `aux_chain_merkle_proof` rule - and both of those are a long ban. The rules the max picks are
+    /// only ever the *newer* ones, so the announcements this costs are exactly those written under the pre-fork
+    /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
+    /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
+    /// through header and block sync, which do not come through this gate.
     async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
-        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+        let mut header = self.blockchain_db.fetch_last_chain_header().await?;
+        let rules_height = max(header.height(), new_block.header.height);
+        let constants = self.consensus_manager.consensus_constants(rules_height);
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
         let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
-        let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         loop {
             if new_block.header.pow_algo() == header.header().pow_algo() {
                 min_difficulty = max(
@@ -720,14 +763,28 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomXM => monero_randomx_difficulty(
+            PowAlgorithm::RandomXM => monero_randomx_difficulty_at_rules_height(
                 &new_block.header,
                 &self.randomx_factory,
                 &gen_hash,
                 &self.consensus_manager,
+                rules_height,
             )?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
             PowAlgorithm::RandomXT => {
+                // GHSA-3qmx-q9pv-f3m4, belt and braces. `handle_new_block_message` already applied this before any
+                // database work; repeating it keeps the rule attached to the difficulty check itself, so a future
+                // second caller of this function cannot inherit a gap.
+                //
+                // Note what the gating can and cannot promise here: `header.height` is peer supplied and has no
+                // parent linkage yet, so a peer can claim a pre-fork height and turn the rule off. That only ever
+                // makes the rule laxer, never stricter, and it is not free - `height` is covered by `mining_hash`,
+                // which is bytes 3..35 of the RandomX blob, so lying about it destroys the proof of work and the
+                // `achieved < min_difficulty` check below rejects the block anyway.
+                check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data())
+                    .map_err(|e| {
+                        CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e))
+                    })?;
                 let vm_key = *self
                     .blockchain_db
                     .fetch_chain_header(tari_rx_vm_key_height(new_block.header.height))
@@ -736,10 +793,17 @@ where B: BlockchainBackend + 'static
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
             },
             PowAlgorithm::Cuckaroo => {
-                let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+                // Same corroborated height as above, not the claimed one: `bipartite_cuckaroo_verification` is the
+                // other half of what a peer could talk itself out of by naming a pre-activation height.
+                let constants = self.consensus_manager.consensus_constants(rules_height);
                 let cuckaroo_cycle = constants.cuckaroo_cycle_length();
                 let edge_bits = constants.cuckaroo_edge_bits();
-                cuckaroo_difficulty(&new_block.header, cuckaroo_cycle, edge_bits)?
+                cuckaroo_difficulty(
+                    &new_block.header,
+                    cuckaroo_cycle,
+                    edge_bits,
+                    constants.bipartite_cuckaroo_verification(),
+                )?
             },
         };
         if achieved < min_difficulty {

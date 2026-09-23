@@ -35,7 +35,7 @@ use tari_core::{
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
         monero_rx,
-        monero_rx::{FixedByteArray, MoneroPowData, verify_header},
+        monero_rx::{CoinbasePrefix, CoinbasePrefixMode, FixedByteArray, MoneroPowData, verify_header},
         randomx_factory::RandomXFactory,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
@@ -43,6 +43,7 @@ use tari_core::{
         BlockBodyValidator,
         CandidateBlockValidator,
         DifficultyCalculator,
+        HeaderChainContext,
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
         ValidationError,
@@ -51,7 +52,7 @@ use tari_core::{
         mocks::MockValidator,
     },
 };
-use tari_node_components::blocks::{Block, BlockHeaderValidationError, BlockValidationError, ChainBlock};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError, ChainBlock};
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -86,6 +87,12 @@ use crate::{
     },
     tests::assert_block_add_result_added,
 };
+
+/// Header validation always runs against a candidate chain. These tests validate headers that extend what is in the
+/// database, so the candidate and the database agree right up to the previous header.
+fn chain_context(prev_header: &BlockHeader) -> HeaderChainContext<'static> {
+    HeaderChainContext::candidate_chain(FixedHash::zero(), prev_header.height, None)
+}
 
 #[tokio::test]
 #[serial]
@@ -140,19 +147,19 @@ async fn test_monero_blocks() {
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
 
     // Now we have block 1, lets add monero data to it
-    add_monero_test_data(&mut block_1, seed1);
+    add_monero_test_data(&mut block_1, seed1, &cm);
     let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap());
     // Now lets add a second faulty block using the same seed hash
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, None, &key_manager);
     let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
 
-    add_monero_test_data(&mut block_2, seed1);
+    add_monero_test_data(&mut block_2, seed1, &cm);
     let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap());
     // Now lets add a third faulty block using the same seed hash. This should fail.
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, None, &key_manager);
     let mut block_3 = db.prepare_new_block(block_3_t).unwrap();
     let mut block_3_broken = block_3.clone();
-    add_monero_test_data(&mut block_3_broken, seed1);
+    add_monero_test_data(&mut block_3_broken, seed1, &cm);
     match db.add_block(Arc::new(block_3_broken)) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
@@ -167,7 +174,7 @@ async fn test_monero_blocks() {
 
     // lets try add some bad data to the block
     let mut extra_bytes_block_3 = block_3.clone();
-    add_bad_monero_data(&mut extra_bytes_block_3, seed2);
+    add_bad_monero_data(&mut extra_bytes_block_3, seed2, &cm);
     match db.add_block(Arc::new(extra_bytes_block_3)) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::MergeMineError(_),
@@ -180,7 +187,7 @@ async fn test_monero_blocks() {
         },
     };
     // now lets fix the seed, and try again
-    add_monero_test_data(&mut block_3, seed2);
+    add_monero_test_data(&mut block_3, seed2, &cm);
     // lets break the nonce count
     let hash1 = block_3.hash();
     block_3.header.nonce = 1;
@@ -203,7 +210,153 @@ async fn test_monero_blocks() {
     assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap());
 }
 
-fn add_monero_test_data(tblock: &mut Block, seed_key: &str) {
+/// The RandomXM seed age rule must be enforced at *header* validation time, not only at block body validation. A
+/// header chain whose bodies can never validate must never be committed, so here the body validator is a mock that
+/// accepts everything: any rejection below can only come from the header validator.
+#[tokio::test]
+#[serial]
+#[allow(clippy::too_many_lines)]
+async fn test_monero_seed_height_enforced_at_header_validation() {
+    let network = Network::Esmeralda;
+    // `Network::set_current` writes a `OnceLock`, which is the thread safe way to do this: the `TARI_NETWORK`
+    // environment variable is only read when nothing has been set, so it does not have to be touched at all. Another
+    // test in this binary may have won the race to set it, hence the assert rather than an unwrap.
+    let _ignored = Network::set_current(network);
+    assert_eq!(
+        Network::get_current_or_user_setting_or_default(),
+        network,
+        "another test set a different network for this process"
+    );
+
+    let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
+    let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
+
+    let key_manager = KeyManager::new_random().unwrap();
+    let cc = ConsensusConstantsBuilder::new(network)
+        .with_max_randomx_seed_height(1)
+        .clear_proof_of_work()
+        .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
+            target_time: 300,
+        })
+        .add_proof_of_work(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
+            target_time: 200,
+        })
+        .with_blockchain_version(BlockVersion::V0)
+        .with_valid_blockchain_version_range(0..=0)
+        .build();
+    let cm = BaseNodeConsensusManager::builder(network)
+        .add_consensus_constants(cc)
+        .build()
+        .unwrap();
+    let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
+    let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator);
+    let db = create_store_with_consensus_and_validators(
+        cm.clone(),
+        // The body validator accepts everything, so the seed age rule can only be enforced by the header validator
+        Validators::new(
+            MockValidator::new(true),
+            header_validator.clone(),
+            MockValidator::new(true),
+        ),
+    );
+
+    let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
+    let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, None, &key_manager);
+    let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
+    // First use of `seed1`: its first seen height is its own height, so `seed_used_height` is 0 and it is accepted
+    add_monero_test_data(&mut block_1, seed1, &cm);
+    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap());
+
+    // Re-use of `seed1` one block later is exactly on the `max_randomx_seed_height` limit and is still accepted
+    let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, None, &key_manager);
+    let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
+    add_monero_test_data(&mut block_2, seed1, &cm);
+    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap());
+
+    let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, None, &key_manager);
+    let block_3 = db.prepare_new_block(block_3_t).unwrap();
+    let timestamps = db.fetch_block_timestamps(*cb_2.hash()).unwrap();
+
+    // A stale seed is rejected by the header validator itself
+    let mut block_3_stale_seed = block_3.clone();
+    add_monero_test_data(&mut block_3_stale_seed, seed1, &cm);
+    let err = header_validator
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &block_3_stale_seed.header,
+            cb_2.header(),
+            &timestamps,
+            None,
+            chain_context(cb_2.header()),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash)
+        ),
+        "expected OldSeedHash, got {err:?}"
+    );
+    assert!(err.get_ban_reason().is_some(), "a stale seed must be bannable");
+
+    // Unparseable pow data is a bannable validation error, not a storage error
+    let mut block_3_bad_pow_data = block_3.clone();
+    add_bad_monero_data(&mut block_3_bad_pow_data, seed2, &cm);
+    let err = header_validator
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &block_3_bad_pow_data.header,
+            cb_2.header(),
+            &timestamps,
+            None,
+            chain_context(cb_2.header()),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(err, ValidationError::MergeMineError(_)),
+        "expected a MergeMineError, got {err:?}"
+    );
+    assert!(err.get_ban_reason().is_some(), "unparseable pow data must be bannable");
+
+    // The header chain was never committed: the tip is still block 2
+    assert_eq!(db.get_height().unwrap(), 2);
+    assert_eq!(*db.fetch_tip_header().unwrap().hash(), *cb_2.hash());
+
+    // Going through the full block add path, a stale seed is rejected before the (mocked, always valid) body is
+    // validated and the chain is not extended
+    let mut block_3_stale_seed = block_3.clone();
+    add_monero_test_data(&mut block_3_stale_seed, seed1, &cm);
+    match db.add_block(Arc::new(block_3_stale_seed)) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
+        }) => (),
+        Err(e) => panic!("Failed due to other error:{e:?}"),
+        Ok(res) => panic!("Block add unexpectedly succeeded with result: {res:?}"),
+    };
+    assert_eq!(db.get_height().unwrap(), 2);
+
+    // A fresh seed passes header validation and is committed
+    let mut block_3_fresh_seed = block_3;
+    add_monero_test_data(&mut block_3_fresh_seed, seed2, &cm);
+    header_validator
+        .validate(
+            &*db.db_read_access().unwrap(),
+            &block_3_fresh_seed.header,
+            cb_2.header(),
+            &timestamps,
+            None,
+            chain_context(cb_2.header()),
+        )
+        .unwrap();
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3_fresh_seed)).unwrap());
+    assert_eq!(db.get_height().unwrap(), 3);
+}
+
+fn add_monero_test_data(tblock: &mut Block, seed_key: &str, cm: &BaseNodeConsensusManager) {
     let blocktemplate_blob =
 "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
 .to_string();
@@ -239,7 +392,14 @@ fn add_monero_test_data(tblock: &mut Block, seed_key: &str) {
         merkle_root,
         coinbase_merkle_proof,
         coinbase_tx_extra: extra,
-        coinbase_tx_hasher: keccak,
+        // GHSA-3qmx-q9pv-f3m4: which coinbase wire format is legal is a function of the height, so ask the same
+        // question the node will ask rather than hard coding an answer. Note that `ConsensusConstantsBuilder::new`
+        // normalises the network's latest *scheduled* entry down to height 0, so this fixture runs post-fork rules
+        // even though the blocks themselves sit at heights 1-3.
+        coinbase_prefix: match CoinbasePrefixMode::for_height(cm, tblock.header.height) {
+            CoinbasePrefixMode::Legacy => CoinbasePrefix::Legacy(keccak),
+            CoinbasePrefixMode::Derived => CoinbasePrefix::Prefix(encoder_prefix.try_into().unwrap()),
+        },
         aux_chain_merkle_proof,
     };
     let mut serialized = Vec::new();
@@ -248,8 +408,8 @@ fn add_monero_test_data(tblock: &mut Block, seed_key: &str) {
     tblock.header.pow.pow_data = PowData::try_from(serialized).unwrap();
 }
 
-fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
-    add_monero_test_data(tblock, seed_key);
+fn add_bad_monero_data(tblock: &mut Block, seed_key: &str, cm: &BaseNodeConsensusManager) {
+    add_monero_test_data(tblock, seed_key, cm);
     // Add some "garbage" bytes to the end of the pow_data
     let mut pow_data = tblock.header.pow.pow_data.to_vec();
     pow_data.extend([1u8; 100]);
@@ -539,12 +699,12 @@ OutputFeatures::default()),
             genesis.header(),
             &timestamps,
             None,
-            FixedHash::zero(),
+            chain_context(genesis.header()),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_achieved_target_difficulty(achieved_target_diff.achieved_target)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
         .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
@@ -571,7 +731,7 @@ OutputFeatures::default()),
                 genesis.header(),
                 &[],
                 None,
-                FixedHash::zero()
+                chain_context(genesis.header())
             )
             .is_err()
     );
@@ -615,12 +775,12 @@ OutputFeatures::default()),
             &prev_header,
             &timestamps,
             None,
-            FixedHash::zero(),
+            chain_context(&prev_header),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_achieved_target_difficulty(achieved_target_diff.achieved_target)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
         .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
@@ -651,12 +811,12 @@ OutputFeatures::default()),
             genesis.header(),
             &timestamps,
             None,
-            FixedHash::zero(),
+            chain_context(genesis.header()),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_achieved_target_difficulty(achieved_target_diff.achieved_target)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
         .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
@@ -684,12 +844,12 @@ OutputFeatures::default()),
             &prev_header,
             &timestamps,
             None,
-            FixedHash::zero(),
+            chain_context(&prev_header),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(genesis.accumulated_data())
         .with_hash(new_block.hash())
-        .with_achieved_target_difficulty(achieved_target_diff)
+        .with_achieved_target_difficulty(achieved_target_diff.achieved_target)
         .with_total_kernel_offset(new_block.header.total_kernel_offset.clone())
         .build(rules.consensus_constants(new_block.header.height))
         .unwrap();
@@ -773,7 +933,7 @@ OutputFeatures::default()),
                 genesis.header(),
                 &timestamps,
                 None,
-                FixedHash::zero()
+                chain_context(genesis.header())
             )
             .is_ok()
     );
@@ -796,7 +956,7 @@ OutputFeatures::default()),
                 genesis.header(),
                 &[],
                 None,
-                FixedHash::zero()
+                chain_context(genesis.header())
             )
             .is_err()
     );
@@ -812,7 +972,7 @@ OutputFeatures::default()),
             genesis.header(),
             &[],
             None,
-            FixedHash::zero(),
+            chain_context(genesis.header()),
         )
         .is_err();
     new_block.header.nonce = rand::rng().next_u64();
@@ -828,7 +988,7 @@ OutputFeatures::default()),
                 genesis.header(),
                 &[],
                 None,
-                FixedHash::zero(),
+                chain_context(genesis.header()),
             )
             .is_err();
     }

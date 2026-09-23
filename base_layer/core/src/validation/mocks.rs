@@ -25,10 +25,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, FixedHash},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
@@ -42,9 +39,15 @@ use super::{
 };
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget, randomx_factory::RandomXFactory},
+    proof_of_work::{AdjustedTarget, randomx_factory::RandomXFactory},
     test_helpers::create_consensus_rules,
-    validation::{DifficultyCalculator, FinalHorizonStateValidation, error::ValidationError},
+    validation::{
+        DifficultyCalculator,
+        FinalHorizonStateValidation,
+        ValidatedHeader,
+        chain_context::HeaderChainContext,
+        error::ValidationError,
+    },
 };
 
 #[derive(Clone)]
@@ -127,13 +130,19 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         _: &BlockHeader,
         _: &[EpochTime],
         _: Option<AdjustedTarget>,
-        _: FixedHash,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
+        _: HeaderChainContext<'_>,
+    ) -> Result<ValidatedHeader, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             // this assumes consensus rules are the same as the test rules which is a little brittle
             let difficulty_calculator = DifficultyCalculator::new(create_consensus_rules(), RandomXFactory::default());
-            let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
-            Ok(achieved_target_diff)
+            let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
+            Ok(ValidatedHeader {
+                achieved_target,
+                // Always `None`, including for a merge mined header: this mock never parses PoW data. A test driven
+                // by this validator therefore proves nothing about a caller's Monero seed tracking (see
+                // `MoneroSeedHeights`) - that needs the real `HeaderFullValidator`.
+                monero_seed: None,
+            })
         } else {
             Err(ValidationError::ConsensusError(
                 "This mock validator always returns an error".to_string(),

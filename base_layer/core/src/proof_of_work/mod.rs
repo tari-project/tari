@@ -23,7 +23,12 @@
 /// Crates for proof of work monero_rx
 pub mod monero_rx;
 
-pub use monero_rx::{create_tari_mining_blob, monero_randomx_difficulty, tari_randomx_difficulty};
+pub use monero_rx::{
+    create_tari_mining_blob,
+    monero_randomx_difficulty,
+    monero_randomx_difficulty_at_rules_height,
+    tari_randomx_difficulty,
+};
 
 /// Crates for proof of work sha3_pow
 mod sha3x_pow;

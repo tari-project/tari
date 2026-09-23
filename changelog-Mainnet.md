@@ -1,6 +1,44 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
 # Changelog
+## [6.0.0](https://github.com/tari-project/tari/compare/v5.6.0...v6.0.0) (2026-09-22)
+
+### Features
+
+* esme increase max monero rx seed height
+* esme new backoff ([02e290a](https://github.com/tari-project/tari/commit/02e290ab6996d32a1b5d2824a030180ab6e887b8))
+* **sidechain:** add a protocol version to the sidechain block header ([#7983](https://github.com/tari-project/tari/issues/7983)) ([db5ef65](https://github.com/tari-project/tari/commit/db5ef65951036c5e0c4c8163f5206c9435030c48))
+* **sidechain:** bind epoch and height into the proposal vote signature ([#7982](https://github.com/tari-project/tari/issues/7982)) ([ddbf585](https://github.com/tari-project/tari/commit/ddbf585510f38deee8bbc7281a9bdc65abfd2540)), closes [#7983](https://github.com/tari-project/tari/issues/7983)
+* test peers app ([#7977](https://github.com/tari-project/tari/issues/7977)) ([2fb6c82](https://github.com/tari-project/tari/commit/2fb6c82d554b64117cd0b6135acb8e3065d103b7))
+* **wallet:** support excluding commitments from gRPC transfers ([#7974](https://github.com/tari-project/tari/issues/7974)) ([7ce6bec](https://github.com/tari-project/tari/commit/7ce6becca07f84a6a86abd36280a586846a651cb)), closes [tari-project/special_contributions#20](https://github.com/tari-project/special_contributions/issues/20)
+* rfc tip 004 ([#7960](https://github.com/tari-project/tari/issues/7960)) ([89ea795](https://github.com/tari-project/tari/commit/89ea795722a06a290279d267d87413fceba9f1b3))
+* improve wallet tx resubmit ([#7954](https://github.com/tari-project/tari/issues/7954)) ([701b3a6](https://github.com/tari-project/tari/commit/701b3a6992be1a38e89674afa1dbcb604f0b47b7))
+
+### Bug Fixes
+* fixes C29 mining verification
+* fixes critical bug in RxM mining by exploiting keccak sponge data
+* Fixes Rxt header mutability
+* Fixes merkle root decoding* 
+* **base_node/grpc:** honour get_blocks cancellation a ([#7997](https://github.com/tari-project/tari/issues/7997)) ([59009d4](https://github.com/tari-project/tari/commit/59009d4868aa25fd2fa961968e86d8bd0dfa982b)), closes [/github.com/tari-project/tari/pull/7997#discussion_r3967875363](https://github.com/tari-project//github.com/tari-project/tari/pull/7997/issues/discussion_r3967875363)
+* decouple liveness ping timeout from ping interval ([#7992](https://github.com/tari-project/tari/issues/7992)) ([6bfdb52](https://github.com/tari-project/tari/commit/6bfdb52e32f3c6871b1f8233f021602775c75005))
+* ledger nonce handling ([#8002](https://github.com/tari-project/tari/issues/8002)) ([dcc5672](https://github.com/tari-project/tari/commit/dcc567274f3db286bc44571b12ccee483bd639f0))
+* ledger wallet cannot sign a change output ([#8003](https://github.com/tari-project/tari/issues/8003)) ([e49cc8d](https://github.com/tari-project/tari/commit/e49cc8d073ae6bd6752671d6eeeacf8c9c05ff88)), closes [#8000](https://github.com/tari-project/tari/issues/8000)
+* sender offset and script key should not leave key manager ([#8000](https://github.com/tari-project/tari/issues/8000)) ([27eb720](https://github.com/tari-project/tari/commit/27eb72080529efa5b5bed734031bd6a296eeb9e6))
+* mcp apps ([#7985](https://github.com/tari-project/tari/issues/7985)) ([aba0f2e](https://github.com/tari-project/tari/commit/aba0f2eb2c50b4b7de3cd95ca59dfea069a67516))
+* stop running peer-database SQLite on tokio worker threads ([#7981](https://github.com/tari-project/tari/issues/7981)) ([600b400](https://github.com/tari-project/tari/commit/600b40074f0ded6f39ad0164ffe6c1b5ed233fe5))
+*  header sync ([#7976](https://github.com/tari-project/tari/issues/7976)) ([c1b0dce](https://github.com/tari-project/tari/commit/c1b0dcee0307cc348fd5d1e06901f8ace46d03b1))
+* enforce safe limits on RPC request handling ([#7972](https://github.com/tari-project/tari/issues/7972)) ([26f5d97](https://github.com/tari-project/tari/commit/26f5d9742be8f736c3a5711608859dd4ea15e27c)), closes [#3](https://github.com/tari-project/tari/issues/3) [#3](https://github.com/tari-project/tari/issues/3)
+* **mmr:** return an error instead of panicking on malformed merkle pr… ([#7968](https://github.com/tari-project/tari/issues/7968)) ([c7a3631](https://github.com/tari-project/tari/commit/c7a3631d06ec7ae31ccf93302372a291abcdd523))
+* upgrade random x ([#7969](https://github.com/tari-project/tari/issues/7969)) ([bbcc7d1](https://github.com/tari-project/tari/commit/bbcc7d15ec0b4b4cfe34326ffb671385688968ba))
+* **wallet_ffi:** make TariVector borrow instead of consume ([#7964](https://github.com/tari-project/tari/issues/7964)) ([#7967](https://github.com/tari-project/tari/issues/7967)) ([e6fe270](https://github.com/tari-project/tari/commit/e6fe270161061812ed95c2ce67f2ebcc691ca046))
+* **comms:** filter private DHT peer addresses ([#7946](https://github.com/tari-project/tari/issues/7946)) ([1f8706e](https://github.com/tari-project/tari/commit/1f8706e05f17ed60af798738b5dc8e0a9223e18e))
+* deserialze ([#7951](https://github.com/tari-project/tari/issues/7951)) ([871471b](https://github.com/tari-project/tari/commit/871471b5dc6b5f6f6c96fdf8cfddbff69d52c273))
+* improve connection dials ([#7950](https://github.com/tari-project/tari/issues/7950)) ([5e58f1f](https://github.com/tari-project/tari/commit/5e58f1f9fcd0245e9c8e530961ecc8182db9248c))
+* offline details ([#7955](https://github.com/tari-project/tari/issues/7955)) ([afa1e44](https://github.com/tari-project/tari/commit/afa1e448fff09ebaa0e1192ee2406e4b76e18a95))
+* overflow base node rpc ([#7961](https://github.com/tari-project/tari/issues/7961)) ([43310ec](https://github.com/tari-project/tari/commit/43310ec8488ed535d628a122534e4bf4a5568851))
+* premine spend in wallet ([#7962](https://github.com/tari-project/tari/issues/7962)) ([1d5f6a7](https://github.com/tari-project/tari/commit/1d5f6a700c7f997a704dbfd3987d8759abaa3b33))
+* prune vs archival inconsistancies ([#7949](https://github.com/tari-project/tari/issues/7949)) ([76036ac](https://github.com/tari-project/tari/commit/76036aca0b31eb6084e36d342069834aed55bcb2))
+
 ## [5.6.0](https://github.com/tari-project/tari/compare/v5.6.0...v5.6.0) (2026-08-05)
 
 

@@ -49,6 +49,7 @@ pub use blockchain_database::{
     fetch_headers,
     fetch_target_difficulties_for_next_block,
     fetch_target_difficulty_for_next_block,
+    reorg_reintroduces_pre_ghsa_blocks,
 };
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;

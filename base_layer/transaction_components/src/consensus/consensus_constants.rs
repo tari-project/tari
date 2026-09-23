@@ -91,6 +91,13 @@ impl From<BlockVersion> for u16 {
 }
 
 /// This is the inner struct used to control all consensus values.
+///
+/// `struct_excessive_bools` is allowed rather than fixed: each bool is an independent consensus rule gated at its own
+/// activation height, and they are read one at a time by unrelated validators. Folding them into a sub-struct or a
+/// bitflag would change the serialised shape of `consensus_constants.json`, which
+/// `the_previous_releases_json_shape_still_deserializes_with_pre_fork_defaults` deliberately pins so an upgrading
+/// node can still read the file the previous release wrote.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
@@ -174,9 +181,69 @@ pub struct ConsensusConstants {
     cuckaroo_edge_bits: u8,
     /// Include c29 accumulated difficulty or not
     include_c29_accumulated_difficulty_into_total: bool,
+    /// Verify Cuckaroo cycles as a bipartite graph, keeping the U and V endpoint namespaces distinct
+    /// (GHSA-3qmx-q9pv-f3m4). False selects the pre-fork merged-namespace verifier.
+    ///
+    /// `serde(default)` is load-bearing, not tidiness. `ConsensusConstantsTracker` persists this struct as
+    /// `consensus_constants.json` in the node's data directory, and every upgrading node has a file that was
+    /// written before this field existed. Without a default, `serde_json::from_str` fails on it,
+    /// `ConsensusConstantsTracker::load_previous` degrades the parse error to a `warn!` and returns `None`, and
+    /// `check_for_changes` skips its entire body when `previous` is `None` - so the consensus change alarm would
+    /// silently not fire on exactly the upgrade it exists for. `false` is the right default: it is what a file
+    /// written by a pre-fork binary meant.
+    #[serde(default)]
+    bipartite_cuckaroo_verification: bool,
+    /// Bind the aux-chain merkle proof's branch length to the depth implied by the merge mining tag's chain count.
+    /// False selects the pre-fork behaviour, where the branch length was unconstrained apart from the generic
+    /// 32-element cap.
+    ///
+    /// `#[serde(default)]` for the same reason as `bipartite_cuckaroo_verification` above: it is new in this
+    /// release, so the previous run's JSON does not carry it. `false` is the pre-fork value, so a vector read back
+    /// from an older file describes the rules that binary was really running.
+    #[serde(default)]
+    aux_chain_merkle_proof_depth_binding: bool,
+    /// Require a RandomXT header's `pow_data` to be the minimal representative of its zero-extension class: empty,
+    /// or ending in a non-zero byte. NOT "empty" - both the empty and the 32 byte zero padded forms are in live use,
+    /// and a rule of "must be empty" would orphan the latter. False selects the pre-fork rule, which accepted any
+    /// length up to 32 bytes, including the trailing zeros that `create_tari_mining_blob` pads away and that
+    /// therefore buy a block a free, equal-work, different-hash variant per zero.
+    ///
+    /// `#[serde(default)]` for the same reason as the two fields above.
+    #[serde(default)]
+    require_canonical_randomxt_pow_data: bool,
+    /// Accept only the canonical encoding of the merge mining `MerkleTreeParameters`, i.e. reject any varint that
+    /// does not survive decode-then-re-encode (GHSA-3qmx-q9pv-f3m4, item 3). False selects the pre-fork decoder,
+    /// which accepts non-canonical widths, a discarded nonce bit, unread high bits, and saturates an aux chain
+    /// count of 256 onto 255.
+    ///
+    /// `#[serde(default)]` for the same reason as the three fields above: it is new in this release, so the
+    /// previous run's JSON does not carry it, and `false` is what a file written by a pre-fork binary meant.
+    #[serde(default)]
+    strict_merkle_tree_parameter_decoding: bool,
+    /// Derive the Monero coinbase prefix hash from raw coinbase prefix bytes carried in `pow_data`
+    /// (GHSA-3qmx-q9pv-f3m4). False selects the pre-fork wire format, in which `pow_data` carried a Keccak sponge
+    /// state that the sender chose and the verifier trusted.
+    ///
+    /// `#[serde(default)]` for the same reason as the fields above: it is new in this release, so the previous
+    /// run's JSON does not carry it, and `false` is what a file written by a pre-fork binary meant.
+    #[serde(default)]
+    derive_monero_coinbase_hasher: bool,
     /// The cap (`M_MAX`) on the exponential same-algorithm proof of work backoff modifier (TIP-RFC-MT-0004).
     /// A value of `1` disables the backoff entirely (pre-fork behaviour), `32` is the RFC cap.
+    ///
+    /// Defaulted for the same reason as the two flags above, but *not* with a bare `#[serde(default)]`:
+    /// `u64::default()` is `0`, which is not a value this field is ever allowed to hold. The pre-fork value is
+    /// `POW_BACKOFF_DISABLED`, i.e. `1`. This field is absent from the JSON written by v5.6.0, the last public
+    /// release and therefore the binary most nodes will be upgrading from.
+    #[serde(default = "pow_backoff_disabled")]
     pow_backoff_cap: u64,
+}
+
+/// The pre-TIP-RFC-MT-0004 value of `pow_backoff_cap`, used as its serde default so that a
+/// `consensus_constants.json` written before the field existed reads back as the rules that binary was really
+/// running rather than as `0`.
+fn pow_backoff_disabled() -> u64 {
+    POW_BACKOFF_DISABLED
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -248,6 +315,198 @@ pub const NEXTNET_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
 pub const ESMERALDA_TIP004_ACTIVATION_HEIGHT: u64 = 860_000;
 /// TIP-RFC-MT-0004 activation height for Igor.
 pub const IGOR_TIP004_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+
+pub const MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT: u64 = 350_000;
+pub const STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+pub const NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+pub const ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT: u64 = 900_000;
+/// so the tip could not be established.
+pub const IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT: u64 = UNSCHEDULED_ACTIVATION_HEIGHT;
+
+// Aux-chain merkle proof depth binding activation heights: the height from which the aux-chain merkle proof's
+// branch length must match the length implied by the merge mining tag's chain count.
+//
+// `check_aux_chains` never reconciled the branch length with the chain count: `calculate_root` walked
+// `branch.len()` levels, an attacker-chosen number up to 31, while `get_position_from_path` derived its own depth
+// from `number_of_chains`. With the single-chain encoding the position check is vacuous and any branch length
+// validated, so one Monero proof of work could commit to a large set of distinct Tari headers at the same height,
+// breaking the 1:1 binding between a Monero solution and a Tari block.
+//
+// This is a hard fork, gated per network rather than applied from height 0 so that blocks already accepted below
+// the activation height stay valid: no reorg, no retroactive invalidation. The heights deliberately *coincide*
+// with the GHSA-3qmx-q9pv-f3m4 Cuckaroo heights - both fixes ship in the same mandatory upgrade, so there is one
+// flag day per network rather than two.
+//
+// They are deliberately defined as aliases of the Cuckaroo heights rather than as separate literals. The two rules
+// ship in one mandatory upgrade and are meant to share a flag day, so rescheduling the Cuckaroo fork - the
+// documented pre-tagging action - must move this fork with it. Writing the heights out twice would let the two
+// drift apart silently, which is the failure mode that actually matters here: a node applying one rule but not
+// the other at a given height is a consensus split. If the two ever need to diverge, break the alias explicitly
+// and give this fork its own literal at that point.
+/// Aux-chain merkle proof depth binding activation height for MainNet.
+pub const MAINNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Aux-chain merkle proof depth binding activation height for StageNet.
+pub const STAGENET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT: u64 = STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Aux-chain merkle proof depth binding activation height for NextNet.
+pub const NEXTNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT: u64 = NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Aux-chain merkle proof depth binding activation height for Esmeralda.
+pub const ESMERALDA_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT: u64 = ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Aux-chain merkle proof depth binding activation height for Igor.
+pub const IGOR_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT: u64 = IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+// Canonical RandomXT `pow_data` activation heights. GHSA-3qmx-q9pv-f3m4.
+//
+// `create_tari_mining_blob` zero pads `pow_data` out to 33 bytes (1 algo byte + 32 data bytes), so two `pow_data`
+// values hash to the same RandomX input - and therefore have the same achieved difficulty - exactly when one is the
+// other extended by zero bytes. They still produce different block hashes, because `BlockHeader::hash` covers `pow`.
+// A `pow_data` that ends in `k` zero bytes consequently has `k` hash-distinct, equal-work variants that a third
+// party can mint in flight, each one fresh to the bad-block and reconcile-dedup caches because those key on the full
+// header hash.
+//
+// The canonical form is the minimal representative of each zero-extension class: `pow_data` must be empty, or end in
+// a non-zero byte. That is injective, so the class collapses to one accepted value.
+//
+// Choosing the minimal representative rather than "empty" or "exactly 32 bytes" is load-bearing, because both of
+// those forms are in live use. Over the 500 MainNet blocks up to height 347,715 (tip 347,716), of the 134 RandomXT
+// blocks:
+//
+//   74 (55%) carry a 32 byte `pow_data` - 14 meaningful bytes zero padded out to 32, e.g.
+//            `00000000000035eb17fbb03b0dfb` followed by 18 zero bytes.
+//   60 (45%) carry an empty `pow_data`.
+//
+// A rule of "must be empty" would orphan the first group and "must be exactly 32 bytes" the second. The minimal
+// representative accepts the second group unchanged, and needs the first only to stop zero padding: same 14 bytes,
+// same RandomX blob input, same achieved difficulty, no re-mining. Nothing reads these bytes - the RandomXT VM key
+// comes from `tari_rx_vm_key_height` - so truncating the padding loses nothing.
+//
+// The all-time figures differ sharply from the figures at the tip and should not be used to pick the rule: a
+// read-only scan of a synced node's `headers` database (`cargo run --release --features rxt_pow_data_audit --example
+// audit_rxt_pow_data`) found 83,109 of 85,639 MainNet RandomXT blocks (97%) carrying a 32 byte `pow_data`, from the
+// first RandomXT block at height 15,000 onwards, and 52 of 492,547 on Esmeralda between heights 164,916 and 653,327.
+// That 97% is dominated by an earlier era; near the tip the split is the 55/45 above.
+//
+// Aliased to the Cuckaroo heights for exactly the reason given above for the aux-chain binding: all three rules ship
+// in one mandatory upgrade and share a flag day, and writing the heights out separately would let them drift into a
+// state where a node applies one rule but not another at a given height, which is a consensus split. The intended
+// MainNet and Esmeralda values - 350,000 and 900,000 - are what the alias resolves to today.
+/// Canonical RandomXT `pow_data` activation height for MainNet.
+pub const MAINNET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Canonical RandomXT `pow_data` activation height for StageNet.
+pub const STAGENET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT: u64 = STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Canonical RandomXT `pow_data` activation height for NextNet.
+pub const NEXTNET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT: u64 = NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Canonical RandomXT `pow_data` activation height for Esmeralda.
+pub const ESMERALDA_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT: u64 = ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Canonical RandomXT `pow_data` activation height for Igor.
+pub const IGOR_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT: u64 = IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+// Strict `MerkleTreeParameters` decoding activation heights. GHSA-3qmx-q9pv-f3m4, item 3: the height from which
+// `MerkleTreeParameters::from_varint` accepts only the canonical encoding of the parameters a varint decodes to.
+//
+// The pre-fork decoder was very far from injective. Widening the aux chain count arithmetic - the original finding -
+// closes only one collision pair; three families remain, because the size field can name any width wide enough to
+// hold the count, because `get_aux_nonce` reads 33 bits and folds them into a `u32` so one bit is discarded, and
+// because bits 44..=63 are never read at all. Every one of those is free block hash malleability: the same Monero
+// proof of work, the same aux chain parameters, a different Tari block hash, fresh to every cache that keys on the
+// header hash. The strict decoder therefore re-encodes what it decoded and rejects anything that does not round
+// trip, which closes all of them with one rule. `to_varint` is unchanged and is the definition of the canonical
+// form.
+//
+// !!! OUTSTANDING PRE-SHIP VERIFICATION !!!
+// A MainNet scan must confirm that no historical merge mining varint is non-canonical *at all* - not merely that
+// none carries the ambiguous 256-chain raw encoding. The canonicality check has a far larger rejection surface than
+// the count check did, so the risk of orphaning a real block is real rather than theoretical, and this scan is what
+// decides whether the scheduled height is safe. The scan must be exhaustive over *recent* blocks in particular,
+// not a sample spread across the chain: what it is really proving is that every currently deployed producer of the
+// Tari merge mining tag emits Tari's exact `to_varint` output, and a producer that went live last month is
+// precisely the one that would orphan blocks on day one. Do not tag a release carrying this fork until that scan
+// has run and come back clean.
+//
+// Aliased to the Cuckaroo heights for exactly the reason given on the aux-chain binding and the canonical RandomXT
+// `pow_data` heights above: all four rules ship in one mandatory upgrade and share a flag day, and writing the
+// heights out separately would let them drift into a state where a node applies one rule but not another at a given
+// height, which is a consensus split. The intended MainNet and Esmeralda values - 350,000 and 900,000 - are what
+// the alias resolves to today. If this fork ever genuinely needs a flag day of its own, break the alias explicitly
+// and give it its own literal at that point.
+/// Strict `MerkleTreeParameters` decoding activation height for MainNet.
+pub const MAINNET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Strict `MerkleTreeParameters` decoding activation height for StageNet.
+pub const STAGENET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT: u64 = STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Strict `MerkleTreeParameters` decoding activation height for NextNet.
+pub const NEXTNET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT: u64 = NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Strict `MerkleTreeParameters` decoding activation height for Esmeralda.
+pub const ESMERALDA_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT: u64 = ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Strict `MerkleTreeParameters` decoding activation height for Igor.
+pub const IGOR_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT: u64 = IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+// Derived Monero coinbase prefix hash activation heights. GHSA-3qmx-q9pv-f3m4.
+//
+// `MoneroPowData::coinbase_tx_hasher` was a live `tiny_keccak::Keccak` sponge carried on the wire inside
+// `header.pow.pow_data` and rebuilt field by field by borsh. `is_coinbase_valid_merkle_root` cloned it, absorbed
+// `coinbase_tx_extra` and finalized, and the resulting prefix hash is what ties a Monero block - and therefore its
+// RandomX solution - to one particular Tari header. The sender chose that state and the verifier treated it as
+// authoritative, which is forgeable by arithmetic rather than by search: with `offset = 0` an attacker solves
+// `buffer = target_state XOR extra XOR padding` and reproduces any real Monero block's coinbase prefix hash under an
+// extra field carrying their own merge mining tag, inheriting that block's difficulty having done no work.
+//
+// From this height `pow_data` carries the raw coinbase transaction prefix bytes instead, and the verifier builds its
+// own `Keccak::v256()` and absorbs `prefix || extra` itself. No sponge state is on the wire at all.
+//
+// This is RandomXM (`MoneroPowData`), and it is a different rule from the canonical RandomXT `pow_data` rule above:
+// that one constrains the bytes of a *Tari* `pow_data`, this one changes the shape of a *Monero* one. They do not
+// overlap and neither subsumes the other.
+//
+// Gated per network rather than applied from height 0, and more strongly than any of the rules above: this is a
+// wire-format change, so applying it to history would fail to *parse* every merge mined block since mainnet genesis.
+// Everything below the activation height keeps the legacy shape, and the forgery it permits, forever - which is why
+// the deep reorg anchor exists as well.
+//
+// Aliased to the Cuckaroo heights for exactly the reason given for the three rules above: all of these rules ship in
+// one mandatory upgrade and share a flag day, and writing the heights out separately would let them drift into a
+// state where a node applies one rule but not another at a given height, which is a consensus split. Note this fork
+// needs merge mining proxies and miners to ship a wire format change, not just node operators, so recompute the lead
+// time against the real tip before tagging.
+/// Derived Monero coinbase prefix hash activation height for MainNet.
+pub const MAINNET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Derived Monero coinbase prefix hash activation height for StageNet.
+pub const STAGENET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT: u64 = STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Derived Monero coinbase prefix hash activation height for NextNet.
+pub const NEXTNET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT: u64 = NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Derived Monero coinbase prefix hash activation height for Esmeralda.
+pub const ESMERALDA_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT: u64 = ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT;
+/// Derived Monero coinbase prefix hash activation height for Igor.
+pub const IGOR_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT: u64 = IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+// GHSA-3qmx-q9pv-f3m4: how big a Monero coinbase transaction prefix is allowed to be.
+//
+// From the activation height above, `MoneroPowData` carries the raw `version | unlock_time | inputs | outputs`
+// consensus encoding of the Monero coinbase transaction (everything the Monero `transaction_prefix` contains except
+// the extra field, which travels beside it and has its own `max_extra_field_size` bound). A peer chooses those
+// bytes, so like the extra field they need a bound, or a single header could carry a megabyte.
+//
+// The bound is derived from what a Monero coinbase prefix can actually be, not picked round:
+//
+//   * fixed part, every VarInt taken at its widest 10-byte encoding rather than the 1-4 bytes real values use:
+//     `version` (10) + `unlock_time` (10) + the input vector, which for a coinbase is always exactly one `TxIn::Gen`:
+//     length (1) + tag (1) + `height` (10), + the output count VarInt (10). That is 42 bytes. The constant below is
+//     held at 52 rather than 42: it is an upper bound and nothing but abuse lives in the 10 bytes of slack, so the
+//     value is left where the fix shipped it instead of being tightened under a security fork.
+//   * per output: `amount` VarInt (10) + target tag (1) + one-time public key (32) + view tag (1) = 44 bytes.
+//   * output count: Monero itself enforces a 1,000 output limit on a coinbase transaction, so this bound sits exactly
+//     on Monero's own limit and excludes no legitimate merge miner - including P2Pool, which pays every miner in its
+//     PPLNS window straight out of the coinbase. A coinbase over it is one Monero would not have accepted in the first
+//     place. It still leaves ~20 kB of headroom inside `PowData`'s 65,535-byte ceiling once the two merkle proofs (32
+//     hashes each) and the extra field are accounted for.
+//
+// A real single-output coinbase prefix is under 60 bytes, i.e. the new format is *smaller* on the wire than the
+// 203-byte sponge it replaces in the overwhelmingly common case. This number is only here to stop abuse.
+const MONERO_COINBASE_PREFIX_FIXED_MAX_SIZE: usize = 52;
+const MONERO_COINBASE_OUTPUT_MAX_SIZE: usize = 44;
+const MONERO_COINBASE_MAX_OUTPUTS: usize = 1_000;
+/// The largest Monero coinbase transaction prefix a `MoneroPowData` may carry (GHSA-3qmx-q9pv-f3m4). See the
+/// derivation above.
+pub const MAX_MONERO_COINBASE_PREFIX_SIZE: usize =
+    MONERO_COINBASE_PREFIX_FIXED_MAX_SIZE + MONERO_COINBASE_MAX_OUTPUTS * MONERO_COINBASE_OUTPUT_MAX_SIZE;
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -554,6 +813,82 @@ impl ConsensusConstants {
         self.include_c29_accumulated_difficulty_into_total
     }
 
+    /// True once the Cuckaroo verifier must treat the cycle as a bipartite graph, keeping the U and V endpoint
+    /// namespaces distinct (GHSA-3qmx-q9pv-f3m4). False below the fork height selects the merged-namespace verifier
+    /// that accepted the historical chain.
+    pub fn bipartite_cuckaroo_verification(&self) -> bool {
+        self.bipartite_cuckaroo_verification
+    }
+
+    /// The first height in `constants` at which the bipartite Cuckaroo verifier is in force, or
+    /// [`UNSCHEDULED_ACTIVATION_HEIGHT`] if no entry ever turns it on.
+    ///
+    /// This is the height of the GHSA-3qmx-q9pv-f3m4 fork, and therefore the height from which stored
+    /// `target_difficulty` values may have been computed under rules that no longer apply: the activation entry is
+    /// also where a network may change `difficulty_block_window` or `pow_backoff_cap`, and `target_difficulty` is
+    /// the only quantity that accumulates, so one stale entry poisons chain strength for every block above it. The
+    /// accumulated-data rebuild migration keys on this height.
+    ///
+    /// Derived from the constants vector rather than declared as a separate per-network constant, for the same
+    /// reason as [`ConsensusConstants::derived_monero_coinbase_activation_height`]: whatever height the entry that
+    /// carries the rule is scheduled at *is* the activation height, by construction, so it cannot go stale. The
+    /// vector is sorted by effective height (`active_at_height` relies on that), so the first match is the earliest.
+    pub fn bipartite_cuckaroo_activation_height(constants: &[ConsensusConstants]) -> u64 {
+        constants
+            .iter()
+            .find(|c| c.bipartite_cuckaroo_verification)
+            .map_or(UNSCHEDULED_ACTIVATION_HEIGHT, |c| c.effective_from_height)
+    }
+
+    /// True once the aux-chain merkle proof's branch length must equal the length an honest proof for the
+    /// independently derived leaf position in a tree of `number_of_chains` leaves would have. False below the fork
+    /// height selects the pre-fork behaviour, which accepted any branch length up to the generic cap.
+    pub fn aux_chain_merkle_proof_depth_binding(&self) -> bool {
+        self.aux_chain_merkle_proof_depth_binding
+    }
+
+    /// True once a RandomXT header's `pow_data` must be empty or end in a non-zero byte. Below the fork height any
+    /// length up to 32 bytes is accepted, which is what keeps the historical chain valid.
+    pub fn require_canonical_randomxt_pow_data(&self) -> bool {
+        self.require_canonical_randomxt_pow_data
+    }
+
+    /// True once `MerkleTreeParameters::from_varint` must accept only the canonical encoding of the parameters a
+    /// varint decodes to, which makes the decoding injective (GHSA-3qmx-q9pv-f3m4, item 3). False below the fork
+    /// height selects the pre-fork decoder that validated the historical chain, which accepts several distinct
+    /// varints per parameter set.
+    pub fn strict_merkle_tree_parameter_decoding(&self) -> bool {
+        self.strict_merkle_tree_parameter_decoding
+    }
+
+    /// True once Monero merge-mining `pow_data` carries the raw coinbase transaction prefix, from which the
+    /// verifier derives the coinbase Keccak state itself (GHSA-3qmx-q9pv-f3m4).
+    ///
+    /// False below the fork height selects the pre-fork wire format, in which `pow_data` carried a serialized
+    /// Keccak sponge: 200 bytes of state plus `offset`, `rate` and `mode`, all attacker chosen. Because the
+    /// 200 bytes are the whole sponge, an attacker could solve `buffer = target_state XOR extra XOR padding` and
+    /// reproduce any real Monero block's coinbase prefix hash under an extra field carrying their own merge mining
+    /// tag - one XOR, no search - and so mint Tari blocks at that block's difficulty for free. This is gated
+    /// rather than applied from height 0 for the same reason as the Cuckaroo verifier above, and more strongly:
+    /// it is a wire-format change, so applying it to history would fail to parse every merge mined block on chain.
+    pub fn derive_monero_coinbase_hasher(&self) -> bool {
+        self.derive_monero_coinbase_hasher
+    }
+
+    /// The first height in `constants` at which the derived Monero coinbase prefix hash is in force, or
+    /// [`UNSCHEDULED_ACTIVATION_HEIGHT`] if no entry ever turns it on.
+    ///
+    /// This is what the deep reorg anchor keys on. Derived from the constants vector rather than declared as a
+    /// separate per-network constant, so it cannot go stale: whatever height the entry that carries the rule is
+    /// scheduled at *is* the activation height, by construction. The vector is sorted by effective height
+    /// (`active_at_height` relies on that), so the first match is the earliest.
+    pub fn derived_monero_coinbase_activation_height(constants: &[ConsensusConstants]) -> u64 {
+        constants
+            .iter()
+            .find(|c| c.derive_monero_coinbase_hasher)
+            .map_or(UNSCHEDULED_ACTIVATION_HEIGHT, |c| c.effective_from_height)
+    }
+
     /// The cap on the exponential same-algorithm proof of work backoff modifier (TIP-RFC-MT-0004). `1` disables the
     /// backoff.
     pub fn pow_backoff_cap(&self) -> u64 {
@@ -624,6 +959,16 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: true,
+            // LocalNet is ephemeral (no persistent chain to invalidate), so GHSA-3qmx-q9pv-f3m4 applies from
+            // height 0 rather than through a gated activation entry.
+            bipartite_cuckaroo_verification: true,
+            // LocalNet is ephemeral (no persistent chain to invalidate), so the aux-chain depth binding applies
+            // from height 0 rather than through a gated activation entry. Same for the canonical RandomXT rule.
+            aux_chain_merkle_proof_depth_binding: true,
+            require_canonical_randomxt_pow_data: true,
+            strict_merkle_tree_parameter_decoding: true,
+            // Same reasoning: LocalNet never uses the legacy Monero coinbase wire format at all.
+            derive_monero_coinbase_hasher: true,
             pow_backoff_cap: POW_BACKOFF_CAP,
         }];
         consensus_constants
@@ -659,7 +1004,7 @@ impl ConsensusConstants {
             target_time: randomx_target_time,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
             blockchain_version: BlockVersion::V0,
@@ -701,8 +1046,26 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: true,
+            bipartite_cuckaroo_verification: false,
+            aux_chain_merkle_proof_depth_binding: false,
+            require_canonical_randomxt_pow_data: false,
+            strict_merkle_tree_parameter_decoding: false,
+            derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
-        }];
+        };
+
+        // All five GHSA-3qmx-q9pv-f3m4 rules share one flag day, so they share one entry: their activation
+        // heights are aliases of the Cuckaroo height, and `active_index_at_height` returns the last entry at a
+        // height, so separate per-rule entries only ever resolved to one entry carrying all of them anyway.
+        let mut con_2 = con_1.clone();
+        con_2.effective_from_height = IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT;
+        con_2.bipartite_cuckaroo_verification = true;
+        con_2.aux_chain_merkle_proof_depth_binding = true;
+        con_2.require_canonical_randomxt_pow_data = true;
+        con_2.strict_merkle_tree_parameter_decoding = true;
+        con_2.derive_monero_coinbase_hasher = true;
+
+        let consensus_constants = vec![con_1, con_2];
         Self::with_tip004_activation(consensus_constants, IGOR_TIP004_ACTIVATION_HEIGHT)
     }
 
@@ -765,6 +1128,11 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            bipartite_cuckaroo_verification: false,
+            aux_chain_merkle_proof_depth_binding: false,
+            require_canonical_randomxt_pow_data: false,
+            strict_merkle_tree_parameter_decoding: false,
+            derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
 
@@ -836,7 +1204,17 @@ impl ConsensusConstants {
         con8.effective_from_height = 886_000;
         con8.max_randomx_seed_height = 6000;
 
-        vec![consensus_constants1, con2, con3, con4, con5, con6, con7, con8]
+        // GHSA-3qmx-q9pv-f3m4. Esmeralda has no `with_tip004_activation` call to sit in front of - its TIP-004
+        // entry is `con5` and it schedules further changes above it - so these entries are simply appended last.
+        let mut con9 = con8.clone();
+        con9.effective_from_height = ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT;
+        con9.bipartite_cuckaroo_verification = true;
+        con9.aux_chain_merkle_proof_depth_binding = true;
+        con9.require_canonical_randomxt_pow_data = true;
+        con9.strict_merkle_tree_parameter_decoding = true;
+        con9.derive_monero_coinbase_hasher = true;
+
+        vec![consensus_constants1, con2, con3, con4, con5, con6, con7, con8, con9]
     }
 
     /// *
@@ -858,7 +1236,7 @@ impl ConsensusConstants {
             target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
             blockchain_version: BlockVersion::V0,
@@ -896,8 +1274,26 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            bipartite_cuckaroo_verification: false,
+            aux_chain_merkle_proof_depth_binding: false,
+            require_canonical_randomxt_pow_data: false,
+            strict_merkle_tree_parameter_decoding: false,
+            derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
-        }];
+        };
+
+        // All five GHSA-3qmx-q9pv-f3m4 rules share one flag day, so they share one entry: their activation
+        // heights are aliases of the Cuckaroo height, and `active_index_at_height` returns the last entry at a
+        // height, so separate per-rule entries only ever resolved to one entry carrying all of them anyway.
+        let mut con_2 = con_1.clone();
+        con_2.effective_from_height = STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+        con_2.bipartite_cuckaroo_verification = true;
+        con_2.aux_chain_merkle_proof_depth_binding = true;
+        con_2.require_canonical_randomxt_pow_data = true;
+        con_2.strict_merkle_tree_parameter_decoding = true;
+        con_2.derive_monero_coinbase_hasher = true;
+
+        let consensus_constants = vec![con_1, con_2];
         Self::with_tip004_activation(consensus_constants, STAGENET_TIP004_ACTIVATION_HEIGHT)
     }
 
@@ -953,6 +1349,11 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            bipartite_cuckaroo_verification: false,
+            aux_chain_merkle_proof_depth_binding: false,
+            require_canonical_randomxt_pow_data: false,
+            strict_merkle_tree_parameter_decoding: false,
+            derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
         let mut con_2 = con_1.clone();
@@ -1017,7 +1418,17 @@ impl ConsensusConstants {
         // helper below and `consensus_constants` both rely on.
         con_5.effective_from_height = 5_500;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
+        // GHSA-3qmx-q9pv-f3m4. Appended *before* `with_tip004_activation` pushes its own entry, so that the vector
+        // stays sorted by effective height and the TIP-004 entry, which clones the last element, inherits the fix.
+        let mut con_6 = con_5.clone();
+        con_6.effective_from_height = NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+        con_6.bipartite_cuckaroo_verification = true;
+        con_6.aux_chain_merkle_proof_depth_binding = true;
+        con_6.require_canonical_randomxt_pow_data = true;
+        con_6.strict_merkle_tree_parameter_decoding = true;
+        con_6.derive_monero_coinbase_hasher = true;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
         Self::with_tip004_activation(consensus_constants, NEXTNET_TIP004_ACTIVATION_HEIGHT)
     }
 
@@ -1074,6 +1485,11 @@ impl ConsensusConstants {
             cuckaroo_cycle_length: 42,
             cuckaroo_edge_bits: 29,
             include_c29_accumulated_difficulty_into_total: false,
+            bipartite_cuckaroo_verification: false,
+            aux_chain_merkle_proof_depth_binding: false,
+            require_canonical_randomxt_pow_data: false,
+            strict_merkle_tree_parameter_decoding: false,
+            derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
         };
         let mut con_2 = con_1.clone();
@@ -1138,7 +1554,19 @@ impl ConsensusConstants {
         con_6.effective_from_height = 126_000;
         con_6.vn_epoch_length = 10;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6];
+        // GHSA-3qmx-q9pv-f3m4. All three entries are appended *before* `with_tip004_activation` pushes its own:
+        // TIP-004 sits at `u64::MAX` on MainNet, so adding them afterwards would leave the vector unsorted. Because
+        // `with_tip004_activation` clones the last element, the TIP-004 entry inherits all three fixes for free.
+        let mut con_7 = con_6.clone();
+        con_7.effective_from_height = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+        con_7.bipartite_cuckaroo_verification = true;
+        con_7.aux_chain_merkle_proof_depth_binding = true;
+        con_7.require_canonical_randomxt_pow_data = true;
+        con_7.strict_merkle_tree_parameter_decoding = true;
+        con_7.derive_monero_coinbase_hasher = true;
+        con_7.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5, con_6, con_7];
         Self::with_tip004_activation(consensus_constants, MAINNET_TIP004_ACTIVATION_HEIGHT)
     }
 
@@ -1341,6 +1769,39 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    /// Sets the Cuckaroo graph size in bits. The live networks use 29; fixtures use a smaller graph so that a
+    /// proof can be searched for in milliseconds instead of hours.
+    pub fn with_cuckaroo_edge_bits(mut self, edge_bits: u8) -> Self {
+        self.consensus.cuckaroo_edge_bits = edge_bits;
+        self
+    }
+
+    /// Sets the Cuckaroo cycle length. The live networks use 42; fixtures use a shorter cycle for the same reason
+    /// as `with_cuckaroo_edge_bits`.
+    pub fn with_cuckaroo_cycle_length(mut self, cycle_length: u8) -> Self {
+        self.consensus.cuckaroo_cycle_length = cycle_length;
+        self
+    }
+
+    /// Selects the Cuckaroo verifier: `false` is the pre-fork merged-namespace verifier, `true` is the bipartite one
+    /// (GHSA-3qmx-q9pv-f3m4). Combine with `with_effective_from_height` to build a fixture whose activation height
+    /// is known, which is what the fork gate test in `proof_of_work::cuckaroo_pow` does.
+    pub fn with_bipartite_cuckaroo_verification(mut self, bipartite: bool) -> Self {
+        self.consensus.bipartite_cuckaroo_verification = bipartite;
+        self
+    }
+
+    /// Turn the derived Monero coinbase prefix hash on or off for this entry (GHSA-3qmx-q9pv-f3m4). `false` is the
+    /// pre-fork wire format, in which `pow_data` carried a Keccak sponge state the sender chose.
+    ///
+    /// Networks get their entries from `ConsensusConstants::for_network`, so this exists for building a constants
+    /// *vector* by hand, which is mostly a matter of putting a scheduled activation in front of code under test -
+    /// the deep reorg anchor's fixtures do exactly that.
+    pub fn with_derive_monero_coinbase_hasher(mut self, derive: bool) -> Self {
+        self.consensus.derive_monero_coinbase_hasher = derive;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus
     }
@@ -1369,6 +1830,58 @@ mod activation_test {
             Network::NextNet => NEXTNET_TIP004_ACTIVATION_HEIGHT,
             Network::StageNet => STAGENET_TIP004_ACTIVATION_HEIGHT,
             Network::MainNet => MAINNET_TIP004_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// The GHSA-3qmx-q9pv-f3m4 activation height per network. LocalNet is ephemeral and carries the fix on its
+    /// single height-0 entry rather than through a gated entry.
+    fn c29_bipartite_activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// The canonical (empty) RandomXT `pow_data` activation height per network. LocalNet is ephemeral and carries
+    /// the rule on its single height-0 entry rather than through a gated entry.
+    fn rxt_canonical_pow_data_activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_RXT_CANONICAL_POW_DATA_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// The strict `MerkleTreeParameters` decoding activation height per network (GHSA-3qmx-q9pv-f3m4, item 3).
+    /// LocalNet is ephemeral and carries the rule on its single height-0 entry rather than through a gated entry.
+    fn strict_merkle_tree_params_activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
+        }
+    }
+
+    /// The derived Monero coinbase prefix hash activation height per network (GHSA-3qmx-q9pv-f3m4). LocalNet is
+    /// ephemeral and carries the rule on its single height-0 entry rather than through a gated entry.
+    fn derived_monero_coinbase_activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
         }
     }
 
@@ -1421,8 +1934,24 @@ mod activation_test {
         }
     }
 
-    /// The activation entry must differ from the rules live just below it in exactly three fields. Anything else
-    /// would mean an unrelated consensus change riding along inside the TIP-RFC-MT-0004 fork.
+    /// The index of the last entry effective at `height`. Two forks scheduled at the same height - which is what
+    /// `UNSCHEDULED_ACTIVATION_HEIGHT` does to every network without a chosen height - both sit at `u64::MAX`, and
+    /// only the *last* of them is the one the runtime ever selects.
+    fn last_index_at(constants: &[ConsensusConstants], height: u64) -> usize {
+        constants
+            .iter()
+            .rposition(|c| c.effective_from_height == height)
+            .unwrap_or_else(|| panic!("no entry at height {height}"))
+    }
+
+    /// The activation entry must differ from the entry immediately below it in the vector in exactly three fields.
+    /// Anything else would mean an unrelated consensus change riding along inside the TIP-RFC-MT-0004 fork.
+    ///
+    /// The comparison is against the vector predecessor rather than `runtime_lookup(activation - 1)` because that
+    /// is precisely what `with_tip004_activation` clones. The two are the same entry whenever the fork has a
+    /// height of its own, and differ only when another fork is scheduled at the same `u64::MAX` placeholder, where
+    /// the predecessor is the right answer: the TIP-004 entry inherits that fork's rules, and both become live at
+    /// the same instant.
     ///
     /// The entry is found by its effective height rather than by taking the last one, because a network may
     /// schedule further changes above the fork (Esmeralda tunes the backoff cap again after activation).
@@ -1431,17 +1960,22 @@ mod activation_test {
         for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
             let constants = ConsensusConstants::for_network(network);
             let activation = activation_height(network);
-            let live = runtime_lookup(&constants, activation.saturating_sub(1)).clone();
+            let index = last_index_at(&constants, activation);
+            assert!(
+                index > 0,
+                "{network} has no entry below its TIP-RFC-MT-0004 activation entry"
+            );
+            let live = constants
+                .get(index.saturating_sub(1))
+                .expect("index > 0 was just asserted")
+                .clone();
 
             let mut expected = live.clone();
             expected.effective_from_height = activation;
             expected.pow_backoff_cap = POW_BACKOFF_CAP;
             expected.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
 
-            let actual = constants
-                .iter()
-                .find(|c| c.effective_from_height == activation)
-                .unwrap_or_else(|| panic!("{network} has no TIP-RFC-MT-0004 activation entry at height {activation}"));
+            let actual = constants.get(index).expect("index came from the vector");
             assert_eq!(
                 *actual, expected,
                 "{network} activation entry drifted from the live rules"
@@ -1452,6 +1986,618 @@ mod activation_test {
                 live.include_c29_accumulated_difficulty_into_total,
                 "{network} activation entry changes include_c29_accumulated_difficulty_into_total"
             );
+            // The same for GHSA-3qmx-q9pv-f3m4: TIP-004 must not switch the Cuckaroo verifier back.
+            assert_eq!(
+                actual.bipartite_cuckaroo_verification, live.bipartite_cuckaroo_verification,
+                "{network} activation entry changes bipartite_cuckaroo_verification"
+            );
+            // And it must not relax the canonical RandomXT `pow_data` rule back to "any length up to 32".
+            assert_eq!(
+                actual.require_canonical_randomxt_pow_data, live.require_canonical_randomxt_pow_data,
+                "{network} activation entry changes require_canonical_randomxt_pow_data"
+            );
+            // And for GHSA-3qmx-q9pv-f3m4 item 3: TIP-004 must not switch the canonicality check back off.
+            assert_eq!(
+                actual.strict_merkle_tree_parameter_decoding, live.strict_merkle_tree_parameter_decoding,
+                "{network} activation entry changes strict_merkle_tree_parameter_decoding"
+            );
+            // Nor may it revert the Monero coinbase wire format, which would make every post-fork merge mined
+            // header stop parsing.
+            assert_eq!(
+                actual.derive_monero_coinbase_hasher, live.derive_monero_coinbase_hasher,
+                "{network} activation entry changes derive_monero_coinbase_hasher"
+            );
+        }
+    }
+
+    /// GHSA-3qmx-q9pv-f3m4. A `consensus_constants.json` written before `bipartite_cuckaroo_verification` existed
+    /// must still deserialize, and must read as the pre-fork verifier.
+    ///
+    /// Without `#[serde(default)]` on the field, every upgrading node's stored file fails to parse,
+    /// `ConsensusConstantsTracker::load_previous` swallows the error into a `warn!` and returns `None`, and
+    /// `check_for_changes` then skips its whole body - so the consensus change alarm would be dead on exactly the
+    /// upgrade it exists for.
+    #[test]
+    fn constants_written_before_the_c29_field_existed_still_deserialize() {
+        let live = ConsensusConstants::for_network_at_height(Network::MainNet, 0);
+        let json = serde_json::to_string(&live).expect("serializes");
+        let mut value: serde_json::Value = serde_json::from_str(&json).expect("round trips");
+        // Exactly what an older binary wrote: the field is simply not there.
+        assert!(
+            value
+                .as_object_mut()
+                .expect("an object")
+                .remove("bipartite_cuckaroo_verification")
+                .is_some(),
+            "the field name changed, update this test"
+        );
+        let without_field = serde_json::to_string(&value).expect("serializes");
+
+        let recovered: ConsensusConstants =
+            serde_json::from_str(&without_field).expect("a pre-fork constants file must still parse");
+        assert!(
+            !recovered.bipartite_cuckaroo_verification(),
+            "a missing field must read as the pre-fork merged-namespace verifier"
+        );
+        // And nothing else drifted.
+        let mut expected = live;
+        expected.bipartite_cuckaroo_verification = false;
+        assert_eq!(recovered, expected);
+    }
+
+    /// The five GHSA-3qmx-q9pv-f3m4 rules share one flag day and now live on a *single* constants entry per
+    /// network, so there is one thing to assert rather than five. This replaces the five separate
+    /// `..._activation_entry_only_changes_...` tests: while each rule had its own entry those were five
+    /// independent statements, but once the entries were collapsed they all described the same entry and one
+    /// change produced five failures for no extra information.
+    ///
+    /// What still matters, and is what this pins: none of the five rules may be live below the flag day, and the
+    /// entry may not change anything outside that rule set - with one deliberate exception. MainNet also shortens
+    /// its LWMA window to TIP-004's value on this flag day (Esmeralda already did so at its own TIP-004 height),
+    /// so the fork changes block-time behaviour there as well as proof of work validation.
+    #[test]
+    fn the_advisory_activation_entry_changes_exactly_the_advisory_rules() {
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let constants = ConsensusConstants::for_network(network);
+            let activation = c29_bipartite_activation_height(network);
+            let index = constants
+                .iter()
+                .position(|c| c.effective_from_height == activation && c.bipartite_cuckaroo_verification)
+                .unwrap_or_else(|| panic!("{network} has no advisory activation entry at height {activation}"));
+            assert!(index > 0, "{network} has no entry below its advisory activation entry");
+            let live = constants
+                .get(index.saturating_sub(1))
+                .expect("index > 0 was just asserted")
+                .clone();
+
+            assert!(
+                !live.bipartite_cuckaroo_verification,
+                "{network}: c29 already live below the flag day"
+            );
+            assert!(
+                !live.aux_chain_merkle_proof_depth_binding,
+                "{network}: depth binding already live"
+            );
+            assert!(
+                !live.require_canonical_randomxt_pow_data,
+                "{network}: canonical RandomXT already live"
+            );
+            assert!(
+                !live.strict_merkle_tree_parameter_decoding,
+                "{network}: strict decoding already live"
+            );
+            assert!(
+                !live.derive_monero_coinbase_hasher,
+                "{network}: derived coinbase hasher already live"
+            );
+
+            let mut expected = live;
+            expected.effective_from_height = activation;
+            expected.bipartite_cuckaroo_verification = true;
+            expected.aux_chain_merkle_proof_depth_binding = true;
+            expected.require_canonical_randomxt_pow_data = true;
+            expected.strict_merkle_tree_parameter_decoding = true;
+            expected.derive_monero_coinbase_hasher = true;
+            if network == Network::MainNet {
+                expected.difficulty_block_window = TIP004_DIFFICULTY_BLOCK_WINDOW;
+            }
+
+            assert_eq!(
+                *constants.get(index).expect("index came from the vector"),
+                expected,
+                "{network} advisory activation entry changes something outside the advisory rule set"
+            );
+        }
+    }
+    /// The rules actually in force either side of the fork, looked up the way the node looks them up.
+    #[test]
+    fn c29_bipartite_verification_activates_at_the_agreed_heights() {
+        // LocalNet is ephemeral, so it has the fix from height 0.
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::LocalNet, 0).bipartite_cuckaroo_verification(),
+            "LocalNet"
+        );
+
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let activation = c29_bipartite_activation_height(network);
+            // Grandfathering: everything below the activation height keeps validating exactly as it does today,
+            // which is what keeps the 353 forged mainnet blocks - and the whole chain built on them - valid.
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, 0).bipartite_cuckaroo_verification(),
+                "{network} at height 0"
+            );
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, activation.saturating_sub(1))
+                    .bipartite_cuckaroo_verification(),
+                "{network} one block below the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, activation).bipartite_cuckaroo_verification(),
+                "{network} at the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, u64::MAX).bipartite_cuckaroo_verification(),
+                "{network} above the fork"
+            );
+
+            // The four assertions above sample the lookup at four heights, and on StageNet, NextNet and Igor the
+            // c29 entry and the TIP-004 entry both sit at the `u64::MAX` placeholder, so the last two are answered
+            // by the TIP-004 entry rather than by the c29 entry - they pass only because TIP-004's entry was
+            // cloned from the c29 entry and inherited the flag. Name the entry directly instead, and pin the
+            // property four samples cannot see: an entry inserted after the c29 entry could turn the verifier back
+            // off over an entire range of heights and still leave all four samples green.
+            let constants = ConsensusConstants::for_network(network);
+            let activation_entry = constants
+                .iter()
+                .position(|c| c.bipartite_cuckaroo_verification)
+                .unwrap_or_else(|| panic!("{network} never turns the bipartite verifier on"));
+            assert_eq!(
+                constants
+                    .get(activation_entry)
+                    .expect("index came from the vector")
+                    .effective_from_height,
+                activation,
+                "{network}: the entry that turns the bipartite verifier on is not at the agreed activation height"
+            );
+            assert!(
+                constants
+                    .get(activation_entry..)
+                    .expect("index came from the vector")
+                    .iter()
+                    .all(|c| c.bipartite_cuckaroo_verification),
+                "{network}: an entry after the c29 activation entry turns the bipartite verifier back off again"
+            );
+        }
+    }
+
+    /// The aux-chain merkle proof depth binding activation height per network. LocalNet is ephemeral and carries
+    /// the fix on its single height-0 entry rather than through a gated entry.
+    fn aux_chain_depth_binding_activation_height(network: Network) -> u64 {
+        match network {
+            Network::LocalNet => 0,
+            Network::Igor => IGOR_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            Network::Esmeralda => ESMERALDA_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            Network::NextNet => NEXTNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            Network::StageNet => STAGENET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            Network::MainNet => MAINNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+        }
+    }
+    /// The rules actually in force either side of the fork, looked up the way the node looks them up.
+    #[test]
+    fn aux_chain_depth_binding_activates_at_the_agreed_heights() {
+        // LocalNet is ephemeral, so it has the fix from height 0.
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::LocalNet, 0).aux_chain_merkle_proof_depth_binding(),
+            "LocalNet"
+        );
+
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let activation = aux_chain_depth_binding_activation_height(network);
+            // Grandfathering: everything below the activation height keeps validating exactly as it does today.
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, 0).aux_chain_merkle_proof_depth_binding(),
+                "{network} at height 0"
+            );
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, activation.saturating_sub(1))
+                    .aux_chain_merkle_proof_depth_binding(),
+                "{network} one block below the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, activation).aux_chain_merkle_proof_depth_binding(),
+                "{network} at the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, u64::MAX).aux_chain_merkle_proof_depth_binding(),
+                "{network} above the fork"
+            );
+        }
+    }
+
+    /// The `consensus_constants.json` on disk was written by the binary this node is being upgraded *from*, so it
+    /// is missing every field added since. `ConsensusConstantsTracker::load_previous` deserializes that file and
+    /// *swallows* a parse error, so without a serde default the first post-upgrade start would silently skip the
+    /// CRITICAL "consensus constants changed and are already active" alarm - the one start where it matters most.
+    ///
+    /// Building the old shape by deleting the new keys from the current serialization keeps this honest as further
+    /// fields are added: it tests the actual wire shape, not a hand-copied literal that drifts.
+    #[test]
+    fn the_previous_releases_json_shape_still_deserializes_with_pre_fork_defaults() {
+        // v5.6.0 is the last public release, and therefore the binary most nodes upgrade from; `pow_backoff_cap`
+        // arrived after it, on the 5.7.0 pre-release line.
+        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 4] = [
+            "bipartite_cuckaroo_verification",
+            "aux_chain_merkle_proof_depth_binding",
+            "derive_monero_coinbase_hasher",
+            "pow_backoff_cap",
+        ];
+
+        for network in ALL_NETWORKS {
+            let current = ConsensusConstants::for_network(network);
+            let mut json: serde_json::Value = serde_json::to_value(&current).expect("serializes");
+            for entry in json.as_array_mut().expect("a vector of constants") {
+                let map = entry.as_object_mut().expect("constants are a JSON object");
+                for field in FIELDS_ABSENT_FROM_THE_LAST_RELEASE {
+                    assert!(
+                        map.remove(field).is_some(),
+                        "{network}: {field} is not in the serialized shape; update this test"
+                    );
+                }
+            }
+
+            let previous: Vec<ConsensusConstants> =
+                serde_json::from_value(json).unwrap_or_else(|e| panic!("{network}: previous release shape: {e}"));
+
+            assert_eq!(previous.len(), current.len(), "{network}");
+            for (index, constants) in previous.iter().enumerate() {
+                assert!(
+                    !constants.bipartite_cuckaroo_verification(),
+                    "{network} entry {index}: must default to the pre-fork verifier"
+                );
+                assert!(
+                    !constants.aux_chain_merkle_proof_depth_binding(),
+                    "{network} entry {index}: must default to the pre-fork binding"
+                );
+                assert!(
+                    !constants.derive_monero_coinbase_hasher(),
+                    "{network} entry {index}: must default to the pre-fork Monero coinbase wire format"
+                );
+                // A bare `#[serde(default)]` would give 0 here, which this field may never hold.
+                assert_eq!(
+                    constants.pow_backoff_cap(),
+                    POW_BACKOFF_DISABLED,
+                    "{network} entry {index}: must default to the backoff being disabled, never to 0"
+                );
+                // Everything else must survive the round trip untouched, or the defaults are masking a real change.
+                let mut expected = current.get(index).expect("same length").clone();
+                expected.bipartite_cuckaroo_verification = false;
+                expected.aux_chain_merkle_proof_depth_binding = false;
+                expected.derive_monero_coinbase_hasher = false;
+                expected.pow_backoff_cap = POW_BACKOFF_DISABLED;
+                assert_eq!(constants, &expected, "{network} entry {index}");
+            }
+        }
+    }
+
+    /// The agreed rollout for the aux-chain depth binding, pinned as literals - mirroring
+    /// `c29_activation_matches_the_agreed_network_rollout`. Pinning matters because these are consensus values: an
+    /// accidental edit is a fork, and a test that derives the expectation from the constant under test cannot catch
+    /// one.
+    #[test]
+    fn aux_chain_depth_binding_activation_matches_the_agreed_network_rollout() {
+        // The scheduled heights are aliases of the Cuckaroo ones by design, so pin them against those rather than
+        // against literals: a literal here would have to be edited every time the Cuckaroo fork is rescheduled,
+        // and the whole point of the alias is that no such edit is needed.
+        assert_eq!(
+            MAINNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT
+        );
+        assert_eq!(
+            ESMERALDA_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT
+        );
+        for unscheduled in [
+            IGOR_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            NEXTNET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+            STAGENET_AUX_CHAIN_DEPTH_BINDING_ACTIVATION_HEIGHT,
+        ] {
+            assert_eq!(unscheduled, UNSCHEDULED_ACTIVATION_HEIGHT);
+        }
+    }
+
+    /// Both fixes ship in the same mandatory upgrade, so each network gets one flag day rather than two.
+    ///
+    /// The aux-chain heights alias the Cuckaroo ones, so this holds by construction today and the assertion is a
+    /// guard rather than a discovery: it fails the moment somebody breaks an alias and gives this fork a literal
+    /// of its own. That is the edit worth catching, because a node applying one of the two rules but not the other
+    /// at a given height is a consensus split.
+    ///
+    /// MAINTAINER: if the two forks ever genuinely need separate flag days, delete this test *deliberately* and say
+    /// so in the commit message. Do not relax it to make a reschedule compile.
+    #[test]
+    fn aux_chain_depth_binding_and_c29_share_a_flag_day() {
+        for network in ALL_NETWORKS {
+            assert_eq!(
+                aux_chain_depth_binding_activation_height(network),
+                c29_bipartite_activation_height(network),
+                "{network}: the two GHSA-3qmx-q9pv-f3m4 fixes ship together, so their heights must coincide"
+            );
+        }
+    }
+
+    /// The agreed rollout: MainNet and Esmeralda are scheduled, Esmeralda first so the fork path is exercised on a
+    /// live chain before mainnet reaches it. The remaining networks are deliberately unscheduled.
+    #[test]
+    fn c29_activation_matches_the_agreed_network_rollout() {
+        assert_eq!(MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT, 350_000);
+        assert_eq!(ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT, 900_000);
+        for unscheduled in [
+            IGOR_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            NEXTNET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            STAGENET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+        ] {
+            assert_eq!(unscheduled, UNSCHEDULED_ACTIVATION_HEIGHT);
+        }
+    }
+    /// The rules actually in force either side of the fork, looked up the way the node looks them up.
+    #[test]
+    fn rxt_canonical_pow_data_activates_at_the_agreed_heights() {
+        // LocalNet is ephemeral, so it has the rule from height 0.
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::LocalNet, 0).require_canonical_randomxt_pow_data(),
+            "LocalNet"
+        );
+
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let activation = rxt_canonical_pow_data_activation_height(network);
+            // Grandfathering: a header that validates today must still validate below the activation height.
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, 0).require_canonical_randomxt_pow_data(),
+                "{network} at height 0"
+            );
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, activation.saturating_sub(1))
+                    .require_canonical_randomxt_pow_data(),
+                "{network} one block below the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, activation).require_canonical_randomxt_pow_data(),
+                "{network} at the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, u64::MAX).require_canonical_randomxt_pow_data(),
+                "{network} above the fork"
+            );
+        }
+    }
+
+    /// The canonical RandomXT `pow_data` fork and the Cuckaroo fork share a flag day, for the same reason the
+    /// aux-chain binding does: all three are GHSA-3qmx-q9pv-f3m4 fixes shipping in one mandatory upgrade, and a node
+    /// applying one of them but not another at a given height is a consensus split. The height is an alias rather
+    /// than a literal so a reschedule of the Cuckaroo fork carries this one with it; this test is what catches an
+    /// edit that breaks the alias and gives this fork a height of its own.
+    ///
+    /// MAINTAINER: if the forks ever genuinely need separate flag days, delete this test *deliberately* and say so
+    /// in the commit message. Do not relax it to make a reschedule compile.
+    #[test]
+    fn rxt_canonical_pow_data_and_c29_share_a_flag_day() {
+        for network in ALL_NETWORKS {
+            assert_eq!(
+                rxt_canonical_pow_data_activation_height(network),
+                c29_bipartite_activation_height(network),
+                "{network}: the GHSA-3qmx-q9pv-f3m4 fixes ship together, so their heights must coincide"
+            );
+        }
+    }
+
+    /// The agreed rollout. MainNet and Esmeralda are scheduled; the other live networks are not. Changing a height is
+    /// a deliberate edit to this test, not a silent constant change.
+    ///
+    /// The ordering that used to be asserted here is now structural: the heights are aliases, so the rxt entry can
+    /// never sit at a different height from the Cuckaroo entry it follows in the builder, and
+    /// `constants_vectors_are_sorted_by_effective_height` covers the vector as a whole.
+    #[test]
+    fn rxt_canonical_pow_data_activation_matches_the_agreed_network_rollout() {
+        assert_eq!(rxt_canonical_pow_data_activation_height(Network::MainNet), 350_000);
+        assert_eq!(rxt_canonical_pow_data_activation_height(Network::Esmeralda), 900_000);
+        for network in [Network::StageNet, Network::NextNet, Network::Igor] {
+            assert_eq!(
+                rxt_canonical_pow_data_activation_height(network),
+                UNSCHEDULED_ACTIVATION_HEIGHT,
+                "{network} schedules the canonical RandomXT pow_data fork; see the note on the activation height \
+                 constants before changing this"
+            );
+        }
+        // LocalNet is ephemeral, so it carries the rule from height 0.
+        assert_eq!(rxt_canonical_pow_data_activation_height(Network::LocalNet), 0);
+    }
+    /// The rules actually in force either side of the fork, looked up the way the node looks them up.
+    #[test]
+    fn strict_merkle_tree_params_decoding_activates_at_the_agreed_heights() {
+        // LocalNet is ephemeral, so it has the fix from height 0.
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::LocalNet, 0).strict_merkle_tree_parameter_decoding(),
+            "LocalNet"
+        );
+
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let activation = strict_merkle_tree_params_activation_height(network);
+            // Grandfathering: every block below the activation height is decoded with the pre-fork decoder it was
+            // accepted under, so nothing historical is retroactively invalidated.
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, 0).strict_merkle_tree_parameter_decoding(),
+                "{network} at height 0"
+            );
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, activation.saturating_sub(1))
+                    .strict_merkle_tree_parameter_decoding(),
+                "{network} one block below the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, activation).strict_merkle_tree_parameter_decoding(),
+                "{network} at the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, u64::MAX).strict_merkle_tree_parameter_decoding(),
+                "{network} above the fork"
+            );
+        }
+    }
+
+    /// The strict `MerkleTreeParameters` decoding fork and the Cuckaroo fork share a flag day, for the same reason
+    /// the aux-chain binding and the canonical RandomXT `pow_data` rule do: all four are GHSA-3qmx-q9pv-f3m4 fixes
+    /// shipping in one mandatory upgrade, and a node applying one of them but not another at a given height is a
+    /// consensus split. The height is an alias rather than a literal so a reschedule of the Cuckaroo fork carries
+    /// this one with it; this test is what catches an edit that breaks the alias and gives this fork a height of
+    /// its own.
+    ///
+    /// MAINTAINER: if the forks ever genuinely need separate flag days, delete this test *deliberately* and say so
+    /// in the commit message. Do not relax it to make a reschedule compile.
+    #[test]
+    fn strict_merkle_tree_params_and_c29_share_a_flag_day() {
+        for network in ALL_NETWORKS {
+            assert_eq!(
+                strict_merkle_tree_params_activation_height(network),
+                c29_bipartite_activation_height(network),
+                "{network}: the GHSA-3qmx-q9pv-f3m4 fixes ship together, so their heights must coincide"
+            );
+        }
+    }
+
+    /// The agreed rollout. MainNet and Esmeralda are scheduled; the other live networks are not. Changing a height
+    /// is a deliberate edit to this test, not a silent constant change.
+    ///
+    /// The ordering that the original version of this fix asserted with a `const` guard is now structural: the
+    /// heights are aliases, so this entry can never sit at a different height from the Cuckaroo entry it follows in
+    /// the builder, and `constants_vectors_are_sorted_by_effective_height` covers the vector as a whole.
+    #[test]
+    fn strict_merkle_tree_params_activation_matches_the_agreed_network_rollout() {
+        assert_eq!(strict_merkle_tree_params_activation_height(Network::MainNet), 350_000);
+        assert_eq!(strict_merkle_tree_params_activation_height(Network::Esmeralda), 900_000);
+        for network in [Network::StageNet, Network::NextNet, Network::Igor] {
+            assert_eq!(
+                strict_merkle_tree_params_activation_height(network),
+                UNSCHEDULED_ACTIVATION_HEIGHT,
+                "{network} schedules the strict MerkleTreeParameters decoding fork; see the note on the activation \
+                 height constants before changing this"
+            );
+        }
+        // LocalNet is ephemeral, so it carries the rule from height 0.
+        assert_eq!(strict_merkle_tree_params_activation_height(Network::LocalNet), 0);
+    }
+    /// The rules actually in force either side of the fork, looked up the way the node looks them up.
+    #[test]
+    fn derived_monero_coinbase_activates_at_the_agreed_heights() {
+        // LocalNet is ephemeral, so it has the fix from height 0.
+        assert!(
+            ConsensusConstants::for_network_at_height(Network::LocalNet, 0).derive_monero_coinbase_hasher(),
+            "LocalNet"
+        );
+
+        for network in ALL_NETWORKS.into_iter().filter(|n| *n != Network::LocalNet) {
+            let activation = derived_monero_coinbase_activation_height(network);
+            // Grandfathering: this is a wire-format change, and every merge mined header ever written carries the
+            // pre-fork shape, so every one of them must keep parsing and validating exactly as it does today.
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, 0).derive_monero_coinbase_hasher(),
+                "{network} at height 0"
+            );
+            assert!(
+                !ConsensusConstants::for_network_at_height(network, activation.saturating_sub(1))
+                    .derive_monero_coinbase_hasher(),
+                "{network} one block below the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, activation).derive_monero_coinbase_hasher(),
+                "{network} at the fork"
+            );
+            assert!(
+                ConsensusConstants::for_network_at_height(network, u64::MAX).derive_monero_coinbase_hasher(),
+                "{network} above the fork"
+            );
+        }
+    }
+
+    /// The derived Monero coinbase fork and the Cuckaroo fork share a flag day, for the same reason the three rules
+    /// above do: they are all GHSA-3qmx-q9pv-f3m4 fixes shipping in one mandatory upgrade, and a node applying one
+    /// of them but not another at a given height is a consensus split. It matters more here than anywhere else,
+    /// because this fork also changes the wire format every merge mining proxy and miner has to speak.
+    ///
+    /// MAINTAINER: if the forks ever genuinely need separate flag days, delete this test *deliberately* and say so
+    /// in the commit message. Do not relax it to make a reschedule compile.
+    #[test]
+    fn derived_monero_coinbase_and_c29_share_a_flag_day() {
+        for network in ALL_NETWORKS {
+            assert_eq!(
+                derived_monero_coinbase_activation_height(network),
+                c29_bipartite_activation_height(network),
+                "{network}: the GHSA-3qmx-q9pv-f3m4 fixes ship together, so their heights must coincide"
+            );
+        }
+    }
+
+    /// The agreed rollout. MainNet and Esmeralda are scheduled; the other live networks are not. Changing a height
+    /// is a deliberate edit to this test, not a silent constant change.
+    #[test]
+    fn derived_monero_coinbase_activation_matches_the_agreed_network_rollout() {
+        assert_eq!(derived_monero_coinbase_activation_height(Network::MainNet), 350_000);
+        assert_eq!(derived_monero_coinbase_activation_height(Network::Esmeralda), 900_000);
+        for network in [Network::StageNet, Network::NextNet, Network::Igor] {
+            assert_eq!(
+                derived_monero_coinbase_activation_height(network),
+                UNSCHEDULED_ACTIVATION_HEIGHT,
+                "{network} schedules the derived Monero coinbase fork; see the note on the activation height \
+                 constants before changing this"
+            );
+        }
+        // LocalNet is ephemeral, so it carries the rule from height 0.
+        assert_eq!(derived_monero_coinbase_activation_height(Network::LocalNet), 0);
+    }
+
+    /// The activation height the deep reorg anchor uses is *derived* from the constants vector rather than declared
+    /// next to it, so it cannot drift. This pins that derivation against the per-network constants, and in
+    /// particular that an unscheduled network yields `u64::MAX` - which is what makes the anchor inert there.
+    #[test]
+    fn the_deep_reorg_anchor_height_is_derivable_from_the_constants() {
+        for network in ALL_NETWORKS {
+            let constants = ConsensusConstants::for_network(network);
+            let derived = ConsensusConstants::derived_monero_coinbase_activation_height(&constants);
+            assert_eq!(derived, derived_monero_coinbase_activation_height(network), "{network}");
+
+            // And it agrees with what a height lookup says, on both sides.
+            assert!(
+                derived == 0 ||
+                    !ConsensusConstants::for_network_at_height(network, derived.saturating_sub(1))
+                        .derive_monero_coinbase_hasher(),
+                "{network} below the derived height"
+            );
+            if derived != UNSCHEDULED_ACTIVATION_HEIGHT {
+                assert!(
+                    ConsensusConstants::for_network_at_height(network, derived).derive_monero_coinbase_hasher(),
+                    "{network} at the derived height"
+                );
+            }
+        }
+    }
+
+    /// `check_min_block_difficulty` selects its rules from `max(local tip, claimed height)` and leans on the
+    /// advisory's flags being monotone in height: never true below the fork and never false above it. If that ever
+    /// stopped holding, taking the max would stop being the stricter choice and the gossip gate would weaken.
+    #[test]
+    fn the_advisory_rules_are_monotone_in_height() {
+        for network in ALL_NETWORKS {
+            let mut seen_active = false;
+            for entry in ConsensusConstants::for_network(network) {
+                if entry.derive_monero_coinbase_hasher {
+                    seen_active = true;
+                } else {
+                    assert!(
+                        !seen_active,
+                        "{network}: the derived Monero coinbase rule turns back off at height {}",
+                        entry.effective_from_height
+                    );
+                }
+            }
         }
     }
 
@@ -1513,6 +2659,88 @@ mod test {
         tari_amount::{MicroMinotari, uT},
         transaction_components::{OutputType, RangeProofType},
     };
+
+    /// The boundary the accumulated-data repair migration keys on.
+    ///
+    /// MainNet's GHSA-3qmx-q9pv-f3m4 entry also takes `difficulty_block_window` from 90 to 45, which makes the fix
+    /// retroactive for anyone already past the fork: their stored `target_difficulty` was computed with the long
+    /// window and no longer recomputes to the same value. `pow_backoff_cap` deliberately does *not* move with it -
+    /// MainNet carries half a TIP-004 activation, with `MAINNET_TIP004_ACTIVATION_HEIGHT` still unscheduled - and
+    /// if it is ever scheduled that is a second retroactive target change needing a second migration.
+    ///
+    /// `pow_backoff.rs::activation_matches_the_agreed_network_rollout` pins the window at height 0 and at the
+    /// TIP-004 fork. MainNet now changes its window at a *different* height from that fork, so this boundary is
+    /// not covered there.
+    #[test]
+    fn mainnet_narrows_the_difficulty_window_at_the_c29_fork_without_touching_the_backoff() {
+        use tari_common::configuration::Network;
+
+        use crate::consensus::consensus_constants::{
+            MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT,
+            POW_BACKOFF_DISABLED,
+            TIP004_DIFFICULTY_BLOCK_WINDOW,
+            UNSCHEDULED_ACTIVATION_HEIGHT,
+        };
+
+        const ACTIVATION: u64 = MAINNET_C29_BIPARTITE_ACTIVATION_HEIGHT;
+
+        for height in [0, 1, ACTIVATION - 1] {
+            let below = ConsensusConstants::for_network_at_height(Network::MainNet, height);
+            assert_eq!(below.difficulty_block_window(), 90, "MainNet window at {height}");
+            assert_eq!(below.pow_backoff_cap(), POW_BACKOFF_DISABLED, "MainNet cap at {height}");
+            assert!(
+                !below.bipartite_cuckaroo_verification(),
+                "MainNet bipartite verifier at {height}"
+            );
+        }
+
+        for height in [ACTIVATION, ACTIVATION + 1, ACTIVATION + 1_000_000] {
+            let at_or_above = ConsensusConstants::for_network_at_height(Network::MainNet, height);
+            assert_eq!(
+                at_or_above.difficulty_block_window(),
+                TIP004_DIFFICULTY_BLOCK_WINDOW,
+                "MainNet window at {height}"
+            );
+            // Deliberately unchanged across the boundary: the C29 entry narrows the window without scheduling the
+            // TIP-004 backoff.
+            assert_eq!(
+                at_or_above.pow_backoff_cap(),
+                POW_BACKOFF_DISABLED,
+                "MainNet cap at {height}"
+            );
+            assert!(
+                at_or_above.bipartite_cuckaroo_verification(),
+                "MainNet bipartite verifier at {height}"
+            );
+        }
+
+        // The migration derives the fork height off the constants vector rather than off a per-network constant, so
+        // it cannot go stale. Pin what it derives for every network.
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::mainnet()),
+            ACTIVATION
+        );
+        // LocalNet is ephemeral and carries the rule on its height-0 entry, so there is nothing to repair there.
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::localnet()),
+            0
+        );
+        assert_eq!(
+            ConsensusConstants::bipartite_cuckaroo_activation_height(&ConsensusConstants::esmeralda()),
+            crate::consensus::consensus_constants::ESMERALDA_C29_BIPARTITE_ACTIVATION_HEIGHT
+        );
+        // Unscheduled networks: the migration skips them entirely.
+        for constants in [
+            ConsensusConstants::igor(),
+            ConsensusConstants::stagenet(),
+            ConsensusConstants::nextnet(),
+        ] {
+            assert_eq!(
+                ConsensusConstants::bipartite_cuckaroo_activation_height(&constants),
+                UNSCHEDULED_ACTIVATION_HEIGHT
+            );
+        }
+    }
 
     #[test]
     fn hybrid_pow_constants_are_well_formed() {

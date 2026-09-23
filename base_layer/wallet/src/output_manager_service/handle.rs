@@ -876,7 +876,7 @@ where KM: LegacyTransactionKeyManagerInterface
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetOutputsByQuery({e})"))??
         {
-            OutputManagerResponse::UnspentOutputs(s) => Ok(s),
+            OutputManagerResponse::Outputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::GetOutputsByQuery".to_string(),
             )),
