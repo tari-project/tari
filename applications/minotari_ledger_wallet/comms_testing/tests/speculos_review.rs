@@ -25,7 +25,7 @@
 //!
 //! `SpeculosApprover` drives the device over Speculos' HTTP control API, which a real Ledger does not have. There
 //! is therefore no way to point this file at hardware even by accident, which is why it carries no equivalent of
-//! `speculos_device.rs`'s "is this a published test device" guard: that guard exists because the vector tests
+//! `scenarios::vectors`' "is this a published test device" guard: that guard exists because the vector scenarios
 //! transcribe a device's *answers*, including a secret view key, into JUnit XML. Nothing here does. The values
 //! asserted on screen - an amount and an address - are the ones this file chose and put into the request, and the
 //! diagnostic dumps are of a screen that Speculos, and only Speculos, can be asked for.
@@ -60,12 +60,13 @@ use minotari_ledger_wallet_comms::{
 };
 use minotari_ledger_wallet_comms_testing::{
     approver::{Approver, Outcome, SpeculosApprover, while_reviewing},
+    fixtures,
     review::{ExpectedReview, RECEIVER_FIELD},
     simulator,
     speculos_api::SpeculosApi,
 };
 use tari_common_types::{
-    tari_address::{TariAddress, TariAddressFeatures},
+    tari_address::TariAddress,
     types::{ComAndPubSignature, PrivateKey},
 };
 
@@ -97,14 +98,6 @@ const VALUE: u64 = 12_345;
 /// review to a handful of pages.
 const PAYMENT_ID_LENGTH: usize = 32;
 
-/// A published Tari dual address, taken from `comms/examples/ledger_demo/main.rs`.
-///
-/// It only has to be a well formed address whose public spend key is a real Ristretto point: the device parses it
-/// after the review is approved and fails the instruction if it is not, which would turn every assertion here into
-/// a confusing signing error rather than a screen mismatch.
-const RECEIVER_BASE58: &str =
-    "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt";
-
 /// An approver for whatever simulator the environment names, with the ledger client pointed at it.
 fn approver() -> SpeculosApprover {
     // The APDU transport and the control API are two different sockets on the same simulator, and both are needed:
@@ -121,29 +114,11 @@ fn approver() -> SpeculosApprover {
 
 /// The receiver, with or without an embedded payment ID.
 ///
-/// The payment ID variant is built from the published address's own keys rather than from fresh random ones, so
-/// that the two scenarios differ in exactly the thing under test - whether a `Payment ID` row appears - and not
-/// also in which keys are involved.
+/// `fixtures::published_receiver` rather than a local constant, so that these tests, the scenario library's own
+/// approval scenario and `examples/human_review.rs` all review the **same** transaction. Two copies of an address
+/// constant is two transactions that look identical in a report and are not.
 fn receiver(payment_id_length: usize) -> TariAddress {
-    let published = TariAddress::from_base58(RECEIVER_BASE58).expect("the published address must parse");
-    if payment_id_length == 0 {
-        return published;
-    }
-    let view_key = published
-        .public_view_key()
-        .expect("a dual address has a view key")
-        .clone();
-    let spend_key = published.public_spend_key().clone();
-    TariAddress::new_dual_address(
-        view_key,
-        spend_key,
-        published.network(),
-        // `new_dual_address` sets `PAYMENT_ID` itself when it is given payment ID bytes, but saying so here keeps
-        // the intent of the scenario in the scenario.
-        TariAddressFeatures::default() | TariAddressFeatures::PAYMENT_ID,
-        Some(vec![0xAB; payment_id_length]),
-    )
-    .expect("a 32 byte payment ID is well within the limit")
+    fixtures::published_receiver(payment_id_length).expect("the published address must parse")
 }
 
 /// Ask the device for a one sided metadata signature over `receiver`. This is the call that blocks on the review.

@@ -2025,19 +2025,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dialoguer"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "658bce805d770f407bc62102fca7c2c64ceef2fbcb2b8bd19d2765ce093980de"
-dependencies = [
- "console 0.15.11",
- "shell-words",
- "tempfile",
- "thiserror 1.0.69",
- "zeroize",
-]
-
-[[package]]
 name = "diesel"
 version = "2.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4280,7 +4267,7 @@ name = "minotari_app_utilities"
 version = "6.0.1-pre.0"
 dependencies = [
  "clap",
- "dialoguer 0.10.4",
+ "dialoguer",
  "futures 0.3.32",
  "json5",
  "log",
@@ -4309,7 +4296,7 @@ dependencies = [
  "console-subscriber",
  "crossterm 0.28.1",
  "dhat",
- "dialoguer 0.10.4",
+ "dialoguer",
  "digest 0.10.7",
  "dirs-next 2.0.0",
  "futures 0.3.32",
@@ -4368,7 +4355,6 @@ name = "minotari_ledger_wallet_comms"
 version = "6.0.1-pre.0"
 dependencies = [
  "borsh",
- "dialoguer 0.11.0",
  "ledger-transport",
  "ledger-transport-hid",
  "log",
