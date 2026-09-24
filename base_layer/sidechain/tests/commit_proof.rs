@@ -107,3 +107,76 @@ fn the_protocol_version_selects_the_vote_message() {
     // relabelled to a version its members did not sign under.
     assert_ne!(message(1, 3, 9), message(2, 3, 9));
 }
+
+mod batch_verification {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey;
+    use tari_sidechain::{QuorumCertificate, ValidatorBlockSignature, ValidatorQcSignature};
+
+    use super::*;
+
+    fn with_first_qc(mutate: impl FnOnce(&mut QuorumCertificate)) -> SidechainBlockCommitProof {
+        let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+        let Some(CommitProofElement::QuorumCertificate(qc)) = proof.proof_elements.first_mut() else {
+            panic!("commit_proof.json fixture must begin with a quorum certificate");
+        };
+        mutate(qc);
+        proof
+    }
+
+    fn assert_invalid_signature(proof: &SidechainBlockCommitProof) {
+        let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid signature for QC"),
+            "Expected the signature error, got: {err}"
+        );
+    }
+
+    // Scalar arithmetic is modular.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn shift_s(signature: &ValidatorBlockSignature, delta: &PrivateKey, add: bool) -> ValidatorBlockSignature {
+        let s = signature.get_signature();
+        let s = if add { s + delta } else { s - delta };
+        ValidatorBlockSignature::new(signature.get_compressed_public_nonce().clone(), s)
+    }
+
+    #[test]
+    fn it_rejects_two_invalid_signatures_whose_errors_cancel() {
+        let delta = PrivateKey::from_uniform_bytes(&[9u8; 64]).unwrap();
+        let proof = with_first_qc(|qc| {
+            let [first, second, ..] = qc.signatures.as_mut_slice() else {
+                panic!("commit_proof.json fixture QC must have at least two signatures");
+            };
+            // Each signature is individually invalid, and the two errors sum to zero.
+            first.signature = shift_s(&first.signature, &delta, true);
+            second.signature = shift_s(&second.signature, &delta, false);
+        });
+
+        let (block_id, qc) = match proof.proof_elements.first() {
+            Some(CommitProofElement::QuorumCertificate(qc)) => (qc.calculate_justified_block(), qc),
+            _ => panic!("commit_proof.json fixture must begin with a quorum certificate"),
+        };
+        for sig in qc.signatures.iter().take(2) {
+            assert!(!sig.verify(qc.protocol_version, &block_id, qc.decision, qc.epoch, qc.height));
+        }
+        assert_invalid_signature(&proof);
+    }
+
+    #[test]
+    fn it_rejects_a_signature_under_the_identity_public_key() {
+        let s = PrivateKey::from_uniform_bytes(&[11u8; 64]).unwrap();
+        let proof = with_first_qc(|qc| {
+            let first = qc.signatures.first_mut().expect("fixture QC must have a signature");
+            // With `P` the identity, `s·G == R` satisfies the verification equation for any message.
+            *first = ValidatorQcSignature {
+                public_key: CompressedPublicKey::default(),
+                signature: ValidatorBlockSignature::new(CompressedPublicKey::from_secret_key(&s), s),
+            };
+            assert!(
+                first.decode().is_some(),
+                "the identity must decode, so the batch sees it"
+            );
+        });
+        assert_invalid_signature(&proof);
+    }
+}
