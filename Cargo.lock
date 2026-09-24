@@ -1752,7 +1752,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7623,9 +7623,9 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs_plus"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44504f532474401c8f3af90f81a8f9cda415a6571df0936b3c505c770144d439"
+checksum = "66582d6709d2b7c49509a3c56a63fe1e893af16e86fb757ae60eac8d15a70903"
 dependencies = [
  "blake2 0.10.6",
  "byteorder",
@@ -7904,9 +7904,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.23.2"
+version = "0.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dd83075a6fc9f62ea6d71f6256bb6e980b0304173f66f8eb60d58790fde8e6e"
+checksum = "a6ef628e3b35f65425c44323d38106b51bf4312e8ddaacd0a0178c5dd588653e"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
