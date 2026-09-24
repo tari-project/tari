@@ -117,14 +117,9 @@ mod batch_verification {
 
     fn with_first_qc(mutate: impl FnOnce(&mut QuorumCertificate)) -> SidechainBlockCommitProof {
         let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-        let qc = proof
-            .proof_elements
-            .iter_mut()
-            .find_map(|elem| match elem {
-                CommitProofElement::QuorumCertificate(qc) => Some(qc),
-                CommitProofElement::ChainLinks(_) => None,
-            })
-            .expect("commit_proof.json fixture must contain a quorum certificate");
+        let Some(CommitProofElement::QuorumCertificate(qc)) = proof.proof_elements.first_mut() else {
+            panic!("commit_proof.json fixture must begin with a quorum certificate");
+        };
         mutate(qc);
         proof
     }
