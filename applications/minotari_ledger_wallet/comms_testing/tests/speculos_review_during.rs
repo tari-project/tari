@@ -195,7 +195,10 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
     let network = approved.network().as_byte();
     let mask = RistrettoSecretKey::from(42u64);
     let mask_bytes: [u8; 32] = mask.as_bytes().try_into().expect("32 bytes");
-    let message = [7u8; 32];
+    // The two requests differ in the message as well as the receiver, so that a handler re-reading either one after
+    // the review is caught; see the assertions after the signature comes back.
+    let approved_message = [7u8; 32];
+    let attacker_message = [8u8; 32];
 
     // The sender offset key the signature is made with, asked for over the same socket.
     let (reply, status) = exchange_raw(
@@ -214,14 +217,14 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
     // Request A, and wait for its review to be drawn.
     send_raw(
         &mut stream,
-        &metadata_request(&mask_bytes, &approved.to_vec(), &message, network),
+        &metadata_request(&mask_bytes, &approved.to_vec(), &approved_message, network),
     );
     wait_for_review(&approver);
 
     // Request B, while A's review is on screen and A's request is still outstanding.
     send_raw(
         &mut stream,
-        &metadata_request(&mask_bytes, &attacker.to_vec(), &message, network),
+        &metadata_request(&mask_bytes, &attacker.to_vec(), &attacker_message, network),
     );
     std::thread::sleep(Duration::from_millis(500));
 
@@ -237,31 +240,37 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
     let (signature, status) = read_raw(&mut stream).expect("the approved request must be answered");
     assert_eq!(status, STATUS_OK, "the approved request must succeed");
 
+    // Every combination of the two receivers and the two messages, so that the check catches a handler that
+    // re-reads *either* field after the review - not just the address. Only (A, A) may verify.
     let approved_spend_key = approved.public_spend_key().to_public_key().expect("a valid spend key");
-    let signs_approved = signs_for(
-        &signature,
-        &sender_offset_public_key,
-        &mask,
-        &approved_spend_key,
-        &message,
-        network,
-    );
-    let signs_attacker = signs_for(
-        &signature,
-        &sender_offset_public_key,
-        &mask,
-        &attacker_spend_key,
-        &message,
-        network,
+    let signs = |spend_key: &RistrettoPublicKey, message: &[u8; 32]| {
+        signs_for(
+            &signature,
+            &sender_offset_public_key,
+            &mask,
+            spend_key,
+            message,
+            network,
+        )
+    };
+    assert!(
+        !signs(&attacker_spend_key, &attacker_message),
+        "the device signed request B, although the user approved request A: a request sent during the review replaced \
+         what was signed"
     );
     assert!(
-        !signs_attacker,
+        !signs(&attacker_spend_key, &approved_message),
         "the device signed a script paying the attacker's spend key, although the user approved the original \
-         receiver: a request sent during the review changed what was signed"
+         receiver: a request sent during the review changed the receiver that was signed"
     );
     assert!(
-        signs_approved,
-        "the signature must be over the receiver the user approved"
+        !signs(&approved_spend_key, &attacker_message),
+        "the device signed request B's metadata message, although the user approved request A: a request sent during \
+         the review changed the message that was signed"
+    );
+    assert!(
+        signs(&approved_spend_key, &approved_message),
+        "the signature must be over the receiver and message of the request the user approved"
     );
 
     // Whatever the device did with request B, leave it at home: if B was served as a request of its own, its
