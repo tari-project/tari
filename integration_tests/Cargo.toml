@@ -1,5 +1,6 @@
 [package]
 name = "tari_integration_tests"
+publish = false
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

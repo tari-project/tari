@@ -20,6 +20,8 @@ name: Security audit - daily
 permissions: {}
 
 jobs:
+  # Advisories only. The bans, licences and sources policies in `deny.toml` are checked per change by
+  # `.github/workflows/cargo-deny.yml`.
   security_audit:
     name: Security audit - root workspace
     runs-on: ubuntu-latest

@@ -1,5 +1,6 @@
 [package]
 name = "minotari_merge_mining_proxy"
+publish = false
 description = "The Tari merge mining proxy for xmrig"
 version.workspace = true
 edition.workspace = true

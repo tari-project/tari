@@ -1,0 +1,77 @@
+---
+name: Dependency policy
+
+'on':
+  # A pull request's branch is usually pushed to this repository, so `push` is restricted to the branches a merge lands
+  # on: otherwise every push to a branch with an open pull request runs the workflow twice.
+  push:
+    branches:
+      - development
+      - nextnet
+      - mainnet
+    paths:
+      # Run if workflow changes
+      - '.github/workflows/cargo-deny.yml'
+      # Run on changed dependencies
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      # Run if the policy changes
+      - 'deny.toml'
+  # Every pull request and every merge-queue entry, whatever it touches. A workflow a path filter skips leaves its check
+  # pending, so a required `cargo deny` context has to report on all of them or the ones it skips cannot merge. The run
+  # costs about a minute.
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  merge_group:
+  # Run manually
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  # `deny.toml`'s bans, licences and sources policies. Advisories are reported by `.github/workflows/audit.yml` - see
+  # the note above `[advisories]` in `deny.toml`.
+  cargo_deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pinned, for the reason `audit.yml` pins `cargo-audit`: an unpinned tool is a standing grant to whoever
+      # publishes the next version, and a tampered policy result is the one output of this job anybody trusts.
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-deny@0.20.2
+
+      # One run per workspace, and the workspaces are every tracked `Cargo.lock` rather than a list. The root workspace
+      # `exclude`s two others (see `[workspace] exclude` in the root `Cargo.toml`), and a check that reads only the root
+      # manifest would pass while never looking at them - the gap `audit.yml` describes for `rustsec/audit-check`.
+      # Deriving the set from the repository means a new excluded workspace is covered the day it lands.
+      #
+      # Run from the repository root, so that `deny.toml` and the root `rust-toolchain.toml` apply to all of them: the
+      # ledger device app's pinned nightly is for compiling it, and resolving its metadata does not need it.
+      - name: cargo deny check bans licenses sources
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          while IFS= read -r lockfile; do
+            manifest="$(dirname "${lockfile}")/Cargo.toml"
+            echo "::group::cargo deny ${manifest}"
+            # Every workspace is checked even if an earlier one fails, so one finding does not hide the others.
+            # `--all-features` matches `[graph] all-features` in `deny.toml`.
+            if ! cargo deny --all-features --manifest-path "${manifest}" check bans licenses sources; then
+              echo "::error file=${manifest}::cargo deny failed for ${manifest}"
+              status=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files '*Cargo.lock')
+          exit "${status}"

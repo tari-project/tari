@@ -128,7 +128,7 @@ minotari_miner = { path = "applications/minotari_miner", version = "6.0.1-pre.0"
 minotari_node = { path = "applications/minotari_node", version = "6.0.1-pre.0" }
 minotari_peer_sync = { path = "applications/minotari_peer_sync", version = "6.0.1-pre.0" }
 minotari_wallet_ffi = { path = "base_layer/wallet_ffi", version = "6.0.1-pre.0" }
-minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
+minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client", version = "6.0.1-pre.0" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "6.0.1-pre.0" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "6.0.1-pre.0" }
 # There is deliberately no `minotari_ledger_wallet_comms_testing` entry here. That crate is an excluded, separate

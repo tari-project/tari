@@ -1,0 +1,90 @@
+# Supply-chain policy for `cargo deny check`, run by `.github/workflows/cargo-deny.yml` on every pull request against
+# every workspace in this repository - the root one and the two that are `exclude`d from it. The workflow runs from
+# the repository root, so this one file is the policy for all of them.
+#
+# Schema: cargo-deny 0.20. A security advisory and an unmatched or absent license are errors, and nothing is inferred
+# from a license's OSI or FSF status.
+
+[graph]
+# The widest graph: a dependency reachable only under a feature is still a dependency this repository ships.
+# `.github/workflows/cargo-deny.yml` passes `--all-features` to match.
+all-features = true
+no-default-features = false
+# Every target the workspaces ship for. Empty means all of them, which is what the node, the wallets, the FFI
+# libraries and the ledger device app together amount to.
+targets = []
+
+[output]
+feature-depth = 1
+
+# NOT part of the pull-request gate. `.github/workflows/cargo-deny.yml` runs `bans`, `licenses` and `sources` on every
+# pull request; advisories are reported by `.github/workflows/audit.yml`, with its shared ignore list in
+# `.cargo/audit.toml`. Keeping one advisory policy in one place is the point: a second ignore list here would drift
+# from that one, and an ignore that exists in only one of them reads exactly like a clean check in the other.
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# A yanked crate in the lockfile is a release the registry withdrew. It is rare enough to be worth stopping for.
+yanked = "deny"
+# Unmaintained advisories are reported for the workspace's own dependency tree only. A transitive unmaintained crate is
+# a fact about a dependency's choices, not something this repository can act on.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Permissive licenses only. Anything not listed here fails the check - there is no default-allow.
+allow = [
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "BlueOak-1.0.0",
+    "BSL-1.0",
+    "WTFPL",
+    "MPL-2.0",
+    "Zlib",
+    # `mock_instant`, via `log4rs`. Public-domain-equivalent BSD, permissive.
+    "0BSD",
+    # `libbz2-rs-sys`, via `bzip2` <- `pgp` <- `tari_p2p`. BSD-style, permissive.
+    "bzip2-1.0.6",
+    # `webpki-roots` and `webpki-root-certs`, via `tonic` and `hickory-resolver`. A data licence over the Mozilla root
+    # store, permissive.
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = false
+
+[bans]
+# Duplicate versions are a warning rather than an error: a tree this size always carries some.
+multiple-versions = "warn"
+# A `*` version requirement accepts whatever the registry serves next.
+wildcards = "deny"
+# Except a path dependency, which resolves to a directory in this repository rather than to whatever a registry
+# serves. cargo-deny only extends this to crates marked `publish = false`, because crates.io rejects path
+# dependencies: every workspace crate that is not in `scripts/publish_crates.sh` says so.
+allow-wildcard-paths = true
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# A crate from anywhere other than crates.io is a supply-chain decision, so it has to be written down here rather than
+# arrived at through a transitive dependency.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # The project's own LMDB fork (`liblmdb-sys`), pinned by tag in the root `Cargo.toml`.
+    "https://github.com/tari-project/lmdb-rs",
+]
