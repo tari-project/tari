@@ -56,6 +56,9 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 
+/// The number of times a new transaction is validated if the mempool processes a chain change during validation
+pub const MAX_VALIDATION_ATTEMPTS: usize = 3;
+
 /// The Mempool consists of an Unconfirmed Transaction Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
@@ -66,6 +69,8 @@ pub struct MempoolStorage {
     rules: BaseNodeConsensusManager,
     pub(crate) last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
+    /// Incremented every time the mempool processes a change to the chain (block, reorg, sync or failed block)
+    pub(crate) chain_generation: u64,
 }
 
 impl MempoolStorage {
@@ -82,6 +87,7 @@ impl MempoolStorage {
             rules,
             last_seen_height: 0,
             last_seen_hash: Default::default(),
+            chain_generation: 0,
         }
     }
 
@@ -111,72 +117,120 @@ impl MempoolStorage {
     /// Insert a new unconfirmed transaction into the Mempool, without holding the storage write lock while validating
     /// it.
     ///
-    /// A snapshot of the chain tip is taken first, and all validation is done against it. The transaction is first
-    /// validated against the chain state. If some of its inputs spend outputs that are not in the chain, those outputs
-    /// must be in the mempool, exactly as the inputs spend them, before anything else is done (a read lock is held
-    /// briefly for this lookup). Only then is the expensive internal consistency validation (scripts, signatures and
-    /// range proofs) performed, with no lock held. Finally, the write lock is taken to insert the transaction. If the
-    /// chain tip has moved since the snapshot (which requires a new block, so is rare), the transaction is fully
-    /// validated again under the lock, as by [`MempoolStorage::insert`]. Otherwise only the mempool parents of the
-    /// transaction are looked up again, since they may have been removed in the meantime.
+    /// A snapshot of the chain tip is taken first, and internal validation is done against it. The transaction is
+    /// first validated against the chain state. If some of its inputs spend outputs that are not in the chain, those
+    /// outputs must be in the mempool before anything else is done (a read lock is held briefly for this lookup). Only
+    /// then is the expensive internal consistency validation (scripts, signatures and range proofs) performed, with no
+    /// lock held. Finally, the write lock is taken to insert the transaction.
+    ///
+    /// The mempool's view of the chain only changes when it processes a block, reorg, sync or failed block, each of
+    /// which bumps [`MempoolStorage::chain_generation`]. If that happened while the transaction was being validated,
+    /// the validation is stale: it is repeated from the start, without the lock, up to [`MAX_VALIDATION_ATTEMPTS`]
+    /// times. A chain change that the mempool has not processed yet by the time the transaction is inserted is safe,
+    /// since the mempool reconciles every stored transaction with it when it does process it.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
     ) -> Result<TxStorageResponse, MempoolError> {
-        let timer = Instant::now();
-        let validator = {
-            let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-            if let Some(response) = lock.check_fee(&tx) {
+        for attempt in 1..=MAX_VALIDATION_ATTEMPTS {
+            let timer = Instant::now();
+            let (validator, generation) = {
+                let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
+                if let Some(response) = lock.pre_check(&tx) {
+                    return Ok(response);
+                }
+                (lock.validator.clone(), lock.chain_generation)
+            };
+
+            let tip = validator.chain_metadata().unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Could not fetch the chain tip: {e}");
+                None
+            });
+            let dependent_outputs = match validate_chain_linked(validator.as_ref(), &tx) {
+                Ok(dependent_outputs) => dependent_outputs,
+                Err(response) => return Ok(response),
+            };
+            if let Some(dependent_outputs) = &dependent_outputs {
+                let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
+                if let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs) {
+                    return Ok(response);
+                }
+            }
+            if let Err(response) = validate_internal_consistency(validator.as_ref(), &tx, tip.as_ref()) {
                 return Ok(response);
             }
-            lock.validator.clone()
-        };
-
-        let tip = validator.chain_metadata().unwrap_or_else(|e| {
-            warn!(target: LOG_TARGET, "Could not fetch the chain tip: {e}");
-            None
-        });
-        let dependent_outputs = match validate_chain_linked(validator.as_ref(), &tx) {
-            Ok(dependent_outputs) => dependent_outputs,
-            Err(response) => return Ok(response),
-        };
-        if let Some(dependent_outputs) = &dependent_outputs {
-            let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-            if let Err(response) = check_pool_parents(&lock.unconfirmed_pool, &tx, dependent_outputs) {
-                return Ok(response);
-            }
-        }
-        if let Err(response) = validate_internal_consistency(validator.as_ref(), &tx, tip.as_ref()) {
-            return Ok(response);
-        }
-        debug!(
-            target: LOG_TARGET,
-            "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool",
-            tx_id(&tx),
-            timer.elapsed()
-        );
-
-        let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
-        let tip_unchanged = match (tip, validator.chain_metadata()) {
-            (Some(validated_at), Ok(Some(current))) => validated_at.best_block_hash() == current.best_block_hash(),
-            _ => false,
-        };
-        if !tip_unchanged {
             debug!(
                 target: LOG_TARGET,
-                "Chain tip changed while validating transaction {}, validating it again",
-                tx_id(&tx)
+                "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool",
+                tx_id(&tx),
+                timer.elapsed()
             );
-            return lock.insert(tx).map_err(|e| MempoolError::InternalError(e.to_string()));
+
+            let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
+            if lock.chain_generation != generation {
+                debug!(
+                    target: LOG_TARGET,
+                    "Mempool processed a chain change while validating transaction {} (attempt {}/{}), validating it \
+                     again",
+                    tx_id(&tx),
+                    attempt,
+                    MAX_VALIDATION_ATTEMPTS
+                );
+                continue;
+            }
+            // The parents may have been removed from the pool since they were looked up
+            if let Some(dependent_outputs) = &dependent_outputs &&
+                let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs)
+            {
+                return Ok(response);
+            }
+            return lock
+                .insert_into_unconfirmed_pool(tx, dependent_outputs)
+                .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
-        // The parents may have been removed from the pool since they were looked up
-        if let Some(dependent_outputs) = &dependent_outputs &&
-            let Err(response) = check_pool_parents(&lock.unconfirmed_pool, &tx, dependent_outputs)
+        // Validating an untrusted transaction under the write lock would stall the mempool, so it is rejected instead.
+        // This only happens if the chain changes repeatedly during validation (e.g. while catching up), and the
+        // transaction can simply be submitted again.
+        warn!(
+            target: LOG_TARGET,
+            "Chain changed during each of {} attempts to validate transaction {}, not storing it",
+            MAX_VALIDATION_ATTEMPTS,
+            tx_id(&tx)
+        );
+        Ok(TxStorageResponse::NotStored(Some(
+            "The chain changed while the transaction was being validated, please resubmit it".to_string(),
+        )))
+    }
+
+    /// The near-free checks done before a new transaction is validated: its fee, its weight, and whether it is already
+    /// in the unconfirmed pool. Returns the response if the transaction is not to be validated.
+    pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
+        if let Some(response) = self.check_fee(tx) {
+            return Some(response);
+        }
+        let constants = self.rules.consensus_constants(self.last_seen_height);
+        match tx.calculate_weight(constants.transaction_weight_params()) {
+            Ok(weight) if weight <= constants.max_block_transaction_weight() => {},
+            Ok(_) => {
+                return Some(TxStorageResponse::NotStored(Some(
+                    ValidationError::MaxTransactionWeightExceeded.to_string(),
+                )));
+            },
+            Err(e) => {
+                return Some(TxStorageResponse::NotStored(Some(format!(
+                    "Unable to calculate the transaction weight: {e}"
+                ))));
+            },
+        }
+        let kernels = tx.body.kernels();
+        if !kernels.is_empty() &&
+            kernels
+                .iter()
+                .all(|k| self.unconfirmed_pool.has_tx_with_excess_sig(&k.excess_sig))
         {
-            return Ok(response);
+            return Some(TxStorageResponse::UnconfirmedPool);
         }
-        lock.insert_into_unconfirmed_pool(tx, dependent_outputs)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))
+        None
     }
 
     /// Validates the transaction in the same order as [`MempoolStorage::insert_unlocked`]: chain-linked checks, then
@@ -184,7 +238,7 @@ impl MempoolStorage {
     fn validate_locked(&self, tx: &Transaction) -> Result<Option<Vec<HashOutput>>, TxStorageResponse> {
         let dependent_outputs = validate_chain_linked(self.validator.as_ref(), tx)?;
         if let Some(dependent_outputs) = &dependent_outputs {
-            check_pool_parents(&self.unconfirmed_pool, tx, dependent_outputs)?;
+            check_pool_parents(&self.unconfirmed_pool, dependent_outputs)?;
         }
         validate_internal_consistency(self.validator.as_ref(), tx, None)?;
         Ok(dependent_outputs)
@@ -259,6 +313,7 @@ impl MempoolStorage {
 
     /// Update the Mempool based on the received published block.
     pub fn process_published_block(&mut self, published_block: &Block) -> Result<(), MempoolError> {
+        self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(
             target: LOG_TARGET,
             "Mempool processing new block: #{} ({}) {}",
@@ -310,6 +365,7 @@ impl MempoolStorage {
     }
 
     pub fn clear_transactions_for_failed_block(&mut self, failed_block: &Block) -> Result<(), MempoolError> {
+        self.chain_generation = self.chain_generation.wrapping_add(1);
         warn!(
             target: LOG_TARGET,
             "Removing transaction from failed block #{} ({})",
@@ -335,6 +391,7 @@ impl MempoolStorage {
         removed_blocks: &[Arc<Block>],
         new_blocks: &[Arc<Block>],
     ) -> Result<(), MempoolError> {
+        self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(target: LOG_TARGET, "Mempool processing reorg");
 
         let mut num_invalid_txs: i64 = 0;
@@ -391,6 +448,7 @@ impl MempoolStorage {
 
     /// After a sync event, we need to try to add in all the transaction form the reorg pool.
     pub fn process_sync(&mut self) -> Result<(), MempoolError> {
+        self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(target: LOG_TARGET, "Mempool processing sync finished");
         // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
         // we dont have the data to know what.
@@ -548,39 +606,15 @@ fn validate_internal_consistency(
         .map_err(validation_error_to_response)
 }
 
-/// Checks that every output in `dependent_outputs` is in the unconfirmed pool, and that each input spending one of
-/// them spends it exactly as it was created there (the output with the input's commitment has the input's output hash,
-/// so that e.g. its script is the one that was committed to).
-fn check_pool_parents(
-    pool: &UnconfirmedPool,
-    tx: &Transaction,
-    dependent_outputs: &[HashOutput],
-) -> Result<(), TxStorageResponse> {
-    if !pool.contains_all_outputs(dependent_outputs) {
-        return Err(TxStorageResponse::NotStoredOrphan);
+/// Checks that every output in `dependent_outputs` is in the unconfirmed pool. The unconfirmed pool indexes outputs by
+/// their hash, and an input's output hash commits to all of the spent output's data (commitment, script, features
+/// etc.), so an input that does not spend a pool output exactly as it was created is not found and is an orphan.
+fn check_pool_parents(pool: &UnconfirmedPool, dependent_outputs: &[HashOutput]) -> Result<(), TxStorageResponse> {
+    if pool.contains_all_outputs(dependent_outputs) {
+        Ok(())
+    } else {
+        Err(TxStorageResponse::NotStoredOrphan)
     }
-    for input in tx.body.inputs() {
-        let output_hash = input.output_hash();
-        if !dependent_outputs.contains(&output_hash) {
-            continue;
-        }
-        let matches = input
-            .commitment()
-            .is_ok_and(|commitment| pool.contains_matching_output(&output_hash, commitment));
-        if !matches {
-            warn!(
-                target: LOG_TARGET,
-                "Transaction {} has an input that does not match the mempool output it spends ({})",
-                tx_id(tx),
-                output_hash.to_hex()
-            );
-            return Err(TxStorageResponse::NotStored(Some(format!(
-                "Input does not match the mempool output it spends ({})",
-                output_hash.to_hex()
-            ))));
-        }
-    }
-    Ok(())
 }
 
 fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
@@ -616,6 +650,7 @@ mod test {
         collections::VecDeque,
         sync::{
             Mutex,
+            Weak,
             atomic::{AtomicUsize, Ordering},
         },
     };
@@ -630,14 +665,19 @@ mod test {
     use super::*;
     use crate::test_helpers::create_consensus_rules;
 
-    /// A validator that returns the scripted chain-linked results and chain tips in order, and records how often each
-    /// stage of validation is performed
+    /// A validator that returns the scripted results and chain tips in order, and records how each stage of validation
+    /// is performed. It can also simulate the mempool processing a chain change during internal validation.
     #[derive(Default)]
     struct ScriptedValidator {
+        storage: Mutex<Weak<RwLock<MempoolStorage>>>,
         chain_linked_results: Mutex<VecDeque<Result<(), ValidationError>>>,
-        tips: Mutex<VecDeque<FixedHash>>,
         internal_results: Mutex<VecDeque<Result<(), ValidationError>>>,
+        tips: Mutex<VecDeque<FixedHash>>,
         internal_tips: Mutex<Vec<Option<FixedHash>>>,
+        // Whether the storage write lock was free during each internal validation
+        internal_lock_free: Mutex<Vec<bool>>,
+        // The number of internal validations during which a chain change is processed
+        chain_changes: AtomicUsize,
         chain_linked_calls: AtomicUsize,
         internal_calls: AtomicUsize,
     }
@@ -662,6 +702,10 @@ mod test {
         fn internal_tips(&self) -> Vec<Option<FixedHash>> {
             self.internal_tips.lock().unwrap().clone()
         }
+
+        fn internal_lock_free(&self) -> Vec<bool> {
+            self.internal_lock_free.lock().unwrap().clone()
+        }
     }
 
     impl TransactionValidator for Arc<ScriptedValidator> {
@@ -684,6 +728,20 @@ mod test {
                 .lock()
                 .unwrap()
                 .push(tip.map(|tip| *tip.best_block_hash()));
+            if let Some(storage) = self.storage.lock().unwrap().upgrade() {
+                self.internal_lock_free
+                    .lock()
+                    .unwrap()
+                    .push(storage.try_write().is_ok());
+                if self
+                    .chain_changes
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                    .is_ok()
+                {
+                    let mut lock = storage.write().unwrap();
+                    lock.chain_generation = lock.chain_generation.wrapping_add(1);
+                }
+            }
             self.internal_results.lock().unwrap().pop_front().unwrap_or(Ok(()))
         }
 
@@ -699,14 +757,16 @@ mod test {
         }
     }
 
-    fn create_storage(validator: &Arc<ScriptedValidator>) -> RwLock<MempoolStorage> {
+    fn create_storage(validator: &Arc<ScriptedValidator>) -> Arc<RwLock<MempoolStorage>> {
         let mut config = MempoolConfig::default();
         config.unconfirmed_pool.min_fee = 0;
-        RwLock::new(MempoolStorage::new(
+        let storage = Arc::new(RwLock::new(MempoolStorage::new(
             config,
             create_consensus_rules(),
             Box::new(validator.clone()),
-        ))
+        )));
+        *validator.storage.lock().unwrap() = Arc::downgrade(&storage);
+        storage
     }
 
     fn create_tx_with_outputs(key_manager: &KeyManager) -> (Arc<Transaction>, Vec<WalletOutput>) {
@@ -736,7 +796,7 @@ mod test {
     }
 
     #[test]
-    fn insert_unlocked_does_not_revalidate_if_tip_unchanged() {
+    fn insert_unlocked_validates_once_without_the_lock_if_chain_unchanged() {
         let key_manager = KeyManager::new_random().unwrap();
         let tip = FixedHash::from([1u8; 32]);
         let validator = ScriptedValidator::new(vec![Ok(())], vec![tip]);
@@ -746,28 +806,39 @@ mod test {
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(validator.chain_linked_calls(), 1);
         assert_eq!(validator.internal_calls(), 1);
-        // Internal validation used the tip snapshot
+        // Internal validation used the tip snapshot, and did not hold the write lock
         assert_eq!(validator.internal_tips(), vec![Some(tip)]);
+        assert_eq!(validator.internal_lock_free(), vec![true]);
         assert_eq!(pool_len(&storage), 1);
     }
 
     #[test]
-    fn insert_unlocked_fully_revalidates_if_tip_changed() {
+    fn insert_unlocked_revalidates_without_the_lock_if_chain_changed() {
         let key_manager = KeyManager::new_random().unwrap();
         let validated_at = FixedHash::from([1u8; 32]);
         let new_tip = FixedHash::from([2u8; 32]);
 
-        // Valid at the snapshot, but internally invalid at the new tip (e.g. a script checking the block height)
+        // A chain change is processed during the first validation, so the whole validation is repeated at the new tip
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+        validator.chain_changes.store(1, Ordering::SeqCst);
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(validator.chain_linked_calls(), 2);
+        assert_eq!(validator.internal_calls(), 2);
+        assert_eq!(validator.internal_tips(), vec![Some(validated_at), Some(new_tip)]);
+        assert_eq!(validator.internal_lock_free(), vec![true, true]);
+        assert_eq!(pool_len(&storage), 1);
+
+        // Internally invalid at the new tip (e.g. a script checking the block height)
+        let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+        validator.chain_changes.store(1, Ordering::SeqCst);
         *validator.internal_results.lock().unwrap() =
             vec![Ok(()), Err(ValidationError::InvalidAccountingBalance)].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
-        assert_eq!(validator.chain_linked_calls(), 2);
         assert_eq!(validator.internal_calls(), 2);
-        // The fallback validates against the current tip, not the stale snapshot
-        assert_eq!(validator.internal_tips(), vec![Some(validated_at), None]);
         assert_eq!(pool_len(&storage), 0);
 
         // An input spent by the new tip is caught by the chain-linked checks
@@ -775,20 +846,62 @@ mod test {
             validated_at,
             new_tip,
         ]);
+        validator.chain_changes.store(1, Ordering::SeqCst);
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
         assert_eq!(response, TxStorageResponse::NotStoredAlreadySpent);
         assert_eq!(validator.chain_linked_calls(), 2);
+        assert_eq!(validator.internal_calls(), 1);
         assert_eq!(pool_len(&storage), 0);
+    }
 
-        // And a transaction that is still valid at the new tip is stored
-        let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+    #[test]
+    fn insert_unlocked_gives_up_after_max_attempts() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        // The chain changes during every attempt
+        validator.chain_changes.store(usize::MAX, Ordering::SeqCst);
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
-        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
-        assert_eq!(validator.chain_linked_calls(), 2);
-        assert_eq!(validator.internal_calls(), 2);
-        assert_eq!(pool_len(&storage), 1);
+        assert!(
+            matches!(response, TxStorageResponse::NotStored(Some(_))),
+            "{response:?}"
+        );
+        assert_eq!(validator.chain_linked_calls(), MAX_VALIDATION_ATTEMPTS);
+        assert_eq!(validator.internal_calls(), MAX_VALIDATION_ATTEMPTS);
+        assert!(validator.internal_lock_free().into_iter().all(|free| free));
+        assert_eq!(pool_len(&storage), 0);
+    }
+
+    #[test]
+    fn pre_check_rejects_before_validation() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let tx = create_tx(&key_manager);
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(validator.chain_linked_calls(), 1);
+
+        // Already in the pool
+        assert_eq!(
+            storage.read().unwrap().pre_check(&tx),
+            Some(TxStorageResponse::UnconfirmedPool)
+        );
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, tx).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        // Fee too low
+        storage.write().unwrap().unconfirmed_pool.config.min_fee = u64::MAX;
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap(),
+            TxStorageResponse::NotStoredFeeTooLow
+        );
+        assert_eq!(validator.chain_linked_calls(), 1);
+        assert_eq!(validator.internal_calls(), 1);
     }
 
     #[test]
@@ -822,7 +935,7 @@ mod test {
             MempoolStorage::insert_unlocked(&storage, parent).unwrap(),
             TxStorageResponse::UnconfirmedPool
         );
-        // The child really spends the parent's output, so the pool parent check has an input to match
+        // The child really spends the parent's output
         let child = spending(&create_tx(&key_manager), &parent_outputs[0], &key_manager);
         let parent_output = child.body.inputs()[0].output_hash();
         assert!(
@@ -830,7 +943,7 @@ mod test {
                 .read()
                 .unwrap()
                 .unconfirmed_pool
-                .contains_matching_output(&parent_output, child.body.inputs()[0].commitment().unwrap())
+                .contains_all_outputs(&[parent_output])
         );
 
         for locked in [false, true] {
