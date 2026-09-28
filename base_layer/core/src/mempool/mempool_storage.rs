@@ -127,21 +127,25 @@ impl MempoolStorage {
     ///
     /// The mempool's view of the chain only changes when it processes a block, reorg, sync or failed block, each of
     /// which bumps [`MempoolStorage::chain_generation`]. If that happened while the transaction was being validated,
-    /// the validation is stale: it is repeated from the start, without the lock, and the last of the
-    /// [`MAX_VALIDATION_ATTEMPTS`] attempts validates under the lock. A chain change that the mempool has not processed
-    /// yet by the time the transaction is inserted is safe, since the mempool reconciles every stored transaction
-    /// with it when it does process it.
+    /// the successful validation is stale: it is repeated from the start, without the lock. If the last unlocked
+    /// attempt is also a stale success, the final one of the [`MAX_VALIDATION_ATTEMPTS`] attempts validates under the
+    /// lock. A chain change that the mempool has not processed yet by the time the transaction is inserted is safe,
+    /// since the mempool reconciles every stored transaction with it when it does process it.
     ///
     /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
     /// maturity and lock heights, and scripts that read the block height; see `is_tip_dependent`) may be due to the
     /// chain changing during validation. Such a failure is validated again, in the same way, if the mempool processed
     /// a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks do not
-    /// depend on the chain and are not repeated. So the final, locked attempt is only reached by a transaction that
-    /// was valid, or failed a tip-dependent check, each time the chain changed during its validation.
+    /// depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and never
+    /// take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls back to
+    /// the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose script
+    /// reads the block height, during block sync) costs at most the unlocked attempts.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
     ) -> Result<TxStorageResponse, MempoolError> {
+        // The failure of the last attempt, if it failed (rather than succeeding at a stale chain state)
+        let mut last_failure = None;
         for attempt in 1..MAX_VALIDATION_ATTEMPTS {
             let timer = Instant::now();
             let (validator, generation) = {
@@ -175,6 +179,7 @@ impl MempoolStorage {
                             MAX_VALIDATION_ATTEMPTS,
                             response
                         );
+                        last_failure = Some(response);
                         continue;
                     }
                     return Ok(response);
@@ -197,6 +202,7 @@ impl MempoolStorage {
                     attempt,
                     MAX_VALIDATION_ATTEMPTS
                 );
+                last_failure = None;
                 continue;
             }
             // The parents may have been removed from the pool since they were looked up
@@ -209,9 +215,14 @@ impl MempoolStorage {
                 .insert_into_unconfirmed_pool(tx, dependent_outputs)
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
-        // The final attempt validates under the write lock, so that the chain cannot change during it. Rejecting the
-        // transaction instead would make a wallet treat a valid transaction as invalid and cancel it. This is
-        // acceptable because only real chain events (new blocks, reorgs to a heavier chain, sync completion) change
+        // A transaction that failed its last attempt is rejected; failure-driven retries never take the lock
+        if let Some(response) = last_failure {
+            return Ok(response);
+        }
+        // The last attempt succeeded, but at a stale chain state. The final attempt validates under the write lock, so
+        // that the chain cannot change during it. Rejecting the transaction instead would make a wallet treat a valid
+        // transaction as invalid and cancel it. This is acceptable because only a transaction that was valid at each
+        // attempt gets here, only real chain events (new blocks, reorgs to a heavier chain, sync completion) change
         // `chain_generation`, so an attacker cannot force this path without mining, and it is bounded by the number of
         // validation permits.
         debug!(
@@ -648,7 +659,8 @@ fn validate_attempt(
 /// - input maturity and kernel lock heights,
 /// - a failing input script, but only if one of the transaction's input scripts reads the block height. Any output in
 ///   the chain can be spent with made-up input data to produce a failing script, so script failures in general are
-///   final.
+///   final. The script error does not identify which input failed, so any input with such a script counts; since
+///   failure-driven retries never take the lock, this costs at most the unlocked attempts.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
 /// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
@@ -1196,6 +1208,55 @@ mod test {
         let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
         assert_eq!(validator.internal_calls(), 1);
+    }
+
+    #[test]
+    fn failure_driven_retries_never_take_the_lock() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validated_at = FixedHash::from([1u8; 32]);
+        let new_tip = FixedHash::from([2u8; 32]);
+        // A never-valid spend of an output whose script reads the block height, and a transaction that is never mature
+        let height_script_tx =
+            with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
+        type Case = (Arc<Transaction>, fn() -> ValidationError);
+        let cases: [Case; 2] = [
+            (height_script_tx, || script_error(ScriptError::VerifyFailed)),
+            (create_tx(&key_manager), || ValidationError::MaturityError),
+        ];
+        for (tx, error) in cases {
+            // The mempool processes a chain change, and the tip moves, during every attempt
+            let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+            validator.chain_changes.store(usize::MAX, Ordering::SeqCst);
+            *validator.internal_results.lock().unwrap() = (0..MAX_VALIDATION_ATTEMPTS).map(|_| Err(error())).collect();
+            let storage = create_storage(&validator);
+            let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
+            assert!(
+                matches!(
+                    response,
+                    TxStorageResponse::NotStored(_) | TxStorageResponse::NotStoredTimeLocked
+                ),
+                "{response:?}"
+            );
+            assert_eq!(validator.chain_linked_calls(), MAX_VALIDATION_ATTEMPTS - 1);
+            assert_eq!(validator.internal_calls(), MAX_VALIDATION_ATTEMPTS - 1);
+            assert_eq!(validator.internal_lock_free(), vec![true; MAX_VALIDATION_ATTEMPTS - 1]);
+            assert_eq!(pool_len(&storage), 0);
+        }
+
+        // Likewise a transaction whose mempool parent is never found while the chain tip keeps moving
+        let tips = (0u8..10).map(|i| FixedHash::from([i; 32])).collect();
+        let validator = ScriptedValidator::new(
+            (0..MAX_VALIDATION_ATTEMPTS)
+                .map(|_| Err(ValidationError::UnknownInputs(vec![FixedHash::from([99u8; 32])])))
+                .collect(),
+            tips,
+        );
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
+        assert_eq!(response, TxStorageResponse::NotStoredOrphan);
+        assert_eq!(validator.chain_linked_calls(), MAX_VALIDATION_ATTEMPTS - 1);
+        assert_eq!(validator.internal_calls(), 0);
+        assert_eq!(pool_len(&storage), 0);
     }
 
     #[test]
