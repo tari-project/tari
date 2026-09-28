@@ -21,6 +21,20 @@
 //! `exclude`d from the root workspace and is its own workspace root. Do not move it back into `members`; see the
 //! comment on `[workspace] exclude` in the repository root `Cargo.toml`.
 //!
+//! # Its one dependent in the root workspace
+//!
+//! `tari_transaction_components` links this crate for its key manager suite (`tests/ledger_key_manager`), which
+//! drives the `ledger_*_wrapper` methods of `manager.rs` against a simulator. It does so as a **dev**-dependency in
+//! a `[target.'cfg(tari_ledger_speculos)'.dev-dependencies]` table:
+//!
+//! * a dev-dependency is never resolved by a non-test build, so no binary - shipped or not - can link this crate;
+//! * the custom cfg is set only by `scripts/ledger_speculos.sh` (through `RUSTFLAGS`, into its own target directory),
+//!   so without it the table does not exist, and `cargo test --workspace`, `cargo ci-test` and `cargo ci-clippy` never
+//!   resolve this crate either.
+//!
+//! A plain dev-dependency would have failed the second half and made the first check below print a line. The
+//! comment on that table in `base_layer/transaction_components/Cargo.toml` has the rest.
+//!
 //! # The check that keeps that true
 //!
 //! Both of these must be run **without `-p`**. A `-p` narrows feature resolution and hides exactly the problem

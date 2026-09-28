@@ -1,0 +1,203 @@
+// Copyright 2026 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+//! ③ `ledger_get_raw_schnorr_signature_legacy_nonce_wrapper`, and the `(LedgerKey, LedgerKey)` arm of
+//! `sign_with_nonce_and_challenge` that is its only caller.
+//!
+//! Read `minotari_ledger_wallet_common::legacy_nonce` first. It is the canonical account of this instruction and
+//! is not restated here: the host names the nonce by branch and index, the device re-derives the same scalar every
+//! time, and two signatures over one `(key, nonce)` pair with different challenges give up the key. It survives
+//! for the pre-mine spend flow alone, whose nonces cross a session *file* rather than a device session, and the
+//! branch whitelist in that module is the whole of its containment.
+//!
+//! So these tests say out loud what the arm does today, which is what makes deleting it safe when the TODO there
+//! lands - at which point this module goes in the same commit:
+//!
+//! * the whitelisted pairs reach the device and sign, and the nonce **is** the `Random` branch key at the named index -
+//!   deterministic, by construction, and visible as such;
+//! * the pairs off the whitelist are turned away by the key manager before the transport is opened (the device's own
+//!   copy of the whitelist is the Spec 4 `legacy_nonce` scenarios' job, over raw APDUs);
+//! * and the legacy instruction does not touch the ephemeral nonce store the handle based path relies on.
+
+use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_comms_testing::fixtures;
+use tari_common_types::types::CompressedSignature;
+use tari_transaction_components::key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface};
+use tari_utilities::hex::Hex;
+
+use crate::harness::{ledger_error, with_device};
+
+fn ledger_key(branch: LedgerKeyBranch) -> TariKeyId {
+    TariKeyId::LedgerKey {
+        branch,
+        index: fixtures::random_u64(),
+    }
+}
+
+/// `signature` verifies against the key `key_id` names, as the key manager reports it.
+fn assert_verifies(
+    key_manager: &KeyManager,
+    signature: &CompressedSignature,
+    key_id: &TariKeyId,
+    challenge: &[u8; 64],
+) {
+    let public_key = key_manager
+        .get_public_key_at_key_id(key_id)
+        .expect("the signing key's public key")
+        .to_public_key()
+        .expect("it decompresses");
+    assert!(
+        signature
+            .to_schnorr_signature()
+            .expect("the device's signature decompresses")
+            .verify_raw_uniform(&public_key, challenge),
+        "the legacy signature by {key_id} does not verify"
+    );
+}
+
+/// Every whitelisted key branch signs through the legacy arm, and the nonce it signs with is the `Random` branch key
+/// at the index the host named - the same one, every time it is asked.
+///
+/// `PreMine` signs the pre-mine script signature and `OneSidedSenderOffset` its metadata signature; `Random` is where
+/// pre-mine sender offset keys lived before they moved onto the device. The second signature is over a different
+/// challenge with the same pair, and its public nonce is identical: that equality *is* the cost the canonical module
+/// describes, pinned so that nobody mistakes this arm for the handle based one.
+///
+/// Both signatures went out as `GetRawSchnorrSignatureLegacyNonce`, and nothing was reserved, which is what makes
+/// this arm distinguishable from the other one on the wire as well as in the arithmetic.
+#[test]
+fn the_whitelisted_pairs_sign_with_the_indexed_random_key_as_their_nonce() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+
+        for branch in [
+            LedgerKeyBranch::PreMine,
+            LedgerKeyBranch::OneSidedSenderOffset,
+            LedgerKeyBranch::Random,
+        ] {
+            let key_id = ledger_key(branch);
+            let nonce_id = ledger_key(LedgerKeyBranch::Random);
+            let expected_nonce = key_manager
+                .get_public_key_at_key_id(&nonce_id)
+                .expect("the Random branch key the nonce is derived as");
+
+            let challenges = [fixtures::random_challenge(), fixtures::random_challenge()];
+            let (signatures, wire) = device.watch(|| {
+                challenges
+                    .iter()
+                    .map(|challenge| {
+                        key_manager
+                            .sign_with_nonce_and_challenge(&key_id, &nonce_id, challenge)
+                            .unwrap_or_else(|e| panic!("a legacy signature by a '{branch}' key: {e}"))
+                    })
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(
+                (
+                    wire.count(Instruction::GetRawSchnorrSignatureLegacyNonce),
+                    wire.count(Instruction::GenerateEphemeralNonce),
+                    wire.count(Instruction::GetRawSchnorrSignature)
+                ),
+                (2, 0, 0),
+                "a (LedgerKey, LedgerKey) pair must take the legacy instruction and only it: {wire:?}"
+            );
+
+            for (signature, challenge) in signatures.iter().zip(&challenges) {
+                assert_eq!(
+                    signature.get_compressed_public_nonce().to_hex(),
+                    expected_nonce.to_hex(),
+                    "the legacy nonce for a '{branch}' key should be the Random branch key at the named index"
+                );
+                assert_verifies(&key_manager, signature, &key_id, challenge);
+            }
+        }
+    });
+}
+
+/// The pairs off the whitelist are refused by the key manager, and the device is never asked.
+///
+/// `Spend` is `alpha` and is never signable by index - on this instruction least of all. A nonce off the `Random`
+/// branch would turn the instruction into a way to extract a key on some other branch by pointing its nonce there.
+/// A ledger key paired with a host key is not a legacy pair at all, and is refused by the dispatch before either
+/// wrapper.
+#[test]
+fn pairs_off_the_legacy_whitelist_are_refused_before_the_device_is_asked() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let host_key = key_manager.get_random_key(None, None).expect("a host key").key_id;
+
+        let refusals = [
+            (
+                "a Spend key",
+                ledger_key(LedgerKeyBranch::Spend),
+                ledger_key(LedgerKeyBranch::Random),
+                "keys cannot be signed with a host chosen nonce",
+            ),
+            (
+                "a PreMine nonce",
+                ledger_key(LedgerKeyBranch::PreMine),
+                ledger_key(LedgerKeyBranch::PreMine),
+                "the nonce branch must be",
+            ),
+            (
+                "a OneSidedSenderOffset nonce",
+                ledger_key(LedgerKeyBranch::PreMine),
+                ledger_key(LedgerKeyBranch::OneSidedSenderOffset),
+                "the nonce branch must be",
+            ),
+            (
+                "a host held nonce",
+                ledger_key(LedgerKeyBranch::PreMine),
+                host_key.clone(),
+                "paired to a non ledger key",
+            ),
+            (
+                "a host held key",
+                host_key,
+                ledger_key(LedgerKeyBranch::Random),
+                "paired to a non ledger key",
+            ),
+        ];
+        for (label, key_id, nonce_id, reason) in refusals {
+            let (result, wire) = device
+                .watch(|| key_manager.sign_with_nonce_and_challenge(&key_id, &nonce_id, &fixtures::random_challenge()));
+            let error = ledger_error(result.expect_err(label));
+            assert!(
+                error.contains(reason),
+                "{label} should be refused because '{reason}', got: {error}"
+            );
+            assert!(wire.is_empty(), "{label} reached the device: {wire:?}");
+        }
+    });
+}
+
+/// A legacy signature leaves the ephemeral nonce store alone: a handle reserved before it is still good after it.
+///
+/// The two instructions share a handler file on the device and a dispatch arm's worth of distance in the key
+/// manager. A legacy path that consumed, cleared or reused a store slot would break whatever multi-party exchange
+/// had a reservation outstanding at the time.
+#[test]
+fn the_legacy_instruction_leaves_the_nonce_store_alone() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let key_id = ledger_key(LedgerKeyBranch::PreMine);
+        let reserved = key_manager.reserve_ephemeral_nonce().expect("GenerateEphemeralNonce");
+
+        let challenge = fixtures::random_challenge();
+        let legacy = key_manager
+            .sign_with_nonce_and_challenge(&key_id, &ledger_key(LedgerKeyBranch::Random), &challenge)
+            .expect("a legacy signature while a reservation is outstanding");
+        assert_verifies(&key_manager, &legacy, &key_id, &challenge);
+
+        let challenge = fixtures::random_challenge();
+        let signature = key_manager
+            .sign_with_nonce_and_challenge(&key_id, &reserved.key_id, &challenge)
+            .expect("the reservation made before the legacy signature");
+        assert_eq!(
+            signature.get_compressed_public_nonce().to_hex(),
+            reserved.pub_key.to_hex(),
+            "the handle no longer named the nonce it was reserved for"
+        );
+        assert_verifies(&key_manager, &signature, &key_id, &challenge);
+    });
+}

@@ -6,14 +6,22 @@ Everything here is test-harness only. This crate is its own Cargo workspace and 
 root workspace on purpose; see the crate docs in `src/lib.rs` for why that is a security property and not a
 packaging accident.
 
+It has exactly one dependent in the root workspace: `tari_transaction_components`, as a dev-dependency that only
+exists under `--cfg tari_ledger_speculos`, for the key manager suite in
+`base_layer/transaction_components/tests/ledger_key_manager`. Nothing but `scripts/ledger_speculos.sh` sets that cfg,
+so no ordinary build or test run of the root workspace - `cargo ci-test` and `cargo ci-clippy` included - ever
+resolves this crate, and a non-test build cannot resolve it under any flags. See the comment on that dependency
+table in `base_layer/transaction_components/Cargo.toml`.
+
 ## The one command
 
 ```bash
 ./scripts/ledger_speculos.sh test
 ```
 
-Builds the device application for every model, starts Speculos on each model with each seed, runs the suite against
-it, saves the log and the JUnit XML, and tears the container down.
+Builds the device application for every model, starts Speculos on each model with each seed, runs both suites
+against it - this crate's scenario library, then the key manager suite - saves the log and the JUnit XML, and tears
+the container down.
 
 CI runs exactly this command on every pull request — the `ledger speculos tests` job in
 `.github/workflows/ledger_tests.yml` — so a green pull request now does say something about the device. The script is
@@ -29,6 +37,7 @@ Other subcommands:
 ./scripts/ledger_speculos.sh api-address [model] [seed] # its HTTP control API host address
 ./scripts/ledger_speculos.sh logs [model] [seed]        # its log
 ./scripts/ledger_speculos.sh down [--all]               # remove your simulators (--all: everyone's)
+./scripts/ledger_speculos.sh compile                    # compile both suites, and lint the key manager one
 ```
 
 To iterate against a simulator you leave running:
@@ -47,6 +56,15 @@ affected: on BAGL a wrong payload length blocks until somebody presses a button,
 full 120 second read timeout and fails; on NBGL the reply comes straight back and the test passes, but the device
 is left on an "Invalid data length" status screen that nothing restores home from, so every scenario after it
 fails in `expect_home`. See its doc comment in `tests/speculos_scenarios.rs`.
+
+The key manager suite runs against the same simulator. It only exists under `--cfg tari_ledger_speculos`, and needs
+its own target directory so that the cfg does not rebuild your ordinary one; it has no `#[ignore]` and skips nothing:
+
+```bash
+SPECULOS_APDU_ADDRESS=... SPECULOS_API_ADDRESS=... SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
+RUSTFLAGS="--cfg tari_ledger_speculos" CARGO_TARGET_DIR=target/ledger-speculos \
+  cargo test --locked -p tari_transaction_components --features ledger --test ledger_key_manager -- --test-threads=1
+```
 
 The review screen tests need all four variables. `SPECULOS_APDU_ADDRESS` is where the instruction goes;
 `SPECULOS_API_ADDRESS` is where the button presses go — two different sockets on the same simulator — and
@@ -122,7 +140,9 @@ JUnit XML is produced by **cargo-nextest**, from the `ci` profile in `.config/ne
 JUnit output of its own. Install it with `cargo install cargo-nextest --locked`; the script tells you so rather
 than installing it for you.
 
-* JUnit: `target/speculos-junit/<model>-<seed>.xml`
+* JUnit: `target/speculos-junit/<model>-<seed>.xml` for the scenario suite, and
+  `target/speculos-junit/<model>-<seed>-key-manager.xml` for the key manager suite (from the `ledger-speculos` profile
+  in the repository root's `.config/nextest.toml`)
 * Speculos logs: `target/speculos-logs/<model>-<seed>.log`, saved for every run, pass or fail
 
 ## In CI
@@ -134,7 +154,9 @@ than installing it for you.
 2. `./scripts/ledger_speculos.sh build nanosplus stax` — all four models on `development`, which is the only place
    the cache is saved from, so that the `ledger build tests` job in `ci.yml` (which restores the same key and builds
    all four through the same `build` subcommand) is warm too.
-3. Install `cargo-nextest` (prebuilt, pinned), compile this crate.
+3. Install `cargo-nextest` (prebuilt, pinned), then `./scripts/ledger_speculos.sh compile`: this crate, and the key
+   manager suite (built with `--cfg tari_ledger_speculos` into `target/ledger-speculos`, and linted, because the root
+   workspace's `cargo ci-clippy` cannot see it).
 4. `./scripts/ledger_speculos.sh test` with `MODELS="nanosplus stax"`, under a 40 minute step timeout.
 5. `./scripts/ledger_speculos.sh down` under `if: always()` — success, failure and cancellation. `down` saves the
    log of any simulator still standing before it removes it.

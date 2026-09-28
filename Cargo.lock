@@ -2025,6 +2025,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dialoguer"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "658bce805d770f407bc62102fca7c2c64ceef2fbcb2b8bd19d2765ce093980de"
+dependencies = [
+ "console 0.15.11",
+ "shell-words",
+ "tempfile",
+ "thiserror 1.0.69",
+ "zeroize",
+]
+
+[[package]]
 name = "diesel"
 version = "2.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4267,7 +4280,7 @@ name = "minotari_app_utilities"
 version = "6.0.1-pre.0"
 dependencies = [
  "clap",
- "dialoguer",
+ "dialoguer 0.10.4",
  "futures 0.3.32",
  "json5",
  "log",
@@ -4296,7 +4309,7 @@ dependencies = [
  "console-subscriber",
  "crossterm 0.28.1",
  "dhat",
- "dialoguer",
+ "dialoguer 0.10.4",
  "digest 0.10.7",
  "dirs-next 2.0.0",
  "futures 0.3.32",
@@ -4368,6 +4381,30 @@ dependencies = [
  "tari_script",
  "tari_utilities",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "minotari_ledger_wallet_comms_testing"
+version = "6.0.1-pre.0"
+dependencies = [
+ "blake2 0.10.6",
+ "dialoguer 0.11.0",
+ "digest 0.10.7",
+ "hmac",
+ "k256",
+ "ledger-transport",
+ "log",
+ "minotari_ledger_wallet_common",
+ "minotari_ledger_wallet_comms",
+ "rand 0.10.1",
+ "semver",
+ "serde_json",
+ "sha2",
+ "tari_common",
+ "tari_common_types",
+ "tari_crypto",
+ "tari_utilities",
+ "zeroize",
 ]
 
 [[package]]
@@ -8223,9 +8260,11 @@ dependencies = [
  "digest 0.10.7",
  "hex",
  "integer-encoding",
+ "ledger-transport",
  "log",
  "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",
+ "minotari_ledger_wallet_comms_testing",
  "newtype-ops",
  "num-derive 0.4.2",
  "num-format",

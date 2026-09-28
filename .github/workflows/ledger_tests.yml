@@ -1,5 +1,7 @@
 ---
-# Build the Minotari Ledger device application and run the Speculos scenario suite against it, on nanosplus and stax.
+# Build the Minotari Ledger device application and run both Speculos suites against it, on nanosplus and stax: the
+# comms_testing scenario library, and the key manager suite in
+# base_layer/transaction_components/tests/ledger_key_manager.
 #
 # Everything device-shaped here goes through scripts/ledger_speculos.sh - the build, the simulator start-up and
 # readiness poll, the per model x seed runs, the JUnit and log files, and the teardown. This file only decides *when*
@@ -105,8 +107,9 @@ jobs:
             !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
           key: ${{ steps.ledger-cache.outputs.cache-primary-key }}
 
-      # The host half: the comms_testing crate that drives the simulator, built with the repository's stable
-      # toolchain on the runner rather than in the builder image.
+      # The host half: the comms_testing crate that drives the simulator, and the key manager suite that drives it
+      # through `transaction_components`, built with the repository's stable toolchain on the runner rather than in
+      # the builder image.
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -116,10 +119,16 @@ jobs:
           sudo bash scripts/install_ubuntu_dependencies.sh
 
       # Same save policy as the device build cache, for the same reason.
-      - name: cache comms_testing build
+      #
+      # Two target directories. The key manager suite is compiled in the root workspace but with
+      # `--cfg tari_ledger_speculos` in RUSTFLAGS, and `scripts/ledger_speculos.sh` gives it `target/ledger-speculos`
+      # of its own so that those artifacts never mix with an ordinary build's.
+      - name: cache comms_testing and key manager suite builds
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: applications/minotari_ledger_wallet/comms_testing -> target
+          workspaces: |
+            applications/minotari_ledger_wallet/comms_testing -> target
+            . -> target/ledger-speculos
           save-if: ${{ github.ref == 'refs/heads/development' }}
 
       # cargo-nextest is what writes the JUnit report (see comms_testing/.config/nextest.toml); the script requires
@@ -131,9 +140,12 @@ jobs:
           tool: cargo-nextest@0.9.78
 
       # Compiled up front so that compile time is neither charged to the test step's timeout nor mixed into its
-      # timing. nextest reuses these artifacts.
-      - name: compile the scenario suite
-        run: cargo test --locked --no-run --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
+      # timing. nextest reuses these artifacts. The script owns the cargo invocations - the key manager suite needs a
+      # cfg and a target directory that must match between here and `test` exactly - and also lints the key manager
+      # suite, which the root workspace's `cargo ci-clippy` cannot see.
+      - name: compile both suites
+        shell: bash
+        run: ./scripts/ledger_speculos.sh compile
 
       # Every model x seed cell: `test` starts each simulator, runs the suite against it, keeps its log and JUnit
       # file, and removes it. Its EXIT/INT/TERM trap does the same on Ctrl-C locally, but do not count on it here:
@@ -143,7 +155,7 @@ jobs:
       #
       # A wedged simulator must not sit until the job's ceiling. The transport has a 120 second read timeout and
       # the nextest `ci` profile kills a test after 5 minutes, but this bound holds whichever of them is in play.
-      - name: run the scenario suite on nanosplus and stax
+      - name: run both suites on nanosplus and stax
         timeout-minutes: 40
         shell: bash
         env:

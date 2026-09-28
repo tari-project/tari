@@ -73,6 +73,36 @@ toml = "0.5.8"
 
 serde_json = "1.0"
 static_assertions = "1.1.0"
+
+# The Speculos harness, for `tests/ledger_key_manager` and nothing else. Read this before touching it.
+#
+# `minotari_ledger_wallet_comms_testing` enables `minotari_ledger_wallet_comms/test_transport`, the registry that
+# lets a caller redirect the Ledger device connection, and it is `exclude`d from the root workspace so that feature
+# can never be unified into the `comms` rlib a shipped binary links - see the comment on `[workspace] exclude` in
+# the root `Cargo.toml`. A plain dev-dependency here would put that feature back into every `cargo test --workspace`
+# and every `--all-targets` build, and would make the documented leak check
+# (`cargo tree -e features -i minotari_ledger_wallet_comms | grep test_transport`) print a line.
+#
+# So it is gated twice:
+#
+# * It is a **dev**-dependency, so no non-test build can reach it under any flags - `cargo build --bin ...`, the
+#   release build, never resolves dev-dependencies at all.
+# * It sits behind `cfg(tari_ledger_speculos)`, a custom cfg that nothing sets except `scripts/ledger_speculos.sh`
+#   (through `RUSTFLAGS`, into a target directory of its own). Cargo evaluates a `[target.'cfg(..)']` table against
+#   `rustc --print cfg` with the same `RUSTFLAGS`, so without the flag this table does not exist and no test or lint
+#   build - `cargo ci-test` and `cargo ci-clippy` included - ever resolves the harness. (Those two do compile
+#   `comms` with `test_transport`, because their `--all-features` names it directly; that predates this table, has
+#   nothing to do with it, and neither of them builds a shipped binary.)
+#
+# A cargo feature cannot do the second job: `cargo ci-test` runs with `--all-features`, which would switch it on in
+# every CI run with no simulator to talk to.
+#
+# `ledger-transport` is here for the one type the test harness has to name - `APDUCommand`, in the signature of the
+# `LedgerTransport` wrapper that watches and interleaves exchanges - and for no other reason.
+[target.'cfg(tari_ledger_speculos)'.dev-dependencies]
+minotari_ledger_wallet_comms_testing = { path = "../../applications/minotari_ledger_wallet/comms_testing" }
+ledger-transport = { version = "0.11" }
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -81,6 +111,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_mainnet)',
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
+    # Set only by `scripts/ledger_speculos.sh`; see the `cfg(tari_ledger_speculos)` dev-dependencies above.
+    'cfg(tari_ledger_speculos)',
 ] }
 
 
