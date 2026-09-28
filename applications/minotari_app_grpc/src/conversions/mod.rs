@@ -30,6 +30,7 @@ pub mod com_and_pub_signature;
 pub mod commitment_signature;
 pub mod consensus_constants;
 pub mod historical_block;
+pub mod kernel_merkle_proof;
 pub mod new_block_template;
 pub mod output_features;
 #[cfg(feature = "base_node")]
