@@ -601,10 +601,43 @@ find_junit_report() {
 
 # Cargo, as the key manager suite needs it: the cfg that makes the suite exist, and a target directory of its own.
 # Any RUSTFLAGS the caller already had are kept, and the cfg appended to them.
+#
+# Refuses to run at all if CARGO_ENCODED_RUSTFLAGS is set. Cargo reads that variable *instead of* RUSTFLAGS when both
+# are present, so the cfg appended below would be dropped without a word - and without the cfg the suite compiles to
+# an empty test binary, which is the one outcome that must never look like a pass. Refusing rather than unsetting it,
+# because whoever set it meant something by it and should decide how the two combine.
 key_manager_cargo() {
+  if [ -n "${CARGO_ENCODED_RUSTFLAGS+set}" ]; then
+    echo "==> CARGO_ENCODED_RUSTFLAGS is set, and cargo would use it instead of RUSTFLAGS - dropping" >&2
+    echo "    '${KEY_MANAGER_CFG}', without which the key manager suite compiles to no tests at all. Unset it, or" >&2
+    echo "    fold its flags into RUSTFLAGS, and run again." >&2
+    return 1
+  fi
   RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }${KEY_MANAGER_CFG}" \
     CARGO_TARGET_DIR="${KEY_MANAGER_TARGET_DIR}" \
     cargo "$@"
+}
+
+# How many tests the key manager suite must report: every `#[test]` in its source files, counted afresh on each run.
+#
+# Derived rather than written down, so adding a test never needs a second edit here - and exact rather than a floor,
+# because that suite skips nothing, ignores nothing and filters nothing, so any shortfall at all means tests were
+# lost somewhere between the source and the report. A zero from this count is itself an error: it means the files
+# moved and the check would otherwise compare against nothing.
+key_manager_expected_tests() {
+  local count
+  count="$(cat "${REPO_ROOT}/base_layer/transaction_components/tests/${KEY_MANAGER_TEST}"/*.rs \
+    | grep -c '^[[:space:]]*#\[test\][[:space:]]*$' || true)"
+  if [ -z "${count}" ] || [ "${count}" -eq 0 ]; then
+    echo "==> Found no #[test] in base_layer/transaction_components/tests/${KEY_MANAGER_TEST}" >&2
+    return 1
+  fi
+  echo "${count}"
+}
+
+# The `tests="N"` count on a JUnit report's `<testsuites>` element.
+junit_test_count() {
+  sed -n 's/^<testsuites[^>]* tests="\([0-9][0-9]*\)".*/\1/p' "$1" | head -n 1
 }
 
 # The key manager suite's cargo target selection, shared by `compile` and `test` so the two cannot build different
@@ -721,7 +754,7 @@ annotate_junit() {
 # written once and run against every model, which is how "the two builds behave the same" gets asserted at all.
 cmd_test() {
   local models="${*:-${MODELS}}" model seed failures=0
-  local junit_report apdu api
+  local junit_report apdu api reported expected
   # Everything this command starts belongs to the run scope, so a concurrent copy of the script - or an
   # interactive `up` sitting in another shell - is invisible to it and safe from it.
   SCOPE="${RUN_SCOPE}"
@@ -809,6 +842,7 @@ cmd_test() {
         --manifest-path "${COMMS_TESTING_MANIFEST}" \
         --profile ci \
         --run-ignored all \
+        --no-tests=fail \
         -E "not test(=${BLOCKING_PROBE})"; then
         echo "==> ${model} / ${seed} scenario suite passed"
       else
@@ -833,6 +867,11 @@ cmd_test() {
       #
       # Nothing is skipped and nothing is `#[ignore]`d in it - the cfg is the whole gate - so there is no
       # `--run-ignored` and no filter. `--profile ledger-speculos` is what serialises it onto the one device.
+      #
+      # And the cfg being the whole gate is exactly why "it ran" is checked twice below. Lose the cfg - a refactor
+      # of `key_manager_cargo`, a RUSTFLAGS that never arrived - and the suite compiles to an empty binary, which
+      # nextest 0.9.78 reports as success by default with a JUnit file of `tests="0"`. `--no-tests=fail` turns the
+      # empty run red; the count check after it catches a run that lost *some* tests, which nextest cannot know.
       clear_junit_reports key-manager
       if SPECULOS_APDU_ADDRESS="${apdu}" \
         SPECULOS_API_ADDRESS="${api}" \
@@ -840,7 +879,8 @@ cmd_test() {
         SPECULOS_SEED_ID="${seed}" \
         key_manager_cargo nextest run \
         "${KEY_MANAGER_TARGET_ARGS[@]}" \
-        --profile "${KEY_MANAGER_PROFILE}"; then
+        --profile "${KEY_MANAGER_PROFILE}" \
+        --no-tests=fail; then
         echo "==> ${model} / ${seed} key manager suite passed"
       else
         echo "==> ${model} / ${seed} key manager suite FAILED" >&2
@@ -849,6 +889,15 @@ cmd_test() {
       if junit_report="$(find_junit_report key-manager)"; then
         annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" key-manager "none" \
           >"${JUNIT_DIR}/${model}-${seed}-key-manager.xml"
+        reported="$(junit_test_count "${junit_report}")"
+        if ! expected="$(key_manager_expected_tests)"; then
+          failures=$((failures + 1))
+        elif [ "${reported:-0}" != "${expected}" ]; then
+          echo "==> The key manager suite reported ${reported:-no} tests for ${model} / ${seed}, but its sources" >&2
+          echo "    hold ${expected}. Tests were lost between the source and the run - most likely the" >&2
+          echo "    '${KEY_MANAGER_CFG}' cfg never reached the compiler." >&2
+          failures=$((failures + 1))
+        fi
       else
         echo "==> No key manager suite JUnit report for ${model} / ${seed}. Looked in:" >&2
         junit_candidates key-manager | sed 's/^/      /' >&2
