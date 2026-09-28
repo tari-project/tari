@@ -23,7 +23,7 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::epoch::VnEpoch;
+use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
@@ -89,6 +89,25 @@ impl AggregateBodyChainLinkedValidator {
         Ok(())
     }
 
+    /// Validate a transaction body against the current chain state, for the mempool.
+    ///
+    /// Unlike [`Self::validate`], an input that spends an output which is not in the database does not stop
+    /// validation. All the other checks still run, and only once they have all passed is
+    /// [`ValidationError::UnknownInputs`] returned, listing the hashes of the outputs that could not be found. A caller
+    /// can then look for those outputs elsewhere (i.e. in the mempool), knowing that nothing else about the body is
+    /// invalid with respect to the chain.
+    pub fn validate_transaction_body<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        header: &BlockHeader,
+        db: &B,
+    ) -> Result<(), ValidationError> {
+        let constants = self.consensus_manager.consensus_constants(header.height);
+
+        self.validate_consensus(body, db)?;
+        self.check_body(body, db, constants, header, true)
+    }
+
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
         validate_burn_commitment_not_in_db(body, db)?;
@@ -103,14 +122,33 @@ impl AggregateBodyChainLinkedValidator {
         constants: &ConsensusConstants,
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
+        self.check_body(body, db, constants, header, false)
+    }
+
+    /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
+    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed.
+    fn check_body<B: BlockchainBackend>(
+        &self,
+        body: &AggregateBody,
+        db: &B,
+        constants: &ConsensusConstants,
+        header: &BlockHeader,
+        defer_unknown_inputs: bool,
+    ) -> Result<(), ValidationError> {
         validate_input_maturity(body, header.height)?;
-        check_inputs_are_spendable(db, constants, header.height, body)?;
+        let unknown_inputs = find_unknown_inputs(db, constants, header.height, body)?;
+        if !defer_unknown_inputs && !unknown_inputs.is_empty() {
+            return Err(ValidationError::UnknownInputs(unknown_inputs));
+        }
         check_outputs(db, constants, body, header.height)?;
         verify_no_duplicated_inputs_outputs(body)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
         verify_timelocks(body, header.height)?;
 
+        if !unknown_inputs.is_empty() {
+            return Err(ValidationError::UnknownInputs(unknown_inputs));
+        }
         Ok(())
     }
 }
@@ -230,13 +268,14 @@ fn validate_burn_commitment_not_in_db<B: BlockchainBackend>(
     Ok(())
 }
 
-// This function checks that all inputs in the blocks are valid UTXO's to be spent
-fn check_inputs_are_spendable<B: BlockchainBackend>(
+/// Checks that every input is spendable, returning the output hashes of the inputs that spend outputs which are
+/// neither in the database nor created by this body. Any other failure is returned as an error.
+fn find_unknown_inputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     current_height: u64,
     body: &AggregateBody,
-) -> Result<(), ValidationError> {
+) -> Result<Vec<HashOutput>, ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
 
@@ -269,11 +308,7 @@ fn check_inputs_are_spendable<B: BlockchainBackend>(
         }
     }
 
-    if !not_found_inputs.is_empty() {
-        return Err(ValidationError::UnknownInputs(not_found_inputs));
-    }
-
-    Ok(())
+    Ok(not_found_inputs)
 }
 
 /// This function checks:

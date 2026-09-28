@@ -58,10 +58,13 @@ macro_rules! script {
 }
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
-const MAX_SCRIPT_BYTES: usize = 4096;
+/// The maximum length of a serialised script accepted by [TariScript::from_bytes]
+pub const MAX_SCRIPT_BYTES: usize = 4096;
+/// The maximum number of opcodes in a script
+pub const MAX_SCRIPT_OPCODES: usize = 128;
 
 /// The sized vector of opcodes that make up a script
-pub type ScriptOpcodes = MaxSizeVec<Opcode, 128>;
+pub type ScriptOpcodes = MaxSizeVec<Opcode, MAX_SCRIPT_OPCODES>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
@@ -211,9 +214,16 @@ impl TariScript {
         Ok(slice_to_hash(h.as_slice().get(..32).ok_or(ScriptError::InvalidDigest)?))
     }
 
-    /// Try to deserialise a byte slice into a valid Tari script
+    /// Try to deserialise a byte slice into a valid Tari script. Inputs longer than [MAX_SCRIPT_BYTES] are rejected
+    /// before any parsing takes place.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ScriptError> {
-        let script = ScriptOpcodes::try_from(Opcode::parse(bytes)?)?;
+        if bytes.len() > MAX_SCRIPT_BYTES {
+            return Err(ScriptError::ScriptTooLarge {
+                max: MAX_SCRIPT_BYTES,
+                actual: bytes.len(),
+            });
+        }
+        let script = ScriptOpcodes::try_from(Opcode::parse(bytes, MAX_SCRIPT_OPCODES)?)?;
 
         Ok(TariScript { script })
     }
@@ -670,10 +680,18 @@ impl TariScript {
                 continue;
             }
 
+            // Each public key is decompressed at most once, since `pub_keys` only moves forward. The signature is
+            // decompressed once per outer iteration, on the first comparison (so that a key that fails to decompress
+            // is still reported before a signature that fails to decompress), and reused for the remaining keys.
+            let mut schnorr_sig = None;
             for pk in pub_keys.by_ref() {
                 let ristretto_key = pk.to_public_key().map_err(|_| ScriptError::InvalidInput)?;
-                let sig = s.to_schnorr_signature()?;
-                if sig.verify(&ristretto_key, message) {
+                if schnorr_sig.is_none() {
+                    schnorr_sig = Some(s.to_schnorr_signature()?);
+                }
+                if let Some(sig) = &schnorr_sig &&
+                    sig.verify(&ristretto_key, message)
+                {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + ristretto_key;
                     break;
@@ -791,7 +809,10 @@ mod test {
         keys::SecretKey,
         ristretto::{RistrettoPublicKey, RistrettoSecretKey, pedersen::CompressedPedersenCommitment},
     };
-    use tari_utilities::{ByteArray, hex::Hex};
+    use tari_utilities::{
+        ByteArray,
+        hex::{Hex, to_hex},
+    };
 
     use crate::{
         CheckSigSchnorrSignature,
@@ -805,6 +826,7 @@ mod test {
         error::ScriptError,
         inputs,
         op_codes::{HashValue, Message, slice_to_boxed_hash, slice_to_boxed_message},
+        script::MAX_SCRIPT_BYTES,
     };
 
     fn context_with_height(height: u64) -> ScriptContext {
@@ -1423,6 +1445,105 @@ mod test {
         );
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+    }
+
+    #[test]
+    fn check_multisig_semantics_pinned() {
+        use crate::{StackItem::Number, op_codes::Opcode::CheckMultiSig};
+        let mut rng = rand::rng();
+        let (msg, data) = multisig_data(3);
+        let (p_alice, s_alice) = (data[0].1.clone(), data[0].2.clone());
+        let (p_bob, s_bob) = (data[1].1.clone(), data[1].2.clone());
+        let (p_carol, s_carol) = (data[2].1.clone(), data[2].2.clone());
+        let s_alice2 = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&data[0].0, msg.as_slice(), &mut rng).unwrap(),
+        );
+        let (_, s_eve) = {
+            let (msg_eve, data_eve) = multisig_data(1);
+            (msg_eve, data_eve[0].2.clone())
+        };
+        // A key that is not a valid point, and a signature whose nonce is not a valid point
+        let bad_key = CompressedKey::<RistrettoPublicKey>::new(&[0xff; 32]);
+        let bad_sig = CompressedCheckSigSchnorrSignature::new(bad_key.clone(), s_alice.get_signature().clone());
+
+        let run = |m: u8, keys: Vec<CompressedKey<RistrettoPublicKey>>, inputs: ExecutionStack| {
+            let n = u8::try_from(keys.len()).unwrap();
+            TariScript::new(vec![CheckMultiSig(m, n, keys, msg.clone())])
+                .unwrap()
+                .execute(&inputs)
+        };
+
+        // Duplicate keys: each occurrence may be used once, by distinct signatures only
+        let keys = vec![p_alice.clone(), p_alice.clone()];
+        assert_eq!(
+            run(2, keys.clone(), inputs!(s_alice.clone(), s_alice2.clone())),
+            Ok(Number(1))
+        );
+        assert_eq!(
+            run(2, keys.clone(), inputs!(s_alice.clone(), s_alice.clone())),
+            Ok(Number(0))
+        );
+        assert_eq!(run(2, keys, inputs!(s_alice.clone(), s_bob.clone())), Ok(Number(0)));
+
+        // Out-of-order signatures fail, since keys are only scanned forward
+        let keys = vec![p_alice.clone(), p_bob.clone(), p_carol.clone()];
+        assert_eq!(
+            run(2, keys.clone(), inputs!(s_alice.clone(), s_carol.clone())),
+            Ok(Number(1))
+        );
+        assert_eq!(
+            run(2, keys.clone(), inputs!(s_carol.clone(), s_alice.clone())),
+            Ok(Number(0))
+        );
+        assert_eq!(
+            run(
+                3,
+                keys.clone(),
+                inputs!(s_bob.clone(), s_alice.clone(), s_carol.clone())
+            ),
+            Ok(Number(0))
+        );
+        // A non-matching signature exhausts the remaining keys
+        assert_eq!(run(2, keys, inputs!(s_eve.clone(), s_alice.clone())), Ok(Number(0)));
+
+        // An invalid key is only an error if the scan actually reaches it
+        let keys = vec![p_alice.clone(), bad_key.clone()];
+        assert_eq!(run(1, keys.clone(), inputs!(s_alice.clone())), Ok(Number(1)));
+        assert_eq!(run(1, keys, inputs!(s_eve.clone())), Err(ScriptError::InvalidInput));
+        let keys = vec![p_alice.clone(), p_bob.clone(), bad_key.clone()];
+        assert_eq!(run(2, keys, inputs!(s_alice.clone(), s_bob.clone())), Ok(Number(1)));
+
+        // An invalid key reached before an invalid signature is reported first
+        let keys = vec![bad_key, p_alice.clone()];
+        assert_eq!(
+            run(1, keys, inputs!(StackItem::Signature(bad_sig.clone()))),
+            Err(ScriptError::InvalidInput)
+        );
+        let keys = vec![p_alice, p_bob];
+        assert_eq!(
+            run(1, keys.clone(), inputs!(StackItem::Signature(bad_sig.clone()))),
+            Err(ScriptError::InvalidData)
+        );
+        // ... but an invalid signature that is never compared to a key is not an error
+        assert_eq!(
+            run(2, keys, inputs!(s_eve, StackItem::Signature(bad_sig))),
+            Ok(Number(0))
+        );
+    }
+
+    #[test]
+    fn from_bytes_rejects_oversized_scripts() {
+        // A script of exactly MAX_SCRIPT_BYTES of Nop (0x73) is parsed, and then rejected for having too many opcodes
+        let err = TariScript::from_bytes(&[0x73; MAX_SCRIPT_BYTES]).unwrap_err();
+        assert!(matches!(err, ScriptError::MaxSizeVecError(_)));
+        // One more byte is rejected before parsing, even though the bytes are not valid opcodes
+        let err = TariScript::from_bytes(&[0xFF; MAX_SCRIPT_BYTES + 1]).unwrap_err();
+        assert_eq!(err, ScriptError::ScriptTooLarge {
+            max: MAX_SCRIPT_BYTES,
+            actual: MAX_SCRIPT_BYTES + 1
+        });
+        let err = TariScript::from_hex(&to_hex(&[0xFF; MAX_SCRIPT_BYTES + 1]));
+        assert!(err.is_err());
     }
 
     #[allow(clippy::too_many_lines)]

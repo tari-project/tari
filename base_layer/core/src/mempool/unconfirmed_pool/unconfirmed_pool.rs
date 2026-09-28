@@ -157,7 +157,7 @@ impl UnconfirmedPool {
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
-    pub fn contains_all_outputs(&mut self, outputs: &[HashOutput]) -> bool {
+    pub fn contains_all_outputs(&self, outputs: &[HashOutput]) -> bool {
         outputs.iter().all(|hash| self.txs_by_output.contains_key(hash))
     }
 

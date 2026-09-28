@@ -52,7 +52,39 @@ pub trait CandidateBlockValidator<B>: Send + Sync {
 }
 
 pub trait TransactionValidator: Send + Sync {
+    /// Fully validate a transaction. An implementation may only return [`ValidationError::UnknownInputs`] once every
+    /// other check, including internal consistency, has passed, since callers accept such a transaction if the
+    /// unknown inputs are found elsewhere (i.e. in the mempool).
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
+
+    /// Validate a transaction against the chain state only. [`ValidationError::UnknownInputs`] means that every other
+    /// chain-linked check passed. A transaction accepted by this must also pass
+    /// [`Self::validate_internal_consistency`] before it may be stored.
+    ///
+    /// The default performs the full [`Self::validate`].
+    fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        self.validate(tx)
+    }
+
+    /// Validate the internal consistency of a transaction (scripts, signatures, range proofs, balance). This is the
+    /// expensive part of validation and does not depend on the transaction's inputs being in the chain. It does depend
+    /// on the chain tip (e.g. scripts can check the block height), so the caller may provide the tip to validate
+    /// against; if `None`, the current tip is used.
+    ///
+    /// The default does nothing, since the default [`Self::validate_chain_linked`] already performs full validation.
+    fn validate_internal_consistency(
+        &self,
+        _tx: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        Ok(())
+    }
+
+    /// The chain tip that validation is currently performed against, or `None` if it is not known. Used to detect
+    /// whether the tip has moved since a transaction was validated.
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
+        Ok(None)
+    }
 }
 
 pub trait InternalConsistencyValidator: Send + Sync {

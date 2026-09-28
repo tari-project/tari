@@ -126,6 +126,9 @@ impl AggregateBodyInternalConsistencyValidator {
         for output in body.outputs() {
             validate_individual_output(output, constants)?;
         }
+        // Every spent output had its script size checked when it was created, so this only rejects inputs that can
+        // never be valid. It runs before any input script is executed, to bound the cost of executing them.
+        check_input_script_sizes(body.inputs(), constants.max_script_byte_size())?;
 
         // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
@@ -206,6 +209,23 @@ fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Resu
         );
         e
     })
+}
+
+/// Verify that no input's TariScript is larger than the max size
+fn check_input_script_sizes(
+    inputs: &[TransactionInput],
+    max_script_size: usize,
+) -> Result<(), AggregatedBodyValidationError> {
+    for input in inputs {
+        check_tari_script_byte_size(input.script()?, max_script_size).map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "input ({input}) script size exceeded max size {e:?}."
+            );
+            e
+        })?;
+    }
+    Ok(())
 }
 
 /// Verify that the TariScript is not larger than the max size
