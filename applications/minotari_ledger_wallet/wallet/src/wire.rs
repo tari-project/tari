@@ -11,9 +11,9 @@ use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::nbgl::NbglStatus;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
-use minotari_ledger_wallet_common::codec::{Encode, Writer};
+use minotari_ledger_wallet_common::codec::{ComAndPubSigReply, Encode, Writer};
 
-use crate::AppSW;
+use crate::{crypto::commitment_and_public_key_signature::CommitmentAndPublicKeySignature, AppSW};
 
 /// Writes straight into the APDU reply buffer, so a reply is never assembled a second time on the stack or heap.
 ///
@@ -30,6 +30,21 @@ impl Writer for CommWriter<'_> {
 /// Append an encoded reply to the APDU response.
 pub fn reply(comm: &mut Comm, reply: &impl Encode) {
     reply.encode(&mut CommWriter(comm));
+}
+
+/// Reply with a commitment and public key signature: both script signature instructions and
+/// `GetOneSidedMetadataSignature` answer with one.
+pub fn reply_com_and_pub_sig(comm: &mut Comm, signature: &CommitmentAndPublicKeySignature) {
+    reply(
+        comm,
+        &ComAndPubSigReply::new(
+            signature.ephemeral_commitment().as_array(),
+            signature.ephemeral_pubkey().as_array(),
+            signature.u_a().as_array(),
+            signature.u_x().as_array(),
+            signature.u_y().as_array(),
+        ),
+    );
 }
 
 /// A request whose payload was not a length its layout can have.

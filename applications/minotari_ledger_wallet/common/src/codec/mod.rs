@@ -44,6 +44,7 @@
 //! `minotari_ledger_wallet_comms::raw` instead.
 
 mod keys;
+mod metadata;
 mod replies;
 mod signatures;
 
@@ -51,6 +52,12 @@ mod signatures;
 use alloc::vec::Vec;
 
 pub use keys::{GetPublicKeyRequest, GetViewKeyRequest};
+pub use metadata::{
+    GetOneSidedMetadataSignatureRequest,
+    OneSidedMetadataSignatureHead,
+    OneSidedMetadataSignatureTail,
+    ReceiverAddressTooLong,
+};
 pub use replies::{ComAndPubSigReply, KeyReply, SchnorrReply};
 pub use signatures::{
     GetScriptSchnorrSignatureRequest,
@@ -274,7 +281,12 @@ mod test {
                     message: &KEY,
                 })
             }),
-            Instruction::GetOneSidedMetadataSignature => Registration::Pending,
+            Instruction::GetOneSidedMetadataSignature => Registration::Encoder(|| {
+                registered(
+                    &GetOneSidedMetadataSignatureRequest::new(1, 2, 3, 4, 5, &KEY, &[0x22; 67], &KEY)
+                        .expect("a 67 byte address fits its length prefix"),
+                )
+            }),
             Instruction::GetScriptSignatureManaged => Registration::Encoder(|| {
                 registered(&GetScriptSignatureManagedRequest {
                     common: sample_script_signature_common(),
@@ -324,7 +336,6 @@ mod test {
             Instruction::GetScriptOffset,
             Instruction::GetDHSharedSecret,
             Instruction::GetRawSchnorrSignature,
-            Instruction::GetOneSidedMetadataSignature,
             Instruction::GenerateEphemeralNonce,
             Instruction::GetRawSchnorrSignatureLegacyNonce,
         ]);

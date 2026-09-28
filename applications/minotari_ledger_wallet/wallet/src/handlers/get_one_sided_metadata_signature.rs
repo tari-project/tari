@@ -20,11 +20,10 @@ use ledger_device_sdk::ui::{
     gadgets::{Field, MultiFieldReview, SingleMessage},
 };
 use minotari_ledger_wallet_common::{
+    codec::{Decode, OneSidedMetadataSignatureHead},
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
-    TARI_DUAL_ADDRESS_MAX_SIZE,
-    TARI_DUAL_ADDRESS_MIN_SIZE,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
@@ -47,60 +46,31 @@ use crate::{
         KeyManagerTransactionsHashDomain,
         TransactionHashDomain,
     },
+    wire::reply_com_and_pub_sig,
     AppSW,
     KeyType,
-    RESPONSE_VERSION,
 };
 
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
-    // Validate minimum required data size early
-    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
-    // address_size(2) + min_address(67) + message(32) = 171
-    if data.len() < 171 {
-        return Err(AppSW::WrongApduLength);
-    }
+    // The layout has a variable length address in the middle, so the codec decodes it in stages that interleave with
+    // the checks below exactly as the hand written parser did: the status word a malformed request gets depends on
+    // which check fails first. See `minotari_ledger_wallet_common::codec::metadata`.
+    let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
+    let account = head.account;
+    let network = head.network;
+    let txo_version = head.txo_version;
+    let sender_offset_key_index = head.sender_offset_key_index;
+    let value_u64 = head.value;
+    let value = Minotari::new(head.value);
 
-    let mut network_bytes = [0u8; 8];
-    network_bytes.clone_from_slice(&data[8..16]);
-    let network = u64::from_le_bytes(network_bytes);
+    let commitment_mask: RistrettoSecretKey =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(head.commitment_mask)?.into();
 
-    let mut txo_version_bytes = [0u8; 8];
-    txo_version_bytes.clone_from_slice(&data[16..24]);
-    let txo_version = u64::from_le_bytes(txo_version_bytes);
-
-    let mut sender_offset_key_index_bytes = [0u8; 8];
-    sender_offset_key_index_bytes.clone_from_slice(&data[24..32]);
-    let sender_offset_key_index = u64::from_le_bytes(sender_offset_key_index_bytes);
-
-    let mut value_bytes = [0u8; 8];
-    value_bytes.clone_from_slice(&data[32..40]);
-    let value_u64 = u64::from_le_bytes(value_bytes);
-    let value = Minotari::new(u64::from_le_bytes(value_bytes));
-
-    let commitment_mask: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
-
-    // Parse variable-length address
-    if data.len() < 74 {
-        return Err(AppSW::WrongApduLength);
-    }
-    let address_size_bytes = &data[72..74];
-    let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
-
-    if address_size < TARI_DUAL_ADDRESS_MIN_SIZE || address_size > TARI_DUAL_ADDRESS_MAX_SIZE {
-        return Err(AppSW::WrongApduLength);
-    }
-
-    let address_end = 74 + address_size;
-    if data.len() < address_end {
-        return Err(AppSW::WrongApduLength);
-    }
-    let receiver_address_bytes = &data[74..address_end];
+    let tail = head.receiver_address().map_err(|_| AppSW::WrongApduLength)?;
+    let receiver_address_bytes = tail.receiver_address;
 
     let receiver_address = match tari_dual_address_display(receiver_address_bytes) {
         Ok(address) => address,
@@ -120,15 +90,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    // Update subsequent data offset calculations
-    let metadata_signature_message_common_start = address_end;
-    let metadata_signature_message_common_end = metadata_signature_message_common_start + 32;
-    if data.len() < metadata_signature_message_common_end {
-        return Err(AppSW::WrongApduLength);
-    }
-    let mut metadata_signature_message_common = [0u8; 32];
-    metadata_signature_message_common
-        .clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
+    let metadata_signature_message_common = tail.message().map_err(|_| AppSW::WrongApduLength)?;
 
     // Extract payment ID if present
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(receiver_address_bytes)
@@ -229,7 +191,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
+        metadata_signature_message_from_script_and_common(network, &script, metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,
@@ -270,8 +232,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&metadata_signature.to_vec());
+    reply_com_and_pub_sig(comm, &metadata_signature);
 
     Ok(())
 }

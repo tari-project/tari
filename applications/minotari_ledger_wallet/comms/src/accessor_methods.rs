@@ -30,6 +30,7 @@ use minotari_ledger_wallet_common::{
     codec::{
         ComAndPubSigReply,
         Decode,
+        GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
@@ -799,49 +800,46 @@ pub fn ledger_get_one_sided_metadata_signature(
         );
     }
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
-    data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
-    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
-    data.extend_from_slice(&value.to_le_bytes());
-    data.extend_from_slice(&commitment_mask.to_vec());
-
-    // Add address size prefix and address data
     let address_bytes = receiver_address.to_vec();
-    let address_size = u16::try_from(address_bytes.len()).map_err(|_| {
+    let request = GetOneSidedMetadataSignatureRequest::new(
+        account,
+        u64::from(network.as_byte()),
+        u64::from(txo_version),
+        sender_offset_key_index,
+        value,
+        key_field(commitment_mask)?,
+        &address_bytes,
+        message,
+    )
+    .map_err(|_| {
         LedgerDeviceError::Processing(format!(
             "Address size {} exceeds maximum u16 value",
             address_bytes.len()
         ))
     })?;
-    data.extend_from_slice(&address_size.to_le_bytes());
-    data.extend_from_slice(&address_bytes);
 
-    data.extend_from_slice(&message.to_vec());
-
-    match raw::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
             if result.retcode() == AppSW::UserCancelled as u16 {
                 return Err(LedgerDeviceError::UserCancelled);
             }
-            if result.data().len() < 161 {
+            let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
                     result.data().len(),
                     result
                 )));
-            }
-            let data = result.data();
+            };
             Ok(ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))
+                CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))
+                CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_a)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_x)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_y)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
             ))
         },

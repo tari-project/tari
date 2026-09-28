@@ -11,7 +11,6 @@ use ledger_device_sdk::nbgl::NbglStatus;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use minotari_ledger_wallet_common::codec::{
-    ComAndPubSigReply,
     Decode,
     GetScriptSignatureDerivedRequest,
     GetScriptSignatureManagedRequest,
@@ -34,7 +33,7 @@ use crate::{
         get_random_nonce,
         TransactionHashDomain,
     },
-    wire::{invalid_data_length, reply},
+    wire::{invalid_data_length, reply_com_and_pub_sig},
     AppSW,
     KeyType,
     STATIC_SPEND_INDEX,
@@ -62,7 +61,7 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
         script_message,
     )?;
 
-    reply_script_signature(comm, &script_signature);
+    reply_com_and_pub_sig(comm, &script_signature);
 
     Ok(())
 }
@@ -91,22 +90,9 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
         script_message,
     )?;
 
-    reply_script_signature(comm, &script_signature);
+    reply_com_and_pub_sig(comm, &script_signature);
 
     Ok(())
-}
-
-fn reply_script_signature(comm: &mut Comm, signature: &CommitmentAndPublicKeySignature) {
-    reply(
-        comm,
-        &ComAndPubSigReply::new(
-            signature.ephemeral_commitment().as_array(),
-            signature.ephemeral_pubkey().as_array(),
-            signature.u_a().as_array(),
-            signature.u_x().as_array(),
-            signature.u_y().as_array(),
-        ),
-    );
 }
 
 /// Turn the framed common prefix into the values the signature needs.

@@ -48,6 +48,7 @@ use minotari_ledger_wallet_common::{
         ComAndPubSigReply,
         Decode,
         Encode,
+        GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
@@ -821,6 +822,25 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
             branch: u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
             message: &[0xb7; 32],
         })
+    );
+
+    // --- GetOneSidedMetadataSignature
+    let mask = key_array(&scalar(0xb8));
+    let address = receiver_address().to_vec();
+    let metadata = payload(GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST);
+    assert_eq!(
+        GetOneSidedMetadataSignatureRequest::decode(&metadata),
+        Ok(GetOneSidedMetadataSignatureRequest::new(
+            ACCOUNT,
+            u64::from(NETWORK.as_byte()),
+            u64::from(TXO_VERSION),
+            SENDER_OFFSET_KEY_INDEX,
+            VALUE,
+            &mask,
+            &address,
+            &[0xb9; 32],
+        )
+        .unwrap())
     );
 
     // --- Replies
