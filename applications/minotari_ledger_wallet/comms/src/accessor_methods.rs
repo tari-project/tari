@@ -27,7 +27,19 @@ use std::{
 
 use log::debug;
 use minotari_ledger_wallet_common::{
-    codec::{Decode, GetPublicKeyRequest, GetViewKeyRequest, KeyReply, RESPONSE_VERSION},
+    codec::{
+        ComAndPubSigReply,
+        Decode,
+        GetPublicKeyRequest,
+        GetScriptSchnorrSignatureRequest,
+        GetScriptSignatureDerivedRequest,
+        GetScriptSignatureManagedRequest,
+        GetViewKeyRequest,
+        KeyReply,
+        RESPONSE_VERSION,
+        SchnorrReply,
+        ScriptSignatureCommon,
+    },
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
     legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
@@ -61,6 +73,17 @@ const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
 pub enum ScriptSignatureKey {
     Managed { branch: LedgerKeyBranch, index: u64 },
     Derived { branch_key: PrivateKey },
+}
+
+/// A key's canonical bytes as the fixed width field the wire-format codec takes.
+///
+/// Every key and commitment type here is 32 bytes by construction, so this cannot fail in practice; it is a
+/// `Result` rather than an `expect` so that a type that ever stopped being 32 bytes is an error the caller sees,
+/// not a panic in the wallet.
+fn key_field(key: &impl ByteArray) -> Result<&[u8; 32], LedgerDeviceError> {
+    key.as_bytes().try_into().map_err(|_| {
+        LedgerDeviceError::ConversionError(format!("expected a 32 byte key, got {} bytes", key.as_bytes().len()))
+    })
 }
 
 /// Whether the ledger application has been verified in this process. Only ever set to `true`, and only by a
@@ -340,53 +363,43 @@ pub fn ledger_get_script_signature(
     debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{account}', message '{}'", message.to_hex());
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    let network = u64::from(network.as_byte()).to_le_bytes();
-    data.extend_from_slice(&network);
-    let version = u64::from(version).to_le_bytes();
-    data.extend_from_slice(&version);
-
-    let value = value.to_vec();
-    data.extend_from_slice(&value);
-    let commitment_private_key = commitment_private_key.to_vec();
-    data.extend_from_slice(&commitment_private_key);
-    let commitment = commitment.to_vec();
-    data.extend_from_slice(&commitment);
-    data.extend_from_slice(&message);
-
-    match signature_key {
-        ScriptSignatureKey::Managed { branch, index } => {
-            let branch = u64::from(branch.as_byte()).to_le_bytes();
-            data.extend_from_slice(&branch);
-            let index = index.to_le_bytes();
-            data.extend_from_slice(&index);
-        },
-        ScriptSignatureKey::Derived { branch_key } => {
-            data.extend_from_slice(&branch_key.to_vec());
-        },
-    }
-
-    let instruction = match signature_key {
-        ScriptSignatureKey::Managed { .. } => Instruction::GetScriptSignatureManaged,
-        ScriptSignatureKey::Derived { .. } => Instruction::GetScriptSignatureDerived,
+    let common = ScriptSignatureCommon {
+        account,
+        network: u64::from(network.as_byte()),
+        txi_version: u64::from(version),
+        value: key_field(value)?,
+        commitment_private_key: key_field(commitment_private_key)?,
+        commitment: key_field(commitment)?,
+        message: &message,
     };
 
-    match raw::build_command(account, instruction, data).execute() {
+    let command = match signature_key {
+        ScriptSignatureKey::Managed { branch, index } => Command::from_request(&GetScriptSignatureManagedRequest {
+            common,
+            branch: u64::from(branch.as_byte()),
+            index: *index,
+        }),
+        ScriptSignatureKey::Derived { branch_key } => Command::from_request(&GetScriptSignatureDerivedRequest {
+            common,
+            blinding_factor: key_field(branch_key)?,
+        }),
+    };
+
+    match command.execute() {
         Ok(result) => {
-            if result.data().len() < 161 {
+            let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSignature: expected 161 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
+            };
             let signature = ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?,
-                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))?,
+                CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)?,
+                CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)?,
+                PrivateKey::from_canonical_bytes(reply.u_a)?,
+                PrivateKey::from_canonical_bytes(reply.u_x)?,
+                PrivateKey::from_canonical_bytes(reply.u_y)?,
             );
             Ok(signature)
         },
@@ -721,27 +734,28 @@ pub fn ledger_get_script_schnorr_signature(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    if nonce.len() != 32 {
-        return Err(LedgerDeviceError::Processing("Nonce must be 32 bytes".to_string()));
-    }
-    data.extend_from_slice(nonce);
+    let message = <&[u8; 32]>::try_from(nonce)
+        .map_err(|_| LedgerDeviceError::Processing("Nonce must be 32 bytes".to_string()))?;
+    let request = GetScriptSchnorrSignatureRequest {
+        account,
+        index: private_key_index,
+        branch: u64::from(private_key_branch.as_byte()),
+        message,
+    };
 
-    match raw::build_command(account, Instruction::GetScriptSchnorrSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedCheckSigSchnorrSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },

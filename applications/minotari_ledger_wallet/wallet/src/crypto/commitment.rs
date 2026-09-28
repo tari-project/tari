@@ -20,6 +20,12 @@ impl PedersenCommitment {
         &self.0
     }
 
+    /// The compressed commitment as the fixed width field the wire-format codec takes. See
+    /// [`RistrettoSecretKey::as_array`].
+    pub fn as_array(&self) -> &[u8; 32] {
+        self.0.as_array()
+    }
+
     /// Converts a public key into a commitment
     pub fn from_public_key(key: &RistrettoPublicKey) -> PedersenCommitment {
         PedersenCommitment(key.clone())

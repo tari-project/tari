@@ -45,12 +45,19 @@
 
 mod keys;
 mod replies;
+mod signatures;
 
 #[cfg(any(feature = "alloc", test))]
 use alloc::vec::Vec;
 
 pub use keys::{GetPublicKeyRequest, GetViewKeyRequest};
-pub use replies::KeyReply;
+pub use replies::{ComAndPubSigReply, KeyReply, SchnorrReply};
+pub use signatures::{
+    GetScriptSchnorrSignatureRequest,
+    GetScriptSignatureDerivedRequest,
+    GetScriptSignatureManagedRequest,
+    ScriptSignatureCommon,
+};
 
 use crate::common_types::Instruction;
 
@@ -144,13 +151,23 @@ fn write_u64(out: &mut impl Writer, value: u64) {
 ///
 /// `split_first_chunk` rather than indexing, so that a decoder has no bounds check to panic on: a device that
 /// panicked on a malformed APDU would exit the application rather than answer with a status word.
+///
+/// # Why `#[inline(always)]`
+///
+/// The device builds at `opt-level = 'z'`, where LLVM prefers a call to an inlined body. That is the wrong call
+/// here. Once a decoder is inlined into its handler, the length check it starts with lets LLVM fold every per-field
+/// check that follows, and the fields become plain loads at constant offsets - which is what the hand written
+/// slicing it replaced compiled to. Left out of line, each field keeps its own check and its own error path, and
+/// the decoded struct has to be written out through memory. Measured on the nanosplus build, forcing these inline is
+/// several hundred bytes smaller, and the device application has a size budget the codec must not grow.
 struct Reader<'a> {
     rest: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Reader<'a> {
     /// A reader over a buffer that must be exactly `size` bytes - the device's `data.len() != N` check.
-    #[inline]
+    #[inline(always)]
     fn exact(data: &'a [u8], size: usize) -> Result<Self, DecodeError> {
         if data.len() != size {
             return Err(DecodeError::WrongLength);
@@ -160,7 +177,7 @@ impl<'a> Reader<'a> {
 
     /// A reader over a buffer that must be at least `size` bytes, trailing bytes ignored - the host's
     /// `data.len() < N` check on a reply.
-    #[inline]
+    #[inline(always)]
     fn at_least(data: &'a [u8], size: usize) -> Result<Self, DecodeError> {
         if data.len() < size {
             return Err(DecodeError::WrongLength);
@@ -168,19 +185,19 @@ impl<'a> Reader<'a> {
         Ok(Self { rest: data })
     }
 
-    #[inline]
+    #[inline(always)]
     fn array<const N: usize>(&mut self) -> Result<&'a [u8; N], DecodeError> {
         let (field, rest) = self.rest.split_first_chunk::<N>().ok_or(DecodeError::WrongLength)?;
         self.rest = rest;
         Ok(field)
     }
 
-    #[inline]
+    #[inline(always)]
     fn u64(&mut self) -> Result<u64, DecodeError> {
         self.array::<8>().map(|bytes| u64::from_le_bytes(*bytes))
     }
 
-    #[inline]
+    #[inline(always)]
     fn u8(&mut self) -> Result<u8, DecodeError> {
         self.array::<1>().map(|&[byte]| byte)
     }
@@ -208,6 +225,20 @@ mod test {
         (R::INSTRUCTION, request.to_vec())
     }
 
+    const KEY: [u8; 32] = [0x11; 32];
+
+    fn sample_script_signature_common() -> ScriptSignatureCommon<'static> {
+        ScriptSignatureCommon {
+            account: 1,
+            network: 2,
+            txi_version: 3,
+            value: &KEY,
+            commitment_private_key: &KEY,
+            commitment: &KEY,
+            message: &KEY,
+        }
+    }
+
     /// Every instruction's encoder.
     ///
     /// An exhaustive `match` on purpose, in the style of `test_instruction_conversion`: a new `Instruction` variant
@@ -225,14 +256,32 @@ mod test {
                     branch: 3,
                 })
             }),
-            Instruction::GetScriptSignatureDerived => Registration::Pending,
+            Instruction::GetScriptSignatureDerived => Registration::Encoder(|| {
+                registered(&GetScriptSignatureDerivedRequest {
+                    common: sample_script_signature_common(),
+                    blinding_factor: &KEY,
+                })
+            }),
             Instruction::GetScriptOffset => Registration::Pending,
             Instruction::GetViewKey => Registration::Encoder(|| registered(&GetViewKeyRequest { account: 1 })),
             Instruction::GetDHSharedSecret => Registration::Pending,
             Instruction::GetRawSchnorrSignature => Registration::Pending,
-            Instruction::GetScriptSchnorrSignature => Registration::Pending,
+            Instruction::GetScriptSchnorrSignature => Registration::Encoder(|| {
+                registered(&GetScriptSchnorrSignatureRequest {
+                    account: 1,
+                    index: 2,
+                    branch: 3,
+                    message: &KEY,
+                })
+            }),
             Instruction::GetOneSidedMetadataSignature => Registration::Pending,
-            Instruction::GetScriptSignatureManaged => Registration::Pending,
+            Instruction::GetScriptSignatureManaged => Registration::Encoder(|| {
+                registered(&GetScriptSignatureManagedRequest {
+                    common: sample_script_signature_common(),
+                    branch: 3,
+                    index: 4,
+                })
+            }),
             Instruction::GenerateEphemeralNonce => Registration::Pending,
             Instruction::GetRawSchnorrSignatureLegacyNonce => Registration::Pending,
         }
@@ -272,13 +321,10 @@ mod test {
             Instruction::GetVersion,
             Instruction::GetAppName,
             Instruction::GetPublicSpendKey,
-            Instruction::GetScriptSignatureDerived,
             Instruction::GetScriptOffset,
             Instruction::GetDHSharedSecret,
             Instruction::GetRawSchnorrSignature,
-            Instruction::GetScriptSchnorrSignature,
             Instruction::GetOneSidedMetadataSignature,
-            Instruction::GetScriptSignatureManaged,
             Instruction::GenerateEphemeralNonce,
             Instruction::GetRawSchnorrSignatureLegacyNonce,
         ]);

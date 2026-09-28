@@ -44,7 +44,19 @@ use std::{
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use minotari_ledger_wallet_common::{
-    codec::{Decode, Encode, GetPublicKeyRequest, GetViewKeyRequest, KeyReply},
+    codec::{
+        ComAndPubSigReply,
+        Decode,
+        Encode,
+        GetPublicKeyRequest,
+        GetScriptSchnorrSignatureRequest,
+        GetScriptSignatureDerivedRequest,
+        GetScriptSignatureManagedRequest,
+        GetViewKeyRequest,
+        KeyReply,
+        SchnorrReply,
+        ScriptSignatureCommon,
+    },
     common_types::{Instruction, LedgerKeyBranch},
 };
 use minotari_ledger_wallet_comms::{
@@ -764,7 +776,69 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         Ok(GetViewKeyRequest { account: ACCOUNT })
     );
 
+    // --- GetScriptSignatureManaged / GetScriptSignatureDerived
+    let (value, commitment_private_key, commitment_bytes, message) = (
+        key_array(&scalar(0xb2)),
+        key_array(&scalar(0xb3)),
+        key_array(&commitment(0xb4)),
+        [0xb5; 32],
+    );
+    let common = ScriptSignatureCommon {
+        account: ACCOUNT,
+        network: u64::from(NETWORK.as_byte()),
+        txi_version: u64::from(TXO_VERSION),
+        value: &value,
+        commitment_private_key: &commitment_private_key,
+        commitment: &commitment_bytes,
+        message: &message,
+    };
+    let managed = payload(GET_SCRIPT_SIGNATURE_MANAGED_REQUEST);
+    assert_eq!(
+        GetScriptSignatureManagedRequest::decode(&managed),
+        Ok(GetScriptSignatureManagedRequest {
+            common,
+            branch: u64::from(LedgerKeyBranch::PreMine.as_byte()),
+            index: INDEX,
+        })
+    );
+    let blinding_factor = key_array(&scalar(0xb6));
+    let derived = payload(GET_SCRIPT_SIGNATURE_DERIVED_REQUEST);
+    assert_eq!(
+        GetScriptSignatureDerivedRequest::decode(&derived),
+        Ok(GetScriptSignatureDerivedRequest {
+            common,
+            blinding_factor: &blinding_factor,
+        })
+    );
+
+    // --- GetScriptSchnorrSignature
+    let schnorr = payload(GET_SCRIPT_SCHNORR_SIGNATURE_REQUEST);
+    assert_eq!(
+        GetScriptSchnorrSignatureRequest::decode(&schnorr),
+        Ok(GetScriptSchnorrSignatureRequest {
+            account: ACCOUNT,
+            index: INDEX,
+            branch: u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            message: &[0xb7; 32],
+        })
+    );
+
     // --- Replies
     assert_eq!(KeyReply::new(&key_array(&point(0xa1))).to_vec(), unhex(KEY_REPLY));
     assert_eq!(KeyReply::new(&key_array(&scalar(0xa2))).to_vec(), unhex(VIEW_KEY_REPLY));
+    assert_eq!(
+        SchnorrReply::new(&key_array(&point(0xa3)), &key_array(&scalar(0xa4))).to_vec(),
+        unhex(SCHNORR_REPLY)
+    );
+    assert_eq!(
+        ComAndPubSigReply::new(
+            &key_array(&point(0xc1)),
+            &key_array(&point(0xc2)),
+            &key_array(&scalar(0xc3)),
+            &key_array(&scalar(0xc4)),
+            &key_array(&scalar(0xc5)),
+        )
+        .to_vec(),
+        unhex(COM_AND_PUB_SIG_REPLY)
+    );
 }

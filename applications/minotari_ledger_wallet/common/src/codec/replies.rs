@@ -52,6 +52,112 @@ impl<'a> Decode<'a> for KeyReply<'a> {
     }
 }
 
+/// `version(1) | public_nonce(32) | signature(32)`, 65 bytes.
+///
+/// Shared by all three Schnorr instructions: `GetRawSchnorrSignature`, `GetRawSchnorrSignatureLegacyNonce` and
+/// `GetScriptSchnorrSignature`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct SchnorrReply<'a> {
+    pub version: u8,
+    pub public_nonce: &'a [u8; 32],
+    pub signature: &'a [u8; 32],
+}
+
+impl<'a> SchnorrReply<'a> {
+    pub const SIZE: usize = 1 + 32 + 32;
+
+    /// The reply the current application sends.
+    pub fn new(public_nonce: &'a [u8; 32], signature: &'a [u8; 32]) -> Self {
+        Self {
+            version: RESPONSE_VERSION,
+            public_nonce,
+            signature,
+        }
+    }
+}
+
+impl Encode for SchnorrReply<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        out.write(&[self.version]);
+        out.write(self.public_nonce);
+        out.write(self.signature);
+    }
+}
+
+impl<'a> Decode<'a> for SchnorrReply<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::at_least(data, Self::SIZE)?;
+        Ok(Self {
+            version: reader.u8()?,
+            public_nonce: reader.array()?,
+            signature: reader.array()?,
+        })
+    }
+}
+
+/// `version(1) | ephemeral_commitment(32) | ephemeral_pubkey(32) | u_a(32) | u_x(32) | u_y(32)`, 161 bytes.
+///
+/// A commitment and public key signature, shared by both script signature instructions and
+/// `GetOneSidedMetadataSignature`. The field order is `CommitmentAndPublicKeySignature::to_vec`'s: the ephemeral
+/// commitment and key, then the three responses `u_a`, `u_x`, `u_y` - which is not the order `sign` takes its secrets
+/// in, so it is spelled out here rather than left to a `to_vec` on either side.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ComAndPubSigReply<'a> {
+    pub version: u8,
+    pub ephemeral_commitment: &'a [u8; 32],
+    pub ephemeral_pubkey: &'a [u8; 32],
+    pub u_a: &'a [u8; 32],
+    pub u_x: &'a [u8; 32],
+    pub u_y: &'a [u8; 32],
+}
+
+impl<'a> ComAndPubSigReply<'a> {
+    pub const SIZE: usize = 1 + 32 * 5;
+
+    /// The reply the current application sends.
+    pub fn new(
+        ephemeral_commitment: &'a [u8; 32],
+        ephemeral_pubkey: &'a [u8; 32],
+        u_a: &'a [u8; 32],
+        u_x: &'a [u8; 32],
+        u_y: &'a [u8; 32],
+    ) -> Self {
+        Self {
+            version: RESPONSE_VERSION,
+            ephemeral_commitment,
+            ephemeral_pubkey,
+            u_a,
+            u_x,
+            u_y,
+        }
+    }
+}
+
+impl Encode for ComAndPubSigReply<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        out.write(&[self.version]);
+        out.write(self.ephemeral_commitment);
+        out.write(self.ephemeral_pubkey);
+        out.write(self.u_a);
+        out.write(self.u_x);
+        out.write(self.u_y);
+    }
+}
+
+impl<'a> Decode<'a> for ComAndPubSigReply<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::at_least(data, Self::SIZE)?;
+        Ok(Self {
+            version: reader.u8()?,
+            ephemeral_commitment: reader.array()?,
+            ephemeral_pubkey: reader.array()?,
+            u_a: reader.array()?,
+            u_x: reader.array()?,
+            u_y: reader.array()?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     // A panic is the desired failure mode in a test.
@@ -76,5 +182,34 @@ mod test {
         bytes.push(0xff);
         assert_eq!(KeyReply::decode(&bytes).map(|reply| *reply.key), Ok([1; 32]));
         assert!(KeyReply::decode(&bytes[..KeyReply::SIZE - 1]).is_err());
+    }
+
+    #[test]
+    fn a_schnorr_reply_is_the_version_then_the_nonce_then_the_signature() {
+        let bytes = SchnorrReply::new(&[0x11; 32], &[0x22; 32]).to_vec();
+        assert_eq!(bytes.len(), SchnorrReply::SIZE);
+        assert_eq!(bytes[0], RESPONSE_VERSION);
+        assert_eq!(&bytes[1..33], &[0x11; 32]);
+        assert_eq!(&bytes[33..65], &[0x22; 32]);
+        assert_eq!(
+            SchnorrReply::decode(&bytes),
+            Ok(SchnorrReply::new(&[0x11; 32], &[0x22; 32]))
+        );
+        assert!(SchnorrReply::decode(&bytes[..64]).is_err());
+    }
+
+    /// Five distinct fillers, so that two fields read from the same offset show up here rather than as a signature
+    /// that mysteriously fails to verify.
+    #[test]
+    fn a_com_and_pub_sig_reply_keeps_its_five_fields_in_to_vec_order() {
+        let reply = ComAndPubSigReply::new(&[0x31; 32], &[0x32; 32], &[0x33; 32], &[0x34; 32], &[0x35; 32]);
+        let bytes = reply.to_vec();
+        assert_eq!(bytes.len(), ComAndPubSigReply::SIZE);
+        for (i, filler) in [0x31u8, 0x32, 0x33, 0x34, 0x35].into_iter().enumerate() {
+            let start = 1 + 32 * i;
+            assert_eq!(&bytes[start..start + 32], &[filler; 32]);
+        }
+        assert_eq!(ComAndPubSigReply::decode(&bytes), Ok(reply));
+        assert!(ComAndPubSigReply::decode(&bytes[..160]).is_err());
     }
 }

@@ -10,7 +10,10 @@ use ledger_device_sdk::nbgl::NbglStatus;
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_utilities::ByteArray;
 
-use minotari_ledger_wallet_common::legacy_nonce::check_legacy_nonce_branches;
+use minotari_ledger_wallet_common::{
+    codec::{Decode, GetScriptSchnorrSignatureRequest, SchnorrReply},
+    legacy_nonce::check_legacy_nonce_branches,
+};
 
 use crate::{
     alloc::string::ToString,
@@ -19,6 +22,7 @@ use crate::{
     hash_domain,
     handlers::get_ephemeral_nonce::{nonce_store_error_to_app_sw, EphemeralNonceCtx},
     utils::{derive_from_bip32_key, get_random_nonce},
+    wire::{invalid_data_length, reply},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -195,38 +199,15 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
 
 pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
-    if data.len() != 56 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
+    let request = GetScriptSchnorrSignatureRequest::decode(data).map_err(|_| invalid_data_length())?;
 
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
-        return Err(AppSW::WrongApduLength);
-    }
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
+    let private_key_type = KeyType::from_branch_key(request.branch)?;
 
-    let mut private_key_index_bytes = [0u8; 8];
-    private_key_index_bytes.clone_from_slice(&data[8..16]);
-    let private_key_index = u64::from_le_bytes(private_key_index_bytes);
-    let mut private_key_type_bytes = [0u8; 8];
-
-    private_key_type_bytes.clone_from_slice(&data[16..24]);
-    let key_type = u64::from_le_bytes(private_key_type_bytes);
-    let private_key_type = KeyType::from_branch_key(key_type)?;
-
-    let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
-    let mut nonce_bytes = [0u8; 32];
-    nonce_bytes.clone_from_slice(&data[24..56]);
+    let private_key = derive_from_bip32_key(request.account, request.index, private_key_type)?;
 
     let random_nonce = get_random_nonce()?.clone();
     let signature =
-        match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, &nonce_bytes) {
+        match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, request.message) {
             Ok(sig) => sig,
             Err(_e) => {
                 let error_string = "Invalid Challange".to_string();
@@ -244,9 +225,13 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
                 return Err(AppSW::SchnorrSignatureFail);
             },
         };
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&signature.get_public_nonce().to_vec());
-    comm.append(&signature.get_signature().to_vec());
+    reply(
+        comm,
+        &SchnorrReply::new(
+            signature.get_public_nonce().as_array(),
+            signature.get_signature().as_array(),
+        ),
+    );
 
     Ok(())
 }
