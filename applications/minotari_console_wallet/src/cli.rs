@@ -144,7 +144,7 @@ impl ConfigOverrideProvider for Cli {
             // GRPC is disabled
         }
         if let Some(ref path) = self.burn_proof_out {
-            replace_or_add_override(&mut overrides, "wallet.burn_proofs_dir", &path.display().to_string());
+            replace_or_add_override(&mut overrides, "wallet.transactions.burn_proof_output_dir", &path.display().to_string());
         }
         overrides
     }
