@@ -3,6 +3,7 @@ set -e
 
 # The order is important. Dependencies must be published before the crates that depend on them.
 PACKAGES=(
+    "tari_mmr"
     "tari_storage"
     "tari_shutdown"
     "tari_metrics"
@@ -27,7 +28,6 @@ PACKAGES=(
     "tari_node_components"
     "tari_p2p"
     "tari_libtor"
-    "tari_mmr"
     "tari_core"
     "minotari_node_wallet_client"
     "minotari_wallet"
