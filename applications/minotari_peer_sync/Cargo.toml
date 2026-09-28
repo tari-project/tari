@@ -1,5 +1,6 @@
 [package]
 name = "minotari_peer_sync"
+publish = false
 description = "Runs the base node peer sync (seed strap) and dials every discovered peer, reporting how many could be reached"
 version.workspace = true
 edition.workspace = true

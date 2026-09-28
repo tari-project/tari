@@ -1,5 +1,6 @@
 [package]
 name = "minotari_miner"
+publish = false
 description = "The tari miner implementation"
 authors.workspace = true
 repository.workspace = true

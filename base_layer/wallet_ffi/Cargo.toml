@@ -1,5 +1,6 @@
 [package]
 name = "minotari_wallet_ffi"
+publish = false
 description = "Tari cryptocurrency wallet C FFI bindings"
 version.workspace = true
 edition.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "minotari_mcp_node"
+publish = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
