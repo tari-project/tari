@@ -4714,6 +4714,7 @@ dependencies = [
  "tari_crypto",
  "tari_hashing",
  "tari_max_size",
+ "tari_mmr",
  "tari_node_components",
  "tari_p2p",
  "tari_script",

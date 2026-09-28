@@ -22,4 +22,5 @@
 
 pub mod base64;
 pub mod hex;
+pub mod hex_seq;
 pub mod string;
