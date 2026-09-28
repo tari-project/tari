@@ -3,7 +3,7 @@ name: Test Results for CI
 
 on:
   workflow_run:
-    workflows: ['CI', 'Integration Tests']
+    workflows: ['CI', 'Integration Tests', 'Ledger Tests']
     types:
       - completed
 

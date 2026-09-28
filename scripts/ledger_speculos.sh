@@ -7,11 +7,11 @@
 # context and ephemeral nonce store behaviour that only exists between exchanges, and the legacy nonce branch
 # whitelist. `comms_testing/examples/ledger_demo.rs` runs the same scenarios against real hardware.
 #
-# NOTHING IN CI RUNS THIS YET. No workflow references this script or the crate it tests, so none of it has ever
-# been checked by anything except a developer running the command below by hand. Wiring it up is Spec 5's job;
-# until that lands, a green pull request says nothing whatsoever about the device.
+# CI runs this on every pull request: the `ledger speculos tests` job in .github/workflows/ledger_tests.yml calls
+# `build` and `test` below, and the `ledger build tests` job in .github/workflows/ci.yml calls `build` for all four
+# models.
 #
-# This script is intended to be the *only* definition of how Speculos is started, so that when CI does arrive it
+# This script is the *only* definition of how Speculos is started and how the device application is built, and CI
 # calls these subcommands rather than repeating the `docker run` in a workflow file - which is how "it passes
 # locally" and "it passes in CI" stop meaning the same thing without anyone noticing.
 #
@@ -77,8 +77,9 @@ SEEDS="${SEEDS:-default alternate}"
 # Both digests are multi-arch manifest lists (linux/amd64 + linux/arm64), so they resolve on CI and on an Apple
 # silicon laptop alike.
 SPECULOS_IMAGE="${SPECULOS_IMAGE:-ghcr.io/ledgerhq/speculos:latest@sha256:6ed9eefd51cddd862b746719af4cd7a3265fe43d0588c388359753cab8d46d11}"
-# Keep the tag in step with the DOCKER_IMAGE of the `ledger-build-tests` job in .github/workflows/ci.yml. The .elf
-# this script tests is the same artefact that job builds; see "Which .elf" below.
+# Both CI build jobs - `ledger-build-tests` in .github/workflows/ci.yml and the Speculos job in ledger_tests.yml -
+# build through `cmd_build` below, so this pin is theirs too. .github/workflows/build_ledger_wallet.yml, the release
+# build, still names the image by tag in its own DOCKER_IMAGE; keep that tag in step with this one.
 BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10@sha256:3853136d5bba5bff4e3d5fc9d6629389e3e0c56a679b2eb4e05c97a7017bf566}"
 # The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
 # cannot drift apart; see `cmd_test`.
@@ -205,10 +206,10 @@ host_address() {
   echo "${mapped}"
 }
 
-# Which .elf: the one `cargo ledger build <model> -- --locked` produces, byte for byte the command the
-# `ledger-build-tests` job in .github/workflows/ci.yml already runs. There is deliberately no artefact handoff
-# between a build job and a test job - see Spec 2, which says to split them only once that job exceeds 15 minutes.
-# Until then a split buys a slower pipeline and an upload/download step for nothing.
+# Which .elf: the one `cargo ledger build <model> -- --locked` produces - this function, which is also what the
+# `ledger-build-tests` job in .github/workflows/ci.yml runs. There is deliberately no artefact handoff between a
+# build job and a test job - see Spec 2, which says to split them only once that job exceeds 15 minutes. Until then
+# a split buys a slower pipeline and an upload/download step for nothing.
 cmd_build() {
   local models="${*:-${MODELS}}" model
   for model in ${models}; do
@@ -233,17 +234,14 @@ cmd_build() {
     #
     # The residual risk is the mount itself, and it is deliberately not narrowed. The correct narrowing is
     # `applications/minotari_ledger_wallet` - note *not* `.../wallet`, which would break the build, because the
-    # wallet crate depends on `../common` by path. But `.github/workflows/ci.yml` mounts `${GITHUB_WORKSPACE}:/app`,
-    # so narrowing only here would mean the local and CI builds stopped being the same command. Narrow it there and
-    # here in one change, or not at all.
-    #
-    # For whoever does that: `ci.yml`'s ledger-build-tests job currently runs this builder **as root** and refers to
-    # the image **by tag only**. This script is therefore strictly more hardened than CI right now - parity is
-    # broken, but in the safe direction. Pinning the digest and narrowing the mount there belong in the same change.
+    # wallet crate depends on `../common` by path. Both CI build jobs call this function, so narrowing it here
+    # narrows it there too.
     #
     # CARGO_HOME moves because the image's default is under /opt and is not writable by a non-root uid. It points
     # into `target/`, which is gitignored, so the registry cache survives between runs instead of being
-    # re-downloaded each time.
+    # re-downloaded each time - and so that CI's `actions/cache` of `wallet/target` carries the registry with it.
+    # Running as the invoking uid is also what makes that cache work at all: a root-owned target directory could
+    # be neither read by the cache save nor overwritten by the next build on top of a restore.
     docker run --rm \
       --user "$(id -u):$(id -g)" \
       --cap-drop ALL \
@@ -437,7 +435,8 @@ remove_all_scopes() {
   fi
 }
 
-# `down` removes the interactive simulators and this run's, which between them are everything the *caller* started.
+# `down` saves the logs of, then removes, the interactive simulators and this run's, which between them are
+# everything the *caller* started.
 # It deliberately leaves a concurrent run's alone - that is what the run scope is for.
 #
 # `down --all` is the big hammer for when a run was killed so hard its trap never fired and nobody knows its run id
@@ -446,8 +445,12 @@ cmd_down() {
   case "${1:-}" in
     --all) remove_all_scopes ;;
     "")
+      # Logs first: after an interrupted `test` - a CI step timeout or cancellation - this is the only thing that
+      # ever sees the simulator that was mid-scenario. See `save_scope_logs`.
+      save_scope_logs "${INTERACTIVE_SCOPE}"
       remove_scope "${INTERACTIVE_SCOPE}"
       if [ "${RUN_SCOPE}" != "${INTERACTIVE_SCOPE}" ]; then
+        save_scope_logs "${RUN_SCOPE}"
         remove_scope "${RUN_SCOPE}"
       fi
       ;;
@@ -473,8 +476,33 @@ cmd_down() {
 on_exit() {
   local status=$?
   trap - EXIT
+  save_scope_logs "${RUN_SCOPE}"
   remove_scope "${RUN_SCOPE}"
   exit "${status}"
+}
+
+# Keep the log of every simulator still standing in a scope, before `remove_scope` takes it away.
+#
+# The normal path saves each log itself and removes its container straight after, so on a clean exit there is
+# nothing left here and this does nothing. What it catches is the run that is *interrupted*, where the one simulator
+# that was actually running when things went wrong would otherwise be removed with its log unread - leaving the
+# failure upload with every log except the one that matters. The file name matches `save_log`'s
+# `<model>-<seed>.log`. Never fails, for the same reason as `remove_scope`.
+#
+# Called from two places, and on a CI runner it is the second that does the work:
+#
+#   on_exit   Ctrl-C in a terminal, where the signal reaches this script. On GitHub Actions it usually does *not*
+#             fire: a step timeout or cancellation signals only the step's top-level shell, not this script, and
+#             bash defers a trap until the foreground `cargo nextest` returns anyway - the runner kills the whole
+#             process tree a few seconds later, long before that.
+#   cmd_down  The `if: always()` teardown step in .github/workflows/ledger_tests.yml, which runs after the killed
+#             step and finds the simulator still standing, because the trap never got to remove it.
+save_scope_logs() {
+  local scope="$1" name
+  for name in $(docker ps -a --filter "label=${SCOPE_LABEL}=${scope}" --format '{{.Names}}' 2>/dev/null || true); do
+    mkdir -p "${SPECULOS_LOG_DIR}" 2>/dev/null || true
+    docker logs "${name}" >"${SPECULOS_LOG_DIR}/${name#"${scope}"-}.log" 2>&1 || true
+  done
 }
 
 arm_teardown() {
