@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [6.0.1-pre.1](https://github.com/tari-project/tari/compare/v6.0.1-pre.0...v6.0.1-pre.1) (2026-09-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** prove burn claims with a burn output proof instead of a kernel proof (#8054)
+* **wallet:** encode burn claim merkle proof as JSON instead of bincode (#8051)
+
+### Features
+
+* **core:** prove burn claims with a burn output proof instead of a kernel proof ([#8054](https://github.com/tari-project/tari/issues/8054)) ([615b211](https://github.com/tari-project/tari/commit/615b21148b3259b9628bc31d05c0abae5ffc29cf))
+* **wallet:** encode burn claim merkle proof as JSON instead of bincode ([#8051](https://github.com/tari-project/tari/issues/8051)) ([49e8b3f](https://github.com/tari-project/tari/commit/49e8b3fa2538dd262c9255d7e09b31e5f99a4d24))
+
+
+### Bug Fixes
+
+* **console-wallet:** --burn-proof-out sets the correct config key ([#8048](https://github.com/tari-project/tari/issues/8048)) ([9ac11ed](https://github.com/tari-project/tari/commit/9ac11ed8fd6171440eebb2e9c5218b54c381a903))
+* refresh ledger comms_testing lockfile ([#8047](https://github.com/tari-project/tari/issues/8047)) ([8b02895](https://github.com/tari-project/tari/commit/8b02895998ef928ae03a54a11520f0f0854fd17f))
+* **wallet:** use the wallet output's own commitment mask key id when signing a multisig withdrawal ([#8010](https://github.com/tari-project/tari/issues/8010)) ([584394d](https://github.com/tari-project/tari/commit/584394d2a880be961e8c53db8683741d786eefc1)), closes [#8009](https://github.com/tari-project/tari/issues/8009) [#8009](https://github.com/tari-project/tari/issues/8009) [#39](https://github.com/tari-project/tari/issues/39)
+
 ## [6.0.1-pre.0](https://github.com/tari-project/tari/compare/v6.0.0-pre.0...v6.0.1-pre.0) (2026-09-22)
 
 
