@@ -2674,10 +2674,10 @@ message GetBurnClaimProofRequest {
 }
 
 message GetBurnClaimProofResponse {
+  // Formerly the bincode-encoded merkle_proof, replaced by kernel_merkle_proof
+  reserved 2;
+  reserved "merkle_proof";
   BurnClaimProof claim_proof = 1;
-  // Optional, not available until the burn transaction is confirmed.
-  // Deprecated: the proof is bincode-encoded, use kernel_merkle_proof instead.
-  EncodedMerkleProof merkle_proof = 2;
   bytes encrypted_data = 3;
   TransactionKernel kernel = 4;
   uint64 value = 5;
@@ -2696,12 +2696,6 @@ message BurnClaimProof {
   bytes kernel_excess_nonce = 5;
   bytes kernel_excess_signature = 6;
   bytes sender_offset_public_key = 7;
-}
-
-message EncodedMerkleProof {
-  bytes block_hash = 1;
-  bytes encoded_proof = 2;
-  uint64 leaf_index = 3;
 }
 
 // An inclusion proof of a kernel in the kernel MMR of the block it was mined in

@@ -3222,11 +3222,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .ok()
                     .map(Into::into)
             }),
-            merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
-                block_hash: p.block_hash.to_vec(),
-                encoded_proof: p.encoded_merkle_proof,
-                leaf_index: p.leaf_index,
-            }),
             kernel: Some(proof.kernel.into()),
             encrypted_data: proof.encrypted_data.map(|ed| ed.into_vec()).unwrap_or_default(),
             value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),
