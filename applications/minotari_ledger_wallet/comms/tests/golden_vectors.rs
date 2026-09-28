@@ -50,17 +50,22 @@ use minotari_ledger_wallet_common::{
         Encode,
         EphemeralNonceReply,
         GenerateEphemeralNonceRequest,
+        GetAppNameRequest,
+        GetDHSharedSecretRequest,
         GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
+        GetPublicSpendKeyRequest,
         GetRawSchnorrSignatureLegacyNonceRequest,
         GetRawSchnorrSignatureRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
         GetScriptSignatureManagedRequest,
+        GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
         SchnorrReply,
         ScriptSignatureCommon,
+        TextReply,
     },
     common_types::{Instruction, LedgerKeyBranch},
 };
@@ -766,6 +771,29 @@ fn key_array(key: &impl ByteArray) -> [u8; 32] {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
+    // --- GetVersion / GetAppName: never decoded by the device, so check the encoder against the payload instead,
+    //     with the same zeroed account the request table compares against.
+    assert_eq!(GetVersionRequest { account: 0 }.to_vec(), payload(GET_VERSION_REQUEST));
+    assert_eq!(GetAppNameRequest { account: 0 }.to_vec(), payload(GET_APP_NAME_REQUEST));
+
+    // --- GetPublicSpendKey
+    assert_eq!(
+        GetPublicSpendKeyRequest::decode(&payload(GET_PUBLIC_SPEND_KEY_REQUEST)),
+        Ok(GetPublicSpendKeyRequest { account: ACCOUNT })
+    );
+
+    // --- GetDHSharedSecret
+    let dh_point = key_array(&point(0xb1));
+    assert_eq!(
+        GetDHSharedSecretRequest::decode(&payload(GET_DH_SHARED_SECRET_REQUEST)),
+        Ok(GetDHSharedSecretRequest {
+            account: ACCOUNT,
+            index: INDEX,
+            branch: u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            public_key: &dh_point,
+        })
+    );
+
     // --- GetPublicKey
     assert_eq!(
         GetPublicKeyRequest::decode(&payload(GET_PUBLIC_KEY_REQUEST)),
@@ -880,6 +908,13 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
     );
 
     // --- Replies
+    assert_eq!(
+        TextReply {
+            text: MIN_LEDGER_APP_VERSION.as_bytes()
+        }
+        .to_vec(),
+        MIN_LEDGER_APP_VERSION.as_bytes()
+    );
     assert_eq!(KeyReply::new(&key_array(&point(0xa1))).to_vec(), unhex(KEY_REPLY));
     assert_eq!(KeyReply::new(&key_array(&scalar(0xa2))).to_vec(), unhex(VIEW_KEY_REPLY));
     assert_eq!(

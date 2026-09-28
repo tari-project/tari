@@ -1,7 +1,8 @@
 // Copyright 2026 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! Requests that derive a key and hand back its public half (or, for the view key, the key itself).
+//! Requests that derive a key and hand back its public half (or, for the view key, the key itself), and the two
+//! handshake requests `verify_ledger_application` starts with.
 
 use super::{ACCOUNT_SIZE, Decode, DecodeError, Encode, Reader, Request, Writer, write_u64};
 use crate::common_types::Instruction;
@@ -72,6 +73,110 @@ impl Request for GetViewKeyRequest {
     const INSTRUCTION: Instruction = Instruction::GetViewKey;
 }
 
+/// `GetVersion`: `account(8) | 0x00`, 9 bytes.
+///
+/// The device reads nothing from this payload - it answers with its version whatever it is sent - so there is no
+/// decoder. The host has always sent a random account and a single zero byte, and still does, so that the bytes on
+/// the wire do not change.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct GetVersionRequest {
+    pub account: u64,
+}
+
+impl Encode for GetVersionRequest {
+    fn encode(&self, out: &mut impl Writer) {
+        write_u64(out, self.account);
+        out.write(&[0]);
+    }
+}
+
+impl Request for GetVersionRequest {
+    const INSTRUCTION: Instruction = Instruction::GetVersion;
+}
+
+/// `GetAppName`: `account(8) | 0x00`, 9 bytes. Never decoded, for the same reason as [`GetVersionRequest`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct GetAppNameRequest {
+    pub account: u64,
+}
+
+impl Encode for GetAppNameRequest {
+    fn encode(&self, out: &mut impl Writer) {
+        write_u64(out, self.account);
+        out.write(&[0]);
+    }
+}
+
+impl Request for GetAppNameRequest {
+    const INSTRUCTION: Instruction = Instruction::GetAppName;
+}
+
+/// `GetPublicSpendKey`: `account(8)`, 8 bytes. The spend key's index and key type are fixed on the device, and the
+/// host can never name them.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct GetPublicSpendKeyRequest {
+    pub account: u64,
+}
+
+impl GetPublicSpendKeyRequest {
+    pub const SIZE: usize = ACCOUNT_SIZE;
+}
+
+impl Encode for GetPublicSpendKeyRequest {
+    fn encode(&self, out: &mut impl Writer) {
+        write_u64(out, self.account);
+    }
+}
+
+impl Decode<'_> for GetPublicSpendKeyRequest {
+    fn decode(data: &[u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::exact(data, Self::SIZE)?;
+        Ok(Self { account: reader.u64()? })
+    }
+}
+
+impl Request for GetPublicSpendKeyRequest {
+    const INSTRUCTION: Instruction = Instruction::GetPublicSpendKey;
+}
+
+/// `GetDHSharedSecret`: `account(8) | index(8) | branch(8) | public_key(32)`, 56 bytes.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct GetDHSharedSecretRequest<'a> {
+    pub account: u64,
+    pub index: u64,
+    pub branch: u64,
+    pub public_key: &'a [u8; 32],
+}
+
+impl GetDHSharedSecretRequest<'_> {
+    pub const SIZE: usize = ACCOUNT_SIZE + 8 + 8 + 32;
+}
+
+impl Encode for GetDHSharedSecretRequest<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        write_u64(out, self.account);
+        write_u64(out, self.index);
+        write_u64(out, self.branch);
+        out.write(self.public_key);
+    }
+}
+
+impl<'a> Decode<'a> for GetDHSharedSecretRequest<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::exact(data, Self::SIZE)?;
+        Ok(Self {
+            account: reader.u64()?,
+            index: reader.u64()?,
+            branch: reader.u64()?,
+            public_key: reader.array()?,
+        })
+    }
+}
+
+impl Request for GetDHSharedSecretRequest<'_> {
+    const INSTRUCTION: Instruction = Instruction::GetDHSharedSecret;
+}
+
 #[cfg(test)]
 mod test {
     // A panic is the desired failure mode in a test.
@@ -123,5 +228,38 @@ mod test {
         assert_eq!(GetViewKeyRequest::decode(&request.to_vec()), Ok(request));
         assert!(GetViewKeyRequest::decode(&[0u8; 9]).is_err());
         assert!(GetViewKeyRequest::decode(&[0u8; 7]).is_err());
+    }
+
+    /// The handshake requests carry a trailing zero byte the device never reads. It is part of the frozen format.
+    #[test]
+    fn the_handshake_requests_are_the_account_and_a_zero_byte() {
+        let mut expected = 5u64.to_le_bytes().to_vec();
+        expected.push(0);
+        assert_eq!(GetVersionRequest { account: 5 }.to_vec(), expected);
+        assert_eq!(GetAppNameRequest { account: 5 }.to_vec(), expected);
+    }
+
+    #[test]
+    fn get_public_spend_key_is_the_account_alone() {
+        let request = GetPublicSpendKeyRequest { account: 3 };
+        assert_eq!(request.to_vec(), 3u64.to_le_bytes().to_vec());
+        assert_eq!(GetPublicSpendKeyRequest::decode(&request.to_vec()), Ok(request));
+        assert!(GetPublicSpendKeyRequest::decode(&[0u8; 9]).is_err());
+    }
+
+    #[test]
+    fn get_dh_shared_secret_round_trips_with_the_point_last() {
+        let point = [0x61; 32];
+        let request = GetDHSharedSecretRequest {
+            account: 1,
+            index: 2,
+            branch: 6,
+            public_key: &point,
+        };
+        let bytes = request.to_vec();
+        assert_eq!(bytes.len(), 56);
+        assert_eq!(&bytes[24..], &point);
+        assert_eq!(GetDHSharedSecretRequest::decode(&bytes), Ok(request));
+        assert!(GetDHSharedSecretRequest::decode(&bytes[..55]).is_err());
     }
 }

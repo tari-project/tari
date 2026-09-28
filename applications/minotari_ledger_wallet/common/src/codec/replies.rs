@@ -3,8 +3,8 @@
 
 //! The replies the application sends back.
 //!
-//! Every reply but `GetVersion` and `GetAppName` starts with [`RESPONSE_VERSION`]. The device encodes these; the
-//! host decodes them.
+//! Every reply but `GetVersion` and `GetAppName` ([`TextReply`]) starts with [`RESPONSE_VERSION`]. The device encodes
+//! these; the host decodes them.
 //!
 //! A reply decoder accepts *at least* its size and ignores anything after it. That is not a relaxation for its own
 //! sake: it is what the host's hand written `data.len() < N` checks have always done, and tightening it would be a
@@ -13,6 +13,30 @@
 
 use super::{Decode, DecodeError, Encode, RESPONSE_VERSION, Reader, Writer, write_u64};
 use crate::ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE;
+
+/// `text(..)`: the `GetVersion` and `GetAppName` replies, the whole reply and nothing else.
+///
+/// No version byte: these are how the host finds out which application, at which version, it is talking to, so they
+/// cannot depend on it already knowing.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TextReply<'a> {
+    pub text: &'a [u8],
+}
+
+impl Encode for TextReply<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        out.write(self.text);
+    }
+}
+
+impl<'a> TextReply<'a> {
+    /// The whole reply is the text, so unlike every other layout this cannot fail to decode - which is why it is an
+    /// inherent function rather than [`Decode`]. An empty reply is the host's to interpret: it means the application
+    /// is not running.
+    pub fn decode(data: &'a [u8]) -> Self {
+        Self { text: data }
+    }
+}
 
 /// `version(1) | key(32)`, 33 bytes.
 ///

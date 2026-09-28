@@ -51,7 +51,7 @@ use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::{
-    codec::{CLA, RESPONSE_VERSION},
+    codec::{TextReply, CLA, RESPONSE_VERSION},
     common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
@@ -319,7 +319,12 @@ fn handle_apdu(
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
-            comm.append(env!("CARGO_PKG_NAME").as_bytes());
+            wire::reply(
+                comm,
+                &TextReply {
+                    text: env!("CARGO_PKG_NAME").as_bytes(),
+                },
+            );
             Ok(())
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),

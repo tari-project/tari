@@ -32,18 +32,23 @@ use minotari_ledger_wallet_common::{
         Decode,
         EphemeralNonceReply,
         GenerateEphemeralNonceRequest,
+        GetAppNameRequest,
+        GetDHSharedSecretRequest,
         GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
+        GetPublicSpendKeyRequest,
         GetRawSchnorrSignatureLegacyNonceRequest,
         GetRawSchnorrSignatureRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
         GetScriptSignatureManagedRequest,
+        GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
         RESPONSE_VERSION,
         SchnorrReply,
         ScriptSignatureCommon,
+        TextReply,
     },
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
@@ -69,7 +74,6 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     error::LedgerDeviceError,
     ledger_wallet::{Command, EXPECTED_NAME, MIN_LEDGER_APP_VERSION},
-    raw,
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
@@ -261,9 +265,13 @@ fn verify() -> Result<(), LedgerDeviceError> {
 pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match raw::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
+    match Command::from_request(&GetAppNameRequest {
+        account: rand::rng().next_u64(),
+    })
+    .execute()
+    {
         Ok(response) => {
-            let name = match std::str::from_utf8(response.data()) {
+            let name = match std::str::from_utf8(TextReply::decode(response.data()).text) {
                 Ok(val) => {
                     if val.is_empty() {
                         return Err(LedgerDeviceError::ApplicationNotStarted);
@@ -282,9 +290,13 @@ pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
 pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match raw::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
+    match Command::from_request(&GetVersionRequest {
+        account: rand::rng().next_u64(),
+    })
+    .execute()
+    {
         Ok(response) => {
-            let name = match std::str::from_utf8(response.data()) {
+            let name = match std::str::from_utf8(TextReply::decode(response.data()).text) {
                 Ok(val) => {
                     if val.is_empty() {
                         return Err(LedgerDeviceError::ApplicationNotStarted);
@@ -304,17 +316,16 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
     debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{account}'");
     verify_ledger_application()?;
 
-    match raw::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
+    match Command::from_request(&GetPublicSpendKeyRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicSpendKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let public_alpha =
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let public_alpha = CompressedPublicKey::from_canonical_bytes(reply.key)?;
             Ok(public_alpha)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {e}"))),
@@ -545,22 +556,23 @@ pub fn ledger_get_dh_shared_secret(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&public_key.to_vec());
+    let request = GetDHSharedSecretRequest {
+        account,
+        index,
+        branch: u64::from(branch.as_byte()),
+        public_key: key_field(public_key)?,
+    };
 
-    match raw::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let shared_secret =
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let shared_secret = CompressedPublicKey::from_canonical_bytes(reply.key)?;
             Ok(shared_secret)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),

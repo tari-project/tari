@@ -52,7 +52,14 @@ mod signatures;
 #[cfg(any(feature = "alloc", test))]
 use alloc::vec::Vec;
 
-pub use keys::{GetPublicKeyRequest, GetViewKeyRequest};
+pub use keys::{
+    GetAppNameRequest,
+    GetDHSharedSecretRequest,
+    GetPublicKeyRequest,
+    GetPublicSpendKeyRequest,
+    GetVersionRequest,
+    GetViewKeyRequest,
+};
 pub use metadata::{
     GetOneSidedMetadataSignatureRequest,
     OneSidedMetadataSignatureHead,
@@ -64,7 +71,7 @@ pub use nonce::{
     GetRawSchnorrSignatureLegacyNonceRequest,
     GetRawSchnorrSignatureRequest,
 };
-pub use replies::{ComAndPubSigReply, EphemeralNonceReply, KeyReply, SchnorrReply};
+pub use replies::{ComAndPubSigReply, EphemeralNonceReply, KeyReply, SchnorrReply, TextReply};
 pub use signatures::{
     GetScriptSchnorrSignatureRequest,
     GetScriptSignatureDerivedRequest,
@@ -260,9 +267,11 @@ mod test {
     /// the instruction its encoder is typed for, an arm pointing at the wrong encoder fails the test below.
     fn registration(instruction: Instruction) -> Registration {
         match instruction {
-            Instruction::GetVersion => Registration::Pending,
-            Instruction::GetAppName => Registration::Pending,
-            Instruction::GetPublicSpendKey => Registration::Pending,
+            Instruction::GetVersion => Registration::Encoder(|| registered(&GetVersionRequest { account: 1 })),
+            Instruction::GetAppName => Registration::Encoder(|| registered(&GetAppNameRequest { account: 1 })),
+            Instruction::GetPublicSpendKey => {
+                Registration::Encoder(|| registered(&GetPublicSpendKeyRequest { account: 1 }))
+            },
             Instruction::GetPublicKey => Registration::Encoder(|| {
                 registered(&GetPublicKeyRequest {
                     account: 1,
@@ -278,7 +287,14 @@ mod test {
             }),
             Instruction::GetScriptOffset => Registration::Pending,
             Instruction::GetViewKey => Registration::Encoder(|| registered(&GetViewKeyRequest { account: 1 })),
-            Instruction::GetDHSharedSecret => Registration::Pending,
+            Instruction::GetDHSharedSecret => Registration::Encoder(|| {
+                registered(&GetDHSharedSecretRequest {
+                    account: 1,
+                    index: 2,
+                    branch: 3,
+                    public_key: &KEY,
+                })
+            }),
             Instruction::GetRawSchnorrSignature => Registration::Encoder(|| {
                 registered(&GetRawSchnorrSignatureRequest {
                     account: 1,
@@ -355,13 +371,7 @@ mod test {
             }
         }
         // The migration's progress, pinned so that nothing is quietly moved back to `Pending`.
-        assert_eq!(pending, vec![
-            Instruction::GetVersion,
-            Instruction::GetAppName,
-            Instruction::GetPublicSpendKey,
-            Instruction::GetScriptOffset,
-            Instruction::GetDHSharedSecret,
-        ]);
+        assert_eq!(pending, vec![Instruction::GetScriptOffset]);
     }
 
     #[test]

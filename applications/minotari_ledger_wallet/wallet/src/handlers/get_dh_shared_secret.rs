@@ -4,59 +4,31 @@
 use core::ops::Deref;
 
 use ledger_device_sdk::io::Comm;
-#[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::NbglStatus;
-#[cfg(not(any(target_os = "stax", target_os = "flex")))]
-use ledger_device_sdk::ui::gadgets::SingleMessage;
-use tari_utilities::ByteArray;
+use minotari_ledger_wallet_common::codec::{Decode, GetDHSharedSecretRequest, KeyReply};
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::keys::RistrettoPublicKey,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
+    wire::{invalid_data_length, reply},
     AppSW,
     KeyType,
-    RESPONSE_VERSION,
 };
 
 pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
-    if data.len() != 56 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
+    let request = GetDHSharedSecretRequest::decode(data).map_err(|_| invalid_data_length())?;
 
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
+    let key = KeyType::from_branch_key(request.branch)?;
 
-        return Err(AppSW::WrongApduLength);
-    }
+    let public_key: RistrettoPublicKey = get_key_from_canonical_bytes(request.public_key)?;
 
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
-
-    let mut index_bytes = [0u8; 8];
-    index_bytes.clone_from_slice(&data[8..16]);
-    let index = u64::from_le_bytes(index_bytes);
-
-    let mut key_bytes = [0u8; 8];
-    key_bytes.clone_from_slice(&data[16..24]);
-    let key_int = u64::from_le_bytes(key_bytes);
-    let key = KeyType::from_branch_key(key_int)?;
-
-    let public_key: RistrettoPublicKey = get_key_from_canonical_bytes(&data[24..56])?;
-
-    let shared_secret_key = match derive_from_bip32_key(account, index, key) {
+    let shared_secret_key = match derive_from_bip32_key(request.account, request.index, key) {
         Ok(k) => Zeroizing::new(k * public_key),
         Err(e) => return Err(e),
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(shared_secret_key.deref().as_bytes());
+    reply(comm, &KeyReply::new(shared_secret_key.deref().as_array()));
 
     Ok(())
 }
