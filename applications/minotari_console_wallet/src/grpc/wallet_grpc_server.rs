@@ -3214,13 +3214,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),
                 sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec(),
             }),
-            kernel_merkle_proof: proof
-                .kernel_merkle_proof
-                .as_ref()
-                .map(decode_kernel_merkle_proof)
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to decode kernel merkle proof: {}", e)))?
-                .map(Into::into),
+            kernel_merkle_proof: proof.kernel_merkle_proof.as_ref().and_then(|p| {
+                decode_kernel_merkle_proof(p)
+                    .inspect_err(|e| {
+                        warn!(target: LOG_TARGET, "Failed to decode kernel merkle proof for burn proof {}: {}", proof.id, e)
+                    })
+                    .ok()
+                    .map(Into::into)
+            }),
             merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
                 block_hash: p.block_hash.to_vec(),
                 encoded_proof: p.encoded_merkle_proof,

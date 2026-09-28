@@ -704,11 +704,13 @@ impl AppStateInner {
             ui_proofs.push(UiBurnProof {
                 id: proof.id,
                 proof: proof.burn_proof,
-                kernel_merkle_proof: proof
-                    .kernel_merkle_proof
-                    .as_ref()
-                    .map(decode_kernel_merkle_proof)
-                    .transpose()?,
+                kernel_merkle_proof: proof.kernel_merkle_proof.as_ref().and_then(|p| {
+                    decode_kernel_merkle_proof(p)
+                        .inspect_err(|e| {
+                            warn!(target: LOG_TARGET, "Failed to decode kernel merkle proof for burn proof {}: {}", proof.id, e)
+                        })
+                        .ok()
+                }),
                 kernel: proof.kernel,
                 burned_at: proof.created_at,
             });
