@@ -31,9 +31,11 @@ use tari_common_types::{
     types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_node_components::blocks::Block;
+use tari_script::Opcode;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
+    validation::AggregatedBodyValidationError,
     weight::TransactionWeight,
 };
 use tari_utilities::hex::Hex;
@@ -130,11 +132,12 @@ impl MempoolStorage {
     /// yet by the time the transaction is inserted is safe, since the mempool reconciles every stored transaction
     /// with it when it does process it.
     ///
-    /// A failed attempt is only final if the chain did not change during it: if the mempool processed a chain change,
-    /// or the chain tip moved, since the attempt started, the failure may be due to that change (e.g. a mempool parent
-    /// that was mined, or a height-dependent check), so the transaction is validated again, in the same way. The
-    /// near-free fee and weight checks do not depend on the chain and are not repeated. The number of attempts is
-    /// bounded, so an invalid transaction is only validated again when real chain events happen.
+    /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
+    /// maturity and lock heights, and scripts that read the block height; see `is_tip_dependent`) may be due to the
+    /// chain changing during validation. Such a failure is validated again, in the same way, if the mempool processed
+    /// a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks do not
+    /// depend on the chain and are not repeated. So the final, locked attempt is only reached by a transaction that
+    /// was valid, or failed a tip-dependent check, each time the chain changed during its validation.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
@@ -155,11 +158,14 @@ impl MempoolStorage {
             });
             let dependent_outputs = match validate_attempt(storage, validator.as_ref(), &tx, tip.as_ref())? {
                 Ok(dependent_outputs) => dependent_outputs,
-                Err(response) => {
-                    // The failure may be due to the chain changing during validation (e.g. a mempool parent that was
-                    // mined and removed from the pool, or a height-dependent check), so it is only final if the
-                    // chain did not change
-                    if chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? {
+                Err(AttemptFailure {
+                    response,
+                    tip_dependent,
+                }) => {
+                    // A failure that depends on the tip (e.g. a mempool parent that was mined and removed from the
+                    // pool, or a height check) may be due to the chain changing during validation, so it is only
+                    // final if the chain did not change. Any other failure is final.
+                    if tip_dependent && chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? {
                         debug!(
                             target: LOG_TARGET,
                             "Chain changed while validating transaction {} (attempt {}/{}), which failed with {}, \
@@ -594,29 +600,98 @@ fn tx_id(tx: &Transaction) -> String {
         .unwrap_or_else(|| "None?!".into())
 }
 
+/// A failed validation attempt
+struct AttemptFailure {
+    response: TxStorageResponse,
+    /// Whether the failure may be due to the chain tip the transaction was validated against, so that it may be
+    /// retried if the chain changed during validation
+    tip_dependent: bool,
+}
+
 /// One unlocked validation attempt: chain-linked checks, then the mempool parents of any inputs not in the chain
 /// (under a brief read lock), then internal consistency against `tip`. On success, returns the hashes of the outputs
-/// spent in the mempool, if any; on failure, returns the storage response for the rejected transaction.
+/// spent in the mempool, if any.
 fn validate_attempt(
     storage: &RwLock<MempoolStorage>,
     validator: &dyn TransactionValidator,
     tx: &Transaction,
     tip: Option<&ChainMetadata>,
-) -> Result<Result<Option<Vec<HashOutput>>, TxStorageResponse>, MempoolError> {
-    let dependent_outputs = match validate_chain_linked(validator, tx) {
-        Ok(dependent_outputs) => dependent_outputs,
-        Err(response) => return Ok(Err(response)),
+) -> Result<Result<Option<Vec<HashOutput>>, AttemptFailure>, MempoolError> {
+    let failure = |error: ValidationError| AttemptFailure {
+        tip_dependent: is_tip_dependent(&error, tx),
+        response: validation_error_to_response(error),
+    };
+    let dependent_outputs = match validator.validate_chain_linked(tx) {
+        Ok(()) => None,
+        Err(ValidationError::UnknownInputs(dependent_outputs)) => Some(dependent_outputs),
+        Err(e) => return Ok(Err(failure(e))),
     };
     if let Some(dependent_outputs) = &dependent_outputs {
         let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
         if let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs) {
-            return Ok(Err(response));
+            // The parents may have been mined (and so removed from the pool) during validation
+            return Ok(Err(AttemptFailure {
+                response,
+                tip_dependent: true,
+            }));
         }
     }
-    if let Err(response) = validate_internal_consistency(validator, tx, tip) {
-        return Ok(Err(response));
+    if let Err(e) = validator.validate_internal_consistency(tx, tip) {
+        return Ok(Err(failure(e)));
     }
     Ok(Ok(dependent_outputs))
+}
+
+/// Returns true if a validation error may be due to the chain tip the transaction was validated against, i.e. the
+/// transaction may be valid at a different tip:
+/// - inputs that are not (or no longer) in the chain,
+/// - input maturity and kernel lock heights,
+/// - a failing input script, but only if one of the transaction's input scripts reads the block height. Any output in
+///   the chain can be spent with made-up input data to produce a failing script, so script failures in general are
+///   final.
+///
+/// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
+/// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
+/// mined: only a reorg can undo those, which is rare, and the mempool revalidates its transactions after a reorg
+/// anyway.
+fn is_tip_dependent(error: &ValidationError, tx: &Transaction) -> bool {
+    match error {
+        ValidationError::UnknownInputs(_) | ValidationError::UnknownInput | ValidationError::MaturityError => true,
+        ValidationError::TransactionError(e) |
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TransactionError(e)) => {
+            is_tip_dependent_transaction_error(e, tx)
+        },
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::MaturityError) => true,
+        _ => false,
+    }
+}
+
+fn is_tip_dependent_transaction_error(error: &TransactionError, tx: &Transaction) -> bool {
+    match error {
+        TransactionError::InputMaturity => true,
+        TransactionError::ScriptError(_) | TransactionError::ScriptExecutionError(_) => {
+            has_height_dependent_input_script(tx)
+        },
+        _ => false,
+    }
+}
+
+/// Returns true if any input script of the transaction uses an opcode that reads the block height from the script
+/// context
+fn has_height_dependent_input_script(tx: &Transaction) -> bool {
+    tx.body.inputs().iter().any(|input| {
+        input.script().is_ok_and(|script| {
+            script.iter().any(|opcode| {
+                matches!(
+                    opcode,
+                    Opcode::CheckHeight(_) |
+                        Opcode::CheckHeightVerify(_) |
+                        Opcode::CompareHeight |
+                        Opcode::CompareHeightVerify
+                )
+            })
+        })
+    })
 }
 
 /// Returns true if the chain may have changed since an attempt started with the mempool at `generation` and the
@@ -720,10 +795,11 @@ mod test {
         },
     };
 
+    use tari_script::{ScriptError, TariScript, script};
     use tari_transaction_components::{
         MicroMinotari,
         key_manager::KeyManager,
-        transaction_components::WalletOutput,
+        transaction_components::{SpentOutput, WalletOutput},
         tx,
     };
 
@@ -1012,11 +1088,10 @@ mod test {
         let key_manager = KeyManager::new_random().unwrap();
         let validated_at = FixedHash::from([1u8; 32]);
         let new_tip = FixedHash::from([2u8; 32]);
-        // Internally invalid at the snapshot tip (e.g. a script checking the block height), valid at the new tip
+        // Not yet mature at the snapshot tip, but mature at the new tip
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
         validator.chain_changes.store(1, Ordering::SeqCst);
-        *validator.internal_results.lock().unwrap() =
-            vec![Err(ValidationError::InvalidAccountingBalance), Ok(())].into();
+        *validator.internal_results.lock().unwrap() = vec![Err(ValidationError::MaturityError), Ok(())].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
@@ -1034,8 +1109,7 @@ mod test {
         let new_tip = FixedHash::from([2u8; 32]);
         // A block is committed during validation, but the mempool has not processed it yet
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
-        *validator.internal_results.lock().unwrap() =
-            vec![Err(ValidationError::InvalidAccountingBalance), Ok(())].into();
+        *validator.internal_results.lock().unwrap() = vec![Err(ValidationError::MaturityError), Ok(())].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
@@ -1044,6 +1118,84 @@ mod test {
         assert_eq!(validator.internal_tips(), vec![Some(validated_at), Some(new_tip)]);
         assert_eq!(storage.read().unwrap().chain_generation, 0);
         assert_eq!(pool_len(&storage), 1);
+    }
+
+    /// A copy of `tx` whose first input's script is replaced by `script`
+    fn with_input_script(tx: &Transaction, script: TariScript) -> Arc<Transaction> {
+        let mut inputs = tx.body.inputs().clone();
+        match &mut inputs[0].spent_output {
+            SpentOutput::OutputData { script: s, .. } => *s = script,
+            SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+        }
+        Arc::new(Transaction::new(
+            inputs,
+            tx.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ))
+    }
+
+    fn script_error(error: ScriptError) -> ValidationError {
+        AggregatedBodyValidationError::TransactionError(TransactionError::ScriptError(error)).into()
+    }
+
+    #[test]
+    fn tip_independent_failure_is_final_even_if_chain_changed() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validated_at = FixedHash::from([1u8; 32]);
+        let new_tip = FixedHash::from([2u8; 32]);
+        let tx = create_tx(&key_manager);
+        for error in [
+            // A bad script offset
+            ValidationError::from(AggregatedBodyValidationError::TransactionError(
+                TransactionError::ScriptOffset,
+            )),
+            // A bad signature
+            ValidationError::from(AggregatedBodyValidationError::TransactionError(
+                TransactionError::InvalidSignatureError("bad".to_string()),
+            )),
+            // A failing script that does not read the block height, e.g. made-up input data
+            script_error(ScriptError::VerifyFailed),
+        ] {
+            // The mempool processes a chain change, and the tip moves, during validation
+            let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+            validator.chain_changes.store(usize::MAX, Ordering::SeqCst);
+            *validator.internal_results.lock().unwrap() = vec![Err(error)].into();
+            let storage = create_storage(&validator);
+            let response = MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap();
+            assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+            assert_eq!(validator.chain_linked_calls(), 1);
+            assert_eq!(validator.internal_calls(), 1);
+            assert_eq!(validator.internal_lock_free(), vec![true]);
+            assert_eq!(pool_len(&storage), 0);
+        }
+    }
+
+    #[test]
+    fn height_dependent_script_failure_is_retried_if_chain_changed() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validated_at = FixedHash::from([1u8; 32]);
+        let new_tip = FixedHash::from([2u8; 32]);
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
+
+        let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+        validator.chain_changes.store(1, Ordering::SeqCst);
+        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed)), Ok(())].into();
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(validator.chain_linked_calls(), 2);
+        assert_eq!(validator.internal_calls(), 2);
+        assert_eq!(validator.internal_lock_free(), vec![true, true]);
+
+        // Without a chain change, the same failure is final
+        let validator = ScriptedValidator::new(vec![], vec![validated_at]);
+        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed))].into();
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
+        assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+        assert_eq!(validator.internal_calls(), 1);
     }
 
     #[test]
