@@ -35,6 +35,7 @@ use minotari_wallet::{
     WalletSqlite,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     output_manager_service::{UtxoSelectionCriteria, handle::OutputManagerEventReceiver, service::Balance},
+    storage::serializers::decode_kernel_merkle_proof,
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
@@ -703,7 +704,11 @@ impl AppStateInner {
             ui_proofs.push(UiBurnProof {
                 id: proof.id,
                 proof: proof.burn_proof,
-                encoded_merkle_proof: proof.kernel_merkle_proof,
+                kernel_merkle_proof: proof
+                    .kernel_merkle_proof
+                    .as_ref()
+                    .map(decode_kernel_merkle_proof)
+                    .transpose()?,
                 kernel: proof.kernel,
                 burned_at: proof.created_at,
             });

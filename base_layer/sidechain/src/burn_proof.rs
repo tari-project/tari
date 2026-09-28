@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::{
-    burn_proof::EncodedMerkleProof,
+    burn_proof::KernelMerkleProof,
     serializers,
     types::{CompressedCommitment, CompressedPublicKey},
 };
@@ -46,7 +46,7 @@ pub struct BurnClaimProof {
     pub burn_public_key: CompressedPublicKey,
     pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedRistrettoSchnorr,
-    pub encoded_merkle_proof: EncodedMerkleProof,
+    pub merkle_proof: KernelMerkleProof,
     pub kernel: AbridgedTransactionKernel,
     pub value: u64,
     pub sender_offset_public_key: CompressedPublicKey,
@@ -71,10 +71,12 @@ mod tests {
                 burn_public_key: Default::default(),
                 commitment: Default::default(),
                 ownership_proof: Default::default(),
-                encoded_merkle_proof: EncodedMerkleProof {
+                merkle_proof: KernelMerkleProof {
                     block_hash: Default::default(),
-                    encoded_merkle_proof: vec![1, 2, 3],
                     leaf_index: 7,
+                    mmr_size: 11,
+                    path: vec![Default::default()],
+                    peaks: vec![],
                 },
                 kernel: AbridgedTransactionKernel {
                     version: 0,

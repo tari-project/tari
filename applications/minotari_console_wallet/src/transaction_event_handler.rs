@@ -26,7 +26,7 @@ use anyhow::anyhow;
 use log::*;
 use minotari_wallet::{
     WalletSqlite,
-    storage::sqlite_db::models::DbBurnProof,
+    storage::{serializers::decode_kernel_merkle_proof, sqlite_db::models::DbBurnProof},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
@@ -117,6 +117,9 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(
     fs::create_dir_all(&burn_proofs_dir).await?;
     let kernel_merkle_proof = proof
         .kernel_merkle_proof
+        .as_ref()
+        .map(decode_kernel_merkle_proof)
+        .transpose()?
         .ok_or_else(|| anyhow!("No kernel_merkle_proof"))?;
     let encrypted_data = proof.encrypted_data.ok_or_else(|| anyhow!("No encrypted_data"))?;
     let value = proof.value.ok_or_else(|| anyhow!("No value"))?;
@@ -133,7 +136,7 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(
             burn_public_key: proof.burn_proof.claim_public_key,
             commitment: proof.burn_proof.commitment,
             ownership_proof: proof.burn_proof.ownership_proof,
-            encoded_merkle_proof: kernel_merkle_proof,
+            merkle_proof: kernel_merkle_proof,
             kernel: AbridgedTransactionKernel {
                 version: proof.kernel.version.as_u8(),
                 fee: proof.kernel.fee.as_u64(),
