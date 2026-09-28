@@ -30,13 +30,16 @@ use tari_utilities::{
 };
 
 use crate::{
-    CheckSigSchnorrSignature,
     CompressedCheckSigSchnorrSignature,
     error::ScriptError,
     op_codes::{HashValue, ScalarValue},
 };
 
 pub const MAX_STACK_SIZE: usize = 255;
+/// The largest serialised stack item: a type byte followed by a 64-byte signature
+const MAX_STACK_ITEM_BYTES: usize = 65;
+/// The maximum length of a serialised execution stack, i.e. [MAX_STACK_SIZE] items of the largest type
+pub const MAX_STACK_BYTES: usize = MAX_STACK_SIZE * MAX_STACK_ITEM_BYTES;
 
 #[macro_export]
 macro_rules! inputs {
@@ -155,9 +158,12 @@ impl StackItem {
     }
 
     fn b_to_sig(b: &[u8]) -> Option<(Self, &[u8])> {
+        // The public nonce is eagerly decompressed to validate it. `new_from_pk` keeps the decompressed point cached
+        // alongside the (identical, since canonical) compressed bytes, so executing the script does not decompress it
+        // a second time. Equality, hashing and serialisation only use the compressed bytes.
         let r = RistrettoPublicKey::from_canonical_bytes(b.get(..32)?).ok()?;
         let s = RistrettoSecretKey::from_canonical_bytes(b.get(32..64)?).ok()?;
-        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(CheckSigSchnorrSignature::new(r, s));
+        let sig = CompressedCheckSigSchnorrSignature::new(CompressedKey::new_from_pk(r), s);
         Some((StackItem::Signature(sig), b.get(64..)?))
     }
 }
@@ -188,7 +194,7 @@ impl BorshDeserialize for ExecutionStack {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
-        if len > MAX_STACK_SIZE {
+        if len > MAX_STACK_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Larger than max execution stack bytes".to_string(),
@@ -401,6 +407,7 @@ mod test {
         HashValue,
         StackItem,
         op_codes::ScalarValue,
+        stack::{MAX_STACK_BYTES, MAX_STACK_SIZE},
     };
 
     #[test]
@@ -540,5 +547,71 @@ mod test {
         let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
         let buf = &mut buf.as_slice();
         assert!(ExecutionStack::deserialize(buf).is_err());
+    }
+
+    fn max_size_signature() -> CompressedCheckSigSchnorrSignature {
+        let k = RistrettoSecretKey::random(&mut rand::rng());
+        CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k, b"hi", &mut rand::rng()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_more_than_255_bytes() {
+        // The borsh length prefix is in bytes, not items, so a small stack of signatures must still round-trip
+        let stack = inputs!(
+            max_size_signature(),
+            max_size_signature(),
+            max_size_signature(),
+            max_size_signature(),
+            1234
+        );
+        assert!(stack.to_bytes().len() > MAX_STACK_SIZE);
+        let buf = borsh::to_vec(&stack).unwrap();
+        assert_eq!(stack, ExecutionStack::deserialize(&mut buf.as_slice()).unwrap());
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_max_stack() {
+        // A full stack of the largest item type is exactly `MAX_STACK_BYTES` long and round-trips
+        let sig = max_size_signature();
+        let stack = ExecutionStack::new(vec![StackItem::Signature(sig.clone()); MAX_STACK_SIZE]);
+        assert_eq!(stack.to_bytes().len(), MAX_STACK_BYTES);
+        let buf = borsh::to_vec(&stack).unwrap();
+        assert_eq!(stack, ExecutionStack::deserialize(&mut buf.as_slice()).unwrap());
+
+        // One more item is rejected, whether it is small enough to fit within `MAX_STACK_BYTES` or not
+        let mut items = vec![StackItem::Number(1); MAX_STACK_SIZE];
+        items.push(StackItem::Number(1));
+        let buf = borsh::to_vec(&ExecutionStack::new(items)).unwrap();
+        assert!(ExecutionStack::deserialize(&mut buf.as_slice()).is_err());
+
+        let mut items = vec![StackItem::Signature(sig.clone()); MAX_STACK_SIZE];
+        items.push(StackItem::Signature(sig));
+        let buf = borsh::to_vec(&ExecutionStack::new(items)).unwrap();
+        assert!(ExecutionStack::deserialize(&mut buf.as_slice()).is_err());
+    }
+
+    #[test]
+    fn deserialised_signature_matches_original() {
+        // `b_to_sig` caches the decompressed nonce; this must not affect equality, hashing or serialisation
+        let sig = max_size_signature();
+        let stack = inputs!(sig.clone());
+        let mut stack2 = ExecutionStack::from_bytes(&stack.to_bytes()).unwrap();
+        assert_eq!(stack, stack2);
+        assert_eq!(stack.to_bytes(), stack2.to_bytes());
+        let Some(StackItem::Signature(sig2)) = stack2.pop() else {
+            panic!("Expected signature")
+        };
+        let hash = |s: &CompressedCheckSigSchnorrSignature| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(s, &mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        };
+        assert_eq!(hash(&sig), hash(&sig2));
+        assert_eq!(
+            sig.to_schnorr_signature().unwrap(),
+            sig2.to_schnorr_signature().unwrap()
+        );
     }
 }

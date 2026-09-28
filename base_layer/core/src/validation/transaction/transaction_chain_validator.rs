@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::FixedHash;
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
@@ -60,9 +61,14 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
             let db = self.db.db_read_access()?;
             let tip_header = db.fetch_tip_header()?;
             self.aggregate_body_validator
-                .validate(&tx.body, tip_header.header(), &*db)?;
+                .validate_transaction_body(&tx.body, tip_header.header(), &*db)?;
         };
 
         Ok(())
+    }
+
+    fn tip_hash(&self) -> Result<Option<FixedHash>, ValidationError> {
+        let metadata = self.db.db_read_access()?.fetch_chain_metadata()?;
+        Ok(Some(*metadata.best_block_hash()))
     }
 }

@@ -20,6 +20,7 @@ use std::{fmt, ops::Deref};
 use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use tari_max_size::MaxSizeVecError;
 use tari_utilities::{ByteArrayError, hex::Hex};
 
 use super::ScriptError;
@@ -338,11 +339,20 @@ impl Opcode {
         }
     }
 
-    pub fn parse(bytes: &[u8]) -> Result<Vec<Opcode>, ScriptError> {
+    /// Parse a byte slice into a list of opcodes. Parsing stops with an error as soon as more than `max_opcodes`
+    /// opcodes would be read, so that an oversized script is rejected without materialising all of its opcodes.
+    pub fn parse(bytes: &[u8], max_opcodes: usize) -> Result<Vec<Opcode>, ScriptError> {
         let mut script = Vec::new();
         let mut bytes_copy = bytes;
 
         while !bytes_copy.is_empty() {
+            if script.len() >= max_opcodes {
+                return Err(MaxSizeVecError::MaxSizeVecLengthError {
+                    expected: max_opcodes,
+                    actual: script.len().saturating_add(1),
+                }
+                .into());
+            }
             let (opcode, bytes_left) = Opcode::read_next(bytes_copy)?;
             script.push(opcode);
             bytes_copy = bytes_left;
@@ -648,28 +658,51 @@ pub enum OpcodeVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::op_codes::*;
+    use crate::{op_codes::*, script::MAX_SCRIPT_OPCODES};
 
     #[test]
     fn empty_script() {
-        assert_eq!(Opcode::parse(&[]).unwrap(), Vec::new())
+        assert_eq!(Opcode::parse(&[], MAX_SCRIPT_OPCODES).unwrap(), Vec::new())
     }
 
     #[test]
     fn parse() {
         let script = [0xFF, 0x71, 0x00];
-        let err = Opcode::parse(&script).unwrap_err();
+        let err = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidOpcode));
 
         let script = [0x60u8, 0x71];
-        let opcodes = Opcode::parse(&script).unwrap();
+        let opcodes = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap();
         let code = opcodes.first().unwrap();
         assert_eq!(code, &Opcode::Return);
         let code = opcodes.get(1).unwrap();
         assert_eq!(code, &Opcode::Dup);
 
-        let err = Opcode::parse(&[0x7a]).unwrap_err();
+        let err = Opcode::parse(&[0x7a], MAX_SCRIPT_OPCODES).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidData));
+    }
+
+    #[test]
+    fn parse_stops_at_max_opcodes() {
+        // Exactly the maximum number of opcodes parses
+        let script = vec![OP_NOP; MAX_SCRIPT_OPCODES];
+        assert_eq!(
+            Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap().len(),
+            MAX_SCRIPT_OPCODES
+        );
+
+        // One more is rejected as soon as it would be pushed, before any of the following bytes are read (the trailing
+        // invalid opcode would otherwise have produced `InvalidOpcode`)
+        let mut script = vec![OP_NOP; MAX_SCRIPT_OPCODES + 1];
+        script.push(0xFF);
+        let err = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap_err();
+        assert_eq!(
+            err,
+            ScriptError::MaxSizeVecError(MaxSizeVecError::MaxSizeVecLengthError {
+                expected: MAX_SCRIPT_OPCODES,
+                actual: MAX_SCRIPT_OPCODES + 1,
+            })
+        );
     }
 
     #[test]

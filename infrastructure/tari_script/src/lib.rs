@@ -33,7 +33,7 @@ pub use op_codes::{
     slice_to_boxed_message,
     slice_to_hash,
 };
-pub use script::{ScriptOpcodes, TariScript};
+pub use script::{MAX_SCRIPT_BYTES, MAX_SCRIPT_OPCODES, ScriptOpcodes, TariScript};
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
 use tari_crypto::{

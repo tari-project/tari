@@ -27,7 +27,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
+use tari_common_types::types::{CompressedCommitment, CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     MicroMinotari,
@@ -157,8 +157,20 @@ impl UnconfirmedPool {
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
-    pub fn contains_all_outputs(&mut self, outputs: &[HashOutput]) -> bool {
+    pub fn contains_all_outputs(&self, outputs: &[HashOutput]) -> bool {
         outputs.iter().all(|hash| self.txs_by_output.contains_key(hash))
+    }
+
+    /// Returns true if the unconfirmed pool contains an output with the given commitment whose hash is exactly `hash`,
+    /// i.e. an input with this commitment and output hash spends that output exactly as it was created.
+    pub fn contains_matching_output(&self, hash: &HashOutput, commitment: &CompressedCommitment) -> bool {
+        self.txs_by_output
+            .get(hash)
+            .into_iter()
+            .flatten()
+            .filter_map(|key| self.tx_by_key.get(key))
+            .flat_map(|prioritized_tx| prioritized_tx.transaction.body.outputs())
+            .any(|output| output.commitment == *commitment && output.hash() == *hash)
     }
 
     /// Insert a set of new transactions into the UnconfirmedPool
@@ -896,6 +908,27 @@ mod test {
         consensus::BaseNodeConsensusManagerBuilder,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
     };
+    #[tokio::test]
+    async fn test_contains_matching_output() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = Arc::new(
+            tx!(MicroMinotari(5000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let other = tx!(MicroMinotari(5000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+        let output = tx.body.outputs()[0].clone();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let weighting = TransactionWeight::latest();
+        unconfirmed_pool.insert(tx, None, &weighting).unwrap();
+
+        assert!(unconfirmed_pool.contains_matching_output(&output.hash(), &output.commitment));
+        assert!(!unconfirmed_pool.contains_matching_output(&output.hash(), &other.body.outputs()[0].commitment));
+        assert!(!unconfirmed_pool.contains_matching_output(&other.body.outputs()[0].hash(), &output.commitment));
+    }
+
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = KeyManager::new_random().unwrap();

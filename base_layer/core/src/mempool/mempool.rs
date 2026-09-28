@@ -83,27 +83,23 @@ impl Mempool {
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
+    /// The transaction is validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]).
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
-        self.with_write_access(|storage| {
-            storage
-                .insert(tx)
-                .map_err(|e| MempoolError::InternalError(e.to_string()))
-        })
-        .await
+        let storage = self.pool_storage.clone();
+        task::spawn_blocking(move || MempoolStorage::insert_unlocked(&storage, tx)).await?
     }
 
-    /// Inserts all transactions into the mempool.
+    /// Inserts all transactions into the mempool. Each transaction is validated without holding the mempool write lock
+    /// (see [`MempoolStorage::insert_unlocked`]).
     pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
-        self.with_write_access(|storage| {
+        let storage = self.pool_storage.clone();
+        task::spawn_blocking(move || {
             for tx in transactions {
-                storage
-                    .insert(tx)
-                    .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+                MempoolStorage::insert_unlocked(&storage, tx)?;
             }
-
             Ok(())
         })
-        .await
+        .await?
     }
 
     /// Update the Mempool based on the received published block.
