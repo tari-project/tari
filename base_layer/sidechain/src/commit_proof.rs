@@ -9,7 +9,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, FixedHash, PrivateKey, UncompressedPublicKey},
 };
-use tari_crypto::signatures::CompressedSchnorrSignature;
+use tari_crypto::signatures::{CompressedSchnorrSignature, SchnorrSignature};
 use tari_hashing::{ValidatorNodeHashDomain, layer2};
 use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
 use tari_utilities::ByteArray;
@@ -24,6 +24,8 @@ use crate::{
 
 pub type ValidatorBlockSignature =
     CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
+/// A [`ValidatorBlockSignature`] decoded to curve points, the form it is verified in.
+pub type DecodedValidatorBlockSignature = SchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
 pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
@@ -379,16 +381,19 @@ impl ValidatorQcSignature {
         epoch: u64,
         height: u64,
     ) -> bool {
-        let Ok(public_key) = self.public_key.to_public_key() else {
-            return false;
-        };
-
-        let Ok(signature) = self.signature.to_schnorr_signature() else {
+        let Some((public_key, signature)) = self.decode() else {
             return false;
         };
 
         let message = ProposalVoteMessage::new(protocol_version, block_id, decision, epoch, height).calculate_hash();
         signature.verify(&public_key, message)
+    }
+
+    /// Decodes the public key and signature to curve points, or returns `None` if either is not a valid encoding.
+    pub fn decode(&self) -> Option<(UncompressedPublicKey, DecodedValidatorBlockSignature)> {
+        let public_key = self.public_key.to_public_key().ok()?;
+        let signature = self.signature.to_schnorr_signature().ok()?;
+        Some((public_key, signature))
     }
 
     pub fn public_key(&self) -> &CompressedPublicKey {

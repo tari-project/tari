@@ -9,6 +9,8 @@ use tari_common_types::types::FixedHash;
 use crate::{
     CheckVnFunc,
     CommitProofElement,
+    DecodedValidatorBlockSignature,
+    ProposalVoteMessage,
     QuorumCertificate,
     QuorumDecision,
     SidechainBlockHeader,
@@ -211,6 +213,7 @@ fn validate_qc(
     }
 
     let block_id = qc.calculate_justified_block();
+    let mut decoded = Vec::with_capacity(qc.signatures.len());
     for sig in &qc.signatures {
         if !check_vn(&sig.public_key)? {
             return Err(SidechainProofValidationError::InvalidProof {
@@ -221,13 +224,30 @@ fn validate_qc(
             });
         }
 
-        if !sig.verify(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height) {
-            return Err(SidechainProofValidationError::InvalidProof {
-                details: format!("Invalid signature for QC for block ID {block_id}",),
-            });
-        }
+        let Some(pair) = sig.decode() else {
+            return Err(invalid_qc_signature(&block_id));
+        };
+        decoded.push(pair);
+    }
+
+    // Every member of a QC signs the same message. An empty batch verifies, so a QC without signatures is rejected
+    // only by the quorum threshold check.
+    let message =
+        ProposalVoteMessage::new(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height).calculate_hash();
+    let batch = decoded
+        .iter()
+        .map(|(public_key, signature)| (signature, public_key, message))
+        .collect::<Vec<_>>();
+    if !DecodedValidatorBlockSignature::verify_batch(&batch) {
+        return Err(invalid_qc_signature(&block_id));
     }
     Ok(())
+}
+
+fn invalid_qc_signature(block_id: &FixedHash) -> SidechainProofValidationError {
+    SidechainProofValidationError::InvalidProof {
+        details: format!("Invalid signature for QC for block ID {block_id}"),
+    }
 }
 
 fn has_duplicates<I, T>(iter: I) -> bool
