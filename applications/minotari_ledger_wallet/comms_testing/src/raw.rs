@@ -217,7 +217,7 @@ pub fn command(account: u64, instruction: Instruction, payload: Vec<u8>) -> RawR
 /// One chunk of a chunked instruction, with an explicit chunk number and continuation flag.
 ///
 /// `minotari_ledger_wallet_comms::raw::build_chunk_command` exists precisely so that a malformed sequence - a chunk
-/// number out of order, a resume after a rejection - can be sent, which `chunk_command` cannot express.
+/// number out of order, a resume after a rejection - can be sent, which `ScriptOffsetRequest::chunks` cannot express.
 pub fn chunk(account: u64, instruction: Instruction, chunk_number: u8, more: bool, payload: Vec<u8>) -> RawRequest {
     from_command(&comms_raw::build_chunk_command(
         account,

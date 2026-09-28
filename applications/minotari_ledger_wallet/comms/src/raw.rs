@@ -38,9 +38,9 @@ pub fn build_command(account: u64, instruction: Instruction, data: Vec<u8>) -> C
 
 /// A single chunk of a chunked instruction with an explicit chunk number and continuation flag.
 ///
-/// [`Command::chunk_command`] always emits a well formed 0, 1, 2, ... sequence. This builds one arbitrary chunk, so
-/// that `ledger_demo` can drive the device's own validation on real hardware - including the malformed sequences
-/// the accessor methods refuse to send, which are exactly the ones the device has to reject.
+/// `ScriptOffsetRequest::chunks` in the shared codec always emits a well formed 0, 1, 2, ... sequence. This builds one
+/// arbitrary chunk, so that `ledger_demo` can drive the device's own validation on real hardware - including the
+/// malformed sequences the accessor methods refuse to send, which are exactly the ones the device has to reject.
 pub fn build_chunk_command(
     account: u64,
     instruction: Instruction,
@@ -48,7 +48,7 @@ pub fn build_chunk_command(
     more: bool,
     chunk: Vec<u8>,
 ) -> Command<Vec<u8>> {
-    // The account is only carried on the first chunk, matching `chunk_command`.
+    // The account is only carried on the first chunk, matching the codec's `ScriptOffsetHeaderChunk`.
     let mut base_data = vec![];
     if chunk_number == 0 {
         base_data.extend_from_slice(&account.to_le_bytes());

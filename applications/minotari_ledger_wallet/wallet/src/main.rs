@@ -51,7 +51,7 @@ use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::{
-    codec::{TextReply, CLA, RESPONSE_VERSION},
+    codec::{TextReply, CHUNK_LAST, CHUNK_MORE, CLA},
     common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
@@ -127,7 +127,6 @@ pub enum Instruction {
     GenerateEphemeralNonce,
 }
 
-const P2_MORE: u8 = 0x01;
 const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
 const MAX_PAYLOADS: u8 = 250;
@@ -198,10 +197,12 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
             (InstructionMapping::GetScriptSignatureManaged, 0, 0) => Ok(Instruction::GetScriptSignatureManaged),
             (InstructionMapping::GetScriptSignatureDerived, 0, 0) => Ok(Instruction::GetScriptSignatureDerived),
-            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
-                chunk_number: value.p1,
-                more: value.p2 == P2_MORE,
-            }),
+            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, CHUNK_LAST | CHUNK_MORE) => {
+                Ok(Instruction::GetScriptOffset {
+                    chunk_number: value.p1,
+                    more: value.p2 == CHUNK_MORE,
+                })
+            },
             (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),

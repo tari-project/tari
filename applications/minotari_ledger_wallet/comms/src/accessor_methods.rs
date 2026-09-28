@@ -47,10 +47,12 @@ use minotari_ledger_wallet_common::{
         KeyReply,
         RESPONSE_VERSION,
         SchnorrReply,
+        ScriptOffsetReply,
+        ScriptOffsetRequest,
         ScriptSignatureCommon,
         TextReply,
     },
-    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
     legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
     script_offset::{
@@ -461,32 +463,25 @@ pub fn ledger_get_script_offset(
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     verify_ledger_application()?;
 
-    // 1. data sizes
-    let mut instructions: Vec<u8> = Vec::new();
-    instructions.extend_from_slice(&count.to_le_bytes());
-    instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
-    instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
-    let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-
-    // 2. partial_script_offset
-    data.push(partial_script_offset.to_vec());
-
-    // 3. script_key_indexes
-    for (branch, index) in script_key_indexes {
-        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
-        payload.extend_from_slice(&index.to_le_bytes());
-        data.push(payload);
-    }
-    // 4. derived_script_keys
-    for script_key in derived_script_keys {
-        data.push(script_key.to_vec());
-    }
-
-    let commands = Command::<Vec<u8>>::chunk_command(account, Instruction::GetScriptOffset, data);
+    let script_key_indexes = script_key_indexes
+        .iter()
+        .map(|(branch, index)| (u64::from(branch.as_byte()), *index))
+        .collect::<Vec<_>>();
+    let derived_script_keys = derived_script_keys
+        .iter()
+        .map(key_field)
+        .collect::<Result<Vec<_>, _>>()?;
+    let request = ScriptOffsetRequest {
+        account,
+        sender_offset_count: count,
+        partial_script_key_sum: key_field(partial_script_offset)?,
+        script_key_indexes: &script_key_indexes,
+        derived_script_keys: &derived_script_keys,
+    };
 
     let mut result = None;
-    for command in commands {
-        match command.execute() {
+    for chunk in request.chunks() {
+        match Command::from_request(&chunk).execute() {
             Ok(r) => result = Some(r),
             Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {e}"))),
         }
@@ -494,26 +489,23 @@ pub fn ledger_get_script_offset(
 
     match result {
         Some(result) => {
-            if result.data().len() < SCRIPT_OFFSET_REPLY_SIZE {
+            let Ok(reply) = ScriptOffsetReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptOffset: expected {} bytes, got {} ({:?})",
                     SCRIPT_OFFSET_REPLY_SIZE,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
-            let version = *data.first().expect("Index should exist");
+            };
+            let version = reply.version;
             if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptOffset: expected response version {RESPONSE_VERSION}, got {version}. Please update the \
                      'Minotari Wallet' application on your device."
                 )));
             }
-            let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
-            let mut base_index_bytes = [0u8; 8];
-            base_index_bytes.copy_from_slice(data.get(33..41).expect("Index should exist"));
-            let base_index = u64::from_le_bytes(base_index_bytes);
+            let script_offset = PrivateKey::from_canonical_bytes(reply.script_offset)?;
+            let base_index = reply.base_index;
             // The device derived `base_index..base_index + count`; `sender_offset_index` is the shared walk, so a
             // base near the end of the range wraps identically on both sides.
             let sender_offset_indexes = (0..count).map(|i| sender_offset_index(base_index, i)).collect();

@@ -29,10 +29,7 @@ use std::{
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{TransportNativeHID, hidapi::HidApi};
-use minotari_ledger_wallet_common::{
-    codec::{CLA, Request},
-    common_types::Instruction,
-};
+use minotari_ledger_wallet_common::codec::{CLA, Request};
 
 use crate::error::LedgerDeviceError;
 
@@ -233,42 +230,14 @@ impl<D: Deref<Target = [u8]>> Command<D> {
     ) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
         transport.exchange(&self.to_apdu_command())
     }
-
-    pub fn chunk_command(account: u64, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
-        let num_chunks = data.len();
-        let mut more;
-        let mut commands = vec![];
-
-        for (i, chunk) in data.iter().enumerate() {
-            if i.saturating_add(1) == num_chunks {
-                more = 0;
-            } else {
-                more = 1;
-            }
-
-            // Prepend the account on the first payload
-            let mut base_data = vec![];
-            if i == 0 {
-                base_data.extend_from_slice(&account.to_le_bytes());
-            }
-            base_data.extend_from_slice(chunk);
-
-            commands.push(Command::new(APDUCommand {
-                cla: CLA,
-                ins: instruction.as_byte(),
-                p1: u8::try_from(i).unwrap_or(0),
-                p2: more,
-                data: base_data,
-            }));
-        }
-
-        commands
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use minotari_ledger_wallet_common::codec::{Encode, GetPublicKeyRequest};
+    use minotari_ledger_wallet_common::{
+        codec::{Encode, GetPublicKeyRequest, ScriptOffsetRequest},
+        common_types::Instruction,
+    };
 
     use super::*;
     use crate::raw;
@@ -293,11 +262,15 @@ mod test {
             raw::build_chunk_command(7, Instruction::GetScriptOffset, 0, true, vec![9, 9]),
             raw::build_chunk_command(7, Instruction::GetScriptOffset, 3, false, vec![8]),
         ];
-        commands.extend(Command::<Vec<u8>>::chunk_command(
-            42,
-            Instruction::GetScriptOffset,
-            vec![vec![1, 2], vec![3, 4], vec![5, 6]],
-        ));
+        let blinding_factor = [5u8; 32];
+        let request = ScriptOffsetRequest {
+            account: 42,
+            sender_offset_count: 1,
+            partial_script_key_sum: &[1; 32],
+            script_key_indexes: &[(9, 3)],
+            derived_script_keys: &[&blinding_factor],
+        };
+        commands.extend(request.chunks().map(|chunk| Command::from_request(&chunk)));
 
         for command in &commands {
             assert_eq!(command.inner.serialize(), command.to_apdu_command().serialize());
@@ -321,25 +294,24 @@ mod test {
         assert_eq!(command.inner.data, request.to_vec());
     }
 
-    /// The chunk layout, pinned against accidental change. These are the bytes the device parses.
+    /// A chunk travels with its number in `p1` and "more chunks follow" in `p2`, and only the first carries the
+    /// account. These are the bytes the device parses.
     #[test]
-    fn chunk_layout_is_stable() {
-        let chunks = Command::<Vec<u8>>::chunk_command(1, Instruction::GetScriptOffset, vec![vec![0xaa], vec![0xbb]]);
-        // The account rides on the first chunk only, and `p2` is the "more chunks follow" flag.
-        let headers = chunks
-            .iter()
-            .map(|chunk| {
-                (
-                    chunk.inner.cla,
-                    chunk.inner.p1,
-                    chunk.inner.p2,
-                    chunk.inner.data.clone(),
-                )
-            })
+    fn a_chunk_carries_its_number_and_continuation_flag_in_the_header() {
+        let blinding_factor = [0xbb; 32];
+        let request = ScriptOffsetRequest {
+            account: 1,
+            sender_offset_count: 1,
+            partial_script_key_sum: &[0xaa; 32],
+            script_key_indexes: &[],
+            derived_script_keys: &[&blinding_factor],
+        };
+        let headers = request
+            .chunks()
+            .map(|chunk| Command::from_request(&chunk))
+            .map(|command| (command.inner.cla, command.inner.ins, command.inner.p1, command.inner.p2))
             .collect::<Vec<_>>();
-        assert_eq!(headers, vec![
-            (CLA, 0, 1, vec![1, 0, 0, 0, 0, 0, 0, 0, 0xaa]),
-            (CLA, 1, 0, vec![0xbb]),
-        ]);
+        let ins = Instruction::GetScriptOffset.as_byte();
+        assert_eq!(headers, vec![(CLA, ins, 0, 1), (CLA, ins, 1, 1), (CLA, ins, 2, 0)]);
     }
 }

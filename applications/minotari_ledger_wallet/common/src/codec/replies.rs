@@ -12,7 +12,7 @@
 //! where it always has.
 
 use super::{Decode, DecodeError, Encode, RESPONSE_VERSION, Reader, Writer, write_u64};
-use crate::ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE;
+use crate::{ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE, script_offset::SCRIPT_OFFSET_REPLY_SIZE};
 
 /// `text(..)`: the `GetVersion` and `GetAppName` replies, the whole reply and nothing else.
 ///
@@ -229,6 +229,53 @@ impl<'a> Decode<'a> for EphemeralNonceReply<'a> {
     }
 }
 
+/// `version(1) | script_offset(32) | base_index(8)`: the reply to the last `GetScriptOffset` chunk.
+///
+/// The sender offset keys that blind the offset are `base_index..base_index + sender_offset_count`, walked with
+/// [`crate::script_offset::sender_offset_index`] on both sides.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ScriptOffsetReply<'a> {
+    pub version: u8,
+    pub script_offset: &'a [u8; 32],
+    pub base_index: u64,
+}
+
+impl<'a> ScriptOffsetReply<'a> {
+    /// [`SCRIPT_OFFSET_REPLY_SIZE`], which predates this codec and which the scenario suite also checks against.
+    pub const SIZE: usize = SCRIPT_OFFSET_REPLY_SIZE;
+
+    /// The reply the current application sends.
+    pub fn new(script_offset: &'a [u8; 32], base_index: u64) -> Self {
+        Self {
+            version: RESPONSE_VERSION,
+            script_offset,
+            base_index,
+        }
+    }
+}
+
+// The fields have to add up to the size the rest of the crate declares.
+const _: () = assert!(1 + 32 + 8 == ScriptOffsetReply::SIZE);
+
+impl Encode for ScriptOffsetReply<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        out.write(&[self.version]);
+        out.write(self.script_offset);
+        write_u64(out, self.base_index);
+    }
+}
+
+impl<'a> Decode<'a> for ScriptOffsetReply<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::at_least(data, Self::SIZE)?;
+        Ok(Self {
+            version: reader.u8()?,
+            script_offset: reader.array()?,
+            base_index: reader.u64()?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     // A panic is the desired failure mode in a test.
@@ -294,5 +341,17 @@ mod test {
         assert_eq!(&bytes[9..], &[0x44; 32]);
         assert_eq!(EphemeralNonceReply::decode(&bytes), Ok(reply));
         assert!(EphemeralNonceReply::decode(&bytes[..40]).is_err());
+    }
+
+    #[test]
+    fn a_script_offset_reply_is_the_version_then_the_offset_then_the_base_index() {
+        let reply = ScriptOffsetReply::new(&[0x55; 32], 0x0807_0605_0403_0201);
+        let bytes = reply.to_vec();
+        assert_eq!(bytes.len(), SCRIPT_OFFSET_REPLY_SIZE);
+        assert_eq!(bytes[0], RESPONSE_VERSION);
+        assert_eq!(&bytes[1..33], &[0x55; 32]);
+        assert_eq!(&bytes[33..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(ScriptOffsetReply::decode(&bytes), Ok(reply));
+        assert!(ScriptOffsetReply::decode(&bytes[..40]).is_err());
     }
 }

@@ -47,6 +47,7 @@ mod keys;
 mod metadata;
 mod nonce;
 mod replies;
+mod script_offset;
 mod signatures;
 
 #[cfg(any(feature = "alloc", test))]
@@ -71,7 +72,18 @@ pub use nonce::{
     GetRawSchnorrSignatureLegacyNonceRequest,
     GetRawSchnorrSignatureRequest,
 };
-pub use replies::{ComAndPubSigReply, EphemeralNonceReply, KeyReply, SchnorrReply, TextReply};
+pub use replies::{ComAndPubSigReply, EphemeralNonceReply, KeyReply, SchnorrReply, ScriptOffsetReply, TextReply};
+pub use script_offset::{
+    CHUNK_LAST,
+    CHUNK_MORE,
+    DerivedScriptKeyChunk,
+    PartialScriptKeySumChunk,
+    ScriptKeyIndexChunk,
+    ScriptOffsetChunk,
+    ScriptOffsetChunkBody,
+    ScriptOffsetHeaderChunk,
+    ScriptOffsetRequest,
+};
 pub use signatures::{
     GetScriptSchnorrSignatureRequest,
     GetScriptSignatureDerivedRequest,
@@ -228,18 +240,11 @@ mod test {
     // A panic is the desired failure mode in a test.
     #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-    use alloc::vec;
-
     use super::*;
 
-    /// What an instruction's encoder is registered as.
-    enum Registration {
-        /// Encodes a sample request, and reports which instruction the encoder believes it is.
-        Encoder(fn() -> (Instruction, Vec<u8>)),
-        /// Not yet moved onto the codec: still hand rolled in `accessor_methods`. This variant exists only for the
-        /// duration of the migration and is deleted with the last instruction to move.
-        Pending,
-    }
+    /// An instruction's registered encoder: encodes a sample request, and reports which instruction the encoder is
+    /// typed for.
+    type Encoder = fn() -> (Instruction, Vec<u8>);
 
     fn registered<R: Request>(request: &R) -> (Instruction, Vec<u8>) {
         (R::INSTRUCTION, request.to_vec())
@@ -265,37 +270,45 @@ mod test {
     /// An exhaustive `match` on purpose, in the style of `test_instruction_conversion`: a new `Instruction` variant
     /// without an entry here is a compile error, not a row that is silently skipped. And because each arm reports
     /// the instruction its encoder is typed for, an arm pointing at the wrong encoder fails the test below.
-    fn registration(instruction: Instruction) -> Registration {
+    fn encoder(instruction: Instruction) -> Encoder {
         match instruction {
-            Instruction::GetVersion => Registration::Encoder(|| registered(&GetVersionRequest { account: 1 })),
-            Instruction::GetAppName => Registration::Encoder(|| registered(&GetAppNameRequest { account: 1 })),
-            Instruction::GetPublicSpendKey => {
-                Registration::Encoder(|| registered(&GetPublicSpendKeyRequest { account: 1 }))
-            },
-            Instruction::GetPublicKey => Registration::Encoder(|| {
+            Instruction::GetVersion => || registered(&GetVersionRequest { account: 1 }),
+            Instruction::GetAppName => || registered(&GetAppNameRequest { account: 1 }),
+            Instruction::GetPublicSpendKey => || registered(&GetPublicSpendKeyRequest { account: 1 }),
+            Instruction::GetPublicKey => || {
                 registered(&GetPublicKeyRequest {
                     account: 1,
                     index: 2,
                     branch: 3,
                 })
-            }),
-            Instruction::GetScriptSignatureDerived => Registration::Encoder(|| {
+            },
+            Instruction::GetScriptSignatureDerived => || {
                 registered(&GetScriptSignatureDerivedRequest {
                     common: sample_script_signature_common(),
                     blinding_factor: &KEY,
                 })
-            }),
-            Instruction::GetScriptOffset => Registration::Pending,
-            Instruction::GetViewKey => Registration::Encoder(|| registered(&GetViewKeyRequest { account: 1 })),
-            Instruction::GetDHSharedSecret => Registration::Encoder(|| {
+            },
+            Instruction::GetScriptOffset => || {
+                let request = ScriptOffsetRequest {
+                    account: 1,
+                    sender_offset_count: 2,
+                    partial_script_key_sum: &KEY,
+                    script_key_indexes: &[(3, 4)],
+                    derived_script_keys: &[&KEY],
+                };
+                let header = request.chunks().next().expect("an exchange always has a header chunk");
+                registered(&header)
+            },
+            Instruction::GetViewKey => || registered(&GetViewKeyRequest { account: 1 }),
+            Instruction::GetDHSharedSecret => || {
                 registered(&GetDHSharedSecretRequest {
                     account: 1,
                     index: 2,
                     branch: 3,
                     public_key: &KEY,
                 })
-            }),
-            Instruction::GetRawSchnorrSignature => Registration::Encoder(|| {
+            },
+            Instruction::GetRawSchnorrSignature => || {
                 registered(&GetRawSchnorrSignatureRequest {
                     account: 1,
                     index: 2,
@@ -303,32 +316,30 @@ mod test {
                     nonce_handle: 4,
                     challenge: &CHALLENGE,
                 })
-            }),
-            Instruction::GetScriptSchnorrSignature => Registration::Encoder(|| {
+            },
+            Instruction::GetScriptSchnorrSignature => || {
                 registered(&GetScriptSchnorrSignatureRequest {
                     account: 1,
                     index: 2,
                     branch: 3,
                     message: &KEY,
                 })
-            }),
-            Instruction::GetOneSidedMetadataSignature => Registration::Encoder(|| {
+            },
+            Instruction::GetOneSidedMetadataSignature => || {
                 registered(
                     &GetOneSidedMetadataSignatureRequest::new(1, 2, 3, 4, 5, &KEY, &[0x22; 67], &KEY)
                         .expect("a 67 byte address fits its length prefix"),
                 )
-            }),
-            Instruction::GetScriptSignatureManaged => Registration::Encoder(|| {
+            },
+            Instruction::GetScriptSignatureManaged => || {
                 registered(&GetScriptSignatureManagedRequest {
                     common: sample_script_signature_common(),
                     branch: 3,
                     index: 4,
                 })
-            }),
-            Instruction::GenerateEphemeralNonce => {
-                Registration::Encoder(|| registered(&GenerateEphemeralNonceRequest { account: 1 }))
             },
-            Instruction::GetRawSchnorrSignatureLegacyNonce => Registration::Encoder(|| {
+            Instruction::GenerateEphemeralNonce => || registered(&GenerateEphemeralNonceRequest { account: 1 }),
+            Instruction::GetRawSchnorrSignatureLegacyNonce => || {
                 registered(&GetRawSchnorrSignatureLegacyNonceRequest {
                     account: 1,
                     key_index: 2,
@@ -337,7 +348,7 @@ mod test {
                     nonce_branch: 5,
                     challenge: &CHALLENGE,
                 })
-            }),
+            },
         }
     }
 
@@ -352,26 +363,18 @@ mod test {
         let instructions = every_instruction();
         assert_eq!(instructions.len(), 14, "a new instruction needs a registered encoder");
 
-        let mut pending = Vec::new();
         for instruction in instructions {
-            match registration(instruction) {
-                Registration::Encoder(encode) => {
-                    let (encoded_as, bytes) = encode();
-                    assert_eq!(
-                        encoded_as, instruction,
-                        "{instruction:?} is registered with the encoder for {encoded_as:?}"
-                    );
-                    assert!(
-                        bytes.len() >= ACCOUNT_SIZE,
-                        "{instruction:?} encodes {} bytes, which cannot hold the account",
-                        bytes.len()
-                    );
-                },
-                Registration::Pending => pending.push(instruction),
-            }
+            let (encoded_as, bytes) = encoder(instruction)();
+            assert_eq!(
+                encoded_as, instruction,
+                "{instruction:?} is registered with the encoder for {encoded_as:?}"
+            );
+            assert!(
+                bytes.len() >= ACCOUNT_SIZE,
+                "{instruction:?} encodes {} bytes, which cannot hold the account",
+                bytes.len()
+            );
         }
-        // The migration's progress, pinned so that nothing is quietly moved back to `Pending`.
-        assert_eq!(pending, vec![Instruction::GetScriptOffset]);
     }
 
     #[test]

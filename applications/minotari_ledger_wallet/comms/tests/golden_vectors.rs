@@ -47,6 +47,7 @@ use minotari_ledger_wallet_common::{
     codec::{
         ComAndPubSigReply,
         Decode,
+        DerivedScriptKeyChunk,
         Encode,
         EphemeralNonceReply,
         GenerateEphemeralNonceRequest,
@@ -63,7 +64,11 @@ use minotari_ledger_wallet_common::{
         GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
+        PartialScriptKeySumChunk,
         SchnorrReply,
+        ScriptKeyIndexChunk,
+        ScriptOffsetHeaderChunk,
+        ScriptOffsetReply,
         ScriptSignatureCommon,
         TextReply,
     },
@@ -907,6 +912,53 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         })
     );
 
+    // --- GetScriptOffset: each chunk through the decoder for the section it is sent in.
+    let [header, partial_sum, index_a, index_b, derived_a, derived_b] = GET_SCRIPT_OFFSET_REQUEST.map(payload);
+    assert_eq!(
+        ScriptOffsetHeaderChunk::decode(&header),
+        Ok(ScriptOffsetHeaderChunk {
+            account: ACCOUNT,
+            sender_offset_count: 3,
+            script_index_count: 2,
+            derived_script_key_count: 2,
+        })
+    );
+    let partial = key_array(&scalar(0xbc));
+    assert_eq!(
+        PartialScriptKeySumChunk::decode(&partial_sum),
+        Ok(PartialScriptKeySumChunk {
+            partial_script_key_sum: &partial,
+        })
+    );
+    let pre_mine = u64::from(LedgerKeyBranch::PreMine.as_byte());
+    assert_eq!(
+        ScriptKeyIndexChunk::decode(&index_a),
+        Ok(ScriptKeyIndexChunk {
+            branch: pre_mine,
+            index: INDEX,
+        })
+    );
+    assert_eq!(
+        ScriptKeyIndexChunk::decode(&index_b),
+        Ok(ScriptKeyIndexChunk {
+            branch: pre_mine,
+            index: NONCE_INDEX,
+        })
+    );
+    let (blinding_a, blinding_b) = (key_array(&scalar(0xbd)), key_array(&scalar(0xbe)));
+    assert_eq!(
+        DerivedScriptKeyChunk::decode(&derived_a),
+        Ok(DerivedScriptKeyChunk {
+            blinding_factor: &blinding_a,
+        })
+    );
+    assert_eq!(
+        DerivedScriptKeyChunk::decode(&derived_b),
+        Ok(DerivedScriptKeyChunk {
+            blinding_factor: &blinding_b,
+        })
+    );
+
     // --- Replies
     assert_eq!(
         TextReply {
@@ -935,5 +987,9 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
     assert_eq!(
         EphemeralNonceReply::new(NONCE_HANDLE, &key_array(&point(0xa5))).to_vec(),
         unhex(EPHEMERAL_NONCE_REPLY)
+    );
+    assert_eq!(
+        ScriptOffsetReply::new(&key_array(&scalar(0xa6)), BASE_INDEX).to_vec(),
+        unhex(SCRIPT_OFFSET_REPLY)
     );
 }

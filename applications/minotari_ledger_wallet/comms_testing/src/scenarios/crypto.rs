@@ -403,12 +403,12 @@ const DERIVED_SCRIPT_KEYS: u64 = 1;
 /// This instruction is the one whose host side is more than a payload layout: `ledger_get_script_offset` decides
 /// how many chunks there are, what goes in each, which one carries the account, which one sets the continuation
 /// flag, and it walks `sender_offset_index` to turn the base index the device returns back into the list of key
-/// indexes the caller gets. `chunk_command` is shipped code with real logic in it.
+/// indexes the caller gets. `ScriptOffsetRequest::chunks` is shipped code with real logic in it.
 ///
 /// So the happy path is driven through the accessor, and the malformed sequences in [`super::stateful`] are driven
-/// over raw APDUs - because those are shapes `chunk_command` cannot express and the accessor refuses before the
-/// wire. Between them the shipped assembly and the device's tolerance of a hostile one are both covered; a suite
-/// that re-implemented the chunking for its happy path would have left the shipped version untested.
+/// over raw APDUs - because those are shapes `ScriptOffsetRequest::chunks` cannot express and the accessor refuses
+/// before the wire. Between them the shipped assembly and the device's tolerance of a hostile one are both covered; a
+/// suite that re-implemented the chunking for its happy path would have left the shipped version untested.
 ///
 /// The sender offset indexes are taken from the accessor's own return value rather than recomputed here. Be
 /// precise about what that does and does not check: the accessor and the device call the *same*
