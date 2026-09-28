@@ -28,7 +28,7 @@
 //! decoder is therefore staged to match: [`OneSidedMetadataSignatureHead`] for step 1,
 //! [`OneSidedMetadataSignatureHead::receiver_address`] for step 3 and [`OneSidedMetadataSignatureTail::message`] for
 //! step 5, with the device's own checks in between. The full [`Decode`] impl runs the three back to back, for
-//! callers that have no validation to interleave.
+//! callers that have no validation to interleave - the host and tests - and is compiled only for them.
 
 use super::{ACCOUNT_SIZE, Decode, DecodeError, Encode, Reader, Request, Writer, write_u64};
 use crate::{TARI_DUAL_ADDRESS_MAX_SIZE, TARI_DUAL_ADDRESS_MIN_SIZE, common_types::Instruction};
@@ -120,6 +120,14 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
     }
 }
 
+/// The one-shot decode, for the host and for tests only.
+///
+/// It runs every length check - the head, the address, the message - before anything else can look at the fields,
+/// which is exactly the ordering the device must *not* use: the device interleaves them with the commitment mask and
+/// address checksum checks, and a malformed request gets the status word of whichever check fires first (see the
+/// module docs). Gated off the device build (which does not enable `alloc`), so that a handler cannot reach for this
+/// and silently change which status word a malformed request gets. The device decodes in stages instead.
+#[cfg(any(feature = "alloc", test))]
 impl<'a> Decode<'a> for GetOneSidedMetadataSignatureRequest<'a> {
     fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
         let head = OneSidedMetadataSignatureHead::decode(data)?;

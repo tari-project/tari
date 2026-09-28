@@ -213,8 +213,12 @@ impl<'a> Reader<'a> {
         Ok(Self { rest: data })
     }
 
-    /// A reader over a buffer that must be at least `size` bytes, trailing bytes ignored - the host's
-    /// `data.len() < N` check on a reply.
+    /// A reader over a buffer that must be at least `size` bytes, trailing bytes ignored.
+    ///
+    /// For two things only: the host's decoding of *replies*, which has always been `data.len() < N` with anything
+    /// after ignored, and the variable length metadata request's head and message, whose historical checks are
+    /// minimums. A new fixed size request must use [`Self::exact`]: the device has always refused a request of the
+    /// wrong length outright, and accepting trailing bytes would be a behaviour change a codec must not make.
     #[inline(always)]
     fn at_least(data: &'a [u8], size: usize) -> Result<Self, DecodeError> {
         if data.len() < size {
