@@ -8,6 +8,7 @@
 ///        rest of the Tari code base is compiled for std.
 extern crate alloc;
 
+pub mod codec;
 pub mod common_types;
 pub mod ephemeral_nonce;
 pub mod legacy_nonce;

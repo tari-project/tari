@@ -3,7 +3,7 @@
 
 //! The one place in this crate that builds an APDU, and the one place Spec 0 has to change.
 //!
-//! # Why a single helper rather than `Command::build_command` at every call site
+//! # Why a single helper rather than `minotari_ledger_wallet_comms::raw::build_command` at every call site
 //!
 //! Most of the scenario suite cannot go through `minotari_ledger_wallet_comms::accessor_methods`. The accessors are
 //! the *mirror* of the device's rules - `ledger_get_script_offset` refuses a zero sender offset count before it
@@ -46,6 +46,10 @@
 use std::fmt;
 
 use ledger_transport::APDUCommand;
+/// The class byte the device application accepts: `Comm::new().set_expected_cla(CLA)` in `wallet/src/main.rs`,
+/// with `CLA` from the shared codec. Re-exported rather than restated, so that there is one definition of it
+/// anywhere.
+pub use minotari_ledger_wallet_common::codec::CLA as WALLET_CLA;
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE,
@@ -54,10 +58,8 @@ use minotari_ledger_wallet_common::{
 use minotari_ledger_wallet_comms::{
     error::LedgerDeviceError,
     ledger_wallet::{Command, LedgerTransport},
+    raw as comms_raw,
 };
-
-/// The class byte the device application accepts, from `Comm::new().set_expected_cla(CLA)` in `wallet/src/main.rs`.
-pub const WALLET_CLA: u8 = 0x80;
 
 /// `ledger_device_sdk::io::StatusWords::BadCla`, which the SDK answers a wrong class byte with before the
 /// application sees the command at all.
@@ -206,18 +208,18 @@ pub fn send(request: &RawRequest) -> Result<RawReply, LedgerDeviceError> {
 
 /// A single-exchange instruction, with `payload` following the account.
 ///
-/// Goes through `Command::build_command` rather than assembling the header here, so that the account encoding this
-/// suite sends is by construction the one the shipped client sends.
+/// Goes through `minotari_ledger_wallet_comms::raw::build_command` rather than assembling the header here, so that the
+/// account encoding this suite sends is by construction the one the shipped client sends.
 pub fn command(account: u64, instruction: Instruction, payload: Vec<u8>) -> RawRequest {
-    from_command(&Command::<Vec<u8>>::build_command(account, instruction, payload))
+    from_command(&comms_raw::build_command(account, instruction, payload))
 }
 
 /// One chunk of a chunked instruction, with an explicit chunk number and continuation flag.
 ///
-/// `Command::build_chunk_command` exists precisely so that a malformed sequence - a chunk number out of order, a
-/// resume after a rejection - can be sent, which `chunk_command` cannot express.
+/// `minotari_ledger_wallet_comms::raw::build_chunk_command` exists precisely so that a malformed sequence - a chunk
+/// number out of order, a resume after a rejection - can be sent, which `chunk_command` cannot express.
 pub fn chunk(account: u64, instruction: Instruction, chunk_number: u8, more: bool, payload: Vec<u8>) -> RawRequest {
-    from_command(&Command::<Vec<u8>>::build_chunk_command(
+    from_command(&comms_raw::build_chunk_command(
         account,
         instruction,
         chunk_number,
@@ -243,9 +245,9 @@ fn from_command(command: &Command<Vec<u8>>) -> RawRequest {
 /// `payload::public_key(index, branch)`; it never says "bytes 8..16 are the index". That is what makes the Spec 0
 /// codec a drop-in replacement for this module rather than a rewrite of the suite.
 ///
-/// The account is **not** included: `Command::build_command` prepends it, and the handlers count it as the first
-/// eight bytes of `data`. The sizes named in each doc comment are the handler's own length check, which includes
-/// those eight bytes.
+/// The account is **not** included: `minotari_ledger_wallet_comms::raw::build_command` prepends it, and the handlers
+/// count it as the first eight bytes of `data`. The sizes named in each doc comment are the handler's own length check,
+/// which includes those eight bytes.
 pub mod payload {
     use super::{LedgerKeyBranch, branch_bytes};
 

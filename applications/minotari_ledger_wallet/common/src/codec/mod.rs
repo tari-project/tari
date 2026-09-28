@@ -1,0 +1,302 @@
+// Copyright 2026 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+//! The wire format between the host and the Ledger application: every APDU payload and every reply, defined once.
+//!
+//! # Why this exists
+//!
+//! Every layout used to be written twice. The host hand rolled each payload with `extend_from_slice` in
+//! `minotari_ledger_wallet_comms::accessor_methods`, and the device sliced the same bytes back apart at hand computed
+//! offsets in its handlers. The two lived in different crates - one of which only compiles for ARM - and nothing
+//! noticed when one moved and the other did not. This module is the only definition of both directions now, in the
+//! one crate both sides link, so a layout change is made in one place and a mismatch is a compile error rather than
+//! a device that quietly reads the wrong field. It is the same arrangement as [`crate::legacy_nonce`] and
+//! [`crate::script_offset`]: logic in the shared crate so that it is checked on both sides, and the two copies
+//! cannot drift apart.
+//!
+//! # What this does not do
+//!
+//! **The codec frames; it does not validate.** A decoder checks that the bytes are the right *length* and hands
+//! back the fields; it never asks whether a scalar is canonical, a point is on the curve, or a branch is one the
+//! device will serve. Those checks stay at each edge (`from_canonical_bytes`, `KeyType::from_branch_key`, the
+//! whitelists in the sibling modules), because *which* check fails first decides which status word the host gets
+//! back, and moving them in here would reorder them. Boundary types are therefore raw bytes only - `&[u8; 32]`,
+//! `u64`, `u8` - and this crate has no `tari_crypto` dependency.
+//!
+//! **The wire format is byte frozen.** The layouts here reproduce the hand rolled ones exactly, oddities included
+//! (every `u8` branch, network and version is widened to a little endian `u64`, for instance). Improving a layout
+//! is a wire format change with its own application version bump, never a codec refactor. The golden vectors in
+//! `minotari_ledger_wallet_comms/tests/golden_vectors.rs` were captured before this module existed and must keep
+//! passing unchanged.
+//!
+//! # Shape
+//!
+//! - **Decoding is zero copy.** A decoded request borrows its 32 and 64 byte fields straight out of the received buffer
+//!   as `&[u8; N]`. The device has a very small stack, and decoding must never buffer a payload a second time.
+//! - **Encoding writes to a sink.** [`Encode::encode`] takes a [`Writer`] rather than returning a `Vec`, so the device
+//!   writes a reply straight into its APDU buffer. The host's [`Encode::to_vec`] convenience sits behind the `alloc`
+//!   feature, which the device build does not enable.
+//! - **Every request carries its account.** The transport has always prepended the account to the first (or only) chunk
+//!   of every instruction, and the device has always read it as the first eight bytes, so it is the first field of
+//!   every request type here rather than something bolted on outside the layout.
+//!
+//! Anything the typed encoders refuse to construct - a malformed APDU the device has to reject - goes through
+//! `minotari_ledger_wallet_comms::raw` instead.
+
+mod keys;
+mod replies;
+
+#[cfg(any(feature = "alloc", test))]
+use alloc::vec::Vec;
+
+pub use keys::{GetPublicKeyRequest, GetViewKeyRequest};
+pub use replies::KeyReply;
+
+use crate::common_types::Instruction;
+
+/// The class byte of every APDU the application accepts. The device configures its transport to refuse any other
+/// with `ledger_device_sdk::io::StatusWords::BadCla`, before the application sees the command.
+pub const CLA: u8 = 0x80;
+
+/// The version byte the application prefixes every reply with, bar `GetVersion` and `GetAppName`.
+///
+/// The host checks it where a reply's layout has changed within the lifetime of this protocol - `GetScriptOffset`
+/// and `GenerateEphemeralNonce` - so that talking to an application that is too old is a legible error rather than
+/// a misparse.
+pub const RESPONSE_VERSION: u8 = 2;
+
+/// Size of the account every request starts with.
+pub const ACCOUNT_SIZE: usize = 8;
+
+/// A sink for encoded bytes.
+///
+/// The device implements this over its APDU reply buffer, and the host over a `Vec<u8>`. Writes cannot fail: the
+/// largest reply is 161 bytes, well inside the device's reply buffer, the host's sink grows, and a sink that could
+/// fail would put an error path into every encoder on a device that has no room for them.
+pub trait Writer {
+    fn write(&mut self, bytes: &[u8]);
+}
+
+#[cfg(any(feature = "alloc", test))]
+impl Writer for Vec<u8> {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        self.extend_from_slice(bytes);
+    }
+}
+
+/// Why a buffer could not be decoded.
+///
+/// There is only one reason, because the codec only frames. A device handler maps it to
+/// `AppSW::WrongApduLength`, exactly as its hand written length check did; a host maps it to the error message its
+/// accessor has always produced for a short reply.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DecodeError {
+    /// The buffer was not a length this layout can have.
+    WrongLength,
+}
+
+/// A layout that can be written to the wire.
+pub trait Encode {
+    /// Write this value's wire bytes to `out`.
+    fn encode(&self, out: &mut impl Writer);
+
+    /// This value's wire bytes, for the host.
+    #[cfg(any(feature = "alloc", test))]
+    fn to_vec(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        self.encode(&mut out);
+        out
+    }
+}
+
+/// A layout that can be read back off the wire, borrowing from the buffer it was read from.
+pub trait Decode<'a>: Sized {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError>;
+}
+
+/// A single exchange instruction's payload, with the APDU header it travels under.
+///
+/// The header is part of the layout: the device dispatches on `ins` and refuses a `p1`/`p2` it does not expect, so
+/// the encoder has to be the thing that decides them.
+pub trait Request: Encode {
+    /// The instruction this payload is sent as.
+    const INSTRUCTION: Instruction;
+
+    /// The APDU `p1` byte. Zero for every single exchange instruction.
+    fn p1(&self) -> u8 {
+        0
+    }
+
+    /// The APDU `p2` byte. Zero for every single exchange instruction.
+    fn p2(&self) -> u8 {
+        0
+    }
+}
+
+/// Write a `u64` field: little endian, eight bytes.
+#[inline]
+fn write_u64(out: &mut impl Writer, value: u64) {
+    out.write(&value.to_le_bytes());
+}
+
+/// A cursor over a received buffer that hands out borrowed fixed width fields.
+///
+/// `split_first_chunk` rather than indexing, so that a decoder has no bounds check to panic on: a device that
+/// panicked on a malformed APDU would exit the application rather than answer with a status word.
+struct Reader<'a> {
+    rest: &'a [u8],
+}
+
+impl<'a> Reader<'a> {
+    /// A reader over a buffer that must be exactly `size` bytes - the device's `data.len() != N` check.
+    #[inline]
+    fn exact(data: &'a [u8], size: usize) -> Result<Self, DecodeError> {
+        if data.len() != size {
+            return Err(DecodeError::WrongLength);
+        }
+        Ok(Self { rest: data })
+    }
+
+    /// A reader over a buffer that must be at least `size` bytes, trailing bytes ignored - the host's
+    /// `data.len() < N` check on a reply.
+    #[inline]
+    fn at_least(data: &'a [u8], size: usize) -> Result<Self, DecodeError> {
+        if data.len() < size {
+            return Err(DecodeError::WrongLength);
+        }
+        Ok(Self { rest: data })
+    }
+
+    #[inline]
+    fn array<const N: usize>(&mut self) -> Result<&'a [u8; N], DecodeError> {
+        let (field, rest) = self.rest.split_first_chunk::<N>().ok_or(DecodeError::WrongLength)?;
+        self.rest = rest;
+        Ok(field)
+    }
+
+    #[inline]
+    fn u64(&mut self) -> Result<u64, DecodeError> {
+        self.array::<8>().map(|bytes| u64::from_le_bytes(*bytes))
+    }
+
+    #[inline]
+    fn u8(&mut self) -> Result<u8, DecodeError> {
+        self.array::<1>().map(|&[byte]| byte)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    // A panic is the desired failure mode in a test.
+    #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+
+    use alloc::vec;
+
+    use super::*;
+
+    /// What an instruction's encoder is registered as.
+    enum Registration {
+        /// Encodes a sample request, and reports which instruction the encoder believes it is.
+        Encoder(fn() -> (Instruction, Vec<u8>)),
+        /// Not yet moved onto the codec: still hand rolled in `accessor_methods`. This variant exists only for the
+        /// duration of the migration and is deleted with the last instruction to move.
+        Pending,
+    }
+
+    fn registered<R: Request>(request: &R) -> (Instruction, Vec<u8>) {
+        (R::INSTRUCTION, request.to_vec())
+    }
+
+    /// Every instruction's encoder.
+    ///
+    /// An exhaustive `match` on purpose, in the style of `test_instruction_conversion`: a new `Instruction` variant
+    /// without an entry here is a compile error, not a row that is silently skipped. And because each arm reports
+    /// the instruction its encoder is typed for, an arm pointing at the wrong encoder fails the test below.
+    fn registration(instruction: Instruction) -> Registration {
+        match instruction {
+            Instruction::GetVersion => Registration::Pending,
+            Instruction::GetAppName => Registration::Pending,
+            Instruction::GetPublicSpendKey => Registration::Pending,
+            Instruction::GetPublicKey => Registration::Encoder(|| {
+                registered(&GetPublicKeyRequest {
+                    account: 1,
+                    index: 2,
+                    branch: 3,
+                })
+            }),
+            Instruction::GetScriptSignatureDerived => Registration::Pending,
+            Instruction::GetScriptOffset => Registration::Pending,
+            Instruction::GetViewKey => Registration::Encoder(|| registered(&GetViewKeyRequest { account: 1 })),
+            Instruction::GetDHSharedSecret => Registration::Pending,
+            Instruction::GetRawSchnorrSignature => Registration::Pending,
+            Instruction::GetScriptSchnorrSignature => Registration::Pending,
+            Instruction::GetOneSidedMetadataSignature => Registration::Pending,
+            Instruction::GetScriptSignatureManaged => Registration::Pending,
+            Instruction::GenerateEphemeralNonce => Registration::Pending,
+            Instruction::GetRawSchnorrSignatureLegacyNonce => Registration::Pending,
+        }
+    }
+
+    /// Every instruction the protocol has, found by walking the whole byte range through `from_byte` - itself
+    /// pinned exhaustively by `test_instruction_conversion` - so that the list cannot fall behind the enum.
+    fn every_instruction() -> Vec<Instruction> {
+        (0..=u8::MAX).filter_map(Instruction::from_byte).collect()
+    }
+
+    #[test]
+    fn every_instruction_has_a_registered_encoder() {
+        let instructions = every_instruction();
+        assert_eq!(instructions.len(), 14, "a new instruction needs a registered encoder");
+
+        let mut pending = Vec::new();
+        for instruction in instructions {
+            match registration(instruction) {
+                Registration::Encoder(encode) => {
+                    let (encoded_as, bytes) = encode();
+                    assert_eq!(
+                        encoded_as, instruction,
+                        "{instruction:?} is registered with the encoder for {encoded_as:?}"
+                    );
+                    assert!(
+                        bytes.len() >= ACCOUNT_SIZE,
+                        "{instruction:?} encodes {} bytes, which cannot hold the account",
+                        bytes.len()
+                    );
+                },
+                Registration::Pending => pending.push(instruction),
+            }
+        }
+        // The migration's progress, pinned so that nothing is quietly moved back to `Pending`.
+        assert_eq!(pending, vec![
+            Instruction::GetVersion,
+            Instruction::GetAppName,
+            Instruction::GetPublicSpendKey,
+            Instruction::GetScriptSignatureDerived,
+            Instruction::GetScriptOffset,
+            Instruction::GetDHSharedSecret,
+            Instruction::GetRawSchnorrSignature,
+            Instruction::GetScriptSchnorrSignature,
+            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetScriptSignatureManaged,
+            Instruction::GenerateEphemeralNonce,
+            Instruction::GetRawSchnorrSignatureLegacyNonce,
+        ]);
+    }
+
+    #[test]
+    fn a_reader_hands_out_fields_in_order_and_refuses_to_run_past_the_end() {
+        let data = [1, 0, 0, 0, 0, 0, 0, 0, 0xaa, 0xbb];
+        let mut reader = Reader::exact(&data, 10).unwrap();
+        assert_eq!(reader.u64(), Ok(1));
+        assert_eq!(reader.u8(), Ok(0xaa));
+        assert_eq!(reader.array::<1>(), Ok(&[0xbb]));
+        assert_eq!(reader.u8(), Err(DecodeError::WrongLength));
+
+        assert!(Reader::exact(&data, 9).is_err());
+        assert!(Reader::exact(&data, 11).is_err());
+        assert!(Reader::at_least(&data, 10).is_ok());
+        assert!(Reader::at_least(&data, 9).is_ok());
+        assert!(Reader::at_least(&data, 11).is_err());
+    }
+}

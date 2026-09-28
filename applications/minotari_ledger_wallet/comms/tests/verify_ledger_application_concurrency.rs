@@ -30,17 +30,11 @@ use std::{
 };
 
 use ledger_transport::{APDUAnswer, APDUCommand};
-use minotari_ledger_wallet_common::common_types::Instruction;
+use minotari_ledger_wallet_common::{codec::RESPONSE_VERSION, common_types::Instruction};
 use minotari_ledger_wallet_comms::{
     accessor_methods::verify_ledger_application,
     error::LedgerDeviceError,
-    ledger_wallet::{
-        EXPECTED_NAME,
-        EXPECTED_RESPONSE_VERSION,
-        LedgerTransport,
-        MIN_LEDGER_APP_VERSION,
-        register_transport,
-    },
+    ledger_wallet::{EXPECTED_NAME, LedgerTransport, MIN_LEDGER_APP_VERSION, register_transport},
 };
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
@@ -135,7 +129,7 @@ impl LedgerTransport for StubDevice {
                 // account(8) | index(8) | branch(8)
                 assert_eq!(command.data.len(), 24, "GetPublicKey payload");
                 let secret = self.key_for(&command.data);
-                let mut data = vec![EXPECTED_RESPONSE_VERSION];
+                let mut data = vec![RESPONSE_VERSION];
                 data.extend_from_slice(RistrettoPublicKey::from_secret_key(&secret).as_bytes());
                 data
             },
@@ -150,7 +144,7 @@ impl LedgerTransport for StubDevice {
                     challenge,
                 )
                 .unwrap();
-                let mut data = vec![EXPECTED_RESPONSE_VERSION];
+                let mut data = vec![RESPONSE_VERSION];
                 data.extend_from_slice(signature.get_public_nonce().as_bytes());
                 data.extend_from_slice(signature.get_signature().as_bytes());
                 data

@@ -27,6 +27,7 @@ use std::{
 
 use log::debug;
 use minotari_ledger_wallet_common::{
+    codec::{Decode, GetPublicKeyRequest, GetViewKeyRequest, KeyReply, RESPONSE_VERSION},
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
     legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
@@ -50,7 +51,8 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     error::LedgerDeviceError,
-    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_RESPONSE_VERSION, MIN_LEDGER_APP_VERSION},
+    ledger_wallet::{Command, EXPECTED_NAME, MIN_LEDGER_APP_VERSION},
+    raw,
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
@@ -231,7 +233,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
 pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
+    match raw::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
         Ok(response) => {
             let name = match std::str::from_utf8(response.data()) {
                 Ok(val) => {
@@ -252,7 +254,7 @@ pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
 pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
+    match raw::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
         Ok(response) => {
             let name = match std::str::from_utf8(response.data()) {
                 Ok(val) => {
@@ -274,7 +276,7 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
     debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
+    match raw::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -302,22 +304,22 @@ pub fn ledger_get_public_key(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    let branch_u64 = u64::from(branch.as_byte()).to_le_bytes();
-    data.extend_from_slice(&branch_u64);
+    let request = GetPublicKeyRequest {
+        account,
+        index,
+        branch: u64::from(branch.as_byte()),
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicKey, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let public_key =
-                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let public_key = RistrettoPublicKey::from_canonical_bytes(reply.key)?;
             Ok(public_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {e}"))),
@@ -369,7 +371,7 @@ pub fn ledger_get_script_signature(
         ScriptSignatureKey::Derived { .. } => Instruction::GetScriptSignatureDerived,
     };
 
-    match Command::<Vec<u8>>::build_command(account, instruction, data).execute() {
+    match raw::build_command(account, instruction, data).execute() {
         Ok(result) => {
             if result.data().len() < 161 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -473,10 +475,10 @@ pub fn ledger_get_script_offset(
             }
             let data = result.data();
             let version = *data.first().expect("Index should exist");
-            if version != EXPECTED_RESPONSE_VERSION {
+            if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetScriptOffset: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. Please \
-                     update the 'Minotari Wallet' application on your device."
+                    "GetScriptOffset: expected response version {RESPONSE_VERSION}, got {version}. Please update the \
+                     'Minotari Wallet' application on your device."
                 )));
             }
             let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
@@ -497,16 +499,16 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
     debug!(target: LOG_TARGET, "ledger_get_view_key: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
+    match Command::from_request(&GetViewKeyRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetViewKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let view_key = PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let view_key = PrivateKey::from_canonical_bytes(reply.key)?;
             Ok(view_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {e}"))),
@@ -530,7 +532,7 @@ pub fn ledger_get_dh_shared_secret(
     data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
     data.extend_from_slice(&public_key.to_vec());
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
+    match raw::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
         Ok(result) => {
             if result.data().len() < 33 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -558,7 +560,7 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
     debug!(target: LOG_TARGET, "ledger_generate_ephemeral_nonce: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
+    match raw::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
         Ok(result) => {
             if result.data().len() < EPHEMERAL_NONCE_REPLY_SIZE {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -570,10 +572,10 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
             }
             let data = result.data();
             let version = *data.first().expect("Index should exist");
-            if version != EXPECTED_RESPONSE_VERSION {
+            if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GenerateEphemeralNonce: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. \
-                     Please update the 'Minotari Wallet' application on your device."
+                    "GenerateEphemeralNonce: expected response version {RESPONSE_VERSION}, got {version}. Please \
+                     update the 'Minotari Wallet' application on your device."
                 )));
             }
             let mut handle_bytes = [0u8; 8];
@@ -618,7 +620,7 @@ pub fn ledger_get_raw_schnorr_signature(
     data.extend_from_slice(&nonce_handle.to_le_bytes());
     data.extend_from_slice(challenge);
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
+    match raw::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
         Ok(result) => {
             if result.data().len() < 65 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -684,7 +686,7 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
     data.extend_from_slice(challenge);
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
+    match raw::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
         Ok(result) => {
             if result.data().len() < 65 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -727,7 +729,7 @@ pub fn ledger_get_script_schnorr_signature(
     }
     data.extend_from_slice(nonce);
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetScriptSchnorrSignature, data).execute() {
+    match raw::build_command(account, Instruction::GetScriptSchnorrSignature, data).execute() {
         Ok(result) => {
             if result.data().len() < 65 {
                 return Err(LedgerDeviceError::Processing(format!(
@@ -803,7 +805,7 @@ pub fn ledger_get_one_sided_metadata_signature(
 
     data.extend_from_slice(&message.to_vec());
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
+    match raw::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
         Ok(result) => {
             if result.retcode() == AppSW::UserCancelled as u16 {
                 return Err(LedgerDeviceError::UserCancelled);

@@ -9,6 +9,7 @@ extern crate alloc;
 mod crypto;
 mod hashing;
 pub mod utils;
+mod wire;
 
 mod app_ui {
     pub mod menu;
@@ -49,16 +50,13 @@ use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-use minotari_ledger_wallet_common::common_types::{
-    AppSW as AppSWMapping,
-    Instruction as InstructionMapping,
-    LedgerKeyBranch as BranchMapping,
+use minotari_ledger_wallet_common::{
+    codec::{CLA, RESPONSE_VERSION},
+    common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
-static CLA: u8 = 0x80;
-static RESPONSE_VERSION: u8 = 2;
 
 // Application status words.
 #[repr(u16)]

@@ -23,6 +23,7 @@
 pub mod accessor_methods;
 pub mod error;
 pub mod ledger_wallet;
+pub mod raw;
 
 #[cfg(test)]
 mod test {

@@ -43,7 +43,10 @@ use std::{
 };
 
 use ledger_transport::{APDUAnswer, APDUCommand};
-use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    codec::{Decode, Encode, GetPublicKeyRequest, GetViewKeyRequest, KeyReply},
+    common_types::{Instruction, LedgerKeyBranch},
+};
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
         ScriptSignatureKey,
@@ -685,7 +688,11 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
     )
     .unwrap();
     assert_eq!(script_offset, scalar(0xa6));
-    assert_eq!(sender_offset_indexes, vec![BASE_INDEX, BASE_INDEX.wrapping_add(1), BASE_INDEX.wrapping_add(2)]);
+    assert_eq!(sender_offset_indexes, vec![
+        BASE_INDEX,
+        BASE_INDEX.wrapping_add(1),
+        BASE_INDEX.wrapping_add(2)
+    ]);
     assert_request("GetScriptOffset", device.take_sent(), &GET_SCRIPT_OFFSET_REQUEST);
 }
 
@@ -721,4 +728,43 @@ fn the_golden_replies_are_the_fixed_inputs_in_layout_order() {
         SCRIPT_OFFSET_REPLY,
         cat(&[&version, scalar(0xa6).as_bytes(), &BASE_INDEX.to_le_bytes()])
     );
+}
+
+/// The payload of a golden request: everything after `cla | ins | p1 | p2 | lc`, which is what the device's handler
+/// is handed.
+fn payload(golden: &str) -> Vec<u8> {
+    unhex(golden).split_off(5)
+}
+
+fn key_array(key: &impl ByteArray) -> [u8; 32] {
+    key.as_bytes().try_into().expect("32 byte key")
+}
+
+/// The other half of the contract: the shared codec - which the device application decodes requests and encodes
+/// replies with - reads exactly the golden request bytes back into the inputs the host encoded, and writes exactly
+/// the golden reply bytes from the values the host parsed out of them.
+///
+/// The request table above proves the host still sends these bytes; this proves the device still reads them the same
+/// way. Between the two, a layout cannot move on one side only.
+#[test]
+fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
+    // --- GetPublicKey
+    assert_eq!(
+        GetPublicKeyRequest::decode(&payload(GET_PUBLIC_KEY_REQUEST)),
+        Ok(GetPublicKeyRequest {
+            account: ACCOUNT,
+            index: INDEX,
+            branch: u64::from(LedgerKeyBranch::Random.as_byte()),
+        })
+    );
+
+    // --- GetViewKey
+    assert_eq!(
+        GetViewKeyRequest::decode(&payload(GET_VIEW_KEY_REQUEST)),
+        Ok(GetViewKeyRequest { account: ACCOUNT })
+    );
+
+    // --- Replies
+    assert_eq!(KeyReply::new(&key_array(&point(0xa1))).to_vec(), unhex(KEY_REPLY));
+    assert_eq!(KeyReply::new(&key_array(&scalar(0xa2))).to_vec(), unhex(VIEW_KEY_REPLY));
 }

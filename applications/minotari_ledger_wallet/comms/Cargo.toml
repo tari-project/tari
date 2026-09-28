@@ -27,7 +27,7 @@ tari_common_types = { workspace = true }
 tari_script = { workspace = true }
 tari_crypto = { workspace = true }
 
-minotari_ledger_wallet_common = { workspace = true }
+minotari_ledger_wallet_common = { workspace = true, features = ["alloc"] }
 semver = "1.0"
 borsh = { workspace = true }
 # No `dialoguer` here. It was only ever used by `examples/ledger_demo`, which moved to
