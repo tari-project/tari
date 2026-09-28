@@ -45,6 +45,7 @@
 
 mod keys;
 mod metadata;
+mod nonce;
 mod replies;
 mod signatures;
 
@@ -58,7 +59,12 @@ pub use metadata::{
     OneSidedMetadataSignatureTail,
     ReceiverAddressTooLong,
 };
-pub use replies::{ComAndPubSigReply, KeyReply, SchnorrReply};
+pub use nonce::{
+    GenerateEphemeralNonceRequest,
+    GetRawSchnorrSignatureLegacyNonceRequest,
+    GetRawSchnorrSignatureRequest,
+};
+pub use replies::{ComAndPubSigReply, EphemeralNonceReply, KeyReply, SchnorrReply};
 pub use signatures::{
     GetScriptSchnorrSignatureRequest,
     GetScriptSignatureDerivedRequest,
@@ -233,6 +239,7 @@ mod test {
     }
 
     const KEY: [u8; 32] = [0x11; 32];
+    const CHALLENGE: [u8; 64] = [0x22; 64];
 
     fn sample_script_signature_common() -> ScriptSignatureCommon<'static> {
         ScriptSignatureCommon {
@@ -272,7 +279,15 @@ mod test {
             Instruction::GetScriptOffset => Registration::Pending,
             Instruction::GetViewKey => Registration::Encoder(|| registered(&GetViewKeyRequest { account: 1 })),
             Instruction::GetDHSharedSecret => Registration::Pending,
-            Instruction::GetRawSchnorrSignature => Registration::Pending,
+            Instruction::GetRawSchnorrSignature => Registration::Encoder(|| {
+                registered(&GetRawSchnorrSignatureRequest {
+                    account: 1,
+                    index: 2,
+                    branch: 3,
+                    nonce_handle: 4,
+                    challenge: &CHALLENGE,
+                })
+            }),
             Instruction::GetScriptSchnorrSignature => Registration::Encoder(|| {
                 registered(&GetScriptSchnorrSignatureRequest {
                     account: 1,
@@ -294,8 +309,19 @@ mod test {
                     index: 4,
                 })
             }),
-            Instruction::GenerateEphemeralNonce => Registration::Pending,
-            Instruction::GetRawSchnorrSignatureLegacyNonce => Registration::Pending,
+            Instruction::GenerateEphemeralNonce => {
+                Registration::Encoder(|| registered(&GenerateEphemeralNonceRequest { account: 1 }))
+            },
+            Instruction::GetRawSchnorrSignatureLegacyNonce => Registration::Encoder(|| {
+                registered(&GetRawSchnorrSignatureLegacyNonceRequest {
+                    account: 1,
+                    key_index: 2,
+                    key_branch: 3,
+                    nonce_index: 4,
+                    nonce_branch: 5,
+                    challenge: &CHALLENGE,
+                })
+            }),
         }
     }
 
@@ -335,9 +361,6 @@ mod test {
             Instruction::GetPublicSpendKey,
             Instruction::GetScriptOffset,
             Instruction::GetDHSharedSecret,
-            Instruction::GetRawSchnorrSignature,
-            Instruction::GenerateEphemeralNonce,
-            Instruction::GetRawSchnorrSignatureLegacyNonce,
         ]);
     }
 

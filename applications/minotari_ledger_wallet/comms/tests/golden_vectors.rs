@@ -48,8 +48,12 @@ use minotari_ledger_wallet_common::{
         ComAndPubSigReply,
         Decode,
         Encode,
+        EphemeralNonceReply,
+        GenerateEphemeralNonceRequest,
         GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
+        GetRawSchnorrSignatureLegacyNonceRequest,
+        GetRawSchnorrSignatureRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
         GetScriptSignatureManagedRequest,
@@ -760,6 +764,7 @@ fn key_array(key: &impl ByteArray) -> [u8; 32] {
 /// The request table above proves the host still sends these bytes; this proves the device still reads them the same
 /// way. Between the two, a layout cannot move on one side only.
 #[test]
+#[allow(clippy::too_many_lines)]
 fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
     // --- GetPublicKey
     assert_eq!(
@@ -843,6 +848,37 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         .unwrap())
     );
 
+    // --- GenerateEphemeralNonce
+    assert_eq!(
+        GenerateEphemeralNonceRequest::decode(&payload(GENERATE_EPHEMERAL_NONCE_REQUEST)),
+        Ok(GenerateEphemeralNonceRequest { account: ACCOUNT })
+    );
+
+    // --- GetRawSchnorrSignature
+    assert_eq!(
+        GetRawSchnorrSignatureRequest::decode(&payload(GET_RAW_SCHNORR_SIGNATURE_REQUEST)),
+        Ok(GetRawSchnorrSignatureRequest {
+            account: ACCOUNT,
+            index: INDEX,
+            branch: u64::from(LedgerKeyBranch::Random.as_byte()),
+            nonce_handle: NONCE_HANDLE,
+            challenge: &[0xba; 64],
+        })
+    );
+
+    // --- GetRawSchnorrSignatureLegacyNonce
+    assert_eq!(
+        GetRawSchnorrSignatureLegacyNonceRequest::decode(&payload(GET_RAW_SCHNORR_SIGNATURE_LEGACY_NONCE_REQUEST)),
+        Ok(GetRawSchnorrSignatureLegacyNonceRequest {
+            account: ACCOUNT,
+            key_index: INDEX,
+            key_branch: u64::from(LedgerKeyBranch::PreMine.as_byte()),
+            nonce_index: NONCE_INDEX,
+            nonce_branch: u64::from(LedgerKeyBranch::Random.as_byte()),
+            challenge: &[0xbb; 64],
+        })
+    );
+
     // --- Replies
     assert_eq!(KeyReply::new(&key_array(&point(0xa1))).to_vec(), unhex(KEY_REPLY));
     assert_eq!(KeyReply::new(&key_array(&scalar(0xa2))).to_vec(), unhex(VIEW_KEY_REPLY));
@@ -860,5 +896,9 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         )
         .to_vec(),
         unhex(COM_AND_PUB_SIG_REPLY)
+    );
+    assert_eq!(
+        EphemeralNonceReply::new(NONCE_HANDLE, &key_array(&point(0xa5))).to_vec(),
+        unhex(EPHEMERAL_NONCE_REPLY)
     );
 }

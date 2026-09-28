@@ -11,7 +11,8 @@
 //! behaviour change a refactor must not make. The version byte is decoded but not checked - the host checks it only
 //! where it always has.
 
-use super::{Decode, DecodeError, Encode, RESPONSE_VERSION, Reader, Writer};
+use super::{Decode, DecodeError, Encode, RESPONSE_VERSION, Reader, Writer, write_u64};
+use crate::ephemeral_nonce::EPHEMERAL_NONCE_REPLY_SIZE;
 
 /// `version(1) | key(32)`, 33 bytes.
 ///
@@ -158,6 +159,52 @@ impl<'a> Decode<'a> for ComAndPubSigReply<'a> {
     }
 }
 
+/// `version(1) | handle(8) | public_nonce(32)`: the `GenerateEphemeralNonce` reply.
+///
+/// The private nonce never crosses the wire; only the opaque handle that names it and its public form do.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct EphemeralNonceReply<'a> {
+    pub version: u8,
+    pub handle: u64,
+    pub public_nonce: &'a [u8; 32],
+}
+
+impl<'a> EphemeralNonceReply<'a> {
+    /// [`EPHEMERAL_NONCE_REPLY_SIZE`], which predates this codec and which the scenario suite also checks against.
+    pub const SIZE: usize = EPHEMERAL_NONCE_REPLY_SIZE;
+
+    /// The reply the current application sends.
+    pub fn new(handle: u64, public_nonce: &'a [u8; 32]) -> Self {
+        Self {
+            version: RESPONSE_VERSION,
+            handle,
+            public_nonce,
+        }
+    }
+}
+
+// The fields have to add up to the size the rest of the crate declares.
+const _: () = assert!(1 + 8 + 32 == EphemeralNonceReply::SIZE);
+
+impl Encode for EphemeralNonceReply<'_> {
+    fn encode(&self, out: &mut impl Writer) {
+        out.write(&[self.version]);
+        write_u64(out, self.handle);
+        out.write(self.public_nonce);
+    }
+}
+
+impl<'a> Decode<'a> for EphemeralNonceReply<'a> {
+    fn decode(data: &'a [u8]) -> Result<Self, DecodeError> {
+        let mut reader = Reader::at_least(data, Self::SIZE)?;
+        Ok(Self {
+            version: reader.u8()?,
+            handle: reader.u64()?,
+            public_nonce: reader.array()?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     // A panic is the desired failure mode in a test.
@@ -211,5 +258,17 @@ mod test {
         }
         assert_eq!(ComAndPubSigReply::decode(&bytes), Ok(reply));
         assert!(ComAndPubSigReply::decode(&bytes[..160]).is_err());
+    }
+
+    #[test]
+    fn an_ephemeral_nonce_reply_is_the_version_then_the_handle_then_the_nonce() {
+        let reply = EphemeralNonceReply::new(0x0807_0605_0403_0201, &[0x44; 32]);
+        let bytes = reply.to_vec();
+        assert_eq!(bytes.len(), EPHEMERAL_NONCE_REPLY_SIZE);
+        assert_eq!(bytes[0], RESPONSE_VERSION);
+        assert_eq!(&bytes[1..9], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(&bytes[9..], &[0x44; 32]);
+        assert_eq!(EphemeralNonceReply::decode(&bytes), Ok(reply));
+        assert!(EphemeralNonceReply::decode(&bytes[..40]).is_err());
     }
 }

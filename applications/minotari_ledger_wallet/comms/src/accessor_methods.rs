@@ -30,8 +30,12 @@ use minotari_ledger_wallet_common::{
     codec::{
         ComAndPubSigReply,
         Decode,
+        EphemeralNonceReply,
+        GenerateEphemeralNonceRequest,
         GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
+        GetRawSchnorrSignatureLegacyNonceRequest,
+        GetRawSchnorrSignatureRequest,
         GetScriptSchnorrSignatureRequest,
         GetScriptSignatureDerivedRequest,
         GetScriptSignatureManagedRequest,
@@ -574,27 +578,24 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
     debug!(target: LOG_TARGET, "ledger_generate_ephemeral_nonce: account '{account}'");
     verify_ledger_application()?;
 
-    match raw::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
+    match Command::from_request(&GenerateEphemeralNonceRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < EPHEMERAL_NONCE_REPLY_SIZE {
+            let Ok(reply) = EphemeralNonceReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GenerateEphemeralNonce: expected {} bytes, got {} ({:?})",
                     EPHEMERAL_NONCE_REPLY_SIZE,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
-            let version = *data.first().expect("Index should exist");
+            };
+            let version = reply.version;
             if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GenerateEphemeralNonce: expected response version {RESPONSE_VERSION}, got {version}. Please \
                      update the 'Minotari Wallet' application on your device."
                 )));
             }
-            let mut handle_bytes = [0u8; 8];
-            handle_bytes.copy_from_slice(data.get(1..9).expect("Index should exist"));
-            let handle = u64::from_le_bytes(handle_bytes);
+            let handle = reply.handle;
             // Zero is the device's "no handle" value, so a reply carrying it is a reply the device never meant to
             // send. Refusing it here keeps a handle that can never be redeemed out of a key id.
             if handle == INVALID_NONCE_HANDLE {
@@ -602,7 +603,7 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
                     "GenerateEphemeralNonce: the device returned an invalid nonce handle".to_string(),
                 ));
             }
-            let public_nonce = CompressedPublicKey::from_canonical_bytes(data.get(9..41).expect("Index should exist"))?;
+            let public_nonce = CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?;
             Ok((handle, public_nonce))
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GenerateEphemeralNonce: {e}"))),
@@ -628,25 +629,27 @@ pub fn ledger_get_raw_schnorr_signature(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&nonce_handle.to_le_bytes());
-    data.extend_from_slice(challenge);
+    let request = GetRawSchnorrSignatureRequest {
+        account,
+        index: private_key_index,
+        branch: u64::from(private_key_branch.as_byte()),
+        nonce_handle,
+        challenge,
+    };
 
-    match raw::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },
@@ -693,26 +696,28 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     })?;
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&nonce_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(challenge);
+    let request = GetRawSchnorrSignatureLegacyNonceRequest {
+        account,
+        key_index: private_key_index,
+        key_branch: u64::from(private_key_branch.as_byte()),
+        nonce_index,
+        nonce_branch: u64::from(nonce_branch.as_byte()),
+        challenge,
+    };
 
-    match raw::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignatureLegacyNonce: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },
