@@ -20,10 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, FixedHash},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
@@ -70,16 +67,22 @@ pub trait TransactionValidator: Send + Sync {
     }
 
     /// Validate the internal consistency of a transaction (scripts, signatures, range proofs, balance). This is the
-    /// expensive part of validation and does not depend on the transaction's inputs being in the chain.
+    /// expensive part of validation and does not depend on the transaction's inputs being in the chain. It does depend
+    /// on the chain tip (e.g. scripts can check the block height), so the caller may provide the tip to validate
+    /// against; if `None`, the current tip is used.
     ///
     /// The default does nothing, since the default [`Self::validate_chain_linked`] already performs full validation.
-    fn validate_internal_consistency(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate_internal_consistency(
+        &self,
+        _tx: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
         Ok(())
     }
 
-    /// The hash of the chain tip that chain-linked validation is currently performed against, or `None` if it is not
-    /// known. Used to detect whether the tip has moved since a transaction was validated.
-    fn tip_hash(&self) -> Result<Option<FixedHash>, ValidationError> {
+    /// The chain tip that validation is currently performed against, or `None` if it is not known. Used to detect
+    /// whether the tip has moved since a transaction was validated.
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
         Ok(None)
     }
 }

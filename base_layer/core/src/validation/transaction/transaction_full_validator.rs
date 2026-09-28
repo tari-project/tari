@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::FixedHash;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     transaction_components::Transaction,
@@ -71,7 +71,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> 
             Err(e) => return Err(e),
         }
         // `UnknownInputs` may only be returned for an otherwise valid transaction
-        self.validate_internal_consistency(tx)?;
+        self.validate_internal_consistency(tx, None)?;
         chain_result
     }
 
@@ -79,16 +79,23 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> 
         self.chain_validator.validate(tx)
     }
 
-    fn validate_internal_consistency(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let tip = {
-            let db = self.db.db_read_access()?;
-            db.fetch_chain_metadata()
-        }?;
+    fn validate_internal_consistency(
+        &self,
+        tx: &Transaction,
+        tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        let tip = match tip {
+            Some(tip) => tip.clone(),
+            None => {
+                let db = self.db.db_read_access()?;
+                db.fetch_chain_metadata()?
+            },
+        };
         self.internal_validator.validate_with_current_tip(tx, tip)?;
         Ok(())
     }
 
-    fn tip_hash(&self) -> Result<Option<FixedHash>, ValidationError> {
-        self.chain_validator.tip_hash()
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
+        self.chain_validator.chain_metadata()
     }
 }

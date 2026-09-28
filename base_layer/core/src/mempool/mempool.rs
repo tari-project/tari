@@ -26,7 +26,10 @@ use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
-use tokio::{sync::watch, task};
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore, watch},
+    task,
+};
 
 use crate::{
     consensus::BaseNodeConsensusManager,
@@ -60,6 +63,19 @@ pub struct Mempool {
     // Broadcasts the last-seen block (hash + height) every time the mempool processes a block (or reorg). Consumers
     // that need to wait for the mempool to catch up to a given tip can subscribe instead of busy-polling.
     last_seen_tx: watch::Sender<MempoolLastSeen>,
+    // Bounds how many new transactions are validated at the same time. Validation is done without holding the storage
+    // lock, so without this every inbound transaction would get its own blocking thread, starving block validation of
+    // CPU and holding a database read transaction each.
+    validation_permits: Arc<Semaphore>,
+}
+
+/// The maximum number of new transactions that are validated concurrently: half the available cores, at least 1 and at
+/// most 8.
+fn max_concurrent_validations() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get() / 2)
+        .unwrap_or(1)
+        .clamp(1, 8)
 }
 
 impl Mempool {
@@ -73,6 +89,7 @@ impl Mempool {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
             last_seen_tx,
+            validation_permits: Arc::new(Semaphore::new(max_concurrent_validations())),
         }
     }
 
@@ -86,6 +103,7 @@ impl Mempool {
     /// The transaction is validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]).
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
         let storage = self.pool_storage.clone();
+        let _permit = self.acquire_validation_permit().await?;
         task::spawn_blocking(move || MempoolStorage::insert_unlocked(&storage, tx)).await?
     }
 
@@ -93,6 +111,7 @@ impl Mempool {
     /// (see [`MempoolStorage::insert_unlocked`]).
     pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         let storage = self.pool_storage.clone();
+        let _permit = self.acquire_validation_permit().await?;
         task::spawn_blocking(move || {
             for tx in transactions {
                 MempoolStorage::insert_unlocked(&storage, tx)?;
@@ -100,6 +119,14 @@ impl Mempool {
             Ok(())
         })
         .await?
+    }
+
+    async fn acquire_validation_permit(&self) -> Result<OwnedSemaphorePermit, MempoolError> {
+        self.validation_permits
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| MempoolError::InternalError(format!("Mempool validation semaphore closed: {e}")))
     }
 
     /// Update the Mempool based on the received published block.
@@ -265,5 +292,74 @@ impl Mempool {
 
     pub async fn get_last_seen_hash(&self) -> Result<FixedHash, MempoolError> {
         self.with_read_access(|storage| Ok(storage.last_seen_hash)).await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
+
+    use super::*;
+    use crate::{test_helpers::create_consensus_rules, validation::ValidationError};
+
+    /// A validator that takes a while to validate, and records the maximum number of concurrent validations
+    #[derive(Default)]
+    struct SlowValidator {
+        current: AtomicUsize,
+        max: AtomicUsize,
+    }
+
+    impl TransactionValidator for Arc<SlowValidator> {
+        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+            let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+            self.max.fetch_max(current, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            self.current.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_inserts_are_bounded() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = Arc::new(SlowValidator::default());
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator.clone()));
+        let permits = max_concurrent_validations();
+
+        let num_txs = permits * 4 + 2;
+        // Create the transactions up front, so that the inserts really are concurrent
+        let txs = (0..num_txs)
+            .map(|_| {
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0
+            })
+            .collect::<Vec<_>>();
+        let mut tasks = Vec::with_capacity(num_txs);
+        for (i, tx) in txs.into_iter().enumerate() {
+            let mempool = mempool.clone();
+            tasks.push(tokio::spawn(async move {
+                if i % 2 == 0 {
+                    mempool.insert(Arc::new(tx)).await.map(|_| ())
+                } else {
+                    mempool.insert_all(vec![Arc::new(tx)]).await
+                }
+            }));
+        }
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+
+        assert!(validator.max.load(Ordering::SeqCst) >= 1);
+        assert!(
+            validator.max.load(Ordering::SeqCst) <= permits,
+            "{} concurrent validations with {permits} permits",
+            validator.max.load(Ordering::SeqCst)
+        );
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, num_txs as u64);
     }
 }

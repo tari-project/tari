@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::FixedHash;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
@@ -67,8 +67,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
         Ok(())
     }
 
-    fn tip_hash(&self) -> Result<Option<FixedHash>, ValidationError> {
-        let metadata = self.db.db_read_access()?.fetch_chain_metadata()?;
-        Ok(Some(*metadata.best_block_hash()))
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
+        Ok(Some(self.db.db_read_access()?.fetch_chain_metadata()?))
     }
 }
