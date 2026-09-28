@@ -72,6 +72,18 @@ exclude = [
     #
     #     cargo test --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
     #
+    # Exactly one crate in this workspace depends on it: `tari_transaction_components`, as a *dev*-dependency in a
+    # `[target.'cfg(tari_ledger_speculos)'.dev-dependencies]` table, for the key manager suite in its
+    # `tests/ledger_key_manager`. Both gates matter. A dev-dependency is never resolved by a non-test build under any
+    # flags, so `cargo build --bin minotari_console_wallet` cannot reach it; and the custom cfg - set only by
+    # `scripts/ledger_speculos.sh`, through RUSTFLAGS, into `target/ledger-speculos` - keeps the crate out of every
+    # other test and lint invocation as well, `cargo ci-test` and `cargo ci-clippy` included, so the two checks in
+    # `comms_testing/src/lib.rs` still print nothing and `['default']`. A plain, ungated dev-dependency would not: a
+    # `cargo test --workspace` would unify `test_transport` into every binary it builds, and the first of those
+    # checks would print a line. (The `--all-features` in `ci-test` and `ci-clippy` switches `test_transport` on
+    # by itself, as a feature of `comms`, and did before this dependency existed; neither builds a shipped binary.)
+    # Keep the gate if you move the dependency, and do not add a second dependent.
+    #
     # (`applications/minotari_ledger_wallet/wallet` is a separate workspace for its own reasons and is the in-repo
     # precedent for this shape.)
     "applications/minotari_ledger_wallet/comms_testing",
@@ -120,7 +132,8 @@ minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms", version = "6.0.1-pre.0" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common", version = "6.0.1-pre.0" }
 # There is deliberately no `minotari_ledger_wallet_comms_testing` entry here. That crate is an excluded, separate
-# workspace (see `[workspace] exclude` above) and nothing in this workspace may depend on it.
+# workspace (see `[workspace] exclude` above), and its one dependent - a cfg-gated dev-dependency of
+# `tari_transaction_components` - names it by path so that nothing else can pick it up from here by accident.
 minotari_mcp_common = { path = "applications/minotari_mcp_common", version = "6.0.1-pre.0" }
 
 tari_utilities = { version = "0.10" }

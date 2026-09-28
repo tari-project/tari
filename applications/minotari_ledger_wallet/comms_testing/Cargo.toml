@@ -4,6 +4,10 @@
 # then unifies the `test_transport` feature it enables into the one `minotari_ledger_wallet_comms` rlib that the
 # shipped `minotari_console_wallet` links.
 #
+# Its one dependent in the root workspace is `tari_transaction_components`, and only as a dev-dependency gated on
+# `cfg(tari_ledger_speculos)` - which only `scripts/ledger_speculos.sh` sets. See the comment on that table in
+# `base_layer/transaction_components/Cargo.toml` before adding a second one.
+#
 # Because it is its own workspace, the fields below cannot be inherited from the root `[workspace.package]` and are
 # written out literally. Keep them in step with the root workspace when it moves.
 [workspace]

@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 #
-# Build the Minotari Ledger application and run the scenario suite against it in a Speculos simulator.
+# Build the Minotari Ledger application and run both device suites against it in a Speculos simulator.
 #
-# That suite is the key derivation vector table plus the scenario library in `comms_testing/src/scenarios`:
+# The first is the key derivation vector table plus the scenario library in `comms_testing/src/scenarios`:
 # cryptographic verification of every signature the device returns, the malformed-APDU probes, the script offset
 # context and ephemeral nonce store behaviour that only exists between exchanges, and the legacy nonce branch
 # whitelist. `comms_testing/examples/ledger_demo.rs` runs the same scenarios against real hardware.
+#
+# The second is the key manager's: `base_layer/transaction_components/tests/ledger_key_manager`, which drives the
+# `ledger_*_wrapper` methods in `src/key_manager/manager.rs` through a ledger-mode key manager against the same
+# simulator. It only exists when compiled with `--cfg tari_ledger_speculos`, and this script is the only thing that
+# sets it - see `key_manager_cargo` below, and the `cfg(tari_ledger_speculos)` dev-dependencies in that crate's
+# Cargo.toml for why it is a cfg and not a cargo feature.
 #
 # CI runs this on every pull request: the `ledger speculos tests` job in .github/workflows/ledger_tests.yml calls
 # `build` and `test` below, and the `ledger build tests` job in .github/workflows/ci.yml calls `build` for all four
@@ -22,7 +28,8 @@
 #   ./scripts/ledger_speculos.sh api-address [m] [seed] Print a running simulator's HTTP API host address
 #   ./scripts/ledger_speculos.sh logs [model] [seed]    Print a running simulator's log
 #   ./scripts/ledger_speculos.sh down [--all]           Remove this run's simulators (--all: every run's)
-#   ./scripts/ledger_speculos.sh test [model...]        Build, run the suite over every model x seed, tear down
+#   ./scripts/ledger_speculos.sh compile                Compile (and lint the key manager half of) both suites
+#   ./scripts/ledger_speculos.sh test [model...]        Build, run both suites over every model x seed, tear down
 #
 # Environment:
 #   MODELS                Models to cover.            Default: "nanosplus stax"
@@ -32,6 +39,7 @@
 #   SPECULOS_RUN_ID       Isolates concurrent runs.   Default: the GitHub run/job, else this shell's PID
 #   JUNIT_DIR             Where JUnit XML is written. Default: <repo>/target/speculos-junit
 #   SPECULOS_LOG_DIR      Where logs are written.     Default: <repo>/target/speculos-logs
+#   KEY_MANAGER_TARGET_DIR  Target dir for the key manager suite. Default: <repo>/target/ledger-speculos
 #
 # Host ports are **not** configurable, and do not need to be: Docker picks a free ephemeral port for each
 # simulator and this script asks it which one with `docker port`. That is part of what makes two copies of this
@@ -41,7 +49,8 @@
 # runner case - are safe. Container names are scoped by run id and host ports are allocated by Docker, so neither
 # run can see or delete the other's simulators. Two `test` runs in the *same* working tree are not supported and
 # cannot be made so here: they would share the Cargo target directory, the `.elf` output directory and JUNIT_DIR,
-# none of which this script owns. Give the second one its own checkout, or its own CARGO_TARGET_DIR and JUNIT_DIR.
+# none of which this script owns. Give the second one its own checkout, or its own CARGO_TARGET_DIR,
+# KEY_MANAGER_TARGET_DIR and JUNIT_DIR.
 #
 # An interactive `up` simulator is in a different scope again, so a `test` run will not tear it down - *unless*
 # SPECULOS_RUN_ID is set, which deliberately collapses the two scopes into one so that an operator who wants
@@ -84,6 +93,24 @@ BUILDER_IMAGE="${BUILDER_IMAGE:-ghcr.io/ledgerhq/ledger-app-builder/ledger-app-b
 # The one test `cmd_test` skips, on every model. Named once so the exclusion and the comment that explains it
 # cannot drift apart; see `cmd_test`.
 BLOCKING_PROBE="a_wrong_length_payload_does_not_block_on_a_button_press"
+
+# The key manager suite, in the root workspace.
+#
+# `--cfg tari_ledger_speculos` is what makes that suite - and the `comms_testing` dev-dependency that carries the
+# simulator transport - exist at all, and nothing but this script sets it. It goes in through RUSTFLAGS because a
+# `[target.'cfg(..)']` table is evaluated against `rustc --print cfg`, which sees RUSTFLAGS and nothing else a
+# caller can set; a cargo feature would be switched on by the `--all-features` in `cargo ci-test`, which has no
+# simulator to talk to.
+#
+# Its own target directory, because RUSTFLAGS is part of every artifact's fingerprint: sharing the root `target/`
+# would rebuild the whole dependency graph there on every switch between this and an ordinary `cargo build`, in both
+# directions.
+KEY_MANAGER_PACKAGE="tari_transaction_components"
+KEY_MANAGER_TEST="ledger_key_manager"
+KEY_MANAGER_CFG="--cfg tari_ledger_speculos"
+KEY_MANAGER_TARGET_DIR="${KEY_MANAGER_TARGET_DIR:-${REPO_ROOT}/target/ledger-speculos}"
+# The nextest profile in the root `.config/nextest.toml`: one test at a time, no retries, JUnit with output kept.
+KEY_MANAGER_PROFILE="ledger-speculos"
 JUNIT_DIR="${JUNIT_DIR:-${REPO_ROOT}/target/speculos-junit}"
 SPECULOS_LOG_DIR="${SPECULOS_LOG_DIR:-${REPO_ROOT}/target/speculos-logs}"
 
@@ -527,14 +554,25 @@ arm_teardown() {
 # That is measured behaviour of one version, not a contract, and a later nextest may well start respecting
 # CARGO_TARGET_DIR. So rather than betting on either, both candidates are cleared before a run and searched after
 # it. Whichever nextest actually used is the one that will be there.
+#
+# `$1` is the suite: `scenarios` (the comms_testing workspace, profile `ci`) or `key-manager` (the root workspace,
+# profile `ledger-speculos`, always with KEY_MANAGER_TARGET_DIR as its CARGO_TARGET_DIR).
 junit_candidates() {
-  echo "${COMMS_TESTING_DIR}/target/nextest/ci/junit.xml"
-  if [ -n "${CARGO_TARGET_DIR:-}" ]; then
-    echo "${CARGO_TARGET_DIR}/nextest/ci/junit.xml"
-  fi
-  if [ -n "${CARGO_BUILD_TARGET_DIR:-}" ]; then
-    echo "${CARGO_BUILD_TARGET_DIR}/nextest/ci/junit.xml"
-  fi
+  case "$1" in
+    scenarios)
+      echo "${COMMS_TESTING_DIR}/target/nextest/ci/junit.xml"
+      if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        echo "${CARGO_TARGET_DIR}/nextest/ci/junit.xml"
+      fi
+      if [ -n "${CARGO_BUILD_TARGET_DIR:-}" ]; then
+        echo "${CARGO_BUILD_TARGET_DIR}/nextest/ci/junit.xml"
+      fi
+      ;;
+    key-manager)
+      echo "${REPO_ROOT}/target/nextest/${KEY_MANAGER_PROFILE}/junit.xml"
+      echo "${KEY_MANAGER_TARGET_DIR}/nextest/${KEY_MANAGER_PROFILE}/junit.xml"
+      ;;
+  esac
 }
 
 # Remove every candidate before a run.
@@ -546,7 +584,7 @@ clear_junit_reports() {
   local candidate
   while IFS= read -r candidate; do
     rm -f "${candidate}"
-  done < <(junit_candidates)
+  done < <(junit_candidates "$1")
 }
 
 # The report nextest just wrote, if any.
@@ -557,8 +595,68 @@ find_junit_report() {
       echo "${candidate}"
       return 0
     fi
-  done < <(junit_candidates)
+  done < <(junit_candidates "$1")
   return 1
+}
+
+# Cargo, as the key manager suite needs it: the cfg that makes the suite exist, and a target directory of its own.
+# Any RUSTFLAGS the caller already had are kept, and the cfg appended to them.
+#
+# Refuses to run at all if CARGO_ENCODED_RUSTFLAGS is set. Cargo reads that variable *instead of* RUSTFLAGS when both
+# are present, so the cfg appended below would be dropped without a word - and without the cfg the suite compiles to
+# an empty test binary, which is the one outcome that must never look like a pass. Refusing rather than unsetting it,
+# because whoever set it meant something by it and should decide how the two combine.
+key_manager_cargo() {
+  if [ -n "${CARGO_ENCODED_RUSTFLAGS+set}" ]; then
+    echo "==> CARGO_ENCODED_RUSTFLAGS is set, and cargo would use it instead of RUSTFLAGS - dropping" >&2
+    echo "    '${KEY_MANAGER_CFG}', without which the key manager suite compiles to no tests at all. Unset it, or" >&2
+    echo "    fold its flags into RUSTFLAGS, and run again." >&2
+    return 1
+  fi
+  RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }${KEY_MANAGER_CFG}" \
+    CARGO_TARGET_DIR="${KEY_MANAGER_TARGET_DIR}" \
+    cargo "$@"
+}
+
+# How many tests the key manager suite must report: every `#[test]` in its source files, counted afresh on each run.
+#
+# Derived rather than written down, so adding a test never needs a second edit here - and exact rather than a floor,
+# because that suite skips nothing, ignores nothing and filters nothing, so any shortfall at all means tests were
+# lost somewhere between the source and the report. A zero from this count is itself an error: it means the files
+# moved and the check would otherwise compare against nothing.
+key_manager_expected_tests() {
+  local count
+  count="$(cat "${REPO_ROOT}/base_layer/transaction_components/tests/${KEY_MANAGER_TEST}"/*.rs \
+    | grep -c '^[[:space:]]*#\[test\][[:space:]]*$' || true)"
+  if [ -z "${count}" ] || [ "${count}" -eq 0 ]; then
+    echo "==> Found no #[test] in base_layer/transaction_components/tests/${KEY_MANAGER_TEST}" >&2
+    return 1
+  fi
+  echo "${count}"
+}
+
+# The `tests="N"` count on a JUnit report's `<testsuites>` element.
+junit_test_count() {
+  sed -n 's/^<testsuites[^>]* tests="\([0-9][0-9]*\)".*/\1/p' "$1" | head -n 1
+}
+
+# The key manager suite's cargo target selection, shared by `compile` and `test` so the two cannot build different
+# things. `--features ledger` is required: without it the key manager refuses a ledger wallet, and the test crate
+# says so with a `compile_error!` rather than letting every test fail on it.
+KEY_MANAGER_TARGET_ARGS=(--locked -p "${KEY_MANAGER_PACKAGE}" --features ledger --test "${KEY_MANAGER_TEST}")
+
+# Compile both suites without running either, so that CI can charge compile time to its own step rather than to
+# the test step's timeout. nextest reuses these artifacts.
+#
+# The key manager suite is also linted here. It only exists under `--cfg tari_ledger_speculos`, so the root
+# workspace's `cargo ci-clippy` never sees a line of it; this is the one place anything does.
+cmd_compile() {
+  echo "==> Compiling the scenario suite"
+  cargo test --locked --no-run --manifest-path "${COMMS_TESTING_MANIFEST}"
+  echo "==> Compiling the key manager suite into ${KEY_MANAGER_TARGET_DIR}"
+  key_manager_cargo test --no-run "${KEY_MANAGER_TARGET_ARGS[@]}"
+  echo "==> Linting the key manager suite"
+  key_manager_cargo clippy "${KEY_MANAGER_TARGET_ARGS[@]}" -- -D warnings
 }
 
 # JUnit comes from cargo-nextest, which writes it natively from its `ci` profile - see
@@ -587,6 +685,13 @@ Or, without JUnit, run the suite directly against a simulator you started yourse
 
 The --skip is needed on every model. That test documents an unfixed device bug and leaves the device unusable by
 the tests after it; see its doc comment.
+
+And the key manager suite, against the same simulator:
+
+  SPECULOS_APDU_ADDRESS=... SPECULOS_API_ADDRESS=... SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
+  RUSTFLAGS="--cfg tari_ledger_speculos" CARGO_TARGET_DIR=target/ledger-speculos \
+    cargo test --locked -p tari_transaction_components --features ledger --test ledger_key_manager -- \
+      --test-threads=1
 EOF
     return 1
   fi
@@ -614,12 +719,15 @@ EOF
 # "nanosplus stax" into the XML of a run that only covered nanosplus: precisely the misattribution this annotator
 # exists to prevent, arriving through the one override the console summary already handled correctly. `seeds` has
 # no positional form, so the global is the resolved value.
+#
+# `suite` says which of the two suites the report is from, and `skipped` which test it ran without - the blocking
+# probe for the scenario suite, and nothing for the key manager suite, which skips nothing.
 annotate_junit() {
-  local report="$1" model="$2" seed="$3" covered_models="$4"
+  local report="$1" model="$2" seed="$3" covered_models="$4" suite="$5" skipped="$6"
   awk -v model="${model}" -v seed="${seed}" \
       -v models="${covered_models}" -v seeds="${SEEDS}" \
       -v speculos="${SPECULOS_IMAGE}" -v builder="${BUILDER_IMAGE}" \
-      -v probe="${BLOCKING_PROBE}" '
+      -v suite="${suite}" -v probe="${skipped}" '
     function esc(v) {
       gsub(/&/, "\\&amp;", v); gsub(/</, "\\&lt;", v)
       gsub(/>/, "\\&gt;", v); gsub(/"/, "\\&quot;", v)
@@ -630,6 +738,7 @@ annotate_junit() {
     /^<testsuites/ && !done {
       done = 1
       print "  <properties>"
+      prop("speculos.suite", suite)
       prop("speculos.model", model);      prop("speculos.seed", seed)
       prop("speculos.models", models);    prop("speculos.seeds", seeds)
       prop("speculos.image", speculos);   prop("speculos.builder_image", builder)
@@ -645,7 +754,7 @@ annotate_junit() {
 # written once and run against every model, which is how "the two builds behave the same" gets asserted at all.
 cmd_test() {
   local models="${*:-${MODELS}}" model seed failures=0
-  local junit_report apdu api
+  local junit_report apdu api reported expected
   # Everything this command starts belongs to the run scope, so a concurrent copy of the script - or an
   # interactive `up` sitting in another shell - is invisible to it and safe from it.
   SCOPE="${RUN_SCOPE}"
@@ -698,7 +807,7 @@ cmd_test() {
         continue
       fi
 
-      clear_junit_reports
+      clear_junit_reports scenarios
 
       # --run-ignored all, not ignored-only: the device tests and the oracle/table unit tests both matter, and
       # running them in one invocation keeps them in one JUnit file. `#[ignore]` is the "needs a device" gate in
@@ -733,26 +842,70 @@ cmd_test() {
         --manifest-path "${COMMS_TESTING_MANIFEST}" \
         --profile ci \
         --run-ignored all \
+        --no-tests=fail \
         -E "not test(=${BLOCKING_PROBE})"; then
-        echo "==> ${model} / ${seed} passed"
+        echo "==> ${model} / ${seed} scenario suite passed"
       else
-        echo "==> ${model} / ${seed} FAILED" >&2
+        echo "==> ${model} / ${seed} scenario suite FAILED" >&2
+        failures=$((failures + 1))
+      fi
+      # A missing report is a failure of the run, not a cosmetic gap. Producing JUnit is part of what this script
+      # is for, and a green build that quietly uploaded nothing is worse than a red one: the next person to look has
+      # no record that the vectors were ever checked.
+      if junit_report="$(find_junit_report scenarios)"; then
+        annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" scenarios "${BLOCKING_PROBE}" \
+          >"${JUNIT_DIR}/${model}-${seed}.xml"
+      else
+        echo "==> No scenario suite JUnit report for ${model} / ${seed}. Looked in:" >&2
+        junit_candidates scenarios | sed 's/^/      /' >&2
         failures=$((failures + 1))
       fi
 
-      # Always keep the log and the JUnit file, pass or fail. A green run's log is what you diff against when the
-      # next one is red.
-      save_log "${model}" "${seed}"
-      if junit_report="$(find_junit_report)"; then
-        annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" >"${JUNIT_DIR}/${model}-${seed}.xml"
+      # The key manager suite, against the same simulator, straight after. Not restarted in between, for the same
+      # reason the scenario suite never restarts it: every test starts by asserting the device is home, so a device
+      # the first suite stranded fails loudly here rather than being papered over.
+      #
+      # Nothing is skipped and nothing is `#[ignore]`d in it - the cfg is the whole gate - so there is no
+      # `--run-ignored` and no filter. `--profile ledger-speculos` is what serialises it onto the one device.
+      #
+      # And the cfg being the whole gate is exactly why "it ran" is checked twice below. Lose the cfg - a refactor
+      # of `key_manager_cargo`, a RUSTFLAGS that never arrived - and the suite compiles to an empty binary, which
+      # nextest 0.9.78 reports as success by default with a JUnit file of `tests="0"`. `--no-tests=fail` turns the
+      # empty run red; the count check after it catches a run that lost *some* tests, which nextest cannot know.
+      clear_junit_reports key-manager
+      if SPECULOS_APDU_ADDRESS="${apdu}" \
+        SPECULOS_API_ADDRESS="${api}" \
+        SPECULOS_MODEL="${model}" \
+        SPECULOS_SEED_ID="${seed}" \
+        key_manager_cargo nextest run \
+        "${KEY_MANAGER_TARGET_ARGS[@]}" \
+        --profile "${KEY_MANAGER_PROFILE}" \
+        --no-tests=fail; then
+        echo "==> ${model} / ${seed} key manager suite passed"
       else
-        # A missing report is a failure of the run, not a cosmetic gap. Producing JUnit is part of what this
-        # script is for, and a green build that quietly uploaded nothing is worse than a red one: the next person
-        # to look has no record that the vectors were ever checked.
-        echo "==> No JUnit report for ${model} / ${seed}. Looked in:" >&2
-        junit_candidates | sed 's/^/      /' >&2
+        echo "==> ${model} / ${seed} key manager suite FAILED" >&2
         failures=$((failures + 1))
       fi
+      if junit_report="$(find_junit_report key-manager)"; then
+        annotate_junit "${junit_report}" "${model}" "${seed}" "${models}" key-manager "none" \
+          >"${JUNIT_DIR}/${model}-${seed}-key-manager.xml"
+        reported="$(junit_test_count "${junit_report}")"
+        if ! expected="$(key_manager_expected_tests)"; then
+          failures=$((failures + 1))
+        elif [ "${reported:-0}" != "${expected}" ]; then
+          echo "==> The key manager suite reported ${reported:-no} tests for ${model} / ${seed}, but its sources" >&2
+          echo "    hold ${expected}. Tests were lost between the source and the run - most likely the" >&2
+          echo "    '${KEY_MANAGER_CFG}' cfg never reached the compiler." >&2
+          failures=$((failures + 1))
+        fi
+      else
+        echo "==> No key manager suite JUnit report for ${model} / ${seed}. Looked in:" >&2
+        junit_candidates key-manager | sed 's/^/      /' >&2
+        failures=$((failures + 1))
+      fi
+
+      # Always keep the log, pass or fail. A green run's log is what you diff against when the next one is red.
+      save_log "${model}" "${seed}"
       remove_container "${model}" "${seed}"
     done
   done
@@ -765,7 +918,8 @@ cmd_test() {
   echo "==> Covered seeds:    ${SEEDS}"
   echo "==> Speculos image:   ${SPECULOS_IMAGE}"
   echo "==> Builder image:    ${BUILDER_IMAGE}"
-  echo "==> Skipped by name:  ${BLOCKING_PROBE}"
+  echo "==> Suites:           comms_testing scenarios, ${KEY_MANAGER_PACKAGE} ${KEY_MANAGER_TEST}"
+  echo "==> Skipped by name:  ${BLOCKING_PROBE} (scenario suite only)"
   echo "==> JUnit XML: ${JUNIT_DIR}"
   echo "==> Simulator logs: ${SPECULOS_LOG_DIR}"
   if [ "${failures}" -ne 0 ]; then
@@ -785,9 +939,10 @@ main() {
     api-address) cmd_api_address "$@" ;;
     logs) cmd_logs "$@" ;;
     down) cmd_down "$@" ;;
+    compile) cmd_compile ;;
     test) cmd_test "$@" ;;
     *)
-      sed -n '3,42p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       return 1
       ;;
   esac

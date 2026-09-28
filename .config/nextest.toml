@@ -13,5 +13,26 @@ fail-fast = false
 [profile.intellij.junit]  # this can be some other profile, too
 path = "junit.xml"
 
+# The key manager's Speculos suite, `base_layer/transaction_components/tests/ledger_key_manager`. Only
+# `scripts/ledger_speculos.sh test` uses this profile, and only that script compiles the suite at all - it exists
+# under `--cfg tari_ledger_speculos` alone. Every setting mirrors `[profile.ci]` in
+# `applications/minotari_ledger_wallet/comms_testing/.config/nextest.toml`, for the same reasons, which are written
+# out there.
+[profile.ledger-speculos]
+# One simulator serves one APDU connection, and nextest gives every test its own process. One at a time is the
+# simulator's real concurrency, not a tuning choice.
+test-threads = 1
+# Deterministic assertions against a device whose state is the thing under test. A retry could only turn a real
+# failure intermittent - and would disturb the very nonce store and script offset context being tested.
+retries = 0
+# A wedged simulator should produce a named test that timed out, not a job at its ceiling.
+slow-timeout = { period = "60s", terminate-after = 5 }
+failure-output = "immediate-final"
+fail-fast = false
+# Keep what passing tests print: the simulator address and model each test ran against are the only trace a run
+# against the wrong simulator leaves.
+success-output = "immediate"
 
-
+[profile.ledger-speculos.junit]
+path = "junit.xml"
+store-success-output = true
