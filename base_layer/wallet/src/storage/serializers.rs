@@ -3,10 +3,7 @@
 
 use std::any::type_name;
 
-use tari_common_types::{
-    burn_proof::{EncodedMerkleProof, KernelMerkleProof},
-    types::{CompressedPublicKey, FixedHash, PrivateKey},
-};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 use tari_comms::types::CompressedSignature;
 use tari_crypto::keys::SecretKey;
 use tari_utilities::ByteArray;
@@ -22,28 +19,6 @@ pub fn bincode_encode<T: serde::Serialize + ?Sized>(obj: &T) -> Result<Vec<u8>, 
 pub fn bincode_decode<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, WalletStorageError> {
     bincode::deserialize(data).map_err(|e| {
         WalletStorageError::ConversionError(format!("Failed to deserialize type {}: {}", type_name::<T>(), e))
-    })
-}
-
-/// Decodes the bincode-encoded `tari_mmr::MerkleProof` returned by the base node into a [`KernelMerkleProof`].
-pub fn decode_kernel_merkle_proof(proof: &EncodedMerkleProof) -> Result<KernelMerkleProof, WalletStorageError> {
-    let merkle_proof = bincode_decode::<tari_mmr::MerkleProof>(&proof.encoded_merkle_proof)?;
-    let to_fixed_hashes = |hashes: Vec<tari_mmr::Hash>| {
-        hashes
-            .into_iter()
-            .map(|hash| {
-                FixedHash::try_from(hash).map_err(|_| {
-                    WalletStorageError::ConversionError("Invalid hash length in kernel merkle proof".to_string())
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()
-    };
-    Ok(KernelMerkleProof {
-        block_hash: proof.block_hash,
-        leaf_index: proof.leaf_index,
-        mmr_size: merkle_proof.mmr_size as u64,
-        path: to_fixed_hashes(merkle_proof.path)?,
-        peaks: to_fixed_hashes(merkle_proof.peaks)?,
     })
 }
 
@@ -94,40 +69,38 @@ mod tests {
     }
 
     #[test]
-    fn it_decodes_a_kernel_merkle_proof() {
-        let merkle_proof = tari_mmr::MerkleProof {
-            mmr_size: 11,
-            path: vec![vec![2u8; 32], vec![3u8; 32]],
-            peaks: vec![vec![4u8; 32]],
-        };
-        let encoded = EncodedMerkleProof {
-            block_hash: FixedHash::from([1u8; 32]),
-            encoded_merkle_proof: bincode_encode(&merkle_proof).unwrap(),
-            leaf_index: 7,
+    fn burn_output_proof_bincode_round_trips() {
+        use tari_common_types::{
+            burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
+            types::FixedHash,
         };
 
-        let proof = decode_kernel_merkle_proof(&encoded).unwrap();
-        assert_eq!(proof, KernelMerkleProof {
-            block_hash: FixedHash::from([1u8; 32]),
-            leaf_index: 7,
-            mmr_size: 11,
-            path: vec![FixedHash::from([2u8; 32]), FixedHash::from([3u8; 32])],
-            peaks: vec![FixedHash::from([4u8; 32])],
-        });
-    }
-
-    #[test]
-    fn it_rejects_a_kernel_merkle_proof_with_a_short_hash() {
-        let merkle_proof = tari_mmr::MerkleProof {
-            mmr_size: 1,
-            path: vec![vec![2u8; 31]],
+        let mmr_proof = MmrInclusionProof {
+            leaf_index: 1,
+            mmr_size: 3,
+            path: vec![FixedHash::from([2u8; 32])],
             peaks: vec![],
         };
-        let encoded = EncodedMerkleProof {
-            block_hash: FixedHash::default(),
-            encoded_merkle_proof: bincode_encode(&merkle_proof).unwrap(),
-            leaf_index: 0,
+        let proof = BurnOutputProof {
+            block_hash: FixedHash::from([1u8; 32]),
+            block_height: 10,
+            output: OutputHashPreimage {
+                version: 1,
+                features: vec![1, 2, 3],
+                commitment: Default::default(),
+                rangeproof_hash: FixedHash::from([3u8; 32]),
+                script: vec![4],
+                sender_offset_public_key: Default::default(),
+                metadata_signature: Default::default(),
+                covenant: vec![0],
+                encrypted_data: vec![5; 80],
+                minimum_value_promise: 7,
+            },
+            normal_output_proof: mmr_proof.clone(),
+            normal_output_mr: FixedHash::from([6u8; 32]),
+            block_output_proof: mmr_proof,
         };
-        decode_kernel_merkle_proof(&encoded).unwrap_err();
+        let decoded: BurnOutputProof = bincode_decode(&bincode_encode(&proof).unwrap()).unwrap();
+        assert_eq!(decoded, proof);
     }
 }

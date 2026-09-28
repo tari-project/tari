@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
+use tari_common_types::types::CompressedCommitment;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
@@ -16,7 +17,7 @@ use tari_transaction_components::{
         models::{
             BlockHeader,
             FeePerGramStat,
-            GenerateKernelMerkleProofResponse,
+            GenerateBurnOutputProofResponse,
             GetUtxosDeletedInfoResponse,
             GetUtxosMinedInfoResponse,
             SyncUtxosByBlockResponseV0,
@@ -28,7 +29,10 @@ use tari_transaction_components::{
     },
     transaction_components::{Transaction, TransactionOutput},
 };
-use tari_utilities::hex::{Hex, to_hex};
+use tari_utilities::{
+    ByteArray,
+    hex::{Hex, to_hex},
+};
 use tokio::sync::{RwLock, mpsc};
 use url::Url;
 
@@ -612,16 +616,15 @@ impl BaseNodeWalletClient for Client {
         Ok(stat)
     }
 
-    async fn get_kernel_merkle_proof(
+    async fn get_burn_output_proof(
         &self,
-        excess_sig_nonce: &[u8],
-        excess_sig: &[u8],
-    ) -> Result<GenerateKernelMerkleProofResponse, anyhow::Error> {
+        commitment: &CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, anyhow::Error> {
         let resp = self
-            .send_get_request("/generate_kernel_merkle_proof", &[
-                ("excess_sig_public_nonce", to_hex(excess_sig_nonce)),
-                ("excess_sig_signature", to_hex(excess_sig)),
-            ])
+            .send_get_request("/generate_burn_output_proof", &[(
+                "commitment",
+                to_hex(commitment.as_bytes()),
+            )])
             .await?;
 
         Ok(resp)

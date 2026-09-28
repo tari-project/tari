@@ -7,7 +7,7 @@ diesel::table! {
         commitment -> Binary,
         burn_proof -> Binary,
         kernel -> Binary,
-        kernel_merkle_proof -> Nullable<Binary>,
+        burn_output_proof -> Nullable<Binary>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
         encrypted_data -> Nullable<Binary>,

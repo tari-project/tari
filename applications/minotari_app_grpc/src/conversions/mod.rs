@@ -25,12 +25,12 @@ pub mod aggregate_body;
 pub mod base_node_state;
 pub mod block;
 pub mod block_header;
+pub mod burn_output_proof;
 pub mod chain_metadata;
 pub mod com_and_pub_signature;
 pub mod commitment_signature;
 pub mod consensus_constants;
 pub mod historical_block;
-pub mod kernel_merkle_proof;
 pub mod new_block_template;
 pub mod output_features;
 #[cfg(feature = "base_node")]

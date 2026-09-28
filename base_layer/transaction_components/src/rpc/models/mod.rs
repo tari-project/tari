@@ -3,7 +3,7 @@
 use utoipa::openapi::{Object, OneOf, Schema, Type, schema::SchemaType};
 
 mod fee_per_gram;
-mod generate_kernel_merkle_proof;
+mod generate_burn_output_proof;
 mod get_header_by_height;
 mod get_tip_info;
 mod get_utxo;
@@ -15,7 +15,7 @@ mod transaction_query;
 mod tx_submission_response;
 
 pub use fee_per_gram::*;
-pub use generate_kernel_merkle_proof::*;
+pub use generate_burn_output_proof::*;
 pub use get_header_by_height::*;
 pub use get_tip_info::*;
 pub use get_utxo::*;

@@ -14,7 +14,7 @@ use tari_transaction_components::{
         models,
         models::{
             BlockUtxoInfo,
-            GenerateKernelMerkleProofResponse,
+            GenerateBurnOutputProofResponse,
             GetUtxosByBlockRequest,
             GetUtxosByBlockResponse,
             MinimalUtxoSyncInfo,
@@ -66,6 +66,10 @@ pub enum Error {
     HeaderHeightMismatch { start_height: u64, end_height: u64 },
     #[error("Output not found")]
     OutputNotFound,
+    #[error("Burn not found")]
+    BurnNotFound,
+    #[error("{0}")]
+    BlockBodyPruned(String),
     #[error("A general error occurred: {0}")]
     General(anyhow::Error),
 }
@@ -671,17 +675,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         })
     }
 
-    async fn generate_kernel_merkle_proof(
+    async fn generate_burn_output_proof(
         &self,
-        excess_sig: types::CompressedSignature,
-    ) -> Result<GenerateKernelMerkleProofResponse, Self::Error> {
-        let proof = self.db().generate_kernel_merkle_proof(excess_sig).await?;
-        Ok(GenerateKernelMerkleProofResponse {
-            encoded_merkle_proof: bincode::serialize(&proof.merkle_proof).map_err(Error::general)?,
-            block_hash: proof.block_hash,
-            leaf_index: proof.leaf_index.value() as u64,
-            block_height: Some(proof.block_height),
-        })
+        commitment: types::CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, Self::Error> {
+        let proof = self
+            .db()
+            .generate_burn_output_proof(commitment)
+            .await
+            .map_err(|err| match err {
+                ChainStorageError::ValueNotFound { .. } => Error::BurnNotFound,
+                ChainStorageError::BlockBodyPruned { .. } => Error::BlockBodyPruned(err.to_string()),
+                err => err.into(),
+            })?;
+        Ok(GenerateBurnOutputProofResponse { proof })
     }
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {

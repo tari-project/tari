@@ -60,6 +60,7 @@ use crate::{
         WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
+        memo_field::TxType,
     },
     weight::TransactionWeight,
 };
@@ -718,6 +719,7 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
     }
     let mut sender_offsets = tx_builder.reserve_sender_offset_keys(&pending).unwrap().into_iter();
 
+    let mut has_burn = false;
     for val in schema.to {
         let commitment_mask = key_manager.get_random_key(None, None).unwrap();
         let sender_offset = sender_offsets.next().unwrap();
@@ -745,6 +747,15 @@ fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
             .try_build(key_manager)
             .unwrap();
 
+        // Make a burn a real burn transaction: a burn kernel that commits to the (first) burn output
+        if output.is_burned() && !has_burn {
+            has_burn = true;
+            let commitment = output.to_transaction_output().unwrap().commitment;
+            tx_builder
+                .with_tx_type(TxType::Burn)
+                .with_kernel_features(KernelFeatures::create_burn())
+                .with_burn_commitment(Some(commitment));
+        }
         outputs.push(output.clone());
         tx_builder.with_output(output, sender_offset.key_id, None).unwrap();
     }

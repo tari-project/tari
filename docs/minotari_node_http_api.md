@@ -379,38 +379,66 @@ curl "http://localhost:9000/get_utxos_by_block?header_hash=1a8da4213566e3cda0695
 
 ---
 
-### GET `/generate_kernel_merkle_proof`
+### GET `/generate_burn_output_proof`
 
-Generate a Merkle proof for a transaction kernel identified by its excess signature.
+Generate a proof that a burn output was mined, against the `block_output_mr` of the block header it was mined in.
+The burn is located by its commitment.
+
+The proof has two levels. The block output MMR has the coinbase output hashes as leaves, followed by the root of the
+MMR of all other output hashes in the block (`normal_output_mr`) as its last leaf. `normal_output_proof` proves the
+output hash in the normal output MMR, and `block_output_proof` proves `normal_output_mr` in the block output MMR.
+Hashes use the `com.tari.base_layer.core.input_mmr` domain.
+
+`output` carries the output fields that the output hash commits to, in hash order. The range proof is carried as its
+hash. `features`, `script`, `covenant` and `encrypted_data` are hex-encoded consensus (borsh) encodings.
+
+Generating the proof needs the full block body. A pruned node can only generate it for blocks above its pruned height;
+for older burns, use an archival node.
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `excess_sig_public_nonce` | `string` | Yes | Hex-encoded public nonce (32 bytes compressed public key) |
-| `excess_sig_signature` | `string` | Yes | Hex-encoded signature |
+| `commitment` | `string` | Yes | Hex-encoded commitment of the burn output (32 bytes) |
 
 **Example Request:**
 
 ```bash
-curl "http://localhost:9000/generate_kernel_merkle_proof?excess_sig_public_nonce=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789&excess_sig_signature=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+curl "http://localhost:9000/generate_burn_output_proof?commitment=e4c49e7f201e421622f45a5882ad658ff829f3b7cf096809ba6637cd0e8d3d47"
 ```
 
 **Example Response:**
 
 ```json
 {
-  "mmr_size": 50000,
-  "mmr_path": ["abcdef...", "012345...", "..."],
-  "mined_height": 1000
+  "proof": {
+    "block_hash": "5d4c...",
+    "block_height": 1000,
+    "output": {
+      "version": 1,
+      "features": "0102...",
+      "commitment": "e4c4...",
+      "rangeproof_hash": "0000...",
+      "script": "0173",
+      "sender_offset_public_key": "7a3b...",
+      "metadata_signature": { "ephemeral_commitment": "...", "ephemeral_pubkey": "...", "u_a": "...", "u_x": "...", "u_y": "..." },
+      "covenant": "00",
+      "encrypted_data": "a1b2...",
+      "minimum_value_promise": 0
+    },
+    "normal_output_proof": { "leaf_index": 3, "mmr_size": 11, "path": ["abcd...", "..."], "peaks": ["..."] },
+    "normal_output_mr": "9f8e...",
+    "block_output_proof": { "leaf_index": 1, "mmr_size": 3, "path": ["0123..."], "peaks": [] }
+  }
 }
 ```
 
 **Cache-Control:** `public, max-age=120, s-maxage=60, stale-while-revalidate=15`
 
 **Error Responses:**
-- `400` - Invalid signature public nonce length or invalid signature
-- `404` - Kernel not found
+- `400` - Invalid commitment
+- `404` - Burn not found
+- `410` - The block body is pruned on this node; use an archival node
 
 ---
 

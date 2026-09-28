@@ -155,7 +155,6 @@ use minotari_wallet::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
     },
-    storage::serializers::decode_kernel_merkle_proof,
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
@@ -3214,14 +3213,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),
                 sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec(),
             }),
-            kernel_merkle_proof: proof.kernel_merkle_proof.as_ref().and_then(|p| {
-                decode_kernel_merkle_proof(p)
-                    .inspect_err(|e| {
-                        warn!(target: LOG_TARGET, "Failed to decode kernel merkle proof for burn proof {}: {}", proof.id, e)
-                    })
-                    .ok()
-                    .map(Into::into)
-            }),
+            burn_output_proof: proof.burn_output_proof.map(Into::into),
             kernel: Some(proof.kernel.into()),
             encrypted_data: proof.encrypted_data.map(|ed| ed.into_vec()).unwrap_or_default(),
             value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),

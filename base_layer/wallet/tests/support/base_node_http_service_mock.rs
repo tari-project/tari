@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
+use tari_common_types::types::CompressedCommitment;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
@@ -34,7 +35,7 @@ use tari_transaction_components::{
         BlockHeader,
         BlockUtxoInfo,
         FeePerGramStat,
-        GenerateKernelMerkleProofResponse,
+        GenerateBurnOutputProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponseV0,
@@ -314,11 +315,10 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         Ok(rx)
     }
 
-    async fn get_kernel_merkle_proof(
+    async fn get_burn_output_proof(
         &self,
-        _excess_sig_nonce: &[u8],
-        _excess_sig: &[u8],
-    ) -> Result<GenerateKernelMerkleProofResponse, Error> {
+        _commitment: &CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, Error> {
         panic!("Not implemented")
     }
 }

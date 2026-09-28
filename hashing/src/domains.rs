@@ -87,6 +87,9 @@ hash_domain!(
 
 hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
 
+// Domain of the block input MMR and the block output MMRs (`header.block_output_mr`).
+hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
+
 hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
 
 // Hash domain for the offline signing JSON payload integrity signature.

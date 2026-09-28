@@ -5,8 +5,8 @@ use std::{sync::Arc, time::Duration};
 
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_common_types::{burn_proof::EncodedMerkleProof, types::FixedHash};
-use tari_utilities::ByteArray;
+use tari_common_types::types::FixedHash;
+use tari_transaction_components::transaction_components::burn_output_proof::OutputHashPreimageExt;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -89,54 +89,53 @@ where
             continue;
         };
 
-        if burn.kernel_merkle_proof.is_some() {
+        if burn.burn_output_proof.is_some() {
             // If we're getting the same output again, there could be a reorg so just to be safe we'll refetch.
             warn!(
                 target: LOG_TARGET,
-                "Burn output {} already has a merkle proof, refetching",
+                "Burn output {} already has a burn output proof, refetching",
                 output_hash
             );
         }
 
         debug!(
             target: LOG_TARGET,
-            "Updating burn output {} with merkle proof",
+            "Updating burn output {} with burn output proof",
             output_hash
         );
 
-        let result = client
-            .get_kernel_merkle_proof(
-                burn.kernel.excess_sig.get_compressed_public_nonce().as_bytes(),
-                burn.kernel.excess_sig.get_signature().as_bytes(),
-            )
-            .await;
+        let result = client.get_burn_output_proof(&burn.burn_proof.commitment).await;
         match result {
             Ok(resp) => {
+                let proof = resp.proof;
                 info!(
                     target: LOG_TARGET,
-                    "Received merkle proof for burn output {}: {} bytes",
+                    "Received burn output proof for burn output {} mined in block #{} ({})",
                     output_hash,
-                    resp.encoded_merkle_proof.len()
+                    proof.block_height,
+                    proof.block_hash
                 );
 
-                // We trust our base node right? ;-) So just store it without validating.
+                // The proof is only checked against the block header by the claim verifier, but a proof for another
+                // output is useless, so reject it here.
+                let proof_output_hash = proof.output.hash()?;
+                if proof_output_hash != *output_hash {
+                    error!(
+                        target: LOG_TARGET,
+                        "Base node returned a burn output proof for output {} instead of {}",
+                        proof_output_hash,
+                        output_hash
+                    );
+                    continue;
+                }
 
-                let mined_in_height = resp.block_height;
-                db.update_burn_proof_set_merkle_proof(
-                    output_hash,
-                    &EncodedMerkleProof {
-                        block_hash: resp.block_hash,
-                        encoded_merkle_proof: resp.encoded_merkle_proof,
-                        leaf_index: resp.leaf_index,
-                    },
-                    mined_in_height,
-                )?;
+                db.update_burn_proof_set_burn_output_proof(output_hash, &proof)?;
 
                 info!(
                     target: LOG_TARGET,
-                    "Successfully updated burn output {} with merkle proof (mined in height {:?})",
+                    "Successfully updated burn output {} with burn output proof (mined in height {})",
                     output_hash,
-                    mined_in_height
+                    proof.block_height
                 );
 
                 let _ignore = event_publisher.send(Arc::new(TransactionEvent::TransactionBurnConfirmed {
@@ -147,7 +146,7 @@ where
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to get merkle proof for burn output {}: {}",
+                    "Failed to get burn output proof for burn output {}: {}",
                     output_hash,
                     err
                 );

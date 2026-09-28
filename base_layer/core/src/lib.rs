@@ -60,8 +60,7 @@ mod domain_hashing {
     hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
     pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
 
-    hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
-    pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, InputMmrHashDomain>;
+    pub use tari_hashing::{InputMmrHashDomain, hashers::InputMmrHasherBlake256};
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
     pub type PrunedOutputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 
