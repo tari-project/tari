@@ -2674,15 +2674,18 @@ message GetBurnClaimProofRequest {
 }
 
 message GetBurnClaimProofResponse {
+  // Formerly the bincode-encoded merkle_proof, replaced by kernel_merkle_proof
+  reserved 2;
+  reserved "merkle_proof";
   BurnClaimProof claim_proof = 1;
-  // Optional, not available until the burn transaction is confirmed
-  EncodedMerkleProof merkle_proof = 2;
   bytes encrypted_data = 3;
   TransactionKernel kernel = 4;
   uint64 value = 5;
   // The L1 epoch the burn was mined in (block_height / vn_epoch_length). Optional: absent until the burn is
   // confirmed on-chain, or when connected to a base node that does not report the mined block height.
   optional uint64 mined_in_epoch = 6;
+  // Optional, not available until the burn transaction is confirmed
+  KernelMerkleProof kernel_merkle_proof = 7;
 }
 
 message BurnClaimProof {
@@ -2695,10 +2698,15 @@ message BurnClaimProof {
   bytes sender_offset_public_key = 7;
 }
 
-message EncodedMerkleProof {
+// An inclusion proof of a kernel in the kernel MMR of the block it was mined in
+message KernelMerkleProof {
   bytes block_hash = 1;
-  bytes encoded_proof = 2;
-  uint64 leaf_index = 3;
+  uint64 leaf_index = 2;
+  uint64 mmr_size = 3;
+  // The sibling path from the leaf up to its local peak
+  repeated bytes path = 4;
+  // The MMR peaks, excluding the local peak of the leaf
+  repeated bytes peaks = 5;
 }
 
 message RescanWalletRequest {
