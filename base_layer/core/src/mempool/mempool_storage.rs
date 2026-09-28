@@ -125,14 +125,15 @@ impl MempoolStorage {
     ///
     /// The mempool's view of the chain only changes when it processes a block, reorg, sync or failed block, each of
     /// which bumps [`MempoolStorage::chain_generation`]. If that happened while the transaction was being validated,
-    /// the validation is stale: it is repeated from the start, without the lock, up to [`MAX_VALIDATION_ATTEMPTS`]
-    /// times. A chain change that the mempool has not processed yet by the time the transaction is inserted is safe,
-    /// since the mempool reconciles every stored transaction with it when it does process it.
+    /// the validation is stale: it is repeated from the start, without the lock, and the last of the
+    /// [`MAX_VALIDATION_ATTEMPTS`] attempts validates under the lock. A chain change that the mempool has not processed
+    /// yet by the time the transaction is inserted is safe, since the mempool reconciles every stored transaction
+    /// with it when it does process it.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
     ) -> Result<TxStorageResponse, MempoolError> {
-        for attempt in 1..=MAX_VALIDATION_ATTEMPTS {
+        for attempt in 1..MAX_VALIDATION_ATTEMPTS {
             let timer = Instant::now();
             let (validator, generation) = {
                 let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
@@ -188,22 +189,27 @@ impl MempoolStorage {
                 .insert_into_unconfirmed_pool(tx, dependent_outputs)
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
-        // Validating an untrusted transaction under the write lock would stall the mempool, so it is rejected instead.
-        // This only happens if the chain changes repeatedly during validation (e.g. while catching up), and the
-        // transaction can simply be submitted again.
-        warn!(
+        // The final attempt validates under the write lock, so that the chain cannot change during it. Rejecting the
+        // transaction instead would make a wallet treat a valid transaction as invalid and cancel it. This is
+        // acceptable because only real chain events (new blocks, reorgs to a heavier chain, sync completion) change
+        // `chain_generation`, so an attacker cannot force this path without mining, and it is bounded by the number of
+        // validation permits.
+        debug!(
             target: LOG_TARGET,
-            "Chain changed during each of {} attempts to validate transaction {}, not storing it",
-            MAX_VALIDATION_ATTEMPTS,
+            "Chain changed during each of {} attempts to validate transaction {}, validating it under the lock",
+            MAX_VALIDATION_ATTEMPTS.saturating_sub(1),
             tx_id(&tx)
         );
-        Ok(TxStorageResponse::NotStored(Some(
-            "The chain changed while the transaction was being validated, please resubmit it".to_string(),
-        )))
+        let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
+        lock.insert(tx).map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
-    /// The near-free checks done before a new transaction is validated: its fee, its weight, and whether it is already
-    /// in the unconfirmed pool. Returns the response if the transaction is not to be validated.
+    /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
+    /// if the transaction is not to be validated.
+    ///
+    /// This deliberately does not treat a transaction whose kernels are already in the pool as stored: a different
+    /// (and possibly invalid) body can reuse the kernels of a pooled transaction, and the response would cause it to be
+    /// propagated. Such a transaction is validated, and deduplicated by the unconfirmed pool once valid.
     pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
         if let Some(response) = self.check_fee(tx) {
             return Some(response);
@@ -221,14 +227,6 @@ impl MempoolStorage {
                     "Unable to calculate the transaction weight: {e}"
                 ))));
             },
-        }
-        let kernels = tx.body.kernels();
-        if !kernels.is_empty() &&
-            kernels
-                .iter()
-                .all(|k| self.unconfirmed_pool.has_tx_with_excess_sig(&k.excess_sig))
-        {
-            return Some(TxStorageResponse::UnconfirmedPool);
         }
         None
     }
@@ -729,16 +727,13 @@ mod test {
                 .unwrap()
                 .push(tip.map(|tip| *tip.best_block_hash()));
             if let Some(storage) = self.storage.lock().unwrap().upgrade() {
-                self.internal_lock_free
-                    .lock()
-                    .unwrap()
-                    .push(storage.try_write().is_ok());
-                if self
-                    .chain_changes
-                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                    .is_ok()
+                let lock = storage.try_write();
+                self.internal_lock_free.lock().unwrap().push(lock.is_ok());
+                if let Ok(mut lock) = lock &&
+                    self.chain_changes
+                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                        .is_ok()
                 {
-                    let mut lock = storage.write().unwrap();
                     lock.chain_generation = lock.chain_generation.wrapping_add(1);
                 }
             }
@@ -856,25 +851,26 @@ mod test {
     }
 
     #[test]
-    fn insert_unlocked_gives_up_after_max_attempts() {
+    fn insert_unlocked_validates_under_the_lock_after_max_attempts() {
         let key_manager = KeyManager::new_random().unwrap();
         let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
-        // The chain changes during every attempt
+        // The chain changes during every unlocked attempt
         validator.chain_changes.store(usize::MAX, Ordering::SeqCst);
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
-        assert!(
-            matches!(response, TxStorageResponse::NotStored(Some(_))),
-            "{response:?}"
-        );
+        // The valid transaction is still stored
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(validator.chain_linked_calls(), MAX_VALIDATION_ATTEMPTS);
         assert_eq!(validator.internal_calls(), MAX_VALIDATION_ATTEMPTS);
-        assert!(validator.internal_lock_free().into_iter().all(|free| free));
-        assert_eq!(pool_len(&storage), 0);
+        // Only the final attempt validated under the lock
+        let mut expected = vec![true; MAX_VALIDATION_ATTEMPTS - 1];
+        expected.push(false);
+        assert_eq!(validator.internal_lock_free(), expected);
+        assert_eq!(pool_len(&storage), 1);
     }
 
     #[test]
-    fn pre_check_rejects_before_validation() {
+    fn transaction_reusing_pooled_kernels_is_validated() {
         let key_manager = KeyManager::new_random().unwrap();
         let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
         let storage = create_storage(&validator);
@@ -883,17 +879,43 @@ mod test {
             MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap(),
             TxStorageResponse::UnconfirmedPool
         );
-        assert_eq!(validator.chain_linked_calls(), 1);
 
-        // Already in the pool
+        // A different, invalid body with the same kernels
+        let other = create_tx(&key_manager);
+        let reusing = Arc::new(Transaction::new(
+            other.body.inputs().clone(),
+            other.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            other.offset.clone(),
+            other.script_offset.clone(),
+        ));
+        assert_eq!(storage.read().unwrap().pre_check(&reusing), None);
+        for locked in [false, true] {
+            *validator.internal_results.lock().unwrap() = vec![Err(ValidationError::InvalidAccountingBalance)].into();
+            let internal_calls = validator.internal_calls();
+            let response = if locked {
+                storage.write().unwrap().insert(reusing.clone()).unwrap()
+            } else {
+                MempoolStorage::insert_unlocked(&storage, reusing.clone()).unwrap()
+            };
+            assert_ne!(response, TxStorageResponse::UnconfirmedPool);
+            assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+            assert_eq!(validator.internal_calls(), internal_calls + 1);
+        }
+        assert_eq!(pool_len(&storage), 1);
+    }
+
+    #[test]
+    fn pre_check_rejects_before_validation() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
         assert_eq!(
-            storage.read().unwrap().pre_check(&tx),
-            Some(TxStorageResponse::UnconfirmedPool)
-        );
-        assert_eq!(
-            MempoolStorage::insert_unlocked(&storage, tx).unwrap(),
+            MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap(),
             TxStorageResponse::UnconfirmedPool
         );
+        assert_eq!(validator.chain_linked_calls(), 1);
+
         // Fee too low
         storage.write().unwrap().unconfirmed_pool.config.min_fee = u64::MAX;
         assert_eq!(
