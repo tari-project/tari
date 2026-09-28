@@ -37,6 +37,38 @@ pub fn u16_to_string(number: u16) -> String {
     String::from_utf8_lossy(buffer.get(..pos).expect("should exist")).to_string()
 }
 
+/// Convert a `u64` to its decimal string, without `core::fmt`.
+///
+/// The Ledger application builds its BIP32 derivation path out of these (`derive_from_bip32_key`), so every key the
+/// device derives depends on this producing exactly the digits `format!("{number}")` would. It lives here, rather
+/// than in the application, so that is unit tested on the host: the application only builds for the Ledger targets.
+///
+/// Deliberately not `format!` or `to_string()`: those pull `core::fmt`'s integer formatting machinery into the device
+/// binary, which is size the application does not have to spare. The digits are written from the least significant
+/// end of a fixed buffer, so there is no indexing and no panic path either.
+pub fn u64_to_string(number: u64) -> String {
+    // `u64::MAX` is 18446744073709551615: twenty digits.
+    let mut digits = [0u8; 20];
+    let mut remaining = number;
+    let mut len = 0usize;
+    for slot in digits.iter_mut().rev() {
+        *slot = b'0'.wrapping_add(u8::try_from(remaining % 10).unwrap_or_default());
+        len = len.saturating_add(1);
+        remaining /= 10;
+        // Checked after writing, so that zero still produces its one digit.
+        if remaining == 0 {
+            break;
+        }
+    }
+    let start = digits.len().saturating_sub(len);
+    digits
+        .get(start..)
+        .unwrap_or_default()
+        .iter()
+        .map(|&digit| char::from(digit))
+        .collect()
+}
+
 /// The Tari dual address minimum size (standard dual address)
 pub const TARI_DUAL_ADDRESS_MIN_SIZE: usize = 67;
 /// The Tari dual address maximum size (with maximum 256-byte payment ID)
@@ -151,6 +183,37 @@ mod tests {
     use alloc::vec;
 
     use super::*;
+
+    /// The edges of the digit loop: the one value that exits on the first pass, the one that is a single digit
+    /// after it, and the one that fills the whole buffer.
+    #[test]
+    fn u64_to_string_handles_the_edges_of_the_range() {
+        assert_eq!(u64_to_string(0), "0");
+        assert_eq!(u64_to_string(1), "1");
+        assert_eq!(u64_to_string(u64::MAX), "18446744073709551615");
+    }
+
+    /// An internal zero digit must not be mistaken for the end of the number: the loop stops on the *remaining
+    /// value* reaching zero, never on a digit being zero.
+    #[test]
+    fn u64_to_string_keeps_internal_and_trailing_zero_digits() {
+        assert_eq!(u64_to_string(1_000_203), "1000203");
+        assert_eq!(u64_to_string(10), "10");
+        assert_eq!(u64_to_string(535_348), "535348");
+    }
+
+    /// Every key the device derives goes through this, so pin it against the standard formatter across the
+    /// magnitudes, not just at hand picked values.
+    #[test]
+    fn u64_to_string_agrees_with_the_standard_formatter() {
+        use alloc::format;
+        let mut value = 1u64;
+        while let Some(next) = value.checked_mul(7) {
+            assert_eq!(u64_to_string(value), format!("{value}"));
+            assert_eq!(u64_to_string(value - 1), format!("{}", value - 1));
+            value = next;
+        }
+    }
 
     // Helper function to create a test address with checksum
     fn create_test_address(size: usize) -> Vec<u8> {
