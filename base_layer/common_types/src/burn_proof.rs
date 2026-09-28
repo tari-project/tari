@@ -109,7 +109,7 @@ pub struct BurnOutputProof {
     /// The root of the normal output MMR
     #[serde(with = "serializers::hex")]
     pub normal_output_mr: FixedHash,
-    /// The inclusion proof of `normal_output_mr` as the last leaf of the block output MMR
+    /// The inclusion proof of `normal_output_mr` in the block output MMR (as its last leaf, for an honest proof)
     pub block_output_proof: MmrInclusionProof,
 }
 

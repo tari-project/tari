@@ -2707,7 +2707,8 @@ message BurnOutputProof {
   // The inclusion proof of the output hash in the normal output MMR
   MmrInclusionProof normal_output_proof = 4;
   bytes normal_output_mr = 5;
-  // The inclusion proof of normal_output_mr as the last leaf of the block output MMR
+  // The inclusion proof of normal_output_mr in the block output MMR (as its last leaf, for an honest proof).
+  // Proofs are not unique: key anything that must be unique per burn on the output commitment or hash.
   MmrInclusionProof block_output_proof = 6;
 }
 

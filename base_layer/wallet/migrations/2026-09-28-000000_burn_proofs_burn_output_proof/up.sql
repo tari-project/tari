@@ -3,4 +3,5 @@
 ALTER TABLE burn_proofs
     RENAME COLUMN kernel_merkle_proof TO burn_output_proof;
 UPDATE burn_proofs
-SET burn_output_proof = NULL;
+SET burn_output_proof = NULL,
+    mined_in_height   = NULL;

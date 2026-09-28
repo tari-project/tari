@@ -2325,7 +2325,12 @@ where B: BlockchainBackend
             });
         }
 
-        let block = fetch_block(&*db, header.height, true)?.into_block();
+        let block = fetch_block_by_hash(&*db, block_hash, true)?
+            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                function: OPERATION,
+                details: format!("Header {block_hash} found, but its block was not"),
+            })?
+            .into_block();
 
         // Rebuild the block output MMRs as in `calculate_mmr_roots`
         let mut block_output_mmr = OutputMmr::new(Vec::new());

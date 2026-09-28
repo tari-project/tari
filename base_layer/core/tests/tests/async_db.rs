@@ -190,8 +190,15 @@ async fn generate_burn_output_proof() {
     }
     assert_eq!(num_burns, 3);
 
+    let not_a_burn = blocks[1]
+        .block()
+        .body
+        .outputs()
+        .iter()
+        .find(|o| !o.is_burned())
+        .unwrap();
     let err = db
-        .generate_burn_output_proof(blocks[1].block().body.outputs()[0].commitment.clone())
+        .generate_burn_output_proof(not_a_burn.commitment.clone())
         .await
         .unwrap_err();
     assert!(err.is_value_not_found(), "{err}");

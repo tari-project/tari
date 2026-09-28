@@ -112,6 +112,12 @@ pub trait BurnOutputProofExt {
     /// Verifies that the output is included in the block whose header has `trusted_block_output_mr` as its
     /// `block_output_mr`. This only proves inclusion: callers must check the output itself (type, features,
     /// commitment) and that `trusted_block_output_mr` belongs to the header with `block_hash`/`block_height`.
+    ///
+    /// Soundness rests on the output hash being domain separated from MMR nodes, so only the hash of an output mined
+    /// in that block can be proven. The MMR sizes and intermediate roots are chosen by the prover and not committed
+    /// to by the root, so proofs are not unique: the same output can have several valid proofs, and
+    /// `normal_output_mr` is not guaranteed to be the block's real normal output MMR root. Key anything that must be
+    /// unique per burn (e.g. claim deduplication) on the output commitment or output hash, never on the proof.
     fn verify(&self, trusted_block_output_mr: &FixedHash) -> Result<(), BurnOutputProofError>;
 }
 
@@ -125,7 +131,9 @@ impl BurnOutputProofExt for BurnOutputProof {
             &output_hash,
         )?;
 
-        // The normal output MMR root is always the last leaf of the block output MMR, after the coinbase outputs
+        // Honest proofs have the normal output MMR root as the last leaf of the block output MMR, after the coinbase
+        // outputs. This rejects malformed proofs but does not bind `normal_output_mr` to the real root, because the
+        // prover chooses the MMR size (see `verify`).
         let n_leaves = usize::try_from(self.block_output_proof.mmr_size)
             .ok()
             .and_then(checked_n_leaves)
@@ -245,7 +253,9 @@ mod tests {
         let mut block_output_mmr = OutputMmr::new(Vec::new());
         let mut normal_output_mmr = OutputMmr::new(Vec::new());
         for i in 0..num_coinbases {
-            block_output_mmr.push(FixedHash::from([u8::try_from(i).unwrap(); 32]).to_vec()).unwrap();
+            block_output_mmr
+                .push(FixedHash::from([u8::try_from(i).unwrap(); 32]).to_vec())
+                .unwrap();
         }
         for i in 0..num_normal {
             if i == burn_index {

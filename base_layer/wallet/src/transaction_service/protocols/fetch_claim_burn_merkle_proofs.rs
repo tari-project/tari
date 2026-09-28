@@ -118,7 +118,18 @@ where
 
                 // The proof is only checked against the block header by the claim verifier, but a proof for another
                 // output is useless, so reject it here.
-                let proof_output_hash = proof.output.hash()?;
+                let proof_output_hash = match proof.output.hash() {
+                    Ok(hash) => hash,
+                    Err(err) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Base node returned an invalid burn output proof for output {}: {}",
+                            output_hash,
+                            err
+                        );
+                        continue;
+                    },
+                };
                 if proof_output_hash != *output_hash {
                     error!(
                         target: LOG_TARGET,
