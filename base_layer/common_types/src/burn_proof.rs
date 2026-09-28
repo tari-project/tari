@@ -88,9 +88,16 @@ mod tests {
             peaks: vec![FixedHash::from([4u8; 32])],
         };
         let json = serde_json::to_value(&proof).unwrap();
-        assert_eq!(json["block_hash"], "01".repeat(32));
-        assert_eq!(json["path"][1], "03".repeat(32));
-        assert_eq!(json["peaks"][0], "04".repeat(32));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "block_hash": "01".repeat(32),
+                "leaf_index": 7,
+                "mmr_size": 11,
+                "path": ["02".repeat(32), "03".repeat(32)],
+                "peaks": ["04".repeat(32)],
+            })
+        );
         assert_eq!(serde_json::from_value::<KernelMerkleProof>(json).unwrap(), proof);
     }
 
