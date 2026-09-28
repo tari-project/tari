@@ -150,6 +150,12 @@ pub trait Encode {
 }
 
 /// A layout that can be read back off the wire, borrowing from the buffer it was read from.
+///
+/// On the device, that buffer is the SDK's APDU buffer, and **a decoded value must not be read after a UI screen**:
+/// on Stax and Flex an NBGL screen polls for events while it is up, and an APDU the host sends meanwhile is copied
+/// into the same buffer (`ledger_device_sdk` 1.35.0, `io_legacy.rs`, `decode_event`), so the fields would then read
+/// the host's new bytes rather than the ones the user reviewed. Copy what is needed after a screen before showing
+/// it; the application's `wire::with_screen` makes the borrow checker enforce that.
 pub trait Decode<'a>: Sized {
     fn decode(data: &'a [u8]) -> Result<Self, DecodeError>;
 }

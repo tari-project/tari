@@ -46,7 +46,7 @@ use crate::{
         KeyManagerTransactionsHashDomain,
         TransactionHashDomain,
     },
-    wire::reply_com_and_pub_sig,
+    wire::{reply_com_and_pub_sig, with_screen},
     AppSW,
     KeyType,
 };
@@ -70,9 +70,29 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         get_key_from_canonical_bytes::<RistrettoSecretKey>(head.commitment_mask)?.into();
 
     let tail = head.receiver_address().map_err(|_| AppSW::WrongApduLength)?;
-    let receiver_address_bytes = tail.receiver_address;
 
-    let receiver_address = match tari_dual_address_display(receiver_address_bytes) {
+    // Everything read from here to the signature is an owned copy, never a borrow of `data`.
+    //
+    // `data` is the SDK's APDU buffer, and the review screen below does not leave it alone. On Stax and Flex,
+    // `NbglReview::show` polls in `ux_sync_wait` -> `nbgl_next_event_ahead` -> `Comm::next_event_ahead` ->
+    // `decode_event`, which copies *any* APDU that arrives while the screen is up into `apdu_buffer`
+    // (`ledger_device_sdk` 1.35.0, `io_legacy.rs`: `self.apdu_buffer[0..272].copy_from_slice(..)`). So a borrow of
+    // `data` read after the review reads whatever the host sent last, not what the user approved: a host could show
+    // the user receiver A, send a second APDU carrying receiver B mid-review, and have the device sign a script
+    // paying B once the user approves A.
+    //
+    // The whole address is copied, rather than only the spend key the signature needs, so that every check still
+    // runs exactly where and in the order it always has - the address checksum before the review, the spend key's
+    // canonical check after it - and a malformed request still gets the same status word from the same check. It is
+    // copied to the heap, not the stack: up to `TARI_DUAL_ADDRESS_MAX_SIZE` (323) bytes is a lot of a Ledger stack,
+    // and this handler already allocates for its review fields. The length was bounded by `receiver_address()` above,
+    // so the copy itself cannot fail on a length.
+    //
+    // `wire::with_screen` below takes `&mut Comm` so that the borrow checker refuses to compile any use of `data`,
+    // `head` or `tail` after the review.
+    let receiver_address_bytes = tail.receiver_address.to_vec();
+
+    let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
         Ok(address) => address,
         Err(e) => {
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
@@ -90,10 +110,11 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    let metadata_signature_message_common = tail.message().map_err(|_| AppSW::WrongApduLength)?;
+    // Copied for the same reason as the address: it is hashed into the signed message after the review.
+    let metadata_signature_message_common: [u8; 32] = *tail.message().map_err(|_| AppSW::WrongApduLength)?;
 
     // Extract payment ID if present
-    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(receiver_address_bytes)
+    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
     let mut fields = Vec::new();
@@ -135,7 +156,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             "Reject",
             Some(&CROSSMARK),
         );
-        if !review.show() {
+        if !with_screen(comm, || review.show()) {
             return Err(AppSW::UserCancelled);
         }
     }
@@ -150,7 +171,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             .glyph(&TARI);
 
         //
-        if !review.show(fields_array) {
+        if !with_screen(comm, || review.show(fields_array)) {
             return Err(AppSW::UserCancelled);
         }
     }
@@ -191,7 +212,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
     let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script, metadata_signature_message_common);
+        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
 
     let challenge = finalize_metadata_signature_challenge(
         txo_version,

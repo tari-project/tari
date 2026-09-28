@@ -4,7 +4,17 @@
 //! The device's end of the shared wire-format codec (`minotari_ledger_wallet_common::codec`).
 //!
 //! The codec owns every layout; this is only the glue between it and the SDK's `Comm`: a [`Writer`] over the reply
-//! buffer, and the one place a framing failure is turned into a status word.
+//! buffer, the one place a framing failure is turned into a status word, and [`with_screen`].
+//!
+//! # Decoded requests borrow a buffer that UI screens overwrite
+//!
+//! Every decoded request borrows its fields from `comm.get_data()`, which is the SDK's APDU buffer - that is what
+//! makes decoding zero copy. It is also why **no decoded field may be read after a UI screen has been shown**. On
+//! Stax and Flex an NBGL screen polls for events while it is up (`ux_sync_wait` -> `nbgl_next_event_ahead` ->
+//! `Comm::next_event_ahead` -> `decode_event`), and an APDU the host sends in the meantime is copied into that same
+//! buffer (`ledger_device_sdk` 1.35.0, `io_legacy.rs`). A field read after the screen is then whatever the host sent
+//! last, not what the user was shown. Copy anything needed after a screen into an owned value before it, and show
+//! the screen through [`with_screen`], which makes the borrow checker enforce this.
 
 use ledger_device_sdk::io::Comm;
 #[cfg(any(target_os = "stax", target_os = "flex"))]
@@ -25,6 +35,17 @@ impl Writer for CommWriter<'_> {
     fn write(&mut self, bytes: &[u8]) {
         self.0.append(bytes);
     }
+}
+
+/// Show a UI screen that waits for the user.
+///
+/// `comm` is not used. It is taken as `&mut` purely so that the borrow checker rejects any borrow of
+/// `comm.get_data()` - a decoded request, or anything borrowed out of one - that is still live after the screen: the
+/// SDK rewrites that buffer when an APDU arrives while the screen is up (see the module docs), so such a borrow would
+/// read host bytes the user never reviewed. A handler that needs a request field after the screen must copy it first.
+#[inline(always)]
+pub fn with_screen<R>(_comm: &mut Comm, screen: impl FnOnce() -> R) -> R {
+    screen()
 }
 
 /// Append an encoded reply to the APDU response.
