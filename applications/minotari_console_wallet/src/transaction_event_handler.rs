@@ -26,7 +26,7 @@ use anyhow::anyhow;
 use log::*;
 use minotari_wallet::{
     WalletSqlite,
-    storage::{serializers::decode_kernel_merkle_proof, sqlite_db::models::DbBurnProof},
+    storage::sqlite_db::models::DbBurnProof,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
@@ -34,7 +34,7 @@ use minotari_wallet::{
 };
 use tari_common::configuration::Network;
 use tari_common_types::types::HashOutput;
-use tari_sidechain::{AbridgedTransactionKernel, BurnClaimProof, CompleteClaimBurnProof};
+use tari_sidechain::{BurnClaimProof, CompleteClaimBurnProof};
 use tari_transaction_components::consensus::ConsensusManager;
 use tari_utilities::hex::Hex;
 use tokio::fs;
@@ -93,15 +93,18 @@ impl TransactionEventHandler {
 
         let out_dir = self.config.get_burn_proof_output_dir(self.network);
 
-        // Convert the burn's L1 block height (persisted with the merkle proof) to its epoch
-        // (height / vn_epoch_length) so an L2 claimant can defer the claim until L2 has synced past it.
-        // `None` when the base node did not report the height.
-        let mined_in_epoch = proof.mined_in_height.map(|height| {
-            self.consensus_manager
-                .consensus_constants(height)
-                .block_height_to_epoch(height)
-                .as_u64()
-        });
+        let burn_output_proof = proof
+            .burn_output_proof
+            .as_ref()
+            .ok_or_else(|| anyhow!("No burn output proof for output {}", output_hash))?;
+        // Convert the burn's L1 block height to its epoch (height / vn_epoch_length) so an L2 claimant can defer the
+        // claim until L2 has synced past it.
+        let height = burn_output_proof.block_height;
+        let mined_in_epoch = self
+            .consensus_manager
+            .consensus_constants(height)
+            .block_height_to_epoch(height)
+            .as_u64();
 
         write_burn_proof_to_file(out_dir, proof, mined_in_epoch).await?;
 
@@ -112,15 +115,10 @@ impl TransactionEventHandler {
 async fn write_burn_proof_to_file<P: AsRef<Path>>(
     burn_proofs_dir: P,
     proof: DbBurnProof,
-    mined_in_epoch: Option<u64>,
+    mined_in_epoch: u64,
 ) -> anyhow::Result<()> {
     fs::create_dir_all(&burn_proofs_dir).await?;
-    let kernel_merkle_proof = proof
-        .kernel_merkle_proof
-        .as_ref()
-        .map(decode_kernel_merkle_proof)
-        .transpose()?
-        .ok_or_else(|| anyhow!("No kernel_merkle_proof"))?;
+    let burn_output_proof = proof.burn_output_proof.ok_or_else(|| anyhow!("No burn_output_proof"))?;
     let encrypted_data = proof.encrypted_data.ok_or_else(|| anyhow!("No encrypted_data"))?;
     let value = proof.value.ok_or_else(|| anyhow!("No value"))?;
 
@@ -134,18 +132,9 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(
     let complete_proof = CompleteClaimBurnProof {
         claim_proof: BurnClaimProof {
             burn_public_key: proof.burn_proof.claim_public_key,
-            commitment: proof.burn_proof.commitment,
             ownership_proof: proof.burn_proof.ownership_proof,
-            merkle_proof: kernel_merkle_proof,
-            kernel: AbridgedTransactionKernel {
-                version: proof.kernel.version.as_u8(),
-                fee: proof.kernel.fee.as_u64(),
-                lock_height: proof.kernel.lock_height,
-                excess: proof.kernel.excess,
-                excess_sig: proof.kernel.excess_sig,
-            },
+            output_proof: burn_output_proof,
             value: value.as_u64(),
-            sender_offset_public_key: proof.burn_proof.sender_offset_public_key,
         },
         encrypted_data: encrypted_data.into_vec(),
         mined_in_epoch,
@@ -154,7 +143,7 @@ async fn write_burn_proof_to_file<P: AsRef<Path>>(
     fs::write(&final_path, serde_json::to_vec_pretty(&complete_proof)?).await?;
     info!(
         target: LOG_TARGET,
-        "Wrote burn proof (mined in epoch {:?}) to {}",
+        "Wrote burn proof (mined in epoch {}) to {}",
         mined_in_epoch,
         final_path.display()
     );

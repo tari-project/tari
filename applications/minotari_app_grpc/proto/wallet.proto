@@ -2674,18 +2674,17 @@ message GetBurnClaimProofRequest {
 }
 
 message GetBurnClaimProofResponse {
-  // Formerly the bincode-encoded merkle_proof, replaced by kernel_merkle_proof
-  reserved 2;
-  reserved "merkle_proof";
+  // Formerly the bincode-encoded merkle_proof and the kernel_merkle_proof, replaced by burn_output_proof
+  reserved 2, 7;
+  reserved "merkle_proof", "kernel_merkle_proof";
   BurnClaimProof claim_proof = 1;
   bytes encrypted_data = 3;
   TransactionKernel kernel = 4;
   uint64 value = 5;
-  // The L1 epoch the burn was mined in (block_height / vn_epoch_length). Optional: absent until the burn is
-  // confirmed on-chain, or when connected to a base node that does not report the mined block height.
+  // The L1 epoch the burn was mined in (block_height / vn_epoch_length). Absent until the burn is confirmed on-chain.
   optional uint64 mined_in_epoch = 6;
   // Optional, not available until the burn transaction is confirmed
-  KernelMerkleProof kernel_merkle_proof = 7;
+  BurnOutputProof burn_output_proof = 8;
 }
 
 message BurnClaimProof {
@@ -2698,15 +2697,47 @@ message BurnClaimProof {
   bytes sender_offset_public_key = 7;
 }
 
-// An inclusion proof of a kernel in the kernel MMR of the block it was mined in
-message KernelMerkleProof {
+// Proves that a burn output was mined, against the block_output_mr of the header of the block it was mined in.
+// The block output MMR has the coinbase output hashes as leaves, followed by the root of the MMR of all other output
+// hashes in the block (normal_output_mr) as its last leaf.
+message BurnOutputProof {
   bytes block_hash = 1;
-  uint64 leaf_index = 2;
-  uint64 mmr_size = 3;
+  uint64 block_height = 2;
+  OutputHashPreimage output = 3;
+  // The inclusion proof of the output hash in the normal output MMR
+  MmrInclusionProof normal_output_proof = 4;
+  bytes normal_output_mr = 5;
+  // The inclusion proof of normal_output_mr in the block output MMR (as its last leaf, for an honest proof).
+  // Proofs are not unique: key anything that must be unique per burn on the output commitment or hash.
+  MmrInclusionProof block_output_proof = 6;
+}
+
+// An inclusion proof of a leaf in a Merkle mountain range
+message MmrInclusionProof {
+  uint64 leaf_index = 1;
+  uint64 mmr_size = 2;
   // The sibling path from the leaf up to its local peak
-  repeated bytes path = 4;
+  repeated bytes path = 3;
   // The MMR peaks, excluding the local peak of the leaf
-  repeated bytes peaks = 5;
+  repeated bytes peaks = 4;
+}
+
+// The fields of an output that its hash commits to, in hash order. The range proof is carried as its hash.
+message OutputHashPreimage {
+  uint32 version = 1;
+  // Consensus (borsh) encoded OutputFeatures
+  bytes features = 2;
+  bytes commitment = 3;
+  bytes rangeproof_hash = 4;
+  // Consensus (borsh) encoded TariScript
+  bytes script = 5;
+  bytes sender_offset_public_key = 6;
+  ComAndPubSignature metadata_signature = 7;
+  // Consensus (borsh) encoded Covenant
+  bytes covenant = 8;
+  // Consensus (borsh) encoded EncryptedData
+  bytes encrypted_data = 9;
+  uint64 minimum_value_promise = 10;
 }
 
 message RescanWalletRequest {

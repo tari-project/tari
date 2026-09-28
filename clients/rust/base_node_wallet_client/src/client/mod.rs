@@ -4,13 +4,14 @@ pub mod http;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::CompressedCommitment;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
         self,
         BlockHeader,
         FeePerGramStat,
-        GenerateKernelMerkleProofResponse,
+        GenerateBurnOutputProofResponse,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponseV0,
@@ -67,11 +68,10 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
     ) -> Result<models::TxQueryResponse, Error>;
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error>;
-    async fn get_kernel_merkle_proof(
+    async fn get_burn_output_proof(
         &self,
-        excess_sig_nonce: &[u8],
-        excess_sig: &[u8],
-    ) -> Result<GenerateKernelMerkleProofResponse, anyhow::Error>;
+        commitment: &CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, anyhow::Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]

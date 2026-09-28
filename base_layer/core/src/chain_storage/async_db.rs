@@ -25,6 +25,7 @@ use log::*;
 use primitive_types::U512;
 use rand::Rng;
 use tari_common_types::{
+    burn_proof::BurnOutputProof,
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -69,7 +70,6 @@ use crate::{
         MmrTree,
         TargetDifficulties,
         blockchain_database::MmrRoots,
-        kernel_merkle_proof::KernelMerkleProof,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
     },
     common::rolling_vec::RollingVec,
@@ -235,8 +235,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        generate_kernel_merkle_proof(excess_sig: CompressedSignature) -> KernelMerkleProof,
-        "generate_kernel_merkle_proof"
+        generate_burn_output_proof(commitment: CompressedCommitment) -> BurnOutputProof,
+        "generate_burn_output_proof"
     );
 
     //---------------------------------- MMR --------------------------------------------//

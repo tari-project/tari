@@ -34,7 +34,7 @@ use tari_common_sqlite::{
     util::{diesel_ext::ExpectedRowsExtension, retry::retry_db},
 };
 use tari_common_types::{
-    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
+    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     payment_reference::{PaymentReference, generate_payment_reference},
     tari_address::TariAddress,
@@ -1469,19 +1469,18 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn update_burn_proof_set_merkle_proof(
+    fn update_burn_proof_set_burn_output_proof(
         &self,
         output_hash: &FixedHash,
-        merkle_proof: &EncodedMerkleProof,
-        mined_in_height: Option<u64>,
+        proof: &BurnOutputProof,
     ) -> Result<(), TransactionStorageError> {
         use crate::schema::burn_proofs;
 
         let mut conn = self.database_connection.get_pooled_connection()?;
         let num_updated = diesel::update(burn_proofs::table)
             .set((
-                burn_proofs::kernel_merkle_proof.eq(Some(serializers::bincode_encode(merkle_proof)?)),
-                burn_proofs::mined_in_height.eq(mined_in_height.map(|h| h as i64)),
+                burn_proofs::burn_output_proof.eq(Some(serializers::bincode_encode(proof)?)),
+                burn_proofs::mined_in_height.eq(Some(proof.block_height as i64)),
                 burn_proofs::updated_at.eq(now()),
             ))
             .filter(burn_proofs::output_hash.eq(output_hash.as_bytes()))
@@ -1490,7 +1489,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         if num_updated == 0 {
             warn!(
                 target: LOG_TARGET,
-                "Attempted to update burn proof merkle proof, but no matching hash was found: {}",
+                "Attempted to update burn output proof, but no matching hash was found: {}",
                 output_hash
             );
             return Err(TransactionStorageError::ValuesNotFound);

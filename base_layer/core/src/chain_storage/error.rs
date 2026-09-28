@@ -70,6 +70,11 @@ pub enum ChainStorageError {
         start_height: u64,
         target_height: u64,
     },
+    #[error(
+        "The body of block #{height} is not available because this node is pruned up to height {pruned_height}. Use \
+         an archival node."
+    )]
+    BlockBodyPruned { height: u64, pruned_height: u64 },
     #[error("Invalid argument `{arg}` in `{func}`: {message}")]
     InvalidArguments {
         func: &'static str,
@@ -212,6 +217,7 @@ impl ChainStorageError {
             _err @ ChainStorageError::MrHashError(_) |
             _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
             _err @ ChainStorageError::PayRefIndexNotAvailable { .. } |
+            _err @ ChainStorageError::BlockBodyPruned { .. } |
             _err @ ChainStorageError::AccDataMigrationStillInProgress => None,
         }
     }

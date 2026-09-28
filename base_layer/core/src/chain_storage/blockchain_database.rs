@@ -49,6 +49,7 @@ use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -63,7 +64,7 @@ use tari_common_types::{
     },
 };
 use tari_hashing::TransactionHashDomain;
-use tari_mmr::{MerkleProof, pruned_hashset::PrunedHashSet};
+use tari_mmr::{Hash, MerkleMountainRange, MerkleProof, common::LeafIndex, pruned_hashset::PrunedHashSet};
 use tari_node_components::blocks::{
     Block,
     BlockHeader,
@@ -94,6 +95,7 @@ use super::{
     smt_hasher::SmtHasher,
 };
 use crate::{
+    InputMmrHasherBlake256,
     PrunedInputMmr,
     PrunedKernelMmr,
     PrunedOutputMmr,
@@ -125,7 +127,6 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue, HorizonSyncOutputCheckpoint},
         error::ChainStorageError,
-        kernel_merkle_proof::KernelMerkleProof,
         lmdb_db::{BREATHING_TIME_MS_MAX, BREATHING_TIME_MS_MIN, BlockchainCheckStatus},
         smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
@@ -2287,74 +2288,118 @@ where B: BlockchainBackend
         db.fetch_template_registrations(start, end)
     }
 
-    pub fn generate_kernel_merkle_proof(
+    /// Generates a proof that the burn output with the given commitment was mined, against the `block_output_mr` of
+    /// the block it was mined in. This needs the full block body, so a pruned node can only generate it for blocks
+    /// above its pruned height.
+    pub fn generate_burn_output_proof(
         &self,
-        excess_sig: CompressedSignature,
-    ) -> Result<KernelMerkleProof, ChainStorageError> {
-        const OPERATION: &str = "generate_kernel_merkle_proof";
+        commitment: CompressedCommitment,
+    ) -> Result<BurnOutputProof, ChainStorageError> {
+        const OPERATION: &str = "generate_burn_output_proof";
         let db = self.db_read_access()?;
 
-        let (kernel, block_hash) =
-            db.fetch_kernel_by_excess_sig(&excess_sig)?
+        let (_, block_hash) =
+            db.fetch_kernel_by_burn_commitment(&commitment)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "TransactionKernel",
-                    field: "excess_sig",
-                    value: excess_sig.get_signature().to_hex(),
+                    entity: "Burn",
+                    field: "commitment",
+                    value: commitment.to_hex(),
                 })?;
 
-        let block = fetch_block_by_hash(&*db, block_hash, true)?.ok_or_else(|| {
+        let header = fetch_header_by_block_hash(&*db, block_hash)?.ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: OPERATION,
                 details: format!(
-                    "Kernel with excess sig {} found in database, but block not found in block database",
-                    excess_sig.get_signature().reveal()
+                    "Burn kernel for commitment {} found, but header {block_hash} not found",
+                    commitment.to_hex()
                 ),
             }
         })?;
+        let pruned_height = db.fetch_chain_metadata()?.pruned_height();
+        // Horizon sync does not download the body of the block at the pruned height, and pruning removes spent
+        // outputs from the bodies of blocks at or below it.
+        if pruned_height > 0 && header.height <= pruned_height {
+            return Err(ChainStorageError::BlockBodyPruned {
+                height: header.height,
+                pruned_height,
+            });
+        }
 
-        let BlockAccumulatedData { kernels, .. } = db
-            .fetch_block_accumulated_data(&block.header().prev_hash)?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockAccumulatedData",
-                field: "block_hash",
-                value: block_hash.to_hex(),
-            })?;
+        let block = fetch_block_by_hash(&*db, block_hash, true)?
+            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                function: OPERATION,
+                details: format!("Header {block_hash} found, but its block was not"),
+            })?
+            .into_block();
+
+        // Rebuild the block output MMRs as in `calculate_mmr_roots`
+        let mut block_output_mmr = OutputMmr::new(Vec::new());
+        let mut normal_output_mmr = OutputMmr::new(Vec::new());
+        let mut burn = None;
+        for output in block.body.outputs() {
+            if output.features.is_coinbase() {
+                block_output_mmr.push(output.hash().to_vec())?;
+            } else {
+                if output.is_burned() && output.commitment == commitment {
+                    burn = Some((output, normal_output_mmr.get_leaf_count()?));
+                }
+                normal_output_mmr.push(output.hash().to_vec())?;
+            }
+        }
+        let normal_output_mr = FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?;
+        let normal_output_mr_leaf_index = block_output_mmr.get_leaf_count()?;
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+
+        let (burn_output, burn_leaf_index) = burn.ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+            function: OPERATION,
+            details: format!(
+                "Burn kernel for commitment {} found in block #{}, but the block has no matching burn output",
+                commitment.to_hex(),
+                header.height
+            ),
+        })?;
+        let block_output_mr = FixedHash::try_from(block_output_mmr.get_merkle_root()?)?;
+        if block_output_mr != header.block_output_mr {
+            return Err(ChainStorageError::DataInconsistencyDetected {
+                function: OPERATION,
+                details: format!(
+                    "Block output MR {} rebuilt from the body of block #{} does not match the header's {}",
+                    block_output_mr, header.height, header.block_output_mr
+                ),
+            });
+        }
 
         info!(
             target: LOG_TARGET,
-            "Generating kernel merkle proof for kernel in block #{} ({}) MMR size: {}",
-            block.header().height,
+            "Generated burn output proof for commitment {} in block #{} ({})",
+            commitment.to_hex(),
+            header.height,
             block_hash,
-            block.header().kernel_mmr_size,
         );
 
-        let mut kernel_mmr = PrunedKernelMmr::new(kernels);
-
-        for kernel in block.block().body.kernels() {
-            let hash = kernel.hash();
-            kernel_mmr.push(hash.to_vec())?;
-        }
-
-        let kernel_hash = kernel.hash();
-        let leaf_index = kernel_mmr.find_leaf_index(kernel_hash.as_slice())?.ok_or_else(|| {
-            ChainStorageError::DataInconsistencyDetected {
-                function: OPERATION,
-                details: format!(
-                    "Kernel with hash {} found in database, but not found in MMR",
-                    kernel_hash
-                ),
-            }
-        })?;
-
-        let merkle_proof = MerkleProof::for_leaf_node(&kernel_mmr, leaf_index)?;
-        Ok(KernelMerkleProof {
-            merkle_proof,
-            leaf_index,
-            kernel_hash,
+        Ok(BurnOutputProof {
             block_hash,
-            block_height: block.header().height,
+            block_height: header.height,
+            output: OutputHashPreimage::from(burn_output),
+            normal_output_proof: mmr_inclusion_proof(&normal_output_mmr, burn_leaf_index)?,
+            normal_output_mr,
+            block_output_proof: mmr_inclusion_proof(&block_output_mmr, normal_output_mr_leaf_index)?,
         })
     }
+}
+
+type OutputMmr = MerkleMountainRange<InputMmrHasherBlake256, Vec<Hash>>;
+
+fn mmr_inclusion_proof(mmr: &OutputMmr, leaf_index: usize) -> Result<MmrInclusionProof, ChainStorageError> {
+    let proof = MerkleProof::for_leaf_node(mmr, LeafIndex(leaf_index))?;
+    let to_fixed_hashes =
+        |hashes: Vec<Hash>| -> Result<Vec<FixedHash>, _> { hashes.into_iter().map(FixedHash::try_from).collect() };
+    Ok(MmrInclusionProof {
+        leaf_index: leaf_index as u64,
+        mmr_size: proof.mmr_size as u64,
+        path: to_fixed_hashes(proof.path)?,
+        peaks: to_fixed_hashes(proof.peaks)?,
+    })
 }
 
 fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {

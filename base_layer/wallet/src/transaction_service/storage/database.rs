@@ -29,7 +29,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
-    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
+    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
     payment_reference::PaymentReference,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
@@ -211,11 +211,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
         value: MicroMinotari,
     ) -> Result<(), TransactionStorageError>;
 
-    fn update_burn_proof_set_merkle_proof(
+    /// Sets the burn output proof, and the height the burn was mined in from it
+    fn update_burn_proof_set_burn_output_proof(
         &self,
         output_hash: &FixedHash,
-        merkle_proof: &EncodedMerkleProof,
-        mined_in_height: Option<u64>,
+        proof: &BurnOutputProof,
     ) -> Result<(), TransactionStorageError>;
 
     fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError>;
@@ -960,14 +960,12 @@ where T: TransactionBackend + 'static
             .insert_burn_proof(output_hash, proof, kernel, encrypt_data, value)
     }
 
-    pub fn update_burn_proof_set_merkle_proof(
+    pub fn update_burn_proof_set_burn_output_proof(
         &self,
         output_hash: &FixedHash,
-        merkle_proof: &EncodedMerkleProof,
-        mined_in_height: Option<u64>,
+        proof: &BurnOutputProof,
     ) -> Result<(), TransactionStorageError> {
-        self.db
-            .update_burn_proof_set_merkle_proof(output_hash, merkle_proof, mined_in_height)
+        self.db.update_burn_proof_set_burn_output_proof(output_hash, proof)
     }
 
     pub fn fetch_burn_proof(&self, output_hash: &FixedHash) -> Result<Option<DbBurnProof>, TransactionStorageError> {
