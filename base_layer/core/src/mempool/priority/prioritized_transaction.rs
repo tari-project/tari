@@ -28,6 +28,7 @@ use std::{
 
 use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
 use tari_transaction_components::{
+    helpers::borsh::SerializedSize,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
@@ -93,6 +94,9 @@ pub struct PrioritizedTransaction {
     pub priority: FeePriority,
     pub fee_per_byte: u64,
     pub weight: u64,
+    /// The borsh-serialized size of the transaction body in bytes, computed once on insert. Used as an estimate of
+    /// the bytes the transaction adds to a block body.
+    pub body_size: usize,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -104,6 +108,10 @@ impl PrioritizedTransaction {
         dependent_outputs: Option<Vec<HashOutput>>,
     ) -> Result<PrioritizedTransaction, TransactionError> {
         let weight = transaction.calculate_weight(weighting)?;
+        let body_size = transaction
+            .body
+            .get_serialized_size()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -119,6 +127,7 @@ impl PrioritizedTransaction {
                 .checked_div(weight)
                 .ok_or(TransactionError::ZeroWeight)?,
             weight,
+            body_size,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })
