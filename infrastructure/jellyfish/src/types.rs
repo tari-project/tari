@@ -108,6 +108,24 @@ pub fn jmt_node_hash2(d1: &TreeHash, d2: &TreeHash) -> TreeHash {
     jmt_node_hasher().chain(d1).chain(d2).finalize_into_array().into()
 }
 
+// Leaf and internal node hashes use distinct labels so that a leaf can never be passed off as an internal node (or
+// vice versa) in a proof, since both hash two 32-byte values.
+fn jmt_leaf_hash(key: &LeafKey, value_hash: &TreeHash) -> TreeHash {
+    tari_hasher32::<JmtHashDomain>("Leaf")
+        .chain(&key.bytes)
+        .chain(value_hash)
+        .finalize_into_array()
+        .into()
+}
+
+fn jmt_internal_hash(left: &TreeHash, right: &TreeHash) -> TreeHash {
+    tari_hasher32::<JmtHashDomain>("Internal")
+        .chain(left)
+        .chain(right)
+        .finalize_into_array()
+        .into()
+}
+
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/proof/definition.rs#L182
 /// The maximum number of siblings in a proof, i.e. the bit length of a [`LeafKey`].
 pub const MAX_PROOF_SIBLINGS: usize = 256;
@@ -430,7 +448,7 @@ impl SparseMerkleLeafNode {
     }
 
     pub fn hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.key.bytes, &self.value_hash)
+        jmt_leaf_hash(&self.key, &self.value_hash)
     }
 }
 
@@ -448,7 +466,7 @@ impl SparseMerkleInternalNode {
     }
 
     fn hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.left_child, &self.right_child)
+        jmt_internal_hash(&self.left_child, &self.right_child)
     }
 }
 
@@ -1400,7 +1418,7 @@ impl<P> LeafNode<P> {
     /// changes within a sparse merkle tree (consider 2 trees, both containing a single element with
     /// the same value, but stored under different keys - we want their root hashes to differ).
     pub fn leaf_hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.leaf_key.bytes, &self.value_hash)
+        jmt_leaf_hash(&self.leaf_key, &self.value_hash)
     }
 }
 

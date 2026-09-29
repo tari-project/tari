@@ -782,7 +782,7 @@ pub struct StaleNodeIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
+    use crate::{SparseMerkleLeafNode, StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
 
     fn leaf_key(seed: u64) -> LeafKey {
         LeafKey::new(jmt_node_hash(&seed))
@@ -904,5 +904,42 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
         }
+    }
+
+    #[test]
+    fn it_rejects_an_internal_node_presented_as_a_leaf() {
+        // Two keys that differ in the first bit, so the root is the internal node of their two leaves
+        let k1 = leaf_key(1);
+        let k2 = (2..)
+            .map(leaf_key)
+            .find(|k| k.iter_bits().next() != k1.iter_bits().next())
+            .unwrap();
+        let mut mem = MemoryTreeStore::new();
+        let values = [
+            (k1, Some((jmt_node_hash(&10), ()))),
+            (k2, Some((jmt_node_hash(&11), ()))),
+        ];
+        let (root, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set(values, None, None, 1)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        let (_, proof) = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(k1.as_ref(), 1)
+            .unwrap();
+        proof.verify_inclusion(&root, &k1, &jmt_node_hash(&10)).unwrap();
+
+        // Claim the root's children are a leaf with key = left child hash and value = right child hash
+        let (left, right) = if k1.iter_bits().next() == Some(false) {
+            (&k1, &k2)
+        } else {
+            (&k2, &k1)
+        };
+        let left_hash = SparseMerkleLeafNode::new(*left, jmt_node_hash(&(if left == &k1 { 10 } else { 11 }))).hash();
+        let right_hash = SparseMerkleLeafNode::new(*right, jmt_node_hash(&(if right == &k1 { 10 } else { 11 }))).hash();
+        let fake_key = LeafKey::new(left_hash);
+        let forged = SparseMerkleProofExt::new(Some(SparseMerkleLeafNode::new(fake_key, right_hash)), vec![]);
+        forged.verify_inclusion(&root, &fake_key, &right_hash).unwrap_err();
     }
 }
