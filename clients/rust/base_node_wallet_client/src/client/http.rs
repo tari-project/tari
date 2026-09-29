@@ -42,12 +42,15 @@ const LOG_TARGET: &str = "tari::wallet::client::http";
 
 /// Upper bound on establishing a connection to the base node wallet service.
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Idle read timeout: fails a request once the connection has delivered no data for this long. It kills a stalled peer
-/// but allows slow, still-progressing transfers (large UTXO pages on a slow link or a loaded node) to complete, unlike
-/// a total request timeout, which would fail such a page on every retry and stop scanning from progressing past it.
-/// Wallet services await these requests while holding a shutdown signal, so this must stay well below the wallet's
-/// shutdown drain timeout (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s) or one stalled request pins the drain.
-const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(20);
+/// reqwest `read_timeout`. Until the response headers arrive this is a single hard deadline started when the request
+/// is created, covering connect, send and the wait for the headers; after that it is an idle timeout, reset by every
+/// body frame. The base node builds each response (e.g. a `sync_utxos_by_block` page) as buffered JSON before sending
+/// the headers, so this must allow for a loaded node taking a long time to compute a page: a value that is too small
+/// fails that page on every retry and scanning never progresses past it. It still kills a dead or silent peer.
+/// This is deliberately longer than the wallet's shutdown drain (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s): the wallet's
+/// background tasks race the requests they await while holding a shutdown signal against that signal and drop them
+/// on shutdown, so shutdown does not wait for this timeout (and the drain is bounded by its own timeout regardless).
+const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// The base node rejects any batch query carrying more than `MAX_ALLOWED_QUERY_SIZE` items with a `400`. Fail here
 /// instead, so callers get an actionable error naming the limit rather than an opaque HTTP error body.

@@ -25,7 +25,6 @@ use chrono::Utc;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::FixedHash;
-use tari_comms::protocol::rpc::RpcError;
 use tari_shutdown::ShutdownSignal;
 use tokio::{select, sync::RwLock, time::interval};
 
@@ -35,7 +34,6 @@ use crate::{
         service::BaseNodeState,
     },
     connectivity_service::WalletConnectivityInterface,
-    error::WalletStorageError,
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
@@ -61,33 +59,17 @@ where TWalletConnectivity: WalletConnectivityInterface
         }
     }
 
+    /// Monitor the base node until shutdown. This task is spawned once and never restarted, so a failed poll is
+    /// logged and retried on the next tick rather than ending the task.
     pub async fn run(mut self, shutdown_signal: ShutdownSignal) {
-        match self.monitor_node(shutdown_signal).await {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Wallet Base Node Service chain metadata task completed successfully"
-                );
-            },
-
-            Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
-                warn!(target: LOG_TARGET, "Connectivity failure to base node: {e}");
-                self.update_state(BaseNodeState {
-                    chain_metadata: None,
-                    is_synced: None,
-                    updated: None,
-                    latency: None,
-                })
-                .await;
-            },
-            Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
-            Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
-                error!(target: LOG_TARGET, "{e}");
-            },
-        }
+        self.monitor_node(shutdown_signal).await;
+        debug!(
+            target: LOG_TARGET,
+            "Wallet Base Node Service chain metadata task stopped because the shutdown signal was received"
+        );
     }
 
-    async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
+    async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) {
         let mut interval = interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_checked_hash = FixedHash::zero();
@@ -95,7 +77,7 @@ where TWalletConnectivity: WalletConnectivityInterface
         loop {
             select! {
                 biased;
-                _ = shutdown_signal.wait() => return Ok(()),
+                _ = shutdown_signal.wait() => return,
                 _ = interval.tick() => {},
             }
 
@@ -103,17 +85,42 @@ where TWalletConnectivity: WalletConnectivityInterface
             // raced against shutdown: this task holds a shutdown signal, which the wallet's shutdown drain waits for.
             let (client, tip_info) = select! {
                 biased;
-                _ = shutdown_signal.wait() => return Ok(()),
+                _ = shutdown_signal.wait() => return,
                 res = async {
                     let client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
                     let tip_info = client.get_tip_info().await;
                     (client, tip_info)
                 } => res,
             };
-            let tip_info = tip_info.map_err(|e| BaseNodeMonitorError::InvalidBaseNodeResponse(e.to_string()))?;
-            let chain_metadata = tip_info
-                .metadata
-                .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
+            let tip_info = match tip_info {
+                Ok(tip_info) if tip_info.metadata.is_some() => tip_info,
+                res => {
+                    let reason = match res {
+                        Ok(_) => "tip info has no chain metadata".to_string(),
+                        Err(e) => e.to_string(),
+                    };
+                    warn!(
+                        target: LOG_TARGET,
+                        "Base node did not return valid tip info, retrying on the next poll: {reason}"
+                    );
+                    // Mark the base node as not responding, once per outage. Resetting the last checked hash makes
+                    // the next good response publish fresh state even if the tip has not moved.
+                    if last_checked_hash != FixedHash::zero() {
+                        last_checked_hash = FixedHash::zero();
+                        self.update_state(BaseNodeState {
+                            chain_metadata: None,
+                            is_synced: None,
+                            updated: None,
+                            latency: None,
+                        })
+                        .await;
+                    }
+                    continue;
+                },
+            };
+            let Some(chain_metadata) = tip_info.metadata else {
+                continue;
+            };
 
             let latency = match client.get_last_request_latency().await {
                 Some(latency) => latency,
@@ -153,10 +160,6 @@ where TWalletConnectivity: WalletConnectivityInterface
             })
             .await;
         }
-
-        // loop only exits on shutdown/error
-        #[allow(unreachable_code)]
-        Ok(())
     }
 
     // returns true if a new block, otherwise false
@@ -171,14 +174,4 @@ where TWalletConnectivity: WalletConnectivityInterface
     fn publish_event(&self, event: BaseNodeEvent) {
         let _size = self.event_publisher.send(Arc::new(event));
     }
-}
-
-#[derive(thiserror::Error, Debug)]
-enum BaseNodeMonitorError {
-    #[error("Rpc error: {0}")]
-    RpcFailed(#[from] RpcError),
-    #[error("Invalid base node response: {0}")]
-    InvalidBaseNodeResponse(String),
-    #[error("Wallet storage error: {0}")]
-    WalletStorageError(#[from] WalletStorageError),
 }
