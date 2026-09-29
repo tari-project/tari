@@ -29,7 +29,13 @@ yanked = "deny"
 # Unmaintained advisories are reported for the workspace's own dependency tree only. A transitive unmaintained crate is
 # a fact about a dependency's choices, not something this repository can act on.
 unmaintained = "workspace"
-ignore = []
+ignore = [
+    # RUSTSEC-2023-0071 (Marvin timing attack on RSA decryption/signing). `rsa` is linked only through `pgp`, which
+    # tari_p2p uses solely to verify auto-update signatures: public-key operations, which the attack does not affect.
+    # Last reviewed 2026-09-29; re-review by 2027-03-29 or when an `rsa` fix is released. Kept in step with
+    # .cargo/audit.toml.
+    "RUSTSEC-2023-0071",
+]
 
 [licenses]
 # Permissive licenses only. Anything not listed here fails the check - there is no default-allow.
