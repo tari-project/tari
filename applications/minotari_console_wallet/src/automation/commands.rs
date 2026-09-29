@@ -2328,8 +2328,11 @@ pub async fn command_runner(
                     .join(format!("temp-{}", random_alphanumeric(8)));
                 println!("saving temp wallet in: {temp_path:?}");
                 let temp_wallet_dir = TempWalletDir::create(temp_path.clone())?;
-                // Owns the temporary wallet's services. It is triggered, and its listeners drained, on every exit path
-                // below before the directory is removed, so the removal never races a task with the database open.
+                // Owns the temporary wallet's services. It is triggered on every exit path below, and before the
+                // directory is removed we wait, bounded by TEMP_WALLET_SHUTDOWN_TIMEOUT, for the tasks holding one of
+                // its shutdown signals to exit. The drain only sees tasks that hold a signal, and a removal after a
+                // timeout may still race an open database handle (on Windows the removal then fails and the error is
+                // reported).
                 let shutdown = Shutdown::new();
                 let result: Result<(), CommandError> = async {
                     let passphrase = if args.passphrase.is_empty() {

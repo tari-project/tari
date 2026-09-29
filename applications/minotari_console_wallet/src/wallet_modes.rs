@@ -22,7 +22,7 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, io::Stdout, path::PathBuf};
+use std::{fs, io::Stdout, path::PathBuf, time::Duration};
 
 use clap::Parser;
 use futures::TryFutureExt;
@@ -390,6 +390,11 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     Ok(())
 }
 
+/// How long in-flight gRPC requests and streams get to finish once the wallet shuts down. tonic's graceful shutdown
+/// waits for every open HTTP/2 stream, so a client that stops reading a stream would otherwise keep the gRPC service's
+/// wallet handles (and their shutdown signals) alive until the wallet's shutdown drain times out.
+const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
 async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
@@ -419,13 +424,31 @@ async fn run_grpc(
         Server::builder()
     };
 
-    server_builder
+    let mut grace_signal = wallet.shutdown_signal.clone();
+    // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` would also wait for every wallet
+    // task to exit, including the gRPC service's own wallet handles, which are only dropped once this returns.
+    let serve_fut = server_builder
         .add_service(service)
-        // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` would also wait for every wallet
-        // task to exit, including the gRPC service's own wallet handles, which are only dropped once this returns.
-        .serve_with_shutdown(address, wallet.shutdown_signal)
-        .await
-        .map_err(|e| format!("GRPC server returned error:{e}"))?;
+        .serve_with_shutdown(address, wallet.shutdown_signal);
+    tokio::pin!(serve_fut);
+    let serve_result = tokio::select! {
+        result = &mut serve_fut => result,
+        _ = &mut grace_signal => {
+            // Graceful shutdown has started: bound how long in-flight streams may keep the server (and its wallet
+            // handles) alive
+            match tokio::time::timeout(GRPC_SHUTDOWN_GRACE_PERIOD, &mut serve_fut).await {
+                Ok(result) => result,
+                Err(_) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "gRPC requests still in flight {GRPC_SHUTDOWN_GRACE_PERIOD:.0?} after shutdown; dropping them"
+                    );
+                    Ok(())
+                },
+            }
+        },
+    };
+    serve_result.map_err(|e| format!("GRPC server returned error:{e}"))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (gRPC mode completed)";

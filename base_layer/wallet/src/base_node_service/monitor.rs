@@ -94,67 +94,64 @@ where TWalletConnectivity: WalletConnectivityInterface
 
         loop {
             select! {
-
-                        _ = shutdown_signal.wait() => {
-                                return Ok(());
-                        },
-                        _ = interval.tick() => {
-                            // continue to the next iteration
-                    let  client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
-
-
-
-                    let tip_info = client
-                        .get_tip_info()
-                        .await
-                        .map_err(|e| BaseNodeMonitorError::InvalidBaseNodeResponse(e.to_string()))?;
-                    let chain_metadata = tip_info
-                        .metadata
-                        .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
-
-                    let latency = match client.get_last_request_latency().await {
-                        Some(latency) => latency,
-                        None => {
-                            continue;
-                        },
-                    };
-                    debug!(
-                        target: LOG_TARGET,
-                        "Base node height:{} latency: {} ms",
-                        chain_metadata.best_block_height(),
-                        latency.as_millis()
-                    );
-
-                    let is_synced = tip_info.is_synced;
-                    let best_block_height = chain_metadata.best_block_height();
-                    trace!(
-                        target: LOG_TARGET,
-                        "Base node Tip: {} ({}) Latency: {} ms",
-                        best_block_height,
-                        if is_synced { "Synced" } else { "Syncing..." },
-                        latency.as_millis()
-                    );
-
-                    let tip_hash = chain_metadata.best_block_hash();
-                    if last_checked_hash == *tip_hash {
-                        // no new block, continue to the next iteration
-                        continue;
-                    }
-                    last_checked_hash = *tip_hash;
-
-                    self
-                        .update_state(BaseNodeState {
-                            chain_metadata: Some(chain_metadata),
-                            is_synced: Some(is_synced),
-                            updated: Some(Utc::now()),
-                            latency: Some(latency),
-                        })
-                        .await;
-
-
-
-               }
+                biased;
+                _ = shutdown_signal.wait() => return Ok(()),
+                _ = interval.tick() => {},
             }
+
+            // Obtaining a client can wait for a base node to be selected and get_tip_info is remote I/O, so both are
+            // raced against shutdown: this task holds a shutdown signal, which the wallet's shutdown drain waits for.
+            let (client, tip_info) = select! {
+                biased;
+                _ = shutdown_signal.wait() => return Ok(()),
+                res = async {
+                    let client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+                    let tip_info = client.get_tip_info().await;
+                    (client, tip_info)
+                } => res,
+            };
+            let tip_info = tip_info.map_err(|e| BaseNodeMonitorError::InvalidBaseNodeResponse(e.to_string()))?;
+            let chain_metadata = tip_info
+                .metadata
+                .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
+
+            let latency = match client.get_last_request_latency().await {
+                Some(latency) => latency,
+                None => {
+                    continue;
+                },
+            };
+            debug!(
+                target: LOG_TARGET,
+                "Base node height:{} latency: {} ms",
+                chain_metadata.best_block_height(),
+                latency.as_millis()
+            );
+
+            let is_synced = tip_info.is_synced;
+            let best_block_height = chain_metadata.best_block_height();
+            trace!(
+                target: LOG_TARGET,
+                "Base node Tip: {} ({}) Latency: {} ms",
+                best_block_height,
+                if is_synced { "Synced" } else { "Syncing..." },
+                latency.as_millis()
+            );
+
+            let tip_hash = chain_metadata.best_block_hash();
+            if last_checked_hash == *tip_hash {
+                // no new block, continue to the next iteration
+                continue;
+            }
+            last_checked_hash = *tip_hash;
+
+            self.update_state(BaseNodeState {
+                chain_metadata: Some(chain_metadata),
+                is_synced: Some(is_synced),
+                updated: Some(Utc::now()),
+                latency: Some(latency),
+            })
+            .await;
         }
 
         // loop only exits on shutdown/error

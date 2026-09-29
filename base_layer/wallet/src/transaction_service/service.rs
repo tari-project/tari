@@ -3948,9 +3948,13 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
+            self.resources.shutdown_signal.clone(),
         );
 
         let validation_in_progress = self.validation_in_progress.clone();
+        // The protocol holds the wallet database and does remote I/O: stop it on shutdown rather than let it run on
+        // after the wallet's shutdown drain has completed
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
 
@@ -3969,6 +3973,11 @@ where
                 tokio::pin!(exec_fut);
                 loop {
                     tokio::select! {
+                        biased;
+                        _ = shutdown.wait() => {
+                            debug!(target: LOG_TARGET, "Transaction Validation Protocol (Id: {id}) stopped by shutdown signal");
+                            return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::Shutdown));
+                        },
                         result = &mut exec_fut => {
                            return result;
                         },

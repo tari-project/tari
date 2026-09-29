@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Duration};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::FixedHash;
+use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::transaction_components::burn_output_proof::OutputHashPreimageExt;
 use tokio::sync::broadcast;
 
@@ -21,11 +22,35 @@ const RETRY_DELAY: Duration = Duration::from_secs(10);
 const MAX_ATTEMPTS: usize = 10;
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::sync_claim_burn_merkle_proofs";
 
+/// Fetch and store burn output proofs for `confirmed_burns`, retrying on failure.
+///
+/// This holds the wallet database and does remote I/O, so it holds `shutdown_signal` (counting as a listener for the
+/// wallet's shutdown drain) and stops at the next await point once shutdown happens. Database calls are synchronous,
+/// so stopping never interrupts a write.
 pub async fn execute<TBackend, TConnectivity>(
     db: TransactionDatabase<TBackend>,
     connectivity: TConnectivity,
     event_publisher: broadcast::Sender<Arc<TransactionEvent>>,
     confirmed_burns: Vec<FixedHash>,
+    mut shutdown_signal: ShutdownSignal,
+) where
+    TBackend: TransactionBackend + 'static,
+    TConnectivity: WalletConnectivityInterface,
+{
+    tokio::select! {
+        biased;
+        _ = shutdown_signal.wait() => {
+            debug!(target: LOG_TARGET, "sync_claim_burn_merkle_proofs stopped by shutdown signal");
+        },
+        _ = execute_with_retries(&db, &connectivity, &event_publisher, &confirmed_burns) => {},
+    }
+}
+
+async fn execute_with_retries<TBackend, TConnectivity>(
+    db: &TransactionDatabase<TBackend>,
+    connectivity: &TConnectivity,
+    event_publisher: &broadcast::Sender<Arc<TransactionEvent>>,
+    confirmed_burns: &[FixedHash],
 ) where
     TBackend: TransactionBackend + 'static,
     TConnectivity: WalletConnectivityInterface,
@@ -37,7 +62,7 @@ pub async fn execute<TBackend, TConnectivity>(
     );
     let mut attempt = 0usize;
     loop {
-        if let Err(err) = execute_inner(&db, &connectivity, &confirmed_burns, &event_publisher).await {
+        if let Err(err) = execute_inner(db, connectivity, confirmed_burns, event_publisher).await {
             // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
             error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
             tokio::time::sleep(RETRY_DELAY).await;

@@ -45,14 +45,13 @@ use std::{
         PoisonError,
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 use futures::{
     FutureExt,
     channel::oneshot,
     future::{self, FusedFuture},
-    task::AtomicWaker,
 };
 
 /// Why a shutdown signal resolved.
@@ -86,8 +85,9 @@ struct State {
     reason: AtomicU8,
     /// Number of live `ShutdownSignal` handles.
     listeners: AtomicUsize,
-    /// Woken when `listeners` drops to zero.
-    drain_waker: AtomicWaker,
+    /// One slot per live drain future; every registered waker is woken when `listeners` drops to zero. A slot is
+    /// only ever cleared by the drain future that owns it.
+    drain_wakers: Mutex<Vec<Option<Waker>>>,
 }
 
 impl State {
@@ -96,7 +96,7 @@ impl State {
             is_triggered: AtomicBool::new(false),
             reason: AtomicU8::new(REASON_NONE),
             listeners: AtomicUsize::new(0),
-            drain_waker: AtomicWaker::new(),
+            drain_wakers: Mutex::new(Vec::new()),
         }
     }
 
@@ -123,16 +123,58 @@ impl State {
         }
     }
 
-    fn poll_drained(&self, cx: &mut Context<'_>) -> Poll<()> {
-        if self.listeners.load(Ordering::SeqCst) == 0 {
-            return Poll::Ready(());
+    fn is_drained(&self) -> bool {
+        self.listeners.load(Ordering::SeqCst) == 0
+    }
+
+    /// Store `waker` in the drain slot `slot` (allocating one if `None`) and return the slot index.
+    fn register_drain_waker(&self, slot: Option<usize>, waker: &Waker) -> usize {
+        let mut wakers = self.drain_wakers.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(index) = slot {
+            // An owned slot always holds a waker, and is only cleared by its owner
+            if let Some(Some(existing)) = wakers.get_mut(index) {
+                if !existing.will_wake(waker) {
+                    *existing = waker.clone();
+                }
+                return index;
+            }
         }
-        self.drain_waker.register(cx.waker());
-        // Re-check after registering so a drop between the first check and `register` is not missed
-        if self.listeners.load(Ordering::SeqCst) == 0 {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
+        // Reuse a free slot, or append one
+        match wakers.iter_mut().enumerate().find(|(_, entry)| entry.is_none()) {
+            Some((index, entry)) => {
+                *entry = Some(waker.clone());
+                index
+            },
+            None => {
+                let index = wakers.len();
+                wakers.push(Some(waker.clone()));
+                index
+            },
+        }
+    }
+
+    fn remove_drain_waker(&self, slot: usize) {
+        let mut wakers = self.drain_wakers.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(entry) = wakers.get_mut(slot) {
+            *entry = None;
+        }
+        while wakers.last().is_some_and(Option::is_none) {
+            wakers.pop();
+        }
+    }
+
+    fn wake_drain_waiters(&self) {
+        // Wakers stay registered (each drain future removes its own slot), so wake clones outside the lock
+        let wakers = self
+            .drain_wakers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>();
+        for waker in wakers {
+            waker.wake();
         }
     }
 }
@@ -227,7 +269,7 @@ impl Shutdown {
     /// This does not trigger the shutdown; call [`trigger`](Self::trigger) first. A listener that is held somewhere
     /// and never dropped keeps this pending forever, so callers should bound it with a timeout.
     ///
-    /// Only one drain future is guaranteed to be woken at a time: await it from a single task.
+    /// Any number of drain futures may be awaited concurrently; all of them resolve when the last listener drops.
     pub fn wait_for_listeners(&self) -> impl Future<Output = ()> + Send + 'static {
         drain(self.trigger.state.clone())
     }
@@ -240,7 +282,48 @@ impl Default for Shutdown {
 }
 
 fn drain(state: Arc<State>) -> impl Future<Output = ()> + Send + 'static {
-    future::poll_fn(move |cx| state.poll_drained(cx))
+    Drain { state, slot: None }
+}
+
+/// Future returned by [`Shutdown::wait_for_listeners`] and [`ShutdownSignal::drained`]. Owns one waker slot in the
+/// shared state, released on completion or drop.
+struct Drain {
+    state: Arc<State>,
+    slot: Option<usize>,
+}
+
+impl Drain {
+    fn release_slot(&mut self) {
+        if let Some(slot) = self.slot.take() {
+            self.state.remove_drain_waker(slot);
+        }
+    }
+}
+
+impl Future for Drain {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.state.is_drained() {
+            self.release_slot();
+            return Poll::Ready(());
+        }
+        let slot = self.state.register_drain_waker(self.slot, cx.waker());
+        self.slot = Some(slot);
+        // Re-check after registering so a drop between the first check and the registration is not missed
+        if self.state.is_drained() {
+            self.release_slot();
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+impl Drop for Drain {
+    fn drop(&mut self) {
+        self.release_slot();
+    }
 }
 
 /// Counts one live `ShutdownSignal` for [`Shutdown::wait_for_listeners`].
@@ -265,7 +348,7 @@ impl Clone for Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         if self.state.listeners.fetch_sub(1, Ordering::SeqCst) == 1 {
-            self.state.drain_waker.wake();
+            self.state.wake_drain_waiters();
         }
     }
 }
@@ -530,6 +613,48 @@ mod test {
         for t in tasks {
             assert!(t.is_finished());
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_drain_waiters_all_resolve() {
+        let shutdown = Shutdown::new();
+        let signal = shutdown.to_signal();
+        let waiters = (0..2)
+            .map(|_| task::spawn(shutdown.wait_for_listeners()))
+            .collect::<Vec<_>>();
+        let from_signal = task::spawn(shutdown.to_signal().drained());
+        // Let every waiter register before the last listener goes away
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        for w in &waiters {
+            assert!(!w.is_finished());
+        }
+        shutdown.trigger();
+        drop(signal);
+        for w in waiters {
+            tokio::time::timeout(Duration::from_secs(5), w)
+                .await
+                .expect("every concurrent drain waiter must be woken")
+                .unwrap();
+        }
+        tokio::time::timeout(Duration::from_secs(5), from_signal)
+            .await
+            .expect("drained() waiter must be woken")
+            .unwrap();
+    }
+
+    #[test]
+    fn drain_slots_are_released() {
+        let shutdown = Shutdown::new();
+        let signal = shutdown.to_signal();
+        let mut a = Box::pin(shutdown.wait_for_listeners());
+        let mut b = Box::pin(shutdown.wait_for_listeners());
+        assert!(poll_once(&mut a).is_pending());
+        assert!(poll_once(&mut b).is_pending());
+        drop(a);
+        drop(signal);
+        assert!(poll_once(&mut b).is_ready());
+        drop(b);
+        assert!(shutdown.trigger.state.drain_wakers.lock().unwrap().is_empty());
     }
 
     #[test]

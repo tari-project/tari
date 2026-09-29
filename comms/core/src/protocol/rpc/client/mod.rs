@@ -736,6 +736,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let mut terminate_signal_fut = terminate_signal
             .map(|f| f.boxed())
             .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
+        // Watched while waiting for each frame, so an explicit `close()` interrupts a stream that is waiting on a slow
+        // frame rather than taking effect only once the next frame arrives.
+        let mut close_signal = self.shutdown_signal.clone();
         loop {
             // Only an explicit `close()` cuts a stream short. When the last client handle is dropped
             // (`ShutdownReason::Dropped`) the stream is still being read by its `ClientStreaming` receiver, so let it
@@ -761,9 +764,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 tokio::pin!(resp_fut);
                 let closed_fut = response_tx.closed();
                 tokio::pin!(closed_fut);
+                // Resolves only for an explicit `close()`. A `Dropped` resolution must not interrupt the stream (see
+                // above), so in that case this stays pending and the stream is read to the end.
+                let explicit_close_fut = async {
+                    (&mut close_signal).await;
+                    if close_signal.reason() != Some(ShutdownReason::Triggered) {
+                        future::pending::<()>().await;
+                    }
+                };
 
                 tokio::select! {
                     biased;
+                    _ = explicit_close_fut => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "(stream={stream_id}) Client connector explicitly closed while waiting for a response to \
+                             request {request_id}. Quitting stream early",
+                        );
+                        break;
+                    }
                     node_id = &mut terminate_signal_fut => {
                         debug!(
                             target: LOG_TARGET,

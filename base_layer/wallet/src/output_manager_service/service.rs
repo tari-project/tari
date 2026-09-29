@@ -3505,6 +3505,14 @@ async fn migrate_legacy_output_keys<TBackend, TWalletConnectivity, TKeyManagerIn
     let mut total_unconvertable: usize = 0;
 
     loop {
+        // `resources` holds a shutdown signal, so the wallet's shutdown drain waits for this task: stop between batches
+        if resources.shutdown_signal.is_triggered() {
+            info!(
+                target: LOG_TARGET,
+                "Legacy key migration: stopped by shutdown after {total_migrated} outputs, will resume on next start"
+            );
+            return;
+        }
         let batch = match resources
             .db
             .fetch_outputs_with_legacy_key_ids(last_id, LEGACY_KEY_MIGRATION_BATCH_SIZE)

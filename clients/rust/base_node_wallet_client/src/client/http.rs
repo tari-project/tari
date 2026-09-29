@@ -1,6 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -40,6 +40,13 @@ use crate::{BaseNodeWalletClient, JsonRpcResponse};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
+/// Upper bound on establishing a connection to the base node wallet service.
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Upper bound on a whole request, from sending it to reading the full response body. Wallet services await these
+/// requests while holding a shutdown signal, so this must stay well below the wallet's shutdown drain timeout
+/// (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s) or one stalled request pins the drain.
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// The base node rejects any batch query carrying more than `MAX_ALLOWED_QUERY_SIZE` items with a `400`. Fail here
 /// instead, so callers get an actionable error naming the limit rather than an opaque HTTP error body.
 fn check_query_size(len: usize, item_name: &str) -> Result<(), anyhow::Error> {
@@ -66,6 +73,8 @@ impl Client {
         let http_client_builder = reqwest::Client::builder();
         let http_client = http_client_builder
             .http2_initial_stream_window_size(4 * 1024 * 1024)
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
+            .timeout(HTTP_REQUEST_TIMEOUT)
             .build()
             .expect("http2 init");
         Self {
@@ -331,13 +340,17 @@ impl BaseNodeWalletClient for Client {
                     format!("start_header_hash={start_header_hash_hex}&limit={limit}&page={page}&version=1").as_str(),
                 ));
                 debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {target_url}");
+                // Request and body read are both bounded by HTTP_REQUEST_TIMEOUT; a timeout is reported and ends the
+                // sync like any other error
                 match client.get(target_url.clone()).send().await {
                     Ok(response) => match response.json::<SyncUtxosByBlockResponseV1>().await {
                         Ok(response) => {
                             has_next_page = response.has_next_page;
                             debug!(target: LOG_TARGET, "Received UTXOs for page {page}");
                             if let Err(send_error) = resp_tx.send(Ok(response.into())).await {
+                                // The receiver is gone, nobody wants the remaining pages
                                 error!(target: LOG_TARGET, "Error sending utxo response: {send_error:?}");
+                                break;
                             }
                         },
                         Err(error) => {

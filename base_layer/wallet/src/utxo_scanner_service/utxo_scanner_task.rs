@@ -445,7 +445,24 @@ where
                 .await?;
 
             let mut prev_scanned_block: Option<ScannedBlock> = None;
-            while let Some(response) = utxo_stream.recv().await {
+            loop {
+                // Race the next page against shutdown, so a slow base node does not keep this task (and its shutdown
+                // signal) alive after shutdown
+                let response = tokio::select! {
+                    biased;
+                    _ = self.shutdown_signal.wait() => {
+                        return Ok(ScanUtxosResult {
+                            total_scanned,
+                            total_num_recovered,
+                            total_value_recovered,
+                            blocks_scanned,
+                        });
+                    },
+                    response = utxo_stream.recv() => match response {
+                        Some(response) => response,
+                        None => break,
+                    },
+                };
                 if self.shutdown_signal.is_triggered() {
                     let result = ScanUtxosResult {
                         total_scanned,

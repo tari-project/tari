@@ -4037,6 +4037,10 @@ void emoji_set_destroy(struct EmojiSet *emoji_set);
 /**
  * Frees memory for a TariWallet
  *
+ * Triggers the wallet's shutdown and then blocks the calling thread until the wallet's tasks have exited, for up to
+ * `WALLET_SHUTDOWN_DRAIN_TIMEOUT` (30 seconds). Do not call this on a UI / main thread; call it from a background
+ * thread.
+ *
  * ## Arguments
  * `wallet` - The TariWallet pointer
  *

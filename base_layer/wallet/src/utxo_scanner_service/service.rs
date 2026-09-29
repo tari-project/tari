@@ -138,32 +138,45 @@ where
 
         loop {
             tokio::select! {
-            _ = scanning_interval.tick() => {
-                let local_shutdown = main_shutdown.clone();
-                let task = self.create_task(local_shutdown);
-                let task_join_handle = task::spawn(async move {
-                    if let Err(err) = task.run().await {
-                        error!(target: LOG_TARGET, "Error scanning UTXOs: {err}");
-                    }
-                });
+                biased;
+                _ = main_shutdown.wait() => {
+                    // this will stop the task if its running, and let that thread exit gracefully
+                    info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
+                    return Ok(());
+                },
+                _ = scanning_interval.tick() => {},
+            }
 
-                info!(target: LOG_TARGET, "UTXO scanning round started");
-                // Wait for the task to complete or shutdown signal
-                match task_join_handle.await {
+            let local_shutdown = main_shutdown.clone();
+            let task = self.create_task(local_shutdown);
+            let task_join_handle = task::spawn(async move {
+                if let Err(err) = task.run().await {
+                    error!(target: LOG_TARGET, "Error scanning UTXOs: {err}");
+                }
+            });
+
+            info!(target: LOG_TARGET, "UTXO scanning round started");
+            // Wait for the round to complete or for shutdown. On shutdown do not wait for the round: it holds its own
+            // shutdown signal and stops on its own, and this service must not keep the drain pending meanwhile.
+            tokio::select! {
+                biased;
+                _ = main_shutdown.wait() => {
+                    info!(
+                        target: LOG_TARGET,
+                        "UTXO scanning service shutting down because it received the shutdown signal; the in-progress \
+                         scanning round will stop on its own"
+                    );
+                    return Ok(());
+                },
+                res = task_join_handle => match res {
                     Ok(_) => {
                         debug!(target: LOG_TARGET, "UTXO scanning round completed successfully");
                     },
                     Err(e) => {
                         error!(target: LOG_TARGET, "UTXO scanning round failed: {e}");
                     },
-                }
+                },
             }
-            _ = main_shutdown.wait() => {
-                // this will stop the task if its running, and let that thread exit gracefully
-                info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
-                return Ok(());
-            }
-                         }
         }
     }
 }

@@ -563,6 +563,38 @@ async fn stream_ends_early_after_client_is_closed() {
     assert!(items.len() < NUM_ITEMS as usize);
 }
 
+/// `close()` must interrupt a stream that is waiting for a slow frame, not only take effect when the next frame
+/// arrives.
+#[tokio::test]
+async fn close_interrupts_a_stream_waiting_for_a_slow_frame() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(30))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // The server sleeps this long before every item, so no frame arrives while the client is being closed
+    const FRAME_DELAY: Duration = Duration::from_secs(10);
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 2,
+            item_size: 100,
+            delay_ms: u64::try_from(FRAME_DELAY.as_millis()).unwrap(),
+        })
+        .await
+        .unwrap();
+    client.close().await;
+
+    let items = time::timeout(Duration::from_secs(3), stream.collect::<Vec<_>>())
+        .await
+        .expect("close() did not interrupt a stream waiting for a slow frame");
+    assert!(items.is_empty());
+}
+
 /// A peer that opens a streaming request and then stops draining its yamux window used to park the
 /// server, and keep its session slot, indefinitely.
 ///
