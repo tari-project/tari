@@ -97,6 +97,9 @@ pub struct PrioritizedTransaction {
     /// The borsh-serialized size of the transaction body in bytes, computed once on insert. Used as an estimate of
     /// the bytes the transaction adds to a block body.
     pub body_size: usize,
+    /// The hashes of the outputs this transaction spends, computed once on insert, so that conflict checks during
+    /// block template selection are set lookups rather than hashing
+    pub input_hashes: Vec<HashOutput>,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -112,6 +115,12 @@ impl PrioritizedTransaction {
             .body
             .get_serialized_size()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let input_hashes = transaction
+            .body
+            .inputs()
+            .iter()
+            .map(|input| input.output_hash())
+            .collect();
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -128,6 +137,7 @@ impl PrioritizedTransaction {
                 .ok_or(TransactionError::ZeroWeight)?,
             weight,
             body_size,
+            input_hashes,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })

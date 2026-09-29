@@ -94,6 +94,13 @@ pub const MAX_WALKED_FRAMES_PER_PASS: usize = 200_000;
 /// take thousands of candidates per pass rather than hundreds.
 pub const MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE: usize = 100;
 
+/// The maximum number of inputs one selection pass checks for conflicts with the selected transactions. Conflict
+/// checks are set lookups of hashes stored on insert, and are only made for branches that would otherwise be queued or
+/// selected, but a pass over an adversarial pool must still not do work proportional to attacker-controlled input
+/// counts without a bound. When reached, the pass considers no further candidates (and selects no further branches it
+/// cannot check), and reports `byte_bound`.
+pub const MAX_CHECKED_INPUTS_PER_PASS: usize = 2_000_000;
+
 /// How an ancestor walk ended
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WalkOutcome {
@@ -194,7 +201,7 @@ struct Selection {
     results: RetrieveResults,
     total_fees: u64,
     /// Whether the byte budget bound: some candidate was passed over because its bytes did not fit, or the pass ended
-    /// early because of bytes or free skips
+    /// early because of bytes or because it ran out of a work budget
     byte_bound: bool,
     /// The number of candidates passed over because only their bytes did not fit
     #[cfg_attr(not(test), allow(dead_code))]
@@ -215,6 +222,9 @@ struct Selection {
     /// Whether the pass reached [MAX_WALKED_FRAMES_PER_PASS]
     #[cfg_attr(not(test), allow(dead_code))]
     frame_budget_exhausted: bool,
+    /// The number of inputs checked for conflicts (bounded by [MAX_CHECKED_INPUTS_PER_PASS])
+    #[cfg_attr(not(test), allow(dead_code))]
+    inputs_checked: usize,
     /// Whether the pass ended before considering every candidate
     ended_early: bool,
     /// The candidates whose ancestors this pass walked and that it then dropped (for conflicting, or for not fitting
@@ -248,6 +258,9 @@ struct SelectionState<'a> {
     /// [MAX_WALKED_FRAMES_PER_PASS])
     frames_left: usize,
     frame_budget_exhausted: bool,
+    /// The number of inputs this pass may still check for conflicts (see [MAX_CHECKED_INPUTS_PER_PASS])
+    inputs_left: usize,
+    inputs_checked: usize,
     /// Candidates to leave out of this pass (see [UnconfirmedPool::fetch_selection])
     excluded: HashSet<TransactionKey>,
     walked_dropped: HashSet<TransactionKey>,
@@ -292,6 +305,8 @@ impl SelectionState<'_> {
             full_enough_weight: max_block_transaction_weight / BLOCK_FULL_ENOUGH_DIVISOR,
             frames_left: MAX_WALKED_FRAMES_PER_PASS,
             frame_budget_exhausted: false,
+            inputs_left: MAX_CHECKED_INPUTS_PER_PASS,
+            inputs_checked: 0,
             excluded,
             walked_dropped: HashSet::new(),
             ancestor_weight_bounds: HashMap::new(),
@@ -343,13 +358,20 @@ impl SelectionState<'_> {
         self.conflict_drops = self.conflict_drops.saturating_add(1);
     }
 
-    /// Whether `transaction` itself spends an input that a selected transaction spends
-    fn spends_a_selected_input(&self, transaction: &Transaction) -> bool {
-        transaction
-            .body
-            .inputs()
-            .iter()
-            .any(|input| self.selected_inputs.contains(&input.output_hash()))
+    /// Whether any of the given input hashes is spent by a selected transaction, charging the check to the pass's
+    /// input budget. `None` if the budget cannot cover it.
+    fn spends_a_selected_input<'h>(
+        &mut self,
+        count: usize,
+        mut hashes: impl Iterator<Item = &'h HashOutput>,
+    ) -> Option<bool> {
+        if count > self.inputs_left {
+            self.inputs_left = 0;
+            return None;
+        }
+        self.inputs_left = self.inputs_left.saturating_sub(count);
+        self.inputs_checked = self.inputs_checked.saturating_add(count);
+        Some(hashes.any(|hash| self.selected_inputs.contains(hash)))
     }
 }
 
@@ -569,19 +591,23 @@ impl UnconfirmedPool {
     /// serialized body size does not exceed `max_body_bytes`.
     ///
     /// A transaction (with its unselected dependencies) that would exceed the weight limit is skipped, counting towards
-    /// `weight_tx_skip_count`. Two kinds of candidate do *not* count towards it, since neither is evidence that the
-    /// block is full:
-    /// * a candidate that fits by weight but not by bytes: it stays in the pool for a later template. These byte skips
-    ///   are bounded by [MAX_BYTE_SKIPS_PER_PASS], which bounds the ancestor walks a pass can be made to do;
+    /// `weight_tx_skip_count` once the template is full enough (see [BLOCK_FULL_ENOUGH_DIVISOR]). None of the following
+    /// counts towards it or ends the pass, since none is evidence that the block is full:
+    /// * a candidate that fits by weight but not by bytes: it stays in the pool for a later template;
+    /// * a candidate that is too heavy while the template is not yet full enough;
     /// * a candidate (or branch) that spends an input already spent by a selected transaction: it can never be mined
-    ///   alongside it. It is dropped without counting towards anything, and never ends the pass: a candidate's own
-    ///   inputs are checked in O(inputs) before its ancestors are walked, and a queued branch is checked when popped
-    ///   (its walk was paid once, when it was queued).
+    ///   alongside it;
+    /// * a candidate with more than [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE] unselected ancestors;
+    /// * a candidate whose ancestry is no longer in the pool (it is rechecked instead).
     ///
     /// Otherwise a handful of large or conflicting transactions could use up the skip allowance and leave the rest of
-    /// the template empty. The pass also ends once the remaining byte budget is smaller than
-    /// [MIN_TRANSACTION_BODY_BYTES], or the pool is exhausted. A pass that ends early because of bytes reports
-    /// `byte_bound`, so that the effective-weight pass runs too.
+    /// the template empty. The work of passing over candidates is bounded instead: ancestor walks by
+    /// [MAX_WALKED_FRAMES_PER_PASS] and [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE], and conflict checks by
+    /// [MAX_CHECKED_INPUTS_PER_PASS] (they are only made for branches that fit, against input hashes stored on
+    /// insert). When a work budget runs out, the pass considers no further candidates but still selects from the
+    /// branches it already queued. The pass also ends once the remaining byte budget is smaller than
+    /// [MIN_TRANSACTION_BODY_BYTES], or the pool is exhausted. A pass that ends early reports `byte_bound`, so that the
+    /// effective-weight pass runs too.
     #[cfg(test)]
     fn select_txs(
         &self,
@@ -660,9 +686,21 @@ impl UnconfirmedPool {
             }
             // Cheap checks before walking the transaction's ancestors. If it spends an input that is already spent, it
             // can never be mined with the selection: drop it without counting it.
-            if state.spends_a_selected_input(&prioritized_transaction.transaction) {
-                state.conflict_drop();
-                continue;
+            match state.spends_a_selected_input(
+                prioritized_transaction.input_hashes.len(),
+                prioritized_transaction.input_hashes.iter(),
+            ) {
+                Some(true) => {
+                    state.conflict_drop();
+                    continue;
+                },
+                Some(false) => {},
+                None => {
+                    // Out of input-check budget: consider no further candidates (queued branches are still drained)
+                    state.byte_bound = true;
+                    exhausted = false;
+                    break;
+                },
             }
             // If it cannot fit on its own, neither can its branch
             if prioritized_transaction.body_size > state.remaining_bytes() {
@@ -709,8 +747,8 @@ impl UnconfirmedPool {
                 },
                 WalkOutcome::OutOfFrames => {
                     // Out of walking budget: consider no further candidates, but still select from the queued
-                    // branches (below). The byte budget bound, as far as this pass can tell.
-                    state.walked_dropped.insert(*tx_key);
+                    // branches (below). The byte budget bound, as far as this pass can tell. This candidate is not
+                    // excluded from the next pass: nothing about it was found wanting.
                     state.frame_budget_exhausted = true;
                     state.byte_bound = true;
                     exhausted = false;
@@ -733,7 +771,22 @@ impl UnconfirmedPool {
             let fits_weight = total_weight_after_candidates <= total_weight;
             let fits_bytes = body_bytes_after_candidates <= max_body_bytes;
             let needs_recheck = !potential_transactions_to_remove_and_recheck.is_empty();
-            if !needs_recheck && Self::conflicts_with(&candidate_transactions_to_select, &state.selected_inputs) {
+            // Only a branch that would otherwise be queued is checked for conflicts (the check is charged to the pass's
+            // input budget)
+            let conflicts = if !needs_recheck && fits_weight && fits_bytes {
+                match self.branch_conflicts(&candidate_transactions_to_select, &mut state)? {
+                    Some(conflicts) => conflicts,
+                    None => {
+                        // Out of input-check budget: consider no further candidates (queued branches are still drained)
+                        state.byte_bound = true;
+                        exhausted = false;
+                        break;
+                    },
+                }
+            } else {
+                false
+            };
+            if conflicts {
                 // An ancestor spends an input that is already spent: the branch can never be mined with the selection
                 state.conflict_drop();
                 state.walked_dropped.insert(*tx_key);
@@ -787,7 +840,8 @@ impl UnconfirmedPool {
                 }
             }
         }
-        if state.weight_skips < self.config.weight_tx_skip_count && !state.stopped {
+        // Select from the branches already queued, however the pass ended, unless there is no room left at all
+        if !state.stopped {
             self.check_the_potential_txs(&mut state, 0)?;
         }
         if !exhausted && state.out_of_bytes() {
@@ -814,25 +868,34 @@ impl UnconfirmedPool {
             too_many_ancestors_drops: state.too_many_ancestors_drops,
             weight_skips_counted: state.weight_skips,
             frame_budget_exhausted: state.frame_budget_exhausted,
+            inputs_checked: state.inputs_checked,
             ended_early: !exhausted,
             walked_dropped: state.walked_dropped,
         })
     }
 
-    /// The output hashes spent by the given transactions
-    fn input_hashes(transactions: &HashMap<TransactionKey, Arc<Transaction>>) -> impl Iterator<Item = HashOutput> + '_ {
-        transactions
-            .values()
-            .flat_map(|tx| tx.body.inputs())
-            .map(|input| input.output_hash())
+    /// The output hashes spent by the given pool transactions (stored on insert; never recomputed)
+    fn input_hashes<'b>(
+        &'b self,
+        transactions: &'b HashMap<TransactionKey, Arc<Transaction>>,
+    ) -> Result<Vec<&'b HashOutput>, UnconfirmedPoolError> {
+        let mut hashes = Vec::new();
+        for key in transactions.keys() {
+            let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            hashes.extend(tx.input_hashes.iter());
+        }
+        Ok(hashes)
     }
 
-    /// Whether any of the given transactions spends one of the given (selected) inputs
-    fn conflicts_with(
+    /// Whether any of the given transactions spends an input a selected transaction spends, charged to the pass's
+    /// input-check budget. `None` if the budget cannot cover it.
+    fn branch_conflicts(
+        &self,
         transactions: &HashMap<TransactionKey, Arc<Transaction>>,
-        selected_inputs: &HashSet<HashOutput>,
-    ) -> bool {
-        Self::input_hashes(transactions).any(|hash| selected_inputs.contains(&hash))
+        state: &mut SelectionState<'_>,
+    ) -> Result<Option<bool>, UnconfirmedPoolError> {
+        let hashes = self.input_hashes(transactions)?;
+        Ok(state.spends_a_selected_input(hashes.len(), hashes.into_iter()))
     }
 
     /// The transaction keys in the order they are considered for selection: by stored priority (fee per gram of real
@@ -884,6 +947,7 @@ impl UnconfirmedPool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     fn check_the_potential_txs<'a>(
         &'a self,
         state: &mut SelectionState<'a>,
@@ -944,14 +1008,28 @@ impl UnconfirmedPool {
                     .ok_or(UnconfirmedPoolError::InternalError(
                         "Overflow when calculating transaction body sizes".to_string(),
                     ))?;
-            if Self::conflicts_with(&candidate_transactions_to_select, &state.selected_inputs) {
+            let fits_weight = total_weight_after_candidates <= state.total_weight;
+            let fits_bytes = body_bytes_after_candidates <= state.max_body_bytes;
+            // Only a branch that would otherwise be selected is checked for conflicts
+            let conflicts = if fits_weight && fits_bytes {
+                match self.branch_conflicts(&candidate_transactions_to_select, state)? {
+                    Some(conflicts) => conflicts,
+                    None => {
+                        // Out of input-check budget: nothing more can be selected safely
+                        state.byte_bound = true;
+                        state.stopped = true;
+                        break;
+                    },
+                }
+            } else {
+                false
+            };
+            if conflicts {
                 // Spends an input that a selected transaction already spends: it can never be mined alongside it.
                 // Not counted towards any limit (its walk was paid once, when it was queued).
                 state.conflict_drop();
                 state.walked_dropped.insert(tx_key);
-            } else if total_weight_after_candidates <= state.total_weight &&
-                body_bytes_after_candidates <= state.max_body_bytes
-            {
+            } else if fits_weight && fits_bytes {
                 state.curr_weight = state.curr_weight.checked_add(total_transaction_weight).ok_or(
                     UnconfirmedPoolError::InternalError("Overflow when calculating total weights".to_string()),
                 )?;
@@ -966,20 +1044,24 @@ impl UnconfirmedPool {
                         &mut state.recompute,
                     )?;
                 }
-                state
-                    .selected_inputs
-                    .extend(Self::input_hashes(&candidate_transactions_to_select));
+                let selected_inputs = self
+                    .input_hashes(&candidate_transactions_to_select)?
+                    .into_iter()
+                    .copied()
+                    .collect::<Vec<_>>();
+                state.selected_inputs.extend(selected_inputs);
                 state.selected_txs.extend(candidate_transactions_to_select);
                 // Selecting transactions lowers the weight of their descendants' unselected ancestry
                 state.ancestor_weight_bounds.clear();
-            } else if total_weight_after_candidates <= state.total_weight {
+            } else if fits_weight {
                 // Only the bytes do not fit
                 state.byte_skip();
                 state.walked_dropped.insert(tx_key);
             } else {
                 state.walked_dropped.insert(tx_key);
                 let stop = state.weight_skip(self.config.weight_tx_skip_count);
-                if stop {
+                // The final drain (threshold 0) selects every queued branch that still fits, whatever was skipped
+                if stop && fee_per_byte_threshold > 0 {
                     break;
                 }
             }
@@ -2433,7 +2515,10 @@ mod test {
 
     #[tokio::test]
     async fn children_of_a_deep_chain_do_not_starve_honest_transactions() {
-        // Variant B: a 2,000-deep chain with 2 * MAX_WALKED_FRAMES_PER_PASS / 2,000 + 1 conflicting children
+        // A 2,000-deep chain with 2 * MAX_WALKED_FRAMES_PER_PASS / 2,000 + 1 conflicting children. This no longer
+        // exhausts the walking budget: MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE drops each child after 101 frames. Budget
+        // exhaustion is exercised by
+        // `exhausting_the_walking_budget_still_selects_queued_branches_and_honest_transactions`.
         let key_manager = KeyManager::new_random().unwrap();
         let tx_weight = TransactionWeight::latest();
         let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
@@ -2594,6 +2679,127 @@ mod test {
         }
         assert!(selection.too_many_ancestors_drops > 0);
         assert_eq!(selection.weight_skips_counted, 0);
+    }
+
+    #[tokio::test]
+    async fn byte_skipped_branches_are_not_checked_for_conflicts() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let normal = normal_txs(&key_manager, 10, 5);
+        let input = base.body.inputs().first().unwrap().clone();
+        let input_size = input.get_serialized_size().unwrap();
+        // A parent with a body just under the byte budget, made of thousands of inputs, at minimal fee
+        let budget = MAX_BLOCK_TEMPLATE_BODY_BYTES;
+        let template = synthetic_tx(&base, 0, 1);
+        let num_inputs = (budget - body_size(&template) - 600) / input_size;
+        let parent = Arc::new(Transaction::new(
+            vec![input.clone(); num_inputs],
+            template.body.outputs().clone(),
+            template.body.kernels().clone(),
+            Default::default(),
+            Default::default(),
+        ));
+        assert!(body_size(&parent) < budget);
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10_000,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        });
+        unconfirmed_pool.insert(parent.clone(), None, &tx_weight).unwrap();
+        // Many tiny high-rate children of it: each branch (parent + child) is over the byte budget
+        let parent_output = parent.body.outputs().first().unwrap().hash();
+        let parent_size = body_size(&parent);
+        for n in 1..=2_000u64 {
+            let child = synthetic_tx(&base, n, 100_000);
+            assert!(parent_size + body_size(&child) > budget);
+            unconfirmed_pool
+                .insert(child, Some(vec![parent_output]), &tx_weight)
+                .unwrap();
+        }
+        unconfirmed_pool.insert_many(normal.clone(), &tx_weight).unwrap();
+
+        let selection = unconfirmed_pool.select_txs(u64::MAX, budget, Ranking::Weight).unwrap();
+        for tx in &normal {
+            assert!(selection.results.retrieved_transactions.contains(tx));
+        }
+        // Byte-skipped branches are never checked for conflicts, so the parent's thousands of inputs are checked at
+        // most once (as the parent itself), not once per child
+        assert!(selection.byte_skips >= 2_000);
+        assert!(
+            selection.inputs_checked <= num_inputs + 100,
+            "{}",
+            selection.inputs_checked
+        );
+        assert!(selection.inputs_checked <= MAX_CHECKED_INPUTS_PER_PASS);
+    }
+
+    #[tokio::test]
+    async fn a_pass_ended_by_weight_skips_still_selects_queued_branches() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let weight = |tx: &Arc<Transaction>| tx.calculate_weight(&tx_weight).unwrap();
+        let rate = |fee: u64, weight: u64| fee * 1000 / weight;
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        });
+        let fill = (0..5)
+            .map(|_| {
+                Arc::new(
+                    tx!(MicroMinotari(500_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        // An honest CPFP pair: its child's own rate is the highest, but the pair's rate is below everything else
+        let cpfp = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1);
+        let other_input = normal_txs(&key_manager, 1, 5)
+            .pop()
+            .unwrap()
+            .body
+            .inputs()
+            .first()
+            .unwrap()
+            .clone();
+        let cpfp_child = insert_children(&mut unconfirmed_pool, &base, &cpfp[0], &other_input, 1, 1, 4_000)
+            .pop()
+            .unwrap();
+        // 21 heavy transactions ranked between the pair's own rate and its combined rate, too heavy for what is left
+        let heavy = (0..21)
+            .map(|_| {
+                Arc::new(
+                    tx!(MicroMinotari(500_000), fee: MicroMinotari(45), inputs: 20, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        let cpfp_weight = weight(&cpfp[0]) + weight(&cpfp_child);
+        let total_weight = fill.iter().map(weight).sum::<u64>() + cpfp_weight + 10;
+        assert!(weight(&heavy[0]) > cpfp_weight + 10);
+        let heavy_rate = rate(heavy[0].body.get_total_fee().unwrap().as_u64(), weight(&heavy[0]));
+        assert!(rate(4_000, weight(&cpfp_child)) > heavy_rate);
+        assert!(rate(4_001, cpfp_weight) < heavy_rate);
+        unconfirmed_pool
+            .insert_many(fill.iter().chain(heavy.iter()).cloned(), &tx_weight)
+            .unwrap();
+
+        let selection = unconfirmed_pool
+            .select_txs(total_weight, MAX_BLOCK_TEMPLATE_BODY_BYTES, Ranking::Weight)
+            .unwrap();
+        // The pass is ended by 20 counted weight skips (the block is full enough), but the queued pair still fits and
+        // is selected
+        assert_eq!(selection.weight_skips_counted, 20);
+        let selected = &selection.results.retrieved_transactions;
+        assert!(selected.contains(&cpfp_child));
+        assert!(selected.contains(&cpfp[0]));
+        for tx in &fill {
+            assert!(selected.contains(tx));
+        }
     }
 
     #[tokio::test]
