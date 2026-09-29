@@ -104,6 +104,10 @@ pub struct PrioritizedTransaction {
     pub output_hashes: Vec<HashOutput>,
     /// The (compressed) commitments of the outputs this transaction produces, as 32-byte keys, computed once on insert
     pub output_commitments: Vec<FixedHash>,
+    /// The excess signature scalars of this transaction's kernels (the key of the pool's signature index)
+    pub kernel_signatures: Vec<PrivateKey>,
+    /// The (compressed) excesses of this transaction's kernels, as 32-byte keys, computed once on insert
+    pub kernel_excesses: Vec<FixedHash>,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -133,6 +137,19 @@ impl PrioritizedTransaction {
             .map(|output| FixedHash::try_from(output.commitment.as_bytes()))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let kernel_signatures = transaction
+            .body
+            .kernels()
+            .iter()
+            .map(|kernel| kernel.excess_sig.get_signature().clone())
+            .collect();
+        let kernel_excesses = transaction
+            .body
+            .kernels()
+            .iter()
+            .map(|kernel| FixedHash::try_from(kernel.excess.as_bytes()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -152,6 +169,8 @@ impl PrioritizedTransaction {
             input_hashes,
             output_hashes,
             output_commitments,
+            kernel_signatures,
+            kernel_excesses,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })
