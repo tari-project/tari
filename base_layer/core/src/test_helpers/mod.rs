@@ -287,3 +287,33 @@ pub fn make_hash2<T: AsRef<[u8]>, U: AsRef<[u8]>>(preimage1: T, preimage2: U) ->
         .finalize()
         .into()
 }
+
+/// Creates an inbound [PeerMessage](tari_p2p::comms_connector::PeerMessage) of the given type, from a random peer, with
+/// the given (possibly malformed) body.
+pub fn create_peer_message(
+    message_type: tari_p2p::tari_message::TariMessageType,
+    body: Vec<u8>,
+) -> Arc<tari_p2p::comms_connector::PeerMessage> {
+    use tari_comms::message::MessageTag;
+    use tari_comms_dht::{
+        DhtProtocolVersion,
+        domain_message::MessageHeader,
+        envelope::{DhtMessageHeader, DhtMessageType},
+    };
+    Arc::new(tari_p2p::comms_connector::PeerMessage {
+        dht_header: DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: Default::default(),
+            message_signature: Vec::new(),
+            ephemeral_public_key: None,
+            message_type: DhtMessageType::None,
+            flags: Default::default(),
+            message_tag: MessageTag::new(),
+            expires: None,
+        },
+        source_peer: create_test_peer(),
+        message_header: MessageHeader::new(message_type as i32),
+        authenticated_origin: None,
+        body,
+    })
+}

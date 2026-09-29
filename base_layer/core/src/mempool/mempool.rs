@@ -84,6 +84,24 @@ async fn acquire_permit(semaphore: &Arc<Semaphore>) -> Result<OwnedSemaphorePerm
         .map_err(|e| MempoolError::InternalError(format!("Mempool validation semaphore closed: {e}")))
 }
 
+/// A permit to decode and validate one inbound transaction, obtained from [Mempool::acquire_validation_permit] and
+/// consumed by [Mempool::insert_with_permit]. It draws from the same bound as [Mempool::insert], so that decoding and
+/// validation of a transaction are covered by a single permit. Dropping it releases the permit.
+#[must_use]
+pub struct ValidationPermit {
+    _permit: OwnedSemaphorePermit,
+}
+
+/// A permit to decode and reconcile one compact block, obtained from [Mempool::acquire_reconciliation_permit] and used
+/// by [Mempool::insert_all_with_permit]. It draws from the same bound as [Mempool::insert_all]. It is cheaply
+/// cloneable: the permit is released once every clone has been dropped, so a blocking validation task holding a clone
+/// keeps it until validation is done, even if the caller stops waiting.
+#[derive(Clone)]
+#[must_use]
+pub struct ReconciliationPermit {
+    _permit: Arc<OwnedSemaphorePermit>,
+}
+
 /// The maximum number of new transactions that are validated concurrently: half the available cores, at least 1 and at
 /// most 8.
 fn max_concurrent_validations() -> usize {
@@ -115,12 +133,46 @@ impl Mempool {
         self.last_seen_tx.subscribe()
     }
 
+    /// Acquire a permit from the bound on concurrent transaction validations. Used to cover the decoding of an inbound
+    /// transaction as well as its validation (see [Mempool::insert_with_permit]).
+    pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolError> {
+        Ok(ValidationPermit {
+            _permit: acquire_permit(&self.validation_permits).await?,
+        })
+    }
+
+    /// Acquire a permit from the bound on concurrent compact block reconciliations. Used to cover the decoding of an
+    /// inbound block as well as its reconciliation (see [Mempool::insert_all_with_permit]).
+    pub async fn acquire_reconciliation_permit(&self) -> Result<ReconciliationPermit, MempoolError> {
+        Ok(ReconciliationPermit {
+            _permit: Arc::new(acquire_permit(&self.reconciliation_permits).await?),
+        })
+    }
+
     /// Insert an unconfirmed transaction into the Mempool.
     ///
     /// The near-free checks (fee, weight, already in the pool) are done first, under a brief read lock. The transaction
     /// is then validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]), with at
     /// most a bounded number of transactions being validated at once.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        self.insert_inner(tx, None).await
+    }
+
+    /// Identical to [Mempool::insert], except that validation uses the given, already acquired, permit instead of
+    /// acquiring a new one. The permit is released once validation is done (or the pre-checks return early).
+    pub async fn insert_with_permit(
+        &self,
+        tx: Arc<Transaction>,
+        permit: ValidationPermit,
+    ) -> Result<TxStorageResponse, MempoolError> {
+        self.insert_inner(tx, Some(permit)).await
+    }
+
+    async fn insert_inner(
+        &self,
+        tx: Arc<Transaction>,
+        permit: Option<ValidationPermit>,
+    ) -> Result<TxStorageResponse, MempoolError> {
         let tx_clone = tx.clone();
         if let Some(response) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
@@ -128,7 +180,10 @@ impl Mempool {
         {
             return Ok(response);
         }
-        let permit = acquire_permit(&self.validation_permits).await?;
+        let permit = match permit {
+            Some(permit) => permit,
+            None => self.acquire_validation_permit().await?,
+        };
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             // The permit is held by the blocking task, so that it is only released once validation is done, even if
@@ -143,7 +198,18 @@ impl Mempool {
     /// without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]). This has its own bound on
     /// concurrency, separate from [`Mempool::insert`], so that it does not wait behind inbound transactions.
     pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
-        let permit = acquire_permit(&self.reconciliation_permits).await?;
+        let permit = self.acquire_reconciliation_permit().await?;
+        self.insert_all_with_permit(transactions, &permit).await
+    }
+
+    /// Identical to [Mempool::insert_all], except that validation is covered by the given, already acquired,
+    /// reconciliation permit instead of acquiring a new one.
+    pub async fn insert_all_with_permit(
+        &self,
+        transactions: Vec<Arc<Transaction>>,
+        permit: &ReconciliationPermit,
+    ) -> Result<(), MempoolError> {
+        let permit = permit.clone();
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             let _permit = permit;
@@ -153,6 +219,18 @@ impl Mempool {
             Ok(())
         })
         .await?
+    }
+
+    /// The number of validation permits currently available
+    #[cfg(test)]
+    pub(crate) fn available_validation_permits(&self) -> usize {
+        self.validation_permits.available_permits()
+    }
+
+    /// The number of reconciliation permits currently available
+    #[cfg(test)]
+    pub(crate) fn available_reconciliation_permits(&self) -> usize {
+        self.reconciliation_permits.available_permits()
     }
 
     /// Update the Mempool based on the received published block.
@@ -476,5 +554,75 @@ mod test {
         })
         .await
         .expect("permit was not released");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn insert_with_permit_uses_the_given_permit() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let permits = max_concurrent_validations();
+        let permit = mempool.acquire_validation_permit().await.unwrap();
+        // Every other validation permit is taken, so acquiring another one would never complete
+        let held = mempool
+            .validation_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(permits - 1).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(mempool.available_validation_permits(), 0);
+
+        let tx = create_tx(&key_manager);
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            mempool.insert_with_permit(tx.clone(), permit),
+        )
+        .await
+        .expect("insert_with_permit acquired a second permit")
+        .unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        // The given permit was released once validation finished
+        assert_eq!(mempool.available_validation_permits(), 1);
+
+        // Inserting the same transaction again also releases the permit
+        let permit = mempool.acquire_validation_permit().await.unwrap();
+        let _response = mempool.insert_with_permit(tx, permit).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), 1);
+
+        drop(held);
+        assert_eq!(mempool.available_validation_permits(), permits);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn insert_all_with_permit_uses_the_given_permit() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let permit = mempool.acquire_reconciliation_permit().await.unwrap();
+        // Every other reconciliation permit is taken, so acquiring another one would never complete
+        let held = mempool
+            .reconciliation_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_RECONCILIATIONS - 1).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(mempool.available_reconciliation_permits(), 0);
+
+        let txs = vec![create_tx(&key_manager), create_tx(&key_manager)];
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            mempool.insert_all_with_permit(txs, &permit),
+        )
+        .await
+        .expect("insert_all_with_permit acquired a second permit")
+        .unwrap();
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+        // The caller still holds the permit (e.g. for the rest of the reconciliation)
+        assert_eq!(mempool.available_reconciliation_permits(), 0);
+        drop(permit);
+        assert_eq!(mempool.available_reconciliation_permits(), 1);
+        drop(held);
+        assert_eq!(
+            mempool.available_reconciliation_permits(),
+            MAX_CONCURRENT_RECONCILIATIONS
+        );
     }
 }

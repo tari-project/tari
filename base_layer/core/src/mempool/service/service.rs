@@ -30,7 +30,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{comms_connector::PeerMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
@@ -52,6 +52,7 @@ const LOG_TARGET: &str = "c::mempool::service::service";
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<STxIn, SLocalReq> {
     pub outbound_tx_stream: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
+    /// Raw `NewTransaction` messages; decoding happens off the service loop
     pub inbound_transaction_stream: STxIn,
     pub local_request_stream: SLocalReq,
     pub block_event_stream: BlockEventReceiver,
@@ -78,7 +79,7 @@ impl MempoolService {
         streams: MempoolStreams<STxIn, SLocalReq>,
     ) -> Result<(), MempoolServiceError>
     where
-        STxIn: Stream<Item = DomainMessage<Transaction>>,
+        STxIn: Stream<Item = Arc<PeerMessage>>,
         SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
     {
         let mut outbound_tx_stream = streams.outbound_tx_stream;
@@ -166,28 +167,12 @@ impl MempoolService {
         });
     }
 
-    fn handle_incoming_tx(&self, domain_transaction_msg: DomainMessage<Transaction>) {
-        let DomainMessage::<_> { source_peer, inner, .. } = domain_transaction_msg;
-
-        debug!(
-            "New transaction received: {}, from: {}",
-            inner
-                .first_kernel_excess_sig()
-                .map(|s| s.get_signature().to_hex())
-                .unwrap_or_else(|| "No kernels!".to_string()),
-            source_peer.public_key,
-        );
-        trace!(
-            target: LOG_TARGET,
-            "New transaction: {}, from: {}",
-            inner,
-            source_peer.public_key
-        );
+    /// Handle a raw inbound transaction message. Decoding and validation are both done in a spawned task, under a
+    /// single mempool validation permit, so that the service loop is never blocked decoding a transaction.
+    fn handle_incoming_tx(&self, msg: Arc<PeerMessage>) {
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let result = inbound_handlers
-                .handle_transaction(inner, Some(source_peer.node_id))
-                .await;
+            let result = inbound_handlers.handle_transaction_message(msg).await;
             if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,

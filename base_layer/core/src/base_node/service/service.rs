@@ -22,6 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    sync::Arc,
     time::Duration,
 };
 
@@ -35,7 +36,7 @@ use tari_comms_dht::{
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
 use tari_node_components::blocks::{Block, NewBlock};
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
@@ -53,7 +54,7 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
-        service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
+        service::{error::BaseNodeServiceError, initializer::extract_block},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError},
@@ -136,7 +137,7 @@ where B: BlockchainBackend + 'static
         >,
         SInReq: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>>,
         SInRes: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>>,
-        SBlockIn: Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>>,
+        SBlockIn: Stream<Item = Arc<PeerMessage>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
@@ -329,7 +330,9 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<Result<NewBlock, ExtractBlockError>>) {
+    /// Handle a raw inbound `NewBlock` message. Decoding and reconciliation are both done in a spawned task, under a
+    /// single mempool reconciliation permit, so that the service loop is never blocked decoding a block.
+    fn spawn_handle_incoming_block(&self, new_block: Arc<PeerMessage>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -694,8 +697,14 @@ fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: Reques
 
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: DomainMessage<Result<NewBlock, ExtractBlockError>>,
+    msg: Arc<PeerMessage>,
 ) -> Result<(), BaseNodeServiceError> {
+    // The permit covers decoding the message and reconciling the block, including validating any transactions
+    // fetched to complete it. It is released when this function returns.
+    let permit = inbound_nch.acquire_reconciliation_permit().await?;
+    let domain_block_msg = task::spawn_blocking(move || extract_block(&msg))
+        .await
+        .map_err(|e| CommsInterfaceError::InternalError(format!("Failed to decode inbound block message: {e}")))?;
     let DomainMessage::<_> {
         source_peer,
         inner: new_block,
@@ -711,8 +720,60 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     );
 
     inbound_nch
-        .handle_new_block_message(new_block, source_peer.node_id)
+        .handle_new_block_message(new_block, source_peer.node_id, &permit)
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use tari_p2p::tari_message::TariMessageType;
+    use tari_service_framework::reply_channel;
+    use tokio::sync::broadcast;
+
+    use super::*;
+    use crate::{
+        base_node::comms_interface::OutboundNodeCommsInterface,
+        mempool::{Mempool, MempoolConfig},
+        proof_of_work::randomx_factory::RandomXFactory,
+        test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_message},
+        validation::mocks::MockValidator,
+    };
+
+    #[tokio::test]
+    async fn malformed_block_message_is_rejected_and_releases_the_permit() {
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            create_consensus_rules(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let inbound_nch = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            create_new_blockchain().into(),
+            mempool.clone(),
+            create_consensus_rules(),
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let permits = mempool.available_reconciliation_permits();
+
+        let msg = create_peer_message(TariMessageType::NewBlock, vec![0xff; 64]);
+        let err = handle_incoming_block(inbound_nch.clone(), msg).await.unwrap_err();
+        // Unchanged behaviour: an undecodable block message is an `InvalidBlockMessage`
+        assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
+        assert_eq!(mempool.available_reconciliation_permits(), permits);
+
+        let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::default());
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+        let err = handle_incoming_block(inbound_nch, msg).await.unwrap_err();
+        assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
+        assert_eq!(mempool.available_reconciliation_permits(), permits);
+    }
 }
