@@ -108,9 +108,9 @@ impl MempoolService {
         loop {
             tokio::select! {
                 // Requests sent from the handle
+                // Handled in a task, so that a submission waiting for a validation permit never stalls this loop
                 Some(request) = request_receiver.next() => {
-                    let (request, reply) = request.split();
-                    let _result = reply.send(self.handle_request(request).await);
+                    self.spawn_handle_request(request);
                 },
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
@@ -151,8 +151,16 @@ impl MempoolService {
         Ok(())
     }
 
-    async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        self.inbound_handlers.handle_request(request).await
+    fn spawn_handle_request(
+        &self,
+        request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+    ) {
+        let mut inbound_handlers = self.inbound_handlers.clone();
+        task::spawn(async move {
+            let (request, reply) = request_context.split();
+            // The requester may have stopped waiting; nothing to do then
+            let _result = reply.send(inbound_handlers.handle_request(request).await);
+        });
     }
 
     fn spawn_handle_local_request(
@@ -306,5 +314,75 @@ mod test {
         drop(held);
         assert_eq!(service.pending_inbound_transactions.pending_for(&flooder), 0);
         assert_eq!(service.pending_inbound_transactions.pending_total(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_blocked_submission_does_not_stall_other_requests() {
+        use futures::stream;
+
+        use crate::mempool::{TxStorageResponse, service::MempoolHandle};
+
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
+        let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
+        let inbound_handlers =
+            MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        let (outbound_sender, _outbound_receiver) = mpsc::unbounded_channel();
+        let service = MempoolService::new(OutboundMessageRequester::new(outbound_sender), inbound_handlers);
+
+        let (_outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded_channel();
+        let (block_event_sender, block_event_stream) = tokio::sync::broadcast::channel(1);
+        let (request_sender, request_receiver) = reply_channel::unbounded();
+        let streams = MempoolStreams {
+            outbound_tx_stream,
+            inbound_transaction_stream: stream::pending::<Arc<PeerMessage>>(),
+            local_request_stream: stream::pending::<
+                RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
+            >(),
+            block_event_stream,
+            request_receiver,
+        };
+        let service_task = tokio::spawn(service.start(streams));
+        let mut handle = MempoolHandle::new(request_sender);
+
+        // Every validation permit is taken, so a submission waits for one
+        let mut held = Vec::new();
+        while let Ok(Ok(permit)) = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            mempool.acquire_validation_permit(),
+        )
+        .await
+        {
+            held.push(permit);
+        }
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+        let submit = tokio::spawn({
+            let mut handle = handle.clone();
+            async move { handle.submit_transaction(tx).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!submit.is_finished());
+
+        // An unrelated request is still served
+        let stats = tokio::time::timeout(std::time::Duration::from_secs(10), handle.get_stats())
+            .await
+            .expect("the service loop was stalled by the pending submission")
+            .unwrap();
+        assert_eq!(stats.unconfirmed_txs, 0);
+
+        // Once a permit is free, the submission completes
+        drop(held);
+        let response = tokio::time::timeout(std::time::Duration::from_secs(10), submit)
+            .await
+            .expect("submission did not complete")
+            .unwrap()
+            .unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        drop(block_event_sender);
+        service_task.abort();
     }
 }
