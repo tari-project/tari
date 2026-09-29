@@ -37,9 +37,16 @@ mod test;
 /// RPC response (e.g. when the same block is fetched during sync).
 pub const RPC_MAX_FRAME_SIZE: usize = crate::protocol::messaging::MAX_FRAME_LENGTH + 1024; // 8 MiB + 1 KiB
 
+/// The maximum size of an encoded RPC request. Only responses need the larger [RPC_MAX_FRAME_SIZE] (to carry anything
+/// that fits in a messaging frame); requests keep the previous 6 MiB cap. Services decode the whole request before
+/// they can apply their own count limits, so a larger request cap would only raise the memory a hostile request can
+/// cost. The server rejects a larger request before decoding it.
+pub const RPC_MAX_REQUEST_SIZE: usize = 6 * 1024 * 1024;
+const _: () = assert!(RPC_MAX_REQUEST_SIZE <= RPC_MAX_FRAME_SIZE);
+
 /// The maximum request payload size
 const fn max_request_size() -> usize {
-    RPC_MAX_FRAME_SIZE
+    RPC_MAX_REQUEST_SIZE
 }
 
 /// The maximum size for a single RPC response body excluding response header overhead
