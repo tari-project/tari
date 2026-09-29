@@ -70,17 +70,18 @@ pub fn check_transaction_size<T: Serialize>(
 
 #[cfg(test)]
 mod test {
-    use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
+    use tari_comms::protocol::rpc::RPC_MAX_REQUEST_SIZE;
 
     use super::MAX_BROADCAST_TRANSACTION_SIZE;
 
     #[test]
-    fn max_broadcast_transaction_size_is_unchanged_and_fits_in_a_frame() {
+    fn max_broadcast_transaction_size_is_unchanged_and_fits_in_a_request() {
         // The historical value, derived from the old 6 MiB RPC frame
         assert_eq!(
             MAX_BROADCAST_TRANSACTION_SIZE,
             6 * 1024 * 1024 - (2 * 1024 * 1024 + 10 * 1024)
         );
-        const { assert!(MAX_BROADCAST_TRANSACTION_SIZE < RPC_MAX_FRAME_SIZE) };
+        // A negotiated transaction is submitted to base nodes in an RPC request
+        const { assert!(MAX_BROADCAST_TRANSACTION_SIZE < RPC_MAX_REQUEST_SIZE) };
     }
 }

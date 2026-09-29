@@ -1121,6 +1121,16 @@ where
     async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
         let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
             Poll::Ready(Some(Ok(mut msg))) => {
+                if msg.len() > rpc::max_request_size() {
+                    // Never decode an oversized message; a client may only send a FIN here, which is tiny
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring a {} byte message received during a streaming response (maximum {} bytes)",
+                        msg.len(),
+                        rpc::max_request_size()
+                    );
+                    return Poll::Ready(None);
+                }
                 let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
                     Ok(msg) => msg,
                     Err(err) => {

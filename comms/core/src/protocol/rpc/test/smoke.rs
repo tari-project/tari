@@ -828,3 +828,68 @@ async fn oversized_requests_are_rejected_before_decoding() {
     assert_eq!(resp.request_id, 8);
     assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
 }
+
+/// An oversized message received while the server is streaming a response is ignored without being decoded, and the
+/// stream carries on.
+#[tokio::test]
+async fn oversized_messages_during_a_stream_are_ignored() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::{
+        proto,
+        protocol::rpc::{handshake::Handshake, message::RpcMessageFlags},
+    };
+
+    // Enough items that the server reads the (large) interrupting frame completely while still streaming: it reads
+    // pending input once per streamed item
+    const NUM_ITEMS: u32 = 300;
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let mut framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    Handshake::new(&mut framed).perform_client_handshake().await.unwrap();
+
+    // slow_stream (method 8)
+    let request = proto::rpc::RpcRequest {
+        request_id: 1,
+        method: 8,
+        flags: 0,
+        deadline: 10,
+        payload: SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 10,
+            delay_ms: 10,
+        }
+        .encode_to_vec(),
+    };
+    framed.send(request.encode_to_vec().into()).await.unwrap();
+    let first = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+    assert_eq!(RpcStatusCode::from(first.status), RpcStatusCode::Ok);
+
+    // A message larger than the request cap, mid-stream (not a FIN)
+    let oversized = proto::rpc::RpcRequest {
+        request_id: 2,
+        method: 1,
+        flags: 0,
+        deadline: 10,
+        payload: vec![0; rpc::RPC_MAX_REQUEST_SIZE],
+    };
+    framed.send(oversized.encode_to_vec().into()).await.unwrap();
+
+    // The rest of the stream still arrives
+    let mut items = 1;
+    loop {
+        let resp = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+        assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+        if !resp.payload.is_empty() {
+            items += 1;
+        }
+        if RpcMessageFlags::from_bits(u8::try_from(resp.flags).unwrap())
+            .unwrap()
+            .is_fin()
+        {
+            break;
+        }
+    }
+    assert_eq!(items, NUM_ITEMS);
+}
