@@ -29,8 +29,7 @@ use std::{
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{TransportNativeHID, hidapi::HidApi};
-use minotari_ledger_wallet_common::common_types::Instruction;
-use tari_utilities::ByteArray;
+use minotari_ledger_wallet_common::codec::{CLA, Request};
 
 use crate::error::LedgerDeviceError;
 
@@ -39,9 +38,6 @@ pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
 /// applications cannot serve this client at all. Keep this in step with the ledger application's `version` in its
 /// `Cargo.toml`.
 pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.6";
-/// The version byte the ledger application prefixes every reply with. See `RESPONSE_VERSION` in the application.
-pub const EXPECTED_RESPONSE_VERSION: u8 = 2;
-const WALLET_CLA: u8 = 0x80;
 
 struct HidManager {
     inner: Option<HidApi>,
@@ -174,6 +170,23 @@ pub struct Command<D> {
     inner: APDUCommand<D>,
 }
 
+impl Command<Vec<u8>> {
+    /// The APDU for a typed request: its header and payload both come from the shared codec, so the bytes this
+    /// sends are by construction the ones the device's decoder reads.
+    ///
+    /// For a payload the codec refuses to construct - a malformed request the device has to reject - see
+    /// [`crate::raw`].
+    pub fn from_request<R: Request>(request: &R) -> Self {
+        Command::new(APDUCommand {
+            cla: CLA,
+            ins: R::INSTRUCTION.as_byte(),
+            p1: request.p1(),
+            p2: request.p2(),
+            data: request.to_vec(),
+        })
+    }
+}
+
 impl<D: Deref<Target = [u8]>> Command<D> {
     pub fn new(inner: APDUCommand<D>) -> Command<D> {
         Self { inner }
@@ -217,85 +230,17 @@ impl<D: Deref<Target = [u8]>> Command<D> {
     ) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
         transport.exchange(&self.to_apdu_command())
     }
-
-    pub fn build_command(account: u64, instruction: Instruction, data: Vec<u8>) -> Command<Vec<u8>> {
-        let mut base_data = account.to_le_bytes().to_vec();
-        base_data.extend_from_slice(&data);
-
-        Command::new(APDUCommand {
-            cla: WALLET_CLA,
-            ins: instruction.as_byte(),
-            p1: 0x00,
-            p2: 0x00,
-            data: base_data,
-        })
-    }
-
-    /// Build a single chunk of a chunked instruction with an explicit chunk number and continuation flag.
-    ///
-    /// [`Self::chunk_command`] always emits a well formed 0, 1, 2, ... sequence. This builds one arbitrary chunk, so
-    /// that `ledger_demo` can drive the device's own validation on real hardware - including the malformed sequences
-    /// the accessor methods refuse to send, which are exactly the ones the device has to reject.
-    pub fn build_chunk_command(
-        account: u64,
-        instruction: Instruction,
-        chunk_number: u8,
-        more: bool,
-        chunk: Vec<u8>,
-    ) -> Command<Vec<u8>> {
-        // The account is only carried on the first chunk, matching `chunk_command`.
-        let mut base_data = vec![];
-        if chunk_number == 0 {
-            base_data.extend_from_slice(&account.to_le_bytes());
-        }
-        base_data.extend_from_slice(&chunk);
-
-        Command::new(APDUCommand {
-            cla: WALLET_CLA,
-            ins: instruction.as_byte(),
-            p1: chunk_number,
-            p2: u8::from(more),
-            data: base_data,
-        })
-    }
-
-    pub fn chunk_command(account: u64, instruction: Instruction, data: Vec<Vec<u8>>) -> Vec<Command<Vec<u8>>> {
-        let num_chunks = data.len();
-        let mut more;
-        let mut commands = vec![];
-
-        for (i, chunk) in data.iter().enumerate() {
-            if i.saturating_add(1) == num_chunks {
-                more = 0;
-            } else {
-                more = 1;
-            }
-
-            // Prepend the account on the first payload
-            let mut base_data = vec![];
-            if i == 0 {
-                base_data.extend_from_slice(&account.to_le_bytes().to_vec());
-            }
-            base_data.extend_from_slice(chunk);
-
-            commands.push(Command::new(APDUCommand {
-                cla: WALLET_CLA,
-                ins: instruction.as_byte(),
-                p1: u8::try_from(i).unwrap_or(0),
-                p2: more,
-                data: base_data,
-            }));
-        }
-
-        commands
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use minotari_ledger_wallet_common::common_types::Instruction;
+    use minotari_ledger_wallet_common::{
+        codec::{Encode, GetPublicKeyRequest, ScriptOffsetRequest},
+        common_types::Instruction,
+    };
 
     use super::*;
+    use crate::raw;
 
     /// The bytes on the wire must not depend on which transport is carrying them.
     ///
@@ -306,43 +251,67 @@ mod test {
     #[test]
     fn the_owned_command_serialises_identically_to_the_borrowed_one() {
         let mut commands = vec![
-            Command::<Vec<u8>>::build_command(0, Instruction::GetAppName, vec![0]),
-            Command::<Vec<u8>>::build_command(u64::MAX, Instruction::GetVersion, vec![]),
-            Command::<Vec<u8>>::build_command(0x0102_0304_0506_0708, Instruction::GetPublicKey, vec![1, 2, 3, 4]),
-            Command::<Vec<u8>>::build_chunk_command(7, Instruction::GetScriptOffset, 0, true, vec![9, 9]),
-            Command::<Vec<u8>>::build_chunk_command(7, Instruction::GetScriptOffset, 3, false, vec![8]),
+            Command::from_request(&GetPublicKeyRequest {
+                account: 0x0102_0304_0506_0708,
+                index: 1,
+                branch: 2,
+            }),
+            raw::build_command(0, Instruction::GetAppName, vec![0]),
+            raw::build_command(u64::MAX, Instruction::GetVersion, vec![]),
+            raw::build_command(0x0102_0304_0506_0708, Instruction::GetPublicKey, vec![1, 2, 3, 4]),
+            raw::build_chunk_command(7, Instruction::GetScriptOffset, 0, true, vec![9, 9]),
+            raw::build_chunk_command(7, Instruction::GetScriptOffset, 3, false, vec![8]),
         ];
-        commands.extend(Command::<Vec<u8>>::chunk_command(
-            42,
-            Instruction::GetScriptOffset,
-            vec![vec![1, 2], vec![3, 4], vec![5, 6]],
-        ));
+        let blinding_factor = [5u8; 32];
+        let request = ScriptOffsetRequest {
+            account: 42,
+            sender_offset_count: 1,
+            partial_script_key_sum: &[1; 32],
+            script_key_indexes: &[(9, 3)],
+            derived_script_keys: &[&blinding_factor],
+        };
+        commands.extend(request.chunks().map(|chunk| Command::from_request(&chunk)));
 
         for command in &commands {
             assert_eq!(command.inner.serialize(), command.to_apdu_command().serialize());
         }
     }
 
-    /// The APDU header and payload layout, pinned against accidental change. These are the bytes the device parses.
+    /// A typed request travels under the class byte the device accepts, the instruction its type names, and a zero
+    /// `p1`/`p2`, with the codec's bytes as the payload.
     #[test]
-    fn apdu_layout_is_stable() {
-        let command = Command::<Vec<u8>>::build_command(1, Instruction::GetVersion, vec![0xaa]);
-        assert_eq!(command.inner.cla, WALLET_CLA);
-        assert_eq!(command.inner.ins, Instruction::GetVersion.as_byte());
+    fn a_typed_request_carries_its_own_header() {
+        let request = GetPublicKeyRequest {
+            account: 1,
+            index: 2,
+            branch: 3,
+        };
+        let command = Command::from_request(&request);
+        assert_eq!(command.inner.cla, CLA);
+        assert_eq!(command.inner.ins, Instruction::GetPublicKey.as_byte());
         assert_eq!(command.inner.p1, 0x00);
         assert_eq!(command.inner.p2, 0x00);
-        // account (8 bytes, little endian) then the payload
-        assert_eq!(command.inner.data, vec![1, 0, 0, 0, 0, 0, 0, 0, 0xaa]);
+        assert_eq!(command.inner.data, request.to_vec());
+    }
 
-        let chunks = Command::<Vec<u8>>::chunk_command(1, Instruction::GetScriptOffset, vec![vec![0xaa], vec![0xbb]]);
-        // The account rides on the first chunk only, and `p2` is the "more chunks follow" flag.
-        let headers = chunks
-            .iter()
-            .map(|chunk| (chunk.inner.p1, chunk.inner.p2, chunk.inner.data.clone()))
+    /// A chunk travels with its number in `p1` and "more chunks follow" in `p2`, and only the first carries the
+    /// account. These are the bytes the device parses.
+    #[test]
+    fn a_chunk_carries_its_number_and_continuation_flag_in_the_header() {
+        let blinding_factor = [0xbb; 32];
+        let request = ScriptOffsetRequest {
+            account: 1,
+            sender_offset_count: 1,
+            partial_script_key_sum: &[0xaa; 32],
+            script_key_indexes: &[],
+            derived_script_keys: &[&blinding_factor],
+        };
+        let headers = request
+            .chunks()
+            .map(|chunk| Command::from_request(&chunk))
+            .map(|command| (command.inner.cla, command.inner.ins, command.inner.p1, command.inner.p2))
             .collect::<Vec<_>>();
-        assert_eq!(headers, vec![
-            (0, 1, vec![1, 0, 0, 0, 0, 0, 0, 0, 0xaa]),
-            (1, 0, vec![0xbb]),
-        ]);
+        let ins = Instruction::GetScriptOffset.as_byte();
+        assert_eq!(headers, vec![(CLA, ins, 0, 1), (CLA, ins, 1, 1), (CLA, ins, 2, 0)]);
     }
 }

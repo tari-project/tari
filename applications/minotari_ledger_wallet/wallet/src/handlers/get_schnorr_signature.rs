@@ -8,9 +8,17 @@ use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::nbgl::NbglStatus;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
-use tari_utilities::ByteArray;
 
-use minotari_ledger_wallet_common::legacy_nonce::check_legacy_nonce_branches;
+use minotari_ledger_wallet_common::{
+    codec::{
+        Decode,
+        GetRawSchnorrSignatureLegacyNonceRequest,
+        GetRawSchnorrSignatureRequest,
+        GetScriptSchnorrSignatureRequest,
+        SchnorrReply,
+    },
+    legacy_nonce::check_legacy_nonce_branches,
+};
 
 use crate::{
     alloc::string::ToString,
@@ -19,9 +27,9 @@ use crate::{
     hash_domain,
     handlers::get_ephemeral_nonce::{nonce_store_error_to_app_sw, EphemeralNonceCtx},
     utils::{derive_from_bip32_key, get_random_nonce},
+    wire::{invalid_data_length, reply},
     AppSW,
     KeyType,
-    RESPONSE_VERSION,
 };
 
 hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
@@ -38,47 +46,19 @@ pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 /// as `k = (s1 - s2) / (e1 - e2)`, and the host is free to ask twice.
 pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut EphemeralNonceCtx) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
-    if data.len() != 96 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
+    let request = GetRawSchnorrSignatureRequest::decode(data).map_err(|_| invalid_data_length())?;
 
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
-        return Err(AppSW::WrongApduLength);
-    }
-
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
-
-    let mut private_key_index_bytes = [0u8; 8];
-    private_key_index_bytes.clone_from_slice(&data[8..16]);
-    let private_key_index = u64::from_le_bytes(private_key_index_bytes);
-
-    let mut private_key_type_bytes = [0u8; 8];
-    private_key_type_bytes.clone_from_slice(&data[16..24]);
     // Note: `KeyType::from_branch_key` rejects the spend branch, so the host cannot point this handler at `alpha`.
-    let private_key_type = KeyType::from_branch_key(u64::from_le_bytes(private_key_type_bytes))?;
+    let private_key_type = KeyType::from_branch_key(request.branch)?;
 
-    let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
-
-    let mut nonce_handle_bytes = [0u8; 8];
-    nonce_handle_bytes.clone_from_slice(&data[24..32]);
-    let nonce_handle = u64::from_le_bytes(nonce_handle_bytes);
-
-    let mut challenge_bytes = [0u8; 64];
-    challenge_bytes.clone_from_slice(&data[32..96]);
+    let private_key = derive_from_bip32_key(request.account, request.index, private_key_type)?;
 
     // Take the nonce out of the store *before* it is used, so that every path from here on - success, a signing
     // failure, or anything a later change adds - leaves the slot empty. A slot that survived a failed signature
     // would be a nonce the host could spend a second time on a different challenge.
-    let private_nonce = nonce_ctx.take(nonce_handle).map_err(nonce_store_error_to_app_sw)?;
+    let private_nonce = nonce_ctx.take(request.nonce_handle).map_err(nonce_store_error_to_app_sw)?;
 
-    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, &challenge_bytes) {
+    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, request.challenge) {
         Ok(sig) => sig,
         Err(_e) => {
             let error_string = "Invalid Challange".to_string();
@@ -97,9 +77,13 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
         },
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&signature.get_public_nonce().to_vec());
-    comm.append(&signature.get_signature().to_vec());
+    reply(
+        comm,
+        &SchnorrReply::new(
+            signature.get_public_nonce().as_array(),
+            signature.get_signature().as_array(),
+        ),
+    );
 
     Ok(())
 }
@@ -117,38 +101,10 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// TODO that deletes this handler along with everything else on the legacy path.
 pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
-    if data.len() != 104 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
+    let request = GetRawSchnorrSignatureLegacyNonceRequest::decode(data).map_err(|_| invalid_data_length())?;
 
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
-        return Err(AppSW::WrongApduLength);
-    }
-
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
-
-    let mut private_key_index_bytes = [0u8; 8];
-    private_key_index_bytes.clone_from_slice(&data[8..16]);
-    let private_key_index = u64::from_le_bytes(private_key_index_bytes);
-
-    let mut private_key_type_bytes = [0u8; 8];
-    private_key_type_bytes.clone_from_slice(&data[16..24]);
-    let private_key_branch = branch_key_from_u64(u64::from_le_bytes(private_key_type_bytes))?;
-
-    let mut private_nonce_index_bytes = [0u8; 8];
-    private_nonce_index_bytes.clone_from_slice(&data[24..32]);
-    let private_nonce_index = u64::from_le_bytes(private_nonce_index_bytes);
-
-    let mut nonce_key_type_bytes = [0u8; 8];
-    nonce_key_type_bytes.clone_from_slice(&data[32..40]);
-    let nonce_branch = branch_key_from_u64(u64::from_le_bytes(nonce_key_type_bytes))?;
+    let private_key_branch = branch_key_from_u64(request.key_branch)?;
+    let nonce_branch = branch_key_from_u64(request.nonce_branch)?;
 
     // Signing with a deterministic nonce is equivalent to handing the private key over, so the branches this
     // instruction will touch are held to the ones the pre-mine spend flow actually uses. The whitelist is shared
@@ -158,16 +114,13 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.
-    let private_key_type = KeyType::from_branch_key(u64::from_le_bytes(private_key_type_bytes))?;
-    let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
+    let private_key_type = KeyType::from_branch_key(request.key_branch)?;
+    let private_key = derive_from_bip32_key(request.account, request.key_index, private_key_type)?;
 
-    let nonce_key_type = KeyType::from_branch_key(u64::from_le_bytes(nonce_key_type_bytes))?;
-    let private_nonce = derive_from_bip32_key(account, private_nonce_index, nonce_key_type)?;
+    let nonce_key_type = KeyType::from_branch_key(request.nonce_branch)?;
+    let private_nonce = derive_from_bip32_key(request.account, request.nonce_index, nonce_key_type)?;
 
-    let mut challenge_bytes = [0u8; 64];
-    challenge_bytes.clone_from_slice(&data[40..104]);
-
-    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, &challenge_bytes) {
+    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, request.challenge) {
         Ok(sig) => sig,
         Err(_e) => {
             let error_string = "Invalid Challange".to_string();
@@ -186,47 +139,28 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
         },
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&signature.get_public_nonce().to_vec());
-    comm.append(&signature.get_signature().to_vec());
+    reply(
+        comm,
+        &SchnorrReply::new(
+            signature.get_public_nonce().as_array(),
+            signature.get_signature().as_array(),
+        ),
+    );
 
     Ok(())
 }
 
 pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
-    if data.len() != 56 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
+    let request = GetScriptSchnorrSignatureRequest::decode(data).map_err(|_| invalid_data_length())?;
 
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
-        return Err(AppSW::WrongApduLength);
-    }
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
+    let private_key_type = KeyType::from_branch_key(request.branch)?;
 
-    let mut private_key_index_bytes = [0u8; 8];
-    private_key_index_bytes.clone_from_slice(&data[8..16]);
-    let private_key_index = u64::from_le_bytes(private_key_index_bytes);
-    let mut private_key_type_bytes = [0u8; 8];
-
-    private_key_type_bytes.clone_from_slice(&data[16..24]);
-    let key_type = u64::from_le_bytes(private_key_type_bytes);
-    let private_key_type = KeyType::from_branch_key(key_type)?;
-
-    let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
-    let mut nonce_bytes = [0u8; 32];
-    nonce_bytes.clone_from_slice(&data[24..56]);
+    let private_key = derive_from_bip32_key(request.account, request.index, private_key_type)?;
 
     let random_nonce = get_random_nonce()?.clone();
     let signature =
-        match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, &nonce_bytes) {
+        match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, request.message) {
             Ok(sig) => sig,
             Err(_e) => {
                 let error_string = "Invalid Challange".to_string();
@@ -244,9 +178,13 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
                 return Err(AppSW::SchnorrSignatureFail);
             },
         };
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&signature.get_public_nonce().to_vec());
-    comm.append(&signature.get_signature().to_vec());
+    reply(
+        comm,
+        &SchnorrReply::new(
+            signature.get_public_nonce().as_array(),
+            signature.get_signature().as_array(),
+        ),
+    );
 
     Ok(())
 }

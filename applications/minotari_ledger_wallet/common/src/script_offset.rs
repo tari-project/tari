@@ -6,6 +6,11 @@
 //!
 //! This lives here, rather than in the Ledger application, so that the rules the device relies on can be tested
 //! without a device. The application itself only builds for the Ledger targets.
+//!
+//! The byte layout of every chunk is not in here: it is in [`crate::codec`], with every other layout. This module is
+//! the rules about what the decoded values may be.
+
+use crate::codec::{Decode, ScriptOffsetHeaderChunk};
 
 /// The device draws a single random base index and derives `base..base + count` from it, so the reply is a fixed
 /// size no matter how many keys were asked for. The bound therefore no longer exists to keep the reply inside one
@@ -158,36 +163,21 @@ pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
     base_index.wrapping_add(i)
 }
 
-fn read_u64(data: &[u8], start: usize) -> Result<u64, ScriptOffsetHeaderError> {
-    let bytes = data
-        .get(start..start.saturating_add(8))
-        .ok_or(ScriptOffsetHeaderError::WrongLength)?;
-    let mut field = [0u8; 8];
-    field.copy_from_slice(bytes);
-    Ok(u64::from_le_bytes(field))
-}
-
 /// Parse and validate a `GetScriptOffset` header.
 ///
-/// Layout: `account(8) | sender_offset_count(8) | script_index_count(8) | derived_script_key_count(8)`.
+/// Layout: `account(8) | sender_offset_count(8) | script_index_count(8) | derived_script_key_count(8)`, framed by
+/// [`ScriptOffsetHeaderChunk`] - the codec only reads the four counts, and every rule about what they may be is here.
 pub fn parse_script_offset_header(data: &[u8]) -> Result<ScriptOffsetHeader, ScriptOffsetHeaderError> {
-    if data.len() != SCRIPT_OFFSET_HEADER_SIZE {
-        return Err(ScriptOffsetHeaderError::WrongLength);
-    }
+    let chunk = ScriptOffsetHeaderChunk::decode(data).map_err(|_| ScriptOffsetHeaderError::WrongLength)?;
 
-    let account = read_u64(data, 0)?;
-    let sender_offset_count = read_u64(data, 8)?;
-    let script_index_count = read_u64(data, 16)?;
-    let derived_script_key_count = read_u64(data, 24)?;
-
-    check_sender_offset_key_count(sender_offset_count)?;
-    check_script_key_count(script_index_count, derived_script_key_count)?;
+    check_sender_offset_key_count(chunk.sender_offset_count)?;
+    check_script_key_count(chunk.script_index_count, chunk.derived_script_key_count)?;
 
     Ok(ScriptOffsetHeader {
-        account,
-        sender_offset_count,
-        script_index_count,
-        derived_script_key_count,
+        account: chunk.account,
+        sender_offset_count: chunk.sender_offset_count,
+        script_index_count: chunk.script_index_count,
+        derived_script_key_count: chunk.derived_script_key_count,
     })
 }
 

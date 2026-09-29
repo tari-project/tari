@@ -27,7 +27,32 @@ use std::{
 
 use log::debug;
 use minotari_ledger_wallet_common::{
-    common_types::{AppSW, Instruction, LedgerKeyBranch},
+    codec::{
+        ComAndPubSigReply,
+        Decode,
+        EphemeralNonceReply,
+        GenerateEphemeralNonceRequest,
+        GetAppNameRequest,
+        GetDHSharedSecretRequest,
+        GetOneSidedMetadataSignatureRequest,
+        GetPublicKeyRequest,
+        GetPublicSpendKeyRequest,
+        GetRawSchnorrSignatureLegacyNonceRequest,
+        GetRawSchnorrSignatureRequest,
+        GetScriptSchnorrSignatureRequest,
+        GetScriptSignatureDerivedRequest,
+        GetScriptSignatureManagedRequest,
+        GetVersionRequest,
+        GetViewKeyRequest,
+        KeyReply,
+        RESPONSE_VERSION,
+        SchnorrReply,
+        ScriptOffsetReply,
+        ScriptOffsetRequest,
+        ScriptSignatureCommon,
+        TextReply,
+    },
+    common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
     legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
     script_offset::{
@@ -50,7 +75,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     error::LedgerDeviceError,
-    ledger_wallet::{Command, EXPECTED_NAME, EXPECTED_RESPONSE_VERSION, MIN_LEDGER_APP_VERSION},
+    ledger_wallet::{Command, EXPECTED_NAME, MIN_LEDGER_APP_VERSION},
 };
 
 const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
@@ -59,6 +84,17 @@ const LOG_TARGET: &str = "ledger_wallet::accessor_methods";
 pub enum ScriptSignatureKey {
     Managed { branch: LedgerKeyBranch, index: u64 },
     Derived { branch_key: PrivateKey },
+}
+
+/// A key's canonical bytes as the fixed width field the wire-format codec takes.
+///
+/// Every key and commitment type here is 32 bytes by construction, so this cannot fail in practice; it is a
+/// `Result` rather than an `expect` so that a type that ever stopped being 32 bytes is an error the caller sees,
+/// not a panic in the wallet.
+fn key_field(key: &impl ByteArray) -> Result<&[u8; 32], LedgerDeviceError> {
+    key.as_bytes().try_into().map_err(|_| {
+        LedgerDeviceError::ConversionError(format!("expected a 32 byte key, got {} bytes", key.as_bytes().len()))
+    })
 }
 
 /// Whether the ledger application has been verified in this process. Only ever set to `true`, and only by a
@@ -231,9 +267,13 @@ fn verify() -> Result<(), LedgerDeviceError> {
 pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetAppName, vec![0]).execute() {
+    match Command::from_request(&GetAppNameRequest {
+        account: rand::rng().next_u64(),
+    })
+    .execute()
+    {
         Ok(response) => {
-            let name = match std::str::from_utf8(response.data()) {
+            let name = match std::str::from_utf8(TextReply::decode(response.data()).text) {
                 Ok(val) => {
                     if val.is_empty() {
                         return Err(LedgerDeviceError::ApplicationNotStarted);
@@ -252,9 +292,13 @@ pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
 pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(rand::rng().next_u64(), Instruction::GetVersion, vec![0]).execute() {
+    match Command::from_request(&GetVersionRequest {
+        account: rand::rng().next_u64(),
+    })
+    .execute()
+    {
         Ok(response) => {
-            let name = match std::str::from_utf8(response.data()) {
+            let name = match std::str::from_utf8(TextReply::decode(response.data()).text) {
                 Ok(val) => {
                     if val.is_empty() {
                         return Err(LedgerDeviceError::ApplicationNotStarted);
@@ -274,17 +318,16 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
     debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
+    match Command::from_request(&GetPublicSpendKeyRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicSpendKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let public_alpha =
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let public_alpha = CompressedPublicKey::from_canonical_bytes(reply.key)?;
             Ok(public_alpha)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {e}"))),
@@ -302,22 +345,22 @@ pub fn ledger_get_public_key(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    let branch_u64 = u64::from(branch.as_byte()).to_le_bytes();
-    data.extend_from_slice(&branch_u64);
+    let request = GetPublicKeyRequest {
+        account,
+        index,
+        branch: u64::from(branch.as_byte()),
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicKey, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetPublicKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let public_key =
-                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let public_key = RistrettoPublicKey::from_canonical_bytes(reply.key)?;
             Ok(public_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {e}"))),
@@ -338,53 +381,43 @@ pub fn ledger_get_script_signature(
     debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{account}', message '{}'", message.to_hex());
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    let network = u64::from(network.as_byte()).to_le_bytes();
-    data.extend_from_slice(&network);
-    let version = u64::from(version).to_le_bytes();
-    data.extend_from_slice(&version);
-
-    let value = value.to_vec();
-    data.extend_from_slice(&value);
-    let commitment_private_key = commitment_private_key.to_vec();
-    data.extend_from_slice(&commitment_private_key);
-    let commitment = commitment.to_vec();
-    data.extend_from_slice(&commitment);
-    data.extend_from_slice(&message);
-
-    match signature_key {
-        ScriptSignatureKey::Managed { branch, index } => {
-            let branch = u64::from(branch.as_byte()).to_le_bytes();
-            data.extend_from_slice(&branch);
-            let index = index.to_le_bytes();
-            data.extend_from_slice(&index);
-        },
-        ScriptSignatureKey::Derived { branch_key } => {
-            data.extend_from_slice(&branch_key.to_vec());
-        },
-    }
-
-    let instruction = match signature_key {
-        ScriptSignatureKey::Managed { .. } => Instruction::GetScriptSignatureManaged,
-        ScriptSignatureKey::Derived { .. } => Instruction::GetScriptSignatureDerived,
+    let common = ScriptSignatureCommon {
+        account,
+        network: u64::from(network.as_byte()),
+        txi_version: u64::from(version),
+        value: key_field(value)?,
+        commitment_private_key: key_field(commitment_private_key)?,
+        commitment: key_field(commitment)?,
+        message: &message,
     };
 
-    match Command::<Vec<u8>>::build_command(account, instruction, data).execute() {
+    let command = match signature_key {
+        ScriptSignatureKey::Managed { branch, index } => Command::from_request(&GetScriptSignatureManagedRequest {
+            common,
+            branch: u64::from(branch.as_byte()),
+            index: *index,
+        }),
+        ScriptSignatureKey::Derived { branch_key } => Command::from_request(&GetScriptSignatureDerivedRequest {
+            common,
+            blinding_factor: key_field(branch_key)?,
+        }),
+    };
+
+    match command.execute() {
         Ok(result) => {
-            if result.data().len() < 161 {
+            let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSignature: expected 161 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
+            };
             let signature = ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?,
-                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))?,
+                CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)?,
+                CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)?,
+                PrivateKey::from_canonical_bytes(reply.u_a)?,
+                PrivateKey::from_canonical_bytes(reply.u_x)?,
+                PrivateKey::from_canonical_bytes(reply.u_y)?,
             );
             Ok(signature)
         },
@@ -430,32 +463,25 @@ pub fn ledger_get_script_offset(
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     verify_ledger_application()?;
 
-    // 1. data sizes
-    let mut instructions: Vec<u8> = Vec::new();
-    instructions.extend_from_slice(&count.to_le_bytes());
-    instructions.extend_from_slice(&(script_key_indexes.len() as u64).to_le_bytes());
-    instructions.extend_from_slice(&(derived_script_keys.len() as u64).to_le_bytes());
-    let mut data: Vec<Vec<u8>> = vec![instructions.to_vec()];
-
-    // 2. partial_script_offset
-    data.push(partial_script_offset.to_vec());
-
-    // 3. script_key_indexes
-    for (branch, index) in script_key_indexes {
-        let mut payload = u64::from(branch.as_byte()).to_le_bytes().to_vec();
-        payload.extend_from_slice(&index.to_le_bytes());
-        data.push(payload);
-    }
-    // 4. derived_script_keys
-    for script_key in derived_script_keys {
-        data.push(script_key.to_vec());
-    }
-
-    let commands = Command::<Vec<u8>>::chunk_command(account, Instruction::GetScriptOffset, data);
+    let script_key_indexes = script_key_indexes
+        .iter()
+        .map(|(branch, index)| (u64::from(branch.as_byte()), *index))
+        .collect::<Vec<_>>();
+    let derived_script_keys = derived_script_keys
+        .iter()
+        .map(key_field)
+        .collect::<Result<Vec<_>, _>>()?;
+    let request = ScriptOffsetRequest {
+        account,
+        sender_offset_count: count,
+        partial_script_key_sum: key_field(partial_script_offset)?,
+        script_key_indexes: &script_key_indexes,
+        derived_script_keys: &derived_script_keys,
+    };
 
     let mut result = None;
-    for command in commands {
-        match command.execute() {
+    for chunk in request.chunks() {
+        match Command::from_request(&chunk).execute() {
             Ok(r) => result = Some(r),
             Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {e}"))),
         }
@@ -463,26 +489,23 @@ pub fn ledger_get_script_offset(
 
     match result {
         Some(result) => {
-            if result.data().len() < SCRIPT_OFFSET_REPLY_SIZE {
+            let Ok(reply) = ScriptOffsetReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptOffset: expected {} bytes, got {} ({:?})",
                     SCRIPT_OFFSET_REPLY_SIZE,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
-            let version = *data.first().expect("Index should exist");
-            if version != EXPECTED_RESPONSE_VERSION {
+            };
+            let version = reply.version;
+            if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GetScriptOffset: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. Please \
-                     update the 'Minotari Wallet' application on your device."
+                    "GetScriptOffset: expected response version {RESPONSE_VERSION}, got {version}. Please update the \
+                     'Minotari Wallet' application on your device."
                 )));
             }
-            let script_offset = PrivateKey::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?;
-            let mut base_index_bytes = [0u8; 8];
-            base_index_bytes.copy_from_slice(data.get(33..41).expect("Index should exist"));
-            let base_index = u64::from_le_bytes(base_index_bytes);
+            let script_offset = PrivateKey::from_canonical_bytes(reply.script_offset)?;
+            let base_index = reply.base_index;
             // The device derived `base_index..base_index + count`; `sender_offset_index` is the shared walk, so a
             // base near the end of the range wraps identically on both sides.
             let sender_offset_indexes = (0..count).map(|i| sender_offset_index(base_index, i)).collect();
@@ -497,16 +520,16 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
     debug!(target: LOG_TARGET, "ledger_get_view_key: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
+    match Command::from_request(&GetViewKeyRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetViewKey: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let view_key = PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let view_key = PrivateKey::from_canonical_bytes(reply.key)?;
             Ok(view_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {e}"))),
@@ -525,22 +548,23 @@ pub fn ledger_get_dh_shared_secret(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&index.to_le_bytes());
-    data.extend_from_slice(&u64::from(branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&public_key.to_vec());
+    let request = GetDHSharedSecretRequest {
+        account,
+        index,
+        branch: u64::from(branch.as_byte()),
+        public_key: key_field(public_key)?,
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetDHSharedSecret, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 33 {
+            let Ok(reply) = KeyReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetDHSharedSecret: expected 1 + 32 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let shared_secret =
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
+            };
+            let shared_secret = CompressedPublicKey::from_canonical_bytes(reply.key)?;
             Ok(shared_secret)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),
@@ -558,27 +582,24 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
     debug!(target: LOG_TARGET, "ledger_generate_ephemeral_nonce: account '{account}'");
     verify_ledger_application()?;
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GenerateEphemeralNonce, vec![]).execute() {
+    match Command::from_request(&GenerateEphemeralNonceRequest { account }).execute() {
         Ok(result) => {
-            if result.data().len() < EPHEMERAL_NONCE_REPLY_SIZE {
+            let Ok(reply) = EphemeralNonceReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GenerateEphemeralNonce: expected {} bytes, got {} ({:?})",
                     EPHEMERAL_NONCE_REPLY_SIZE,
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
-            let data = result.data();
-            let version = *data.first().expect("Index should exist");
-            if version != EXPECTED_RESPONSE_VERSION {
+            };
+            let version = reply.version;
+            if version != RESPONSE_VERSION {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "GenerateEphemeralNonce: expected response version {EXPECTED_RESPONSE_VERSION}, got {version}. \
-                     Please update the 'Minotari Wallet' application on your device."
+                    "GenerateEphemeralNonce: expected response version {RESPONSE_VERSION}, got {version}. Please \
+                     update the 'Minotari Wallet' application on your device."
                 )));
             }
-            let mut handle_bytes = [0u8; 8];
-            handle_bytes.copy_from_slice(data.get(1..9).expect("Index should exist"));
-            let handle = u64::from_le_bytes(handle_bytes);
+            let handle = reply.handle;
             // Zero is the device's "no handle" value, so a reply carrying it is a reply the device never meant to
             // send. Refusing it here keeps a handle that can never be redeemed out of a key id.
             if handle == INVALID_NONCE_HANDLE {
@@ -586,7 +607,7 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
                     "GenerateEphemeralNonce: the device returned an invalid nonce handle".to_string(),
                 ));
             }
-            let public_nonce = CompressedPublicKey::from_canonical_bytes(data.get(9..41).expect("Index should exist"))?;
+            let public_nonce = CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?;
             Ok((handle, public_nonce))
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GenerateEphemeralNonce: {e}"))),
@@ -612,25 +633,27 @@ pub fn ledger_get_raw_schnorr_signature(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&nonce_handle.to_le_bytes());
-    data.extend_from_slice(challenge);
+    let request = GetRawSchnorrSignatureRequest {
+        account,
+        index: private_key_index,
+        branch: u64::from(private_key_branch.as_byte()),
+        nonce_handle,
+        challenge,
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },
@@ -677,26 +700,28 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     })?;
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(&nonce_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(nonce_branch.as_byte()).to_le_bytes());
-    data.extend_from_slice(challenge);
+    let request = GetRawSchnorrSignatureLegacyNonceRequest {
+        account,
+        key_index: private_key_index,
+        key_branch: u64::from(private_key_branch.as_byte()),
+        nonce_index,
+        nonce_branch: u64::from(nonce_branch.as_byte()),
+        challenge,
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetRawSchnorrSignatureLegacyNonce, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignatureLegacyNonce: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },
@@ -719,27 +744,28 @@ pub fn ledger_get_script_schnorr_signature(
     );
     verify_ledger_application()?;
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&private_key_index.to_le_bytes());
-    data.extend_from_slice(&u64::from(private_key_branch.as_byte()).to_le_bytes());
-    if nonce.len() != 32 {
-        return Err(LedgerDeviceError::Processing("Nonce must be 32 bytes".to_string()));
-    }
-    data.extend_from_slice(nonce);
+    let message = <&[u8; 32]>::try_from(nonce)
+        .map_err(|_| LedgerDeviceError::Processing("Nonce must be 32 bytes".to_string()))?;
+    let request = GetScriptSchnorrSignatureRequest {
+        account,
+        index: private_key_index,
+        branch: u64::from(private_key_branch.as_byte()),
+        message,
+    };
 
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetScriptSchnorrSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
-            if result.data().len() < 65 {
+            let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetScriptSchnorrSignature: expected 65 bytes, got {} ({:?})",
                     result.data().len(),
                     AppSW::try_from(result.retcode())?
                 )));
-            }
+            };
 
             let signature = CompressedCheckSigSchnorrSignature::new(
-                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
-                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(reply.public_nonce)?,
+                PrivateKey::from_canonical_bytes(reply.signature)?,
             );
             Ok(signature)
         },
@@ -783,49 +809,46 @@ pub fn ledger_get_one_sided_metadata_signature(
         );
     }
 
-    let mut data = Vec::new();
-    data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
-    data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
-    data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
-    data.extend_from_slice(&value.to_le_bytes());
-    data.extend_from_slice(&commitment_mask.to_vec());
-
-    // Add address size prefix and address data
     let address_bytes = receiver_address.to_vec();
-    let address_size = u16::try_from(address_bytes.len()).map_err(|_| {
+    let request = GetOneSidedMetadataSignatureRequest::new(
+        account,
+        u64::from(network.as_byte()),
+        u64::from(txo_version),
+        sender_offset_key_index,
+        value,
+        key_field(commitment_mask)?,
+        &address_bytes,
+        message,
+    )
+    .map_err(|_| {
         LedgerDeviceError::Processing(format!(
             "Address size {} exceeds maximum u16 value",
             address_bytes.len()
         ))
     })?;
-    data.extend_from_slice(&address_size.to_le_bytes());
-    data.extend_from_slice(&address_bytes);
 
-    data.extend_from_slice(&message.to_vec());
-
-    match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {
+    match Command::from_request(&request).execute() {
         Ok(result) => {
             if result.retcode() == AppSW::UserCancelled as u16 {
                 return Err(LedgerDeviceError::UserCancelled);
             }
-            if result.data().len() < 161 {
+            let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
                     result.data().len(),
                     result
                 )));
-            }
-            let data = result.data();
+            };
             Ok(ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))
+                CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))
+                CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_a)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_x)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))
+                PrivateKey::from_canonical_bytes(reply.u_y)
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
             ))
         },

@@ -2,22 +2,24 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use ledger_device_sdk::io::Comm;
-use minotari_ledger_wallet_common::script_offset::{
-    ScriptKeySection,
-    ScriptOffsetHeaderError,
-    check_offset_is_blinded,
-    parse_script_offset_header,
-    script_key_section,
-    sender_offset_index,
+use minotari_ledger_wallet_common::{
+    codec::{Decode, DerivedScriptKeyChunk, PartialScriptKeySumChunk, ScriptKeyIndexChunk, ScriptOffsetReply},
+    script_offset::{
+        ScriptKeySection,
+        ScriptOffsetHeaderError,
+        check_offset_is_blinded,
+        parse_script_offset_header,
+        script_key_section,
+        sender_offset_index,
+    },
 };
-use tari_utilities::ByteArray;
 
 use crate::{
     crypto::keys::RistrettoSecretKey,
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, get_random_u64},
+    wire::reply,
     AppSW,
     KeyType,
-    RESPONSE_VERSION,
     STATIC_SPEND_INDEX,
 };
 
@@ -103,27 +105,19 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) -> Result<()
 }
 
 fn extract_branch_and_index(data: &[u8]) -> Result<(KeyType, u64), AppSW> {
-    if data.len() != 16 {
-        return Err(AppSW::WrongApduLength);
-    }
-    let mut branch_bytes = [0u8; 8];
-    branch_bytes.clone_from_slice(&data[0..8]);
-    let branch_int = u64::from_le_bytes(branch_bytes);
-    let branch = KeyType::from_branch_key(branch_int)?;
+    let chunk = ScriptKeyIndexChunk::decode(data).map_err(|_| AppSW::WrongApduLength)?;
+    let branch = KeyType::from_branch_key(chunk.branch)?;
 
-    let mut index_bytes = [0u8; 8];
-    index_bytes.clone_from_slice(&data[8..16]);
-    let index = u64::from_le_bytes(index_bytes);
-
-    Ok((branch, index))
+    Ok((branch, chunk.index))
 }
 
 fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey, AppSW> {
-    if data.len() != 32 {
-        return Err(AppSW::WrongApduLength);
-    }
+    let chunk = DerivedScriptKeyChunk::decode(data).map_err(|_| AppSW::WrongApduLength)?;
+    // `alpha` is derived before the blinding factor's canonical check, as it always was: the order decides which
+    // status word a malformed chunk gets.
     let alpha = derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?;
-    let blinding_factor: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+    let blinding_factor: RistrettoSecretKey =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(chunk.blinding_factor)?.into();
 
     alpha_hasher(alpha, blinding_factor)
 }
@@ -135,14 +129,10 @@ fn derive_key_from_alpha(account: u64, data: &[u8]) -> Result<RistrettoSecretKey
 /// every sender offset key itself and returns the base index they were derived from, so the host can never choose -
 /// or learn - the keys that blind the reply.
 ///
-/// Wire format:
-/// - chunk 0: `account(8) | sender_offset_count(8) | script_index_count(8) | derived_script_key_count(8)`
-/// - chunk 1: `partial_script_key_sum(32)`
-/// - next `script_index_count` chunks: `branch(8) | index(8)`
-/// - next `derived_script_key_count` chunks: `blinding_factor(32)`
-///
-/// Reply: `version(1) | script_offset(32) | base_index(8)`, where the keys are
-/// `base_index..base_index + sender_offset_count` walked with [`sender_offset_index`].
+/// Wire format: see `minotari_ledger_wallet_common::codec::script_offset`, which defines every chunk and the reply.
+/// Which chunk type a chunk number is decoded as is decided here, by [`script_key_section`], never by the codec. The
+/// reply names the sender offset keys as `base_index..base_index + sender_offset_count`, walked with
+/// [`sender_offset_index`].
 ///
 /// The host chooses which chunk numbers it sends, in which order, and which one terminates the exchange. Nothing
 /// here may therefore depend on the host having followed the format: the counts in the header say what the host
@@ -168,11 +158,9 @@ pub fn handler_get_script_offset(
     //    term, so it is stored on its own: assigning it into the running total would let a host fold a device
     //    derived key, wipe it with this chunk, and still satisfy a check that counted the folded key.
     if chunk_number == 1 {
-        if data.len() != 32 {
-            return Err(AppSW::WrongApduLength);
-        }
+        let chunk = PartialScriptKeySumChunk::decode(data).map_err(|_| AppSW::WrongApduLength)?;
         let partial_script_key_sum: RistrettoSecretKey =
-            get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+            get_key_from_canonical_bytes::<RistrettoSecretKey>(chunk.partial_script_key_sum)?.into();
         offset_ctx.host_partial_script_key_sum = partial_script_key_sum;
 
         return Ok(());
@@ -236,9 +224,7 @@ pub fn handler_get_script_offset(
     let script_key_sum = &offset_ctx.device_script_key_sum + &offset_ctx.host_partial_script_key_sum;
     let script_offset = &script_key_sum - &offset_ctx.sender_offset_sum;
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&script_offset.to_vec());
-    comm.append(&base_index.to_le_bytes());
+    reply(comm, &ScriptOffsetReply::new(script_offset.as_array(), base_index));
     offset_ctx.reset();
 
     Ok(())

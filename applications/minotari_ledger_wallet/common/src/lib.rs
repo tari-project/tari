@@ -8,6 +8,7 @@
 ///        rest of the Tari code base is compiled for std.
 extern crate alloc;
 
+pub mod codec;
 pub mod common_types;
 pub mod ephemeral_nonce;
 pub mod legacy_nonce;
@@ -20,4 +21,5 @@ pub use utils::{
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
+    u64_to_string,
 };

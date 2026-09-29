@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use ledger_device_sdk::io::Comm;
-#[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::NbglStatus;
-#[cfg(not(any(target_os = "stax", target_os = "flex")))]
-use ledger_device_sdk::ui::gadgets::SingleMessage;
-use minotari_ledger_wallet_common::ephemeral_nonce::{EphemeralNonceStore, EphemeralNonceStoreError};
-use tari_utilities::ByteArray;
+use minotari_ledger_wallet_common::{
+    codec::{Decode, EphemeralNonceReply, GenerateEphemeralNonceRequest},
+    ephemeral_nonce::{EphemeralNonceStore, EphemeralNonceStoreError},
+};
 
 use crate::{
     crypto::keys::{RistrettoPublicKey, RistrettoSecretKey},
     utils::get_random_nonce,
+    wire::{invalid_data_length, reply},
     AppSW,
-    RESPONSE_VERSION,
 };
 
 /// The device's live ephemeral nonces.
@@ -38,26 +36,13 @@ pub fn handler_generate_ephemeral_nonce(comm: &mut Comm, nonce_ctx: &mut Ephemer
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     // The transport prepends the account to every command and nothing else is carried here: the nonce is a random
     // scalar, not a derived key, so there is no path for the host to influence.
-    if data.len() != 8 {
-        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-        {
-            SingleMessage::new("Invalid data length").show_and_wait();
-        }
-
-        #[cfg(any(target_os = "stax", target_os = "flex"))]
-        {
-            NbglStatus::new().text(&"Invalid data length").show(false);
-        }
-        return Err(AppSW::WrongApduLength);
-    }
+    GenerateEphemeralNonceRequest::decode(data).map_err(|_| invalid_data_length())?;
 
     let private_nonce = get_random_nonce()?;
     let public_nonce = RistrettoPublicKey::from_secret_key(&private_nonce);
     let handle = nonce_ctx.insert(private_nonce).map_err(nonce_store_error_to_app_sw)?;
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&handle.to_le_bytes());
-    comm.append(public_nonce.as_bytes());
+    reply(comm, &EphemeralNonceReply::new(handle, public_nonce.as_array()));
 
     Ok(())
 }

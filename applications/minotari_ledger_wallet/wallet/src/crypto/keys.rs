@@ -191,6 +191,14 @@ impl RistrettoSecretKey {
     const KEY_LEN: usize = 32;
     const WIDE_REDUCTION_LEN: usize = 64;
 
+    /// The canonical bytes as the fixed width field the wire-format codec takes.
+    ///
+    /// The same bytes as [`ByteArray::as_bytes`], but typed as `&[u8; 32]`, so that handing a key to a codec reply
+    /// needs no fallible slice-to-array conversion - and so no error path the device would have to carry.
+    pub fn as_array(&self) -> &[u8; 32] {
+        self.0.as_bytes()
+    }
+
     /// Get the multiplicative inverse of a nonzero secret key
     /// If zero is passed, returns `None`; annoying, but a useful guardrail
     pub fn invert(&self) -> Option<Self> {
@@ -322,6 +330,12 @@ impl RistrettoPublicKey {
 
     pub(super) fn compressed(&self) -> &CompressedRistretto {
         &self.compressed
+    }
+
+    /// The compressed point as the fixed width field the wire-format codec takes. See
+    /// [`RistrettoSecretKey::as_array`].
+    pub fn as_array(&self) -> &[u8; 32] {
+        self.compressed.as_bytes()
     }
 
     /// Generates a new Public key from the given secret key

@@ -9,6 +9,7 @@ extern crate alloc;
 mod crypto;
 mod hashing;
 pub mod utils;
+mod wire;
 
 mod app_ui {
     pub mod menu;
@@ -49,16 +50,13 @@ use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-use minotari_ledger_wallet_common::common_types::{
-    AppSW as AppSWMapping,
-    Instruction as InstructionMapping,
-    LedgerKeyBranch as BranchMapping,
+use minotari_ledger_wallet_common::{
+    codec::{TextReply, CHUNK_LAST, CHUNK_MORE, CLA},
+    common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
-static CLA: u8 = 0x80;
-static RESPONSE_VERSION: u8 = 2;
 
 // Application status words.
 #[repr(u16)]
@@ -129,7 +127,6 @@ pub enum Instruction {
     GenerateEphemeralNonce,
 }
 
-const P2_MORE: u8 = 0x01;
 const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
 const MAX_PAYLOADS: u8 = 250;
@@ -200,10 +197,12 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
             (InstructionMapping::GetScriptSignatureManaged, 0, 0) => Ok(Instruction::GetScriptSignatureManaged),
             (InstructionMapping::GetScriptSignatureDerived, 0, 0) => Ok(Instruction::GetScriptSignatureDerived),
-            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
-                chunk_number: value.p1,
-                more: value.p2 == P2_MORE,
-            }),
+            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, CHUNK_LAST | CHUNK_MORE) => {
+                Ok(Instruction::GetScriptOffset {
+                    chunk_number: value.p1,
+                    more: value.p2 == CHUNK_MORE,
+                })
+            },
             (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
@@ -321,7 +320,12 @@ fn handle_apdu(
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
-            comm.append(env!("CARGO_PKG_NAME").as_bytes());
+            wire::reply(
+                comm,
+                &TextReply {
+                    text: env!("CARGO_PKG_NAME").as_bytes(),
+                },
+            );
             Ok(())
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
