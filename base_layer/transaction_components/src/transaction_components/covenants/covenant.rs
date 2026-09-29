@@ -178,7 +178,7 @@ impl Covenant {
             return Ok(outputs.len());
         }
 
-        let tokens = CovenantTokenCollection::from_iter(self.tokens.clone());
+        let tokens = CovenantTokenCollection::from(self.tokens.clone().into_vec());
         let mut cx = CovenantContext::new(tokens, input, block_height);
         let root = cx.require_next_filter()?;
         let mut output_set = OutputSet::new(outputs);

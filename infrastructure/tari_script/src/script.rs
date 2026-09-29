@@ -154,7 +154,7 @@ impl TariScript {
         // Local execution state
         let mut state = ExecutionState::default();
 
-        for opcode in self.script.iter() {
+        for opcode in &self.script {
             if self.should_execute(opcode, &state)? {
                 self.execute_opcode(opcode, &mut stack, context, &mut state)?
             } else {
@@ -724,11 +724,16 @@ impl TariScript {
     }
 }
 
-impl Iterator for TariScript {
+// `TariScript` deliberately does not implement `Iterator`: `next()` would destructively pop opcodes off the front
+// of the script, so iterating a script would silently change it. Iterate through `IntoIterator` instead.
+
+impl IntoIterator for TariScript {
+    type IntoIter = std::vec::IntoIter<Opcode>;
     type Item = Opcode;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.script.next()
+    /// Consumes the script, yielding its opcodes in order.
+    fn into_iter(self) -> Self::IntoIter {
+        self.script.into_iter()
     }
 }
 
@@ -831,6 +836,26 @@ mod test {
 
     fn context_with_height(height: u64) -> ScriptContext {
         ScriptContext::new(height, &HashValue::default(), &CompressedPedersenCommitment::default())
+    }
+
+    #[test]
+    fn owned_and_borrowed_iteration_yield_all_opcodes_in_order() {
+        use crate::Opcode;
+        let script = script!(Nop PushZero PushOne).unwrap();
+        let expected = vec![Opcode::Nop, Opcode::PushZero, Opcode::PushOne];
+
+        // Borrowed iteration does not consume or modify the script
+        let borrowed = (&script).into_iter().cloned().collect::<Vec<_>>();
+        assert_eq!(borrowed, expected);
+        let mut count = 0;
+        for _ in &script {
+            count += 1;
+        }
+        assert_eq!(count, 3);
+        assert_eq!(script, script!(Nop PushZero PushOne).unwrap());
+
+        let owned = script.into_iter().collect::<Vec<_>>();
+        assert_eq!(owned, expected);
     }
 
     #[test]

@@ -211,16 +211,37 @@ impl<T, const MAX_SIZE: usize> DerefMut for MaxSizeVec<T, MAX_SIZE> {
     }
 }
 
-impl<T, const MAX_SIZE: usize> Iterator for MaxSizeVec<T, MAX_SIZE> {
+// `MaxSizeVec` deliberately does not implement `Iterator`: an `Iterator` impl on a container makes `next()`
+// destructively (and in `O(n)`) pop from the front, so merely iterating a borrowed-then-cloned or `&mut` value
+// silently empties it. Iterate through `IntoIterator` (owned, `&` or `&mut`) or the slice methods instead.
+
+impl<T, const MAX_SIZE: usize> IntoIterator for MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::vec::IntoIter<T>;
     type Item = T;
 
-    /// Iterates over the `MaxSizeVec`.
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.vec.is_empty() {
-            None
-        } else {
-            Some(self.vec.remove(0))
-        }
+    /// Consumes the `MaxSizeVec`, yielding its elements in order.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.into_iter()
+    }
+}
+
+impl<'a, T, const MAX_SIZE: usize> IntoIterator for &'a MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::slice::Iter<'a, T>;
+    type Item = &'a T;
+
+    /// Iterates over references to the elements, in order, without modifying the `MaxSizeVec`.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.iter()
+    }
+}
+
+impl<'a, T, const MAX_SIZE: usize> IntoIterator for &'a mut MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::slice::IterMut<'a, T>;
+    type Item = &'a mut T;
+
+    /// Iterates over mutable references to the elements, in order. The length can not change.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.iter_mut()
     }
 }
 
@@ -253,6 +274,35 @@ mod tests {
 
     const MAX: usize = 10;
     type Vec32 = MaxSizeVec<u32, MAX>;
+
+    #[test]
+    fn owned_iteration_yields_all_elements_in_order() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        assert_eq!(v.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn borrowed_iteration_yields_all_elements_in_order_and_does_not_mutate() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        let mut seen = Vec::new();
+        for item in &v {
+            seen.push(*item);
+        }
+        assert_eq!(seen, vec![1, 2, 3]);
+        // Iterating a second time sees the same elements: nothing was consumed
+        assert_eq!((&v).into_iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn mutable_iteration_yields_all_elements_in_order_and_keeps_the_length() {
+        let mut v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        for item in &mut v {
+            *item *= 10;
+        }
+        assert_eq!(v.into_vec(), vec![10, 20, 30]);
+    }
 
     #[test]
     fn borsh_round_trips_a_valid_value() {
