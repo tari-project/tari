@@ -132,7 +132,6 @@ use tari_common_types::{
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
-use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{BYTES_PER_MB, LMDBBuilder, LMDBConfig, LMDBStore, db};
 use tari_transaction_components::{
     MicroMinotari,
@@ -1863,14 +1862,6 @@ impl LMDBDatabase {
                     SideChainFeatureData::ConfidentialOutput(_) => {
                         // Nothing to do
                     },
-                    SideChainFeatureData::EvictionProof(evict) => {
-                        let next_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
-                        self.validator_node_store(txn).undo_exit(
-                            sidechain_features.sidechain_public_key(),
-                            next_epoch,
-                            evict.node_to_evict(),
-                        )?;
-                    },
                     SideChainFeatureData::ValidatorNodeExit(vn_exit) => {
                         // The exit must be on or after the next epoch
                         let min_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
@@ -2371,23 +2362,6 @@ impl LMDBDatabase {
             },
             SideChainFeatureData::ConfidentialOutput(_) => {
                 // Nothing to do
-            },
-            SideChainFeatureData::EvictionProof(proof) => {
-                let store = self.validator_node_store(txn);
-                let evict_node = proof.node_to_evict();
-                let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants
-                    .block_height_to_epoch(header.height)
-                    .saturating_add(VnEpoch(1));
-                let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
-                info!(
-                    target: LOG_TARGET,
-                    "Evicting ValidatorNode in {}: public_key: {}, sidechain_public_key: {:?}",
-                    next_epoch,
-                    evict_node,
-                    sidechain_pk.map(|pk| pk.to_hex()),
-                );
-                store.exit(sidechain_pk, evict_node, next_epoch)?;
             },
             SideChainFeatureData::ValidatorNodeExit(exit) => {
                 let store = self.validator_node_store(txn);
@@ -4460,28 +4434,6 @@ impl BlockchainBackend for LMDBDatabase {
         // Get the current epoch for the height
         let is_active = vn_store.is_vn_active(sidechain_pk, validator_node_pk, end_epoch)?;
         Ok(is_active)
-    }
-
-    fn validator_node_is_active_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        validator_node_pk: &CompressedPublicKey,
-        _shard_group: ShardGroup,
-    ) -> Result<bool, ChainStorageError> {
-        // TODO: account for shard group
-        self.validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
-    }
-
-    fn validator_nodes_count_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        _shard_group: ShardGroup,
-    ) -> Result<usize, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        let vn_store = self.validator_node_store(&txn);
-        vn_store.count_active_validators(sidechain_pk, end_epoch)
     }
 
     fn get_validator_node(

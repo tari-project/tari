@@ -3489,36 +3489,32 @@ async fn get_block_group(
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::types::{ComAndPubSignature, FixedHash};
+    use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
     use tari_core::blocks::genesis_block::get_genesis_block;
     use tari_script::{ExecutionStack, StackItem};
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
-        transaction_components::{KernelFeatures, SideChainFeature, TransactionInput},
+        transaction_components::{
+            KernelFeatures,
+            SideChainFeature,
+            SideChainFeatureData,
+            TransactionInput,
+            ValidatorNodeExit,
+        },
     };
 
     use super::*;
 
-    /// A side-chain eviction proof feature built from the `tari_sidechain` commit proof test fixture, with its
-    /// side-chain block header `network` byte replaced. The fixture's own byte is 0x10 (LocalNet). The proof is only
-    /// used for serialization, so its inclusion proof is empty.
-    fn eviction_proof_feature(network: u8) -> SideChainFeature {
-        let commit_proof: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../base_layer/sidechain/tests/fixtures/commit_proof.json"
-        )))
-        .unwrap();
-        let mut proof = serde_json::json!({
-            "proof": {
-                "V1": {
-                    "command": { "public_key": "30eb54ee0d290e0fd9f8a6c6cbc84e3a516645fe1be77429987375498aee8641" },
-                    "commit_proof": commit_proof,
-                    "inclusion_proof": { "leaf": null, "siblings": [] },
-                }
-            }
-        });
-        *proof.pointer_mut("/proof/V1/commit_proof/header/network").unwrap() = network.into();
-        serde_json::from_value(serde_json::json!({ "data": { "EvictionProof": proof }, "sidechain_id": null })).unwrap()
+    /// A signed side-chain validator node exit feature.
+    fn validator_node_exit_feature() -> SideChainFeature {
+        SideChainFeature {
+            data: SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::signed(
+                &PrivateKey::default(),
+                None,
+                VnEpoch(1),
+            )),
+            sidechain_id: None,
+        }
     }
 
     /// The mainnet genesis block with the given side-chain feature attached to its first output.
@@ -3552,38 +3548,13 @@ mod test {
     fn a_valid_block_round_trips_unchanged_through_the_p2p_proto() {
         for block in [
             mainnet_genesis(),
-            genesis_with_sidechain_feature(eviction_proof_feature(0x10)),
+            genesis_with_sidechain_feature(validator_node_exit_feature()),
         ] {
             let normalised = normalise_block_via_p2p_proto(block.clone(), true).unwrap();
             assert_eq!(normalised, block);
             assert_eq!(normalised.hash(), block.hash());
             assert_eq!(to_blobs(&normalised), to_blobs(&block));
         }
-    }
-
-    #[test]
-    fn a_block_with_an_unknown_sidechain_network_byte_is_rejected_as_invalid_argument() {
-        let block = genesis_with_sidechain_feature(eviction_proof_feature(0xfe));
-
-        // The gRPC conversion used by `submit_block` accepts it ...
-        let via_grpc = Block::try_from(tari_rpc::Block::try_from(block.clone()).unwrap()).unwrap();
-        assert_eq!(via_grpc.body.outputs(), block.body.outputs());
-
-        // ... but a peer could not send it, so the P2P normalisation rejects it.
-        let err = normalise_block_via_p2p_proto(via_grpc.clone(), true).unwrap_err();
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        assert!(err.message().starts_with("Malformed block: "), "{}", err.message());
-        assert!(err.message().contains("Invalid network byte"), "{}", err.message());
-
-        let err = normalise_block_via_p2p_proto(via_grpc, false).unwrap_err();
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        assert_eq!(err.message(), "Error has occurred. Details are obscured.");
-
-        // Borsh accepts the byte too, so `submit_block_blob` relies on the same normalisation.
-        let (header_blob, body_blob) = to_blobs(&block);
-        let err = decode_block_blob(&header_blob, &body_blob, true).unwrap_err();
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        assert!(err.message().contains("Invalid network byte"), "{}", err.message());
     }
 
     #[test]
@@ -3601,24 +3572,6 @@ mod test {
             normalised.body.inputs().first().map(|i| &i.input_data),
             Some(&ExecutionStack::default())
         );
-    }
-
-    #[test]
-    fn a_transaction_with_an_unknown_sidechain_network_byte_is_rejected_as_invalid_argument() {
-        let mut tx = genesis_transaction();
-        let (inputs, mut outputs, kernels) = tx.body.dissolve();
-        outputs.first_mut().unwrap().features.sidechain_feature = Some(eviction_proof_feature(0xfe));
-        tx.body = AggregateBody::new_unsorted(inputs, outputs, kernels);
-        let via_grpc = Transaction::try_from(tari_rpc::Transaction::try_from(tx).unwrap()).unwrap();
-
-        let err = normalise_transaction_via_p2p_proto(via_grpc, true).unwrap_err();
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        assert!(
-            err.message().starts_with("Malformed transaction: "),
-            "{}",
-            err.message()
-        );
-        assert!(err.message().contains("Invalid network byte"), "{}", err.message());
     }
 
     fn to_blobs(block: &Block) -> (Vec<u8>, Vec<u8>) {

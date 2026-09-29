@@ -41,7 +41,6 @@ use tari_comms::types::CommsPublicKey;
 use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
-use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     MicroMinotari,
     multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
@@ -180,13 +179,6 @@ pub enum TransactionServiceRequest {
         binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-    },
-    SubmitValidatorEvictionProof {
-        amount: MicroMinotari,
-        proof: EvictionProof,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
         sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
@@ -568,22 +560,6 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "GetTransactionByHistoricalPayref({payref})")
             },
 
-            Self::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                ..
-            } => {
-                write!(
-                    f,
-                    "SubmitValidatorEvictionProof (amount: {}, evicts: {}, fee_per_gram: {}, message: {})",
-                    amount,
-                    proof.node_to_evict(),
-                    fee_per_gram,
-                    payment_id
-                )
-            },
             Self::CreateMultisigUtxo { request } => {
                 write!(f, "CreateMultisigUtxo (request: {:?})", request)
             },
@@ -679,9 +655,6 @@ pub enum TransactionServiceResponse {
     CodeRegistrationTransactionSent {
         tx_id: TxId,
         template_address: FixedHash,
-    },
-    ValidatorEvictionProofSent {
-        tx_id: TxId,
     },
 
     PrepareDepositMultisigTransaction(Box<PrepareDepositMultisigTransactionResult>),
@@ -997,34 +970,6 @@ impl TransactionServiceHandle {
             } => Ok((tx_id, template_address)),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::RegisterCodeTemplate".to_string(),
-            )),
-        }
-    }
-
-    pub async fn submit_validator_eviction_proof(
-        &mut self,
-        amount: MicroMinotari,
-        proof: EvictionProof,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-        payment_id: MemoField,
-    ) -> Result<TxId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                sidechain_deployment_key,
-            })
-            .await
-            .inspect_err(
-                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SubmitValidatorEvictionProof({e})"),
-            )?? {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::SubmitValidatorEvictionProof".to_string(),
             )),
         }
     }

@@ -41,7 +41,6 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
-use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_transaction_components::{
@@ -716,33 +715,6 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
-    }
-
-    fn validator_node_is_active_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        validator_node_pk: &CompressedPublicKey,
-        shard_group: ShardGroup,
-    ) -> Result<bool, ChainStorageError> {
-        self.db.as_ref().unwrap().validator_node_is_active_for_shard_group(
-            sidechain_pk,
-            end_epoch,
-            validator_node_pk,
-            shard_group,
-        )
-    }
-
-    fn validator_nodes_count_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        shard_group: ShardGroup,
-    ) -> Result<usize, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .validator_nodes_count_for_shard_group(sidechain_pk, end_epoch, shard_group)
     }
 
     fn get_validator_node(

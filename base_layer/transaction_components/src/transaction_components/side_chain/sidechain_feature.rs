@@ -24,7 +24,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
-use tari_sidechain::EvictionProof;
 
 use crate::transaction_components::{
     CodeTemplateRegistration,
@@ -50,7 +49,6 @@ impl SideChainFeature {
             SideChainFeatureData::ValidatorNodeRegistration(reg) => sidechain_id.is_valid(reg.sidechain_id_message()),
             SideChainFeatureData::CodeTemplateRegistration(reg) => sidechain_id.is_valid(reg.sidechain_id_message()),
             SideChainFeatureData::ConfidentialOutput(output) => sidechain_id.is_valid(output.sidechain_id_message()),
-            SideChainFeatureData::EvictionProof(proof) => sidechain_id.is_valid(proof.sidechain_id_message()),
             SideChainFeatureData::ValidatorNodeExit(exit) => sidechain_id.is_valid(exit.sidechain_id_message()),
         }
     }
@@ -88,13 +86,6 @@ impl SideChainFeature {
         }
     }
 
-    pub fn eviction_proof(&self) -> Option<&EvictionProof> {
-        match &self.data {
-            SideChainFeatureData::EvictionProof(v) => Some(v),
-            _ => None,
-        }
-    }
-
     pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
         match &self.data {
             SideChainFeatureData::ConfidentialOutput(v) => Some(v),
@@ -108,7 +99,6 @@ pub enum SideChainFeatureData {
     ValidatorNodeRegistration(Box<ValidatorNodeRegistration>),
     CodeTemplateRegistration(CodeTemplateRegistration),
     ConfidentialOutput(ConfidentialOutputData),
-    EvictionProof(Box<EvictionProof>),
     ValidatorNodeExit(ValidatorNodeExit),
 }
 
@@ -155,5 +145,32 @@ impl SideChainId {
         };
 
         signature.verify(&public_key, message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A burn output may carry side-chain data on any network, so the index of every variant a live network can
+    /// hold is part of the output hash (Borsh) and the stored output (bincode). Only `ConfidentialOutput` can occur
+    /// on a live network - validator registration is disabled there, so no exit can be valid - but the variants
+    /// before it must keep their indexes for it to keep its own.
+    #[test]
+    fn the_confidential_output_variant_index_is_stable() {
+        let data = SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
+            claim_public_key: CompressedPublicKey::default(),
+        });
+
+        let borsh_bytes = borsh::to_vec(&data).unwrap();
+        assert_eq!(borsh_bytes.first(), Some(&2));
+        assert_eq!(SideChainFeatureData::try_from_slice(&borsh_bytes).unwrap(), data);
+
+        let bincode_bytes = bincode::serialize(&data).unwrap();
+        assert_eq!(bincode_bytes.get(..4), Some(2u32.to_le_bytes().as_slice()));
+        assert_eq!(
+            bincode::deserialize::<SideChainFeatureData>(&bincode_bytes).unwrap(),
+            data
+        );
     }
 }

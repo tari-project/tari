@@ -308,17 +308,6 @@ fn check_outputs(constants: &ConsensusConstants, body: &AggregateBody, height: u
                     current_epoch,
                 });
             }
-
-            if let Some(eviction_proof) = sidechain_features.eviction_proof() {
-                let epoch = eviction_proof.epoch();
-                let tip_epoch = constants.block_height_to_epoch(height);
-                if epoch > tip_epoch {
-                    return Err(ValidationError::SidechainEvictionProofInvalidEpoch {
-                        epoch,
-                        tip_height: height,
-                    });
-                }
-            };
         }
     }
     Ok(())
