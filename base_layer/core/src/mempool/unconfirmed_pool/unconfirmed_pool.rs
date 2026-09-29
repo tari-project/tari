@@ -94,11 +94,16 @@ pub const MAX_WALKED_FRAMES_PER_PASS: usize = 200_000;
 /// take thousands of candidates per pass rather than hundreds.
 pub const MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE: usize = 100;
 
+/// The maximum number of dependency links one selection pass follows (by ancestor walks and by the pre-walk ancestor
+/// weight bound). A transaction can have as many links as inputs, so this bounds the work that visiting a bounded
+/// number of transactions can still cost. When it runs out, the pass ends as if [MAX_WALKED_FRAMES_PER_PASS] had.
+pub const MAX_FOLLOWED_LINKS_PER_PASS: usize = 2_000_000;
+
 /// How an ancestor walk ended
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WalkOutcome {
     Complete,
-    /// The pass's [MAX_WALKED_FRAMES_PER_PASS] budget ran out
+    /// The pass's [MAX_WALKED_FRAMES_PER_PASS] or [MAX_FOLLOWED_LINKS_PER_PASS] budget ran out
     OutOfFrames,
     /// The candidate has more than [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE] unselected ancestors
     TooManyAncestors,
@@ -220,6 +225,12 @@ struct Selection {
     /// The candidate on which the walking budget ran out, if it did
     #[cfg_attr(not(test), allow(dead_code))]
     out_of_frames_candidate: Option<TransactionKey>,
+    /// The transactions the pass's walks visited (see [MAX_WALKED_FRAMES_PER_PASS])
+    #[cfg_attr(not(test), allow(dead_code))]
+    walk_work: usize,
+    /// The dependency links the pass followed (see [MAX_FOLLOWED_LINKS_PER_PASS])
+    #[cfg_attr(not(test), allow(dead_code))]
+    links_followed: usize,
     /// Whether the pass ended before considering every candidate
     ended_early: bool,
     /// The candidates whose ancestors this pass walked and that it then dropped (for conflicting, or for not fitting
@@ -253,6 +264,8 @@ struct SelectionState<'a> {
     /// The number of transactions that may still be visited while walking ancestors (see
     /// [MAX_WALKED_FRAMES_PER_PASS])
     frames_left: usize,
+    /// The number of dependency links this pass may still follow (see [MAX_FOLLOWED_LINKS_PER_PASS])
+    links_left: usize,
     frame_budget_exhausted: bool,
     out_of_frames_candidate: Option<TransactionKey>,
     /// Candidates to leave out of this pass (see [UnconfirmedPool::fetch_selection])
@@ -298,6 +311,7 @@ impl SelectionState<'_> {
             too_many_ancestors_drops: 0,
             full_enough_weight: max_block_transaction_weight / BLOCK_FULL_ENOUGH_DIVISOR,
             frames_left: MAX_WALKED_FRAMES_PER_PASS,
+            links_left: MAX_FOLLOWED_LINKS_PER_PASS,
             frame_budget_exhausted: false,
             out_of_frames_candidate: None,
             excluded,
@@ -420,8 +434,16 @@ impl UnconfirmedPool {
         }
 
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
+        // Each producers entry is kept ordered by priority, highest first (see `find_highest_priority_transaction`)
+        let tx_by_key = &self.tx_by_key;
         for output in prioritized_tx.transaction.body.outputs() {
-            self.txs_by_output.entry(output.hash()).or_default().push(new_key);
+            let producers = self.txs_by_output.entry(output.hash()).or_default();
+            let position = producers.partition_point(|key| {
+                tx_by_key
+                    .get(key)
+                    .is_some_and(|producer| producer.priority > prioritized_tx.priority)
+            });
+            producers.insert(position, new_key);
         }
         for input_hash in &prioritized_tx.input_hashes {
             self.txs_by_spent_output.entry(*input_hash).or_default().push(new_key);
@@ -686,11 +708,20 @@ impl UnconfirmedPool {
                 continue;
             }
             // If its dependencies are already known to be too heavy, so is its branch
-            let weight_bound = self.ancestor_weight_bound(
+            let Some(weight_bound) = self.ancestor_weight_bound(
                 prioritized_transaction,
                 &state.selected_txs,
                 &state.ancestor_weight_bounds,
-            )?;
+                &mut state.links_left,
+            )?
+            else {
+                // Out of walking budget (see the `OutOfFrames` case below)
+                state.frame_budget_exhausted = true;
+                state.out_of_frames_candidate = Some(*tx_key);
+                state.byte_bound = true;
+                exhausted = false;
+                break;
+            };
             if state.curr_weight.saturating_add(weight_bound) > total_weight {
                 if state.weight_skip(self.config.weight_tx_skip_count) {
                     exhausted = false;
@@ -713,6 +744,7 @@ impl UnconfirmedPool {
                 &mut total_transaction_rank_weight,
                 &mut total_transaction_fees,
                 &mut state.frames_left,
+                &mut state.links_left,
                 &mut state.ancestor_weight_bounds,
             )?;
             match outcome {
@@ -838,6 +870,8 @@ impl UnconfirmedPool {
             weight_skips_counted: state.weight_skips,
             frame_budget_exhausted: state.frame_budget_exhausted,
             out_of_frames_candidate: state.out_of_frames_candidate,
+            walk_work: MAX_WALKED_FRAMES_PER_PASS.saturating_sub(state.frames_left),
+            links_followed: MAX_FOLLOWED_LINKS_PER_PASS.saturating_sub(state.links_left),
             ended_early: !exhausted,
             walked_dropped: state.walked_dropped,
         })
@@ -1110,12 +1144,15 @@ impl UnconfirmedPool {
         total_rank_weight: &mut u64,
         total_fees: &mut u64,
         frames_left: &mut usize,
+        links_left: &mut usize,
         ancestor_weight_bounds: &mut HashMap<TransactionKey, u64>,
     ) -> Result<WalkOutcome, UnconfirmedPoolError> {
         struct Frame<'b> {
             transaction: &'b PrioritizedTransaction,
             next_dependency: usize,
             rechecked: bool,
+            /// The largest ancestor weight bound among this transaction's unselected dependencies so far
+            dependency_bound: u64,
         }
         if *frames_left == 0 {
             return Ok(WalkOutcome::OutOfFrames);
@@ -1127,6 +1164,7 @@ impl UnconfirmedPool {
             transaction,
             next_dependency: 0,
             rechecked: false,
+            dependency_bound: 0,
         }];
         while let Some(frame) = stack.last_mut() {
             let current = frame.transaction;
@@ -1134,11 +1172,23 @@ impl UnconfirmedPool {
             if transactions_to_recheck.is_empty() &&
                 let Some(dependent_output) = current.dependent_output_hashes.get(frame.next_dependency)
             {
+                // Every link followed is charged to the pass's link budget
+                if *links_left == 0 {
+                    return Ok(WalkOutcome::OutOfFrames);
+                }
+                *links_left = links_left.saturating_sub(1);
                 frame.next_dependency = frame.next_dependency.saturating_add(1);
                 match self.txs_by_output.get(dependent_output) {
-                    Some(signatures) => {
-                        let dependency = self.find_highest_priority_transaction(signatures)?;
-                        if !selected_txs.contains_key(&dependency.key) && visited.insert(dependency.key) {
+                    Some(keys) => {
+                        let dependency = self.find_highest_priority_transaction(keys)?;
+                        if selected_txs.contains_key(&dependency.key) {
+                            // Already in the block: adds nothing
+                        } else if !visited.insert(dependency.key) {
+                            // Already walked in this walk (a DAG, so it has finished)
+                            if let Some(bound) = ancestor_weight_bounds.get(&dependency.key) {
+                                frame.dependency_bound = frame.dependency_bound.max(*bound);
+                            }
+                        } else {
                             if *frames_left == 0 {
                                 return Ok(WalkOutcome::OutOfFrames);
                             }
@@ -1151,6 +1201,7 @@ impl UnconfirmedPool {
                                 transaction: dependency,
                                 next_dependency: 0,
                                 rechecked: false,
+                                dependency_bound: 0,
                             });
                         }
                     },
@@ -1167,9 +1218,12 @@ impl UnconfirmedPool {
             if !transactions_to_recheck.is_empty() && !frame.rechecked {
                 transactions_to_recheck.push((current.key, current.transaction.clone()));
             }
+            let bound = current.weight.saturating_add(frame.dependency_bound);
             stack.pop();
-            let bound = self.ancestor_weight_bound(current, selected_txs, ancestor_weight_bounds)?;
             ancestor_weight_bounds.insert(current.key, bound);
+            if let Some(parent) = stack.last_mut() {
+                parent.dependency_bound = parent.dependency_bound.max(bound);
+            }
             if required_transactions
                 .insert(current.key, current.transaction.clone())
                 .is_none()
@@ -1196,15 +1250,21 @@ impl UnconfirmedPool {
     }
 
     /// A lower bound on the weight of `transaction` together with its unselected ancestors: its own weight plus the
-    /// largest known bound of its unselected dependencies (0 for any not yet walked).
+    /// largest known bound of its unselected dependencies (0 for any not yet walked). Each dependency link examined
+    /// is charged to `links_left`; `None` if that runs out.
     fn ancestor_weight_bound(
         &self,
         transaction: &PrioritizedTransaction,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         ancestor_weight_bounds: &HashMap<TransactionKey, u64>,
-    ) -> Result<u64, UnconfirmedPoolError> {
+        links_left: &mut usize,
+    ) -> Result<Option<u64>, UnconfirmedPoolError> {
         let mut dependencies = 0u64;
         for dependent_output in &transaction.dependent_output_hashes {
+            if *links_left == 0 {
+                return Ok(None);
+            }
+            *links_left = links_left.saturating_sub(1);
             if let Some(keys) = self.txs_by_output.get(dependent_output) {
                 let dependency = self.find_highest_priority_transaction(keys)?;
                 if !selected_txs.contains_key(&dependency.key) &&
@@ -1214,28 +1274,17 @@ impl UnconfirmedPool {
                 }
             }
         }
-        Ok(transaction.weight.saturating_add(dependencies))
+        Ok(Some(transaction.weight.saturating_add(dependencies)))
     }
 
+    /// The highest priority of the pool transactions producing an output. `txs_by_output` keeps each entry ordered by
+    /// priority, highest first (priorities never change once a transaction is in the pool), so this is O(1).
     fn find_highest_priority_transaction(
         &self,
         keys: &[TransactionKey],
     ) -> Result<&PrioritizedTransaction, UnconfirmedPoolError> {
-        if keys.is_empty() {
-            return Err(UnconfirmedPoolError::StorageOutofSync);
-        }
-
-        let mut highest_transaction = self
-            .tx_by_key
-            .get(keys.first().expect("Already checked"))
-            .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-        for key in keys.iter().skip(1) {
-            let transaction = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-            if transaction.priority > highest_transaction.priority {
-                highest_transaction = transaction;
-            }
-        }
-        Ok(highest_transaction)
+        let key = keys.first().ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+        self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)
     }
 
     // This will search a Vec<Arc<Transaction>> for duplicate inputs of a tx
@@ -2857,7 +2906,8 @@ mod test {
             min_fee: 0,
         })
         .with_max_body_bytes(usize::MAX / 2);
-        // Junk: conflicting children of a 99-deep chain, exactly enough (100 frames each) to use up the walking budget
+        // Junk: conflicting children of a 99-deep chain, exactly enough (100 visited transactions each) to use up the
+        // walking budget
         let depth = u64::try_from(MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE).unwrap() - 1;
         let chain = insert_chain(&mut unconfirmed_pool, &base, 0, depth, 1);
         let input = base.body.inputs().first().unwrap().clone();
@@ -2907,6 +2957,91 @@ mod test {
             )
             .unwrap();
         assert!(by_effective_weight.results.retrieved_transactions.contains(&target));
+    }
+
+    #[tokio::test]
+    async fn duplicate_producers_of_an_output_are_resolved_in_constant_time() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10_000,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        // 5,000 pool transactions producing the very same output, with different fees
+        let output = base.body.outputs().first().unwrap().clone();
+        let producers = (0..5_000u64)
+            .map(|n| {
+                let tx = synthetic_tx(&base, n, 1 + n % 97);
+                let producer = Arc::new(Transaction::new(
+                    vec![],
+                    vec![output.clone()],
+                    tx.body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ));
+                unconfirmed_pool.insert(producer.clone(), None, &tx_weight).unwrap();
+                producer
+            })
+            .collect::<Vec<_>>();
+        // The producers of the output are ordered by priority, highest first
+        let keys = &unconfirmed_pool.txs_by_output[&output.hash()];
+        assert_eq!(keys.len(), producers.len());
+        assert!(keys.windows(2).all(|pair| {
+            unconfirmed_pool.tx_by_key[&pair[0]].priority > unconfirmed_pool.tx_by_key[&pair[1]].priority
+        }));
+        let highest = unconfirmed_pool
+            .tx_by_key
+            .values()
+            .max_by(|a, b| a.priority.cmp(&b.priority))
+            .unwrap()
+            .key;
+        assert_eq!(keys[0], highest);
+
+        // A candidate spending that output resolves its dependency without scanning the producers
+        let candidate = synthetic_tx(&base, 10_000, 1_000_000);
+        unconfirmed_pool
+            .insert(candidate.clone(), Some(vec![output.hash()]), &tx_weight)
+            .unwrap();
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        assert!(selection.results.retrieved_transactions.contains(&candidate));
+        assert!(unconfirmed_pool.check_data_consistency());
+    }
+
+    #[tokio::test]
+    async fn every_dependency_link_followed_costs_walking_work() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        let parent = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1).pop().unwrap();
+        // A candidate with 9,000 links (e.g. one per input) to the same parent: one transaction, but 9,000 links
+        const LINKS: usize = 9_000;
+        let candidate = synthetic_tx(&base, 1, 1_000_000);
+        unconfirmed_pool
+            .insert(
+                candidate.clone(),
+                Some(vec![parent.body.outputs().first().unwrap().hash(); LINKS]),
+                &tx_weight,
+            )
+            .unwrap();
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        assert!(selection.results.retrieved_transactions.contains(&candidate));
+        // The links are charged, by the pre-walk bound and by the walk, while only two transactions are visited
+        assert!(selection.links_followed >= 2 * LINKS, "{}", selection.links_followed);
+        assert!(selection.links_followed <= MAX_FOLLOWED_LINKS_PER_PASS);
+        assert!(selection.walk_work <= 3);
     }
 
     #[tokio::test]
