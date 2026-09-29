@@ -34,11 +34,15 @@ use crate::consensus::DomainSeparatedConsensusHasher;
 pub struct CodeTemplateRegistration {
     pub author_public_key: CompressedPublicKey,
     pub author_signature: CompressedSignature,
+    /// At most 32 bytes. The bound is consensus critical (applied at decode time); changing it is a flag-day fork.
+    /// Arbitrary UTF-8 from the chain, not validated beyond that: escape it before logging or printing it.
     pub template_name: MaxSizeString<32>,
     pub template_version: u16,
     pub template_type: TemplateType,
     pub build_info: BuildInfo,
     pub binary_sha: FixedHash,
+    /// At most 255 bytes. The bound is consensus critical (applied at decode time); changing it is a flag-day fork.
+    /// Arbitrary UTF-8 from the chain, not validated as a URL: escape it before logging or printing it.
     pub binary_url: MaxSizeString<255>,
 }
 
@@ -87,6 +91,9 @@ pub enum TemplateType {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct BuildInfo {
+    /// At most 255 bytes. The bound is consensus critical (applied at decode time); changing it is a flag-day fork.
+    /// Arbitrary UTF-8 from the chain, not validated as a URL: escape it before logging or printing it.
     pub repo_url: MaxSizeString<255>,
+    /// At most 32 bytes. The bound is consensus critical (applied at decode time); changing it is a flag-day fork.
     pub commit_hash: MaxSizeBytes<32>,
 }

@@ -102,6 +102,7 @@ ignored = [
 ]
 
 [dev-dependencies]
+tari_script = { workspace = true }
 toml = { version = "0.5" }
 serde_json = "1.0.108"
 tempfile = "3.1.0"

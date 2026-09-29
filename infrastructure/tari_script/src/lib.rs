@@ -35,7 +35,7 @@ pub use op_codes::{
 };
 pub use script::{MAX_SCRIPT_BYTES, MAX_SCRIPT_OPCODES, ScriptOpcodes, TariScript};
 pub use script_context::ScriptContext;
-pub use stack::{ExecutionStack, StackItem};
+pub use stack::{ExecutionStack, MAX_STACK_SIZE, StackItem};
 use tari_crypto::{
     compressed_key::CompressedKey,
     hash_domain,

@@ -128,7 +128,10 @@ fn get_stagenet_genesis_block_raw() -> Block {
             not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
@@ -180,7 +183,10 @@ fn get_nextnet_genesis_block_raw() -> Block {
             not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
@@ -235,7 +241,10 @@ fn get_mainnet_genesis_block_raw() -> Block {
             gen_block_payload.len().saturating_sub(PowData::default().max_size())
         );
     }
-    let mut block = get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(gen_block_payload));
+    let mut block = get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(gen_block_payload).expect("genesis constant fits"),
+    );
     block.header.nonce = 61724;
     block
 }
@@ -287,7 +296,10 @@ fn get_igor_genesis_block_raw() -> Block {
             not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
@@ -340,7 +352,10 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_localnet_genesis_block() -> ChainBlock {
@@ -372,7 +387,10 @@ fn get_localnet_genesis_block_raw() -> Block {
             not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {

@@ -46,7 +46,12 @@ use crate::transaction_components::{
     side_chain::SideChainFeature,
 };
 
-/// Coinbase outputs are allowed to have metadata, but it has the following length limit
+/// Coinbase outputs are allowed to have metadata, but it has the following length limit.
+///
+/// The bound (258 bytes) is consensus critical: it is applied at decode time, so changing it changes which blocks and
+/// transactions a node can decode at all and is a flag-day (hard) fork.
+/// It must stay `>=` every network's `coinbase_output_features_extra_max_length`, which is the (smaller) validation
+/// rule; see `decode_bounds_cover_every_consensus_limit` in `consensus_constants.rs`.
 pub type CoinBaseExtra = MaxSizeBytes<258>;
 
 /// Options for UTXO's

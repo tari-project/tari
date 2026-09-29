@@ -2660,6 +2660,90 @@ mod test {
         transaction_components::{OutputType, RangeProofType},
     };
 
+    /// The decode-time size bounds in this crate and `tari_script` are applied when a value is decoded, before any
+    /// consensus rule runs. Where a bound backs a consensus limit (CoinBaseExtra, EncryptedData, `MAX_SCRIPT_BYTES`,
+    /// `MAX_COVENANT_TOKENS`), it must be at least as large as that limit for every network and every consensus
+    /// constants epoch; otherwise values that are valid by the consensus rules could not even be decoded, which would
+    /// be a silent consensus change.
+    ///
+    /// `MAX_COVENANT_BYTES` and `MAX_SCRIPT_OPCODES` back no consensus constant; they are stand-alone decode rules and
+    /// are only pinned to their current values here. The `PowData` bound is checked in tari_core
+    /// (`pow_data_decode_bound_covers_every_per_algorithm_limit`).
+    #[test]
+    fn decode_bounds_cover_every_consensus_limit() {
+        use tari_common::configuration::Network;
+        use tari_common_types::tari_address::MAX_PAYMENT_ID_SIZE;
+        use tari_script::{MAX_SCRIPT_BYTES, MAX_SCRIPT_OPCODES, MAX_STACK_SIZE};
+
+        use crate::transaction_components::{
+            CoinBaseExtra,
+            covenants::{MAX_BYTES_ARG_SIZE, MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS},
+            encrypted_data::{MAX_ENCRYPTED_DATA_SIZE, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
+        };
+
+        let coinbase_extra_max = CoinBaseExtra::default().max_size();
+        assert_eq!(coinbase_extra_max, 258);
+        // The payment id carried by encrypted data is exactly what fits after the fixed part
+        assert_eq!(
+            MAX_ENCRYPTED_DATA_SIZE,
+            MAX_PAYMENT_ID_SIZE + STATIC_ENCRYPTED_DATA_SIZE_TOTAL
+        );
+        // A bytes argument lives inside a covenant, so the covenant byte limit is the effective one
+        const { assert!(MAX_BYTES_ARG_SIZE >= MAX_COVENANT_BYTES) };
+        // There is no consensus constant for the covenant byte size: `max_covenant_length` counts tokens. The byte
+        // cap is therefore not "covered" by anything here; it is its own decode-time rule and is only pinned so a
+        // change to it is visible.
+        const { assert!(MAX_COVENANT_BYTES == 4096) };
+        // The script opcode cap does NOT cover `max_script_byte_size`: the smallest opcode encodes to one byte, so a
+        // script of `max_script_byte_size` (512) bytes could hold up to 512 opcodes, but every decoder rejects more
+        // than `MAX_SCRIPT_OPCODES` (128). That makes the opcode cap a separate, stricter consensus rule rather than
+        // a decode bound backing a consensus limit. It is applied equally by every node, so it is not a split risk,
+        // but it is consensus critical in its own right and pinned here so a change is visible. The per-epoch
+        // assertion below checks it really is the binding limit, keeping this comment honest.
+        const { assert!(MAX_SCRIPT_OPCODES == 128) };
+        // The execution stack item cap is a stand-alone consensus rule with no `ConsensusConstants` counterpart.
+        const { assert!(MAX_STACK_SIZE == 255) };
+        /// The smallest encoded size of a single opcode (e.g. `Nop`, `Dup`, `Drop`)
+        const MIN_OPCODE_ENCODED_SIZE: usize = 1;
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            let all = ConsensusConstants::for_network(network);
+            assert!(!all.is_empty());
+            for (epoch, c) in all.iter().enumerate() {
+                assert!(
+                    coinbase_extra_max >= c.coinbase_output_features_extra_max_length() as usize,
+                    "{network} epoch {epoch}: CoinBaseExtra bound is smaller than \
+                     coinbase_output_features_extra_max_length"
+                );
+                assert!(
+                    MAX_ENCRYPTED_DATA_SIZE >=
+                        c.max_extra_encrypted_data_byte_size() + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+                    "{network} epoch {epoch}: EncryptedData bound is smaller than max_extra_encrypted_data_byte_size"
+                );
+                assert!(
+                    MAX_SCRIPT_BYTES >= c.max_script_byte_size(),
+                    "{network} epoch {epoch}: MAX_SCRIPT_BYTES is smaller than max_script_byte_size"
+                );
+                assert!(
+                    MAX_SCRIPT_OPCODES * MIN_OPCODE_ENCODED_SIZE < c.max_script_byte_size(),
+                    "{network} epoch {epoch}: MAX_SCRIPT_OPCODES is no longer the binding script limit; update the \
+                     comment above"
+                );
+                assert!(
+                    MAX_COVENANT_TOKENS >= c.max_covenant_length() as usize,
+                    "{network} epoch {epoch}: MAX_COVENANT_TOKENS is smaller than max_covenant_length"
+                );
+            }
+        }
+    }
+
     /// The boundary the accumulated-data repair migration keys on.
     ///
     /// MainNet's GHSA-3qmx-q9pv-f3m4 entry also takes `difficulty_block_window` from 90 to 45, which makes the fix
