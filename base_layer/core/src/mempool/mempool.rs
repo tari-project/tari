@@ -92,14 +92,6 @@ pub struct ValidationPermit {
     _permit: OwnedSemaphorePermit,
 }
 
-/// A permit to decode one inbound block message, obtained from [Mempool::acquire_reconciliation_permit]. It draws from
-/// the same bound as [Mempool::insert_all], and must only cover CPU-bound work: drop it before any network round trip
-/// or block processing. Dropping it releases the permit.
-#[must_use]
-pub struct ReconciliationPermit {
-    _permit: OwnedSemaphorePermit,
-}
-
 /// The maximum number of new transactions that are validated concurrently: half the available cores, at least 1 and at
 /// most 8.
 fn max_concurrent_validations() -> usize {
@@ -136,15 +128,6 @@ impl Mempool {
     pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolError> {
         Ok(ValidationPermit {
             _permit: acquire_permit(&self.validation_permits).await?,
-        })
-    }
-
-    /// Acquire a permit from the bound on concurrent compact block reconciliations, to cover decoding an inbound block
-    /// message. Hold it only for the decode: reconciliation acquires its own permit around the CPU-bound validation of
-    /// fetched transactions ([Mempool::insert_all]), and never holds one across a network round trip.
-    pub async fn acquire_reconciliation_permit(&self) -> Result<ReconciliationPermit, MempoolError> {
-        Ok(ReconciliationPermit {
-            _permit: acquire_permit(&self.reconciliation_permits).await?,
         })
     }
 
@@ -578,21 +561,6 @@ mod test {
 
         drop(held);
         assert_eq!(mempool.available_validation_permits(), permits);
-    }
-
-    #[tokio::test]
-    async fn reconciliation_permit_is_released_on_drop() {
-        let mempool = create_mempool(Arc::new(SlowValidator::default()));
-        let permit = mempool.acquire_reconciliation_permit().await.unwrap();
-        assert_eq!(
-            mempool.available_reconciliation_permits(),
-            MAX_CONCURRENT_RECONCILIATIONS - 1
-        );
-        drop(permit);
-        assert_eq!(
-            mempool.available_reconciliation_permits(),
-            MAX_CONCURRENT_RECONCILIATIONS
-        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

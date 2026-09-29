@@ -38,7 +38,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
-    common::inbound_backpressure::InboundBackpressure,
+    common::inbound_backpressure::PendingByPeer,
     mempool::service::{
         MempoolRequest,
         MempoolResponse,
@@ -50,9 +50,12 @@ use crate::{
 
 const LOG_TARGET: &str = "c::mempool::service::service";
 
-/// The maximum number of inbound `NewTransaction` messages accepted but not yet handled (the historical
-/// `BoundedExecutor` size). Further messages are dropped until one finishes.
-const MAX_PENDING_INBOUND_TRANSACTIONS: usize = 100;
+/// The maximum number of inbound `NewTransaction` messages from a single peer that are accepted but not yet handled.
+/// Further messages from that peer are dropped until one finishes; other peers are unaffected.
+const MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER: usize = 32;
+/// A backstop on the number of inbound `NewTransaction` messages pending from all peers together, only reached if many
+/// peers flood at once.
+const MAX_PENDING_INBOUND_TRANSACTIONS_TOTAL: usize = 512;
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<STxIn, SLocalReq> {
@@ -69,7 +72,7 @@ pub struct MempoolStreams<STxIn, SLocalReq> {
 pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
-    pending_inbound_transactions: InboundBackpressure,
+    pending_inbound_transactions: PendingByPeer,
 }
 
 impl MempoolService {
@@ -77,8 +80,9 @@ impl MempoolService {
         Self {
             outbound_message_service,
             inbound_handlers,
-            pending_inbound_transactions: InboundBackpressure::new(
-                MAX_PENDING_INBOUND_TRANSACTIONS,
+            pending_inbound_transactions: PendingByPeer::new(
+                MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER,
+                MAX_PENDING_INBOUND_TRANSACTIONS_TOTAL,
                 "transaction",
                 LOG_TARGET,
             ),
@@ -183,10 +187,11 @@ impl MempoolService {
     /// Handle a raw inbound transaction message. Decoding and validation are both done in a spawned task, under a
     /// single mempool validation permit, so that the service loop is never blocked decoding a transaction.
     ///
-    /// At most [MAX_PENDING_INBOUND_TRANSACTIONS] messages are handled (or waiting for a validation permit) at once;
+    /// At most [MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER] messages per peer (and
+    /// [MAX_PENDING_INBOUND_TRANSACTIONS_TOTAL] overall) are handled, or waiting for a validation permit, at once;
     /// beyond that, the message is dropped. Returns `true` if a task was spawned to handle the message.
     fn handle_incoming_tx(&mut self, msg: Arc<PeerMessage>) -> bool {
-        let Some(pending_permit) = self.pending_inbound_transactions.try_accept() else {
+        let Some(pending_guard) = self.pending_inbound_transactions.try_accept(&msg.source_peer.node_id) else {
             #[cfg(feature = "metrics")]
             crate::mempool::metrics::rejected_inbound_transactions().inc();
             return false;
@@ -194,7 +199,7 @@ impl MempoolService {
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
             // Released when the task finishes, however it finishes
-            let _pending_permit = pending_permit;
+            let _pending_guard = pending_guard;
             let result = inbound_handlers.handle_transaction_message(msg).await;
             if let Err(e) = result {
                 error!(
@@ -253,7 +258,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn inbound_transactions_are_dropped_when_too_many_are_pending() {
+    async fn inbound_transactions_are_dropped_when_a_peer_has_too_many_pending() {
         let mut config = MempoolConfig::default();
         config.unconfirmed_pool.min_fee = 0;
         let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
@@ -270,35 +275,36 @@ mod test {
                 .0,
         );
         let body = proto::types::Transaction::try_from(tx.clone()).unwrap().encode_to_vec();
-        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        let msg = create_peer_message(TariMessageType::NewTransaction, body.clone());
+        let flooder = msg.source_peer.node_id.clone();
 
-        // Every pending slot is taken: the message is dropped without spawning a task
-        let held = service
-            .pending_inbound_transactions
-            .semaphore()
-            .acquire_many_owned(u32::try_from(MAX_PENDING_INBOUND_TRANSACTIONS).unwrap())
-            .await
-            .unwrap();
+        // The flooding peer has as many messages pending as it may
+        let held = (0..MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER)
+            .map(|_| service.pending_inbound_transactions.try_accept(&flooder).unwrap())
+            .collect::<Vec<_>>();
+        // Its next message is dropped without spawning a task
         assert!(!service.handle_incoming_tx(msg.clone()));
         tokio::task::yield_now().await;
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
-        drop(held);
-        assert_eq!(
-            service.pending_inbound_transactions.available(),
-            MAX_PENDING_INBOUND_TRANSACTIONS
-        );
 
-        // With room, it is handled, and the slot is released once the task finishes
-        assert!(service.handle_incoming_tx(msg));
-        // A malformed message also releases its slot
+        // Another peer's message is still accepted and handled, and so is a malformed one from a third peer
+        // (each test message comes from a new random peer)
+        let other = create_peer_message(TariMessageType::NewTransaction, body.clone());
+        assert_ne!(other.source_peer.node_id, flooder);
+        assert!(service.handle_incoming_tx(other));
         assert!(service.handle_incoming_tx(create_peer_message(TariMessageType::NewTransaction, vec![0xff; 16])));
         tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            while service.pending_inbound_transactions.available() != MAX_PENDING_INBOUND_TRANSACTIONS {
+            while service.pending_inbound_transactions.pending_total() != MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER {
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
         })
         .await
         .expect("pending slots were not released");
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+
+        // Every count returns to zero once the flooder's tasks finish
+        drop(held);
+        assert_eq!(service.pending_inbound_transactions.pending_for(&flooder), 0);
+        assert_eq!(service.pending_inbound_transactions.pending_total(), 0);
     }
 }

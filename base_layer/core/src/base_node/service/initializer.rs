@@ -115,7 +115,7 @@ where T: BlockchainBackend
     }
 
     /// Create a stream of raw 'New Block` messages. The messages are decoded off the service loop, on a blocking
-    /// thread, under a mempool reconciliation permit (see `BaseNodeService::spawn_handle_incoming_block`).
+    /// thread, under a block decode permit (see `BaseNodeService::spawn_handle_incoming_block`).
     fn inbound_block_stream(&self) -> impl Stream<Item = Arc<PeerMessage>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
@@ -130,8 +130,9 @@ pub enum ExtractBlockError {
     MalformedMessage(String),
 }
 
-/// Decode an inbound `NewBlock` message. This is CPU-bound (it decompresses the kernel excess signatures), and must be
-/// run on a blocking thread.
+/// Decode an inbound `NewBlock` message. This is CPU-bound: it protobuf-decodes the whole message (up to the messaging
+/// frame size), converts the header and the coinbase outputs and kernels, and parses every kernel excess signature
+/// scalar canonically. It must be run on a blocking thread.
 pub(crate) fn extract_block(msg: &PeerMessage) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
     let new_block = match msg.decode_message::<shared_protos::core::NewBlock>() {
         Ok(block) => block,

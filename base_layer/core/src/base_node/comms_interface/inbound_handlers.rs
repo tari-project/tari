@@ -65,7 +65,7 @@ use crate::{
     },
     chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
-    mempool::{Mempool, MempoolLastSeen, ReconciliationPermit},
+    mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
         AdjustedTarget,
         cuckaroo_pow::cuckaroo_difficulty,
@@ -618,12 +618,6 @@ where B: BlockchainBackend + 'static
     /// requests for the full block.
     /// This may (asynchronously) block until the other request(s) complete or time out and so should typically be
     /// executed in a dedicated task.
-    /// Acquire a mempool reconciliation permit to bound the CPU-bound decoding of an inbound block message. It must be
-    /// dropped before [InboundNodeCommsHandlers::handle_new_block_message], which may wait on the network.
-    pub async fn acquire_reconciliation_permit(&self) -> Result<ReconciliationPermit, CommsInterfaceError> {
-        Ok(self.mempool.acquire_reconciliation_permit().await?)
-    }
-
     pub async fn handle_new_block_message(
         &mut self,
         new_block: NewBlock,
