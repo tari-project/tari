@@ -46,12 +46,51 @@ use crate::mempool::{
 };
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
-/// The maximum estimated body size, in bytes, of the transactions selected for a block template. This is derived from
-/// the RPC frame size (itself a strict superset of the messaging frame) so that a block built from a template can be
-/// both propagated and synced. Transaction bodies are measured by their borsh-serialized size; the 1 MiB margin covers
-/// the coinbase, the header and protobuf encoding overhead. This is a local block-building policy, not a consensus
-/// rule.
-pub const MAX_BLOCK_TEMPLATE_BODY_BYTES: usize = RPC_MAX_FRAME_SIZE - 1024 * 1024;
+/// The RPC frame size of nodes released before the RPC frame was raised to cover the messaging frame. A block larger
+/// than this cannot be synced by those nodes.
+pub const LEGACY_RPC_MAX_FRAME_SIZE: usize = 6 * 1024 * 1024;
+
+const fn min_usize(a: usize, b: usize) -> usize {
+    if a < b { a } else { b }
+}
+
+/// The maximum estimated body size, in bytes, of the transactions selected for a block template, so that a block built
+/// from a template can be both propagated and synced. Transaction bodies are measured by their borsh-serialized size;
+/// the 1 MiB margin covers the coinbase, the header and protobuf encoding overhead. This is a local block-building
+/// policy, not a consensus rule.
+///
+/// TODO: this is a rollout value, derived from the smaller RPC frame of not-yet-upgraded nodes (5 MiB) so that they can
+/// still sync every block this node builds. Raise it to `RPC_MAX_FRAME_SIZE - 1 MiB` once the network has upgraded.
+pub const MAX_BLOCK_TEMPLATE_BODY_BYTES: usize = min_usize(LEGACY_RPC_MAX_FRAME_SIZE, RPC_MAX_FRAME_SIZE) - 1024 * 1024;
+const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < LEGACY_RPC_MAX_FRAME_SIZE);
+const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE);
+
+/// The weight a transaction is prioritised by when building a block template: its real weight, or its share of the
+/// template byte budget expressed in grams, whichever is larger:
+///
+/// `max(weight, ceil(body_size * max_block_transaction_weight / max_body_bytes))`
+///
+/// Transaction weight does not price input bytes (deliberately, so that spending is cheap), so without this a
+/// transaction could fill the byte budget while paying for only a few percent of the block's weight. Ordinary spends
+/// are well under `max_body_bytes / max_block_transaction_weight` (~58 body bytes per gram at the current constants)
+/// and are unaffected; only unusually byte-heavy transactions (e.g. large input stacks, or very many inputs per
+/// output) pay more for the same priority. This is miner/relay policy only: the block is still filled by real weight.
+pub fn effective_weight(
+    weight: u64,
+    body_size: usize,
+    max_block_transaction_weight: u64,
+    max_body_bytes: usize,
+) -> u64 {
+    if max_body_bytes == 0 {
+        return weight;
+    }
+    let body_size = u128::try_from(body_size).unwrap_or(u128::MAX);
+    let max_body_bytes = u128::try_from(max_body_bytes).unwrap_or(u128::MAX);
+    let byte_weight = body_size
+        .saturating_mul(u128::from(max_block_transaction_weight))
+        .div_ceil(max_body_bytes);
+    weight.max(u64::try_from(byte_weight).unwrap_or(u64::MAX))
+}
 
 pub type TransactionKey = usize;
 
@@ -94,6 +133,8 @@ pub struct UnconfirmedPool {
     tx_by_priority: BTreeMap<FeePriority, TransactionKey>,
     txs_by_output: HashMap<HashOutput, Vec<TransactionKey>>,
     txs_by_unique_id: HashMap<[u8; 32], Vec<TransactionKey>>,
+    /// The template byte budget used for selection and for effective weights (see [effective_weight])
+    max_body_bytes: usize,
 }
 
 // helper class to reduce type complexity
@@ -103,7 +144,10 @@ pub struct RetrieveResults {
     pub transactions_to_remove_and_insert: Vec<(TransactionKey, Arc<Transaction>)>,
 }
 
-pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
+/// For each candidate branch: the transactions still to be selected, their total real weight, their total effective
+/// weight (see [effective_weight]) and their total fees.
+pub type CompleteTransactionBranch =
+    HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64, u64)>;
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
@@ -116,7 +160,15 @@ impl UnconfirmedPool {
             tx_by_priority: BTreeMap::new(),
             txs_by_output: HashMap::new(),
             txs_by_unique_id: HashMap::new(),
+            max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
         }
+    }
+
+    /// Use a different template byte budget, for tests
+    #[cfg(test)]
+    pub(crate) fn with_max_body_bytes(mut self, max_body_bytes: usize) -> Self {
+        self.max_body_bytes = max_body_bytes;
+        self
     }
 
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
@@ -127,6 +179,7 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
+        max_block_transaction_weight: u64,
     ) -> Result<(), UnconfirmedPoolError> {
         if tx
             .body
@@ -138,7 +191,14 @@ impl UnconfirmedPool {
         }
 
         let new_key = self.get_next_key();
-        let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
+        let prioritized_tx = PrioritizedTransaction::new(
+            new_key,
+            transaction_weighting,
+            tx,
+            dependent_outputs,
+            max_block_transaction_weight,
+            self.max_body_bytes,
+        )?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
             if prioritized_tx.priority < *self.lowest_priority()? {
                 return Ok(());
@@ -176,8 +236,10 @@ impl UnconfirmedPool {
         txs: I,
         transaction_weighting: &TransactionWeight,
     ) -> Result<(), UnconfirmedPoolError> {
+        let max_block_transaction_weight =
+            crate::test_helpers::create_consensus_constants(0).max_block_transaction_weight();
         for tx in txs {
-            self.insert(tx, None, transaction_weighting)?;
+            self.insert(tx, None, transaction_weighting, max_block_transaction_weight)?;
         }
         Ok(())
     }
@@ -199,7 +261,7 @@ impl UnconfirmedPool {
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block. The selection
     /// is limited by `total_weight` and by [MAX_BLOCK_TEMPLATE_BODY_BYTES].
     pub fn fetch_highest_priority_txs(&self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
-        self.fetch_highest_priority_txs_with_byte_budget(total_weight, MAX_BLOCK_TEMPLATE_BODY_BYTES)
+        self.fetch_highest_priority_txs_with_byte_budget(total_weight, self.max_body_bytes)
     }
 
     /// Returns a set of the highest priority unconfirmed transactions whose total weight does not exceed
@@ -267,6 +329,7 @@ impl UnconfirmedPool {
                 break;
             }
             let mut total_transaction_weight = 0;
+            let mut total_transaction_effective_weight = 0;
             let mut total_transaction_fees = 0;
             let mut candidate_transactions_to_select = HashMap::new();
             let mut potential_transactions_to_remove_and_recheck = Vec::new();
@@ -276,6 +339,7 @@ impl UnconfirmedPool {
                 &mut potential_transactions_to_remove_and_recheck,
                 &selected_txs,
                 &mut total_transaction_weight,
+                &mut total_transaction_effective_weight,
                 &mut total_transaction_fees,
                 &mut unique_ids,
             )?;
@@ -303,15 +367,17 @@ impl UnconfirmedPool {
                             .or_insert_with(|| vec![tx_key]);
                     }
                 }
+                // Branches are ordered by fee per effective weight; the block is filled by real weight
                 let fee_per_byte = total_transaction_fees
                     .saturating_mul(1000)
-                    .checked_div(total_transaction_weight)
+                    .checked_div(total_transaction_effective_weight)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 complete_transaction_branch.insert(
                     *tx_key,
                     (
                         candidate_transactions_to_select.clone(),
                         total_transaction_weight,
+                        total_transaction_effective_weight,
                         total_transaction_fees,
                     ),
                 );
@@ -390,17 +456,17 @@ impl UnconfirmedPool {
             if recompute.contains(&tx_key) {
                 recompute.remove(&tx_key);
                 // So we recompute the total fees based on updated weights and fees.
-                let (_, total_transaction_weight, total_transaction_fees) = complete_transaction_branch
+                let (_, _, total_transaction_effective_weight, total_transaction_fees) = complete_transaction_branch
                     .get(&tx_key)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let fee_per_byte = total_transaction_fees
                     .saturating_mul(1000)
-                    .checked_div(*total_transaction_weight)
+                    .checked_div(*total_transaction_effective_weight)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }
-            let (candidate_transactions_to_select, total_transaction_weight, _total_transaction_fees) =
+            let (candidate_transactions_to_select, total_transaction_weight, _, _total_transaction_fees) =
                 complete_transaction_branch
                     .remove(&tx_key)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
@@ -466,12 +532,16 @@ impl UnconfirmedPool {
                 if let Some((
                     update_candidate_transactions_to_select,
                     update_total_transaction_weight,
+                    update_total_transaction_effective_weight,
                     update_total_transaction_fees,
                 )) = complete_transaction_branch.get_mut(tx)
                 {
                     update_candidate_transactions_to_select.remove(&tx_key);
                     *update_total_transaction_weight = update_total_transaction_weight
                         .checked_sub(prioritized_transaction.weight)
+                        .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                    *update_total_transaction_effective_weight = update_total_transaction_effective_weight
+                        .checked_sub(prioritized_transaction.effective_weight)
                         .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                     *update_total_transaction_fees = update_total_transaction_fees
                         .checked_sub(prioritized_transaction.transaction.body.get_total_fee()?.0)
@@ -520,6 +590,7 @@ impl UnconfirmedPool {
         transactions_to_recheck: &mut Vec<(TransactionKey, Arc<Transaction>)>,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         total_weight: &mut u64,
+        total_effective_weight: &mut u64,
         total_fees: &mut u64,
         _unique_ids: &mut HashSet<[u8; 32]>,
     ) -> Result<(), UnconfirmedPoolError> {
@@ -534,6 +605,7 @@ impl UnconfirmedPool {
                             transactions_to_recheck,
                             selected_txs,
                             total_weight,
+                            total_effective_weight,
                             total_fees,
                             _unique_ids,
                         )?;
@@ -567,6 +639,9 @@ impl UnconfirmedPool {
                 .ok_or(UnconfirmedPoolError::InternalError(
                     "Overflow when calculating total weights".to_string(),
                 ))?;
+            *total_effective_weight = total_effective_weight.checked_add(transaction.effective_weight).ok_or(
+                UnconfirmedPoolError::InternalError("Overflow when calculating total effective weights".to_string()),
+            )?;
         }
 
         Ok(())
@@ -1051,8 +1126,11 @@ mod test {
 
     #[test]
     fn block_template_byte_budget_is_derived_from_the_rpc_frame() {
-        assert_eq!(MAX_BLOCK_TEMPLATE_BODY_BYTES, RPC_MAX_FRAME_SIZE - 1024 * 1024);
+        // Rollout value: derived from the legacy 6 MiB frame, the smaller of the two
+        assert_eq!(MAX_BLOCK_TEMPLATE_BODY_BYTES, 5 * 1024 * 1024);
+        assert_eq!(MAX_BLOCK_TEMPLATE_BODY_BYTES, LEGACY_RPC_MAX_FRAME_SIZE - 1024 * 1024);
         const { assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE) };
+        const { assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < LEGACY_RPC_MAX_FRAME_SIZE) };
     }
 
     #[tokio::test]
@@ -1161,6 +1239,75 @@ mod test {
         assert_eq!(results.retrieved_transactions.len(), 2);
         assert!(results.retrieved_transactions.contains(&large));
         assert!(results.retrieved_transactions.contains(&small1));
+    }
+
+    #[tokio::test]
+    async fn byte_heavy_transactions_pay_for_their_share_of_the_byte_budget() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let size = |tx: &Arc<Transaction>| tx.body.get_serialized_size().unwrap();
+        let fee_per_gram = |tx: &Arc<Transaction>| {
+            tx.body.get_total_fee().unwrap().as_u64() * 1000 / tx.calculate_weight(&tx_weight).unwrap()
+        };
+        // Byte-heavy: many inputs (cheap in weight, not in bytes) and twice the fee per gram
+        let heavy = (0..2)
+            .map(|_| {
+                Arc::new(
+                    tx!(MicroMinotari(500_000), fee: MicroMinotari(10), inputs: 12, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        let normal = (0..10)
+            .map(|_| {
+                Arc::new(
+                    tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(fee_per_gram(&heavy[0]) > fee_per_gram(&normal[0]));
+
+        // Room for every normal transaction, but not for a heavy one as well
+        let normal_bytes: usize = normal.iter().map(size).sum();
+        let budget = normal_bytes + heavy.iter().map(size).min().unwrap() - 1;
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(budget);
+        unconfirmed_pool
+            .insert_many(heavy.iter().chain(normal.iter()).cloned(), &tx_weight)
+            .unwrap();
+
+        // Per effective weight, the heavy transactions pay less than the normal ones, so they sort below them
+        let heavy_ptx = unconfirmed_pool
+            .tx_by_key
+            .values()
+            .find(|p| p.transaction == heavy[0])
+            .unwrap();
+        let normal_ptx = unconfirmed_pool
+            .tx_by_key
+            .values()
+            .find(|p| p.transaction == normal[0])
+            .unwrap();
+        assert!(heavy_ptx.effective_weight > heavy_ptx.weight);
+        assert!(heavy_ptx.priority < normal_ptx.priority);
+        assert!(heavy_ptx.fee_per_byte < normal_ptx.fee_per_byte);
+
+        // ... and do not starve them: every normal transaction is selected (the real weight is not a constraint here)
+        let results = unconfirmed_pool.fetch_highest_priority_txs(u64::MAX).unwrap();
+        assert_eq!(results.retrieved_transactions.len(), normal.len());
+        for tx in &normal {
+            assert!(results.retrieved_transactions.contains(tx));
+        }
+        for tx in &heavy {
+            assert!(!results.retrieved_transactions.contains(tx));
+        }
+        assert!(unconfirmed_pool.check_data_consistency());
     }
 
     #[tokio::test]

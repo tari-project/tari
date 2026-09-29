@@ -594,4 +594,51 @@ mod test {
             MAX_CONCURRENT_RECONCILIATIONS
         );
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn transactions_larger_than_the_template_byte_budget_are_rejected() {
+        use tari_transaction_components::helpers::borsh::SerializedSize;
+
+        use crate::mempool::unconfirmed_pool::MAX_BLOCK_TEMPLATE_BODY_BYTES;
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let template = create_tx(&key_manager);
+        let input = template.body.inputs().first().unwrap().clone();
+        let input_size = input.get_serialized_size().unwrap();
+        // Enough inputs (8 grams each) to exceed the byte budget while staying under the maximum transaction weight
+        let num_inputs = MAX_BLOCK_TEMPLATE_BODY_BYTES / input_size + 1;
+
+        for _ in 0..21 {
+            let kernels = create_tx(&key_manager).body.kernels().clone();
+            let big = Arc::new(Transaction::new(
+                vec![input.clone(); num_inputs],
+                template.body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ));
+            assert!(big.body.get_serialized_size().unwrap() > MAX_BLOCK_TEMPLATE_BODY_BYTES);
+            let response = mempool.insert(big).await.unwrap();
+            assert!(
+                matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("block template budget")),
+                "{response:?}"
+            );
+        }
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+
+        // Normal transactions are accepted and fill the template
+        let normal = (0..5).map(|_| create_tx(&key_manager)).collect::<Vec<_>>();
+        for tx in &normal {
+            assert_eq!(
+                mempool.insert(tx.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+        let retrieved = mempool.retrieve(u64::MAX).await.unwrap();
+        assert_eq!(retrieved.len(), normal.len());
+        for tx in &normal {
+            assert!(retrieved.contains(tx));
+        }
+    }
 }

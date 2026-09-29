@@ -33,6 +33,7 @@ use tari_common_types::{
 use tari_node_components::blocks::Block;
 use tari_script::Opcode;
 use tari_transaction_components::{
+    helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     validation::AggregatedBodyValidationError,
@@ -51,7 +52,13 @@ use crate::{
         TxStorageResponse,
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
+        unconfirmed_pool::{
+            MAX_BLOCK_TEMPLATE_BODY_BYTES,
+            RetrieveResults,
+            TransactionKey,
+            UnconfirmedPool,
+            UnconfirmedPoolError,
+        },
     },
     validation::{TransactionValidator, ValidationError},
 };
@@ -100,7 +107,7 @@ impl MempoolStorage {
     /// validating them does not block the mempool.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
-        if let Some(response) = self.check_fee(&tx) {
+        if let Some(response) = self.check_fee(&tx).or_else(|| Self::check_body_size(&tx)) {
             return Ok(response);
         }
         let dependent_outputs = match self.validate_locked(&tx) {
@@ -259,7 +266,30 @@ impl MempoolStorage {
                 ))));
             },
         }
-        None
+        Self::check_body_size(tx)
+    }
+
+    /// Rejects a transaction whose body is larger than the block template byte budget: this node could never include
+    /// it in a block template, and it would only consume template skips. This is relay policy, not a consensus rule.
+    fn check_body_size(tx: &Transaction) -> Option<TxStorageResponse> {
+        match tx.body.get_serialized_size() {
+            Ok(size) if size <= MAX_BLOCK_TEMPLATE_BODY_BYTES => None,
+            Ok(size) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({}) body is {size} bytes, more than the block template budget of {MAX_BLOCK_TEMPLATE_BODY_BYTES} \
+                     bytes, rejecting",
+                    tx_id(tx)
+                );
+                Some(TxStorageResponse::NotStored(Some(format!(
+                    "Transaction body of {size} bytes exceeds the block template budget of \
+                     {MAX_BLOCK_TEMPLATE_BODY_BYTES} bytes"
+                ))))
+            },
+            Err(e) => Some(TxStorageResponse::NotStored(Some(format!(
+                "Unable to calculate the transaction body size: {e}"
+            )))),
+        }
     }
 
     /// Validates the transaction in the same order as [`MempoolStorage::insert_unlocked`]: chain-linked checks, then
@@ -298,7 +328,12 @@ impl MempoolStorage {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
         let weight = self.get_transaction_weighting();
-        self.unconfirmed_pool.insert(tx, dependent_outputs, &weight)?;
+        let max_block_transaction_weight = self
+            .rules
+            .consensus_constants(self.last_seen_height)
+            .max_block_transaction_weight();
+        self.unconfirmed_pool
+            .insert(tx, dependent_outputs, &weight, max_block_transaction_weight)?;
         debug!(
             target: LOG_TARGET,
             "Transaction {} inserted in {:.2?}",
