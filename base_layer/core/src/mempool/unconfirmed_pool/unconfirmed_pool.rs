@@ -3045,6 +3045,103 @@ mod test {
     }
 
     #[tokio::test]
+    async fn running_out_of_link_budget_ends_the_pass_but_drains_the_queue() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 1_000,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        let parent = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1).pop().unwrap();
+        let parent_output = parent.body.outputs().first().unwrap().hash();
+        // Candidates each with 9,000 links to the parent: 18,000 links each (the pre-walk bound and the walk), so the
+        // link budget runs out after ~111 of them. Decreasing fees fix the order; each has a high own rate but a low
+        // branch rate, so the branches are queued rather than selected as they are found.
+        const LINKS: usize = 9_000;
+        let per_candidate = 2 * LINKS;
+        let num_candidates = MAX_FOLLOWED_LINKS_PER_PASS / per_candidate + 4;
+        let candidates = (0..u64::try_from(num_candidates).unwrap())
+            .map(|n| {
+                let candidate = synthetic_tx(&base, 1 + n, 1_000_000 - n);
+                unconfirmed_pool
+                    .insert(candidate.clone(), Some(vec![parent_output; LINKS]), &tx_weight)
+                    .unwrap();
+                candidate
+            })
+            .collect::<Vec<_>>();
+        let key_of = |tx: &Arc<Transaction>| {
+            *unconfirmed_pool
+                .tx_by_key
+                .iter()
+                .find(|(_, p)| &p.transaction == tx)
+                .unwrap()
+                .0
+        };
+
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        assert!(selection.ended_early);
+        assert!(selection.byte_bound);
+        assert!(selection.links_followed <= MAX_FOLLOWED_LINKS_PER_PASS);
+        // It runs out in the pre-walk ancestor weight bound of the first candidate whose links do not fit
+        let exhausted_on = MAX_FOLLOWED_LINKS_PER_PASS / per_candidate;
+        let out_of_links = selection
+            .out_of_frames_candidate
+            .expect("no candidate ran out of links");
+        assert_eq!(out_of_links, key_of(&candidates[exhausted_on]));
+        assert!(!selection.walked_dropped.contains(&out_of_links));
+        // Everything queued before that is still drained and selected
+        let selected = &selection.results.retrieved_transactions;
+        assert!(selected.contains(&parent));
+        for candidate in candidates.iter().take(exhausted_on) {
+            assert!(selected.contains(candidate));
+        }
+        assert!(!selected.contains(&candidates[exhausted_on]));
+    }
+
+    #[tokio::test]
+    async fn removing_the_best_producer_of_an_output_leaves_the_next_best() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let output = base.body.outputs().first().unwrap().clone();
+        let producer = |n: u64, fee: u64| {
+            let tx = synthetic_tx(&base, n, fee);
+            Arc::new(Transaction::new(
+                vec![],
+                vec![output.clone()],
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let (low, high) = (producer(0, 10), producer(1, 1_000));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        unconfirmed_pool.insert(low.clone(), None, &tx_weight).unwrap();
+        unconfirmed_pool.insert(high.clone(), None, &tx_weight).unwrap();
+        let best = |pool: &UnconfirmedPool| {
+            pool.find_highest_priority_transaction(&pool.txs_by_output[&output.hash()])
+                .unwrap()
+                .transaction
+                .clone()
+        };
+        assert_eq!(best(&unconfirmed_pool), high);
+        let high_key = *unconfirmed_pool
+            .tx_by_key
+            .iter()
+            .find(|(_, p)| p.transaction == high)
+            .unwrap()
+            .0;
+        unconfirmed_pool.remove_transaction(high_key).unwrap();
+        assert_eq!(best(&unconfirmed_pool), low);
+        assert!(unconfirmed_pool.check_data_consistency());
+    }
+
+    #[tokio::test]
     async fn a_pass_ended_by_weight_skips_still_selects_queued_branches() {
         let key_manager = KeyManager::new_random().unwrap();
         let tx_weight = TransactionWeight::latest();
