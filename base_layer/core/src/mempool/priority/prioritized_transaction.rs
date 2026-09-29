@@ -37,6 +37,12 @@ use tari_utilities::{ByteArray, hex::Hex};
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
 /// Normally, duplicate keys will be overwritten in a BTreeMap.
+/// Whether a list contains the same item twice
+fn has_duplicates<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(items.len());
+    items.iter().any(|item| !seen.insert(item))
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct FeePriority(Vec<u8>);
 
@@ -108,6 +114,9 @@ pub struct PrioritizedTransaction {
     pub kernel_signatures: Vec<PrivateKey>,
     /// The (compressed) excesses of this transaction's kernels, as 32-byte keys, computed once on insert
     pub kernel_excesses: Vec<FixedHash>,
+    /// Whether this transaction on its own spends an output twice, or repeats an output, commitment, kernel signature
+    /// or kernel excess (computed once on insert): it can never be in a valid block
+    pub has_internal_duplicates: bool,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -123,13 +132,13 @@ impl PrioritizedTransaction {
             .body
             .get_serialized_size()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-        let input_hashes = transaction
+        let input_hashes: Vec<HashOutput> = transaction
             .body
             .inputs()
             .iter()
             .map(|input| input.output_hash())
             .collect();
-        let output_hashes = transaction.body.outputs().iter().map(|output| output.hash()).collect();
+        let output_hashes: Vec<HashOutput> = transaction.body.outputs().iter().map(|output| output.hash()).collect();
         let output_commitments = transaction
             .body
             .outputs()
@@ -137,7 +146,7 @@ impl PrioritizedTransaction {
             .map(|output| FixedHash::try_from(output.commitment.as_bytes()))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-        let kernel_signatures = transaction
+        let kernel_signatures: Vec<PrivateKey> = transaction
             .body
             .kernels()
             .iter()
@@ -150,6 +159,11 @@ impl PrioritizedTransaction {
             .map(|kernel| FixedHash::try_from(kernel.excess.as_bytes()))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let has_internal_duplicates = has_duplicates(&input_hashes) ||
+            has_duplicates(&output_hashes) ||
+            has_duplicates(&output_commitments) ||
+            has_duplicates(&kernel_signatures) ||
+            has_duplicates(&kernel_excesses);
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -171,6 +185,7 @@ impl PrioritizedTransaction {
             output_commitments,
             kernel_signatures,
             kernel_excesses,
+            has_internal_duplicates,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })

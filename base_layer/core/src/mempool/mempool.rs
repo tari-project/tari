@@ -633,4 +633,29 @@ mod test {
             assert!(retrieved.contains(tx));
         }
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_transaction_repeating_a_kernel_excess_is_rejected() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let tx = create_tx(&key_manager);
+        let other = create_tx(&key_manager);
+        // The same kernel excess twice, with different signatures
+        let kernel = tx.body.kernels().first().unwrap().clone();
+        let mut again = kernel.clone();
+        again.excess_sig = other.body.kernels().first().unwrap().excess_sig.clone();
+        let repeating = Arc::new(Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            vec![kernel, again],
+            Default::default(),
+            Default::default(),
+        ));
+        let response = mempool.insert(repeating).await.unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("kernel excess")),
+            "{response:?}"
+        );
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+    }
 }

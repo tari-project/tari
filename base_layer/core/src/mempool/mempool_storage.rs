@@ -107,7 +107,11 @@ impl MempoolStorage {
     /// validating them does not block the mempool.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
-        if let Some(response) = self.check_fee(&tx).or_else(|| Self::check_body_size(&tx)) {
+        if let Some(response) = self
+            .check_fee(&tx)
+            .or_else(|| Self::check_body_size(&tx))
+            .or_else(|| Self::check_kernel_excesses(&tx))
+        {
             return Ok(response);
         }
         let dependent_outputs = match self.validate_locked(&tx) {
@@ -266,7 +270,30 @@ impl MempoolStorage {
                 ))));
             },
         }
-        Self::check_body_size(tx)
+        Self::check_body_size(tx).or_else(|| Self::check_kernel_excesses(tx))
+    }
+
+    /// Rejects a transaction with two kernels with the same excess (they may differ in their signatures, so they sort
+    /// as distinct kernels): it can never be mined, since the chain's kernel excess index is unique. Relay policy, not
+    /// a consensus rule.
+    fn check_kernel_excesses(tx: &Transaction) -> Option<TxStorageResponse> {
+        let mut excesses = std::collections::HashSet::new();
+        if tx
+            .body
+            .kernels()
+            .iter()
+            .all(|kernel| excesses.insert(tari_utilities::ByteArray::as_bytes(&kernel.excess)))
+        {
+            return None;
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Tx: ({}) repeats a kernel excess, rejecting",
+            tx_id(tx)
+        );
+        Some(TxStorageResponse::NotStored(Some(
+            "Transaction contains the same kernel excess more than once".to_string(),
+        )))
     }
 
     /// Rejects a transaction whose body is larger than the block template byte budget: this node could never include
