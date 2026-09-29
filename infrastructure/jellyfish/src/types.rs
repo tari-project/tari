@@ -123,7 +123,7 @@ pub struct SparseMerkleProofExt {
     siblings: Vec<NodeInProof>,
 }
 
-// Rejects oversized proofs before allocating, rather than in `verify`.
+// Rejects oversized proofs as soon as the length is read, rather than decoding every sibling and failing in `verify`.
 impl BorshDeserialize for SparseMerkleProofExt {
     fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let leaf = Option::<SparseMerkleLeafNode>::deserialize_reader(reader)?;
@@ -1032,6 +1032,7 @@ pub struct Child {
 
 impl Child {
     pub fn new(hash: TreeHash, version: Version, node_type: NodeType) -> Self {
+        debug_assert!(!matches!(node_type, NodeType::Null), "Child cannot be Null");
         Self {
             hash,
             version,
