@@ -35,6 +35,13 @@ use crate::{
     op_codes::{HashValue, ScalarValue},
 };
 
+/// The maximum number of items on an [`ExecutionStack`].
+///
+/// This is a stand-alone consensus rule with no `ConsensusConstants` counterpart. It is applied by
+/// [`ExecutionStack::push`], and therefore by [`ExecutionStack::from_bytes`] on every decode path (protobuf, borsh,
+/// hex/serde and database) and by every push during script execution, so it limits both the `input_data` a node
+/// accepts and the stack depth a script may reach. Changing it changes which inputs are valid and is a flag-day
+/// (hard) fork.
 pub const MAX_STACK_SIZE: usize = 255;
 /// The largest serialised stack item: a type byte followed by a 64-byte signature
 const MAX_STACK_ITEM_BYTES: usize = 65;
@@ -193,17 +200,19 @@ impl BorshSerialize for ExecutionStack {
 impl BorshDeserialize for ExecutionStack {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
-        let len = reader.read_varint()?;
+        // `len` is the byte length of the encoding, not the number of items. It is bounded by the largest possible
+        // encoding of a valid stack; `from_bytes` then applies the item limit and validates every item, so this
+        // decoder accepts exactly the stacks that `from_bytes` accepts.
+        let len: usize = reader.read_varint()?;
         if len > MAX_STACK_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Larger than max execution stack bytes".to_string(),
+                format!("Execution stack encoding of {len} bytes exceeds the maximum of {MAX_STACK_BYTES} bytes"),
             ));
         }
-        let mut data = Vec::with_capacity(len);
-        for _ in 0..len {
-            data.push(u8::deserialize_reader(reader)?);
-        }
+        // Bounded by `MAX_STACK_BYTES` above.
+        let mut data = vec![0u8; len];
+        reader.read_exact(&mut data)?;
         let stack = Self::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         Ok(stack)
@@ -389,6 +398,7 @@ mod test {
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
     use digest::{Digest, consts::U32};
+    use integer_encoding::VarIntWriter;
     use tari_crypto::{
         compressed_commitment::CompressedCommitment,
         compressed_key::CompressedKey,
@@ -400,6 +410,7 @@ mod test {
         message_format::MessageFormat,
     };
 
+    use super::MAX_STACK_ITEM_BYTES;
     use crate::{
         CheckSigSchnorrSignature,
         CompressedCheckSigSchnorrSignature,
@@ -538,6 +549,96 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(stack, ExecutionStack::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    /// Returns a sample of the variant after `item`'s, cycling back to `Number` after the last one. The `match` is
+    /// exhaustive, so adding a [`StackItem`] variant is a compile error here until it is threaded into the cycle,
+    /// which makes [`every_stack_item_variant_fits_in_max_stack_item_bytes`] cover it.
+    fn next_variant_sample(item: &StackItem) -> StackItem {
+        match item {
+            StackItem::Number(_) => StackItem::Hash([1u8; 32]),
+            StackItem::Hash(_) => StackItem::Scalar([2u8; 32]),
+            StackItem::Scalar(_) => {
+                let k = RistrettoSecretKey::random(&mut rand::rng());
+                let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k);
+                StackItem::Commitment(CompressedCommitment::from_compressed_key(p))
+            },
+            StackItem::Commitment(_) => {
+                let k = RistrettoSecretKey::random(&mut rand::rng());
+                StackItem::PublicKey(CompressedKey::<RistrettoPublicKey>::from_secret_key(&k))
+            },
+            StackItem::PublicKey(_) => StackItem::Signature(max_size_signature()),
+            StackItem::Signature(_) => StackItem::Number(i64::MIN),
+        }
+    }
+
+    #[test]
+    fn every_stack_item_variant_fits_in_max_stack_item_bytes() {
+        let first = StackItem::Number(i64::MIN);
+        let mut items = vec![first.clone()];
+        // Walk the cycle until it returns to the first variant. A repeat of any other variant means the cycle skips
+        // some variant, so fail rather than loop forever.
+        loop {
+            let next = next_variant_sample(items.last().unwrap());
+            let d = std::mem::discriminant(&next);
+            if d == std::mem::discriminant(&first) {
+                break;
+            }
+            assert!(
+                items.iter().all(|i| std::mem::discriminant(i) != d),
+                "{next:?} repeats before the cycle closes"
+            );
+            items.push(next);
+        }
+
+        let mut largest = 0;
+        for item in &items {
+            let mut buf = Vec::new();
+            let len = item.to_bytes(&mut buf).len();
+            assert!(len <= MAX_STACK_ITEM_BYTES, "{item:?} encodes to {len} bytes");
+            largest = largest.max(len);
+        }
+        // The bound is tight: the largest variant uses all of it.
+        assert_eq!(largest, MAX_STACK_ITEM_BYTES);
+        assert_eq!(MAX_STACK_BYTES, 16575);
+    }
+
+    #[test]
+    fn max_stack_size_is_pinned() {
+        // A stand-alone consensus rule: changing it is a hard fork.
+        const { assert!(MAX_STACK_SIZE == 255) };
+    }
+
+    #[test]
+    fn a_borsh_length_above_max_stack_bytes_is_rejected_before_reading_the_body() {
+        let mut buf = Vec::new();
+        buf.write_varint(MAX_STACK_BYTES + 1).unwrap();
+        // No body at all: a decoder that tried to read the body would fail with `UnexpectedEof` instead.
+        let err = ExecutionStack::deserialize(&mut buf.as_slice()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+        // At the bound the decoder does try to read the body.
+        let mut buf = Vec::new();
+        buf.write_varint(MAX_STACK_BYTES).unwrap();
+        let err = ExecutionStack::deserialize(&mut buf.as_slice()).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn borsh_encoding_is_the_varint_length_followed_by_the_stack_bytes() {
+        let stack = inputs!(1234, [7u8; 32] as HashValue);
+        let bytes = stack.to_bytes();
+        let mut expected = Vec::new();
+        expected.write_varint(bytes.len()).unwrap();
+        expected.extend_from_slice(&bytes);
+        assert_eq!(expected.first(), Some(&42));
+        assert_eq!(borsh::to_vec(&stack).unwrap(), expected);
+
+        let stack = ExecutionStack::new((0..4).map(|_| StackItem::Signature(max_size_signature())).collect());
+        let bytes = stack.to_bytes();
+        let mut expected = vec![0x84, 0x02];
+        expected.extend_from_slice(&bytes);
+        assert_eq!(borsh::to_vec(&stack).unwrap(), expected);
     }
 
     #[test]
