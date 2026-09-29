@@ -29,7 +29,10 @@ use std::{
 };
 
 use log::*;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::{
+    ShutdownSignal,
+    oneshot_trigger::{OneshotSignal, OneshotTrigger},
+};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -275,7 +278,8 @@ pub struct MessagingProtocol {
     /// [`SHED_LOG_INTERVAL`].
     last_pending_resolution_shed_log: Option<time::Instant>,
     shutdown_signal: ShutdownSignal,
-    complete_trigger: Shutdown,
+    /// Never broadcast: dropped when this service exits, which resolves `complete_signal` with `None`.
+    complete_trigger: OneshotTrigger<()>,
 }
 
 impl MessagingProtocol {
@@ -316,7 +320,7 @@ impl MessagingProtocol {
             pending_resolution_permits: Arc::new(Semaphore::new(MAX_PENDING_SUBSTREAM_RESOLUTIONS)),
             last_pending_resolution_shed_log: None,
             shutdown_signal,
-            complete_trigger: Shutdown::new(),
+            complete_trigger: OneshotTrigger::new(),
         }
     }
 
@@ -334,7 +338,7 @@ impl MessagingProtocol {
     }
 
     /// Returns a signal that resolves when this actor exits.
-    pub fn complete_signal(&self) -> ShutdownSignal {
+    pub fn complete_signal(&self) -> OneshotSignal<()> {
         self.complete_trigger.to_signal()
     }
 

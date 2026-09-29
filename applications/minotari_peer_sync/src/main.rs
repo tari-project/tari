@@ -560,7 +560,7 @@ async fn run(
     node_identity: Arc<NodeIdentity>,
     libtor_dir: Option<PathBuf>,
 ) -> Result<Report, ExitError> {
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let mut report = Report::new(&cli, &config, &node_identity, libtor_dir.is_some());
 
     let (mut comms, dht_bootstrap) = start_comms(&cli, &config, node_identity, shutdown.to_signal()).await?;

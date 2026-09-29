@@ -172,7 +172,7 @@ pub(super) async fn setup_with_builder<T: GreetingRpc>(
 
 #[tokio::test]
 async fn request_response_errors_and_streaming() {
-    let (_inbound, outbound, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
+    let (_inbound, outbound, server_hnd, node_identity, shutdown) = setup(GreetingService::default(), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
 
     let framed = framing::canonical(socket, 1024);
@@ -336,7 +336,7 @@ async fn ping_latency() {
 
 #[tokio::test]
 async fn server_shutdown_before_connect() {
-    let (_inbound, outbound, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let (_inbound, outbound, _, _, shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     shutdown.trigger();

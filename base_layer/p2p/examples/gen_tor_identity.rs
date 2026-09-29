@@ -27,6 +27,7 @@ use std::{env::current_dir, fs, path::Path};
 /// populate the peer manager in other examples.
 use clap::{Arg, Command};
 use tari_comms::{multiaddr::Multiaddr, tor};
+use tari_shutdown::Shutdown;
 use tari_utilities::message_format::MessageFormat;
 
 fn to_abs_path(path: &str) -> String {
@@ -83,7 +84,9 @@ async fn main() {
         .parse::<u16>()
         .expect("Invalid port");
 
+    let shutdown = Shutdown::new();
     let hidden_service_ctl = tor::HiddenServiceBuilder::new()
+        .with_shutdown_signal(shutdown.to_signal())
         .with_port_mapping(port)
         .with_control_server_address(tor_control_addr)
         .build()
@@ -95,4 +98,5 @@ async fn main() {
     let json = hidden_service_ctl.tor_identity().to_json().unwrap();
     let out_path = to_abs_path(matches.get_one::<String>("output").unwrap().as_str());
     fs::write(out_path, json).unwrap();
+    shutdown.trigger();
 }

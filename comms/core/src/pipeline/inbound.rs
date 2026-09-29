@@ -25,7 +25,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::future::FusedFuture;
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::mpsc, time};
@@ -76,7 +75,7 @@ where
             // Check if the shutdown signal has been triggered.
             // If there are messages in the stream, drop them. Otherwise the stream is empty,
             // it will return None and the while loop will end.
-            if self.shutdown_signal.is_terminated() {
+            if self.shutdown_signal.is_triggered() {
                 info!(
                     target: LOG_TARGET,
                     "Inbound pipeline is terminating because the shutdown signal is triggered"

@@ -24,7 +24,7 @@ use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{StreamExt, future, future::Either, pin_mut};
 use log::*;
-use tari_shutdown::OptionalShutdownSignal;
+use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};
@@ -87,7 +87,7 @@ pub struct HiddenServiceController {
     hs_flags: HsFlags,
     is_authenticated: bool,
     proxy_opts: TorProxyOpts,
-    shutdown_signal: OptionalShutdownSignal,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl HiddenServiceController {
@@ -100,7 +100,7 @@ impl HiddenServiceController {
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
         proxy_opts: TorProxyOpts,
-        shutdown_signal: OptionalShutdownSignal,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             client: None,
@@ -198,7 +198,7 @@ impl HiddenServiceController {
     async fn reestablish_hidden_service(
         &mut self,
         event_tx: broadcast::Sender<TorControlEvent>,
-        shutdown_signal: &mut OptionalShutdownSignal,
+        shutdown_signal: &mut ShutdownSignal,
     ) -> Result<(), HiddenServiceControllerError> {
         let mut signal = Some(shutdown_signal);
         loop {

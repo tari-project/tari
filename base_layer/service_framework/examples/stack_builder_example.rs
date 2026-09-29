@@ -32,7 +32,7 @@ use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, Servi
 #[tokio::main]
 #[allow(clippy::similar_names)]
 async fn main() {
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(ServiceAInitializer::new("Service A response: ".to_string()))
         .add_initializer(ServiceBInitializer::new("Service B response: ".to_string()))

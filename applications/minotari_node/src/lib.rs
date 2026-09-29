@@ -143,7 +143,7 @@ pub async fn run_base_node_with_cli(
     let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
 
     let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
-    let mut readiness_grpc_shutdown = Shutdown::new();
+    let readiness_grpc_shutdown = Shutdown::new();
     let mut readiness_task: Option<JoinHandle<Result<(), anyhow::Error>>> = None;
     if config.base_node.grpc_enabled && config.base_node.grpc_readiness_enabled {
         readiness_task = Some(task::spawn(run_grpc(

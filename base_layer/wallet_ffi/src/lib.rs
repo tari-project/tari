@@ -9561,7 +9561,7 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
         debug!(target: LOG_TARGET, "Wallet destroy called");
         if !wallet.is_null() {
             debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
-            let mut w = Box::from_raw(wallet);
+            let w = Box::from_raw(wallet);
             w.shutdown.trigger();
             w.runtime.block_on(w.wallet.wait_until_shutdown());
         }

@@ -86,7 +86,7 @@ fn dial_addresses_follow_transport_preference_order() -> Result<(), Box<dyn Erro
 #[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let peer_manager = build_peer_manager(&create_test_peer())?;
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
@@ -117,7 +117,7 @@ async fn smoke() {
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
     // receives and checks the message and then disconnects and shuts down.
     let (event_tx, mut event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -249,7 +249,7 @@ async fn find_peer_eventually(peer_manager: &PeerManager, node_id: &NodeId, side
 #[tokio::test]
 async fn banned() {
     let (event_tx, mut event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -323,7 +323,7 @@ async fn banned() {
 #[tokio::test]
 async fn excluded_yes() {
     let (event_tx, _event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -392,7 +392,7 @@ async fn excluded_yes() {
 #[tokio::test]
 async fn excluded_no() {
     let (event_tx, _event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -471,7 +471,7 @@ async fn dialer_does_not_wedge_when_connection_manager_stops_draining_events() {
 
     // Capacity 1 stands in for the real (32-deep) event channel; it fills on the first dial result.
     let (event_tx, _event_rx) = mpsc::channel(1);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());

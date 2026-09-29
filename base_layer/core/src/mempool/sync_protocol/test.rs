@@ -550,7 +550,7 @@ async fn run_returns_when_shutdown_is_triggered() {
     let (block_event_sender, _) = broadcast::channel(1);
     let block_receiver = block_event_sender.subscribe();
 
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let protocol = MempoolSyncProtocol::<MemorySocket>::new(
         Default::default(),
         protocol_notif_rx,
@@ -697,7 +697,7 @@ async fn peer_tasks_are_gone_by_the_time_run_returns() {
     let (block_event_sender, _) = broadcast::channel(1);
     let block_receiver = block_event_sender.subscribe();
 
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,

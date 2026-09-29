@@ -421,7 +421,9 @@ async fn run_grpc(
 
     server_builder
         .add_service(service)
-        .serve_with_shutdown(address, wallet.wait_until_shutdown())
+        // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` would also wait for every wallet
+        // task to exit, including the gRPC service's own wallet handles, which are only dropped once this returns.
+        .serve_with_shutdown(address, wallet.shutdown_signal)
         .await
         .map_err(|e| format!("GRPC server returned error:{e}"))?;
 

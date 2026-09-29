@@ -244,7 +244,7 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
             let tor_config = transport_config.tor;
             debug!(target: LOG_TARGET, "Building {transport_type:?} comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
-            let hidden_service_ctl = initialize_hidden_service(tor_config)?;
+            let hidden_service_ctl = initialize_hidden_service(tor_config, comms.shutdown_signal())?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
             let instant = Instant::now();
             let transport = HiddenServiceTransport::new(hidden_service_ctl, after_comms)
@@ -273,8 +273,10 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
 
 fn initialize_hidden_service(
     mut config: TorTransportConfig,
+    shutdown_signal: ShutdownSignal,
 ) -> Result<tor::HiddenServiceController, CommsInitializationError> {
     let mut builder = tor::HiddenServiceBuilder::new()
+        .with_shutdown_signal(shutdown_signal)
         .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth()?)

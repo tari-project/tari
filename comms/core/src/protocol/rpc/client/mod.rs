@@ -55,7 +55,7 @@ use prost::Message;
 use tari_shutdown::{Shutdown, ShutdownSignal, oneshot_trigger::OneshotSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{Mutex, mpsc, oneshot, watch},
+    sync::{mpsc, oneshot, watch},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -348,7 +348,8 @@ impl Default for RpcClientConfig {
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
     last_request_latency_rx: watch::Receiver<Option<Duration>>,
-    shutdown: Arc<Mutex<Shutdown>>,
+    /// Shared by every clone: `close` on any clone shuts the session down, as does dropping the last clone.
+    shutdown: Shutdown,
 }
 
 impl ClientConnector {
@@ -360,13 +361,12 @@ impl ClientConnector {
         Self {
             inner: sender,
             last_request_latency_rx,
-            shutdown: Arc::new(Mutex::new(shutdown)),
+            shutdown,
         }
     }
 
     pub async fn close(&mut self) {
-        let mut lock = self.shutdown.lock().await;
-        lock.trigger();
+        self.shutdown.trigger();
     }
 
     pub fn get_last_request_latency(&mut self) -> Option<Duration> {

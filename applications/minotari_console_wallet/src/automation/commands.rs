@@ -148,6 +148,8 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
+/// How long `import-paper-wallet` waits for its temporary wallet's tasks to exit before deleting the wallet directory.
+const TEMP_WALLET_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 // Pre-mine file names
 pub(crate) const FILE_EXTENSION: &str = "json";
 pub(crate) const SPEND_SESSION_INFO: &str = "step_1_session_info";
@@ -2326,7 +2328,10 @@ pub async fn command_runner(
                     .join(format!("temp-{}", random_alphanumeric(8)));
                 println!("saving temp wallet in: {temp_path:?}");
                 let temp_wallet_dir = TempWalletDir::create(temp_path.clone())?;
-                {
+                // Owns the temporary wallet's services. It is triggered, and its listeners drained, on every exit path
+                // below before the directory is removed, so the removal never races a task with the database open.
+                let shutdown = Shutdown::new();
+                let result: Result<(), CommandError> = async {
                     let passphrase = if args.passphrase.is_empty() {
                         None
                     } else {
@@ -2358,7 +2363,6 @@ pub async fn command_runner(
                     // is never needed a second time; a random single-use one keeps the seed it holds unreadable
                     // if the database does survive (e.g. the process is killed before the guard can run).
                     let password = SafePassword::from(random_alphanumeric(32));
-                    let shutdown = Shutdown::new();
                     let shutdown_signal = shutdown.to_signal();
                     let mut new_config = config.clone();
                     // Directly set paths to temp_path. We cannot use set_base_path here because
@@ -2451,10 +2455,26 @@ pub async fn command_runner(
                         },
                         Err(e) => eprintln!("SendMinotari error! {e}"),
                     }
+                    Ok(())
                 }
-                // Remove explicitly rather than on drop (the new wallet above is already out of scope), so that a
-                // failure to delete the seed-bearing database fails the command instead of being logged and ignored.
-                temp_wallet_dir.remove()?;
+                .await;
+                // The temporary wallet is out of scope; stop its services and wait (bounded) for them to exit.
+                shutdown.trigger();
+                if timeout(TEMP_WALLET_SHUTDOWN_TIMEOUT, shutdown.wait_for_listeners())
+                    .await
+                    .is_err()
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Timed out after {TEMP_WALLET_SHUTDOWN_TIMEOUT:.0?} waiting for the temporary wallet to shut \
+                         down; removing it anyway"
+                    );
+                }
+                // Remove explicitly rather than on drop, so that a failure to delete the seed-bearing database fails
+                // the command instead of being logged and ignored. A command error takes precedence.
+                let removed = temp_wallet_dir.remove();
+                result?;
+                removed?;
             },
 
             ShowPayRef(args) => {
