@@ -20,16 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, fmt::Display};
+use std::{
+    convert::TryFrom,
+    fmt::{self, Display},
+};
 
 use borsh::{
     BorshDeserialize,
     BorshSerialize,
     io::{Error, ErrorKind},
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+};
 
-use crate::checked_de::{read_bytes, read_checked_len};
+use crate::{
+    bounded_serde::{Field, FieldSeed},
+    checked_de::{read_bytes, read_checked_len},
+};
 
 /// A string that can only be a up to MAX length long
 ///
@@ -41,19 +52,107 @@ pub struct MaxSizeString<const MAX: usize> {
     string: String,
 }
 
-/// Mirror of [`MaxSizeString`] used only to decode the wire format before the bound is checked.
-/// It must keep the exact same (serde) shape as `MaxSizeString` so that the serialized
-/// representation is unchanged.
-#[derive(Deserialize)]
-#[serde(rename = "MaxSizeString")]
-struct MaxSizeStringShadow {
-    string: String,
-}
+/// The serde shape of [`MaxSizeString`], which must match what `#[derive(Serialize)]` produces.
+const SERDE_NAME: &str = "MaxSizeString";
+const SERDE_VALUE_FIELD: &str = "string";
+const SERDE_FIELDS: &[&str] = &[SERDE_VALUE_FIELD];
 
 impl<'de, const MAX: usize> Deserialize<'de> for MaxSizeString<MAX> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let shadow = MaxSizeStringShadow::deserialize(deserializer)?;
-        Self::try_from(shadow.string).map_err(serde::de::Error::custom)
+        // The byte length is checked before the string is copied into the value.
+        deserializer.deserialize_struct(SERDE_NAME, SERDE_FIELDS, MaxSizeStringVisitor::<MAX>)
+    }
+}
+
+struct MaxSizeStringVisitor<const MAX: usize>;
+
+impl<'de, const MAX: usize> Visitor<'de> for MaxSizeStringVisitor<MAX> {
+    type Value = MaxSizeString<MAX>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("struct MaxSizeString")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        let string = seq
+            .next_element_seed(BoundedStringSeed::<MAX>)?
+            .ok_or_else(|| de::Error::invalid_length(0, &"struct MaxSizeString with 1 element"))?;
+        Ok(MaxSizeString { string })
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut string = None;
+        while let Some(field) = map.next_key_seed(FieldSeed {
+            value: SERDE_VALUE_FIELD,
+            marker: None,
+        })? {
+            match field {
+                Field::Value => {
+                    if string.is_some() {
+                        return Err(de::Error::duplicate_field(SERDE_VALUE_FIELD));
+                    }
+                    string = Some(map.next_value_seed(BoundedStringSeed::<MAX>)?);
+                },
+                Field::Marker | Field::Ignore => {
+                    map.next_value::<de::IgnoredAny>()?;
+                },
+            }
+        }
+        let string = string.ok_or_else(|| de::Error::missing_field(SERDE_VALUE_FIELD))?;
+        Ok(MaxSizeString { string })
+    }
+}
+
+/// Decodes the `string` field as a UTF-8 string of at most `MAX` bytes.
+struct BoundedStringSeed<const MAX: usize>;
+
+impl<const MAX: usize> BoundedStringSeed<MAX> {
+    fn check_len<E: de::Error>(len: usize) -> Result<(), E> {
+        if len > MAX {
+            return Err(E::custom(MaxSizeStringLengthError {
+                expected: MAX,
+                actual: len,
+            }));
+        }
+        Ok(())
+    }
+}
+
+impl<'de, const MAX: usize> DeserializeSeed<'de> for BoundedStringSeed<MAX> {
+    type Value = String;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_string(self)
+    }
+}
+
+impl<'de, const MAX: usize> Visitor<'de> for BoundedStringSeed<MAX> {
+    type Value = String;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "a string of at most {MAX} bytes")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        Ok(v.to_owned())
+    }
+
+    fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        Ok(v)
+    }
+
+    // `String`'s own `Deserialize` also accepts UTF-8 bytes; keep accepting them
+    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        let s = std::str::from_utf8(v).map_err(|_| E::invalid_value(de::Unexpected::Bytes(v), &self))?;
+        Ok(s.to_owned())
+    }
+
+    fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        String::from_utf8(v).map_err(|e| E::invalid_value(de::Unexpected::Bytes(&e.into_bytes()), &self))
     }
 }
 
@@ -289,6 +388,35 @@ mod tests {
             let over_max = format!(r#"{{"string":"{}"}}"#, "a".repeat(MAX + 1));
             let err = serde_json::from_str::<Str>(&over_max).unwrap_err();
             assert!(err.to_string().contains("Invalid String length"), "{}", err);
+        }
+
+        #[test]
+        fn serde_json_rejects_an_oversized_string() {
+            let payload = format!(r#"{{"string":"{}"}}"#, "a".repeat(10 * MAX));
+            let err = serde_json::from_str::<Str>(&payload).unwrap_err();
+            assert!(err.to_string().contains("Invalid String length"), "{}", err);
+            // The bound is on bytes, not characters
+            let payload = format!(r#"{{"string":"{}"}}"#, "🚀".repeat(MAX / 4 + 1));
+            let err = serde_json::from_str::<Str>(&payload).unwrap_err();
+            assert!(err.to_string().contains("Invalid String length"), "{}", err);
+        }
+
+        #[test]
+        fn bincode_rejects_an_oversized_string() {
+            let mut payload = u64::try_from(MAX + 1).unwrap().to_le_bytes().to_vec();
+            payload.extend("a".repeat(MAX + 1).as_bytes());
+            let err = bincode::deserialize::<Str>(&payload).unwrap_err();
+            assert!(err.to_string().contains("Invalid String length"), "{}", err);
+        }
+
+        #[test]
+        fn serde_keeps_the_derived_field_handling() {
+            let s = serde_json::from_str::<Str>(r#"{"other":1,"string":"abc"}"#).unwrap();
+            assert_eq!(s.as_str(), "abc");
+            let err = serde_json::from_str::<Str>(r#"{"string":"a","string":"b"}"#).unwrap_err();
+            assert!(err.to_string().contains("duplicate field `string`"), "{}", err);
+            let err = serde_json::from_str::<Str>(r#"{}"#).unwrap_err();
+            assert!(err.to_string().contains("missing field `string`"), "{}", err);
         }
     }
 }
