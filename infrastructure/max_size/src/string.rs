@@ -47,6 +47,19 @@ use crate::{
 /// The bound is enforced by every constructor *and* by deserialization (see the hand written
 /// `BorshDeserialize`/`Deserialize` implementations below), so `len() <= MAX` is a true invariant
 /// even for values decoded from untrusted input.
+///
+/// # What is (and is not) guaranteed
+///
+/// The *only* guarantees are that the string is valid UTF-8 and that its length **in bytes** (not characters) is
+/// at most `MAX`. There is no restriction on the character set and no validation of the content: a value named or
+/// used as a URL, a name or a hash is not checked to be one. Values decoded from the network or the chain can
+/// contain anything UTF-8 allows, including control characters, ANSI/terminal escape sequences, newlines and
+/// bidirectional-override characters.
+///
+/// `Display` writes the raw string unchanged (so conversions to gRPC/proto and other data formats see the real
+/// value). Callers must therefore escape it before writing it to a log or a terminal, for example with
+/// `{:?}` or [`str::escape_debug`] via [`MaxSizeString::as_str`], otherwise untrusted input can forge log lines or
+/// drive the terminal.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, BorshSerialize)]
 pub struct MaxSizeString<const MAX: usize> {
     string: String,
@@ -238,6 +251,8 @@ impl<const MAX: usize> AsRef<[u8]> for MaxSizeString<MAX> {
     }
 }
 
+/// Writes the raw, unescaped string. See the type documentation: escape it before logging it or printing it to a
+/// terminal.
 impl<const MAX: usize> Display for MaxSizeString<MAX> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.string)

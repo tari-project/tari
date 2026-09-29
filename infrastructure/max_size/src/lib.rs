@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Size bounded wrappers: [`MaxSizeBytes`], [`MaxSizeString`] and [`MaxSizeVec`].
+//!
+//! Each type guarantees that its length is at most its `MAX` parameter, and enforces this in every constructor and
+//! in every decoder (borsh and serde), so the bound holds for values decoded from untrusted input.
+//!
+//! The bound is a *length* bound and nothing else. In particular [`MaxSizeString`] only guarantees valid UTF-8 of at
+//! most `MAX` **bytes**: there is no character set restriction and no validation of what the string is supposed to
+//! be (a URL, a name, ...). Its `Display` implementation writes the raw string, so callers must escape it (`{:?}` or
+//! `str::escape_debug`) before writing an untrusted value to a log or a terminal.
+
 mod bounded_serde;
 mod checked_de;
 mod string;

@@ -552,7 +552,8 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {count})")
             },
             Self::RegisterCodeTemplate { template_name, .. } => {
-                write!(f, "RegisterCodeTemplate: {template_name}")
+                // The template name is arbitrary UTF-8; escape it so it can not inject into logs or terminals
+                write!(f, "RegisterCodeTemplate: {}", template_name.as_str().escape_debug())
             },
             Self::GetPaymentByReference { payref } => {
                 write!(f, "GetPaymentByReference({payref})")
@@ -2148,5 +2149,32 @@ impl TransactionServiceHandle {
                 "TransactionServiceRequest::SetTransactionAsUnmined".to_string(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_max_size::MaxSizeBytes;
+
+    use super::*;
+
+    #[test]
+    fn register_code_template_display_escapes_the_template_name() {
+        let request = TransactionServiceRequest::RegisterCodeTemplate {
+            template_name: MaxSizeString::try_from("a\n\u{1b}[31mb").unwrap(),
+            template_version: 1,
+            template_type: TemplateType::Flow,
+            build_info: BuildInfo {
+                repo_url: MaxSizeString::try_from("").unwrap(),
+                commit_hash: MaxSizeBytes::empty(),
+            },
+            binary_sha: FixedHash::default(),
+            binary_url: MaxSizeString::try_from("").unwrap(),
+            fee_per_gram: MicroMinotari::from(1),
+            sidechain_deployment_key: None,
+        };
+        let shown = request.to_string();
+        assert_eq!(shown, r"RegisterCodeTemplate: a\n\u{1b}[31mb");
+        assert!(!shown.contains('\n') && !shown.contains('\u{1b}'));
     }
 }
