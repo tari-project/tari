@@ -64,6 +64,7 @@
 //! ```
 
 use std::{
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     iter,
     sync::{
@@ -114,6 +115,9 @@ mod error;
 mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
+
+/// Size of a transaction inventory item: a kernel excess signature scalar.
+const INVENTORY_ITEM_SIZE: usize = 32;
 
 /// Deadline for a single control message — the transaction inventory and the list of requested
 /// indexes. Both are one bounded frame, so a short deadline is safe.
@@ -628,22 +632,46 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             inventory.items.len()
         );
 
+        // Every item is a kernel excess signature scalar. Reject anything else up front rather than
+        // carrying it through the lookup below where it could never match.
+        if let Some((index, item)) = inventory
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| item.len() != INVENTORY_ITEM_SIZE)
+        {
+            return Err(MempoolProtocolError::InvalidInventoryItem {
+                peer: self.peer_node_id.clone(),
+                index,
+                len: item.len(),
+                expected: INVENTORY_ITEM_SIZE,
+            });
+        }
+
         let transactions = self.mempool.snapshot().await?;
 
-        let mut duplicate_inventory_items = Vec::new();
+        // Index the inventory once so that matching is linear in the size of the inventory and the
+        // mempool, rather than scanning the whole inventory for every pooled transaction. The items
+        // are chosen by the peer, so this must stay a randomly keyed (SipHash) map. Iterating in
+        // reverse lets the first index of a duplicated item win, so later duplicates are still
+        // reported as missing.
+        let inventory_index = inventory
+            .items
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(i, item)| (item.as_slice(), i))
+            .collect::<HashMap<_, _>>();
+
+        let mut duplicate_inventory_items = HashSet::new();
         let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
             let excess_sig = transaction
                 .first_kernel_excess_sig()
                 .expect("transaction stored in mempool did not have any kernels");
 
-            let has_item = inventory
-                .items
-                .iter()
-                .position(|bytes| bytes.as_slice() == excess_sig.get_signature().as_bytes());
-
-            match has_item {
-                Some(pos) => {
-                    duplicate_inventory_items.push(pos);
+            match inventory_index.get(excess_sig.get_signature().as_bytes()) {
+                Some(&pos) => {
+                    duplicate_inventory_items.insert(pos);
                     false
                 },
                 None => true,
