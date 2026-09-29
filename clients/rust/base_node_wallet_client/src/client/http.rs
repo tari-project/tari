@@ -47,9 +47,11 @@ const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// body frame. The base node builds each response (e.g. a `sync_utxos_by_block` page) as buffered JSON before sending
 /// the headers, so this must allow for a loaded node taking a long time to compute a page: a value that is too small
 /// fails that page on every retry and scanning never progresses past it. It still kills a dead or silent peer.
-/// This is deliberately longer than the wallet's shutdown drain (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s): the wallet's
-/// background tasks race the requests they await while holding a shutdown signal against that signal and drop them
-/// on shutdown, so shutdown does not wait for this timeout (and the drain is bounded by its own timeout regardless).
+/// This is deliberately longer than the wallet's shutdown drain (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s): wallet tasks
+/// that await a request while holding a shutdown signal race it against that signal and drop it on shutdown - the
+/// per-request control calls (chain tip, headers, UTXO lookups, connectivity checks) are raced where they are awaited,
+/// and `sync_utxos_by_block` pages are raced inside the page task - so shutdown does not wait for this timeout (and
+/// the drain is bounded by its own timeout regardless).
 const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// The base node rejects any batch query carrying more than `MAX_ALLOWED_QUERY_SIZE` items with a `400`. Fail here

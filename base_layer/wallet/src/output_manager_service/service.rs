@@ -618,13 +618,8 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError> {
         let output = self
-            .resources
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .fetch_utxo(output_hash.to_vec())
-            .await
-            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?
+            .fetch_unspent_outputs_from_node(output_hash)
+            .await?
             .ok_or_else(|| {
                 OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
             })?;
@@ -2824,17 +2819,29 @@ where
         Ok(builder)
     }
 
+    /// Fetch an unspent output from the base node. Every request handler that reaches the base node goes through here.
+    /// The request is raced against the shutdown signal: the service loop holds that signal while it awaits a handler,
+    /// so an unraced call (bounded only by the HTTP client's connect and read timeouts) would hold the wallet's
+    /// shutdown drain open. On shutdown the request is dropped and `OutputManagerError::Shutdown` is returned.
     pub async fn fetch_unspent_outputs_from_node(
         &mut self,
         hash: HashOutput,
     ) -> Result<Option<TransactionOutput>, OutputManagerError> {
-        self.resources
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .fetch_utxo(hash.to_vec())
-            .await
-            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
+        let mut shutdown = self.resources.shutdown_signal.clone();
+        let connectivity = &self.resources.connectivity;
+        let fetch = async move {
+            connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .fetch_utxo(hash.to_vec())
+                .await
+                .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
+        };
+        tokio::select! {
+            biased;
+            _ = shutdown.wait() => Err(OutputManagerError::Shutdown),
+            res = fetch => res,
+        }
     }
 
     #[allow(clippy::too_many_lines)]

@@ -496,6 +496,14 @@ where
                 response.blocks.sort_by_key(|a| a.height);
                 #[allow(clippy::cast_possible_wrap)]
                 for response in response.blocks {
+                    // Processing a page is CPU-bound (trial-decrypting every output) and only awaits the network for
+                    // blocks with owned outputs, so check for shutdown per block: a large page must not pin this task
+                    // (and the wallet's shutdown drain). This block is not processed or marked as scanned, so it is
+                    // rescanned on the next run.
+                    if self.shutdown_signal.is_triggered() {
+                        stopped_by_shutdown = true;
+                        break 'pages;
+                    }
                     if let Some(previous_block) = &prev_scanned_block {
                         if response.height < previous_block.height {
                             // We do not accept blocks that go backwards in height - fork block re-validation forced.
