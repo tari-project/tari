@@ -65,9 +65,17 @@ pub const MAX_BLOCK_TEMPLATE_BODY_BYTES: usize = min_usize(LEGACY_RPC_MAX_FRAME_
 const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < LEGACY_RPC_MAX_FRAME_SIZE);
 const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE);
 
-/// The smallest body any transaction can have (one input, one output and one kernel serialize to well over this). Once
-/// less than this remains of the template byte budget, no further transaction can fit and selection stops.
+/// The smallest body a transaction can practically have (one input, one output and one kernel serialize to well over
+/// this). Once less than this remains of the template byte budget, no further transaction can fit and selection stops.
+/// This assumes at least one output; a transaction without outputs can be smaller, so stopping here costs at most this
+/// much of unused budget.
 pub const MIN_TRANSACTION_BODY_BYTES: usize = 1024;
+
+/// The maximum number of candidates one selection pass passes over without counting them towards
+/// `weight_tx_skip_count` (because only their bytes did not fit, or because they conflict with a selected or queued
+/// transaction). Once reached, the pass ends as if the byte budget bound. This bounds the work an adversarial pool can
+/// make a single template request do.
+pub const MAX_BYTE_SKIPS_PER_PASS: usize = 500;
 
 /// A transaction's weight for ordering a block template *under byte pressure*: its real weight, or its share of the
 /// template byte budget expressed in grams, whichever is larger:
@@ -158,8 +166,86 @@ enum Ranking {
 struct Selection {
     results: RetrieveResults,
     total_fees: u64,
-    /// Whether some candidate was passed over only because its bytes did not fit
+    /// Whether the byte budget bound: some candidate was passed over because its bytes did not fit, or the pass ended
+    /// early because of bytes or free skips
     byte_bound: bool,
+    /// The number of candidates passed over without counting towards `weight_tx_skip_count`
+    #[cfg_attr(not(test), allow(dead_code))]
+    free_skips: usize,
+}
+
+/// The working state of one selection pass
+struct SelectionState<'a> {
+    total_weight: u64,
+    max_body_bytes: usize,
+    ranking: Ranking,
+    selected_txs: HashMap<TransactionKey, Arc<Transaction>>,
+    /// The inputs spent by the selected transactions
+    selected_inputs: HashSet<HashOutput>,
+    /// The inputs spent by any branch that was queued for selection (never removed; only used to classify skips)
+    queued_inputs: HashSet<HashOutput>,
+    curr_weight: u64,
+    curr_body_bytes: usize,
+    /// Skips counting towards `weight_tx_skip_count`
+    weight_skips: usize,
+    /// Skips that do not (see [UnconfirmedPool::select_txs]), bounded by [MAX_BYTE_SKIPS_PER_PASS]
+    free_skips: usize,
+    byte_bound: bool,
+    /// Set when the pass must end without considering further candidates
+    stopped: bool,
+    transactions_to_remove_and_recheck: Vec<(TransactionKey, Arc<Transaction>)>,
+    complete_transaction_branch: CompleteTransactionBranch,
+    potentional_to_add: BinaryHeap<(u64, TransactionKey)>,
+    /// For each transaction, the transactions that depend on it. When it is selected, all of them are marked for
+    /// recomputing.
+    depended_on: HashMap<TransactionKey, Vec<&'a TransactionKey>>,
+    recompute: HashSet<&'a TransactionKey>,
+}
+
+impl SelectionState<'_> {
+    fn new(total_weight: u64, max_body_bytes: usize, ranking: Ranking) -> Self {
+        Self {
+            total_weight,
+            max_body_bytes,
+            ranking,
+            selected_txs: HashMap::new(),
+            selected_inputs: HashSet::new(),
+            queued_inputs: HashSet::new(),
+            curr_weight: 0,
+            curr_body_bytes: 0,
+            weight_skips: 0,
+            free_skips: 0,
+            byte_bound: false,
+            stopped: false,
+            transactions_to_remove_and_recheck: Vec::new(),
+            complete_transaction_branch: CompleteTransactionBranch::new(),
+            potentional_to_add: BinaryHeap::new(),
+            depended_on: HashMap::new(),
+            recompute: HashSet::new(),
+        }
+    }
+
+    fn remaining_bytes(&self) -> usize {
+        self.max_body_bytes.saturating_sub(self.curr_body_bytes)
+    }
+
+    /// Whether no further transaction can fit in the byte budget
+    fn out_of_bytes(&self) -> bool {
+        self.remaining_bytes() < MIN_TRANSACTION_BODY_BYTES
+    }
+
+    fn too_many_free_skips(&self) -> bool {
+        self.free_skips >= MAX_BYTE_SKIPS_PER_PASS
+    }
+
+    /// Records a skip that does not count towards `weight_tx_skip_count`. `bytes` is whether it was because of the byte
+    /// budget.
+    fn free_skip(&mut self, bytes: bool) {
+        self.free_skips = self.free_skips.saturating_add(1);
+        if bytes {
+            self.byte_bound = true;
+        }
+    }
 }
 
 // helper class to reduce type complexity
@@ -358,10 +444,17 @@ impl UnconfirmedPool {
     /// serialized body size does not exceed `max_body_bytes`.
     ///
     /// A transaction (with its unselected dependencies) that would exceed the weight limit is skipped, counting towards
-    /// `weight_tx_skip_count`. One that fits by weight but not by bytes is also skipped, but does *not* count: it stays
-    /// in the pool for a later template, and the selection continues until the remaining byte budget is smaller than
-    /// [MIN_TRANSACTION_BODY_BYTES] (or the pool is exhausted). Otherwise a handful of large (e.g. mutually
-    /// conflicting) transactions could use up the skip allowance and leave the rest of the template empty.
+    /// `weight_tx_skip_count`. Two kinds of skip do *not* count towards it, since neither is evidence that the block
+    /// is full:
+    /// * a candidate that fits by weight but not by bytes: it stays in the pool for a later template;
+    /// * a candidate that spends an input already spent by a selected (or queued) transaction: it can never be mined
+    ///   alongside them.
+    ///
+    /// Otherwise a handful of large or conflicting transactions could use up the skip allowance and leave the rest of
+    /// the template empty. These "free" skips are bounded instead by [MAX_BYTE_SKIPS_PER_PASS], which also bounds the
+    /// work a pass can be made to do; the pass also ends once the remaining byte budget is smaller than
+    /// [MIN_TRANSACTION_BODY_BYTES], or the pool is exhausted. A pass that ends early because of bytes (or free skips)
+    /// reports `byte_bound`, so that the effective-weight pass runs too.
     #[allow(clippy::too_many_lines)]
     fn select_txs(
         &self,
@@ -386,50 +479,37 @@ impl UnconfirmedPool {
         // fee_per_byte(TX_a+dependents) > fee_per_byte(TX_a+dependents-TX_b), that would mean that
         // fee_per_byte(TX_b)<fee_per_byte(TX_a+dependents), but if this would be the case then we would not
         // process TX_b before TX_a.
-
-        let mut selected_txs = HashMap::new();
-        let mut curr_weight = 0;
-        let mut curr_body_bytes = 0usize;
-        let mut curr_skip_count = 0;
-        let mut byte_bound = false;
-        let mut transactions_to_remove_and_recheck = Vec::new();
-        let mut unique_ids = HashSet::new();
-        let mut complete_transaction_branch = CompleteTransactionBranch::new();
-        let mut potentional_to_add = BinaryHeap::<(u64, TransactionKey)>::new();
-        // For each transaction we store transactions that depends on it. So when we process it, we can mark all of them
-        // for recomputing.
-        let mut depended_on: HashMap<TransactionKey, Vec<&TransactionKey>> = HashMap::new();
-        let mut recompute = HashSet::new();
+        let mut state = SelectionState::new(total_weight, max_body_bytes, ranking);
         let order = self.selection_order(ranking)?;
+        let mut exhausted = true;
         for tx_key in order {
-            if selected_txs.contains_key(tx_key) {
+            if state.selected_txs.contains_key(tx_key) {
                 continue;
             }
-            if max_body_bytes.saturating_sub(curr_body_bytes) < MIN_TRANSACTION_BODY_BYTES {
-                // Nothing else can fit
+            if state.out_of_bytes() || state.too_many_free_skips() {
+                // Nothing else can fit, or this pass has done enough work: the byte budget bound
+                state.byte_bound = true;
+                exhausted = false;
                 break;
             }
             let prioritized_transaction = self
                 .tx_by_key
                 .get(tx_key)
                 .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-            self.check_the_potential_txs(
-                total_weight,
-                max_body_bytes,
-                ranking,
-                &mut selected_txs,
-                &mut curr_weight,
-                &mut curr_body_bytes,
-                &mut curr_skip_count,
-                &mut byte_bound,
-                &mut complete_transaction_branch,
-                &mut potentional_to_add,
-                &mut depended_on,
-                &mut recompute,
-                Self::fee_rate(prioritized_transaction, ranking)?,
-            )?;
-            if curr_skip_count >= self.config.weight_tx_skip_count {
+            self.check_the_potential_txs(&mut state, Self::fee_rate(prioritized_transaction, ranking)?)?;
+            if state.weight_skips >= self.config.weight_tx_skip_count || state.stopped {
+                exhausted = false;
                 break;
+            }
+            // The branches added above may have included this transaction
+            if state.selected_txs.contains_key(tx_key) {
+                continue;
+            }
+            // Cheap check before walking the transaction's ancestors: if it cannot fit on its own, neither can its
+            // branch
+            if prioritized_transaction.body_size > state.remaining_bytes() {
+                state.free_skip(true);
+                continue;
             }
             let mut total_transaction_weight = 0;
             let mut total_transaction_rank_weight = 0;
@@ -440,36 +520,34 @@ impl UnconfirmedPool {
                 prioritized_transaction,
                 &mut candidate_transactions_to_select,
                 &mut potential_transactions_to_remove_and_recheck,
-                &selected_txs,
+                &state.selected_txs,
                 ranking,
                 &mut total_transaction_weight,
                 &mut total_transaction_rank_weight,
                 &mut total_transaction_fees,
-                &mut unique_ids,
             )?;
             let total_weight_after_candidates =
-                curr_weight
+                state
+                    .curr_weight
                     .checked_add(total_transaction_weight)
                     .ok_or(UnconfirmedPoolError::InternalError(
                         "Overflow when calculating transaction weights".to_string(),
                     ))?;
-            let body_bytes_after_candidates = curr_body_bytes
+            let body_bytes_after_candidates = state
+                .curr_body_bytes
                 .checked_add(self.body_size_of(&candidate_transactions_to_select)?)
                 .ok_or(UnconfirmedPoolError::InternalError(
                     "Overflow when calculating transaction body sizes".to_string(),
                 ))?;
             let fits_weight = total_weight_after_candidates <= total_weight;
             let fits_bytes = body_bytes_after_candidates <= max_body_bytes;
-            if fits_weight && !fits_bytes && potential_transactions_to_remove_and_recheck.is_empty() {
-                // Only the bytes do not fit: pass over it without using up a skip
-                byte_bound = true;
-                continue;
-            }
-            if fits_weight && fits_bytes && potential_transactions_to_remove_and_recheck.is_empty() {
+            let needs_recheck = !potential_transactions_to_remove_and_recheck.is_empty();
+            if !needs_recheck && fits_weight && fits_bytes {
                 for dependend_on_tx_key in candidate_transactions_to_select.keys() {
                     if dependend_on_tx_key != tx_key {
                         // Transaction is not depended on itself.
-                        depended_on
+                        state
+                            .depended_on
                             .entry(*dependend_on_tx_key)
                             .and_modify(|v| v.push(tx_key))
                             .or_insert_with(|| vec![tx_key]);
@@ -480,44 +558,51 @@ impl UnconfirmedPool {
                     .saturating_mul(1000)
                     .checked_div(total_transaction_rank_weight)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-                complete_transaction_branch.insert(
+                state
+                    .queued_inputs
+                    .extend(Self::input_hashes(&candidate_transactions_to_select));
+                state.complete_transaction_branch.insert(
                     *tx_key,
                     (
-                        candidate_transactions_to_select.clone(),
+                        candidate_transactions_to_select,
                         total_transaction_weight,
                         total_transaction_rank_weight,
                         total_transaction_fees,
                     ),
                 );
-                potentional_to_add.push((fee_per_byte, *tx_key));
+                state.potentional_to_add.push((fee_per_byte, *tx_key));
+            } else if !needs_recheck && fits_weight {
+                // Only the bytes do not fit
+                state.free_skip(true);
+            } else if !needs_recheck &&
+                Self::conflicts_with(
+                    &candidate_transactions_to_select,
+                    &state.selected_inputs,
+                    &state.queued_inputs,
+                )
+            {
+                // It can never be mined alongside what is already selected or queued
+                state.free_skip(false);
             } else {
-                transactions_to_remove_and_recheck.append(&mut potential_transactions_to_remove_and_recheck);
+                state
+                    .transactions_to_remove_and_recheck
+                    .append(&mut potential_transactions_to_remove_and_recheck);
                 // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
-                curr_skip_count = curr_skip_count.saturating_add(1);
-                if curr_skip_count >= self.config.weight_tx_skip_count {
+                state.weight_skips = state.weight_skips.saturating_add(1);
+                if state.weight_skips >= self.config.weight_tx_skip_count {
+                    exhausted = false;
                     break;
                 }
             }
         }
-        if curr_skip_count < self.config.weight_tx_skip_count {
-            self.check_the_potential_txs(
-                total_weight,
-                max_body_bytes,
-                ranking,
-                &mut selected_txs,
-                &mut curr_weight,
-                &mut curr_body_bytes,
-                &mut curr_skip_count,
-                &mut byte_bound,
-                &mut complete_transaction_branch,
-                &mut potentional_to_add,
-                &mut depended_on,
-                &mut recompute,
-                0,
-            )?;
+        if state.weight_skips < self.config.weight_tx_skip_count && !state.stopped {
+            self.check_the_potential_txs(&mut state, 0)?;
+        }
+        if !exhausted && state.out_of_bytes() {
+            state.byte_bound = true;
         }
 
-        let total_fees = selected_txs.values().try_fold(0u64, |total, tx| {
+        let total_fees = state.selected_txs.values().try_fold(0u64, |total, tx| {
             total
                 .checked_add(tx.body.get_total_fee()?.as_u64())
                 .ok_or(UnconfirmedPoolError::InternalError(
@@ -526,12 +611,30 @@ impl UnconfirmedPool {
         })?;
         Ok(Selection {
             results: RetrieveResults {
-                retrieved_transactions: selected_txs.into_values().collect(),
-                transactions_to_remove_and_insert: transactions_to_remove_and_recheck,
+                retrieved_transactions: state.selected_txs.into_values().collect(),
+                transactions_to_remove_and_insert: state.transactions_to_remove_and_recheck,
             },
             total_fees,
-            byte_bound,
+            byte_bound: state.byte_bound,
+            free_skips: state.free_skips,
         })
+    }
+
+    /// The output hashes spent by the given transactions
+    fn input_hashes(transactions: &HashMap<TransactionKey, Arc<Transaction>>) -> impl Iterator<Item = HashOutput> + '_ {
+        transactions
+            .values()
+            .flat_map(|tx| tx.body.inputs())
+            .map(|input| input.output_hash())
+    }
+
+    /// Whether any of the given transactions spends an input in either of the given sets
+    fn conflicts_with(
+        transactions: &HashMap<TransactionKey, Arc<Transaction>>,
+        selected_inputs: &HashSet<HashOutput>,
+        queued_inputs: &HashSet<HashOutput>,
+    ) -> bool {
+        Self::input_hashes(transactions).any(|hash| selected_inputs.contains(&hash) || queued_inputs.contains(&hash))
     }
 
     /// The transaction keys in the order they are considered for selection: by stored priority (fee per gram of real
@@ -584,55 +687,51 @@ impl UnconfirmedPool {
     }
 
     fn check_the_potential_txs<'a>(
-        &self,
-        total_weight: u64,
-        max_body_bytes: usize,
-        ranking: Ranking,
-        selected_txs: &mut HashMap<TransactionKey, Arc<Transaction>>,
-        curr_weight: &mut u64,
-        curr_body_bytes: &mut usize,
-        curr_skip_count: &mut usize,
-        byte_bound: &mut bool,
-        complete_transaction_branch: &mut CompleteTransactionBranch,
-        potentional_to_add: &mut BinaryHeap<(u64, TransactionKey)>,
-        depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
-        recompute: &mut HashSet<&'a TransactionKey>,
+        &'a self,
+        state: &mut SelectionState<'a>,
         fee_per_byte_threshold: u64,
     ) -> Result<(), UnconfirmedPoolError> {
-        while match potentional_to_add.peek() {
+        while match state.potentional_to_add.peek() {
             Some((fee_per_byte, _)) => *fee_per_byte >= fee_per_byte_threshold,
             None => false,
         } {
-            if max_body_bytes.saturating_sub(*curr_body_bytes) < MIN_TRANSACTION_BODY_BYTES {
-                // Nothing else can fit
+            if state.out_of_bytes() || state.too_many_free_skips() {
+                // Nothing else can fit, or this pass has done enough work: the byte budget bound
+                state.byte_bound = true;
+                state.stopped = true;
                 break;
             }
             // If the current TXs has lower fee than the ones we already processed, we can add some.
-            let (_fee_per_byte, tx_key) = potentional_to_add.pop().ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-            if selected_txs.contains_key(&tx_key) {
+            let (_fee_per_byte, tx_key) = state
+                .potentional_to_add
+                .pop()
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            if state.selected_txs.contains_key(&tx_key) {
                 continue;
             }
             // Before we do anything with the top transaction we need to know if needs to be recomputed.
-            if recompute.contains(&tx_key) {
-                recompute.remove(&tx_key);
+            if state.recompute.contains(&tx_key) {
+                state.recompute.remove(&tx_key);
                 // So we recompute the total fees based on updated weights and fees.
-                let (_, _, total_transaction_rank_weight, total_transaction_fees) = complete_transaction_branch
+                let (_, _, total_transaction_rank_weight, total_transaction_fees) = state
+                    .complete_transaction_branch
                     .get(&tx_key)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let fee_per_byte = total_transaction_fees
                     .saturating_mul(1000)
                     .checked_div(*total_transaction_rank_weight)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-                potentional_to_add.push((fee_per_byte, tx_key));
+                state.potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }
-            let (candidate_transactions_to_select, total_transaction_weight, _, _total_transaction_fees) =
-                complete_transaction_branch
-                    .remove(&tx_key)
-                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            let (candidate_transactions_to_select, total_transaction_weight, _, _total_transaction_fees) = state
+                .complete_transaction_branch
+                .remove(&tx_key)
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
 
             let total_weight_after_candidates =
-                curr_weight
+                state
+                    .curr_weight
                     .checked_add(total_transaction_weight)
                     .ok_or(UnconfirmedPoolError::InternalError(
                         "Overflow when calculating total weights".to_string(),
@@ -641,41 +740,53 @@ impl UnconfirmedPool {
             // `remove_transaction_from_the_dependants`), so this counts only the bytes this branch adds.
             let candidate_body_bytes = self.body_size_of(&candidate_transactions_to_select)?;
             let body_bytes_after_candidates =
-                curr_body_bytes
+                state
+                    .curr_body_bytes
                     .checked_add(candidate_body_bytes)
                     .ok_or(UnconfirmedPoolError::InternalError(
                         "Overflow when calculating transaction body sizes".to_string(),
                     ))?;
-            if total_weight_after_candidates <= total_weight && body_bytes_after_candidates <= max_body_bytes {
-                if !UnconfirmedPool::find_duplicate_input(selected_txs, &candidate_transactions_to_select) {
-                    *curr_weight = curr_weight.checked_add(total_transaction_weight).ok_or(
-                        UnconfirmedPoolError::InternalError("Overflow when calculating total weights".to_string()),
+            let conflicts = Self::conflicts_with(
+                &candidate_transactions_to_select,
+                &state.selected_inputs,
+                &HashSet::new(),
+            );
+            if conflicts {
+                // Spends an input that a selected transaction already spends: it can never be mined alongside it
+                state.free_skip(false);
+            } else if total_weight_after_candidates <= state.total_weight &&
+                body_bytes_after_candidates <= state.max_body_bytes
+            {
+                state.curr_weight = state.curr_weight.checked_add(total_transaction_weight).ok_or(
+                    UnconfirmedPoolError::InternalError("Overflow when calculating total weights".to_string()),
+                )?;
+                state.curr_body_bytes = body_bytes_after_candidates;
+                // So we processed the transaction, let's mark the dependents to be recomputed.
+                for tx_key in candidate_transactions_to_select.keys() {
+                    self.remove_transaction_from_the_dependants(
+                        *tx_key,
+                        state.ranking,
+                        &mut state.complete_transaction_branch,
+                        &mut state.depended_on,
+                        &mut state.recompute,
                     )?;
-                    *curr_body_bytes = body_bytes_after_candidates;
-                    // So we processed the transaction, let's mark the dependents to be recomputed.
-                    for tx_key in candidate_transactions_to_select.keys() {
-                        self.remove_transaction_from_the_dependants(
-                            *tx_key,
-                            ranking,
-                            complete_transaction_branch,
-                            depended_on,
-                            recompute,
-                        )?;
-                    }
-                    selected_txs.extend(candidate_transactions_to_select);
                 }
-            } else if total_weight_after_candidates <= total_weight {
-                // Only the bytes do not fit: pass over it without using up a skip
-                *byte_bound = true;
+                state
+                    .selected_inputs
+                    .extend(Self::input_hashes(&candidate_transactions_to_select));
+                state.selected_txs.extend(candidate_transactions_to_select);
+            } else if total_weight_after_candidates <= state.total_weight {
+                // Only the bytes do not fit
+                state.free_skip(true);
             } else {
-                *curr_skip_count = curr_skip_count.saturating_add(1);
-                if *curr_skip_count >= self.config.weight_tx_skip_count {
+                state.weight_skips = state.weight_skips.saturating_add(1);
+                if state.weight_skips >= self.config.weight_tx_skip_count {
                     break;
                 }
             }
             // Some cleanup of what we don't need anymore
-            complete_transaction_branch.remove(&tx_key);
-            depended_on.remove(&tx_key);
+            state.complete_transaction_branch.remove(&tx_key);
+            state.depended_on.remove(&tx_key);
         }
         Ok(())
     }
@@ -748,6 +859,13 @@ impl UnconfirmedPool {
         Ok((found, remaining))
     }
 
+    /// Collects `transaction` and every not-yet-selected pool transaction it depends on (transitively) into
+    /// `required_transactions`, adding their weights and fees to the totals. If a dependency is no longer in the pool,
+    /// the transactions on the path to it are added to `transactions_to_recheck` (and the branch cannot be selected).
+    ///
+    /// This walks the dependency graph iteratively (a post-order depth-first walk with an explicit stack), since the
+    /// pool puts no limit on how deep a chain of unconfirmed transactions can be: recursion could overflow the stack
+    /// of the blocking thread it runs on. Each transaction is visited at most once per call.
     fn get_all_dependent_transactions(
         &self,
         transaction: &PrioritizedTransaction,
@@ -758,59 +876,71 @@ impl UnconfirmedPool {
         total_weight: &mut u64,
         total_rank_weight: &mut u64,
         total_fees: &mut u64,
-        _unique_ids: &mut HashSet<[u8; 32]>,
     ) -> Result<(), UnconfirmedPoolError> {
-        for dependent_output in &transaction.dependent_output_hashes {
-            match self.txs_by_output.get(dependent_output) {
-                Some(signatures) => {
-                    let dependent_transaction = self.find_highest_priority_transaction(signatures)?;
-                    if !selected_txs.contains_key(&dependent_transaction.key) {
-                        self.get_all_dependent_transactions(
-                            dependent_transaction,
-                            required_transactions,
-                            transactions_to_recheck,
-                            selected_txs,
-                            ranking,
-                            total_weight,
-                            total_rank_weight,
-                            total_fees,
-                            _unique_ids,
-                        )?;
-
-                        if !transactions_to_recheck.is_empty() {
-                            transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
-                            break;
-                        }
-                    }
-                },
-                None => {
-                    // this transactions requires an output, that the mempool does not currently have, but did have at
-                    // some point. This means that we need to remove this transaction and revalidate it
-                    transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
-                    break;
-                },
-            }
+        struct Frame<'b> {
+            transaction: &'b PrioritizedTransaction,
+            next_dependency: usize,
+            rechecked: bool,
         }
-
-        if required_transactions
-            .insert(transaction.key, transaction.transaction.clone())
-            .is_none()
-        {
-            *total_fees = total_fees
-                .checked_add(transaction.transaction.body.get_total_fee()?.0)
-                .ok_or(UnconfirmedPoolError::InternalError(
-                    "Overflow when calculating total fees".to_string(),
-                ))?;
-            *total_weight = total_weight
-                .checked_add(transaction.weight)
-                .ok_or(UnconfirmedPoolError::InternalError(
-                    "Overflow when calculating total weights".to_string(),
-                ))?;
-            *total_rank_weight = total_rank_weight
-                .checked_add(Self::rank_weight(transaction, ranking))
-                .ok_or(UnconfirmedPoolError::InternalError(
-                    "Overflow when calculating total ranking weights".to_string(),
-                ))?;
+        let mut visited = HashSet::new();
+        visited.insert(transaction.key);
+        let mut stack = vec![Frame {
+            transaction,
+            next_dependency: 0,
+            rechecked: false,
+        }];
+        while let Some(frame) = stack.last_mut() {
+            let current = frame.transaction;
+            // Descend into the next dependency, unless a missing one was found (the whole path is then rechecked)
+            if transactions_to_recheck.is_empty() &&
+                let Some(dependent_output) = current.dependent_output_hashes.get(frame.next_dependency)
+            {
+                frame.next_dependency = frame.next_dependency.saturating_add(1);
+                match self.txs_by_output.get(dependent_output) {
+                    Some(signatures) => {
+                        let dependency = self.find_highest_priority_transaction(signatures)?;
+                        if !selected_txs.contains_key(&dependency.key) && visited.insert(dependency.key) {
+                            stack.push(Frame {
+                                transaction: dependency,
+                                next_dependency: 0,
+                                rechecked: false,
+                            });
+                        }
+                    },
+                    None => {
+                        // this transactions requires an output, that the mempool does not currently have, but did
+                        // have at some point. This means that we need to remove this transaction and revalidate it
+                        transactions_to_recheck.push((current.key, current.transaction.clone()));
+                        frame.rechecked = true;
+                    },
+                }
+                continue;
+            }
+            // All of this transaction's dependencies are done (or a missing one was found): finish it
+            if !transactions_to_recheck.is_empty() && !frame.rechecked {
+                transactions_to_recheck.push((current.key, current.transaction.clone()));
+            }
+            stack.pop();
+            if required_transactions
+                .insert(current.key, current.transaction.clone())
+                .is_none()
+            {
+                *total_fees = total_fees
+                    .checked_add(current.transaction.body.get_total_fee()?.0)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total fees".to_string(),
+                    ))?;
+                *total_weight = total_weight
+                    .checked_add(current.weight)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total weights".to_string(),
+                    ))?;
+                *total_rank_weight = total_rank_weight
+                    .checked_add(Self::rank_weight(current, ranking))
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total ranking weights".to_string(),
+                    ))?;
+            }
         }
 
         Ok(())
@@ -838,6 +968,7 @@ impl UnconfirmedPool {
     }
 
     // This will search a Vec<Arc<Transaction>> for duplicate inputs of a tx
+    #[cfg(test)]
     fn find_duplicate_input(
         current_transactions: &HashMap<TransactionKey, Arc<Transaction>>,
         transactions_to_insert: &HashMap<TransactionKey, Arc<Transaction>>,
@@ -1636,6 +1767,240 @@ mod test {
         assert_eq!(effective_weight(10, 5_000_000, 90_000, 5_000_000), 90_000);
         // No overflow
         assert_eq!(effective_weight(10, usize::MAX, u64::MAX, 1), u64::MAX);
+    }
+
+    /// A cheap synthetic transaction derived from `base`: no inputs, `base`'s first output with its maturity set to
+    /// `n` (so that its hash is unique), and `base`'s first kernel with a fresh excess signature scalar and the given
+    /// fee. Enough for the pool's selection logic, which does not validate.
+    fn synthetic_tx(base: &Transaction, n: u64, fee: u64) -> Arc<Transaction> {
+        use tari_common_types::types::CompressedSignature;
+        use tari_crypto::keys::SecretKey;
+        let mut output = base.body.outputs().first().unwrap().clone();
+        output.features.maturity = n;
+        let mut kernel = base.body.kernels().first().unwrap().clone();
+        kernel.fee = MicroMinotari(fee);
+        kernel.excess_sig = CompressedSignature::new(
+            kernel.excess_sig.get_compressed_public_nonce().clone(),
+            PrivateKey::random(&mut rand::rng()),
+        );
+        Arc::new(Transaction::new(
+            vec![],
+            vec![output],
+            vec![kernel],
+            Default::default(),
+            Default::default(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn conflicting_sentinels_do_not_use_up_the_skip_allowance() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let weight = |tx: &Arc<Transaction>| tx.calculate_weight(&tx_weight).unwrap();
+        // S: small, with a very high fee per gram
+        let s = Arc::new(
+            tx!(MicroMinotari(5_000_000), fee: MicroMinotari(1000), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let normal = normal_txs(&key_manager, 10, 5);
+        let total_weight = weight(&s) + normal.iter().map(weight).sum::<u64>() + 50;
+
+        // 20 sentinels: each spends S's input, is ranked just below S, and is too heavy to fit next to S
+        let input = s.body.inputs().first().unwrap().clone();
+        let num_inputs = usize::try_from((total_weight - weight(&s)) / 8 + 1).unwrap();
+        let sentinels = (0..20)
+            .map(|_| {
+                let kernels =
+                    tx!(MicroMinotari(5_000_000), fee: MicroMinotari(100), inputs: 1, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0
+                        .body
+                        .kernels()
+                        .clone();
+                Arc::new(Transaction::new(
+                    vec![input.clone(); num_inputs],
+                    normal[0].body.outputs().clone(),
+                    kernels,
+                    Default::default(),
+                    Default::default(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        assert!(weight(&sentinels[0]) > total_weight - weight(&s));
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        });
+        unconfirmed_pool
+            .insert_many(
+                std::iter::once(s.clone())
+                    .chain(sentinels.iter().cloned())
+                    .chain(normal.iter().cloned()),
+                &tx_weight,
+            )
+            .unwrap();
+        let priority = |tx: &Arc<Transaction>| {
+            unconfirmed_pool
+                .tx_by_key
+                .values()
+                .find(|p| &p.transaction == tx)
+                .unwrap()
+                .priority
+                .clone()
+        };
+        assert!(priority(&s) > priority(&sentinels[0]));
+        assert!(priority(&sentinels[0]) > priority(&normal[0]));
+
+        let selection = unconfirmed_pool
+            .select_txs(total_weight, MAX_BLOCK_TEMPLATE_BODY_BYTES, Ranking::Weight)
+            .unwrap();
+        let selected = &selection.results.retrieved_transactions;
+        assert_eq!(selected.len(), 1 + normal.len());
+        assert!(selected.contains(&s));
+        for tx in &normal {
+            assert!(selected.contains(tx));
+        }
+        assert_eq!(selection.free_skips, sentinels.len());
+        // Not a byte-budget problem
+        assert!(!selection.byte_bound);
+    }
+
+    #[tokio::test]
+    async fn filling_the_byte_budget_triggers_the_effective_weight_pass() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        // Byte-heavy stuffers with twice the fee per gram of the normal transactions
+        let stuffers = (0..2)
+            .map(|_| {
+                Arc::new(
+                    tx!(MicroMinotari(500_000), fee: MicroMinotari(10), inputs: 12, outputs: 1, &key_manager)
+                        .expect("Failed to get tx")
+                        .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        // A sentinel spending a stuffer's input, ranked between the stuffers and the normal transactions
+        let sentinel = {
+            let kernels = tx!(MicroMinotari(500_000), fee: MicroMinotari(8), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0
+                .body
+                .kernels()
+                .clone();
+            Arc::new(Transaction::new(
+                vec![stuffers[0].body.inputs().first().unwrap().clone()],
+                stuffers[0].body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let normal = normal_txs(&key_manager, 10, 5);
+        // The stuffers fill the budget to within MIN_TRANSACTION_BODY_BYTES, so no candidate is ever byte-skipped
+        let budget = stuffers.iter().map(body_size).sum::<usize>() + MIN_TRANSACTION_BODY_BYTES / 2;
+        assert!(normal.iter().map(body_size).sum::<usize>() <= budget);
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(budget);
+        unconfirmed_pool
+            .insert_many(
+                stuffers
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(sentinel.clone()))
+                    .chain(normal.iter().cloned()),
+                &tx_weight,
+            )
+            .unwrap();
+
+        // The first pass selects only the stuffers, and reports that the byte budget bound
+        let by_weight = unconfirmed_pool.select_txs(u64::MAX, budget, Ranking::Weight).unwrap();
+        assert_eq!(by_weight.results.retrieved_transactions.len(), stuffers.len());
+        assert!(by_weight.byte_bound);
+
+        // So the effective-weight pass runs, and the normal-sized transactions win (the sentinel is one of them in this
+        // pass, since nothing it conflicts with is selected)
+        let chosen = unconfirmed_pool
+            .fetch_selection(u64::MAX, budget, max_weight())
+            .unwrap();
+        assert!(chosen.total_fees > by_weight.total_fees);
+        let selected = &chosen.results.retrieved_transactions;
+        assert!(stuffers.iter().all(|tx| !selected.contains(tx)));
+        assert!(selected.len() >= normal.len() - 1);
+        assert!(selected.iter().all(|tx| normal.contains(tx) || *tx == sentinel));
+    }
+
+    #[tokio::test]
+    async fn byte_skips_per_pass_are_capped() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let txs = (0..(MAX_BYTE_SKIPS_PER_PASS as u64 + 100))
+            .map(|n| synthetic_tx(&base, n, 1_000))
+            .collect::<Vec<_>>();
+        // Room for none of them, but more than MIN_TRANSACTION_BODY_BYTES, so that every one is byte-skipped
+        let budget = body_size(&txs[0]) - 1;
+        assert!(budget >= MIN_TRANSACTION_BODY_BYTES);
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: txs.len(),
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(budget);
+        unconfirmed_pool.insert_many(txs, &tx_weight).unwrap();
+
+        let selection = unconfirmed_pool.select_txs(u64::MAX, budget, Ranking::Weight).unwrap();
+        assert!(selection.results.retrieved_transactions.is_empty());
+        assert!(selection.byte_bound);
+        // The pass stopped at the cap rather than visiting the whole pool
+        assert_eq!(selection.free_skips, MAX_BYTE_SKIPS_PER_PASS);
+    }
+
+    #[test]
+    fn a_deep_chain_of_pool_transactions_does_not_overflow_the_stack() {
+        const DEPTH: u64 = 5_000;
+        // A small stack: a recursive walk of a chain this deep would overflow it
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+                let key_manager = KeyManager::new_random().unwrap();
+                let base = runtime.block_on(async { normal_txs(&key_manager, 1, 5).pop().unwrap() });
+                let tx_weight = TransactionWeight::latest();
+                let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                    storage_capacity: 10_000,
+                    weight_tx_skip_count: 20,
+                    min_fee: 0,
+                })
+                .with_max_body_bytes(usize::MAX / 2);
+                // Each transaction spends the previous one's output; the tip pays by far the most, so it is visited
+                // first and its branch is the whole chain
+                let mut parent: Option<Arc<Transaction>> = None;
+                for n in 0..DEPTH {
+                    let fee = if n == DEPTH - 1 { 1_000_000_000 } else { 10 };
+                    let tx = synthetic_tx(&base, n, fee);
+                    let dependent_outputs = parent.as_ref().map(|p| vec![p.body.outputs().first().unwrap().hash()]);
+                    unconfirmed_pool
+                        .insert(tx.clone(), dependent_outputs, &tx_weight)
+                        .unwrap();
+                    parent = Some(tx);
+                }
+                let results = unconfirmed_pool
+                    .fetch_highest_priority_txs(u64::MAX, max_weight())
+                    .unwrap();
+                assert_eq!(results.retrieved_transactions.len(), usize::try_from(DEPTH).unwrap());
+                assert!(results.transactions_to_remove_and_insert.is_empty());
+            })
+            .unwrap()
+            .join()
+            .expect("selection over a deep chain panicked (or overflowed its stack)");
     }
 
     #[tokio::test]
