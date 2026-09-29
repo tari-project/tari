@@ -76,7 +76,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> 
     }
 
     fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        self.chain_validator.validate_full(tx)
+        self.chain_validator.validate_chain_linked(tx)
     }
 
     fn validate_internal_consistency(

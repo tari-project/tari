@@ -161,6 +161,19 @@ impl TransactionValidator for MockValidator {
             ))
         }
     }
+
+    fn validate_chain_linked(&self, transaction: &Transaction) -> Result<(), ValidationError> {
+        self.validate_full(transaction)
+    }
+
+    fn validate_internal_consistency(
+        &self,
+        _transaction: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        // `validate_chain_linked` already returned the mock's verdict
+        Ok(())
+    }
 }
 
 impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {

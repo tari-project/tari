@@ -394,6 +394,18 @@ mod test {
             self.current.fetch_sub(1, Ordering::SeqCst);
             Ok(())
         }
+
+        fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
+            self.validate_full(tx)
+        }
+
+        fn validate_internal_consistency(
+            &self,
+            _tx: &Transaction,
+            _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), ValidationError> {
+            Ok(())
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -446,6 +458,18 @@ mod test {
             while !*released {
                 released = self.condvar.wait(released).unwrap();
             }
+            Ok(())
+        }
+
+        fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
+            self.validate_full(tx)
+        }
+
+        fn validate_internal_consistency(
+            &self,
+            _tx: &Transaction,
+            _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), ValidationError> {
             Ok(())
         }
     }
