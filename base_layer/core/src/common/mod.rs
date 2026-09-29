@@ -22,6 +22,7 @@
 
 use tari_max_size::MaxSizeVec;
 
+pub(crate) mod inbound_backpressure;
 pub mod rolling_avg;
 pub mod rolling_vec;
 pub(crate) mod waiting_requests;
