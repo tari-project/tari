@@ -20,6 +20,12 @@ fn it_validates_a_correct_proof() {
 }
 
 #[test]
+fn it_rejects_if_qc_signs_for_unknown_validator() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    proof.validate_committed(4, &|_| Ok(false)).unwrap_err();
+}
+
+#[test]
 fn it_rejects_a_qc_with_too_many_signatures() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     for elem in &mut proof.proof_elements {

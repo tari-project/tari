@@ -908,17 +908,15 @@ mod tests {
 
     #[test]
     fn it_rejects_an_internal_node_presented_as_a_leaf() {
-        // Two keys that differ in the first bit, so the root is the internal node of their two leaves
-        let k1 = leaf_key(1);
-        let k2 = (2..)
-            .map(leaf_key)
-            .find(|k| k.iter_bits().next() != k1.iter_bits().next())
+        // Two leaves whose keys differ in the first bit, so the root is the internal node of those two leaves
+        let first_bit = |k: &LeafKey| k.iter_bits().next();
+        let a = (leaf_key(1), jmt_node_hash(&10));
+        let b = (2..)
+            .map(|seed| (leaf_key(seed), jmt_node_hash(&11)))
+            .find(|(k, _)| first_bit(k) != first_bit(&a.0))
             .unwrap();
         let mut mem = MemoryTreeStore::new();
-        let values = [
-            (k1, Some((jmt_node_hash(&10), ()))),
-            (k2, Some((jmt_node_hash(&11), ()))),
-        ];
+        let values = [a, b].map(|(k, v)| (k, Some((v, ()))));
         let (root, diff) = JellyfishMerkleTree::new(&mem)
             .batch_put_value_set(values, None, None, 1)
             .unwrap();
@@ -926,20 +924,21 @@ mod tests {
             mem.insert_node(k, v).unwrap();
         }
         let (_, proof) = JellyfishMerkleTree::new(&mem)
-            .get_with_proof_ext(k1.as_ref(), 1)
+            .get_with_proof_ext(a.0.as_ref(), 1)
             .unwrap();
-        proof.verify_inclusion(&root, &k1, &jmt_node_hash(&10)).unwrap();
+        proof.verify_inclusion(&root, &a.0, &a.1).unwrap();
 
-        // Claim the root's children are a leaf with key = left child hash and value = right child hash
-        let (left, right) = if k1.iter_bits().next() == Some(false) {
-            (&k1, &k2)
-        } else {
-            (&k2, &k1)
-        };
-        let left_hash = SparseMerkleLeafNode::new(*left, jmt_node_hash(&(if left == &k1 { 10 } else { 11 }))).hash();
-        let right_hash = SparseMerkleLeafNode::new(*right, jmt_node_hash(&(if right == &k1 { 10 } else { 11 }))).hash();
+        // Present the root as a leaf with key = left child hash and value = right child hash
+        let (left, right) = if first_bit(&a.0) == Some(false) { (a, b) } else { (b, a) };
+        let left_hash = SparseMerkleLeafNode::new(left.0, left.1).hash();
+        let right_hash = SparseMerkleLeafNode::new(right.0, right.1).hash();
         let fake_key = LeafKey::new(left_hash);
         let forged = SparseMerkleProofExt::new(Some(SparseMerkleLeafNode::new(fake_key, right_hash)), vec![]);
+
+        // Forged inclusion of a key that is not in the tree
         forged.verify_inclusion(&root, &fake_key, &right_hash).unwrap_err();
+        // Forged non-inclusion of keys that are in the tree
+        forged.verify_exclusion(&root, &a.0).unwrap_err();
+        forged.verify_exclusion(&root, &b.0).unwrap_err();
     }
 }
