@@ -99,7 +99,7 @@ pub struct NodeInterfaces {
 
 #[allow(dead_code)]
 impl NodeInterfaces {
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(self) {
         self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }

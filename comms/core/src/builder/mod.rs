@@ -77,7 +77,7 @@ use crate::{
 ///     PeerFeatures::COMMUNICATION_NODE,
 /// ));
 /// node_identity.sign();
-/// let mut shutdown = Shutdown::new();
+/// let shutdown = Shutdown::new();
 /// let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
 /// // The peer database is seeded with this node's own identity.
 /// let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();

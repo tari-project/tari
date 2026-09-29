@@ -29,7 +29,7 @@ use std::{
 use futures::{
     FutureExt,
     future,
-    future::{BoxFuture, Either, FusedFuture},
+    future::{BoxFuture, Either},
     pin_mut,
     stream::FuturesUnordered,
 };
@@ -211,7 +211,7 @@ where
     }
 
     fn cancel_dial(&mut self, peer_id: &NodeId) {
-        if let Some(mut s) = self.cancel_signals.remove(peer_id) {
+        if let Some(s) = self.cancel_signals.remove(peer_id) {
             s.trigger();
         }
     }
@@ -232,7 +232,7 @@ where
             "Cancelling {} pending dial(s)",
             self.cancel_signals.len()
         );
-        self.cancel_signals.drain().for_each(|(_, mut signal)| {
+        self.cancel_signals.drain().for_each(|(_, signal)| {
             signal.trigger();
         })
     }
@@ -517,7 +517,7 @@ where
         let peer_identity =
             common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -529,7 +529,7 @@ where
         let peer_identity =
             common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -541,7 +541,7 @@ where
         let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }

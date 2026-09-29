@@ -28,6 +28,7 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature, FixedHash},
 };
+use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{ByteArray, hex::Hex};
@@ -58,6 +59,8 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager: OutputManagerHandle<TKeyManagerInterface>,
+    /// Handed to background work spawned by this protocol so it counts towards, and stops on, wallet shutdown.
+    shutdown_signal: ShutdownSignal,
 }
 
 #[allow(unused_variables)]
@@ -75,6 +78,7 @@ where
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager: OutputManagerHandle<TKeyManagerInterface>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             operation_id,
@@ -83,6 +87,7 @@ where
             config,
             event_publisher,
             output_manager,
+            shutdown_signal,
         }
     }
 
@@ -130,6 +135,7 @@ where
                 self.connectivity.clone(),
                 self.event_publisher.clone(),
                 confirmed_burnt,
+                self.shutdown_signal.clone(),
             ));
         }
 

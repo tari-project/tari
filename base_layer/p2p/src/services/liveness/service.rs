@@ -686,7 +686,7 @@ mod test {
 
         // Setup liveness service
         let (publisher, _) = broadcast::channel(200);
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let service = LivenessService::new(
             Default::default(),
             stream::empty(),

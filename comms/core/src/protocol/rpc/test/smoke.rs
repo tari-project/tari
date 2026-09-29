@@ -172,7 +172,7 @@ pub(super) async fn setup_with_builder<T: GreetingRpc>(
 
 #[tokio::test]
 async fn request_response_errors_and_streaming() {
-    let (_inbound, outbound, server_hnd, node_identity, mut shutdown) = setup(GreetingService::default(), 1).await;
+    let (_inbound, outbound, server_hnd, node_identity, shutdown) = setup(GreetingService::default(), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
 
     let framed = framing::canonical(socket, 1024);
@@ -336,7 +336,7 @@ async fn ping_latency() {
 
 #[tokio::test]
 async fn server_shutdown_before_connect() {
-    let (_inbound, outbound, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
+    let (_inbound, outbound, _, _, shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
     let framed = framing::canonical(socket, 1024);
     shutdown.trigger();
@@ -496,6 +496,103 @@ async fn stream_still_works_after_cancel() {
     resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
         r.unwrap();
     });
+}
+
+/// A server stream holds no client handle, so callers routinely drop the `RpcClient` and keep reading the stream (e.g.
+/// DHT network discovery's `get_peers`). Dropping the last client handle must not cut that stream short: every item and
+/// then the end of the stream must still arrive.
+#[tokio::test]
+async fn stream_completes_after_client_is_dropped() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    const NUM_ITEMS: u32 = 20;
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    drop(client);
+
+    let items = time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
+        .await
+        .expect("stream did not end after the client was dropped");
+    assert_eq!(items.len(), NUM_ITEMS as usize);
+    for item in items {
+        assert_eq!(item.unwrap().len(), 100);
+    }
+}
+
+/// In contrast to dropping the client, an explicit `close()` cuts an in-flight stream short.
+#[tokio::test]
+async fn stream_ends_early_after_client_is_closed() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    const NUM_ITEMS: u32 = 1000;
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    client.close().await;
+
+    let items = time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
+        .await
+        .expect("stream did not end after the client was closed");
+    assert!(items.len() < NUM_ITEMS as usize);
+}
+
+/// `close()` must interrupt a stream that is waiting for a slow frame, not only take effect when the next frame
+/// arrives.
+#[tokio::test]
+async fn close_interrupts_a_stream_waiting_for_a_slow_frame() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(30))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    // The server sleeps this long before every item, so no frame arrives while the client is being closed
+    const FRAME_DELAY: Duration = Duration::from_secs(10);
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 2,
+            item_size: 100,
+            delay_ms: u64::try_from(FRAME_DELAY.as_millis()).unwrap(),
+        })
+        .await
+        .unwrap();
+    client.close().await;
+
+    let items = time::timeout(Duration::from_secs(3), stream.collect::<Vec<_>>())
+        .await
+        .expect("close() did not interrupt a stream waiting for a slow frame");
+    assert!(items.is_empty());
 }
 
 /// A peer that opens a streaming request and then stops draining its yamux window used to park the

@@ -1183,7 +1183,7 @@ mod test {
         let mut requester = DhtRequester::new(actor_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let outbound_requester = OutboundMessageRequester::new(out_tx);
-        let mut shutdown = Shutdown::new();
+        let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
             db_connection(),

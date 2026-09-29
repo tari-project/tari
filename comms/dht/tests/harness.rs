@@ -88,7 +88,7 @@ impl TestNode {
         time::timeout(timeout, self.inbound_messages.recv()).await.ok()?
     }
 
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(self) {
         self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }

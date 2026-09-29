@@ -32,7 +32,7 @@ use std::fmt;
 use derivative::Derivative;
 pub use proxy_opts::TorProxyOpts;
 use serde_derive::{Deserialize, Serialize};
-use tari_shutdown::OptionalShutdownSignal;
+use tari_shutdown::ShutdownSignal;
 
 use crate::{
     multiaddr::Multiaddr,
@@ -48,7 +48,7 @@ pub struct HiddenService {
     /// The address where incoming traffic to the `onion_addr` will be forwarded to.
     pub(super) proxied_addr: Multiaddr,
     /// Shutdown signal for hidden service
-    pub(super) shutdown_signal: OptionalShutdownSignal,
+    pub(super) shutdown_signal: ShutdownSignal,
 }
 
 impl HiddenService {

@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use log::*;
-use tari_shutdown::ShutdownSignal;
+use tari_shutdown::{ShutdownSignal, oneshot_trigger::OneshotSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc, watch},
@@ -283,7 +283,7 @@ pub struct CommsNode {
     /// Current liveness status
     liveness_watch: watch::Receiver<SelfLivenessStatus>,
     /// The 'reciprocal' shutdown signals for each comms service
-    complete_signals: Vec<ShutdownSignal>,
+    complete_signals: Vec<OneshotSignal<()>>,
 }
 
 impl CommsNode {
@@ -334,6 +334,6 @@ impl CommsNode {
     /// Wait for comms to shutdown once the shutdown signal is triggered and for comms services to shut down.
     /// The object is consumed to ensure that no handles/channels are kept after shutdown
     pub fn wait_until_shutdown(self) -> CommsShutdown {
-        CommsShutdown::new(iter::once(self.shutdown_signal).chain(self.complete_signals))
+        CommsShutdown::new(self.shutdown_signal, self.complete_signals)
     }
 }
