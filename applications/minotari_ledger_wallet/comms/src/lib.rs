@@ -75,7 +75,7 @@ mod test {
         }
 
         let key = RistrettoSecretKey::random(&mut rand::rng());
-        let msg = slice_to_boxed_message(key.as_bytes());
+        let msg = slice_to_boxed_message(key.as_bytes()).unwrap();
         scripts.push((
             script!(CheckSigVerify(msg)).unwrap(),
             CHECK_SIG_VERIFY_IDENTIFIER,

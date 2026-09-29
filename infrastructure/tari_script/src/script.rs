@@ -103,9 +103,38 @@ impl BorshDeserialize for TariScript {
 }
 
 impl TariScript {
+    /// Create a script from a list of opcodes.
+    ///
+    /// Returns [ScriptError::InvalidData] if a `CheckMultiSig*` opcode's `n` does not equal the number of public keys
+    /// it carries. Such an opcode would serialise to bytes that deserialise to a different script (the serialised `n`
+    /// determines how many keys are read back). [TariScript::from_bytes] can never produce such an opcode.
     pub fn new(script: Vec<Opcode>) -> Result<Self, ScriptError> {
+        for opcode in &script {
+            if let Opcode::CheckMultiSig(_, n, keys, _) |
+            Opcode::CheckMultiSigVerify(_, n, keys, _) |
+            Opcode::CheckMultiSigVerifyAggregatePubKey(_, n, keys, _) = opcode &&
+                *n as usize != keys.len()
+            {
+                return Err(ScriptError::InvalidData);
+            }
+        }
         let script = ScriptOpcodes::try_from(script)?;
         Ok(TariScript { script })
+    }
+
+    /// Returns true if the result of executing this script can depend on the [ScriptContext] it is executed with,
+    /// i.e. if it contains any of `CheckHeightVerify`, `CheckHeight`, `CompareHeightVerify` or `CompareHeight`. These
+    /// are currently the only opcodes that read the context, and they read only its block height.
+    pub fn is_context_sensitive(&self) -> bool {
+        self.script.iter().any(|op| {
+            matches!(
+                op,
+                Opcode::CheckHeightVerify(_) |
+                    Opcode::CheckHeight(_) |
+                    Opcode::CompareHeightVerify |
+                    Opcode::CompareHeight
+            )
+        })
     }
 
     pub fn iter(&self) -> std::slice::Iter<'_, Opcode> {
@@ -139,6 +168,10 @@ impl TariScript {
     }
 
     /// Executes the script using a default context. If successful, returns the final stack item.
+    ///
+    /// The default [ScriptContext] has a block height of 0 (and a zero previous block hash and commitment), so any
+    /// height-dependent opcode (see [TariScript::is_context_sensitive]) is evaluated as if at the genesis block. Use
+    /// [TariScript::execute_with_context] to evaluate a script at a particular height.
     pub fn execute(&self, inputs: &ExecutionStack) -> Result<StackItem, ScriptError> {
         self.execute_with_context(inputs, &ScriptContext::default())
     }
@@ -211,11 +244,18 @@ impl TariScript {
             return Err(ScriptError::InvalidDigest);
         }
         let h = D::digest(self.to_bytes());
-        Ok(slice_to_hash(h.as_slice().get(..32).ok_or(ScriptError::InvalidDigest)?))
+        slice_to_hash(h.as_slice().get(..32).ok_or(ScriptError::InvalidDigest)?)
     }
 
     /// Try to deserialise a byte slice into a valid Tari script. Inputs longer than [MAX_SCRIPT_BYTES] are rejected
     /// before any parsing takes place.
+    ///
+    /// Decoding is lenient in two respects, which are part of current consensus behaviour:
+    /// * Non-minimal varint encodings of integer arguments (e.g. `[0x67, 0x80, 0x00]` for `CheckHeight(0)`) are
+    ///   accepted. [TariScript::to_bytes] always re-encodes minimally, and consensus hashes are computed over that
+    ///   canonical encoding, so two byte strings that decode to the same script hash identically.
+    /// * An empty byte slice is accepted and yields a script with zero opcodes. Executing it simply checks that the
+    ///   input stack holds exactly one item, and returns that item.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ScriptError> {
         if bytes.len() > MAX_SCRIPT_BYTES {
             return Err(ScriptError::ScriptTooLarge {
@@ -511,10 +551,14 @@ impl TariScript {
         Ok(())
     }
 
-    /// Handle opcodes that push a hash to the stack. I'm not doing any length checks right now, so this should be
-    /// added once other digest functions are provided that don't produce 32 byte hashes
+    /// Handle opcodes that push a hash to the stack. The raw, untagged 32-byte payload of a `Commitment`, `PublicKey`
+    /// or `Hash` is hashed, so items of different types with the same bytes produce the same digest. Returns
+    /// [ScriptError::InvalidDigest] if `D` does not produce exactly 32 bytes of output.
     fn handle_hash<D: Digest>(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
         use StackItem::{Commitment, Hash, PublicKey};
+        if <D as Digest>::output_size() != 32 {
+            return Err(ScriptError::InvalidDigest);
+        }
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         // use a closure to grab &b while it still exists in the match expression
         let to_arr = |b: &[u8]| {
@@ -590,6 +634,9 @@ impl TariScript {
         }
     }
 
+    /// Pops two items and compares them. Only items of the same type among `Number`, `Commitment`, `Signature`,
+    /// `PublicKey` and `Hash` can be compared; any other pairing (including `Scalar` with `Scalar`) returns
+    /// [ScriptError::IncompatibleTypes].
     fn handle_equal(stack: &mut ExecutionStack) -> Result<bool, ScriptError> {
         use StackItem::{Commitment, Hash, Number, PublicKey, Signature};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
@@ -721,14 +768,6 @@ impl TariScript {
         let ristretto_pk = CompressedKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
-    }
-}
-
-impl Iterator for TariScript {
-    type Item = Opcode;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.script.next()
     }
 }
 
@@ -1175,14 +1214,14 @@ mod test {
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
             CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap(),
         );
-        let msg = slice_to_boxed_message(m_key.as_bytes());
+        let msg = slice_to_boxed_message(m_key.as_bytes()).unwrap();
         let script = script!(CheckSig(msg)).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
         let n_key = RistrettoSecretKey::random(&mut rng);
-        let msg = slice_to_boxed_message(n_key.as_bytes());
+        let msg = slice_to_boxed_message(n_key.as_bytes()).unwrap();
         let script = script!(CheckSig(msg)).unwrap();
         let inputs = inputs!(sig, pub_key);
         let result = script.execute(&inputs).unwrap();
@@ -1198,14 +1237,14 @@ mod test {
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
             CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap(),
         );
-        let msg = slice_to_boxed_message(m_key.as_bytes());
+        let msg = slice_to_boxed_message(m_key.as_bytes()).unwrap();
         let script = script!(CheckSigVerify(msg) PushOne).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
         let n_key = RistrettoSecretKey::random(&mut rng);
-        let msg = slice_to_boxed_message(n_key.as_bytes());
+        let msg = slice_to_boxed_message(n_key.as_bytes()).unwrap();
         let script = script!(CheckSigVerify(msg)).unwrap();
         let inputs = inputs!(sig, pub_key);
         let err = script.execute(&inputs).unwrap_err();
@@ -1226,7 +1265,7 @@ mod test {
         let mut rng = rand::rng();
         let mut data = Vec::with_capacity(n);
         let m = RistrettoSecretKey::random(&mut rng);
-        let msg = slice_to_boxed_message(m.as_bytes());
+        let msg = slice_to_boxed_message(m.as_bytes()).unwrap();
 
         for _ in 0..n {
             let (k, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
@@ -1264,7 +1303,7 @@ mod test {
         let s_alice2 = CompressedCheckSigSchnorrSignature::new_from_schnorr(
             CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
         );
-        let msg = slice_to_boxed_message(m.as_bytes());
+        let msg = slice_to_boxed_message(m.as_bytes()).unwrap();
 
         // 1 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
@@ -1385,14 +1424,21 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
+        // An `n` that does not match the number of keys cannot be constructed
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSig(1, 0, keys, msg.clone())];
+        assert_eq!(TariScript::new(ops), Err(ScriptError::InvalidData));
+        let keys = vec![p_alice.clone(), p_bob.clone()];
+        let ops = vec![CheckMultiSig(2, 1, keys, msg.clone())];
+        assert_eq!(TariScript::new(ops), Err(ScriptError::InvalidData));
+
+        let ops = vec![CheckMultiSig(1, 0, vec![], msg.clone())];
         let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
-        let keys = vec![p_alice, p_bob];
+        let keys = vec![p_alice];
         let ops = vec![CheckMultiSig(2, 1, keys, msg)];
         let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice);
@@ -1568,7 +1614,7 @@ mod test {
         let s_carol = CompressedCheckSigSchnorrSignature::new_from_schnorr(
             CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap(),
         );
-        let msg = slice_to_boxed_message(m.as_bytes());
+        let msg = slice_to_boxed_message(m.as_bytes()).unwrap();
 
         // 1 of 2
         let keys = vec![p_alice.clone(), p_bob.clone()];
@@ -1709,14 +1755,21 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
+        // An `n` that does not match the number of keys cannot be constructed
         let keys = vec![p_alice.clone(), p_bob.clone()];
         let ops = vec![CheckMultiSigVerify(1, 0, keys, msg.clone())];
+        assert_eq!(TariScript::new(ops), Err(ScriptError::InvalidData));
+        let keys = vec![p_alice.clone(), p_bob.clone()];
+        let ops = vec![CheckMultiSigVerify(2, 1, keys, msg.clone())];
+        assert_eq!(TariScript::new(ops), Err(ScriptError::InvalidData));
+
+        let ops = vec![CheckMultiSigVerify(1, 0, vec![], msg.clone())];
         let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::ValueExceedsBounds);
 
-        let keys = vec![p_alice, p_bob];
+        let keys = vec![p_alice];
         let ops = vec![CheckMultiSigVerify(2, 1, keys, msg)];
         let script = TariScript::new(ops).unwrap();
         let inputs = inputs!(s_alice);
@@ -1769,7 +1822,7 @@ mod test {
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
         let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
         let hash = Blake2b::<U32>::digest(p.as_bytes());
-        let pkh = slice_to_boxed_hash(hash.as_slice()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
+        let pkh = slice_to_boxed_hash(hash.as_slice()).unwrap(); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
 
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built
         // into definition of how TariScript is evaluated by a base node or wallet
@@ -1798,7 +1851,7 @@ mod test {
         );
 
         // Produce a script using the signature
-        let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes()))).unwrap();
+        let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes()).unwrap())).unwrap();
 
         // Produce input satisfying the script
         let input = inputs!(sig, public_key);
@@ -1897,7 +1950,7 @@ mod test {
         let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
 
         let m = RistrettoSecretKey::random(&mut rng);
-        let msg = slice_to_boxed_message(m.as_bytes());
+        let msg = slice_to_boxed_message(m.as_bytes()).unwrap();
 
         let s_alice = CompressedCheckSigSchnorrSignature::new_from_schnorr(
             CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
@@ -2109,5 +2162,289 @@ mod test {
         let stack_item = script.execute_with_context(&inputs, &ctx);
         assert!(stack_item.is_ok());
         assert_eq!(stack_item.unwrap(), Number(-76))
+    }
+
+    // ---- Pinned behaviour: these tests assert the current engine semantics, which are part of consensus ----
+
+    #[test]
+    fn rev_rot_pinned() {
+        // Bottom-first, `c` on top: [a, b, c] => [c, a, b]
+        let mut stack = inputs!(1, 2, 3);
+        stack.push_down(2).unwrap();
+        assert_eq!(stack, inputs!(3, 1, 2));
+        // Deeper items are untouched
+        let mut stack = inputs!(9, 1, 2, 3);
+        stack.push_down(2).unwrap();
+        assert_eq!(stack, inputs!(9, 3, 1, 2));
+
+        // Through the engine: the old top ends up at the bottom of the three
+        let script = script!(RevRot Drop Drop).unwrap();
+        assert_eq!(script.execute(&inputs!(1, 2, 3)), Ok(Number(3)));
+        // [1, 2, 3] => [3, 1, 2]; Sub computes 1 - 2 = -1; Add computes 3 + -1 = 2
+        let script = script!(RevRot Sub Add).unwrap();
+        assert_eq!(script.execute(&inputs!(1, 2, 3)), Ok(Number(2)));
+
+        // Underflow with two or fewer items
+        let script = script!(RevRot).unwrap();
+        assert_eq!(script.execute(&inputs!(1, 2)), Err(ScriptError::StackUnderflow));
+        assert_eq!(script.execute(&inputs!(1)), Err(ScriptError::StackUnderflow));
+        assert_eq!(
+            script.execute(&ExecutionStack::default()),
+            Err(ScriptError::StackUnderflow)
+        );
+    }
+
+    #[test]
+    fn equal_mixed_types_is_incompatible_types_pinned() {
+        let mut rng = rand::rng();
+        let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let h: HashValue = p.as_bytes().try_into().unwrap();
+        let c = CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(p.clone());
+
+        for script in [script!(Equal).unwrap(), script!(EqualVerify PushOne).unwrap()] {
+            // Mixed types abort the script; they do not push 0
+            assert_eq!(
+                script.execute(&inputs!(1, p.clone())),
+                Err(ScriptError::IncompatibleTypes)
+            );
+            // Same bytes, different types, is still an abort
+            assert_eq!(
+                script.execute(&inputs!(Hash(h), p.clone())),
+                Err(ScriptError::IncompatibleTypes)
+            );
+            assert_eq!(
+                script.execute(&inputs!(c.clone(), p.clone())),
+                Err(ScriptError::IncompatibleTypes)
+            );
+            assert_eq!(script.execute(&inputs!(1)), Err(ScriptError::StackUnderflow));
+        }
+        // Same types compare normally
+        assert_eq!(
+            script!(Equal).unwrap().execute(&inputs!(Hash(h), Hash(h))),
+            Ok(Number(1))
+        );
+        assert_eq!(script!(Equal).unwrap().execute(&inputs!(1, 2)), Ok(Number(0)));
+        assert_eq!(
+            script!(EqualVerify PushOne).unwrap().execute(&inputs!(1, 2)),
+            Err(ScriptError::VerifyFailed)
+        );
+    }
+
+    #[test]
+    fn equal_scalar_is_incompatible_types_pinned() {
+        let scalar = StackItem::Scalar([7u8; 32]);
+        let stack = ExecutionStack::new(vec![scalar.clone(), scalar.clone()]);
+        // Scalars are not comparable, not even with an identical scalar
+        assert_eq!(
+            script!(Equal).unwrap().execute(&stack),
+            Err(ScriptError::IncompatibleTypes)
+        );
+        assert_eq!(
+            script!(EqualVerify PushOne).unwrap().execute(&stack),
+            Err(ScriptError::IncompatibleTypes)
+        );
+        let stack = ExecutionStack::new(vec![Hash([7u8; 32]), scalar]);
+        assert_eq!(
+            script!(Equal).unwrap().execute(&stack),
+            Err(ScriptError::IncompatibleTypes)
+        );
+    }
+
+    #[test]
+    fn compare_height_verify_negative_is_value_exceeds_bounds_pinned() {
+        // CompareHeightVerify pops a u64: a negative value cannot be converted
+        let script = script!(CompareHeightVerify PushOne).unwrap();
+        let ctx = context_with_height(100);
+        assert_eq!(
+            script.execute_with_context(&inputs!(-1), &ctx),
+            Err(ScriptError::ValueExceedsBounds)
+        );
+        assert_eq!(
+            script.execute_with_context(&inputs!(i64::MIN), &ctx),
+            Err(ScriptError::ValueExceedsBounds)
+        );
+        // A non-number is InvalidInput, and an empty stack is StackUnderflow
+        assert_eq!(
+            script.execute_with_context(&inputs!(Hash([0u8; 32])), &ctx),
+            Err(ScriptError::InvalidInput)
+        );
+        assert_eq!(
+            script.execute_with_context(&ExecutionStack::default(), &ctx),
+            Err(ScriptError::StackUnderflow)
+        );
+        assert_eq!(script.execute_with_context(&inputs!(100), &ctx), Ok(Number(1)));
+        assert_eq!(
+            script.execute_with_context(&inputs!(101), &ctx),
+            Err(ScriptError::VerifyFailed)
+        );
+
+        // CompareHeight pops an i64, so a negative value is accepted
+        let script = script!(CompareHeight).unwrap();
+        assert_eq!(script.execute_with_context(&inputs!(-1), &ctx), Ok(Number(101)));
+    }
+
+    #[test]
+    fn hash_opcodes_hash_untagged_payload_pinned() {
+        let mut rng = rand::rng();
+        let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let h: HashValue = p.as_bytes().try_into().unwrap();
+        let c = CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(p.clone());
+        let (_, data) = multisig_data(1);
+        let sig = data[0].2.clone();
+
+        for (script, expected) in [
+            (script!(HashBlake256).unwrap(), Blake2b::<U32>::digest(h).into()),
+            (script!(HashSha256).unwrap(), Sha256::digest(h).into()),
+            (script!(HashSha3).unwrap(), Sha3::digest(h).into()),
+        ] {
+            let expected: HashValue = expected;
+            // Hash, PublicKey and Commitment with the same bytes produce the same digest
+            assert_eq!(script.execute(&inputs!(Hash(h))), Ok(Hash(expected)));
+            assert_eq!(script.execute(&inputs!(p.clone())), Ok(Hash(expected)));
+            assert_eq!(script.execute(&inputs!(c.clone())), Ok(Hash(expected)));
+            // Number, Scalar and Signature cannot be hashed
+            assert_eq!(script.execute(&inputs!(1)), Err(ScriptError::IncompatibleTypes));
+            assert_eq!(
+                script.execute(&ExecutionStack::new(vec![StackItem::Scalar(h)])),
+                Err(ScriptError::IncompatibleTypes)
+            );
+            assert_eq!(
+                script.execute(&inputs!(sig.clone())),
+                Err(ScriptError::IncompatibleTypes)
+            );
+        }
+    }
+
+    #[test]
+    fn handle_hash_rejects_non_32_byte_digests() {
+        let mut stack = inputs!(Hash([1u8; 32]));
+        assert_eq!(
+            TariScript::handle_hash::<sha2::Sha512>(&mut stack),
+            Err(ScriptError::InvalidDigest)
+        );
+        // The stack is left untouched
+        assert_eq!(stack, inputs!(Hash([1u8; 32])));
+        let mut stack = inputs!(Hash([1u8; 32]));
+        assert_eq!(
+            TariScript::handle_hash::<Blake2b<digest::consts::U64>>(&mut stack),
+            Err(ScriptError::InvalidDigest)
+        );
+        let mut stack = inputs!(Hash([1u8; 32]));
+        assert!(TariScript::handle_hash::<Sha256>(&mut stack).is_ok());
+    }
+
+    #[test]
+    fn new_rejects_multisig_n_mismatch() {
+        use crate::Opcode::{CheckMultiSig, CheckMultiSigVerify};
+        let (msg, data) = multisig_data(3);
+        let keys: Vec<_> = data.iter().map(|d| d.1.clone()).collect();
+
+        type Ctor = fn(u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>) -> crate::Opcode;
+        let ctors: [Ctor; 3] = [CheckMultiSig, CheckMultiSigVerify, CheckMultiSigVerifyAggregatePubKey];
+        for ctor in ctors {
+            // n larger or smaller than the number of keys is rejected
+            for n in [0u8, 1, 2, 4, u8::MAX] {
+                assert_eq!(
+                    TariScript::new(vec![crate::Opcode::Nop, ctor(1, n, keys.clone(), msg.clone())]),
+                    Err(ScriptError::InvalidData),
+                    "n = {n}"
+                );
+            }
+            // n == keys.len() is accepted, and round-trips through bytes
+            let script = TariScript::new(vec![ctor(2, 3, keys.clone(), msg.clone())]).unwrap();
+            assert_eq!(TariScript::from_bytes(&script.to_bytes()).unwrap(), script);
+        }
+    }
+
+    #[test]
+    fn is_context_sensitive_per_opcode() {
+        use crate::Opcode;
+        let (msg, data) = multisig_data(1);
+        let keys = vec![data[0].1.clone()];
+        let sensitive = [
+            Opcode::CheckHeightVerify(1),
+            Opcode::CheckHeight(1),
+            Opcode::CompareHeightVerify,
+            Opcode::CompareHeight,
+        ];
+        let insensitive = [
+            Opcode::Nop,
+            Opcode::PushZero,
+            Opcode::PushOne,
+            Opcode::PushHash(Box::new([0u8; 32])),
+            Opcode::PushInt(1),
+            Opcode::PushPubKey(Box::default()),
+            Opcode::Drop,
+            Opcode::Dup,
+            Opcode::RevRot,
+            Opcode::GeZero,
+            Opcode::GtZero,
+            Opcode::LeZero,
+            Opcode::LtZero,
+            Opcode::Add,
+            Opcode::Sub,
+            Opcode::Equal,
+            Opcode::EqualVerify,
+            Opcode::Or(1),
+            Opcode::OrVerify(1),
+            Opcode::HashBlake256,
+            Opcode::HashSha256,
+            Opcode::HashSha3,
+            Opcode::CheckSig(msg.clone()),
+            Opcode::CheckSigVerify(msg.clone()),
+            Opcode::CheckMultiSig(1, 1, keys.clone(), msg.clone()),
+            Opcode::CheckMultiSigVerify(1, 1, keys.clone(), msg.clone()),
+            Opcode::CheckMultiSigVerifyAggregatePubKey(1, 1, keys, msg),
+            Opcode::ToRistrettoPoint,
+            Opcode::Return,
+            Opcode::IfThen,
+            Opcode::Else,
+            Opcode::EndIf,
+        ];
+        for op in &sensitive {
+            assert!(
+                TariScript::new(vec![op.clone()]).unwrap().is_context_sensitive(),
+                "{op}"
+            );
+            // Anywhere in the script, including inside a branch
+            let script = TariScript::new(vec![
+                Opcode::PushOne,
+                Opcode::IfThen,
+                Opcode::Nop,
+                Opcode::Else,
+                op.clone(),
+            ])
+            .unwrap();
+            assert!(script.is_context_sensitive(), "{op}");
+        }
+        for op in &insensitive {
+            assert!(
+                !TariScript::new(vec![op.clone()]).unwrap().is_context_sensitive(),
+                "{op}"
+            );
+        }
+        assert!(!TariScript::new(insensitive.to_vec()).unwrap().is_context_sensitive());
+        assert!(!TariScript::new(vec![]).unwrap().is_context_sensitive());
+
+        // The default context is height 0
+        assert_eq!(ScriptContext::default().block_height(), 0);
+        let script = script!(CheckHeight(0)).unwrap();
+        assert_eq!(script.execute(&ExecutionStack::default()), Ok(Number(0)));
+        let script = script!(CheckHeightVerify(1) PushOne).unwrap();
+        assert_eq!(
+            script.execute(&ExecutionStack::default()),
+            Err(ScriptError::VerifyFailed)
+        );
+    }
+
+    #[test]
+    fn from_bytes_accepts_empty_script_pinned() {
+        let script = TariScript::from_bytes(&[]).unwrap();
+        assert_eq!(script.size(), 0);
+        assert_eq!(script.execute(&inputs!(5)), Ok(Number(5)));
+        assert_eq!(
+            script.execute(&ExecutionStack::default()),
+            Err(ScriptError::NonUnitLengthStack)
+        );
     }
 }
