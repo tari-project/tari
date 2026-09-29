@@ -34,16 +34,22 @@ use tari_p2p::{comms_connector::PeerMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
-use tokio::{sync::mpsc, task};
+use tokio::{
+    sync::{Semaphore, mpsc, oneshot},
+    task,
+};
 
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     common::inbound_backpressure::PendingByPeer,
-    mempool::service::{
-        MempoolRequest,
-        MempoolResponse,
-        error::MempoolServiceError,
-        inbound_handlers::MempoolInboundHandlers,
+    mempool::{
+        MempoolError,
+        service::{
+            MempoolRequest,
+            MempoolResponse,
+            error::MempoolServiceError,
+            inbound_handlers::MempoolInboundHandlers,
+        },
     },
     proto,
 };
@@ -56,6 +62,16 @@ const MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER: usize = 32;
 /// A backstop on the number of inbound `NewTransaction` messages pending from all peers together, only reached if many
 /// peers flood at once.
 const MAX_PENDING_INBOUND_TRANSACTIONS_TOTAL: usize = 512;
+
+/// The maximum number of `SubmitTransaction` requests from the mempool handle (which serves remote peers through the
+/// P2P mempool RPC service) handled at once. Requests are handled in their own tasks, so without this they could take
+/// every validation permit ahead of gossiped transactions. Read-only requests are not limited.
+const MAX_CONCURRENT_HANDLE_SUBMISSIONS: usize = 2;
+/// The same bound for `SubmitTransaction` requests from the local service (gRPC and JSON-RPC). A separate pool, so that
+/// remote peers cannot starve local submissions.
+const MAX_CONCURRENT_LOCAL_SUBMISSIONS: usize = MAX_CONCURRENT_HANDLE_SUBMISSIONS;
+
+type MempoolReply = oneshot::Sender<Result<MempoolResponse, MempoolServiceError>>;
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<STxIn, SLocalReq> {
@@ -73,6 +89,8 @@ pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
     pending_inbound_transactions: PendingByPeer,
+    handle_submission_permits: Arc<Semaphore>,
+    local_submission_permits: Arc<Semaphore>,
 }
 
 impl MempoolService {
@@ -86,6 +104,8 @@ impl MempoolService {
                 "transaction",
                 LOG_TARGET,
             ),
+            handle_submission_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_HANDLE_SUBMISSIONS)),
+            local_submission_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_LOCAL_SUBMISSIONS)),
         }
     }
 
@@ -155,11 +175,12 @@ impl MempoolService {
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
     ) {
-        let mut inbound_handlers = self.inbound_handlers.clone();
+        let inbound_handlers = self.inbound_handlers.clone();
+        let submission_permits = self.handle_submission_permits.clone();
         task::spawn(async move {
             let (request, reply) = request_context.split();
             // The requester may have stopped waiting; nothing to do then
-            let _result = reply.send(inbound_handlers.handle_request(request).await);
+            let _result = handle_request(inbound_handlers, request, reply, submission_permits).await;
         });
     }
 
@@ -167,10 +188,11 @@ impl MempoolService {
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
     ) {
-        let mut inbound_handlers = self.inbound_handlers.clone();
+        let inbound_handlers = self.inbound_handlers.clone();
+        let submission_permits = self.local_submission_permits.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let result = reply_tx.send(inbound_handlers.handle_request(request).await);
+            let result = handle_request(inbound_handlers, request, reply_tx, submission_permits).await;
 
             if let Err(res) = result {
                 error!(
@@ -251,6 +273,46 @@ impl MempoolService {
             },
         }
     }
+}
+
+/// Handles one request from the mempool handle or the local service, and replies to it. A `SubmitTransaction` first
+/// takes one of `submission_permits`. A request whose requester has stopped waiting (e.g. an RPC call that timed out
+/// at the client's deadline) is dropped without being handled: this is checked while it waits for a permit, and
+/// raced against its handling, so that an abandoned submission never takes a validation permit.
+async fn handle_request(
+    mut inbound_handlers: MempoolInboundHandlers,
+    request: MempoolRequest,
+    mut reply: MempoolReply,
+    submission_permits: Arc<Semaphore>,
+) -> Result<(), Result<MempoolResponse, MempoolServiceError>> {
+    let _permit = if matches!(request, MempoolRequest::SubmitTransaction(_)) {
+        tokio::select! {
+            biased;
+            () = reply.closed() => {
+                debug!(target: LOG_TARGET, "Dropping an abandoned transaction submission");
+                return Ok(());
+            },
+            permit = submission_permits.acquire_owned() => match permit {
+                Ok(permit) => Some(permit),
+                Err(e) => {
+                    return reply.send(Err(MempoolServiceError::MempoolError(MempoolError::InternalError(format!(
+                        "Submission semaphore closed: {e}"
+                    )))));
+                },
+            },
+        }
+    } else {
+        None
+    };
+    let result = tokio::select! {
+        biased;
+        () = reply.closed() => {
+            debug!(target: LOG_TARGET, "Dropping an abandoned mempool request");
+            return Ok(());
+        },
+        result = inbound_handlers.handle_request(request) => result,
+    };
+    reply.send(result)
 }
 
 #[cfg(test)]
@@ -384,5 +446,175 @@ mod test {
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         drop(block_event_sender);
         service_task.abort();
+    }
+
+    /// Counts validations, records the maximum number of concurrent ones, and takes a while
+    #[derive(Default)]
+    struct CountingValidator {
+        calls: std::sync::atomic::AtomicUsize,
+        current: std::sync::atomic::AtomicUsize,
+        max: std::sync::atomic::AtomicUsize,
+    }
+
+    impl crate::validation::TransactionValidator for Arc<CountingValidator> {
+        fn validate_full(&self, tx: &Transaction) -> Result<(), crate::validation::ValidationError> {
+            self.validate_chain_linked(tx)
+        }
+
+        fn validate_chain_linked(&self, _tx: &Transaction) -> Result<(), crate::validation::ValidationError> {
+            use std::sync::atomic::Ordering;
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+            self.max.fetch_max(current, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            self.current.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn validate_internal_consistency(
+            &self,
+            _tx: &Transaction,
+            _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), crate::validation::ValidationError> {
+            Ok(())
+        }
+    }
+
+    struct RunningService {
+        mempool: Mempool,
+        validator: Arc<CountingValidator>,
+        handle: crate::mempool::service::MempoolHandle,
+        local: crate::mempool::service::LocalMempoolService,
+        handle_submission_permits: Arc<Semaphore>,
+        task: task::JoinHandle<Result<(), MempoolServiceError>>,
+        _block_events: tokio::sync::broadcast::Sender<Arc<BlockEvent>>,
+        _outbound: mpsc::UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
+        _propagated: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
+    }
+
+    fn start_service() -> RunningService {
+        use futures::stream;
+
+        let validator = Arc::new(CountingValidator::default());
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator.clone()));
+        let (tx_sender, propagated) = mpsc::unbounded_channel();
+        let inbound_handlers =
+            MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        let (outbound_sender, _outbound_receiver) = mpsc::unbounded_channel();
+        let service = MempoolService::new(OutboundMessageRequester::new(outbound_sender), inbound_handlers);
+        let handle_submission_permits = service.handle_submission_permits.clone();
+
+        let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded_channel();
+        let (block_event_sender, block_event_stream) = tokio::sync::broadcast::channel(1);
+        let (request_sender, request_receiver) = reply_channel::unbounded();
+        let (local_sender, local_request_stream) = reply_channel::unbounded();
+        let streams = MempoolStreams {
+            outbound_tx_stream,
+            inbound_transaction_stream: stream::pending::<Arc<PeerMessage>>(),
+            local_request_stream,
+            block_event_stream,
+            request_receiver,
+        };
+        RunningService {
+            mempool,
+            validator,
+            handle: crate::mempool::service::MempoolHandle::new(request_sender),
+            local: crate::mempool::service::LocalMempoolService::new(local_sender),
+            handle_submission_permits,
+            task: tokio::spawn(service.start(streams)),
+            _block_events: block_event_sender,
+            _outbound: outbound_tx_sender,
+            _propagated: propagated,
+        }
+    }
+
+    fn new_tx(key_manager: &KeyManager) -> Transaction {
+        tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, key_manager)
+            .expect("Failed to get tx")
+            .0
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn handle_submissions_are_bounded() {
+        use std::sync::atomic::Ordering;
+        let service = start_service();
+        let key_manager = KeyManager::new_random().unwrap();
+        let tasks = (0..3)
+            .map(|_| {
+                let tx = new_tx(&key_manager);
+                let mut handle = service.handle.clone();
+                tokio::spawn(async move { handle.submit_transaction(tx).await })
+            })
+            .collect::<Vec<_>>();
+        for task in tasks {
+            assert_eq!(
+                task.await.unwrap().unwrap(),
+                crate::mempool::TxStorageResponse::UnconfirmedPool
+            );
+        }
+        let max = service.validator.max.load(Ordering::SeqCst);
+        assert!(
+            (1..=MAX_CONCURRENT_HANDLE_SUBMISSIONS).contains(&max),
+            "{max} concurrent submissions"
+        );
+        service.task.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn an_abandoned_submission_is_not_validated() {
+        use std::sync::atomic::Ordering;
+        let service = start_service();
+        let key_manager = KeyManager::new_random().unwrap();
+        // Every handle submission slot is taken
+        let held = service
+            .handle_submission_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_HANDLE_SUBMISSIONS).unwrap())
+            .await
+            .unwrap();
+        // A submission queues for a slot, and its requester then gives up (e.g. an RPC deadline)
+        let submit = tokio::spawn({
+            let mut handle = service.handle.clone();
+            let tx = new_tx(&key_manager);
+            async move { handle.submit_transaction(tx).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert!(!submit.is_finished());
+        submit.abort();
+        let _cancelled = submit.await;
+
+        // Once a slot is free, the abandoned submission is dropped instead of being validated
+        drop(held);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(service.validator.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(service.mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        assert_eq!(
+            service.handle_submission_permits.available_permits(),
+            MAX_CONCURRENT_HANDLE_SUBMISSIONS
+        );
+        service.task.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_local_submission_is_served_while_the_handle_pool_is_saturated() {
+        let mut service = start_service();
+        let key_manager = KeyManager::new_random().unwrap();
+        let _held = service
+            .handle_submission_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(MAX_CONCURRENT_HANDLE_SUBMISSIONS).unwrap())
+            .await
+            .unwrap();
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            service.local.submit_transaction(new_tx(&key_manager)),
+        )
+        .await
+        .expect("the local submission waited for the handle pool")
+        .unwrap();
+        assert_eq!(response, crate::mempool::TxStorageResponse::UnconfirmedPool);
+        service.task.abort();
     }
 }
