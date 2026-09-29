@@ -64,6 +64,7 @@
 //! ```
 
 use std::{
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     iter,
     sync::{
@@ -114,6 +115,9 @@ mod error;
 mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
+
+/// Size of a transaction inventory item: a kernel excess signature scalar.
+const INVENTORY_ITEM_SIZE: usize = 32;
 
 /// Deadline for a single control message — the transaction inventory and the list of requested
 /// indexes. Both are one bounded frame, so a short deadline is safe.
@@ -628,27 +632,67 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             inventory.items.len()
         );
 
+        // Every item is a kernel excess signature scalar. Reject anything else up front rather than
+        // carrying it through the lookup below where it could never match.
+        if let Some((index, item)) = inventory
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| item.len() != INVENTORY_ITEM_SIZE)
+        {
+            return Err(MempoolProtocolError::InvalidInventoryItem {
+                peer: self.peer_node_id.clone(),
+                index,
+                len: item.len(),
+                expected: INVENTORY_ITEM_SIZE,
+            });
+        }
+
         let transactions = self.mempool.snapshot().await?;
 
-        let mut duplicate_inventory_items = Vec::new();
-        let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
-            let excess_sig = transaction
-                .first_kernel_excess_sig()
-                .expect("transaction stored in mempool did not have any kernels");
+        // Work out both replies before writing anything. Locals in an async fn live until the end
+        // of their scope, not their last use, so this block keeps the decoded inventory (up to a
+        // full frame) and its lookup from being held while a slow peer drains the stream below.
+        let (transactions, missing_items) = {
+            // Moved in, not borrowed, so that the inventory is dropped at the end of this block.
+            let items = inventory.items;
 
-            let has_item = inventory
-                .items
+            // Index the inventory once so that matching is linear in the size of the inventory and
+            // the mempool, rather than scanning the whole inventory for every pooled transaction.
+            // The items are chosen by the peer, so this must stay a randomly keyed (SipHash) map.
+            // Iterating in reverse lets the first index of a duplicated item win, so later
+            // duplicates are still reported as missing.
+            let inventory_index = items
                 .iter()
-                .position(|bytes| bytes.as_slice() == excess_sig.get_signature().as_bytes());
+                .enumerate()
+                .rev()
+                .map(|(i, item)| (item.as_slice(), i))
+                .collect::<HashMap<_, _>>();
 
-            match has_item {
-                Some(pos) => {
-                    duplicate_inventory_items.push(pos);
-                    false
-                },
-                None => true,
-            }
-        });
+            let mut duplicate_inventory_items = HashSet::new();
+            let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
+                let excess_sig = transaction
+                    .first_kernel_excess_sig()
+                    .expect("transaction stored in mempool did not have any kernels");
+
+                match inventory_index.get(excess_sig.get_signature().as_bytes()) {
+                    Some(&pos) => {
+                        duplicate_inventory_items.insert(pos);
+                        false
+                    },
+                    None => true,
+                }
+            });
+
+            // Generate an index list of inventory indexes that this node does not have
+            #[allow(clippy::cast_possible_truncation)]
+            let missing_items = (0..items.len())
+                .filter(|i| !duplicate_inventory_items.contains(i))
+                .map(|i| i as u32)
+                .collect::<Vec<_>>();
+
+            (transactions, missing_items)
+        };
 
         debug!(
             target: LOG_TARGET,
@@ -659,20 +703,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         self.write_transactions(transactions).await?;
 
-        // Generate an index list of inventory indexes that this node does not have
-        #[allow(clippy::cast_possible_truncation)]
-        let missing_items = inventory
-            .items
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, _)| {
-                if duplicate_inventory_items.contains(&i) {
-                    None
-                } else {
-                    Some(i as u32)
-                }
-            })
-            .collect::<Vec<_>>();
         debug!(
             target: LOG_TARGET,
             "Requesting {} missing transaction index(es) from peer `{}`",

@@ -775,3 +775,94 @@ async fn a_second_initiator_declines_instead_of_queueing_for_the_permit() {
         "second initiator opened a substream once the permit was released; it queued instead of declining"
     );
 }
+
+fn excess_sig_bytes(txn: &Transaction) -> Vec<u8> {
+    txn.first_kernel_excess_sig().unwrap().get_signature().to_vec()
+}
+
+#[tokio::test]
+async fn responder_streams_unmatched_transactions_and_requests_missing_indexes() {
+    let (mempool, transactions) = new_mempool_with_transactions(3).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let responder = task::spawn(async move {
+        MempoolPeerProtocol::new(
+            Default::default(),
+            framing::canonical(sock_in, MAX_FRAME_SIZE),
+            peer.node_id().clone(),
+            mempool,
+        )
+        .start_responder()
+        .await
+    });
+
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    // Index 3 repeats index 0: only the first occurrence counts as held, so the repeat is missing.
+    let inventory = proto::TransactionInventory {
+        items: vec![
+            excess_sig_bytes(&transactions[0]),
+            vec![0xAA; 32],
+            excess_sig_bytes(&transactions[2]),
+            excess_sig_bytes(&transactions[0]),
+        ],
+    };
+    write_message(&mut framed, inventory).await;
+
+    // Only the transaction the peer did not list is streamed back
+    let item: proto::TransactionItem = read_message(&mut framed).await;
+    let streamed = item
+        .transaction
+        .unwrap()
+        .body
+        .unwrap()
+        .kernels
+        .remove(0)
+        .excess_sig
+        .unwrap();
+    assert_eq!(streamed.signature, excess_sig_bytes(&transactions[1]));
+    let stop: proto::TransactionItem = read_message(&mut framed).await;
+    assert!(stop.transaction.is_none());
+
+    let missing: proto::InventoryIndexes = read_message(&mut framed).await;
+    assert_eq!(missing.indexes, vec![1, 3]);
+
+    // Send nothing back and let the responder finish
+    write_message(&mut framed, proto::TransactionItem::empty()).await;
+    responder.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn responder_rejects_an_inventory_item_that_is_not_an_excess_signature() {
+    let (mempool, transactions) = new_mempool_with_transactions(2).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let responder = task::spawn(async move {
+        MempoolPeerProtocol::new(
+            Default::default(),
+            framing::canonical(sock_in, MAX_FRAME_SIZE),
+            peer.node_id().clone(),
+            mempool,
+        )
+        .start_responder()
+        .await
+    });
+
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let inventory = proto::TransactionInventory {
+        items: vec![excess_sig_bytes(&transactions[0]), vec![0xAA; 33]],
+    };
+    write_message(&mut framed, inventory).await;
+
+    let err = responder.await.unwrap().unwrap_err();
+    assert!(
+        matches!(err, MempoolProtocolError::InvalidInventoryItem {
+            index: 1,
+            len: 33,
+            expected: 32,
+            ..
+        }),
+        "unexpected error: {err}"
+    );
+    // Nothing was streamed before the substream closed
+    assert!(framed.next().await.is_none());
+}
