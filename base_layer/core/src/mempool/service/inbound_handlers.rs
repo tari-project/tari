@@ -27,7 +27,7 @@ use tari_comms::peer_manager::NodeId;
 use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
-use tokio::task;
+use tokio::{sync::Semaphore, task};
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -51,12 +51,18 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
+/// The maximum number of `SubmitTransaction` requests (from the mempool handle or local service, i.e. gRPC, JSON-RPC
+/// and the P2P mempool RPC service) handled at once. Requests are handled in their own tasks, so without this they
+/// could take every validation permit ahead of gossiped transactions. Read-only requests are not limited.
+const MAX_CONCURRENT_HANDLE_SUBMISSIONS: usize = 2;
+
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
     outbound_service: OutboundMempoolServiceInterface,
+    submission_permits: Arc<Semaphore>,
 }
 
 impl MempoolInboundHandlers {
@@ -65,6 +71,7 @@ impl MempoolInboundHandlers {
         Self {
             mempool,
             outbound_service,
+            submission_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_HANDLE_SUBMISSIONS)),
         }
     }
 
@@ -95,6 +102,11 @@ impl MempoolInboundHandlers {
                     target: LOG_TARGET,
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
+                let _permit = self.submission_permits.clone().acquire_owned().await.map_err(|e| {
+                    MempoolServiceError::MempoolError(MempoolError::InternalError(format!(
+                        "Submission semaphore closed: {e}"
+                    )))
+                })?;
                 Ok(MempoolResponse::TxStorage(
                     self.submit_transaction(tx, None, None).await?,
                 ))
@@ -349,5 +361,73 @@ mod test {
         let (propagated_tx, excluded) = propagated.try_recv().unwrap();
         assert_eq!(propagated_tx, tx);
         assert_eq!(excluded, vec![source]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn handle_submissions_are_bounded() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tari_common_types::chain_metadata::ChainMetadata;
+
+        use crate::validation::{TransactionValidator, ValidationError};
+
+        /// Takes a while, and records the maximum number of concurrent validations
+        #[derive(Default)]
+        struct CountingValidator {
+            current: AtomicUsize,
+            max: AtomicUsize,
+        }
+        impl TransactionValidator for Arc<CountingValidator> {
+            fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError> {
+                self.validate_chain_linked(tx)
+            }
+
+            fn validate_chain_linked(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+                let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+                self.max.fetch_max(current, Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                self.current.fetch_sub(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn validate_internal_consistency(
+                &self,
+                _tx: &Transaction,
+                _tip: Option<&ChainMetadata>,
+            ) -> Result<(), ValidationError> {
+                Ok(())
+            }
+        }
+
+        let validator = Arc::new(CountingValidator::default());
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator.clone()));
+        let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
+        let handlers = MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        let key_manager = KeyManager::new_random().unwrap();
+
+        let tasks = (0..3)
+            .map(|_| {
+                let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0;
+                let mut handlers = handlers.clone();
+                tokio::spawn(async move { handlers.handle_request(MempoolRequest::SubmitTransaction(tx)).await })
+            })
+            .collect::<Vec<_>>();
+        for task in tasks {
+            let response = task.await.unwrap().unwrap();
+            assert!(matches!(
+                response,
+                MempoolResponse::TxStorage(TxStorageResponse::UnconfirmedPool)
+            ));
+        }
+        let max = validator.max.load(Ordering::SeqCst);
+        assert!(
+            (1..=MAX_CONCURRENT_HANDLE_SUBMISSIONS).contains(&max),
+            "{max} concurrent submissions"
+        );
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
     }
 }
