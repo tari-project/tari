@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+mod shutdown_grace;
 mod wallet_debouncer;
 mod wallet_grpc_server;
 
@@ -11,7 +12,10 @@ use minotari_wallet::transaction_service::storage::models::{
     OutboundTransaction,
 };
 
-pub use self::wallet_grpc_server::*;
+pub use self::{
+    shutdown_grace::{bind_grpc_listener, serve_with_shutdown_grace},
+    wallet_grpc_server::*,
+};
 
 pub enum TransactionWrapper {
     Completed(Box<CompletedTransaction>),

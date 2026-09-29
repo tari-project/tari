@@ -42,10 +42,12 @@ const LOG_TARGET: &str = "tari::wallet::client::http";
 
 /// Upper bound on establishing a connection to the base node wallet service.
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Upper bound on a whole request, from sending it to reading the full response body. Wallet services await these
-/// requests while holding a shutdown signal, so this must stay well below the wallet's shutdown drain timeout
-/// (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s) or one stalled request pins the drain.
-const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+/// Idle read timeout: fails a request once the connection has delivered no data for this long. It kills a stalled peer
+/// but allows slow, still-progressing transfers (large UTXO pages on a slow link or a loaded node) to complete, unlike
+/// a total request timeout, which would fail such a page on every retry and stop scanning from progressing past it.
+/// Wallet services await these requests while holding a shutdown signal, so this must stay well below the wallet's
+/// shutdown drain timeout (`WALLET_SHUTDOWN_DRAIN_TIMEOUT`, 30s) or one stalled request pins the drain.
+const HTTP_READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// The base node rejects any batch query carrying more than `MAX_ALLOWED_QUERY_SIZE` items with a `400`. Fail here
 /// instead, so callers get an actionable error naming the limit rather than an opaque HTTP error body.
@@ -74,7 +76,7 @@ impl Client {
         let http_client = http_client_builder
             .http2_initial_stream_window_size(4 * 1024 * 1024)
             .connect_timeout(HTTP_CONNECT_TIMEOUT)
-            .timeout(HTTP_REQUEST_TIMEOUT)
+            .read_timeout(HTTP_READ_TIMEOUT)
             .build()
             .expect("http2 init");
         Self {
@@ -315,7 +317,7 @@ impl BaseNodeWalletClient for Client {
     async fn sync_utxos_by_block(
         &self,
         start_header_hash: Vec<u8>,
-        shutdown: ShutdownSignal,
+        mut shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, anyhow::Error>>, anyhow::Error> {
         debug!(
             target: LOG_TARGET,
@@ -340,25 +342,33 @@ impl BaseNodeWalletClient for Client {
                     format!("start_header_hash={start_header_hash_hex}&limit={limit}&page={page}&version=1").as_str(),
                 ));
                 debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {target_url}");
-                // Request and body read are both bounded by HTTP_REQUEST_TIMEOUT; a timeout is reported and ends the
-                // sync like any other error
-                match client.get(target_url.clone()).send().await {
-                    Ok(response) => match response.json::<SyncUtxosByBlockResponseV1>().await {
-                        Ok(response) => {
-                            has_next_page = response.has_next_page;
-                            debug!(target: LOG_TARGET, "Received UTXOs for page {page}");
-                            if let Err(send_error) = resp_tx.send(Ok(response.into())).await {
-                                // The receiver is gone, nobody wants the remaining pages
-                                error!(target: LOG_TARGET, "Error sending utxo response: {send_error:?}");
-                                break;
-                            }
-                        },
-                        Err(error) => {
-                            if let Err(send_error) = resp_tx.send(Err(error.into())).await {
-                                error!(target: LOG_TARGET, "Error sending error result: {send_error:?}");
-                            }
+                // A stalled request or body read fails after HTTP_READ_TIMEOUT and ends the sync like any other error.
+                // Shutdown is raced separately so this task releases its shutdown signal promptly regardless.
+                let fetch_page = async {
+                    client
+                        .get(target_url.clone())
+                        .send()
+                        .await?
+                        .json::<SyncUtxosByBlockResponseV1>()
+                        .await
+                };
+                let result = tokio::select! {
+                    biased;
+                    _ = &mut shutdown => {
+                        info!(target: LOG_TARGET, "UTXO sync task shutdown triggered during a request, exiting loop");
+                        break;
+                    },
+                    result = fetch_page => result,
+                };
+                match result {
+                    Ok(response) => {
+                        has_next_page = response.has_next_page;
+                        debug!(target: LOG_TARGET, "Received UTXOs for page {page}");
+                        if let Err(send_error) = resp_tx.send(Ok(response.into())).await {
+                            // The receiver is gone, nobody wants the remaining pages
+                            error!(target: LOG_TARGET, "Error sending utxo response: {send_error:?}");
                             break;
-                        },
+                        }
                     },
                     Err(error) => {
                         if let Err(send_error) = resp_tx.send(Err(error.into())).await {
