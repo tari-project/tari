@@ -102,10 +102,11 @@ pub const MAX_FOLLOWED_LINKS_PER_PASS: usize = 2_000_000;
 
 /// The maximum number of dependency links one candidate's pre-walk ancestor weight bound may follow, and separately the
 /// maximum its walk plus its branch's internal-duplicate check may cost (each link, input, output or kernel checked
-/// counts as one). A candidate over either is dropped like one with too many unselected ancestors. The walk does not
-/// charge the pass again for the candidate's own links (the pre-walk bound already did), so a candidate is charged at
-/// most about this much, and exhausting [MAX_FOLLOWED_LINKS_PER_PASS] takes about as many candidates as exhausting
-/// [MAX_WALKED_FRAMES_PER_PASS] with [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE]-deep ancestries (~2,000).
+/// counts as one). A candidate over either is dropped like one with too many unselected ancestors. (Looking up the
+/// colliding pairs already remembered costs at most |branch|^2 per branch, also charged to the pass's link budget.) The
+/// walk does not charge the pass again for the candidate's own links (the pre-walk bound already did), so a candidate
+/// is charged at most about this much, and exhausting [MAX_FOLLOWED_LINKS_PER_PASS] takes about as many candidates as
+/// exhausting [MAX_WALKED_FRAMES_PER_PASS] with [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE]-deep ancestries (~2,000).
 pub const MAX_LINKS_PER_CANDIDATE: usize =
     MAX_FOLLOWED_LINKS_PER_PASS / (MAX_WALKED_FRAMES_PER_PASS / MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE);
 
@@ -277,6 +278,9 @@ struct Selection {
     /// Branches dropped because they contain both members of a remembered colliding pair
     #[cfg_attr(not(test), allow(dead_code))]
     pair_drops: usize,
+    /// The work of looking up remembered pairs
+    #[cfg_attr(not(test), allow(dead_code))]
+    pair_lookup_work: usize,
     /// Branches dropped by the final validity sweep (expected to be 0)
     #[cfg_attr(not(test), allow(dead_code))]
     swept_branches: usize,
@@ -303,7 +307,9 @@ struct SelectionState<'a> {
     /// Colliding pairs found by the internal-duplicate check (both directions): a later branch containing both members
     /// of a pair is dropped without checking again. A single member on its own is never dropped for it, so a
     /// transaction built to collide with an honest one cannot censor it.
-    remembered_pairs: HashMap<TransactionKey, Vec<TransactionKey>>,
+    remembered_pairs: HashMap<TransactionKey, HashSet<TransactionKey>>,
+    /// The work of looking up remembered pairs (see [SelectionState::branch_has_remembered_pair])
+    pair_lookup_work: usize,
     /// Branches dropped because they contain both members of a remembered pair
     pair_drops: usize,
     curr_weight: u64,
@@ -364,6 +370,7 @@ impl SelectionState<'_> {
             selected_branches: Vec::new(),
             invalid_branch_drops: 0,
             remembered_pairs: HashMap::new(),
+            pair_lookup_work: 0,
             pair_drops: 0,
             curr_weight: 0,
             curr_body_bytes: 0,
@@ -431,21 +438,39 @@ impl SelectionState<'_> {
             self.walked_dropped.insert(key);
         }
         for (a, b) in pairs {
-            self.remembered_pairs.entry(a).or_default().push(b);
-            self.remembered_pairs.entry(b).or_default().push(a);
+            self.remembered_pairs.entry(a).or_default().insert(b);
+            self.remembered_pairs.entry(b).or_default().insert(a);
         }
     }
 
-    /// Whether `branch` contains both members of a remembered colliding pair
-    fn branch_has_remembered_pair(&self, branch: &HashMap<TransactionKey, Arc<Transaction>>) -> bool {
+    /// Whether `branch` contains both members of a remembered colliding pair. For each branch transaction with
+    /// remembered partners, the smaller of its partner set and the branch is scanned against the other (set lookups),
+    /// so the work is at most |branch|^2 however many partners a transaction has collected. The work is charged to
+    /// `links_left`.
+    fn branch_has_remembered_pair(&mut self, branch: &HashMap<TransactionKey, Arc<Transaction>>) -> bool {
         if self.remembered_pairs.is_empty() {
             return false;
         }
-        branch.keys().any(|key| {
-            self.remembered_pairs
-                .get(key)
-                .is_some_and(|partners| partners.iter().any(|partner| branch.contains_key(partner)))
-        })
+        let mut work = 0usize;
+        let mut found = false;
+        for key in branch.keys() {
+            let Some(partners) = self.remembered_pairs.get(key) else {
+                continue;
+            };
+            if partners.len() > branch.len() {
+                work = work.saturating_add(branch.len());
+                found = branch.keys().any(|other| partners.contains(other));
+            } else {
+                work = work.saturating_add(partners.len());
+                found = partners.iter().any(|partner| branch.contains_key(partner));
+            }
+            if found {
+                break;
+            }
+        }
+        self.pair_lookup_work = self.pair_lookup_work.saturating_add(work);
+        self.links_left = self.links_left.saturating_sub(work);
+        found
     }
 
     /// Records a candidate dropped for conflicting with a selected transaction. This is deliberately neither counted
@@ -1027,6 +1052,7 @@ impl UnconfirmedPool {
             walked_dropped: state.walked_dropped,
             invalid_branch_drops: state.invalid_branch_drops,
             pair_drops: state.pair_drops,
+            pair_lookup_work: state.pair_lookup_work,
             swept_branches: swept,
         })
     }
@@ -4173,6 +4199,62 @@ mod test {
         for tx in &normal {
             assert!(selected.contains(tx));
         }
+    }
+
+    #[tokio::test]
+    async fn a_hub_with_many_colliding_partners_does_not_slow_the_pair_lookup() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let normal = normal_txs(&key_manager, 10, 5);
+        let u = normal_txs(&key_manager, 1, 5).pop().unwrap().body.inputs()[0].clone();
+        let spending_u = |n: u64, fee: u64| {
+            let tx = synthetic_tx(&base, n, fee);
+            Arc::new(Transaction::new(
+                vec![u.clone()],
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        // A min-fee hub P spending U, and many high-rate children each spending P's output and double-spending U:
+        // every {child, P} branch reports a new colliding pair, so P's partner set grows with every candidate
+        const CHILDREN: u64 = 5_000;
+        let hub = spending_u(0, 1);
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10_000,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        unconfirmed_pool.insert(hub.clone(), None, &tx_weight).unwrap();
+        let hub_output = hub.body.outputs()[0].hash();
+        for n in 1..=CHILDREN {
+            unconfirmed_pool
+                .insert(spending_u(n, 1_000_000), Some(vec![hub_output]), &tx_weight)
+                .unwrap();
+        }
+        unconfirmed_pool.insert_many(normal.clone(), &tx_weight).unwrap();
+
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        assert!(!selection.ended_early);
+        for tx in &normal {
+            assert!(selection.results.retrieved_transactions.contains(tx));
+        }
+        assert_eq!(selection.invalid_branch_drops, usize::try_from(CHILDREN).unwrap());
+        // Each lookup scans the smaller of the partner set and the branch: bounded by |branch|^2 per branch, not by
+        // the number of partners the hub has collected
+        let bound = usize::try_from(CHILDREN).unwrap() * (MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE + 1).pow(2);
+        assert!(selection.pair_lookup_work <= bound);
+        assert!(
+            selection.pair_lookup_work <= 4 * usize::try_from(CHILDREN).unwrap(),
+            "{}",
+            selection.pair_lookup_work
+        );
+        assert!(selection.links_followed < 100_000, "{}", selection.links_followed);
     }
 
     #[tokio::test]

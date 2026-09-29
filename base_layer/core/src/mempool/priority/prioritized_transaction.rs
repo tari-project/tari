@@ -34,15 +34,15 @@ use tari_transaction_components::{
 };
 use tari_utilities::{ByteArray, hex::Hex};
 
-/// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
-/// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
-/// Normally, duplicate keys will be overwritten in a BTreeMap.
 /// Whether a list contains the same item twice
 fn has_duplicates<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
     let mut seen = std::collections::HashSet::with_capacity(items.len());
     items.iter().any(|item| !seen.insert(item))
 }
 
+/// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
+/// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
+/// Normally, duplicate keys will be overwritten in a BTreeMap.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct FeePriority(Vec<u8>);
 
