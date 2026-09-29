@@ -102,9 +102,11 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
 /// Decodes the `transaction` parameter of a `submit_transaction` request.
 ///
-/// The JSON value is decoded and then round-tripped through the protobuf representation used by the gRPC and P2P
-/// entry points. That conversion is where the decode-time invariants of every transaction component are enforced,
-/// so this entry point cannot hand the mempool a transaction that a peer could not have sent.
+/// The JSON value is decoded and then round-tripped through the P2P protobuf conversion (`Transaction` <->
+/// `tari_core::proto::types::Transaction`), i.e. the conversion that transactions received from peers are decoded
+/// with. The P2P conversion is the canonical decode-time validator for every submission entry point (the gRPC
+/// `submit_transaction` handler applies the same round-trip after its own, more lenient, gRPC conversion), so this
+/// entry point cannot hand the mempool a transaction that a peer could not have sent.
 fn decode_transaction(value: serde_json::Value) -> Result<Transaction, (StatusCode, Json<ErrorResponse>)> {
     let bad_request = |e: String| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e)));
     let transaction = serde_json::from_value::<Transaction>(value).map_err(|e| bad_request(e.to_string()))?;
