@@ -4604,6 +4604,7 @@ dependencies = [
  "tari_metrics",
  "tari_node_components",
  "tari_p2p",
+ "tari_script",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",

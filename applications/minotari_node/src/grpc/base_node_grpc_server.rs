@@ -235,6 +235,38 @@ pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
     }
 }
 
+/// Decodes the header and body blobs of a `submit_block_blob` request into a [`Block`].
+///
+/// The blobs are borsh-decoded and the resulting block is then round-tripped through the protobuf representation
+/// that blocks received from peers are decoded from, i.e. the same `Block` <-> `proto::core::Block` conversion that
+/// peers' blocks go through. That conversion enforces the decode-time invariants of every block component (e.g.
+/// known kernel feature bits), so this entry point cannot hand the node a block that a peer could not have sent.
+///
+/// The P2P conversion is used rather than the gRPC one because it preserves more: every header field, every kernel
+/// and output field, and the `input_data` of compact inputs (which the gRPC encoder drops). It is not fully
+/// lossless: the proto form carries no version for a compact input, nor for the spent output behind a full input,
+/// so both come back as V0 (`get_current_version`). Only V0 is valid on any network, so a valid block is unchanged;
+/// a block that used another version fails later on `input_mr` rather than with a version error. Both proto
+/// decoders apply the same checks.
+fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bool) -> Result<Block, Status> {
+    let malformed = |e: String| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Malformed block: {e}")),
+        )
+    };
+    let mut header_bytes = header_blob;
+    let mut body_bytes = body_blob;
+    trace!(target: LOG_TARGET, "doing header");
+    let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
+    trace!(target: LOG_TARGET, "doing body");
+    let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?;
+    let block = Block::new(header, body);
+
+    let proto = tari_core::proto::core::Block::try_from(block).map_err(malformed)?;
+    Block::try_from(proto).map_err(malformed)
+}
+
 /// Rejects a batch query that asks for more than `MAX_ALLOWED_QUERY_SIZE` items, so that a single call can never force
 /// the node into an unbounded number of database lookups. `item_name` is used in the error message, e.g. "hashes".
 fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Result<(), Status> {
@@ -1880,17 +1912,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Received block blob from miner: {request:?}");
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "request: {request:?}");
-        let mut header_bytes = request.header_blob.as_slice();
-        let mut body_bytes = request.body_blob.as_slice();
-        trace!(target: LOG_TARGET, "doing header");
-
-        let header = BorshDeserialize::deserialize(&mut header_bytes)
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-        trace!(target: LOG_TARGET, "doing body");
-        let body = BorshDeserialize::deserialize(&mut body_bytes)
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-
-        let block = Block::new(header, body);
+        let block = decode_block_blob(&request.header_blob, &request.body_blob, report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -3416,4 +3438,107 @@ async fn get_block_group(
         value,
         calc_type: calc_type_response,
     }))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::{ComAndPubSignature, FixedHash};
+    use tari_core::blocks::genesis_block::get_genesis_block;
+    use tari_script::{ExecutionStack, StackItem};
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        transaction_components::{KernelFeatures, TransactionInput},
+    };
+
+    use super::*;
+
+    fn to_blobs(block: &Block) -> (Vec<u8>, Vec<u8>) {
+        (
+            borsh::to_vec(&block.header).unwrap(),
+            borsh::to_vec(&block.body).unwrap(),
+        )
+    }
+
+    fn mainnet_genesis() -> Block {
+        get_genesis_block(Network::MainNet).block().clone()
+    }
+
+    #[test]
+    fn a_valid_block_blob_round_trips_unchanged() {
+        let block = mainnet_genesis();
+        assert!(!block.body.outputs().is_empty());
+        assert!(!block.body.kernels().is_empty());
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        assert_eq!(decoded, block);
+        assert_eq!(decoded.hash(), block.hash());
+        assert_eq!(to_blobs(&decoded), (header_blob, body_blob));
+    }
+
+    #[test]
+    fn the_input_data_of_a_compact_input_survives_the_round_trip() {
+        let block = mainnet_genesis();
+        let input = TransactionInput::new_with_output_hash(
+            FixedHash::zero(),
+            ExecutionStack::new(vec![StackItem::Number(42)]),
+            ComAndPubSignature::default(),
+        );
+        let (_, outputs, kernels) = block.body.dissolve();
+        let block = Block::new(block.header, AggregateBody::new_unsorted(vec![input], outputs, kernels));
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        assert_eq!(decoded, block);
+        assert_eq!(
+            decoded.body.inputs().first().map(|i| &i.input_data),
+            Some(&ExecutionStack::new(vec![StackItem::Number(42)]))
+        );
+    }
+
+    // Since unknown kernel feature bits are also rejected by the borsh decoder, this test now fails on the borsh
+    // step rather than on the proto round-trip. The round-trip is currently redundant with borsh: every check the P2P
+    // decoders (`tari_core::proto::{block_header, transaction, sidechain_feature}`) apply has a borsh counterpart:
+    // - canonical `total_kernel_offset` / `total_script_offset` scalars and 32-byte compressed commitments and keys
+    //   (the tari_crypto borsh impls call the same `from_canonical_bytes`);
+    // - known `PowAlgorithm`, kernel / input / output / output-features versions, `OutputType` and `RangeProofType`
+    //   (all `#[borsh(use_discriminant = true)]`, so unknown discriminants fail);
+    // - `KernelFeatures::from_bits`, the `PowData` / `CoinBaseExtra` / `MaxSizeString` / covenant length bounds,
+    //   `EncryptedData::from_bytes` minimum length, and `TariScript::from_bytes` / `ExecutionStack::from_bytes` (the
+    //   borsh decoders of those types apply the same checks, including the `MAX_SCRIPT_BYTES` cap on scripts);
+    // - the side-chain feature types, whose borsh impls are derived over the same bounded field types.
+    // So no simple block is accepted by borsh and rejected by the round-trip. It is kept so that any check that is
+    // later added to the P2P decoders only applies here as well, keeping this entry point no laxer than a peer.
+    #[test]
+    fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
+        let block = mainnet_genesis();
+        let (inputs, outputs, mut kernels) = block.body.dissolve();
+        kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
+        let block = Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels));
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let err = decode_block_blob(&header_blob, &body_blob, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(err.message().starts_with("Malformed block: "), "{}", err.message());
+
+        let err = decode_block_blob(&header_blob, &body_blob, false).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert_eq!(err.message(), "Error has occurred. Details are obscured.");
+    }
+
+    #[test]
+    fn a_truncated_blob_is_rejected_as_invalid_argument() {
+        let (header_blob, body_blob) = to_blobs(&mainnet_genesis());
+
+        let (_, truncated_header) = header_blob.split_last().unwrap();
+        let (_, truncated_body) = body_blob.split_last().unwrap();
+
+        let err = decode_block_blob(truncated_header, &body_blob, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        let err = decode_block_blob(&header_blob, truncated_body, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
 }
