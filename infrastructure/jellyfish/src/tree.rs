@@ -782,7 +782,7 @@ pub struct StaleNodeIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
+    use crate::{SparseMerkleLeafNode, StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
 
     fn leaf_key(seed: u64) -> LeafKey {
         LeafKey::new(jmt_node_hash(&seed))
@@ -904,5 +904,41 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
         }
+    }
+
+    #[test]
+    fn it_rejects_an_internal_node_presented_as_a_leaf() {
+        // Two leaves whose keys differ in the first bit, so the root is the internal node of those two leaves
+        let first_bit = |k: &LeafKey| k.iter_bits().next();
+        let a = (leaf_key(1), jmt_node_hash(&10));
+        let b = (2..)
+            .map(|seed| (leaf_key(seed), jmt_node_hash(&11)))
+            .find(|(k, _)| first_bit(k) != first_bit(&a.0))
+            .unwrap();
+        let mut mem = MemoryTreeStore::new();
+        let values = [a, b].map(|(k, v)| (k, Some((v, ()))));
+        let (root, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set(values, None, None, 1)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        let (_, proof) = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(a.0.as_ref(), 1)
+            .unwrap();
+        proof.verify_inclusion(&root, &a.0, &a.1).unwrap();
+
+        // Present the root as a leaf with key = left child hash and value = right child hash
+        let (left, right) = if first_bit(&a.0) == Some(false) { (a, b) } else { (b, a) };
+        let left_hash = SparseMerkleLeafNode::new(left.0, left.1).hash();
+        let right_hash = SparseMerkleLeafNode::new(right.0, right.1).hash();
+        let fake_key = LeafKey::new(left_hash);
+        let forged = SparseMerkleProofExt::new(Some(SparseMerkleLeafNode::new(fake_key, right_hash)), vec![]);
+
+        // Forged inclusion of a key that is not in the tree
+        forged.verify_inclusion(&root, &fake_key, &right_hash).unwrap_err();
+        // Forged non-inclusion of keys that are in the tree
+        forged.verify_exclusion(&root, &a.0).unwrap_err();
+        forged.verify_exclusion(&root, &b.0).unwrap_err();
     }
 }
