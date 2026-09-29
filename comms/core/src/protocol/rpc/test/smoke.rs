@@ -498,6 +498,71 @@ async fn stream_still_works_after_cancel() {
     });
 }
 
+/// A server stream holds no client handle, so callers routinely drop the `RpcClient` and keep reading the stream (e.g.
+/// DHT network discovery's `get_peers`). Dropping the last client handle must not cut that stream short: every item and
+/// then the end of the stream must still arrive.
+#[tokio::test]
+async fn stream_completes_after_client_is_dropped() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    const NUM_ITEMS: u32 = 20;
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    drop(client);
+
+    let items = time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
+        .await
+        .expect("stream did not end after the client was dropped");
+    assert_eq!(items.len(), NUM_ITEMS as usize);
+    for item in items {
+        assert_eq!(item.unwrap().len(), 100);
+    }
+}
+
+/// In contrast to dropping the client, an explicit `close()` cuts an in-flight stream short.
+#[tokio::test]
+async fn stream_ends_early_after_client_is_closed() {
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    const NUM_ITEMS: u32 = 1000;
+    let stream = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 100,
+            delay_ms: 10,
+        })
+        .await
+        .unwrap();
+    client.close().await;
+
+    let items = time::timeout(Duration::from_secs(10), stream.collect::<Vec<_>>())
+        .await
+        .expect("stream did not end after the client was closed");
+    assert!(items.len() < NUM_ITEMS as usize);
+}
+
 /// A peer that opens a streaming request and then stops draining its yamux window used to park the
 /// server, and keep its session slot, indefinitely.
 ///

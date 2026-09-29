@@ -52,7 +52,7 @@ use futures::{
 };
 use log::*;
 use prost::Message;
-use tari_shutdown::{Shutdown, ShutdownSignal, oneshot_trigger::OneshotSignal};
+use tari_shutdown::{Shutdown, ShutdownReason, ShutdownSignal, oneshot_trigger::OneshotSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, watch},
@@ -365,6 +365,12 @@ impl ClientConnector {
         }
     }
 
+    /// Close the RPC session immediately. Any in-flight server stream is cut off and its receiver sees the end of the
+    /// stream.
+    ///
+    /// This differs from dropping the last `ClientConnector`/`RpcClient` clone: a drop lets in-flight streams run
+    /// until the server ends them (a streaming response holds no client clone, so callers commonly drop the client
+    /// while still reading the stream), and only then stops the worker.
     pub async fn close(&mut self) {
         self.shutdown.trigger();
     }
@@ -430,6 +436,9 @@ struct RpcClientWorker<TSubstream> {
     next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
     protocol_id: ProtocolId,
+    /// Resolves on `ClientConnector::close` (`ShutdownReason::Triggered`) or when the last client handle drops
+    /// (`ShutdownReason::Dropped`). Both stop the worker between requests, but only `Triggered` interrupts an
+    /// in-flight server stream.
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
     session_state: Arc<AtomicBool>,
@@ -728,11 +737,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             .map(|f| f.boxed())
             .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
         loop {
-            if self.shutdown_signal.is_triggered() {
+            // Only an explicit `close()` cuts a stream short. When the last client handle is dropped
+            // (`ShutdownReason::Dropped`) the stream is still being read by its `ClientStreaming` receiver, so let it
+            // finish; the main loop's select on `shutdown_signal` stops the worker afterwards.
+            if self.shutdown_signal.reason() == Some(ShutdownReason::Triggered) {
                 debug!(
                     target: LOG_TARGET,
-                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream \
-                     early",
+                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector explicitly closed. Quitting \
+                     stream early",
                     self.node_id,
                     self.protocol_name(),
                     self.stream_id(),
