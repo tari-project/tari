@@ -618,20 +618,16 @@ where B: BlockchainBackend + 'static
     /// requests for the full block.
     /// This may (asynchronously) block until the other request(s) complete or time out and so should typically be
     /// executed in a dedicated task.
-    /// Acquire a mempool reconciliation permit, to cover decoding and reconciling an inbound block (see
-    /// [InboundNodeCommsHandlers::handle_new_block_message]).
+    /// Acquire a mempool reconciliation permit to bound the CPU-bound decoding of an inbound block message. It must be
+    /// dropped before [InboundNodeCommsHandlers::handle_new_block_message], which may wait on the network.
     pub async fn acquire_reconciliation_permit(&self) -> Result<ReconciliationPermit, CommsInterfaceError> {
         Ok(self.mempool.acquire_reconciliation_permit().await?)
     }
 
-    /// Handle a `NewBlock` announcement from a peer. `permit` is the mempool reconciliation permit acquired before the
-    /// message was decoded; it is held through reconciliation, and used (rather than a newly acquired one) to validate
-    /// any transactions fetched from the peer.
     pub async fn handle_new_block_message(
         &mut self,
         new_block: NewBlock,
         source_peer: NodeId,
-        permit: &ReconciliationPermit,
     ) -> Result<(), CommsInterfaceError> {
         let block_hash = new_block.header.hash();
 
@@ -705,9 +701,7 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
-        let result = self
-            .reconcile_and_add_block(source_peer.clone(), new_block, permit)
-            .await;
+        let result = self.reconcile_and_add_block(source_peer.clone(), new_block).await;
 
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
@@ -866,9 +860,8 @@ where B: BlockchainBackend + 'static
         &mut self,
         source_peer: NodeId,
         new_block: NewBlock,
-        permit: &ReconciliationPermit,
     ) -> Result<(), CommsInterfaceError> {
-        let block = self.reconcile_block(source_peer.clone(), new_block, permit).await?;
+        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
         self.handle_block(block, Some(source_peer)).await?;
         Ok(())
     }
@@ -878,7 +871,6 @@ where B: BlockchainBackend + 'static
         &mut self,
         source_peer: NodeId,
         new_block: NewBlock,
-        permit: &ReconciliationPermit,
     ) -> Result<Block, CommsInterfaceError> {
         let NewBlock {
             header,
@@ -972,11 +964,9 @@ where B: BlockchainBackend + 'static
                 );
             }
 
-            // Add returned transactions to unconfirmed pool, using the reconciliation permit this block already holds
+            // Add returned transactions to unconfirmed pool
             if !transactions.is_empty() {
-                self.mempool
-                    .insert_all_with_permit(transactions.clone(), permit)
-                    .await?;
+                self.mempool.insert_all(transactions.clone()).await?;
             }
 
             if !not_found.is_empty() {

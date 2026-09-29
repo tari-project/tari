@@ -54,7 +54,10 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
-        service::{error::BaseNodeServiceError, initializer::extract_block},
+        service::{
+            error::BaseNodeServiceError,
+            initializer::{ExtractBlockError, extract_block},
+        },
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError},
@@ -695,16 +698,25 @@ fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: Reques
     });
 }
 
+/// Decode an inbound `NewBlock` message on a blocking thread, holding a mempool reconciliation permit only for the
+/// duration of the decode. The permit bounds this CPU-bound work; it is released before the block is reconciled, since
+/// reconciliation may wait on the network (up to the request timeout) and on block processing.
+async fn decode_block_message<B: BlockchainBackend + 'static>(
+    inbound_nch: &InboundNodeCommsHandlers<B>,
+    msg: Arc<PeerMessage>,
+) -> Result<DomainMessage<Result<NewBlock, ExtractBlockError>>, BaseNodeServiceError> {
+    let _permit = inbound_nch.acquire_reconciliation_permit().await?;
+    let decoded = task::spawn_blocking(move || extract_block(&msg))
+        .await
+        .map_err(|e| CommsInterfaceError::InternalError(format!("Failed to decode inbound block message: {e}")))?;
+    Ok(decoded)
+}
+
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
     msg: Arc<PeerMessage>,
 ) -> Result<(), BaseNodeServiceError> {
-    // The permit covers decoding the message and reconciling the block, including validating any transactions
-    // fetched to complete it. It is released when this function returns.
-    let permit = inbound_nch.acquire_reconciliation_permit().await?;
-    let domain_block_msg = task::spawn_blocking(move || extract_block(&msg))
-        .await
-        .map_err(|e| CommsInterfaceError::InternalError(format!("Failed to decode inbound block message: {e}")))?;
+    let domain_block_msg = decode_block_message(&inbound_nch, msg).await?;
     let DomainMessage::<_> {
         source_peer,
         inner: new_block,
@@ -720,7 +732,7 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     );
 
     inbound_nch
-        .handle_new_block_message(new_block, source_peer.node_id, &permit)
+        .handle_new_block_message(new_block, source_peer.node_id)
         .await?;
 
     Ok(())
@@ -728,40 +740,64 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
 
 #[cfg(test)]
 mod test {
+    use std::cmp::max;
+
+    use tari_common_types::types::{FixedHash, PrivateKey};
     use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use tari_node_components::blocks::BlockHeader;
     use tari_p2p::tari_message::TariMessageType;
     use tari_service_framework::reply_channel;
+    use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
     use tokio::sync::broadcast;
 
     use super::*;
     use crate::{
         base_node::comms_interface::OutboundNodeCommsInterface,
+        chain_storage::BlockchainDatabase,
         mempool::{Mempool, MempoolConfig},
-        proof_of_work::randomx_factory::RandomXFactory,
-        test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_message},
+        proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty},
+        test_helpers::{
+            blockchain::{TempDatabase, create_new_blockchain},
+            create_consensus_rules,
+            create_peer_message,
+        },
         validation::mocks::MockValidator,
     };
 
-    #[tokio::test]
-    async fn malformed_block_message_is_rejected_and_releases_the_permit() {
+    type OutboundRequests =
+        reply_channel::Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>;
+
+    fn create_handlers() -> (
+        InboundNodeCommsHandlers<TempDatabase>,
+        BlockchainDatabase<TempDatabase>,
+        Mempool,
+        OutboundRequests,
+    ) {
         let mempool = Mempool::new(
             MempoolConfig::default(),
             create_consensus_rules(),
             Box::new(MockValidator::new(true)),
         );
+        let db = create_new_blockchain();
         let (block_event_sender, _) = broadcast::channel(50);
-        let (request_sender, _) = reply_channel::unbounded();
+        let (request_sender, request_receiver) = reply_channel::unbounded();
         let (block_sender, _) = mpsc::unbounded_channel();
         let (connectivity, _) = create_connectivity_mock();
         let inbound_nch = InboundNodeCommsHandlers::new(
             block_event_sender,
-            create_new_blockchain().into(),
+            db.clone().into(),
             mempool.clone(),
             create_consensus_rules(),
             OutboundNodeCommsInterface::new(request_sender, block_sender),
             connectivity,
             RandomXFactory::new(1),
         );
+        (inbound_nch, db, mempool, request_receiver)
+    }
+
+    #[tokio::test]
+    async fn malformed_block_message_is_rejected_and_releases_the_permit() {
+        let (inbound_nch, _db, mempool, _requests) = create_handlers();
         let permits = mempool.available_reconciliation_permits();
 
         let msg = create_peer_message(TariMessageType::NewBlock, vec![0xff; 64]);
@@ -775,5 +811,57 @@ mod test {
         let err = handle_incoming_block(inbound_nch, msg).await.unwrap_err();
         assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
         assert_eq!(mempool.available_reconciliation_permits(), permits);
+    }
+
+    /// The reconciliation permit only covers decoding: it is back in the pool while reconciliation waits on the
+    /// network.
+    #[tokio::test]
+    async fn reconciliation_permit_is_released_before_reconciliation_waits_on_the_network() {
+        let (inbound_nch, db, mempool, mut requests) = create_handlers();
+        let permits = mempool.available_reconciliation_permits();
+
+        // An orphan block (its parent is unknown) with enough proof of work to pass the anti-spam gate, and a kernel
+        // that is not in our mempool, so reconciliation must ask the announcing peer for the full block
+        let tip = db.fetch_last_chain_header().unwrap();
+        let constants = db.consensus_constants().unwrap().clone();
+        let mut min_difficulty = constants.min_pow_difficulty(PowAlgorithm::Sha3x);
+        if tip.header().pow_algo() == PowAlgorithm::Sha3x {
+            min_difficulty = max(
+                tip.accumulated_data()
+                    .target_difficulty
+                    .checked_div_u64(2)
+                    .unwrap_or(min_difficulty),
+                min_difficulty,
+            );
+        }
+        let mut header = BlockHeader::new(tip.header().version);
+        header.height = tip.height() + 5;
+        header.prev_hash = FixedHash::from([7u8; 32]);
+        while sha3x_difficulty(&header).unwrap() < min_difficulty {
+            header.nonce += 1;
+        }
+        let new_block = NewBlock {
+            header,
+            coinbase_kernels: vec![],
+            coinbase_outputs: vec![],
+            kernel_excess_sigs: vec![PrivateKey::default()],
+        };
+        let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::try_from(new_block).unwrap());
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+
+        let task = task::spawn(handle_incoming_block(inbound_nch, msg));
+        // The full block request reaches the (never answering) outbound interface
+        let request = tokio::time::timeout(Duration::from_secs(30), requests.next())
+            .await
+            .expect("reconciliation did not request the full block")
+            .expect("request stream closed");
+        assert!(matches!(
+            request.request().0,
+            NodeCommsRequest::GetBlockFromAllChains(_)
+        ));
+        // ... while the decode permit has already been returned
+        assert_eq!(mempool.available_reconciliation_permits(), permits);
+        assert!(!task.is_finished());
+        task.abort();
     }
 }
