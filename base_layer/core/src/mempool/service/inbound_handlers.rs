@@ -109,6 +109,32 @@ impl MempoolInboundHandlers {
         }
     }
 
+    /// Acquire a mempool validation permit, for [MempoolInboundHandlers::submit_transaction_request]
+    pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolServiceError> {
+        Ok(self.mempool.acquire_validation_permit().await?)
+    }
+
+    /// Handle a `SubmitTransaction` request (as [MempoolInboundHandlers::handle_request] does), validating with the
+    /// given, already acquired, permit
+    pub async fn submit_transaction_request(
+        &mut self,
+        tx: Transaction,
+        permit: ValidationPermit,
+    ) -> Result<MempoolResponse, MempoolServiceError> {
+        let first_tx_kernel_excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or(MempoolServiceError::TransactionNoKernels)?
+            .get_signature()
+            .to_hex();
+        debug!(
+            target: LOG_TARGET,
+            "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
+        );
+        Ok(MempoolResponse::TxStorage(
+            self.submit_transaction(tx, None, Some(permit)).await?,
+        ))
+    }
+
     /// Handle a raw inbound transaction message from a remote peer.
     ///
     /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and

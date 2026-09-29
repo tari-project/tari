@@ -63,12 +63,13 @@ const MAX_PENDING_INBOUND_TRANSACTIONS_PER_PEER: usize = 32;
 /// peers flood at once.
 const MAX_PENDING_INBOUND_TRANSACTIONS_TOTAL: usize = 512;
 
-/// The maximum number of `SubmitTransaction` requests from the mempool handle (which serves remote peers through the
-/// P2P mempool RPC service) handled at once. Requests are handled in their own tasks, so without this they could take
-/// every validation permit ahead of gossiped transactions. Read-only requests are not limited.
+/// The maximum number of `SubmitTransaction` requests from the mempool handle handled at once. The mempool handle
+/// serves remote peers through the P2P mempool RPC service, and also the node's JSON-RPC `submit_transaction`, which
+/// therefore shares this pool. Requests are handled in their own tasks, so without this they could take every
+/// validation permit ahead of gossiped transactions. Read-only requests are not limited.
 const MAX_CONCURRENT_HANDLE_SUBMISSIONS: usize = 2;
-/// The same bound for `SubmitTransaction` requests from the local service (gRPC and JSON-RPC). A separate pool, so that
-/// remote peers cannot starve local submissions.
+/// The same bound for `SubmitTransaction` requests from the local service (`LocalMempoolService`, used by gRPC). A
+/// separate pool, so that requests through the mempool handle cannot starve these.
 const MAX_CONCURRENT_LOCAL_SUBMISSIONS: usize = MAX_CONCURRENT_HANDLE_SUBMISSIONS;
 
 type MempoolReply = oneshot::Sender<Result<MempoolResponse, MempoolServiceError>>;
@@ -275,43 +276,60 @@ impl MempoolService {
     }
 }
 
-/// Handles one request from the mempool handle or the local service, and replies to it. A `SubmitTransaction` first
-/// takes one of `submission_permits`. A request whose requester has stopped waiting (e.g. an RPC call that timed out
-/// at the client's deadline) is dropped without being handled: this is checked while it waits for a permit, and
-/// raced against its handling, so that an abandoned submission never takes a validation permit.
+/// Handles one request from the mempool handle or the local service, and replies to it.
+///
+/// A `SubmitTransaction` first takes one of `submission_permits`, then a mempool validation permit. A request whose
+/// requester has stopped waiting (e.g. an RPC call that timed out at the client's deadline) is dropped while it waits
+/// for either permit. Once it holds the validation permit it is no longer cancellable: validation, insertion and
+/// propagation always run to completion, and the submission permit is held until they have, so that abandoning a
+/// submission after validation started cannot be used to get around the bound (and a transaction that was validated
+/// and stored is always propagated). Read-only requests are simply raced against the requester going away.
 async fn handle_request(
     mut inbound_handlers: MempoolInboundHandlers,
     request: MempoolRequest,
     mut reply: MempoolReply,
     submission_permits: Arc<Semaphore>,
 ) -> Result<(), Result<MempoolResponse, MempoolServiceError>> {
-    let _permit = if matches!(request, MempoolRequest::SubmitTransaction(_)) {
-        tokio::select! {
+    let MempoolRequest::SubmitTransaction(tx) = request else {
+        let result = tokio::select! {
             biased;
             () = reply.closed() => {
-                debug!(target: LOG_TARGET, "Dropping an abandoned transaction submission");
+                debug!(target: LOG_TARGET, "Dropping an abandoned mempool request");
                 return Ok(());
             },
-            permit = submission_permits.acquire_owned() => match permit {
-                Ok(permit) => Some(permit),
-                Err(e) => {
-                    return reply.send(Err(MempoolServiceError::MempoolError(MempoolError::InternalError(format!(
-                        "Submission semaphore closed: {e}"
-                    )))));
-                },
-            },
-        }
-    } else {
-        None
+            result = inbound_handlers.handle_request(request) => result,
+        };
+        return reply.send(result);
     };
-    let result = tokio::select! {
+
+    let _submission_permit = tokio::select! {
         biased;
         () = reply.closed() => {
-            debug!(target: LOG_TARGET, "Dropping an abandoned mempool request");
+            debug!(target: LOG_TARGET, "Dropping an abandoned transaction submission");
             return Ok(());
         },
-        result = inbound_handlers.handle_request(request) => result,
+        permit = submission_permits.acquire_owned() => match permit {
+            Ok(permit) => permit,
+            Err(e) => {
+                return reply.send(Err(MempoolServiceError::MempoolError(MempoolError::InternalError(format!(
+                    "Submission semaphore closed: {e}"
+                )))));
+            },
+        },
     };
+    let validation_permit = tokio::select! {
+        biased;
+        () = reply.closed() => {
+            debug!(target: LOG_TARGET, "Dropping an abandoned transaction submission");
+            return Ok(());
+        },
+        permit = inbound_handlers.acquire_validation_permit() => match permit {
+            Ok(permit) => permit,
+            Err(e) => return reply.send(Err(e)),
+        },
+    };
+    // Not cancellable from here on
+    let result = inbound_handlers.submit_transaction_request(tx, validation_permit).await;
     reply.send(result)
 }
 
@@ -448,12 +466,22 @@ mod test {
         service_task.abort();
     }
 
-    /// Counts validations, records the maximum number of concurrent ones, and takes a while
+    /// Counts validations, records the maximum number of concurrent ones, and takes a while. Validations can also be
+    /// held at a gate.
     #[derive(Default)]
     struct CountingValidator {
         calls: std::sync::atomic::AtomicUsize,
         current: std::sync::atomic::AtomicUsize,
         max: std::sync::atomic::AtomicUsize,
+        gate_closed: std::sync::Mutex<bool>,
+        gate: std::sync::Condvar,
+    }
+
+    impl CountingValidator {
+        fn set_gate(&self, closed: bool) {
+            *self.gate_closed.lock().unwrap() = closed;
+            self.gate.notify_all();
+        }
     }
 
     impl crate::validation::TransactionValidator for Arc<CountingValidator> {
@@ -466,6 +494,12 @@ mod test {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
             self.max.fetch_max(current, Ordering::SeqCst);
+            {
+                let mut closed = self.gate_closed.lock().unwrap();
+                while *closed {
+                    closed = self.gate.wait(closed).unwrap();
+                }
+            }
             std::thread::sleep(std::time::Duration::from_millis(200));
             self.current.fetch_sub(1, Ordering::SeqCst);
             Ok(())
@@ -615,6 +649,84 @@ mod test {
         .expect("the local submission waited for the handle pool")
         .unwrap();
         assert_eq!(response, crate::mempool::TxStorageResponse::UnconfirmedPool);
+        service.task.abort();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn abandoning_a_submission_after_validation_started_does_not_free_its_slot() {
+        use std::sync::atomic::Ordering;
+        let service = start_service();
+        // Open the gate even if an assertion fails, so that the blocking validations (and the runtime) can finish
+        struct OpenOnDrop(Arc<CountingValidator>);
+        impl Drop for OpenOnDrop {
+            fn drop(&mut self) {
+                self.0.set_gate(false);
+            }
+        }
+        let _open = OpenOnDrop(service.validator.clone());
+        service.validator.set_gate(true);
+        let validation_permits = service.mempool.available_validation_permits();
+        let key_manager = KeyManager::new_random().unwrap();
+        let wait_for_calls = |n: usize| {
+            let validator = service.validator.clone();
+            async move {
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    while validator.calls.load(Ordering::SeqCst) < n {
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .expect("validation did not start");
+            }
+        };
+
+        // A submission reaches the validator, and then its requester gives up
+        let abandoned = tokio::spawn({
+            let mut handle = service.handle.clone();
+            let tx = new_tx(&key_manager);
+            async move { handle.submit_transaction(tx).await }
+        });
+        wait_for_calls(1).await;
+        abandoned.abort();
+        let _cancelled = abandoned.await;
+
+        // Two more submissions: only one of them can take the remaining slot while the abandoned one still validates
+        let submits = (0..2)
+            .map(|_| {
+                let mut handle = service.handle.clone();
+                let tx = new_tx(&key_manager);
+                tokio::spawn(async move { handle.submit_transaction(tx).await })
+            })
+            .collect::<Vec<_>>();
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        // The abandoned submission still holds its slot, one new one holds the other, and the third waits (how many of
+        // them are in the validator also depends on the number of validation permits, i.e. on the machine)
+        assert_eq!(service.handle_submission_permits.available_permits(), 0);
+        assert!(service.validator.calls.load(Ordering::SeqCst) <= MAX_CONCURRENT_HANDLE_SUBMISSIONS);
+        assert!(submits.iter().all(|submit| !submit.is_finished()));
+        if validation_permits > MAX_CONCURRENT_HANDLE_SUBMISSIONS {
+            // With enough validation permits, the only thing keeping the third submission out of the validator is its
+            // submission slot
+            wait_for_calls(2).await;
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            assert_eq!(service.validator.calls.load(Ordering::SeqCst), 2);
+        }
+
+        // Once the gate opens, everything completes - including the abandoned submission, which is stored
+        service.validator.set_gate(false);
+        for submit in submits {
+            assert_eq!(
+                submit.await.unwrap().unwrap(),
+                crate::mempool::TxStorageResponse::UnconfirmedPool
+            );
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while service.mempool.stats().await.unwrap().unconfirmed_txs < 3 {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the abandoned submission was not completed");
         service.task.abort();
     }
 }
