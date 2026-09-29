@@ -66,6 +66,7 @@ wasm-bindgen = { version = "0.2.100", optional = true }
 chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 
 [dev-dependencies]
+bincode = "1.3"
 argon2 = "0.6.0-rc.8"
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
 tari_test_utils = { workspace = true }
