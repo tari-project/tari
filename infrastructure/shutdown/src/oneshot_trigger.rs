@@ -162,6 +162,29 @@ mod test {
     }
 
     #[test]
+    fn unpolled_clone_sees_broadcast_after_another_clone_completed() {
+        // `Shared::is_terminated` is per handle: a clone taken before the broadcast keeps its own live handle, so
+        // another clone running to completion first must not make it observe `None`.
+        let mut trigger = OneshotTrigger::<u32>::new();
+        let mut first = trigger.to_signal();
+        let mut never_polled_clone = first.clone();
+        let mut never_polled_fresh = trigger.to_signal();
+        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+        assert!(first.poll_unpin(&mut cx).is_pending());
+        trigger.broadcast(9);
+        assert_eq!(first.poll_unpin(&mut cx), Poll::Ready(Some(9)));
+        assert!(first.is_terminated());
+        // Neither of the other handles has been polled, so neither is terminated, and both see the value
+        assert!(!never_polled_clone.is_terminated());
+        assert!(!never_polled_fresh.is_terminated());
+        assert_eq!(never_polled_clone.poll_unpin(&mut cx), Poll::Ready(Some(9)));
+        assert_eq!(never_polled_fresh.poll_unpin(&mut cx), Poll::Ready(Some(9)));
+        // A clone taken from a completed handle also carries the value, never `None`
+        let mut from_completed = first.clone();
+        assert_eq!(from_completed.poll_unpin(&mut cx), Poll::Ready(Some(9)));
+    }
+
+    #[test]
     fn drop_path_returns_none_consistently() {
         let trigger = OneshotTrigger::<u32>::new();
         let mut signal = trigger.to_signal();

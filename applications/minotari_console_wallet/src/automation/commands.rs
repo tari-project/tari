@@ -2474,8 +2474,13 @@ pub async fn command_runner(
                     );
                 }
                 // Remove explicitly rather than on drop, so that a failure to delete the seed-bearing database fails
-                // the command instead of being logged and ignored. A command error takes precedence.
+                // the command instead of being logged and ignored. A command error takes precedence, but `remove`
+                // consumed the drop guard, so a removal failure must be surfaced here even when the command failed.
                 let removed = temp_wallet_dir.remove();
+                if let (Err(_), Err(remove_error)) = (&result, &removed) {
+                    error!(target: LOG_TARGET, "{remove_error}");
+                    eprintln!("{remove_error}");
+                }
                 result?;
                 removed?;
             },
