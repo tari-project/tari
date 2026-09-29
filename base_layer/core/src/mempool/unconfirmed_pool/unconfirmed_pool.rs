@@ -71,10 +71,11 @@ const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE);
 /// much of unused budget.
 pub const MIN_TRANSACTION_BODY_BYTES: usize = 1024;
 
-/// The maximum number of candidates one selection pass passes over without counting them towards
-/// `weight_tx_skip_count` (because only their bytes did not fit, or because they conflict with a selected or queued
-/// transaction). Once reached, the pass ends as if the byte budget bound. This bounds the work an adversarial pool can
-/// make a single template request do.
+/// The maximum number of candidates one selection pass passes over because only their bytes did not fit (these do not
+/// count towards `weight_tx_skip_count`). Once reached, the pass ends as if the byte budget bound. This bounds the work
+/// an adversarial pool can make a single template request do. Candidates dropped for conflicting with a selected
+/// transaction are not counted: they are recognised before their ancestors are walked (or after a walk that was paid
+/// for once, when they were queued), so they cannot be used to end the pass.
 pub const MAX_BYTE_SKIPS_PER_PASS: usize = 500;
 
 /// A transaction's weight for ordering a block template *under byte pressure*: its real weight, or its share of the
@@ -169,9 +170,12 @@ struct Selection {
     /// Whether the byte budget bound: some candidate was passed over because its bytes did not fit, or the pass ended
     /// early because of bytes or free skips
     byte_bound: bool,
-    /// The number of candidates passed over without counting towards `weight_tx_skip_count`
+    /// The number of candidates passed over because only their bytes did not fit
     #[cfg_attr(not(test), allow(dead_code))]
-    free_skips: usize,
+    byte_skips: usize,
+    /// The number of candidates dropped because they conflict with a selected transaction
+    #[cfg_attr(not(test), allow(dead_code))]
+    conflict_drops: usize,
 }
 
 /// The working state of one selection pass
@@ -182,14 +186,14 @@ struct SelectionState<'a> {
     selected_txs: HashMap<TransactionKey, Arc<Transaction>>,
     /// The inputs spent by the selected transactions
     selected_inputs: HashSet<HashOutput>,
-    /// The inputs spent by any branch that was queued for selection (never removed; only used to classify skips)
-    queued_inputs: HashSet<HashOutput>,
     curr_weight: u64,
     curr_body_bytes: usize,
     /// Skips counting towards `weight_tx_skip_count`
     weight_skips: usize,
-    /// Skips that do not (see [UnconfirmedPool::select_txs]), bounded by [MAX_BYTE_SKIPS_PER_PASS]
-    free_skips: usize,
+    /// Byte-only skips, which do not count towards `weight_tx_skip_count` but are bounded by [MAX_BYTE_SKIPS_PER_PASS]
+    byte_skips: usize,
+    /// Candidates dropped for conflicting with a selected transaction; neither counted nor bounded
+    conflict_drops: usize,
     byte_bound: bool,
     /// Set when the pass must end without considering further candidates
     stopped: bool,
@@ -210,11 +214,11 @@ impl SelectionState<'_> {
             ranking,
             selected_txs: HashMap::new(),
             selected_inputs: HashSet::new(),
-            queued_inputs: HashSet::new(),
             curr_weight: 0,
             curr_body_bytes: 0,
             weight_skips: 0,
-            free_skips: 0,
+            byte_skips: 0,
+            conflict_drops: 0,
             byte_bound: false,
             stopped: false,
             transactions_to_remove_and_recheck: Vec::new(),
@@ -234,17 +238,29 @@ impl SelectionState<'_> {
         self.remaining_bytes() < MIN_TRANSACTION_BODY_BYTES
     }
 
-    fn too_many_free_skips(&self) -> bool {
-        self.free_skips >= MAX_BYTE_SKIPS_PER_PASS
+    fn too_many_byte_skips(&self) -> bool {
+        self.byte_skips >= MAX_BYTE_SKIPS_PER_PASS
     }
 
-    /// Records a skip that does not count towards `weight_tx_skip_count`. `bytes` is whether it was because of the byte
-    /// budget.
-    fn free_skip(&mut self, bytes: bool) {
-        self.free_skips = self.free_skips.saturating_add(1);
-        if bytes {
-            self.byte_bound = true;
-        }
+    /// Records a candidate passed over only because its bytes did not fit
+    fn byte_skip(&mut self) {
+        self.byte_skips = self.byte_skips.saturating_add(1);
+        self.byte_bound = true;
+    }
+
+    /// Records a candidate dropped for conflicting with a selected transaction. This is deliberately neither counted
+    /// towards any limit nor a reason to stop: it can never be mined alongside what is selected.
+    fn conflict_drop(&mut self) {
+        self.conflict_drops = self.conflict_drops.saturating_add(1);
+    }
+
+    /// Whether `transaction` itself spends an input that a selected transaction spends
+    fn spends_a_selected_input(&self, transaction: &Transaction) -> bool {
+        transaction
+            .body
+            .inputs()
+            .iter()
+            .any(|input| self.selected_inputs.contains(&input.output_hash()))
     }
 }
 
@@ -444,17 +460,19 @@ impl UnconfirmedPool {
     /// serialized body size does not exceed `max_body_bytes`.
     ///
     /// A transaction (with its unselected dependencies) that would exceed the weight limit is skipped, counting towards
-    /// `weight_tx_skip_count`. Two kinds of skip do *not* count towards it, since neither is evidence that the block
-    /// is full:
-    /// * a candidate that fits by weight but not by bytes: it stays in the pool for a later template;
-    /// * a candidate that spends an input already spent by a selected (or queued) transaction: it can never be mined
-    ///   alongside them.
+    /// `weight_tx_skip_count`. Two kinds of candidate do *not* count towards it, since neither is evidence that the
+    /// block is full:
+    /// * a candidate that fits by weight but not by bytes: it stays in the pool for a later template. These byte skips
+    ///   are bounded by [MAX_BYTE_SKIPS_PER_PASS], which bounds the ancestor walks a pass can be made to do;
+    /// * a candidate (or branch) that spends an input already spent by a selected transaction: it can never be mined
+    ///   alongside it. It is dropped without counting towards anything, and never ends the pass: a candidate's own
+    ///   inputs are checked in O(inputs) before its ancestors are walked, and a queued branch is checked when popped
+    ///   (its walk was paid once, when it was queued).
     ///
     /// Otherwise a handful of large or conflicting transactions could use up the skip allowance and leave the rest of
-    /// the template empty. These "free" skips are bounded instead by [MAX_BYTE_SKIPS_PER_PASS], which also bounds the
-    /// work a pass can be made to do; the pass also ends once the remaining byte budget is smaller than
-    /// [MIN_TRANSACTION_BODY_BYTES], or the pool is exhausted. A pass that ends early because of bytes (or free skips)
-    /// reports `byte_bound`, so that the effective-weight pass runs too.
+    /// the template empty. The pass also ends once the remaining byte budget is smaller than
+    /// [MIN_TRANSACTION_BODY_BYTES], or the pool is exhausted. A pass that ends early because of bytes reports
+    /// `byte_bound`, so that the effective-weight pass runs too.
     #[allow(clippy::too_many_lines)]
     fn select_txs(
         &self,
@@ -486,7 +504,7 @@ impl UnconfirmedPool {
             if state.selected_txs.contains_key(tx_key) {
                 continue;
             }
-            if state.out_of_bytes() || state.too_many_free_skips() {
+            if state.out_of_bytes() || state.too_many_byte_skips() {
                 // Nothing else can fit, or this pass has done enough work: the byte budget bound
                 state.byte_bound = true;
                 exhausted = false;
@@ -505,10 +523,15 @@ impl UnconfirmedPool {
             if state.selected_txs.contains_key(tx_key) {
                 continue;
             }
-            // Cheap check before walking the transaction's ancestors: if it cannot fit on its own, neither can its
-            // branch
+            // Cheap checks before walking the transaction's ancestors. If it spends an input that is already spent, it
+            // can never be mined with the selection: drop it without counting it.
+            if state.spends_a_selected_input(&prioritized_transaction.transaction) {
+                state.conflict_drop();
+                continue;
+            }
+            // If it cannot fit on its own, neither can its branch
             if prioritized_transaction.body_size > state.remaining_bytes() {
-                state.free_skip(true);
+                state.byte_skip();
                 continue;
             }
             let mut total_transaction_weight = 0;
@@ -542,7 +565,10 @@ impl UnconfirmedPool {
             let fits_weight = total_weight_after_candidates <= total_weight;
             let fits_bytes = body_bytes_after_candidates <= max_body_bytes;
             let needs_recheck = !potential_transactions_to_remove_and_recheck.is_empty();
-            if !needs_recheck && fits_weight && fits_bytes {
+            if !needs_recheck && Self::conflicts_with(&candidate_transactions_to_select, &state.selected_inputs) {
+                // An ancestor spends an input that is already spent: the branch can never be mined with the selection
+                state.conflict_drop();
+            } else if !needs_recheck && fits_weight && fits_bytes {
                 for dependend_on_tx_key in candidate_transactions_to_select.keys() {
                     if dependend_on_tx_key != tx_key {
                         // Transaction is not depended on itself.
@@ -558,9 +584,6 @@ impl UnconfirmedPool {
                     .saturating_mul(1000)
                     .checked_div(total_transaction_rank_weight)
                     .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-                state
-                    .queued_inputs
-                    .extend(Self::input_hashes(&candidate_transactions_to_select));
                 state.complete_transaction_branch.insert(
                     *tx_key,
                     (
@@ -573,16 +596,7 @@ impl UnconfirmedPool {
                 state.potentional_to_add.push((fee_per_byte, *tx_key));
             } else if !needs_recheck && fits_weight {
                 // Only the bytes do not fit
-                state.free_skip(true);
-            } else if !needs_recheck &&
-                Self::conflicts_with(
-                    &candidate_transactions_to_select,
-                    &state.selected_inputs,
-                    &state.queued_inputs,
-                )
-            {
-                // It can never be mined alongside what is already selected or queued
-                state.free_skip(false);
+                state.byte_skip();
             } else {
                 state
                     .transactions_to_remove_and_recheck
@@ -616,7 +630,8 @@ impl UnconfirmedPool {
             },
             total_fees,
             byte_bound: state.byte_bound,
-            free_skips: state.free_skips,
+            byte_skips: state.byte_skips,
+            conflict_drops: state.conflict_drops,
         })
     }
 
@@ -628,13 +643,12 @@ impl UnconfirmedPool {
             .map(|input| input.output_hash())
     }
 
-    /// Whether any of the given transactions spends an input in either of the given sets
+    /// Whether any of the given transactions spends one of the given (selected) inputs
     fn conflicts_with(
         transactions: &HashMap<TransactionKey, Arc<Transaction>>,
         selected_inputs: &HashSet<HashOutput>,
-        queued_inputs: &HashSet<HashOutput>,
     ) -> bool {
-        Self::input_hashes(transactions).any(|hash| selected_inputs.contains(&hash) || queued_inputs.contains(&hash))
+        Self::input_hashes(transactions).any(|hash| selected_inputs.contains(&hash))
     }
 
     /// The transaction keys in the order they are considered for selection: by stored priority (fee per gram of real
@@ -695,7 +709,7 @@ impl UnconfirmedPool {
             Some((fee_per_byte, _)) => *fee_per_byte >= fee_per_byte_threshold,
             None => false,
         } {
-            if state.out_of_bytes() || state.too_many_free_skips() {
+            if state.out_of_bytes() || state.too_many_byte_skips() {
                 // Nothing else can fit, or this pass has done enough work: the byte budget bound
                 state.byte_bound = true;
                 state.stopped = true;
@@ -746,14 +760,10 @@ impl UnconfirmedPool {
                     .ok_or(UnconfirmedPoolError::InternalError(
                         "Overflow when calculating transaction body sizes".to_string(),
                     ))?;
-            let conflicts = Self::conflicts_with(
-                &candidate_transactions_to_select,
-                &state.selected_inputs,
-                &HashSet::new(),
-            );
-            if conflicts {
-                // Spends an input that a selected transaction already spends: it can never be mined alongside it
-                state.free_skip(false);
+            if Self::conflicts_with(&candidate_transactions_to_select, &state.selected_inputs) {
+                // Spends an input that a selected transaction already spends: it can never be mined alongside it.
+                // Not counted towards any limit (its walk was paid once, when it was queued).
+                state.conflict_drop();
             } else if total_weight_after_candidates <= state.total_weight &&
                 body_bytes_after_candidates <= state.max_body_bytes
             {
@@ -777,7 +787,7 @@ impl UnconfirmedPool {
                 state.selected_txs.extend(candidate_transactions_to_select);
             } else if total_weight_after_candidates <= state.total_weight {
                 // Only the bytes do not fit
-                state.free_skip(true);
+                state.byte_skip();
             } else {
                 state.weight_skips = state.weight_skips.saturating_add(1);
                 if state.weight_skips >= self.config.weight_tx_skip_count {
@@ -1863,9 +1873,79 @@ mod test {
         for tx in &normal {
             assert!(selected.contains(tx));
         }
-        assert_eq!(selection.free_skips, sentinels.len());
+        // Recognised as conflicting before their ancestors are walked, and not counted towards any limit
+        assert_eq!(selection.conflict_drops, sentinels.len());
+        assert_eq!(selection.byte_skips, 0);
         // Not a byte-budget problem
         assert!(!selection.byte_bound);
+    }
+
+    #[tokio::test]
+    async fn many_small_conflicting_spends_do_not_end_the_pass() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let normal = normal_txs(&key_manager, 10, 5);
+        // More small sentinels than MAX_BYTE_SKIPS_PER_PASS, all spending the same input, ranked above the normal
+        // transactions. Each fits by weight and bytes; only one of them can ever be mined.
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let input = base.body.inputs().first().unwrap().clone();
+        let sentinels = (0..(MAX_BYTE_SKIPS_PER_PASS as u64 + 10))
+            .map(|n| {
+                let tx = synthetic_tx(&base, n, 5_000);
+                Arc::new(Transaction::new(
+                    vec![input.clone()],
+                    tx.body.outputs().clone(),
+                    tx.body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 1_000,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        });
+        unconfirmed_pool
+            .insert_many(sentinels.iter().chain(normal.iter()).cloned(), &tx_weight)
+            .unwrap();
+        let priority = |tx: &Arc<Transaction>| {
+            unconfirmed_pool
+                .tx_by_key
+                .values()
+                .find(|p| &p.transaction == tx)
+                .unwrap()
+                .priority
+                .clone()
+        };
+        assert!(
+            sentinels
+                .iter()
+                .all(|sentinel| priority(sentinel) > priority(&normal[0]))
+        );
+
+        for ranking in [Ranking::Weight, Ranking::EffectiveWeight {
+            max_block_transaction_weight: max_weight(),
+            max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
+        }] {
+            let selection = unconfirmed_pool
+                .select_txs(u64::MAX, MAX_BLOCK_TEMPLATE_BODY_BYTES, ranking)
+                .unwrap();
+            let selected = &selection.results.retrieved_transactions;
+            assert_eq!(
+                selected.iter().filter(|tx| sentinels.contains(tx)).count(),
+                1,
+                "{ranking:?}"
+            );
+            for tx in &normal {
+                assert!(selected.contains(tx), "{ranking:?}");
+            }
+            assert_eq!(selected.len(), 1 + normal.len());
+            // Every other sentinel is dropped without counting towards any limit
+            assert_eq!(selection.conflict_drops, sentinels.len() - 1);
+            assert_eq!(selection.byte_skips, 0);
+            assert!(!selection.byte_bound);
+        }
     }
 
     #[tokio::test]
@@ -1960,7 +2040,7 @@ mod test {
         assert!(selection.results.retrieved_transactions.is_empty());
         assert!(selection.byte_bound);
         // The pass stopped at the cap rather than visiting the whole pool
-        assert_eq!(selection.free_skips, MAX_BYTE_SKIPS_PER_PASS);
+        assert_eq!(selection.byte_skips, MAX_BYTE_SKIPS_PER_PASS);
     }
 
     #[test]
