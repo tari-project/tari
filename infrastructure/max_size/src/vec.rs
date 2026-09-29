@@ -22,7 +22,6 @@
 
 use std::{
     convert::TryFrom,
-    iter::FromIterator,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -134,13 +133,28 @@ impl<T, const MAX_SIZE: usize> MaxSizeVec<T, MAX_SIZE> {
         }
     }
 
-    /// Creates a `MaxSizeVec` from the given items, truncating if necessary.
-    pub fn from_items_truncate(items: Vec<T>) -> Self {
-        let len = std::cmp::min(items.len(), MAX_SIZE);
-        Self {
-            vec: items.into_iter().take(len).collect(),
-            _marker: PhantomData,
+    /// Creates a `MaxSizeVec` from an iterator, failing if it yields more than `MAX_SIZE` items.
+    ///
+    /// The iterator is consumed lazily and abandoned at the `MAX_SIZE + 1`-th item, so an unbounded (or very long)
+    /// iterator can not make this allocate more than `MAX_SIZE` elements. There is intentionally no infallible
+    /// (`FromIterator`) or truncating constructor: silently dropping items would make the value differ from its
+    /// input.
+    pub fn try_from_iter<I: IntoIterator<Item = T>>(iter: I) -> Result<Self, MaxSizeVecError> {
+        let iter = iter.into_iter();
+        let mut vec = Vec::with_capacity(iter.size_hint().0.min(MAX_SIZE));
+        for item in iter {
+            if vec.len() >= MAX_SIZE {
+                return Err(MaxSizeVecError::MaxSizeVecLengthError {
+                    expected: MAX_SIZE,
+                    actual: MAX_SIZE.saturating_add(1),
+                });
+            }
+            vec.push(item);
         }
+        Ok(Self {
+            vec,
+            _marker: PhantomData,
+        })
     }
 
     /// Returns the maximum size of the `MaxSizeVec`.
@@ -245,23 +259,6 @@ impl<'a, T, const MAX_SIZE: usize> IntoIterator for &'a mut MaxSizeVec<T, MAX_SI
     }
 }
 
-impl<T, const MAX_SIZE: usize> FromIterator<T> for MaxSizeVec<T, MAX_SIZE> {
-    /// Creates a `MaxSizeVec` from an iterator.
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut vec = Vec::new();
-        for item in iter {
-            if vec.len() >= MAX_SIZE {
-                break;
-            }
-            vec.push(item);
-        }
-        Self {
-            vec,
-            _marker: PhantomData,
-        }
-    }
-}
-
 #[derive(Clone, Debug, thiserror::Error, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MaxSizeVecError {
     #[error("Invalid vector length: expected {expected}, got {actual}")]
@@ -274,6 +271,34 @@ mod tests {
 
     const MAX: usize = 10;
     type Vec32 = MaxSizeVec<u32, MAX>;
+
+    #[test]
+    fn try_from_iter_accepts_up_to_max() {
+        assert_eq!(Vec32::try_from_iter(std::iter::empty()).unwrap().len(), 0);
+        let v = Vec32::try_from_iter(0..u32::try_from(MAX).unwrap()).unwrap();
+        assert_eq!(v.into_vec(), (0..u32::try_from(MAX).unwrap()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn try_from_iter_rejects_max_plus_one() {
+        let err = Vec32::try_from_iter(0..=u32::try_from(MAX).unwrap()).unwrap_err();
+        assert_eq!(err, MaxSizeVecError::MaxSizeVecLengthError {
+            expected: MAX,
+            actual: MAX + 1
+        });
+    }
+
+    #[test]
+    fn try_from_iter_stops_consuming_at_max_plus_one() {
+        // An unbounded iterator must be abandoned as soon as the bound is exceeded
+        let mut pulled = 0usize;
+        let iter = std::iter::repeat_with(|| {
+            pulled += 1;
+            0u32
+        });
+        assert!(Vec32::try_from_iter(iter).is_err());
+        assert_eq!(pulled, MAX + 1);
+    }
 
     #[test]
     fn owned_iteration_yields_all_elements_in_order() {

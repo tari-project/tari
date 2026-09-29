@@ -24,7 +24,6 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
-    cmp,
     convert::TryFrom,
     fmt::Display,
     ops::{Deref, DerefMut},
@@ -93,12 +92,6 @@ impl<const MAX: usize> MaxSizeBytes<MAX> {
 
     pub fn empty() -> Self {
         Self { inner: Vec::new() }
-    }
-
-    pub fn from_bytes_truncate<T: AsRef<[u8]>>(bytes: T) -> Self {
-        let mut b = bytes.as_ref().to_vec();
-        b.truncate(cmp::min(b.len(), MAX));
-        Self { inner: b }
     }
 
     pub fn max_size(&self) -> usize {

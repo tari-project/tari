@@ -68,7 +68,7 @@ impl DualAddress {
                     return Err(TariAddressError::PaymentIdTooLarge);
                 }
                 features.set(TariAddressFeatures::PAYMENT_ID, true);
-                MaxSizeBytes::from_bytes_truncate(data)
+                MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?
             },
             None => MaxSizeBytes::empty(),
         };
@@ -94,8 +94,9 @@ impl DualAddress {
         if data.len() > MAX_ENCRYPTED_DATA_SIZE {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
+        let memo_field_payment_id = MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?;
         self.features.set(TariAddressFeatures::PAYMENT_ID, true);
-        self.memo_field_payment_id = MaxSizeBytes::from_bytes_truncate(data);
+        self.memo_field_payment_id = memo_field_payment_id;
         Ok(())
     }
 
@@ -183,11 +184,12 @@ impl DualAddress {
         let public_spend_key =
             CompressedPublicKey::from_canonical_bytes(bytes.get(34..66).ok_or(TariAddressError::InvalidSize)?)
                 .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let memo_field_payment_id = MaxSizeBytes::from_bytes_truncate(
+        let memo_field_payment_id = MaxSizeBytes::from_bytes_checked(
             bytes
                 .get(66..length.saturating_sub(1))
                 .ok_or(TariAddressError::InvalidSize)?,
-        );
+        )
+        .ok_or(TariAddressError::InvalidSize)?;
         Ok(Self {
             network,
             features,

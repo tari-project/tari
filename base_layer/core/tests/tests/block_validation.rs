@@ -413,7 +413,8 @@ fn add_bad_monero_data(tblock: &mut Block, seed_key: &str, cm: &BaseNodeConsensu
     // Add some "garbage" bytes to the end of the pow_data
     let mut pow_data = tblock.header.pow.pow_data.to_vec();
     pow_data.extend([1u8; 100]);
-    tblock.header.pow.pow_data = PowData::from_bytes_truncate(pow_data);
+    pow_data.truncate(PowData::default().max_size());
+    tblock.header.pow.pow_data = PowData::try_from(pow_data).unwrap();
 }
 
 #[tokio::test]
