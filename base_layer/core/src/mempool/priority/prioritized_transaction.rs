@@ -26,7 +26,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
+use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, UncompressedPublicKey};
 use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     transaction_components::{Transaction, TransactionError},
@@ -100,6 +100,10 @@ pub struct PrioritizedTransaction {
     /// The hashes of the outputs this transaction spends, computed once on insert, so that conflict checks during
     /// block template selection are set lookups rather than hashing
     pub input_hashes: Vec<HashOutput>,
+    /// The hashes of the outputs this transaction produces, computed once on insert
+    pub output_hashes: Vec<HashOutput>,
+    /// The (compressed) commitments of the outputs this transaction produces, as 32-byte keys, computed once on insert
+    pub output_commitments: Vec<FixedHash>,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -121,6 +125,14 @@ impl PrioritizedTransaction {
             .iter()
             .map(|input| input.output_hash())
             .collect();
+        let output_hashes = transaction.body.outputs().iter().map(|output| output.hash()).collect();
+        let output_commitments = transaction
+            .body
+            .outputs()
+            .iter()
+            .map(|output| FixedHash::try_from(output.commitment.as_bytes()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -138,6 +150,8 @@ impl PrioritizedTransaction {
             weight,
             body_size,
             input_hashes,
+            output_hashes,
+            output_commitments,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })

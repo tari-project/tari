@@ -99,13 +99,30 @@ pub const MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE: usize = 100;
 /// number of transactions can still cost. When it runs out, the pass ends as if [MAX_WALKED_FRAMES_PER_PASS] had.
 pub const MAX_FOLLOWED_LINKS_PER_PASS: usize = 2_000_000;
 
+/// The maximum number of dependency links one candidate's walk (and its pre-walk ancestor weight bound) may follow. A
+/// candidate with more is dropped like one with too many unselected ancestors. This keeps the link budget from binding
+/// before the frame budget: exhausting [MAX_FOLLOWED_LINKS_PER_PASS] takes as many candidates as exhausting
+/// [MAX_WALKED_FRAMES_PER_PASS] with [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE]-deep ancestries.
+pub const MAX_LINKS_PER_CANDIDATE: usize =
+    MAX_FOLLOWED_LINKS_PER_PASS / (MAX_WALKED_FRAMES_PER_PASS / MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE);
+
+/// The outcome of the pre-walk ancestor weight bound
+enum BoundOutcome {
+    Bound(u64),
+    /// The pass's [MAX_FOLLOWED_LINKS_PER_PASS] budget ran out
+    OutOfLinks,
+    /// The candidate has more than [MAX_LINKS_PER_CANDIDATE] links
+    TooManyLinks,
+}
+
 /// How an ancestor walk ended
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WalkOutcome {
     Complete,
     /// The pass's [MAX_WALKED_FRAMES_PER_PASS] or [MAX_FOLLOWED_LINKS_PER_PASS] budget ran out
     OutOfFrames,
-    /// The candidate has more than [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE] unselected ancestors
+    /// The candidate has more than [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE] unselected ancestors, or its walk would
+    /// follow more than [MAX_LINKS_PER_CANDIDATE] links
     TooManyAncestors,
 }
 
@@ -179,6 +196,9 @@ pub struct UnconfirmedPool {
     txs_by_output: HashMap<HashOutput, Vec<TransactionKey>>,
     /// For each output spent by a pool transaction, the pool transactions spending it (from their stored input hashes)
     txs_by_spent_output: HashMap<HashOutput, Vec<TransactionKey>>,
+    /// For each output commitment produced by a pool transaction, the pool transactions producing it. A block may not
+    /// contain two outputs with the same commitment, even if the outputs differ otherwise (and so hash differently).
+    txs_by_output_commitment: HashMap<FixedHash, Vec<TransactionKey>>,
     txs_by_unique_id: HashMap<[u8; 32], Vec<TransactionKey>>,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
@@ -231,6 +251,12 @@ struct Selection {
     /// The dependency links the pass followed (see [MAX_FOLLOWED_LINKS_PER_PASS])
     #[cfg_attr(not(test), allow(dead_code))]
     links_followed: usize,
+    /// Branches dropped because two of their own transactions double-spend or duplicate an output
+    #[cfg_attr(not(test), allow(dead_code))]
+    invalid_branch_drops: usize,
+    /// Branches dropped by the final validity sweep (expected to be 0)
+    #[cfg_attr(not(test), allow(dead_code))]
+    swept_branches: usize,
     /// Whether the pass ended before considering every candidate
     ended_early: bool,
     /// The candidates whose ancestors this pass walked and that it then dropped (for conflicting, or for not fitting
@@ -247,6 +273,10 @@ struct SelectionState<'a> {
     /// Pool transactions that spend an output a selected transaction spends (found through the pool's
     /// `txs_by_spent_output` index when a branch is selected): they can never be mined alongside the selection
     conflicting: HashSet<TransactionKey>,
+    /// The branches selected, in order (for the final validity sweep)
+    selected_branches: Vec<Vec<TransactionKey>>,
+    /// Branches dropped because two of their own transactions double-spend or duplicate an output
+    invalid_branch_drops: usize,
     curr_weight: u64,
     curr_body_bytes: usize,
     /// Skips counting towards `weight_tx_skip_count`
@@ -302,6 +332,8 @@ impl SelectionState<'_> {
             ranking,
             selected_txs: HashMap::new(),
             conflicting: HashSet::new(),
+            selected_branches: Vec::new(),
+            invalid_branch_drops: 0,
             curr_weight: 0,
             curr_body_bytes: 0,
             weight_skips: 0,
@@ -394,6 +426,7 @@ impl UnconfirmedPool {
             tx_by_priority: BTreeMap::new(),
             txs_by_output: HashMap::new(),
             txs_by_spent_output: HashMap::new(),
+            txs_by_output_commitment: HashMap::new(),
             txs_by_unique_id: HashMap::new(),
             max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
         }
@@ -447,6 +480,12 @@ impl UnconfirmedPool {
         }
         for input_hash in &prioritized_tx.input_hashes {
             self.txs_by_spent_output.entry(*input_hash).or_default().push(new_key);
+        }
+        for commitment in &prioritized_tx.output_commitments {
+            self.txs_by_output_commitment
+                .entry(*commitment)
+                .or_default()
+                .push(new_key);
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
@@ -708,19 +747,27 @@ impl UnconfirmedPool {
                 continue;
             }
             // If its dependencies are already known to be too heavy, so is its branch
-            let Some(weight_bound) = self.ancestor_weight_bound(
+            let weight_bound = match self.ancestor_weight_bound(
                 prioritized_transaction,
                 &state.selected_txs,
                 &state.ancestor_weight_bounds,
                 &mut state.links_left,
-            )?
-            else {
-                // Out of walking budget (see the `OutOfFrames` case below)
-                state.frame_budget_exhausted = true;
-                state.out_of_frames_candidate = Some(*tx_key);
-                state.byte_bound = true;
-                exhausted = false;
-                break;
+            )? {
+                BoundOutcome::Bound(bound) => bound,
+                BoundOutcome::TooManyLinks => {
+                    // Junk-shaped: drop it without counting it towards anything (as for too many ancestors)
+                    state.too_many_ancestors_drops = state.too_many_ancestors_drops.saturating_add(1);
+                    state.walked_dropped.insert(*tx_key);
+                    continue;
+                },
+                BoundOutcome::OutOfLinks => {
+                    // Out of walking budget (see the `OutOfFrames` case below)
+                    state.frame_budget_exhausted = true;
+                    state.out_of_frames_candidate = Some(*tx_key);
+                    state.byte_bound = true;
+                    exhausted = false;
+                    break;
+                },
             };
             if state.curr_weight.saturating_add(weight_bound) > total_weight {
                 if state.weight_skip(self.config.weight_tx_skip_count) {
@@ -787,9 +834,18 @@ impl UnconfirmedPool {
                 fits_weight &&
                 fits_bytes &&
                 state.branch_conflicts(&candidate_transactions_to_select);
+            let invalid = !conflicts &&
+                !needs_recheck &&
+                fits_weight &&
+                fits_bytes &&
+                self.branch_has_internal_duplicates(&candidate_transactions_to_select, &mut state.links_left)?;
             if conflicts {
                 // An ancestor spends an input that is already spent: the branch can never be mined with the selection
                 state.conflict_drop();
+                state.walked_dropped.insert(*tx_key);
+            } else if invalid {
+                // Two of its own transactions double-spend or duplicate an output: never valid in a block
+                state.invalid_branch_drops = state.invalid_branch_drops.saturating_add(1);
                 state.walked_dropped.insert(*tx_key);
             } else if !needs_recheck && fits_weight && fits_bytes {
                 for dependend_on_tx_key in candidate_transactions_to_select.keys() {
@@ -848,6 +904,11 @@ impl UnconfirmedPool {
         if !exhausted && state.out_of_bytes() {
             state.byte_bound = true;
         }
+        // Defence in depth: the selection must be a valid set of transactions for one block
+        let (keep, swept) = self.sweep_selection(&state.selected_branches)?;
+        if swept > 0 {
+            state.selected_txs.retain(|key, _| keep.contains(key));
+        }
 
         let total_fees = state.selected_txs.values().try_fold(0u64, |total, tx| {
             total
@@ -874,12 +935,15 @@ impl UnconfirmedPool {
             links_followed: MAX_FOLLOWED_LINKS_PER_PASS.saturating_sub(state.links_left),
             ended_early: !exhausted,
             walked_dropped: state.walked_dropped,
+            invalid_branch_drops: state.invalid_branch_drops,
+            swept_branches: swept,
         })
     }
 
-    /// Marks every other pool transaction that spends an output one of `branch` spends as conflicting with the
-    /// selection. Bounded by the inputs of the selected branch times the spenders of each; each transaction is marked
-    /// at most once per pass.
+    /// Marks as conflicting with the selection every other pool transaction that spends an output one of `branch`
+    /// spends, produces an output one of `branch` produces, or produces an output with the same commitment as one of
+    /// `branch`'s: none of them can be in the same block. Bounded by the inputs and outputs of the selected branch
+    /// times the transactions sharing each; each transaction is marked at most once per pass.
     fn mark_conflicts(
         &self,
         branch: &HashMap<TransactionKey, Arc<Transaction>>,
@@ -887,17 +951,115 @@ impl UnconfirmedPool {
     ) -> Result<(), UnconfirmedPoolError> {
         for key in branch.keys() {
             let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-            for input_hash in &tx.input_hashes {
-                if let Some(spenders) = self.txs_by_spent_output.get(input_hash) {
-                    for spender in spenders {
-                        if !branch.contains_key(spender) && !state.selected_txs.contains_key(spender) {
-                            state.conflicting.insert(*spender);
-                        }
+            let others = tx
+                .input_hashes
+                .iter()
+                .filter_map(|hash| self.txs_by_spent_output.get(hash))
+                .chain(tx.output_hashes.iter().filter_map(|hash| self.txs_by_output.get(hash)))
+                .chain(
+                    tx.output_commitments
+                        .iter()
+                        .filter_map(|commitment| self.txs_by_output_commitment.get(commitment)),
+                );
+            for keys in others {
+                for other in keys {
+                    if !branch.contains_key(other) && !state.selected_txs.contains_key(other) {
+                        state.conflicting.insert(*other);
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// Whether two transactions within `branch` spend the same output, produce the same output, or produce outputs
+    /// with the same commitment: such a branch can never be in a valid block. O(inputs + outputs of the branch),
+    /// charged to `links_left` (saturating: the next walk notices when it has run out).
+    fn branch_has_internal_duplicates(
+        &self,
+        branch: &HashMap<TransactionKey, Arc<Transaction>>,
+        links_left: &mut usize,
+    ) -> Result<bool, UnconfirmedPoolError> {
+        let mut inputs = HashSet::new();
+        let mut outputs = HashSet::new();
+        let mut commitments = HashSet::new();
+        for key in branch.keys() {
+            let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            *links_left = links_left
+                .saturating_sub(tx.input_hashes.len())
+                .saturating_sub(tx.output_hashes.len());
+            if tx.input_hashes.iter().any(|hash| !inputs.insert(*hash)) ||
+                tx.output_hashes.iter().any(|hash| !outputs.insert(*hash)) ||
+                tx.output_commitments
+                    .iter()
+                    .any(|commitment| !commitments.insert(*commitment))
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// A final check of the whole selection, in the order its branches were selected, for any two transactions that
+    /// spend the same output, produce the same output, or produce outputs with the same commitment. The per-branch
+    /// checks should make this find nothing; if it does find something, it fails closed: the later offending branch
+    /// is dropped (and with it every later branch that depends on a dropped transaction), leaving a valid subset.
+    /// Bounded by the selection (i.e. by the block). Returns the transactions to keep and the number of branches
+    /// dropped.
+    fn sweep_selection(
+        &self,
+        branches: &[Vec<TransactionKey>],
+    ) -> Result<(HashSet<TransactionKey>, usize), UnconfirmedPoolError> {
+        let mut keep = HashSet::new();
+        let mut inputs = HashSet::new();
+        let mut outputs = HashSet::new();
+        let mut commitments = HashSet::new();
+        let mut dropped_outputs = HashSet::new();
+        let mut dropped = 0usize;
+        for branch in branches {
+            let mut branch_inputs = HashSet::new();
+            let mut branch_outputs = HashSet::new();
+            let mut branch_commitments = HashSet::new();
+            let mut valid = true;
+            for key in branch {
+                let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                valid &= !tx
+                    .dependent_output_hashes
+                    .iter()
+                    .any(|hash| dropped_outputs.contains(hash));
+                valid &= tx
+                    .input_hashes
+                    .iter()
+                    .all(|hash| !inputs.contains(hash) && branch_inputs.insert(*hash));
+                valid &= tx
+                    .output_hashes
+                    .iter()
+                    .all(|hash| !outputs.contains(hash) && branch_outputs.insert(*hash));
+                valid &= tx
+                    .output_commitments
+                    .iter()
+                    .all(|commitment| !commitments.contains(commitment) && branch_commitments.insert(*commitment));
+            }
+            if valid {
+                inputs.extend(branch_inputs);
+                outputs.extend(branch_outputs);
+                commitments.extend(branch_commitments);
+                keep.extend(branch.iter().copied());
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block template selection produced a branch of {} transaction(s) that double-spends, or duplicates \
+                     an output of, the rest of the selection; dropping it",
+                    branch.len()
+                );
+                dropped = dropped.saturating_add(1);
+                for key in branch {
+                    let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                    dropped_outputs.extend(tx.output_hashes.iter().copied());
+                }
+            }
+        }
+        Ok((keep, dropped))
     }
 
     /// The transaction keys in the order they are considered for selection: by stored priority (fee per gram of real
@@ -1015,10 +1177,17 @@ impl UnconfirmedPool {
             // Only a branch that would otherwise be selected is checked for conflicts (O(1) per transaction; never
             // limited by a budget, so the final drain always completes)
             let conflicts = fits_weight && fits_bytes && state.branch_conflicts(&candidate_transactions_to_select);
+            let invalid = !conflicts &&
+                fits_weight &&
+                fits_bytes &&
+                self.branch_has_internal_duplicates(&candidate_transactions_to_select, &mut state.links_left)?;
             if conflicts {
                 // Spends an input that a selected transaction already spends: it can never be mined alongside it.
                 // Not counted towards any limit (its walk was paid once, when it was queued).
                 state.conflict_drop();
+                state.walked_dropped.insert(tx_key);
+            } else if invalid {
+                state.invalid_branch_drops = state.invalid_branch_drops.saturating_add(1);
                 state.walked_dropped.insert(tx_key);
             } else if fits_weight && fits_bytes {
                 state.curr_weight = state.curr_weight.checked_add(total_transaction_weight).ok_or(
@@ -1036,6 +1205,9 @@ impl UnconfirmedPool {
                     )?;
                 }
                 self.mark_conflicts(&candidate_transactions_to_select, state)?;
+                state
+                    .selected_branches
+                    .push(candidate_transactions_to_select.keys().copied().collect());
                 state.selected_txs.extend(candidate_transactions_to_select);
                 // Selecting transactions lowers the weight of their descendants' unselected ancestry
                 state.ancestor_weight_bounds.clear();
@@ -1160,6 +1332,7 @@ impl UnconfirmedPool {
         *frames_left = frames_left.saturating_sub(1);
         let mut visited = HashSet::new();
         visited.insert(transaction.key);
+        let mut candidate_links = 0usize;
         let mut stack = vec![Frame {
             transaction,
             next_dependency: 0,
@@ -1172,9 +1345,13 @@ impl UnconfirmedPool {
             if transactions_to_recheck.is_empty() &&
                 let Some(dependent_output) = current.dependent_output_hashes.get(frame.next_dependency)
             {
-                // Every link followed is charged to the pass's link budget
+                // Every link followed is charged to the pass's link budget, and to the candidate's own
                 if *links_left == 0 {
                     return Ok(WalkOutcome::OutOfFrames);
+                }
+                candidate_links = candidate_links.saturating_add(1);
+                if candidate_links > MAX_LINKS_PER_CANDIDATE {
+                    return Ok(WalkOutcome::TooManyAncestors);
                 }
                 *links_left = links_left.saturating_sub(1);
                 frame.next_dependency = frame.next_dependency.saturating_add(1);
@@ -1251,18 +1428,21 @@ impl UnconfirmedPool {
 
     /// A lower bound on the weight of `transaction` together with its unselected ancestors: its own weight plus the
     /// largest known bound of its unselected dependencies (0 for any not yet walked). Each dependency link examined
-    /// is charged to `links_left`; `None` if that runs out.
+    /// is charged to `links_left`.
     fn ancestor_weight_bound(
         &self,
         transaction: &PrioritizedTransaction,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         ancestor_weight_bounds: &HashMap<TransactionKey, u64>,
         links_left: &mut usize,
-    ) -> Result<Option<u64>, UnconfirmedPoolError> {
+    ) -> Result<BoundOutcome, UnconfirmedPoolError> {
+        if transaction.dependent_output_hashes.len() > MAX_LINKS_PER_CANDIDATE {
+            return Ok(BoundOutcome::TooManyLinks);
+        }
         let mut dependencies = 0u64;
         for dependent_output in &transaction.dependent_output_hashes {
             if *links_left == 0 {
-                return Ok(None);
+                return Ok(BoundOutcome::OutOfLinks);
             }
             *links_left = links_left.saturating_sub(1);
             if let Some(keys) = self.txs_by_output.get(dependent_output) {
@@ -1274,7 +1454,7 @@ impl UnconfirmedPool {
                 }
             }
         }
-        Ok(Some(transaction.weight.saturating_add(dependencies)))
+        Ok(BoundOutcome::Bound(transaction.weight.saturating_add(dependencies)))
     }
 
     /// The highest priority of the pool transactions producing an output. `txs_by_output` keeps each entry ordered by
@@ -1328,6 +1508,7 @@ impl UnconfirmedPool {
         self.tx_by_priority.clear();
         self.txs_by_output.clear();
         self.txs_by_spent_output.clear();
+        self.txs_by_output_commitment.clear();
         self.tx_by_key.drain().map(|(_, val)| val.transaction).collect()
     }
 
@@ -1495,13 +1676,25 @@ impl UnconfirmedPool {
             }
         }
 
+        // Order does not matter in these entries, so `swap_remove` (O(1) after the search) is used: a block may publish
+        // a spend of an output that tens of thousands of pool transactions also spend
         for input_hash in &prioritized_transaction.input_hashes {
             if let Some(keys) = self.txs_by_spent_output.get_mut(input_hash) {
                 if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
-                    keys.remove(pos);
+                    keys.swap_remove(pos);
                 }
                 if keys.is_empty() {
                     self.txs_by_spent_output.remove(input_hash);
+                }
+            }
+        }
+        for commitment in &prioritized_transaction.output_commitments {
+            if let Some(keys) = self.txs_by_output_commitment.get_mut(commitment) {
+                if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
+                    keys.swap_remove(pos);
+                }
+                if keys.is_empty() {
+                    self.txs_by_output_commitment.remove(commitment);
                 }
             }
         }
@@ -1615,6 +1808,16 @@ impl UnconfirmedPool {
             self.txs_by_spent_output
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
+            self.txs_by_output_commitment
+                .values()
+                .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
+            self.tx_by_key.iter().all(|(key, tx)| {
+                tx.output_commitments.iter().all(|commitment| {
+                    self.txs_by_output_commitment
+                        .get(commitment)
+                        .is_some_and(|keys| keys.contains(key))
+                })
+            }) &&
             self.tx_by_key.iter().all(|(key, tx)| {
                 tx.input_hashes.iter().all(|hash| {
                     self.txs_by_spent_output
@@ -1640,6 +1843,7 @@ impl UnconfirmedPool {
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_output);
         shrink_hashmap(&mut self.txs_by_spent_output);
+        shrink_hashmap(&mut self.txs_by_output_commitment);
         shrink_hashmap(&mut self.txs_by_unique_id);
 
         if old > new {
@@ -1924,9 +2128,13 @@ mod test {
         // 21 large, high-fee transactions that all spend the same input (the mempool holds conflicting spends), each
         // bigger than half of the byte budget, so that only one of them can be selected
         let template = normal_txs(&key_manager, 1, 5).pop().unwrap();
-        let input = template.body.inputs().first().unwrap().clone();
-        let input_size = input.get_serialized_size().unwrap();
+        let input_size = template.body.inputs().first().unwrap().get_serialized_size().unwrap();
         let num_inputs = (normal_bytes + 4 * 1024) / input_size + 1;
+        // The same set of distinct inputs for all of them (so they conflict with each other, but none spends an input
+        // twice)
+        let filler = tx!(MicroMinotari(5_000_000), fee: MicroMinotari(5), inputs: num_inputs, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
         let large = (0..21)
             .map(|_| {
                 let kernels = tx!(MicroMinotari(500_000), fee: MicroMinotari(500), inputs: 1, outputs: 1, &key_manager)
@@ -1936,7 +2144,7 @@ mod test {
                     .kernels()
                     .clone();
                 Arc::new(Transaction::new(
-                    vec![input.clone(); num_inputs],
+                    filler.body.inputs().clone(),
                     template.body.outputs().clone(),
                     kernels,
                     Default::default(),
@@ -2113,13 +2321,14 @@ mod test {
     }
 
     /// A cheap synthetic transaction derived from `base`: no inputs, `base`'s first output with its maturity set to
-    /// `n` (so that its hash is unique), and `base`'s first kernel with a fresh excess signature scalar and the given
-    /// fee. Enough for the pool's selection logic, which does not validate.
+    /// `n` and a fresh random commitment (so that its hash and commitment are unique), and `base`'s first kernel with a
+    /// fresh excess signature scalar and the given fee. Enough for the pool's selection logic, which does not validate.
     fn synthetic_tx(base: &Transaction, n: u64, fee: u64) -> Arc<Transaction> {
-        use tari_common_types::types::CompressedSignature;
+        use tari_common_types::types::{CompressedCommitment, CompressedSignature};
         use tari_crypto::keys::SecretKey;
         let mut output = base.body.outputs().first().unwrap().clone();
         output.features.maturity = n;
+        output.commitment = CompressedCommitment::from_compressed_key(crate::test_helpers::new_public_key());
         let mut kernel = base.body.kernels().first().unwrap().clone();
         kernel.fee = MicroMinotari(fee);
         kernel.excess_sig = CompressedSignature::new(
@@ -2759,21 +2968,14 @@ mod test {
         let tx_weight = TransactionWeight::latest();
         let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
         let normal = normal_txs(&key_manager, 10, 5);
-        let input = base.body.inputs().first().unwrap().clone();
-        let input_size = input.get_serialized_size().unwrap();
-        // A parent of ~5 MB (thousands of inputs), at minimal fee, that fits by weight and bytes with one tiny child
+        // A many-input parent at minimal fee. (Its size no longer matters: conflict checks are O(1) lookups, never
+        // charged per input, so no budget can stop the queued branches from being drained.)
         let budget = MAX_BLOCK_TEMPLATE_BODY_BYTES;
-        let template = synthetic_tx(&base, 0, 1);
-        let child_size = body_size(&synthetic_tx(&base, 1, 1));
-        let num_inputs = (budget - body_size(&template) - child_size - 100) / input_size;
-        let parent = Arc::new(Transaction::new(
-            vec![input.clone(); num_inputs],
-            template.body.outputs().clone(),
-            template.body.kernels().clone(),
-            Default::default(),
-            Default::default(),
-        ));
-        assert!(body_size(&parent) + child_size <= budget);
+        let parent = Arc::new(
+            tx!(MicroMinotari(5_000_000), fee: MicroMinotari(1), inputs: 40, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 1_000,
             weight_tx_skip_count: 20,
@@ -2799,14 +3001,13 @@ mod test {
         }] {
             let selection = unconfirmed_pool.select_txs(u64::MAX, budget, ranking).unwrap();
             let selected = &selection.results.retrieved_transactions;
-            // Not empty: the parent with (at least) one child, or the honest transactions
-            assert!(!selected.is_empty(), "{ranking:?}");
-            assert!(
-                (selected.contains(&parent) && children.iter().any(|child| selected.contains(child))) ||
-                    normal.iter().all(|tx| selected.contains(tx)),
-                "{ranking:?}"
-            );
+            // The queued branches are drained: the parent with every child, and the honest transactions
+            assert!(selected.contains(&parent), "{ranking:?}");
+            for tx in children.iter().chain(normal.iter()) {
+                assert!(selected.contains(tx), "{ranking:?}");
+            }
             assert!(!selection.frame_budget_exhausted, "{ranking:?}");
+            assert!(!selection.ended_early, "{ranking:?}");
         }
         let results = unconfirmed_pool
             .fetch_highest_priority_txs(u64::MAX, max_weight())
@@ -3024,8 +3225,9 @@ mod test {
         })
         .with_max_body_bytes(usize::MAX / 2);
         let parent = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1).pop().unwrap();
-        // A candidate with 9,000 links (e.g. one per input) to the same parent: one transaction, but 9,000 links
-        const LINKS: usize = 9_000;
+        // A candidate with MAX_LINKS_PER_CANDIDATE links (e.g. one per input) to the same parent: one transaction, but
+        // many links
+        const LINKS: usize = MAX_LINKS_PER_CANDIDATE;
         let candidate = synthetic_tx(&base, 1, 1_000_000);
         unconfirmed_pool
             .insert(
@@ -3050,18 +3252,19 @@ mod test {
         let tx_weight = TransactionWeight::latest();
         let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
-            storage_capacity: 1_000,
+            storage_capacity: 10_000,
             weight_tx_skip_count: 20,
             min_fee: 0,
         })
         .with_max_body_bytes(usize::MAX / 2);
         let parent = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1).pop().unwrap();
         let parent_output = parent.body.outputs().first().unwrap().hash();
-        // Candidates each with 9,000 links to the parent: 18,000 links each (the pre-walk bound and the walk), so the
-        // link budget runs out after ~111 of them. Decreasing fees fix the order; each has a high own rate but a low
-        // branch rate, so the branches are queued rather than selected as they are found.
-        const LINKS: usize = 9_000;
-        let per_candidate = 2 * LINKS;
+        // Candidates each with MAX_LINKS_PER_CANDIDATE links to the parent: twice that each (the pre-walk bound and the
+        // walk), so the link budget runs out after ~1,000 of them. Decreasing fees fix the order; each has a high own
+        // rate but a low branch rate, so the branches are queued rather than selected as they are found.
+        const LINKS: usize = MAX_LINKS_PER_CANDIDATE;
+        // Plus 2 for the branch's internal-duplicate check (one output each for the candidate and the parent)
+        let per_candidate = 2 * LINKS + 2;
         let num_candidates = MAX_FOLLOWED_LINKS_PER_PASS / per_candidate + 4;
         let candidates = (0..u64::try_from(num_candidates).unwrap())
             .map(|n| {
@@ -3139,6 +3342,209 @@ mod test {
         unconfirmed_pool.remove_transaction(high_key).unwrap();
         assert_eq!(best(&unconfirmed_pool), low);
         assert!(unconfirmed_pool.check_data_consistency());
+    }
+
+    #[tokio::test]
+    async fn candidates_with_too_many_links_are_dropped() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        let parent = insert_chain(&mut unconfirmed_pool, &base, 0, 1, 1).pop().unwrap();
+        let parent_output = parent.body.outputs().first().unwrap().hash();
+        let at_cap = synthetic_tx(&base, 1, 1_000_000);
+        unconfirmed_pool
+            .insert(
+                at_cap.clone(),
+                Some(vec![parent_output; MAX_LINKS_PER_CANDIDATE]),
+                &tx_weight,
+            )
+            .unwrap();
+        let over_cap = synthetic_tx(&base, 2, 2_000_000);
+        unconfirmed_pool
+            .insert(
+                over_cap.clone(),
+                Some(vec![parent_output; MAX_LINKS_PER_CANDIDATE + 1]),
+                &tx_weight,
+            )
+            .unwrap();
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        let selected = &selection.results.retrieved_transactions;
+        assert!(!selected.contains(&over_cap));
+        assert!(selected.contains(&at_cap));
+        assert!(selected.contains(&parent));
+        assert_eq!(selection.too_many_ancestors_drops, 1);
+        assert_eq!(selection.weight_skips_counted, 0);
+    }
+
+    #[tokio::test]
+    async fn a_branch_that_double_spends_internally_is_never_selected() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let x = normal_txs(&key_manager, 1, 5)
+            .pop()
+            .unwrap()
+            .body
+            .inputs()
+            .first()
+            .unwrap()
+            .clone();
+        let spend_x = |n: u64, fee: u64| {
+            let tx = synthetic_tx(&base, n, fee);
+            Arc::new(Transaction::new(
+                vec![x.clone()],
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let (p1, p2) = (spend_x(0, 1), spend_x(1, 2));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        unconfirmed_pool.insert(p1.clone(), None, &tx_weight).unwrap();
+        unconfirmed_pool.insert(p2.clone(), None, &tx_weight).unwrap();
+        // A high-rate child depending on both: its branch {child, P1, P2} spends X twice
+        let child = synthetic_tx(&base, 2, 1_000_000);
+        unconfirmed_pool
+            .insert(
+                child.clone(),
+                Some(vec![
+                    p1.body.outputs().first().unwrap().hash(),
+                    p2.body.outputs().first().unwrap().hash(),
+                ]),
+                &tx_weight,
+            )
+            .unwrap();
+
+        for ranking in [Ranking::Weight, Ranking::EffectiveWeight {
+            max_block_transaction_weight: max_weight(),
+            max_body_bytes: usize::MAX / 2,
+        }] {
+            let selection = unconfirmed_pool.select_txs(u64::MAX, usize::MAX / 2, ranking).unwrap();
+            let selected = &selection.results.retrieved_transactions;
+            assert!(!selected.contains(&child), "{ranking:?}");
+            assert!(!(selected.contains(&p1) && selected.contains(&p2)), "{ranking:?}");
+            assert!(selected.contains(&p1) || selected.contains(&p2), "{ranking:?}");
+            assert_eq!(selection.invalid_branch_drops, 1, "{ranking:?}");
+            assert_eq!(selection.swept_branches, 0, "{ranking:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn transactions_with_the_same_output_or_commitment_are_not_both_selected() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(usize::MAX / 2);
+        let with_output = |n: u64, output: &tari_transaction_components::transaction_components::TransactionOutput| {
+            let tx = synthetic_tx(&base, n, 100 + n);
+            Arc::new(Transaction::new(
+                vec![],
+                vec![output.clone()],
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        // The same output twice
+        let output = synthetic_tx(&base, 100, 1).body.outputs()[0].clone();
+        let (a, b) = (with_output(0, &output), with_output(1, &output));
+        // Different outputs (different hashes) with the same commitment
+        let mut other = output.clone();
+        other.features.maturity = 12345;
+        assert_ne!(other.hash(), output.hash());
+        let c = with_output(2, &other);
+        for tx in [&a, &b, &c] {
+            unconfirmed_pool.insert(tx.clone(), None, &tx_weight).unwrap();
+        }
+        let selection = unconfirmed_pool
+            .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
+            .unwrap();
+        let selected = &selection.results.retrieved_transactions;
+        assert_eq!(selected.iter().filter(|tx| [&a, &b, &c].contains(tx)).count(), 1);
+        assert_eq!(selection.conflict_drops, 2);
+        assert_eq!(selection.swept_branches, 0);
+        assert!(unconfirmed_pool.check_data_consistency());
+    }
+
+    #[tokio::test]
+    async fn the_final_sweep_drops_invalid_branches_and_their_dependants() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let x = normal_txs(&key_manager, 1, 5)
+            .pop()
+            .unwrap()
+            .body
+            .inputs()
+            .first()
+            .unwrap()
+            .clone();
+        let spend_x = |n: u64| {
+            let tx = synthetic_tx(&base, n, 10);
+            Arc::new(Transaction::new(
+                vec![x.clone()],
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let (first, second) = (spend_x(0), spend_x(1));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        unconfirmed_pool.insert(first.clone(), None, &tx_weight).unwrap();
+        unconfirmed_pool.insert(second.clone(), None, &tx_weight).unwrap();
+        // A child of the second
+        let child = synthetic_tx(&base, 2, 10);
+        unconfirmed_pool
+            .insert(child.clone(), Some(vec![second.body.outputs()[0].hash()]), &tx_weight)
+            .unwrap();
+        let independent = synthetic_tx(&base, 3, 10);
+        unconfirmed_pool.insert(independent.clone(), None, &tx_weight).unwrap();
+        let key_of = |tx: &Arc<Transaction>| {
+            *unconfirmed_pool
+                .tx_by_key
+                .iter()
+                .find(|(_, p)| &p.transaction == tx)
+                .unwrap()
+                .0
+        };
+        // A hand-built invalid selection: both spends of X, the second one's child, and an independent transaction
+        let branches = vec![vec![key_of(&first)], vec![key_of(&second)], vec![key_of(&child)], vec![
+            key_of(&independent),
+        ]];
+        let (keep, dropped) = unconfirmed_pool.sweep_selection(&branches).unwrap();
+        assert_eq!(dropped, 2);
+        assert_eq!(
+            keep,
+            [key_of(&first), key_of(&independent)]
+                .into_iter()
+                .collect::<HashSet<_>>()
+        );
+        // A valid selection passes unchanged
+        let (keep, dropped) = unconfirmed_pool
+            .sweep_selection(&[vec![key_of(&second), key_of(&child)], vec![key_of(&independent)]])
+            .unwrap();
+        assert_eq!(dropped, 0);
+        assert_eq!(keep.len(), 3);
     }
 
     #[tokio::test]
