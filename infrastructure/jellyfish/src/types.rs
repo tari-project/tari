@@ -1555,11 +1555,11 @@ mod tests {
         assert_eq!(serde_json::from_value::<InternalNode>(json.clone()).unwrap(), node);
 
         let mut bad_count = json.clone();
-        bad_count["leaf_count"] = 4.into();
+        *bad_count.pointer_mut("/leaf_count").unwrap() = 4.into();
         serde_json::from_value::<InternalNode>(bad_count).unwrap_err();
 
         let mut null_child = json;
-        null_child["children"]["3"]["node_type"] = "Null".into();
+        *null_child.pointer_mut("/children/3/node_type").unwrap() = "Null".into();
         serde_json::from_value::<InternalNode>(null_child).unwrap_err();
     }
 
