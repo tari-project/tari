@@ -865,7 +865,7 @@ mod test {
     }
 
     impl TransactionValidator for Arc<ScriptedValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             unreachable!("the mempool validates in stages")
         }
 

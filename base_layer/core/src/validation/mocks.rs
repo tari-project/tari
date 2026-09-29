@@ -152,7 +152,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
 }
 
 impl TransactionValidator for MockValidator {
-    fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

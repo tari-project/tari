@@ -55,15 +55,19 @@ pub trait TransactionValidator: Send + Sync {
     /// Fully validate a transaction. An implementation may only return [`ValidationError::UnknownInputs`] once every
     /// other check, including internal consistency, has passed, since callers accept such a transaction if the
     /// unknown inputs are found elsewhere (i.e. in the mempool).
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
+    ///
+    /// Runs chain-linked validation and then internal consistency, and runs the internal checks even when the
+    /// chain-linked step returned `UnknownInputs`. Must not be used on untrusted input; the mempool uses
+    /// [`Self::validate_chain_linked`] + [`Self::validate_internal_consistency`].
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError>;
 
     /// Validate a transaction against the chain state only. [`ValidationError::UnknownInputs`] means that every other
     /// chain-linked check passed. A transaction accepted by this must also pass
     /// [`Self::validate_internal_consistency`] before it may be stored.
     ///
-    /// The default performs the full [`Self::validate`].
+    /// The default performs the full [`Self::validate_full`].
     fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        self.validate(tx)
+        self.validate_full(tx)
     }
 
     /// Validate the internal consistency of a transaction (scripts, signatures, range proofs, balance). This is the

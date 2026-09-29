@@ -338,7 +338,7 @@ mod test {
     }
 
     impl TransactionValidator for Arc<SlowValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
             self.max.fetch_max(current, Ordering::SeqCst);
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -391,7 +391,7 @@ mod test {
     }
 
     impl TransactionValidator for Arc<GatedValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             self.entered.fetch_add(1, Ordering::SeqCst);
             let mut released = self.released.lock().unwrap();
             while !*released {

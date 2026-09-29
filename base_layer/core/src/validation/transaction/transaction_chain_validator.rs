@@ -44,7 +44,7 @@ impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
 }
 
 impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
         if tx

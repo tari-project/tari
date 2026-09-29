@@ -62,7 +62,7 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
 }
 
 impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError> {
         // The chain-linked checks are cheap database lookups, so they run first to reject a transaction before its
         // scripts and range proofs are verified
         let chain_result = self.validate_chain_linked(tx);
@@ -76,7 +76,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> 
     }
 
     fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        self.chain_validator.validate(tx)
+        self.chain_validator.validate_full(tx)
     }
 
     fn validate_internal_consistency(
