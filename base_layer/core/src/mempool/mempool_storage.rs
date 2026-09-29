@@ -328,12 +328,7 @@ impl MempoolStorage {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
         let weight = self.get_transaction_weighting();
-        let max_block_transaction_weight = self
-            .rules
-            .consensus_constants(self.last_seen_height)
-            .max_block_transaction_weight();
-        self.unconfirmed_pool
-            .insert(tx, dependent_outputs, &weight, max_block_transaction_weight)?;
+        self.unconfirmed_pool.insert(tx, dependent_outputs, &weight)?;
         debug!(
             target: LOG_TARGET,
             "Transaction {} inserted in {:.2?}",
@@ -535,8 +530,13 @@ impl MempoolStorage {
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
     pub fn retrieve(&self, total_weight: u64) -> Result<RetrieveResults, MempoolError> {
+        // Only a ratio for ordering under byte pressure; the constants at the last seen height are close enough
+        let max_block_transaction_weight = self
+            .rules
+            .consensus_constants(self.last_seen_height)
+            .max_block_transaction_weight();
         self.unconfirmed_pool
-            .fetch_highest_priority_txs(total_weight)
+            .fetch_highest_priority_txs(total_weight, max_block_transaction_weight)
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 

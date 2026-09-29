@@ -33,7 +33,6 @@ pub use unconfirmed_pool::{
     TransactionKey,
     UnconfirmedPool,
     UnconfirmedPoolConfig,
-    effective_weight,
 };
 
 hash_domain!(

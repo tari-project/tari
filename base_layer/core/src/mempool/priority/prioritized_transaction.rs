@@ -34,8 +34,6 @@ use tari_transaction_components::{
 };
 use tari_utilities::{ByteArray, hex::Hex};
 
-use crate::mempool::unconfirmed_pool::effective_weight;
-
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
 /// Normally, duplicate keys will be overwritten in a BTreeMap.
@@ -45,8 +43,6 @@ pub struct FeePriority(Vec<u8>);
 impl FeePriority {
     // Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
-    /// `weight` is the weight the transaction is prioritised by: its effective weight (see
-    /// [effective_weight](crate::mempool::unconfirmed_pool::effective_weight)).
     pub fn new(transaction: &Transaction, insert_epoch: u64, weight: u64) -> Result<Self, TransactionError> {
         let fee_per_byte = transaction
             .body
@@ -97,11 +93,7 @@ pub struct PrioritizedTransaction {
     pub transaction: Arc<Transaction>,
     pub priority: FeePriority,
     pub fee_per_byte: u64,
-    /// The real (consensus) weight of the transaction, used to fill a block
     pub weight: u64,
-    /// The weight the transaction is prioritised by: the larger of its real weight and its share of the block template
-    /// byte budget (see [effective_weight]). `priority` and `fee_per_byte` are computed from this.
-    pub effective_weight: u64,
     /// The borsh-serialized size of the transaction body in bytes, computed once on insert. Used as an estimate of
     /// the bytes the transaction adds to a block body.
     pub body_size: usize,
@@ -114,34 +106,27 @@ impl PrioritizedTransaction {
         weighting: &TransactionWeight,
         transaction: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
-        max_block_transaction_weight: u64,
-        max_body_bytes: usize,
     ) -> Result<PrioritizedTransaction, TransactionError> {
         let weight = transaction.calculate_weight(weighting)?;
-        if weight == 0 {
-            return Err(TransactionError::ZeroWeight);
-        }
         let body_size = transaction
             .body
             .get_serialized_size()
             .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
-        let effective_weight = effective_weight(weight, body_size, max_block_transaction_weight, max_body_bytes);
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
         };
         Ok(Self {
             key,
-            priority: FeePriority::new(&transaction, insert_epoch, effective_weight)?,
+            priority: FeePriority::new(&transaction, insert_epoch, weight)?,
             fee_per_byte: transaction
                 .body
                 .get_total_fee()?
                 .as_u64()
                 .saturating_mul(1000)
-                .checked_div(effective_weight)
+                .checked_div(weight)
                 .ok_or(TransactionError::ZeroWeight)?,
             weight,
-            effective_weight,
             body_size,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
@@ -224,8 +209,6 @@ mod tests {
                 Default::default(),
             )),
             None,
-            90_000,
-            1024,
         ) {
             Ok(_) => panic!("Empty transaction should not be valid"),
             Err(e) => assert_eq!(e, TransactionError::ZeroWeight),
@@ -246,48 +229,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn effective_weight_is_the_real_weight_for_a_normal_transaction() {
-        use crate::{
-            mempool::unconfirmed_pool::MAX_BLOCK_TEMPLATE_BODY_BYTES,
-            test_helpers::create_consensus_constants,
-        };
+    async fn priority_is_by_real_weight() {
         let key_manager = KeyManager::new_random().unwrap();
         let weighting = TransactionWeight::latest();
-        let max_weight = create_consensus_constants(0).max_block_transaction_weight();
-        for (inputs, outputs) in [(1, 1), (2, 1), (5, 2), (12, 1)] {
+        for (inputs, outputs) in [(1, 1), (2, 1), (5, 2), (12, 1), (40, 1)] {
             let (tx, _, _) = create_tx(10 * T, 5 * uT, 0, inputs, 0, outputs, Default::default(), &key_manager)
                 .expect("Failed to get tx");
             let weight = tx.calculate_weight(&weighting).unwrap();
-            let ptx = PrioritizedTransaction::new(
-                0,
-                &weighting,
-                Arc::new(tx),
-                None,
-                max_weight,
-                MAX_BLOCK_TEMPLATE_BODY_BYTES,
-            )
-            .unwrap();
+            let fee = tx.body.get_total_fee().unwrap().as_u64();
+            let ptx = PrioritizedTransaction::new(0, &weighting, Arc::new(tx), None).unwrap();
+            // Unchanged: priority and fee per gram use the real weight, however byte-heavy the transaction is
             assert_eq!(ptx.weight, weight);
-            assert_eq!(ptx.effective_weight, weight, "{inputs} input(s), {outputs} output(s)");
             assert_eq!(
                 ptx.fee_per_byte,
-                ptx.transaction.body.get_total_fee().unwrap().as_u64() * 1000 / weight
+                fee * 1000 / weight,
+                "{inputs} input(s), {outputs} output(s)"
             );
+            let expected = FeePriority::new(&ptx.transaction, 0, weight).unwrap();
+            assert_eq!(ptx.priority.0.get(..8), expected.0.get(..8));
         }
-    }
-
-    #[test]
-    fn effective_weight_prices_the_byte_budget_share() {
-        use crate::mempool::unconfirmed_pool::effective_weight;
-        // Below the byte-to-weight ratio, the real weight is used
-        assert_eq!(effective_weight(100, 1_000, 90_000, 5_000_000), 100);
-        // Above it, the share of the byte budget is used, rounded up
-        assert_eq!(effective_weight(100, 1_000_000, 90_000, 5_000_000), 18_000);
-        assert_eq!(effective_weight(1, 1, 90_000, 5_000_000), 1);
-        assert_eq!(effective_weight(0, 1, 90_000, 5_000_000), 1);
-        // A whole budget's worth of bytes costs a whole block's weight
-        assert_eq!(effective_weight(10, 5_000_000, 90_000, 5_000_000), 90_000);
-        // No overflow
-        assert_eq!(effective_weight(10, usize::MAX, u64::MAX, 1), u64::MAX);
     }
 }
