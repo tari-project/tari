@@ -8030,6 +8030,7 @@ dependencies = [
  "digest 0.10.7",
  "indexmap 2.14.0",
  "serde",
+ "serde_json",
  "tari_crypto",
  "tari_hashing",
  "thiserror 2.0.18",
