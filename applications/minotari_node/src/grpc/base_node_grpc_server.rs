@@ -3499,14 +3499,24 @@ mod test {
 
     use super::*;
 
-    /// A side-chain eviction proof feature built from the `tari_sidechain` test fixture, with its side-chain block
-    /// header `network` byte replaced. The fixture's own byte is 0x10 (LocalNet).
+    /// A side-chain eviction proof feature built from the `tari_sidechain` commit proof test fixture, with its
+    /// side-chain block header `network` byte replaced. The fixture's own byte is 0x10 (LocalNet). The proof is only
+    /// used for serialization, so its inclusion proof is empty.
     fn eviction_proof_feature(network: u8) -> SideChainFeature {
-        let mut proof: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        let commit_proof: serde_json::Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../base_layer/sidechain/tests/fixtures/eviction_proof1.json"
+            "/../../base_layer/sidechain/tests/fixtures/commit_proof.json"
         )))
         .unwrap();
+        let mut proof = serde_json::json!({
+            "proof": {
+                "V1": {
+                    "command": { "public_key": "30eb54ee0d290e0fd9f8a6c6cbc84e3a516645fe1be77429987375498aee8641" },
+                    "commit_proof": commit_proof,
+                    "inclusion_proof": { "leaf": null, "siblings": [] },
+                }
+            }
+        });
         *proof.pointer_mut("/proof/V1/commit_proof/header/network").unwrap() = network.into();
         serde_json::from_value(serde_json::json!({ "data": { "EvictionProof": proof }, "sidechain_id": null })).unwrap()
     }
