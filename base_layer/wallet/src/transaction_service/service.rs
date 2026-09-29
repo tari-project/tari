@@ -2110,6 +2110,15 @@ where
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
+            if input.script().is_ok_and(|script| script.is_context_sensitive()) {
+                // The script reads the block height, and the wallet can only evaluate it at its last scanned height;
+                // the base node will evaluate it at the height of the block that spends it, which may differ.
+                warn!(
+                    target: LOG_TARGET,
+                    "TxId: {tx_id}: validating a height-dependent input script against the wallet's last scanned \
+                     height {last_seen_tip_height}; the result may differ when the transaction is mined"
+                );
+            }
             input_keys = input_keys +
                 input
                     .run_and_verify_script(&factory, Some(context))

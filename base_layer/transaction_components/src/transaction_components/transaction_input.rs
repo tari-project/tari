@@ -332,6 +332,9 @@ impl TransactionInput {
 
     /// This will run the script contained in the TransactionInput, returning the resulting
     /// public key if execution succeeds, or otherwise a script error. An error is returned if this is a compact input.
+    ///
+    /// If `context` is `None`, the default [ScriptContext] is used, which has a block height of 0. Height-dependent
+    /// scripts (see [TariScript::is_context_sensitive]) are then evaluated as if at the genesis block.
     pub fn run_script(&self, context: Option<ScriptContext>) -> Result<CompressedPublicKey, TransactionError> {
         let context = context.unwrap_or_default();
 
