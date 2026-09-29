@@ -150,27 +150,65 @@ impl SideChainId {
 
 #[cfg(test)]
 mod tests {
+    use tari_common_types::epoch::VnEpoch;
+
     use super::*;
+    use crate::transaction_components::{BuildInfo, TemplateType};
 
-    /// A burn output may carry side-chain data on any network, so the index of every variant a live network can
-    /// hold is part of the output hash (Borsh) and the stored output (bincode). Only `ConfidentialOutput` can occur
-    /// on a live network - validator registration is disabled there, so no exit can be valid - but the variants
-    /// before it must keep their indexes for it to keep its own.
+    /// Side-chain data is not bound to the output type, so a live network may hold any variant whose chain checks it
+    /// can pass, and that variant's index is part of the output hash (Borsh) and the stored output (bincode). Only
+    /// `ValidatorNodeExit` is unreachable there - an exit needs an active validator, and live networks cannot activate
+    /// one - so it is the only variant whose index may move. These must not.
     #[test]
-    fn the_confidential_output_variant_index_is_stable() {
-        let data = SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
-            claim_public_key: CompressedPublicKey::default(),
-        });
+    fn live_network_variant_indexes_are_stable() {
+        let cases = [
+            (
+                SideChainFeatureData::ValidatorNodeRegistration(Box::new(ValidatorNodeRegistration::new(
+                    Default::default(),
+                    CompressedPublicKey::default(),
+                    VnEpoch(1),
+                ))),
+                0u8,
+            ),
+            (
+                SideChainFeatureData::CodeTemplateRegistration(CodeTemplateRegistration {
+                    author_public_key: CompressedPublicKey::default(),
+                    author_signature: CompressedSignature::default(),
+                    template_name: "t".try_into().unwrap(),
+                    template_version: 0,
+                    template_type: TemplateType::Wasm { abi_version: 0 },
+                    build_info: BuildInfo {
+                        repo_url: "u".try_into().unwrap(),
+                        commit_hash: Default::default(),
+                    },
+                    binary_sha: Default::default(),
+                    binary_url: "u".try_into().unwrap(),
+                }),
+                1,
+            ),
+            (
+                SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
+                    claim_public_key: CompressedPublicKey::default(),
+                }),
+                2,
+            ),
+        ];
 
-        let borsh_bytes = borsh::to_vec(&data).unwrap();
-        assert_eq!(borsh_bytes.first(), Some(&2));
-        assert_eq!(SideChainFeatureData::try_from_slice(&borsh_bytes).unwrap(), data);
+        for (data, index) in cases {
+            let borsh_bytes = borsh::to_vec(&data).unwrap();
+            assert_eq!(borsh_bytes.first(), Some(&index), "{data:?}");
+            assert_eq!(SideChainFeatureData::try_from_slice(&borsh_bytes).unwrap(), data);
 
-        let bincode_bytes = bincode::serialize(&data).unwrap();
-        assert_eq!(bincode_bytes.get(..4), Some(2u32.to_le_bytes().as_slice()));
-        assert_eq!(
-            bincode::deserialize::<SideChainFeatureData>(&bincode_bytes).unwrap(),
-            data
-        );
+            let bincode_bytes = bincode::serialize(&data).unwrap();
+            assert_eq!(
+                bincode_bytes.get(..4),
+                Some(u32::from(index).to_le_bytes().as_slice()),
+                "{data:?}"
+            );
+            assert_eq!(
+                bincode::deserialize::<SideChainFeatureData>(&bincode_bytes).unwrap(),
+                data
+            );
+        }
     }
 }
