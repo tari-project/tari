@@ -44,8 +44,16 @@ use crate::{
     },
 };
 
-const MAX_COVENANT_BYTES: usize = 4096;
+/// The maximum encoded size of a covenant.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) const MAX_COVENANT_BYTES: usize = 4096;
 
+/// The maximum number of tokens in a covenant.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub(crate) const MAX_COVENANT_TOKENS: usize = 128;
 
 /// The deepest a covenant may nest another covenant (via `ARG_COVENANT`).
@@ -56,6 +64,10 @@ pub(crate) const MAX_COVENANT_TOKENS: usize = 128;
 /// real covenant needs so that it bounds the recursion without constraining legitimate use.
 pub(crate) const MAX_COVENANT_DEPTH: usize = 16;
 
+/// The tokens of a covenant, at most [`MAX_COVENANT_TOKENS`].
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub(crate) type CovenantTokens = MaxSizeVec<CovenantToken, MAX_COVENANT_TOKENS>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

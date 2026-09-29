@@ -62,7 +62,17 @@ const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
 const SIZE_TAG_AND_NONCE: usize = SIZE_TAG + SIZE_NONCE;
 pub const SIZE_U256: usize = size_of::<U256>();
+/// The size of the fixed part of [`EncryptedData`] (nonce, value, mask and tag), which is also its minimum size.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
+/// The maximum size of [`EncryptedData`]: the fixed part plus a payment id of at most 256 bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+/// It must stay `>=` every network's `max_extra_encrypted_data_byte_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL`, which
+/// is the (smaller) validation rule.
 pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating

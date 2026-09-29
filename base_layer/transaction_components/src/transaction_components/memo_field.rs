@@ -32,7 +32,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::{
-        MAX_ENCRYPTED_DATA_SIZE,
+        MAX_PAYMENT_ID_SIZE,
         TARI_ADDRESS_INTERNAL_DUAL_SIZE,
         TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
         TariAddress,
@@ -236,11 +236,11 @@ impl MemoField {
         // Calculate the actual size this PaymentId would occupy (including any nested PaymentIds in the address)
         let total_size = Self::calculate_address_and_data_size(&sender_address, payment_id.len());
 
-        if total_size > MAX_ENCRYPTED_DATA_SIZE {
+        if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, payment_id: {} bytes, overhead: {} \
                  bytes)",
-                MAX_ENCRYPTED_DATA_SIZE,
+                MAX_PAYMENT_ID_SIZE,
                 total_size,
                 sender_address.get_size(),
                 payment_id.len(),
@@ -274,11 +274,11 @@ impl MemoField {
         let total_size =
             Self::calculate_transaction_info_size(&recipient_address, sent_output_hashes.len(), payment_id.len());
 
-        if total_size > MAX_ENCRYPTED_DATA_SIZE {
+        if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, payment_id: {} \
                  bytes, overhead: {} bytes)",
-                MAX_ENCRYPTED_DATA_SIZE,
+                MAX_PAYMENT_ID_SIZE,
                 total_size,
                 recipient_address.get_size(),
                 sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
@@ -313,10 +313,10 @@ impl MemoField {
         // Raw Memo: 1 byte for tag + data.len() bytes for data
         let total_size = data.len().saturating_add(1);
 
-        if total_size > MAX_ENCRYPTED_DATA_SIZE {
+        if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
                 "Memo exceeds {}-byte limit: {} bytes (data: {} bytes, tag: 1 byte)",
-                MAX_ENCRYPTED_DATA_SIZE,
+                MAX_PAYMENT_ID_SIZE,
                 total_size,
                 data.len()
             ));
@@ -339,10 +339,10 @@ impl MemoField {
         // Open Memo: 1 byte for tag + payment_id.len() bytes + 1 byte for tx_type
         let total_size = payment_id.len().saturating_add(2);
 
-        if total_size > MAX_ENCRYPTED_DATA_SIZE {
+        if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
                 "Memo exceeds {}-byte limit: {} bytes (payment_id: {} bytes, tag: 1 byte, tx_type: 1 byte)",
-                MAX_ENCRYPTED_DATA_SIZE,
+                MAX_PAYMENT_ID_SIZE,
                 total_size,
                 payment_id.len()
             ));
@@ -494,11 +494,11 @@ impl MemoField {
             let total_size =
                 Self::calculate_transaction_info_size(&address, sent_output_hashes.len(), payment_id.len());
 
-            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+            if total_size > MAX_PAYMENT_ID_SIZE {
                 return Err(format!(
                     "Setting address would exceed {}-byte limit: {} bytes (new address: {} bytes, hashes: {} bytes, \
                      payment_id: {} bytes, overhead: {} bytes)",
-                    MAX_ENCRYPTED_DATA_SIZE,
+                    MAX_PAYMENT_ID_SIZE,
                     total_size,
                     address.get_size(),
                     sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
@@ -532,11 +532,11 @@ impl MemoField {
             let total_size =
                 Self::calculate_transaction_info_size(recipient_address, sent_output_hashes.len(), payment_id.len());
 
-            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+            if total_size > MAX_PAYMENT_ID_SIZE {
                 return Err(format!(
                     "Setting sent output hashes would exceed {}-byte limit: {} bytes (address: {} bytes, new hashes: \
                      {} bytes, payment_id: {} bytes, overhead: {} bytes)",
-                    MAX_ENCRYPTED_DATA_SIZE,
+                    MAX_PAYMENT_ID_SIZE,
                     total_size,
                     recipient_address.get_size(),
                     sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
@@ -578,11 +578,11 @@ impl MemoField {
             let total_size =
                 Self::calculate_transaction_info_size(recipient_address, sent_output_hashes.len(), payment_id.len());
 
-            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+            if total_size > MAX_PAYMENT_ID_SIZE {
                 return Err(format!(
                     "Setting payment ID would exceed {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, \
                      new payment_id: {} bytes, overhead: {} bytes)",
-                    MAX_ENCRYPTED_DATA_SIZE,
+                    MAX_PAYMENT_ID_SIZE,
                     total_size,
                     recipient_address.get_size(),
                     sent_output_hashes.len().saturating_mul(FixedHash::byte_size()),
@@ -1353,7 +1353,7 @@ impl BorshDeserialize for MemoField {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
-        if len > MAX_ENCRYPTED_DATA_SIZE {
+        if len > MAX_PAYMENT_ID_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Larger than bytes".to_string(),
@@ -2153,16 +2153,16 @@ mod test {
         assert_eq!(open_payment_id.get_size(), 1 + small_payment_id.len() + 1); // tag + data + tx_type
 
         // Test Open Memo validation - too large
-        let large_payment_id = vec![0u8; MAX_ENCRYPTED_DATA_SIZE]; // 256 bytes
+        let large_payment_id = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
         let result = MemoField::new_open(large_payment_id, TxType::PaymentToOther);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test Open Memo validation - maximum valid size
-        let max_valid_open_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE - 2]; // 254 bytes (256 - 1 tag - 1 tx_type)
+        let max_valid_open_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 2]; // 254 bytes (256 - 1 tag - 1 tx_type)
         let max_open_payment_id = MemoField::new_open(max_valid_open_data.clone(), TxType::PaymentToOther)
             .expect("Maximum valid Open Memo should be valid");
-        assert_eq!(max_open_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
+        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
 
         // Test Raw Memo validation - valid case
         let raw_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -2170,16 +2170,16 @@ mod test {
         assert_eq!(raw_payment_id.get_size(), 1 + raw_data.len()); // tag + data
 
         // Test Raw Memo validation - too large
-        let large_raw_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE]; // 256 bytes
+        let large_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
         let result = MemoField::new_raw(large_raw_data);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test Raw Memo validation - maximum valid size
-        let max_valid_raw_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE - 1]; // 255 bytes (256 - 1 tag)
+        let max_valid_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 1]; // 255 bytes (256 - 1 tag)
         let max_raw_payment_id =
             MemoField::new_raw(max_valid_raw_data.clone()).expect("Maximum valid Raw Memo should be valid");
-        assert_eq!(max_raw_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
+        assert_eq!(max_raw_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
     }
 
     #[test]
@@ -2202,10 +2202,10 @@ mod test {
         // Verify the size calculation
         let expected_size = MemoField::calculate_address_and_data_size(&single_address, small_payment_id.len());
         assert_eq!(address_and_data.get_size(), expected_size);
-        assert!(address_and_data.get_size() <= MAX_ENCRYPTED_DATA_SIZE);
+        assert!(address_and_data.get_size() <= MAX_PAYMENT_ID_SIZE);
 
         // Test AddressAndData with user data that would exceed limit
-        let large_payment_id = vec![0u8; MAX_ENCRYPTED_DATA_SIZE];
+        let large_payment_id = vec![0u8; MAX_PAYMENT_ID_SIZE];
         let result = MemoField::new_address_and_data(
             single_address.clone(),
             fee,
@@ -2243,7 +2243,7 @@ mod test {
         let expected_size =
             MemoField::calculate_transaction_info_size(&single_address, sent_hashes.len(), small_payment_id.len());
         assert_eq!(transaction_info.get_size(), expected_size);
-        assert!(transaction_info.get_size() <= MAX_ENCRYPTED_DATA_SIZE);
+        assert!(transaction_info.get_size() <= MAX_PAYMENT_ID_SIZE);
 
         // Test TransactionInfo with too many hashes
         let many_hashes = vec![create_random_fixed_hash(); 10]; // 10 * 32 = 320 bytes just for hashes
@@ -2372,7 +2372,7 @@ mod test {
         let nested_payment_id = result.unwrap();
         let total_size = nested_payment_id.get_size();
         assert!(
-            total_size <= MAX_ENCRYPTED_DATA_SIZE,
+            total_size <= MAX_PAYMENT_ID_SIZE,
             "Total nested Memo size should not exceed 256 bytes"
         );
 
@@ -2391,7 +2391,7 @@ mod test {
         let nested_transaction_info = result.unwrap();
         let total_size = nested_transaction_info.get_size();
         assert!(
-            total_size <= MAX_ENCRYPTED_DATA_SIZE,
+            total_size <= MAX_PAYMENT_ID_SIZE,
             "Total nested TransactionInfo size should not exceed 256 bytes"
         );
 
@@ -2421,7 +2421,7 @@ mod test {
         // Verify the error shows the actual calculated size
         let calculated_size = MemoField::calculate_address_and_data_size(&large_nested_address, 5);
         assert!(
-            calculated_size > MAX_ENCRYPTED_DATA_SIZE,
+            calculated_size > MAX_PAYMENT_ID_SIZE,
             "Calculated size should exceed the limit"
         );
     }
@@ -2442,16 +2442,16 @@ mod test {
         }
 
         // Test string that would exceed size limit
-        let large_string = "x".repeat(MAX_ENCRYPTED_DATA_SIZE); // 256 chars
+        let large_string = "x".repeat(MAX_PAYMENT_ID_SIZE); // 256 chars
         let result = MemoField::new_open_from_string(&large_string, TxType::PaymentToOther);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test maximum valid string size
-        let max_valid_string = "x".repeat(MAX_ENCRYPTED_DATA_SIZE - 2); // 254 chars (256 - 1 tag - 1 tx_type)
+        let max_valid_string = "x".repeat(MAX_PAYMENT_ID_SIZE - 2); // 254 chars (256 - 1 tag - 1 tx_type)
         let max_open_payment_id = MemoField::new_open_from_string(&max_valid_string, TxType::PaymentToOther)
             .expect("Maximum valid string should create Open Memo");
-        assert_eq!(max_open_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
+        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
     }
 
     #[test]

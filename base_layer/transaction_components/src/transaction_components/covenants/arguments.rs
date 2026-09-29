@@ -45,9 +45,21 @@ use crate::transaction_components::{
     },
 };
 
+/// The maximum size of a covenant argument read as variable length bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
-const MAX_BYTES_ARG_SIZE: usize = 4096;
+/// The maximum size of a `Bytes` covenant argument.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) const MAX_BYTES_ARG_SIZE: usize = 4096;
 
+/// A `Bytes` covenant argument, at most [`MAX_BYTES_ARG_SIZE`] bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub(crate) type BytesArg = MaxSizeBytes<MAX_BYTES_ARG_SIZE>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

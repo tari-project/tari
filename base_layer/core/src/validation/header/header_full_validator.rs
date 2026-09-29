@@ -284,6 +284,16 @@ fn check_monero_seed_height<B: BlockchainBackend>(
     Ok(Some(monero_data.randomx_key.to_vec()))
 }
 
+/// The largest RandomXT pow data [`check_randomxt_pow_data`] accepts.
+pub(crate) const MAX_RANDOMXT_POW_DATA_SIZE: usize = 32;
+
+/// The exact size of Cuckaroo pow data: `cycle_length` edges of `edge_bits` bits each, bit packed and rounded up to a
+/// whole byte.
+pub(crate) fn cuckaroo_pow_data_size(cuckaroo_cycle_length: u8, cuckaroo_edge_bits: u8) -> usize {
+    let total_packed_size = (cuckaroo_cycle_length as usize).saturating_mul(cuckaroo_edge_bits as usize);
+    total_packed_size.div_ceil(8)
+}
+
 /// The canonical form check for a RandomXT `pow_data`, shared by the full header validator and the cheap
 /// difficulty pre-check on the block propagation path (`InboundNodeCommsHandlers::check_min_block_difficulty`).
 ///
@@ -309,7 +319,7 @@ pub(crate) fn check_randomxt_pow_data(
         PowAlgorithm::RandomXT,
         "check_randomxt_pow_data applied to a non-RandomXT proof of work"
     );
-    if pow.pow_data.len() > 32 {
+    if pow.pow_data.len() > MAX_RANDOMXT_POW_DATA_SIZE {
         return Err(PowError::RandomxTPowDataTooLong);
     }
     if require_canonical_randomxt_pow_data && pow.pow_data.last() == Some(&0) {
@@ -344,15 +354,9 @@ fn check_pow_data_inner(
             Ok(())
         },
         PowAlgorithm::Cuckaroo => {
-            let cycle_length = cuckaroo_cycle_length as usize;
-            let edge_bits = cuckaroo_edge_bits as usize;
-            let total_packed_size = cycle_length.saturating_mul(edge_bits);
+            let total_packed_size = (cuckaroo_cycle_length as usize).saturating_mul(cuckaroo_edge_bits as usize);
             let remainder = total_packed_size % 8;
-            let total_bytes = if remainder != 0 {
-                (total_packed_size / 8).saturating_add(1)
-            } else {
-                total_packed_size / 8
-            };
+            let total_bytes = cuckaroo_pow_data_size(cuckaroo_cycle_length, cuckaroo_edge_bits);
 
             if pow.pow_data.len() != total_bytes {
                 return Err(PowError::CuckarooPowDataSizeMismatch {
@@ -390,6 +394,87 @@ mod test {
 
     use super::*;
     use crate::proof_of_work::create_tari_mining_blob;
+
+    /// `PowData`'s bound is applied when a header is decoded, before any of the per-algorithm rules above run. If it
+    /// were ever smaller than what one of those rules accepts, headers that are valid by the rules could not even be
+    /// decoded, which would be a silent consensus change.
+    #[test]
+    fn pow_data_decode_bound_covers_every_per_algorithm_limit() {
+        use tari_common::configuration::Network;
+        use tari_transaction_components::{
+            consensus::consensus_constants::MAX_MONERO_COINBASE_PREFIX_SIZE,
+            tari_proof_of_work::PowData,
+        };
+
+        let pow_data_max = PowData::default().max_size();
+        // RandomXT
+        assert!(MAX_RANDOMXT_POW_DATA_SIZE <= pow_data_max);
+        // RandomXM: the Monero coinbase prefix is carried inside the pow data
+        assert!(MAX_MONERO_COINBASE_PREFIX_SIZE <= pow_data_max);
+        // Sha3x pow data must be empty, which always fits
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            for (epoch, constants) in ConsensusConstants::for_network(network).iter().enumerate() {
+                let cuckaroo =
+                    cuckaroo_pow_data_size(constants.cuckaroo_cycle_length(), constants.cuckaroo_edge_bits());
+                assert!(
+                    cuckaroo <= pow_data_max,
+                    "{network} epoch {epoch}: cuckaroo pow data ({cuckaroo}) exceeds the PowData bound"
+                );
+                // RandomXM pow data also carries the coinbase extra field
+                assert!(
+                    constants.max_extra_field_size() <= pow_data_max,
+                    "{network} epoch {epoch}: max_extra_field_size exceeds the PowData bound"
+                );
+            }
+        }
+    }
+
+    /// `AuxChainHashes` is not decoded by a node, so it backs no decode-time rule; what matters is that the aux chain
+    /// merkle proof a merge mining proxy builds from the largest allowed set still decodes on the node. This pins the
+    /// bound and checks that round trip for the deepest leaf.
+    #[test]
+    fn aux_chain_hashes_bound_fits_the_merkle_proof_bound() {
+        use borsh::{BorshDeserialize, BorshSerialize};
+
+        use crate::{
+            common::MAX_AUX_CHAIN_HASHES,
+            proof_of_work::monero_rx::{create_merkle_proof, tree_hash},
+        };
+
+        fn round_trip<T: BorshSerialize + BorshDeserialize>(value: &T) -> T {
+            let mut buf = Vec::new();
+            value.serialize(&mut buf).unwrap();
+            T::deserialize(&mut buf.as_slice()).expect("the proof must decode")
+        }
+
+        const { assert!(MAX_AUX_CHAIN_HASHES == 128) };
+
+        #[allow(clippy::cast_possible_truncation)]
+        let hashes = (0..MAX_AUX_CHAIN_HASHES)
+            .map(|i| monero::Hash::from([i as u8; 32]))
+            .collect::<Vec<_>>();
+        let root = tree_hash(&hashes).unwrap();
+        for leaf in [hashes.first().unwrap(), hashes.last().unwrap()] {
+            let proof = create_merkle_proof(&hashes, leaf).expect("a proof over the maximum aux chain count");
+            let decoded = round_trip(&proof);
+            assert_eq!(decoded.calculate_root(leaf), root);
+        }
+    }
+
+    #[test]
+    fn cuckaroo_pow_data_size_rounds_up_to_whole_bytes() {
+        assert_eq!(cuckaroo_pow_data_size(42, 29), 153); // 1218 bits
+        assert_eq!(cuckaroo_pow_data_size(8, 8), 8);
+        assert_eq!(cuckaroo_pow_data_size(0, 29), 0);
+    }
 
     #[test]
     fn test_check_pow_data_allowed_algos() {

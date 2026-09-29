@@ -34,7 +34,7 @@ use crate::{
     tari_address::{
         INTERNAL_DUAL_BASE58_MAX_SIZE,
         INTERNAL_DUAL_BASE58_MIN_SIZE,
-        MAX_ENCRYPTED_DATA_SIZE,
+        MAX_PAYMENT_ID_SIZE,
         TARI_ADDRESS_INTERNAL_DUAL_SIZE,
         TariAddressError,
         TariAddressFeatures,
@@ -49,7 +49,7 @@ pub struct DualAddress {
     public_view_key: CompressedPublicKey,
     public_spend_key: CompressedPublicKey,
     #[serde(alias = "payment_id_user_data")]
-    memo_field_payment_id: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
+    memo_field_payment_id: MaxSizeBytes<MAX_PAYMENT_ID_SIZE>,
 }
 
 impl DualAddress {
@@ -64,7 +64,7 @@ impl DualAddress {
         let mut features = features;
         let memo_field_payment_id = match memo_field_payment_id {
             Some(data) => {
-                if data.len() > MAX_ENCRYPTED_DATA_SIZE {
+                if data.len() > MAX_PAYMENT_ID_SIZE {
                     return Err(TariAddressError::PaymentIdTooLarge);
                 }
                 features.set(TariAddressFeatures::PAYMENT_ID, true);
@@ -91,7 +91,7 @@ impl DualAddress {
     }
 
     pub fn add_memo_field_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
-        if data.len() > MAX_ENCRYPTED_DATA_SIZE {
+        if data.len() > MAX_PAYMENT_ID_SIZE {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
         let memo_field_payment_id = MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?;
@@ -104,7 +104,7 @@ impl DualAddress {
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
         let length = emoji.chars().count();
-        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_ENCRYPTED_DATA_SIZE))
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_PAYMENT_ID_SIZE))
             .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
@@ -166,7 +166,7 @@ impl DualAddress {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
-        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_ENCRYPTED_DATA_SIZE))
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_PAYMENT_ID_SIZE))
             .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
@@ -611,7 +611,7 @@ mod test {
         let mut rng = rand::rng();
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE + 1];
+        let payment_id = vec![1u8; MAX_PAYMENT_ID_SIZE + 1];
 
         // Generate an emoji ID from the public key and ensure we recover it
         let _emoji_id_from_public_key = DualAddress::new(
@@ -622,7 +622,7 @@ mod test {
             Some(payment_id.clone()),
         )
         .unwrap_err();
-        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE];
+        let payment_id = vec![1u8; MAX_PAYMENT_ID_SIZE];
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key = DualAddress::new(
