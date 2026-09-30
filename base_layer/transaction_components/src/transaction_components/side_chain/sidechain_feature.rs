@@ -155,10 +155,9 @@ mod tests {
     use super::*;
     use crate::transaction_components::{BuildInfo, TemplateType};
 
-    /// Side-chain data is not bound to the output type, so a live network may hold any variant whose chain checks it
-    /// can pass, and that variant's index is part of the output hash (Borsh) and the stored output (bincode). Only
-    /// `ValidatorNodeExit` is unreachable there - an exit needs an active validator, and live networks cannot activate
-    /// one - so it is the only variant whose index may move. These must not.
+    /// A variant's index is part of the output hash (Borsh) and the stored output (bincode), so the indexes of these
+    /// variants must not move. Only `ValidatorNodeExit` may: an exit needs an active validator, which live networks
+    /// cannot activate.
     #[test]
     fn live_network_variant_indexes_are_stable() {
         let cases = [

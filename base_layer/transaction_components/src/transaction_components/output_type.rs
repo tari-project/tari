@@ -78,13 +78,14 @@ impl OutputType {
         FromPrimitive::from_u8(value)
     }
 
-    pub fn all() -> Vec<Self> {
-        vec![
+    /// Every output type except the deprecated `CodeTemplateRegistration`, which is kept only to reserve its
+    /// discriminant.
+    pub fn all() -> &'static [Self] {
+        &[
             OutputType::Standard,
             OutputType::Coinbase,
             OutputType::Burn,
             OutputType::ValidatorNodeRegistration,
-            OutputType::CodeTemplateRegistration,
             OutputType::SidechainCheckpoint,
             OutputType::SidechainProof,
             OutputType::ValidatorNodeExit,
@@ -127,7 +128,7 @@ mod tests {
             }
         }
 
-        for variant in OutputType::all() {
+        for &variant in OutputType::all() {
             let mask = 1 << variant as u8;
             check_duplicate(variant_bits, mask);
             match variant {
@@ -135,13 +136,13 @@ mod tests {
                 OutputType::Coinbase => variant_bits |= mask,
                 OutputType::Burn => variant_bits |= mask,
                 OutputType::ValidatorNodeRegistration => variant_bits |= mask,
-                OutputType::CodeTemplateRegistration => variant_bits |= mask,
+                OutputType::CodeTemplateRegistration => panic!("the deprecated CodeTemplateRegistration is listed"),
                 OutputType::SidechainCheckpoint => variant_bits |= mask,
                 OutputType::SidechainProof => variant_bits |= mask,
                 OutputType::ValidatorNodeExit => variant_bits |= mask,
             }
         }
-        assert_eq!(variant_bits, 0b11111111);
+        assert_eq!(variant_bits, 0b11101111);
     }
     #[test]
     fn it_converts_from_byte_to_output_type() {

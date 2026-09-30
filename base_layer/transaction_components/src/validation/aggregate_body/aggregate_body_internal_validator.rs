@@ -57,6 +57,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
+            check_sidechain_data_rules,
             check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
             is_all_unique_and_sorted,
@@ -181,6 +182,7 @@ pub fn validate_individual_output(
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
     check_permitted_range_proof_types(consensus_constants, output)?;
+    check_sidechain_data_rules(output)?;
     output.verify_metadata_signature()?;
     check_sidechain_features(consensus_constants, output)?;
 

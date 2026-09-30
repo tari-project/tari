@@ -945,7 +945,7 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
-            permitted_output_types: OutputType::all(),
+            permitted_output_types: OutputType::all().to_vec(),
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
@@ -1032,7 +1032,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             // igor is the first network to support the new output types
-            permitted_output_types: OutputType::all(),
+            permitted_output_types: OutputType::all().to_vec(),
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
@@ -2982,9 +2982,33 @@ mod test {
         }
     }
 
+    /// Code template registration is deprecated: no network permits its output type in any entry.
+    #[test]
+    fn no_network_permits_code_template_registration_outputs() {
+        use tari_common::configuration::Network;
+
+        for network in [
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+            Network::NextNet,
+            Network::StageNet,
+            Network::MainNet,
+        ] {
+            for (index, constants) in ConsensusConstants::for_network(network).iter().enumerate() {
+                assert!(
+                    !constants
+                        .permitted_output_types()
+                        .contains(&OutputType::CodeTemplateRegistration),
+                    "{network} entry {index}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn range_proof_types_coverage() {
-        let output_type_variants = OutputType::all();
+        let output_type_variants = OutputType::all().to_vec();
         let range_proof_type_variants = RangeProofType::all();
 
         let permitted_range_proof_types = ConsensusConstants::current_permitted_range_proof_types().to_vec();
