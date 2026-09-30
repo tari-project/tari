@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [6.0.1-pre.2](https://github.com/tari-project/tari/compare/v6.0.1-pre.1...v6.0.1-pre.2) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* side-chain data consensus rules (#8067)
+* remove code template registration support from the base node and wallet (#8064)
+* remove validator eviction from the base layer (#8062)
+* **jellyfish:** domain-separate leaf and internal node hashes (#8060)
+* **shutdown:** make drop, trigger and flag state agree; add reason and a bounded drain (#8061)
+
+### Features
+
+* harden mempool ([#8055](https://github.com/tari-project/tari/issues/8055)) ([2a6170a](https://github.com/tari-project/tari/commit/2a6170aeb5a244e2285885d538c2a338d5db487a))
+* side-chain data consensus rules ([#8067](https://github.com/tari-project/tari/issues/8067)) ([19164b1](https://github.com/tari-project/tari/commit/19164b10196781dbad4a41856c805a6383889a3f))
+
+
+### Bug Fixes
+
+* enforce decoder parity for bounded transaction types and validate every submission path ([#8058](https://github.com/tari-project/tari/issues/8058)) ([2a220ef](https://github.com/tari-project/tari/commit/2a220ef417bb93e25fcd06354fce0ba27cd24de5)), closes [#8055](https://github.com/tari-project/tari/issues/8055) [#8055](https://github.com/tari-project/tari/issues/8055)
+* **jellyfish:** domain-separate leaf and internal node hashes ([#8060](https://github.com/tari-project/tari/issues/8060)) ([bcf9ea9](https://github.com/tari-project/tari/commit/bcf9ea96e88d5e594da977a8c17a7c892d0a60f9))
+* **jellyfish:** harden deserialization and remove reachable panics ([#8059](https://github.com/tari-project/tari/issues/8059)) ([83586fd](https://github.com/tari-project/tari/commit/83586fd8a9523e9e4eaff4069130f84286bcb472))
+* **mempool:** match sync inventory in linear time ([#8057](https://github.com/tari-project/tari/issues/8057)) ([9c79982](https://github.com/tari-project/tari/commit/9c79982650840547d03ff32f60df2e86c01064ff)), closes [/github.com/tari-project/tari/pull/8057#discussion_r4131700817](https://github.com/tari-project//github.com/tari-project/tari/pull/8057/issues/discussion_r4131700817)
+* **shutdown:** make drop, trigger and flag state agree; add reason and a bounded drain ([#8061](https://github.com/tari-project/tari/issues/8061)) ([beffd2e](https://github.com/tari-project/tari/commit/beffd2ec5e4e38d5ca08694589a2275a440fc8d0))
+* **wallet:** wallet output state consistency ([#8066](https://github.com/tari-project/tari/issues/8066)) ([e485aaa](https://github.com/tari-project/tari/commit/e485aaa903c1f2b58d936a87683bccc6e4d2e7ef)), closes [/github.com/tari-project/tari/pull/8066#discussion_r4142979339](https://github.com/tari-project//github.com/tari-project/tari/pull/8066/issues/discussion_r4142979339) [/github.com/tari-project/tari/pull/8066#discussion_r4142979354](https://github.com/tari-project//github.com/tari-project/tari/pull/8066/issues/discussion_r4142979354) [/github.com/tari-project/tari/pull/8066#discussion_r4142979361](https://github.com/tari-project//github.com/tari-project/tari/pull/8066/issues/discussion_r4142979361)
+
+
+* remove code template registration support from the base node and wallet ([#8064](https://github.com/tari-project/tari/issues/8064)) ([5cd2364](https://github.com/tari-project/tari/commit/5cd236411905f2a6c84642254f9fff7a4ae13f93))
+* remove validator eviction from the base layer ([#8062](https://github.com/tari-project/tari/issues/8062)) ([ada0dd1](https://github.com/tari-project/tari/commit/ada0dd1905fb2e0eb5a7fb2d802ed1e29c5281ac))
+
 ### [6.0.1-pre.1](https://github.com/tari-project/tari/compare/v6.0.1-pre.0...v6.0.1-pre.1) (2026-09-28)
 
 
