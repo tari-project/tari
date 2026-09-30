@@ -272,10 +272,10 @@ where
             Ok(Ok(InvalidMaskMigrationOutcome::Incomplete(summary))) => {
                 error!(
                     target: LOG_TARGET,
-                    "Commitment mask migration incomplete: {} coupled transaction(s) could not be reconciled, it will be \
-                     retried on the next start ({} output(s) marked Invalid this run)",
-                    summary.reconciliation_errors,
-                    summary.marked_invalid
+                    "Commitment mask migration: outputs done ({} marked Invalid), but {} coupled transaction \
+                     cancellation(s) failed and will be retried on the next start",
+                    summary.marked_invalid,
+                    summary.reconciliation_errors
                 );
             },
             Ok(Ok(_)) => {},

@@ -19,18 +19,22 @@
 //! looks as a fresh recovery would leave it: recovery rejects such outputs, so it never creates a transaction for
 //! them. The coupled transaction (the output's `received_in_tx_id`) is cancelled with
 //! [`TxCancellationReason::InvalidEncryptedValue`] through an [`InvalidOutputTransactionSink`], keeping it in the
-//! history as an audit trail. Order of operations: scan, cancel coupled transactions, mark outputs Invalid, write the
-//! flag. A crash anywhere before the flag re-runs the whole migration; cancelling is idempotent, and the outputs are
-//! still found by the re-run because they are only marked Invalid after the cancellations. If the sink fails on a
-//! transaction, that transaction's outputs are left unmarked and the flag is not written, so the next start retries
-//! them. No events are published:
-//! this runs at startup before anything subscribes, and the UI / FFI read transaction state from the database on
-//! launch.
+//! history as an audit trail.
+//!
+//! The outputs and the transactions are tracked separately so that a transaction that cannot be cancelled never keeps
+//! a wrong-value output spendable. Order of operations:
+//! 1. scan;
+//! 2. persist the coupled transaction ids under [`INVALID_MASK_PENDING_TXS_KEY`];
+//! 3. cancel them, then rewrite that key with only the ids that failed with a retryable error (removed when empty);
+//! 4. mark every mismatch output Invalid, whatever happened to its transaction;
+//! 5. write [`INVALID_MASK_MIGRATION_KEY`].
+//!
+//! A crash before step 5 re-runs the scan (cancelling is idempotent, and the outputs are still found because they are
+//! marked in step 4). Once the main flag is set, later starts skip the scan and only retry the ids still pending. No
+//! events are published: this runs at startup before anything subscribes, and the UI / FFI read transaction state
+//! from the database on launch.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    str::FromStr,
-};
+use std::{collections::BTreeSet, str::FromStr};
 
 use log::*;
 use tari_common_types::{transaction::TxId, types::CompressedCommitment};
@@ -50,9 +54,12 @@ use crate::{
         },
     },
     storage::database::{WalletBackend, WalletDatabase},
-    transaction_service::storage::{
-        database::{TransactionBackend, TransactionDatabase},
-        models::{TxCancellationReason, WalletTransaction},
+    transaction_service::{
+        error::TransactionStorageError,
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            models::{TxCancellationReason, WalletTransaction},
+        },
     },
 };
 
@@ -61,6 +68,10 @@ const LOG_TARGET: &str = "wallet::output_manager_service::invalid_mask_migration
 /// Client key/value store key recording that the migration has completed. Its value is the number of outputs that
 /// were marked invalid.
 pub const INVALID_MASK_MIGRATION_KEY: &str = "migration.invalid_commitment_mask.v1";
+
+/// Client key/value store key holding the ids of coupled transactions that still need cancelling (comma separated).
+/// Removed when empty.
+pub const INVALID_MASK_PENDING_TXS_KEY: &str = "migration.invalid_commitment_mask.v1.pending_txs";
 
 /// Number of output rows fetched per page.
 const BATCH_SIZE: i64 = 1000;
@@ -89,11 +100,11 @@ pub struct InvalidMaskMigrationSummary {
     pub marked_invalid: usize,
     /// Transactions coupled to a mask-mismatch output that were cancelled by this run
     pub transactions_cancelled: usize,
-    /// Coupled transactions that were not cancelled but do not hold the migration up (not found, or not a
-    /// cancellable kind); their outputs are still marked Invalid
+    /// Coupled transactions that were not cancelled and will not be retried: not found, not a cancellable kind, or a
+    /// non-retryable error (the transaction row itself cannot be read)
     pub transactions_not_reconciled: usize,
-    /// Coupled transactions the sink failed on (storage, decryption, ...). Their outputs are left as they are and the
-    /// flag is not written, so the next start retries them
+    /// Coupled transactions the sink failed on with a retryable error (I/O, connection, ...). They stay in
+    /// [`INVALID_MASK_PENDING_TXS_KEY`] and are retried on the next start
     pub reconciliation_errors: usize,
 }
 
@@ -103,9 +114,8 @@ pub enum InvalidMaskMigrationOutcome {
     AlreadyCompleted,
     /// The scan ran to completion and the flag has now been set
     Completed(InvalidMaskMigrationSummary),
-    /// Some coupled transactions could not be reconciled (`reconciliation_errors > 0`). Everything else was applied,
-    /// but the outputs of those transactions were left unmarked and the flag was not written, so the next start
-    /// rescans and retries them
+    /// The outputs are done and the flag is set, but some coupled transactions failed with a retryable error
+    /// (`reconciliation_errors > 0`); they stay pending and are retried, without a rescan, on the next start
     Incomplete(InvalidMaskMigrationSummary),
 }
 
@@ -114,6 +124,7 @@ pub enum InvalidMaskMigrationOutcome {
 pub trait MigrationFlagStore: Send + Sync {
     fn get_migration_flag(&self, key: &str) -> Result<Option<String>, WalletStorageError>;
     fn set_migration_flag(&self, key: &str, value: String) -> Result<(), WalletStorageError>;
+    fn clear_migration_flag(&self, key: &str) -> Result<(), WalletStorageError>;
 }
 
 impl<T: WalletBackend + 'static> MigrationFlagStore for WalletDatabase<T> {
@@ -123,6 +134,10 @@ impl<T: WalletBackend + 'static> MigrationFlagStore for WalletDatabase<T> {
 
     fn set_migration_flag(&self, key: &str, value: String) -> Result<(), WalletStorageError> {
         self.set_client_key_value(key.to_string(), value)
+    }
+
+    fn clear_migration_flag(&self, key: &str) -> Result<(), WalletStorageError> {
+        self.clear_client_value(key.to_string()).map(|_| ())
     }
 }
 
@@ -145,12 +160,40 @@ pub enum InvalidOutputTxOutcome {
 /// [`TransactionDatabase`]; injected into the output manager service so it does not depend on the transaction service.
 /// Must be idempotent: the migration may run again after a crash.
 pub trait InvalidOutputTransactionSink: Send + Sync {
-    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, String>;
+    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, InvalidOutputTxError>;
+}
+
+/// A failure to cancel a coupled transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidOutputTxError {
+    /// `true` if trying again later may succeed (I/O, connection, ...); `false` if the transaction row itself cannot
+    /// be read or updated, so retrying would fail forever
+    pub retryable: bool,
+    pub message: String,
+}
+
+impl InvalidOutputTxError {
+    /// Classify a transaction storage error: only database access / connection failures are worth retrying
+    pub fn from_storage_error(error: &TransactionStorageError) -> Self {
+        let retryable = match error {
+            TransactionStorageError::DieselError(diesel::result::Error::NotFound) => false,
+            TransactionStorageError::DieselError(_) |
+            TransactionStorageError::DieselConnectionError(_) |
+            TransactionStorageError::SqliteStorageError(_) |
+            TransactionStorageError::BlockingTaskSpawnError(_) => true,
+            _ => false,
+        };
+        Self {
+            retryable,
+            message: error.to_string(),
+        }
+    }
 }
 
 impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for TransactionDatabase<T> {
-    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, String> {
-        match self.get_any_transaction(tx_id).map_err(|e| e.to_string())? {
+    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, InvalidOutputTxError> {
+        let error = |e: TransactionStorageError| InvalidOutputTxError::from_storage_error(&e);
+        match self.get_any_transaction(tx_id).map_err(error)? {
             None => Ok(InvalidOutputTxOutcome::NotFound),
             Some(WalletTransaction::Completed(tx)) => {
                 if tx.cancelled.is_some() {
@@ -161,14 +204,14 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
                     TxCancellationReason::InvalidEncryptedValue,
                     Some("An output of this transaction does not open to its encrypted value".to_string()),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(error)?;
                 Ok(InvalidOutputTxOutcome::CancelledCompleted)
             },
             Some(WalletTransaction::PendingInbound(tx)) => {
                 if tx.cancelled {
                     return Ok(InvalidOutputTxOutcome::AlreadyCancelled);
                 }
-                self.cancel_pending_transaction(tx_id).map_err(|e| e.to_string())?;
+                self.cancel_pending_transaction(tx_id).map_err(error)?;
                 Ok(InvalidOutputTxOutcome::CancelledPendingInbound)
             },
             Some(WalletTransaction::PendingOutbound(_)) => {
@@ -186,12 +229,12 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
 /// logged and counted separately; stored values are only logged at debug. The status update for all failures happens in
 /// one database transaction after the scan, and the completion flag is written only after that transaction commits.
 ///
-/// Before any output is marked, the transaction each mask-mismatch output was received in is cancelled through
-/// `tx_sink` (see the module docs). Unverifiable outputs never have their transaction touched: they may verify once
-/// the key manager error clears. A missing or non-cancellable (pending outbound) transaction is logged and counted and
-/// its outputs are still marked Invalid. If the sink fails on a transaction (storage, decryption, ...), that
-/// transaction's outputs are left unmarked, the flag is not written and [`InvalidMaskMigrationOutcome::Incomplete`] is
-/// returned, so the next start rescans the still non-Invalid rows and retries just those.
+/// Before any output is marked, the transaction each mask-mismatch output was received in is recorded as pending and
+/// cancelled through `tx_sink` (see the module docs). Unverifiable outputs never have their transaction touched: they
+/// may verify once the key manager error clears. Every mismatch output is marked Invalid whatever happens to its
+/// transaction. A transaction that fails with a retryable error stays pending, the flag is still written and
+/// [`InvalidMaskMigrationOutcome::Incomplete`] is returned; the next start skips the scan and retries only the pending
+/// transactions. Missing, non-cancellable and non-retryable ones are logged, counted and dropped.
 ///
 /// This is CPU-bound and synchronous; call it from a blocking context.
 pub fn run_invalid_mask_migration<F, B, KM>(
@@ -206,16 +249,27 @@ where
     KM: LegacyTransactionKeyManagerInterface,
 {
     if flag_store.get_migration_flag(INVALID_MASK_MIGRATION_KEY)?.is_some() {
-        debug!(target: LOG_TARGET, "Commitment mask migration already completed, skipping");
-        return Ok(InvalidMaskMigrationOutcome::AlreadyCompleted);
+        let pending = load_pending_tx_ids(flag_store)?;
+        if pending.is_empty() {
+            debug!(target: LOG_TARGET, "Commitment mask migration already completed, skipping");
+            return Ok(InvalidMaskMigrationOutcome::AlreadyCompleted);
+        }
+        info!(
+            target: LOG_TARGET,
+            "Commitment mask migration: retrying {} pending transaction cancellation(s)",
+            pending.len()
+        );
+        let mut summary = InvalidMaskMigrationSummary::default();
+        let remaining = reconcile_transactions(tx_sink, &pending, &mut summary);
+        store_pending_tx_ids(flag_store, &remaining)?;
+        return Ok(outcome(summary));
     }
 
     info!(target: LOG_TARGET, "Commitment mask migration: checking all stored outputs");
     let mut summary = InvalidMaskMigrationSummary::default();
     let mut to_invalidate = Vec::new();
-    // Mask-mismatch outputs grouped by the transaction they were received in; they are only marked Invalid once that
-    // transaction has been reconciled
-    let mut mismatched_by_tx: BTreeMap<u64, Vec<i32>> = BTreeMap::new();
+    // Transactions the mask-mismatch outputs were received in
+    let mut mismatched_tx_ids = BTreeSet::new();
     let mut last_id = 0;
     loop {
         let batch = output_db.fetch_outputs_for_mask_verification(last_id, BATCH_SIZE)?;
@@ -239,9 +293,9 @@ where
                         status_name(row.status),
                     );
                     debug!(target: LOG_TARGET, "Commitment mask migration: output id={} stored value {}", row.id, row.value);
-                    match row.received_in_tx_id {
-                        Some(tx_id) => mismatched_by_tx.entry(tx_id.as_u64()).or_default().push(row.id),
-                        None => to_invalidate.push(row.id),
+                    to_invalidate.push(row.id);
+                    if let Some(tx_id) = row.received_in_tx_id {
+                        mismatched_tx_ids.insert(tx_id.as_u64());
                     }
                     if let Some(tx_id) = row.spent_in_tx_id {
                         // A spend of this output cannot have had a valid kernel, so the base node will have rejected
@@ -285,78 +339,116 @@ where
         }
     }
 
-    apply_scan_results(flag_store, tx_sink, output_db, to_invalidate, mismatched_by_tx, summary)
+    apply_scan_results(
+        flag_store,
+        tx_sink,
+        output_db,
+        to_invalidate,
+        &mismatched_tx_ids,
+        summary,
+    )
 }
 
-/// Second half of the migration, in order: reconcile coupled transactions, mark outputs Invalid, write the flag
-/// (only if every reconciliation succeeded).
+/// Second half of the migration, in order: persist the coupled transaction ids, cancel them (keeping only retryable
+/// failures pending), mark every mismatch output Invalid, write the flag.
 fn apply_scan_results<F, B>(
     flag_store: &F,
     tx_sink: Option<&dyn InvalidOutputTransactionSink>,
     output_db: &OutputManagerDatabase<B>,
-    mut to_invalidate: Vec<i32>,
-    mismatched_by_tx: BTreeMap<u64, Vec<i32>>,
+    to_invalidate: Vec<i32>,
+    mismatched_tx_ids: &BTreeSet<u64>,
     mut summary: InvalidMaskMigrationSummary,
 ) -> Result<InvalidMaskMigrationOutcome, InvalidMaskMigrationError>
 where
     F: MigrationFlagStore + ?Sized,
     B: OutputManagerBackend + 'static,
 {
-    let tx_ids: BTreeSet<u64> = mismatched_by_tx.keys().copied().collect();
-    let failed = reconcile_transactions(tx_sink, &tx_ids, &mut summary);
-    for (tx_id, output_ids) in mismatched_by_tx {
-        if !failed.contains(&tx_id) {
-            to_invalidate.extend(output_ids);
-        }
-    }
+    // Ids left pending by an earlier interrupted run are carried along
+    let mut pending = load_pending_tx_ids(flag_store)?;
+    pending.extend(mismatched_tx_ids.iter().copied());
+    store_pending_tx_ids(flag_store, &pending)?;
+    let remaining = reconcile_transactions(tx_sink, &pending, &mut summary);
+    store_pending_tx_ids(flag_store, &remaining)?;
+
     summary.marked_invalid = output_db.mark_outputs_invalid(to_invalidate)?;
-    if summary.reconciliation_errors > 0 {
-        warn!(
-            target: LOG_TARGET,
-            "Commitment mask migration incomplete: {} coupled transaction(s) could not be reconciled; their outputs are \
-             left unchanged and will be retried on the next start ({} output(s) marked Invalid this run)",
-            summary.reconciliation_errors,
-            summary.marked_invalid
-        );
-        return Ok(InvalidMaskMigrationOutcome::Incomplete(summary));
-    }
     flag_store.set_migration_flag(INVALID_MASK_MIGRATION_KEY, summary.marked_invalid.to_string())?;
 
     info!(
         target: LOG_TARGET,
         "Commitment mask migration complete: {} output(s) scanned, {} mask mismatch(es), {} verification error(s) ({} \
-         left unchanged as not spendable), {} marked Invalid, {} transaction(s) cancelled, {} not reconciled",
+         left unchanged as not spendable), {} marked Invalid, {} transaction(s) cancelled, {} not reconciled, {} \
+         pending retry",
         summary.scanned,
         summary.mask_mismatches,
         summary.verification_errors,
         summary.unverifiable_left_unchanged,
         summary.marked_invalid,
         summary.transactions_cancelled,
-        summary.transactions_not_reconciled
+        summary.transactions_not_reconciled,
+        summary.reconciliation_errors
     );
-    Ok(InvalidMaskMigrationOutcome::Completed(summary))
+    Ok(outcome(summary))
 }
 
-/// Cancel the transactions coupled to mask-mismatch outputs. Returns the transactions the sink failed on, whose
-/// outputs must not be marked Invalid this run; everything else (including a missing or non-cancellable transaction)
-/// lets its outputs be marked.
+fn outcome(summary: InvalidMaskMigrationSummary) -> InvalidMaskMigrationOutcome {
+    if summary.reconciliation_errors > 0 {
+        InvalidMaskMigrationOutcome::Incomplete(summary)
+    } else {
+        InvalidMaskMigrationOutcome::Completed(summary)
+    }
+}
+
+/// Read the pending transaction ids; unparseable entries are logged and dropped.
+fn load_pending_tx_ids<F: MigrationFlagStore + ?Sized>(flag_store: &F) -> Result<BTreeSet<u64>, WalletStorageError> {
+    let Some(value) = flag_store.get_migration_flag(INVALID_MASK_PENDING_TXS_KEY)? else {
+        return Ok(BTreeSet::new());
+    };
+    Ok(value
+        .split(',')
+        .filter(|entry| !entry.trim().is_empty())
+        .filter_map(|entry| {
+            entry
+                .trim()
+                .parse::<u64>()
+                .inspect_err(|_| {
+                    error!(target: LOG_TARGET, "Commitment mask migration: dropping malformed pending tx id '{entry}'");
+                })
+                .ok()
+        })
+        .collect())
+}
+
+/// Write the pending transaction ids, removing the key when there are none.
+fn store_pending_tx_ids<F: MigrationFlagStore + ?Sized>(
+    flag_store: &F,
+    tx_ids: &BTreeSet<u64>,
+) -> Result<(), WalletStorageError> {
+    if tx_ids.is_empty() {
+        return flag_store.clear_migration_flag(INVALID_MASK_PENDING_TXS_KEY);
+    }
+    let value = tx_ids.iter().map(u64::to_string).collect::<Vec<_>>().join(",");
+    flag_store.set_migration_flag(INVALID_MASK_PENDING_TXS_KEY, value)
+}
+
+/// Cancel the given coupled transactions. Returns those that failed with a retryable error (or all of them if no sink
+/// is configured), which must stay pending; everything else is done or deliberately dropped.
 fn reconcile_transactions(
     tx_sink: Option<&dyn InvalidOutputTransactionSink>,
     tx_ids: &BTreeSet<u64>,
     summary: &mut InvalidMaskMigrationSummary,
 ) -> BTreeSet<u64> {
-    let mut failed = BTreeSet::new();
+    let mut retry = BTreeSet::new();
     if tx_ids.is_empty() {
-        return failed;
+        return retry;
     }
     let Some(sink) = tx_sink else {
         warn!(
             target: LOG_TARGET,
-            "Commitment mask migration: no transaction sink configured, {} coupled transaction(s) not reconciled",
+            "Commitment mask migration: no transaction sink configured, {} coupled transaction(s) left pending",
             tx_ids.len()
         );
-        summary.transactions_not_reconciled = summary.transactions_not_reconciled.saturating_add(tx_ids.len());
-        return failed;
+        summary.reconciliation_errors = summary.reconciliation_errors.saturating_add(tx_ids.len());
+        return tx_ids.clone();
     };
     for tx_id in tx_ids.iter().copied().map(TxId::from) {
         match sink.cancel_for_invalid_encrypted_value(tx_id) {
@@ -381,18 +473,27 @@ fn reconcile_transactions(
                     "Commitment mask migration: coupled transaction {tx_id} is a {kind}, not cancelled"
                 );
             },
-            Err(e) => {
+            Err(e) if e.retryable => {
                 summary.reconciliation_errors = summary.reconciliation_errors.saturating_add(1);
-                failed.insert(tx_id.as_u64());
+                retry.insert(tx_id.as_u64());
                 error!(
                     target: LOG_TARGET,
-                    "Commitment mask migration: could not cancel coupled transaction {tx_id}, its outputs are left for \
-                     the next start: {e}"
+                    "Commitment mask migration: could not cancel coupled transaction {tx_id}, will retry on the next \
+                     start: {}",
+                    e.message
+                );
+            },
+            Err(e) => {
+                summary.transactions_not_reconciled = summary.transactions_not_reconciled.saturating_add(1);
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration: cannot cancel coupled transaction {tx_id}, not retrying: {}",
+                    e.message
                 );
             },
         }
     }
-    failed
+    retry
 }
 
 /// Parse the raw row and run the shared commitment mask check on it. Parse failures are `Unverifiable`.
@@ -445,4 +546,31 @@ pub fn unverifiable_may_be_invalidated(status: i32) -> bool {
 
 fn status_name(status: i32) -> String {
     OutputStatus::try_from(status).map_or_else(|_| format!("unknown({status})"), |s| s.to_string())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::transaction_service::storage::database::DbKey;
+
+    #[test]
+    fn only_database_access_errors_are_retryable() {
+        let retryable = |e: TransactionStorageError| InvalidOutputTxError::from_storage_error(&e).retryable;
+        assert!(retryable(TransactionStorageError::DieselConnectionError(
+            diesel::ConnectionError::BadConnection("gone".to_string())
+        )));
+        assert!(retryable(TransactionStorageError::BlockingTaskSpawnError(
+            "busy".to_string()
+        )));
+        assert!(!retryable(TransactionStorageError::DieselError(
+            diesel::result::Error::NotFound
+        )));
+        assert!(!retryable(TransactionStorageError::ValueNotFound(
+            DbKey::CompletedTransaction(1u64.into())
+        )));
+        assert!(!retryable(TransactionStorageError::AeadError("bad tag".to_string())));
+        assert!(!retryable(TransactionStorageError::ByteArrayError(
+            "bad bytes".to_string()
+        )));
+    }
 }

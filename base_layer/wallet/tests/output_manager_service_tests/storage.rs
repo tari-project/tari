@@ -35,9 +35,11 @@ use minotari_wallet::{
         error::OutputManagerStorageError,
         invalid_mask_migration::{
             INVALID_MASK_MIGRATION_KEY,
+            INVALID_MASK_PENDING_TXS_KEY,
             InvalidMaskMigrationOutcome,
             InvalidMaskMigrationSummary,
             InvalidOutputTransactionSink,
+            InvalidOutputTxError,
             InvalidOutputTxOutcome,
             run_invalid_mask_migration,
         },
@@ -1731,24 +1733,31 @@ async fn test_invalid_mask_migration_cancels_coupled_transactions() {
     assert_eq!(completed(4).cancelled, None);
 }
 
-/// A sink that fails on one transaction and delegates everything else.
+/// A sink that fails on some transactions (retryably or not) and delegates everything else.
 struct FailingSink<'a, T: InvalidOutputTransactionSink> {
     inner: &'a T,
-    fail_tx: TxId,
+    retryable_fail: TxId,
+    permanent_fail: TxId,
 }
 
 impl<T: InvalidOutputTransactionSink> InvalidOutputTransactionSink for FailingSink<'_, T> {
-    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, String> {
-        if tx_id == self.fail_tx {
-            return Err("simulated storage error".to_string());
+    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, InvalidOutputTxError> {
+        if tx_id == self.retryable_fail || tx_id == self.permanent_fail {
+            return Err(InvalidOutputTxError {
+                retryable: tx_id == self.retryable_fail,
+                message: "simulated storage error".to_string(),
+            });
         }
         self.inner.cancel_for_invalid_encrypted_value(tx_id)
     }
 }
 
-/// If the sink fails on a coupled transaction, that transaction's output is left as it is and the flag is not
-/// written; the other outputs are still marked. The next start retries just the remaining output and finishes.
+/// Transaction reconciliation never holds the outputs back: every mismatch output is marked Invalid and the flag is
+/// written even when cancelling a coupled transaction fails. A retryable failure is kept under the pending key and the
+/// next start retries only that transaction, without rescanning, then clears the key; a non-retryable failure is
+/// dropped.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let wallet_db = WalletDatabase::new(
@@ -1764,7 +1773,7 @@ async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
     ));
 
     let mut tampered = Vec::new();
-    for (tx_id, value) in [(1u64, 1000u64), (2, 1100)] {
+    for (tx_id, value) in [(1u64, 1000u64), (2, 1100), (3, 1200)] {
         let kmo = add_mask_test_output(&db, &key_manager, value);
         set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
         tamper_value(&connection, &kmo);
@@ -1776,69 +1785,70 @@ async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
             .unwrap();
         tampered.push(kmo);
     }
+    let cancelled = |id: u64| {
+        tx_db
+            .get_completed_transaction_cancelled_or_not(id.into())
+            .unwrap()
+            .cancelled
+    };
+    let pending_key = || {
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap()
+    };
 
     let failing = FailingSink {
         inner: &tx_db,
-        fail_tx: 2u64.into(),
+        retryable_fail: 2u64.into(),
+        permanent_fail: 3u64.into(),
     };
     let outcome = run_invalid_mask_migration(&wallet_db, Some(&failing), &db, &key_manager).unwrap();
     assert_eq!(
         outcome,
         InvalidMaskMigrationOutcome::Incomplete(InvalidMaskMigrationSummary {
-            scanned: 2,
-            mask_mismatches: 2,
+            scanned: 3,
+            mask_mismatches: 3,
             verification_errors: 0,
             unverifiable_left_unchanged: 0,
-            marked_invalid: 1,
+            marked_invalid: 3,
             transactions_cancelled: 1,
-            transactions_not_reconciled: 0,
+            transactions_not_reconciled: 1,
             reconciliation_errors: 1,
         })
     );
-    assert_eq!(stored_status(&connection, &tampered[0]), OutputStatus::Invalid);
-    assert_eq!(stored_status(&connection, &tampered[1]), OutputStatus::Unspent);
-    assert_eq!(
-        tx_db
-            .get_completed_transaction_cancelled_or_not(2u64.into())
-            .unwrap()
-            .cancelled,
-        None
-    );
+    // Every mismatch output is Invalid, whatever happened to its transaction
+    for kmo in &tampered {
+        assert_eq!(stored_status(&connection, kmo), OutputStatus::Invalid);
+    }
+    assert_eq!(cancelled(1), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(cancelled(2), None);
+    assert_eq!(cancelled(3), None);
     assert!(
         wallet_db
             .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
             .unwrap()
-            .is_none(),
-        "the flag must not be written while a reconciliation failed"
+            .is_some(),
+        "the outputs are done, so the main flag is written"
     );
+    // Only the retryable failure stays pending
+    assert_eq!(pending_key(), Some("2".to_string()));
 
-    // Next start, healthy sink: only the remaining output is rescanned, and the migration completes
+    // Next start, healthy sink: no rescan, only the pending transaction is retried, and the key is cleared
     let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
     assert_eq!(
         outcome,
         InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
-            scanned: 1,
-            mask_mismatches: 1,
-            verification_errors: 0,
-            unverifiable_left_unchanged: 0,
-            marked_invalid: 1,
             transactions_cancelled: 1,
-            transactions_not_reconciled: 0,
-            reconciliation_errors: 0,
+            ..Default::default()
         })
     );
-    assert_eq!(stored_status(&connection, &tampered[1]), OutputStatus::Invalid);
+    assert_eq!(cancelled(2), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(cancelled(3), None, "a non-retryable failure is not retried");
+    assert_eq!(pending_key(), None);
+
+    // And after that the migration is simply done
     assert_eq!(
-        tx_db
-            .get_completed_transaction_cancelled_or_not(2u64.into())
-            .unwrap()
-            .cancelled,
-        Some(TxCancellationReason::InvalidEncryptedValue)
-    );
-    assert!(
-        wallet_db
-            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
-            .unwrap()
-            .is_some()
+        run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap(),
+        InvalidMaskMigrationOutcome::AlreadyCompleted
     );
 }
