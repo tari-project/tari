@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Range, str::FromStr};
+use std::{ops::Range, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
@@ -1387,39 +1387,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
 
-        Ok(())
-    }
-
-    fn revalidate_unspent_output(&self, commitment: &CompressedCommitment) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        conn.transaction::<_, _, _>(|conn| {
-            let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, conn)?;
-
-            if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
-                return Err(OutputManagerStorageError::ValuesNotFound);
-            }
-            output.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::Unspent),
-                    ..Default::default()
-                },
-                conn,
-            )?;
-
-            Ok(())
-        })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - revalidate_unspent_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                start.elapsed().saturating_sub(acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 

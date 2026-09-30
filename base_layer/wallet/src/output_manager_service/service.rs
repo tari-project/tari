@@ -1847,7 +1847,31 @@ where
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
     /// cancelled.
+    ///
+    /// Reinstating moves the outputs to EncumberedToBeReceived, which leads to a spendable status, so it is refused if
+    /// any of them fails the commitment mask check.
     fn reinstate_cancelled_inbound_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        let key_manager = &self.resources.key_manager;
+        let refused = self
+            .resources
+            .db
+            .fetch_outputs_by_tx_id(tx_id, key_manager)?
+            .iter()
+            .filter(|output| output.status == OutputStatus::CancelledInbound)
+            .filter(|output| {
+                commitment_mask::blocks_revival(key_manager, output, "Reinstate cancelled inbound transaction")
+            })
+            .count();
+        if refused > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Not reinstating cancelled inbound transaction {tx_id}: {refused} output(s) failed the commitment mask \
+                 check"
+            );
+            return Err(OutputManagerError::CommitmentMaskVerificationFailed(format!(
+                "{refused} output(s) of transaction {tx_id}"
+            )));
+        }
         self.resources.db.reinstate_cancelled_inbound_output(tx_id)?;
 
         Ok(())

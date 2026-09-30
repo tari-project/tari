@@ -433,10 +433,6 @@ where T: OutputManagerBackend + 'static
         self.db.update_output_metadata_signature(&output)
     }
 
-    pub fn revalidate_output(&self, commitment: CompressedCommitment) -> Result<(), OutputManagerStorageError> {
-        self.db.revalidate_unspent_output(&commitment)
-    }
-
     pub fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         self.db.reinstate_cancelled_inbound_output(tx_id)
     }

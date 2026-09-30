@@ -65,6 +65,8 @@ struct State {
     /// Called on every `get_utxos_mined_info` query, before the response is built. Lets a test change wallet state
     /// between the validation task reading outputs and writing its results.
     on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Outputs `query_deleted_utxos` reports as spent: output hash -> (height, block hash)
+    spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
 }
 
 impl State {
@@ -138,6 +140,14 @@ impl HttpBaseNodeMock {
         let mut state = self.state.write().await;
         state.mined_utxos = Some(mined_utxos.into_iter().map(|m| (m.utxo_hash.clone(), m)).collect());
         state.best_block_height = best_block_height;
+    }
+
+    /// Report these outputs as spent from `query_deleted_utxos`: `(output hash, spent height, spent block hash)`.
+    pub async fn set_spent_utxos(&self, spent_utxos: Vec<(Vec<u8>, u64, Vec<u8>)>) {
+        self.state.write().await.spent_utxos = spent_utxos
+            .into_iter()
+            .map(|(hash, height, block)| (hash, (height, block)))
+            .collect();
     }
 
     /// Run `hook` on every `get_utxos_mined_info` query.
@@ -219,7 +229,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                     found_in_header: mined_utxos
                         .get(&hash)
                         .map(|m| (m.mined_in_height, m.mined_in_hash.clone())),
-                    spent_in_header: None,
+                    spent_in_header: state.spent_utxos.get(&hash).cloned(),
                     utxo_hash: hash,
                 })
                 .collect(),

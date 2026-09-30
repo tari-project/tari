@@ -151,8 +151,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
-    /// If an invalid output is found to be valid this function will turn it back into an unspent output
-    fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
     fn get_last_mined_output<KM: LegacyTransactionKeyManagerInterface>(

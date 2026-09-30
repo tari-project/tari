@@ -3539,3 +3539,134 @@ async fn test_undecodable_invalid_output_does_not_block_revalidation() {
     assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
     assert_eq!(stored_status(&connection, &broken), OutputStatus::Invalid);
 }
+
+/// The spent-output pass sends every mined output for spent detection, including one that fails the commitment mask
+/// check (marking an output spent never makes it spendable), but refuses to mark such an output unspent again.
+#[tokio::test]
+async fn test_spent_pass_detects_spends_of_bad_mask_outputs_but_does_not_unspend_them() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let mut headers = HashMap::new();
+    for height in [1u64, 2] {
+        let mut header = tari_node_components::blocks::BlockHeader::new(1);
+        header.height = height;
+        headers.insert(height, header);
+    }
+    let block1 = Some(headers[&1].hash().to_vec());
+    let block2 = Some(headers[&2].hash().to_vec());
+    oms.base_node_mock.set_blocks(headers).await.unwrap();
+    let mined1 = Some((1i64, block1.clone()));
+
+    // Unspent with a bad mask; the chain says it has been spent at height 2
+    let tampered_unspent = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1000,
+        true,
+        OutputStatus::Unspent,
+        mined1.clone(),
+        None,
+    );
+    // Marked spent (unconfirmed) at height 2; the chain now says they are not spent
+    let marked_spent = |value, tamper| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::SpentMinedUnconfirmed,
+            mined1.clone(),
+            Some((2, block2.clone())),
+        )
+    };
+    let genuine_marked = marked_spent(1100, false);
+    let tampered_marked = marked_spent(1200, true);
+
+    oms.base_node_mock
+        .set_mined_utxos(
+            [&tampered_unspent, &genuine_marked, &tampered_marked]
+                .iter()
+                .map(|kmo| MinedUtxoInfo {
+                    utxo_hash: kmo.hash.to_vec(),
+                    mined_in_hash: block1.clone().unwrap(),
+                    mined_in_height: 1,
+                    mined_in_timestamp: 0,
+                })
+                .collect(),
+            100,
+        )
+        .await;
+    oms.base_node_mock
+        .set_spent_utxos(vec![(tampered_unspent.hash.to_vec(), 2, block2.clone().unwrap())])
+        .await;
+
+    run_txo_validation(&mut oms).await;
+
+    let status = stored_status(&connection, &tampered_unspent);
+    assert!(
+        matches!(status, OutputStatus::Spent | OutputStatus::SpentMinedUnconfirmed),
+        "the spend of a bad-mask output must still be recorded, got {status}"
+    );
+    assert_eq!(stored_status(&connection, &genuine_marked), OutputStatus::Unspent);
+    assert_eq!(
+        stored_status(&connection, &tampered_marked),
+        OutputStatus::SpentMinedUnconfirmed
+    );
+}
+
+/// Reinstating a cancelled inbound transaction moves its outputs towards a spendable status, so it is refused if an
+/// output fails the commitment mask check; a genuine one is still reinstated.
+#[tokio::test]
+async fn test_reinstate_cancelled_inbound_refuses_bad_mask_outputs() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let cancelled = |value, tamper, tx_id: i64| {
+        let kmo = add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::CancelledInbound,
+            None,
+            None,
+        );
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(kmo.commitment.to_vec())))
+            .set(outputs::received_in_tx_id.eq(Some(tx_id)))
+            .execute(&mut conn)
+            .unwrap();
+        kmo
+    };
+    let genuine = cancelled(1000, false, 11);
+    let tampered = cancelled(1100, true, 12);
+
+    oms.output_manager_handle
+        .reinstate_cancelled_inbound_transaction_outputs(TxId::from(11u64))
+        .await
+        .unwrap();
+    assert_eq!(
+        stored_status(&connection, &genuine),
+        OutputStatus::EncumberedToBeReceived
+    );
+
+    let result = oms
+        .output_manager_handle
+        .reinstate_cancelled_inbound_transaction_outputs(TxId::from(12u64))
+        .await;
+    assert!(
+        matches!(result, Err(OutputManagerError::CommitmentMaskVerificationFailed(_))),
+        "got {result:?}"
+    );
+    assert_eq!(stored_status(&connection, &tampered), OutputStatus::CancelledInbound);
+}

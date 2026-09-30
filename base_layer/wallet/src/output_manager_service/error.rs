@@ -144,6 +144,8 @@ pub enum OutputManagerError {
     InvalidArgument(String),
     #[error("Validation in progress")]
     ValidationInProgress,
+    #[error("Commitment does not open to the stored value and mask: {0}")]
+    CommitmentMaskVerificationFailed(String),
     #[error("Invalid data: `{0}`")]
     RangeProofError(String),
     #[error("Transaction inputs are over sized: `{0}`")]

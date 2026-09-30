@@ -268,19 +268,9 @@ where
             .db
             .fetch_mined_unspent_outputs(&self.key_manager)
             .for_protocol(self.operation_id)?;
-        // This set is status-agnostic, so it includes Invalid and spent outputs that still carry mined and spent data
-        // (e.g. a spent output invalidated by the commitment mask migration). One that the chain reports as unspent
-        // would be marked unspent below; refuse that if its commitment mask does not verify.
-        let (mined_outputs, not_revivable) =
-            drop_unverifiable_revivals(&self.key_manager, mined_outputs, "TXO revalidation of mined outputs");
-        if !not_revivable.is_empty() {
-            warn!(
-                target: LOG_TARGET,
-                "{} mined output(s) failed the commitment mask check and are left unchanged (Operation ID: {})",
-                not_revivable.len(),
-                self.operation_id
-            );
-        }
+        // Every output here is sent for spent detection unfiltered: marking an output spent never makes it spendable.
+        // The commitment mask is only checked, per output below, where this pass could lead to a spendable status.
+        let mut not_revivable = 0usize;
         debug!(
             target: LOG_TARGET,
             "Found {} mined outputs to validate (Operation ID: {})",
@@ -335,6 +325,18 @@ where
 
                     self.operation_id
                 );
+                // Checked only where this pass could lead to a spendable status: a row in a revivable status (the
+                // set is status-agnostic, so it can hold Invalid rows with mined data), or one that would be marked
+                // unspent because the chain no longer has it spent. Such an output is left entirely unchanged.
+                let unspent_candidate = data.found_in_header.is_some() &&
+                    data.spent_in_header.is_none() &&
+                    output.marked_deleted_at_height.is_some();
+                if (is_revivable_status(output.status) || unspent_candidate) &&
+                    blocks_revival(&self.key_manager, output, "TXO revalidation of spent outputs")
+                {
+                    not_revivable = not_revivable.saturating_add(1);
+                    continue;
+                }
                 // when checking mined height, 0 can be valid so we need to check the hash
                 if data.found_in_header.is_some() {
                     if let Some((spent_height, spent_hash)) = &data.spent_in_header {
@@ -374,6 +376,14 @@ where
         }
         if !spent.is_empty() {
             self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
+        }
+        if not_revivable > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "{not_revivable} mined output(s) failed the commitment mask check and are left unchanged (Operation ID: \
+                 {})",
+                self.operation_id
+            );
         }
         Ok(())
     }
