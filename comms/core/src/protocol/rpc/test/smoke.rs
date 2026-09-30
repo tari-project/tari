@@ -298,7 +298,8 @@ async fn response_too_big() {
     let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();
 
-    let framed = framing::canonical(socket, rpc::max_request_size());
+    // The frame limit applies to what the client reads, i.e. responses (requests have their own, smaller cap)
+    let framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(5))
         .connect(framed)
@@ -854,4 +855,138 @@ async fn max_per_client_sessions() {
         .connect(framed)
         .await
         .unwrap();
+}
+
+/// Requests larger than `RPC_MAX_REQUEST_SIZE` are answered with `BadRequest` before they are decoded; a request of
+/// exactly that size is handled normally, and the session carries on after a rejection.
+#[tokio::test]
+async fn oversized_requests_are_rejected_before_decoding() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::{
+        proto,
+        protocol::rpc::{handshake::Handshake, message::RpcMessageFlags},
+    };
+
+    /// An encoded `say_hello` request (method 1) of exactly `size` bytes
+    fn say_hello_request(request_id: u32, size: usize) -> Vec<u8> {
+        let encode = |name_len: usize| {
+            let payload = SayHelloRequest {
+                name: "a".repeat(name_len),
+                language: 0,
+            }
+            .encode_to_vec();
+            proto::rpc::RpcRequest {
+                request_id,
+                method: 1,
+                flags: 0,
+                deadline: 10,
+                payload,
+            }
+            .encode_to_vec()
+        };
+        // Varint lengths make the overhead depend slightly on the size, so converge on it
+        let mut name_len = size;
+        loop {
+            let len = encode(name_len).len();
+            if len == size {
+                return encode(name_len);
+            }
+            name_len = (name_len + size).checked_sub(len).unwrap();
+        }
+    }
+
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let mut framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    Handshake::new(&mut framed).perform_client_handshake().await.unwrap();
+
+    // One byte over the limit: rejected before it is decoded or passed to the service, with the request id echoed back
+    // so that the client can match the response
+    let oversized = say_hello_request(7, rpc::RPC_MAX_REQUEST_SIZE + 1);
+    framed.send(oversized.into()).await.unwrap();
+    let resp = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+    assert_eq!(resp.request_id, 7);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::BadRequest);
+    assert!(
+        RpcMessageFlags::from_bits(u8::try_from(resp.flags).unwrap())
+            .unwrap()
+            .is_fin()
+    );
+    let details = String::from_utf8(resp.payload).unwrap();
+    assert!(details.contains("request size exceeded"), "{details}");
+
+    // Exactly at the limit: handled by the service
+    let at_limit = say_hello_request(8, rpc::RPC_MAX_REQUEST_SIZE);
+    assert_eq!(at_limit.len(), rpc::RPC_MAX_REQUEST_SIZE);
+    framed.send(at_limit.into()).await.unwrap();
+    let resp = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+    assert_eq!(resp.request_id, 8);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+}
+
+/// An oversized message received while the server is streaming a response is ignored without being decoded, and the
+/// stream carries on.
+#[tokio::test]
+async fn oversized_messages_during_a_stream_are_ignored() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::{
+        proto,
+        protocol::rpc::{handshake::Handshake, message::RpcMessageFlags},
+    };
+
+    // Enough items that the server reads the (large) interrupting frame completely while still streaming: it reads
+    // pending input once per streamed item
+    const NUM_ITEMS: u32 = 300;
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let mut framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    Handshake::new(&mut framed).perform_client_handshake().await.unwrap();
+
+    // slow_stream (method 8)
+    let request = proto::rpc::RpcRequest {
+        request_id: 1,
+        method: 8,
+        flags: 0,
+        deadline: 10,
+        payload: SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 10,
+            delay_ms: 10,
+        }
+        .encode_to_vec(),
+    };
+    framed.send(request.encode_to_vec().into()).await.unwrap();
+    let first = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+    assert_eq!(RpcStatusCode::from(first.status), RpcStatusCode::Ok);
+
+    // A message larger than the request cap, mid-stream (not a FIN)
+    let oversized = proto::rpc::RpcRequest {
+        request_id: 2,
+        method: 1,
+        flags: 0,
+        deadline: 10,
+        payload: vec![0; rpc::RPC_MAX_REQUEST_SIZE],
+    };
+    framed.send(oversized.encode_to_vec().into()).await.unwrap();
+
+    // The rest of the stream still arrives
+    let mut items = 1;
+    loop {
+        let resp = proto::rpc::RpcResponse::decode(framed.next().await.unwrap().unwrap()).unwrap();
+        assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+        if !resp.payload.is_empty() {
+            items += 1;
+        }
+        if RpcMessageFlags::from_bits(u8::try_from(resp.flags).unwrap())
+            .unwrap()
+            .is_fin()
+        {
+            break;
+        }
+    }
+    assert_eq!(items, NUM_ITEMS);
 }

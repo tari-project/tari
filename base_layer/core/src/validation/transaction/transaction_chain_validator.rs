@@ -43,8 +43,23 @@ impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
     }
 }
 
+/// This validator only performs the chain-linked checks: `validate_full` is the same as `validate_chain_linked`, and
+/// `validate_internal_consistency` does nothing. Use [TransactionFullValidator](super::TransactionFullValidator) to
+/// also check scripts, signatures, range proofs and balance.
 impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        self.validate_chain_linked(tx)
+    }
+
+    fn validate_internal_consistency(
+        &self,
+        _tx: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        Ok(())
+    }
+
+    fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
         if tx

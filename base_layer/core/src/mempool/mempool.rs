@@ -84,6 +84,14 @@ async fn acquire_permit(semaphore: &Arc<Semaphore>) -> Result<OwnedSemaphorePerm
         .map_err(|e| MempoolError::InternalError(format!("Mempool validation semaphore closed: {e}")))
 }
 
+/// A permit to decode and validate one inbound transaction, obtained from [Mempool::acquire_validation_permit] and
+/// consumed by [Mempool::insert_with_permit]. It draws from the same bound as [Mempool::insert], so that decoding and
+/// validation of a transaction are covered by a single permit. Dropping it releases the permit.
+#[must_use]
+pub struct ValidationPermit {
+    _permit: OwnedSemaphorePermit,
+}
+
 /// The maximum number of new transactions that are validated concurrently: half the available cores, at least 1 and at
 /// most 8.
 fn max_concurrent_validations() -> usize {
@@ -115,12 +123,38 @@ impl Mempool {
         self.last_seen_tx.subscribe()
     }
 
+    /// Acquire a permit from the bound on concurrent transaction validations. Used to cover the decoding of an inbound
+    /// transaction as well as its validation (see [Mempool::insert_with_permit]).
+    pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolError> {
+        Ok(ValidationPermit {
+            _permit: acquire_permit(&self.validation_permits).await?,
+        })
+    }
+
     /// Insert an unconfirmed transaction into the Mempool.
     ///
     /// The near-free checks (fee, weight, already in the pool) are done first, under a brief read lock. The transaction
     /// is then validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]), with at
     /// most a bounded number of transactions being validated at once.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        self.insert_inner(tx, None).await
+    }
+
+    /// Identical to [Mempool::insert], except that validation uses the given, already acquired, permit instead of
+    /// acquiring a new one. The permit is released once validation is done (or the pre-checks return early).
+    pub async fn insert_with_permit(
+        &self,
+        tx: Arc<Transaction>,
+        permit: ValidationPermit,
+    ) -> Result<TxStorageResponse, MempoolError> {
+        self.insert_inner(tx, Some(permit)).await
+    }
+
+    async fn insert_inner(
+        &self,
+        tx: Arc<Transaction>,
+        permit: Option<ValidationPermit>,
+    ) -> Result<TxStorageResponse, MempoolError> {
         let tx_clone = tx.clone();
         if let Some(response) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
@@ -128,7 +162,10 @@ impl Mempool {
         {
             return Ok(response);
         }
-        let permit = acquire_permit(&self.validation_permits).await?;
+        let permit = match permit {
+            Some(permit) => permit,
+            None => self.acquire_validation_permit().await?,
+        };
         let storage = self.pool_storage.clone();
         task::spawn_blocking(move || {
             // The permit is held by the blocking task, so that it is only released once validation is done, even if
@@ -153,6 +190,18 @@ impl Mempool {
             Ok(())
         })
         .await?
+    }
+
+    /// The number of validation permits currently available
+    #[cfg(test)]
+    pub(crate) fn available_validation_permits(&self) -> usize {
+        self.validation_permits.available_permits()
+    }
+
+    /// The number of reconciliation permits currently available
+    #[cfg(test)]
+    pub(crate) fn available_reconciliation_permits(&self) -> usize {
+        self.reconciliation_permits.available_permits()
     }
 
     /// Update the Mempool based on the received published block.
@@ -338,11 +387,23 @@ mod test {
     }
 
     impl TransactionValidator for Arc<SlowValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             let current = self.current.fetch_add(1, Ordering::SeqCst).saturating_add(1);
             self.max.fetch_max(current, Ordering::SeqCst);
             std::thread::sleep(std::time::Duration::from_millis(50));
             self.current.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
+            self.validate_full(tx)
+        }
+
+        fn validate_internal_consistency(
+            &self,
+            _tx: &Transaction,
+            _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), ValidationError> {
             Ok(())
         }
     }
@@ -391,12 +452,24 @@ mod test {
     }
 
     impl TransactionValidator for Arc<GatedValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             self.entered.fetch_add(1, Ordering::SeqCst);
             let mut released = self.released.lock().unwrap();
             while !*released {
                 released = self.condvar.wait(released).unwrap();
             }
+            Ok(())
+        }
+
+        fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
+            self.validate_full(tx)
+        }
+
+        fn validate_internal_consistency(
+            &self,
+            _tx: &Transaction,
+            _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), ValidationError> {
             Ok(())
         }
     }
@@ -476,5 +549,113 @@ mod test {
         })
         .await
         .expect("permit was not released");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn insert_with_permit_uses_the_given_permit() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let permits = max_concurrent_validations();
+        let permit = mempool.acquire_validation_permit().await.unwrap();
+        // Every other validation permit is taken, so acquiring another one would never complete
+        let held = mempool
+            .validation_permits
+            .clone()
+            .acquire_many_owned(u32::try_from(permits - 1).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(mempool.available_validation_permits(), 0);
+
+        let tx = create_tx(&key_manager);
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            mempool.insert_with_permit(tx.clone(), permit),
+        )
+        .await
+        .expect("insert_with_permit acquired a second permit")
+        .unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        // The given permit was released once validation finished
+        assert_eq!(mempool.available_validation_permits(), 1);
+
+        // Inserting the same transaction again also releases the permit
+        let permit = mempool.acquire_validation_permit().await.unwrap();
+        let _response = mempool.insert_with_permit(tx, permit).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), 1);
+
+        drop(held);
+        assert_eq!(mempool.available_validation_permits(), permits);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn transactions_larger_than_the_template_byte_budget_are_rejected() {
+        use tari_transaction_components::helpers::borsh::SerializedSize;
+
+        use crate::mempool::unconfirmed_pool::MAX_BLOCK_TEMPLATE_BODY_BYTES;
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let template = create_tx(&key_manager);
+        let input = template.body.inputs().first().unwrap().clone();
+        let input_size = input.get_serialized_size().unwrap();
+        // Enough inputs (8 grams each) to exceed the byte budget while staying under the maximum transaction weight
+        let num_inputs = MAX_BLOCK_TEMPLATE_BODY_BYTES / input_size + 1;
+
+        for _ in 0..21 {
+            let kernels = create_tx(&key_manager).body.kernels().clone();
+            let big = Arc::new(Transaction::new(
+                vec![input.clone(); num_inputs],
+                template.body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ));
+            assert!(big.body.get_serialized_size().unwrap() > MAX_BLOCK_TEMPLATE_BODY_BYTES);
+            let response = mempool.insert(big).await.unwrap();
+            assert!(
+                matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("block template budget")),
+                "{response:?}"
+            );
+        }
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+
+        // Normal transactions are accepted and fill the template
+        let normal = (0..5).map(|_| create_tx(&key_manager)).collect::<Vec<_>>();
+        for tx in &normal {
+            assert_eq!(
+                mempool.insert(tx.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+        let retrieved = mempool.retrieve(u64::MAX).await.unwrap();
+        assert_eq!(retrieved.len(), normal.len());
+        for tx in &normal {
+            assert!(retrieved.contains(tx));
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_transaction_repeating_a_kernel_excess_is_rejected() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        let tx = create_tx(&key_manager);
+        let other = create_tx(&key_manager);
+        // The same kernel excess twice, with different signatures
+        let kernel = tx.body.kernels().first().unwrap().clone();
+        let mut again = kernel.clone();
+        again.excess_sig = other.body.kernels().first().unwrap().excess_sig.clone();
+        let repeating = Arc::new(Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            vec![kernel, again],
+            Default::default(),
+            Default::default(),
+        ));
+        let response = mempool.insert(repeating).await.unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("kernel excess")),
+            "{response:?}"
+        );
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
     }
 }

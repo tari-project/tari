@@ -18,7 +18,7 @@ tari_utilities = { workspace = true }
 blake2 = "0.10"
 borsh = { workspace = true }
 digest = "0.10"
-integer-encoding = "3.0.2"
+integer-encoding = "=3.0.4"
 serde = { workspace = true }
 sha2 = "0.10"
 sha3 = "0.10"

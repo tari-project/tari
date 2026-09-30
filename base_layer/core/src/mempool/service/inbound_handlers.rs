@@ -24,8 +24,10 @@ use std::sync::Arc;
 
 use log::*;
 use tari_comms::peer_manager::NodeId;
+use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
+use tokio::task;
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -34,8 +36,16 @@ use crate::{
     chain_storage::BlockAddResult,
     mempool::{
         Mempool,
+        MempoolError,
         TxStorageResponse,
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
+        ValidationPermit,
+        service::{
+            MempoolRequest,
+            MempoolResponse,
+            MempoolServiceError,
+            OutboundMempoolServiceInterface,
+            initializer::extract_transaction,
+        },
     },
 };
 
@@ -85,7 +95,9 @@ impl MempoolInboundHandlers {
                     target: LOG_TARGET,
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
-                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+                Ok(MempoolResponse::TxStorage(
+                    self.submit_transaction(tx, None, None).await?,
+                ))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -97,11 +109,78 @@ impl MempoolInboundHandlers {
         }
     }
 
+    /// Acquire a mempool validation permit, for [MempoolInboundHandlers::submit_transaction_request]
+    pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolServiceError> {
+        Ok(self.mempool.acquire_validation_permit().await?)
+    }
+
+    /// Handle a `SubmitTransaction` request (as [MempoolInboundHandlers::handle_request] does), validating with the
+    /// given, already acquired, permit
+    pub async fn submit_transaction_request(
+        &mut self,
+        tx: Transaction,
+        permit: ValidationPermit,
+    ) -> Result<MempoolResponse, MempoolServiceError> {
+        let first_tx_kernel_excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or(MempoolServiceError::TransactionNoKernels)?
+            .get_signature()
+            .to_hex();
+        debug!(
+            target: LOG_TARGET,
+            "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
+        );
+        Ok(MempoolResponse::TxStorage(
+            self.submit_transaction(tx, None, Some(permit)).await?,
+        ))
+    }
+
+    /// Handle a raw inbound transaction message from a remote peer.
+    ///
+    /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
+    /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
+    /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit.
+    pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
+        let permit = self.mempool.acquire_validation_permit().await?;
+        let decoded = task::spawn_blocking(move || extract_transaction(&msg))
+            .await
+            .map_err(MempoolError::from)?;
+        let Some(DomainMessage::<_> { source_peer, inner, .. }) = decoded else {
+            return Ok(());
+        };
+
+        debug!(
+            "New transaction received: {}, from: {}",
+            inner
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "No kernels!".to_string()),
+            source_peer.public_key,
+        );
+        trace!(
+            target: LOG_TARGET,
+            "New transaction: {}, from: {}",
+            inner,
+            source_peer.public_key
+        );
+        self.handle_transaction_inner(inner, Some(source_peer.node_id), Some(permit))
+            .await
+    }
+
     /// Handle inbound transactions from remote wallets and local services.
     pub async fn handle_transaction(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
+    ) -> Result<(), MempoolServiceError> {
+        self.handle_transaction_inner(tx, source_peer, None).await
+    }
+
+    async fn handle_transaction_inner(
+        &mut self,
+        tx: Transaction,
+        source_peer: Option<NodeId>,
+        permit: Option<ValidationPermit>,
     ) -> Result<(), MempoolServiceError> {
         let first_tx_kernel_excess_sig = tx
             .first_kernel_excess_sig()
@@ -117,15 +196,17 @@ impl MempoolInboundHandlers {
                 .map(|p| format!("remote peer: {p}"))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        self.submit_transaction(tx, source_peer).await?;
+        self.submit_transaction(tx, source_peer, permit).await?;
         Ok(())
     }
 
-    /// Submits a transaction to the mempool and propagate valid transactions.
+    /// Submits a transaction to the mempool and propagate valid transactions. If a validation `permit` is given, it
+    /// is used for validation instead of acquiring a new one.
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
+        permit: Option<ValidationPermit>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
@@ -143,7 +224,11 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-        match self.mempool.insert(tx.clone()).await {
+        let result = match permit {
+            Some(permit) => self.mempool.insert_with_permit(tx.clone(), permit).await,
+            None => self.mempool.insert(tx.clone()).await,
+        };
+        match result {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
@@ -219,5 +304,76 @@ impl MempoolInboundHandlers {
         self.update_pool_size_metrics().await;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use prost::Message;
+    use tari_p2p::tari_message::TariMessageType;
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::{
+        mempool::MempoolConfig,
+        proto,
+        test_helpers::{create_consensus_rules, create_peer_message},
+        validation::mocks::MockValidator,
+    };
+
+    /// Receives the transactions the handlers propagate, with the peers they are not sent to
+    type PropagatedTxs = mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>;
+
+    fn create_handlers() -> (MempoolInboundHandlers, Mempool, PropagatedTxs) {
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
+        let (tx_sender, tx_receiver) = mpsc::unbounded_channel();
+        let handlers = MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        (handlers, mempool, tx_receiver)
+    }
+
+    #[tokio::test]
+    async fn malformed_transaction_messages_are_dropped_and_release_the_permit() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let permits = mempool.available_validation_permits();
+
+        // Not a protobuf transaction at all
+        let msg = create_peer_message(TariMessageType::NewTransaction, vec![0xff; 64]);
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+
+        // A valid protobuf message that is not a valid transaction
+        let body = proto::types::Transaction::default().encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        assert!(propagated.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn well_formed_transaction_messages_are_decoded_and_inserted() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let permits = mempool.available_validation_permits();
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let body = proto::types::Transaction::try_from(tx.clone()).unwrap().encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        let source = msg.source_peer.node_id.clone();
+
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        // Propagated to everyone except the peer it came from
+        let (propagated_tx, excluded) = propagated.try_recv().unwrap();
+        assert_eq!(propagated_tx, tx);
+        assert_eq!(excluded, vec![source]);
     }
 }

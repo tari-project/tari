@@ -1,9 +1,9 @@
 [advisories]
 ignore = [
 
-    # We are not using a special allocator and will not suffer this issue
-    "RUSTSEC-2021-0145",
-    # We are not using RSA
+    # RUSTSEC-2023-0071 (Marvin timing attack on RSA decryption/signing). `rsa` is linked only through `pgp`, which
+    # tari_p2p uses solely to verify auto-update signatures: public-key operations, which the attack does not affect.
+    # Last reviewed 2026-09-29; re-review by 2027-03-29 or when an `rsa` fix is released.
     "RUSTSEC-2023-0071"
 
 ]

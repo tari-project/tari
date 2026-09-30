@@ -33,6 +33,7 @@ use tari_common_types::{
 use tari_node_components::blocks::Block;
 use tari_script::Opcode;
 use tari_transaction_components::{
+    helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     validation::AggregatedBodyValidationError,
@@ -51,7 +52,13 @@ use crate::{
         TxStorageResponse,
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
+        unconfirmed_pool::{
+            MAX_BLOCK_TEMPLATE_BODY_BYTES,
+            RetrieveResults,
+            TransactionKey,
+            UnconfirmedPool,
+            UnconfirmedPoolError,
+        },
     },
     validation::{TransactionValidator, ValidationError},
 };
@@ -100,7 +107,11 @@ impl MempoolStorage {
     /// validating them does not block the mempool.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
-        if let Some(response) = self.check_fee(&tx) {
+        if let Some(response) = self
+            .check_fee(&tx)
+            .or_else(|| Self::check_body_size(&tx))
+            .or_else(|| Self::check_kernel_excesses(&tx))
+        {
             return Ok(response);
         }
         let dependent_outputs = match self.validate_locked(&tx) {
@@ -259,7 +270,53 @@ impl MempoolStorage {
                 ))));
             },
         }
-        None
+        Self::check_body_size(tx).or_else(|| Self::check_kernel_excesses(tx))
+    }
+
+    /// Rejects a transaction with two kernels with the same excess (they may differ in their signatures, so they sort
+    /// as distinct kernels): it can never be mined, since the chain's kernel excess index is unique. Relay policy, not
+    /// a consensus rule.
+    fn check_kernel_excesses(tx: &Transaction) -> Option<TxStorageResponse> {
+        let mut excesses = std::collections::HashSet::new();
+        if tx
+            .body
+            .kernels()
+            .iter()
+            .all(|kernel| excesses.insert(tari_utilities::ByteArray::as_bytes(&kernel.excess)))
+        {
+            return None;
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Tx: ({}) repeats a kernel excess, rejecting",
+            tx_id(tx)
+        );
+        Some(TxStorageResponse::NotStored(Some(
+            "Transaction contains the same kernel excess more than once".to_string(),
+        )))
+    }
+
+    /// Rejects a transaction whose body is larger than the block template byte budget: this node could never include
+    /// it in a block template, and it would only consume template skips. This is relay policy, not a consensus rule.
+    fn check_body_size(tx: &Transaction) -> Option<TxStorageResponse> {
+        match tx.body.get_serialized_size() {
+            Ok(size) if size <= MAX_BLOCK_TEMPLATE_BODY_BYTES => None,
+            Ok(size) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({}) body is {size} bytes, more than the block template budget of {MAX_BLOCK_TEMPLATE_BODY_BYTES} \
+                     bytes, rejecting",
+                    tx_id(tx)
+                );
+                Some(TxStorageResponse::NotStored(Some(format!(
+                    "Transaction body of {size} bytes exceeds the block template budget of \
+                     {MAX_BLOCK_TEMPLATE_BODY_BYTES} bytes"
+                ))))
+            },
+            Err(e) => Some(TxStorageResponse::NotStored(Some(format!(
+                "Unable to calculate the transaction body size: {e}"
+            )))),
+        }
     }
 
     /// Validates the transaction in the same order as [`MempoolStorage::insert_unlocked`]: chain-linked checks, then
@@ -500,8 +557,13 @@ impl MempoolStorage {
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
     pub fn retrieve(&self, total_weight: u64) -> Result<RetrieveResults, MempoolError> {
+        // Only a ratio for ordering under byte pressure; the constants at the last seen height are close enough
+        let max_block_transaction_weight = self
+            .rules
+            .consensus_constants(self.last_seen_height)
+            .max_block_transaction_weight();
         self.unconfirmed_pool
-            .fetch_highest_priority_txs(total_weight)
+            .fetch_highest_priority_txs(total_weight, max_block_transaction_weight)
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
@@ -865,7 +927,7 @@ mod test {
     }
 
     impl TransactionValidator for Arc<ScriptedValidator> {
-        fn validate(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+        fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
             unreachable!("the mempool validates in stages")
         }
 

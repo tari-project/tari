@@ -114,11 +114,11 @@ where T: BlockchainBackend
             .map(map_decode::<proto::BaseNodeServiceResponse>)
     }
 
-    /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>> + use<T> {
+    /// Create a stream of raw 'New Block` messages. The messages are decoded off the service loop, on a blocking
+    /// thread, under a block decode permit (see `BaseNodeService::spawn_handle_incoming_block`).
+    fn inbound_block_stream(&self) -> impl Stream<Item = Arc<PeerMessage>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
-            .map(extract_block)
     }
 }
 
@@ -130,7 +130,10 @@ pub enum ExtractBlockError {
     MalformedMessage(String),
 }
 
-fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
+/// Decode an inbound `NewBlock` message. This is CPU-bound: it protobuf-decodes the whole message (up to the messaging
+/// frame size), converts the header and the coinbase outputs and kernels, and parses every kernel excess signature
+/// scalar canonically. It must be run on a blocking thread.
+pub(crate) fn extract_block(msg: &PeerMessage) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
     let new_block = match msg.decode_message::<shared_protos::core::NewBlock>() {
         Ok(block) => block,
         Err(e) => {
@@ -228,5 +231,29 @@ where T: BlockchainBackend + 'static
 
         debug!(target: LOG_TARGET, "Base Node Service initialized");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use prost::Message;
+    use tari_p2p::tari_message::TariMessageType;
+
+    use super::*;
+    use crate::test_helpers::create_peer_message;
+
+    #[test]
+    fn malformed_new_block_messages_are_errors() {
+        // Not a protobuf message at all
+        let msg = create_peer_message(TariMessageType::NewBlock, vec![0xff; 64]);
+        let decoded = extract_block(&msg);
+        assert_eq!(decoded.source_peer.node_id, msg.source_peer.node_id);
+        assert!(matches!(decoded.inner, Err(ExtractBlockError::DecodeError(_))));
+
+        // A valid protobuf message that is not a valid block
+        let body = shared_protos::core::NewBlock::default().encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+        let decoded = extract_block(&msg);
+        assert!(matches!(decoded.inner, Err(ExtractBlockError::MalformedMessage(_))));
     }
 }

@@ -152,7 +152,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
 }
 
 impl TransactionValidator for MockValidator {
-    fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -160,6 +160,19 @@ impl TransactionValidator for MockValidator {
                 "This mock validator always returns an error".to_string(),
             ))
         }
+    }
+
+    fn validate_chain_linked(&self, transaction: &Transaction) -> Result<(), ValidationError> {
+        self.validate_full(transaction)
+    }
+
+    fn validate_internal_consistency(
+        &self,
+        _transaction: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        // `validate_chain_linked` already returned the mock's verdict
+        Ok(())
     }
 }
 

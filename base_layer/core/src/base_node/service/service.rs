@@ -22,6 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    sync::Arc,
     time::Duration,
 };
 
@@ -35,12 +36,13 @@ use tari_comms_dht::{
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
 use tari_node_components::blocks::{Block, NewBlock};
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{
+        Semaphore,
         mpsc,
         mpsc::{Receiver, Sender, UnboundedReceiver},
         oneshot::Sender as OneshotSender,
@@ -53,18 +55,32 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
-        service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
+        service::{
+            error::BaseNodeServiceError,
+            initializer::{ExtractBlockError, extract_block},
+        },
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError},
     common::{
         RequestKey,
+        inbound_backpressure::PendingByPeer,
         waiting_requests::{WaitingRequests, generate_request_key},
     },
     proto as shared_protos,
     proto::base_node as proto,
 };
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
+
+/// The maximum number of inbound `NewBlock` messages decoded concurrently. Decoding is CPU-bound and done on a blocking
+/// thread; this has its own bound so that it never competes with block reconstruction for mempool permits.
+const MAX_CONCURRENT_BLOCK_DECODES: usize = 2;
+/// The maximum number of inbound `NewBlock` messages from a single peer that are accepted but not yet handled. Further
+/// messages from that peer are dropped until one finishes; other peers (e.g. a competing miner) are unaffected.
+const MAX_PENDING_INBOUND_BLOCKS_PER_PEER: usize = 8;
+/// A backstop on the number of inbound `NewBlock` messages pending from all peers together, only reached if many peers
+/// flood at once.
+const MAX_PENDING_INBOUND_BLOCKS_TOTAL: usize = 64;
 
 /// A convenience struct to hold all the BaseNode streams
 pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
@@ -99,6 +115,8 @@ pub(super) struct BaseNodeService<B> {
     state_machine_handle: StateMachineHandle,
     connectivity: ConnectivityRequester,
     base_node_config: BaseNodeStateMachineConfig,
+    block_decode_permits: Arc<Semaphore>,
+    pending_inbound_blocks: PendingByPeer,
 }
 
 impl<B> BaseNodeService<B>
@@ -123,6 +141,13 @@ where B: BlockchainBackend + 'static
             state_machine_handle,
             connectivity,
             base_node_config,
+            block_decode_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOCK_DECODES)),
+            pending_inbound_blocks: PendingByPeer::new(
+                MAX_PENDING_INBOUND_BLOCKS_PER_PEER,
+                MAX_PENDING_INBOUND_BLOCKS_TOTAL,
+                "block",
+                LOG_TARGET,
+            ),
         }
     }
 
@@ -136,7 +161,7 @@ where B: BlockchainBackend + 'static
         >,
         SInReq: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>>,
         SInRes: Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>>,
-        SBlockIn: Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>>,
+        SBlockIn: Stream<Item = Arc<PeerMessage>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
@@ -188,7 +213,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming block messages from the Comms layer
                 Some(block_msg) = inbound_block_stream.next() => {
-                    self.spawn_handle_incoming_block(block_msg);
+                    let _spawned = self.spawn_handle_incoming_block(block_msg);
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -329,7 +354,14 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<Result<NewBlock, ExtractBlockError>>) {
+    /// Handle a raw inbound `NewBlock` message. Decoding and reconciliation are both done in a spawned task, so that
+    /// the service loop is never blocked decoding a block; decoding is bounded by its own semaphore
+    /// ([MAX_CONCURRENT_BLOCK_DECODES]).
+    ///
+    /// At most [MAX_PENDING_INBOUND_BLOCKS_PER_PEER] messages per peer (and [MAX_PENDING_INBOUND_BLOCKS_TOTAL] overall)
+    /// are handled at once; beyond that, the message is dropped. Returns `true` if a task was spawned to handle the
+    /// message.
+    fn spawn_handle_incoming_block(&mut self, new_block: Arc<PeerMessage>) -> bool {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -339,15 +371,21 @@ where B: BlockchainBackend + 'static
                 "Propagated block from peer `{}` not processed while busy with initial sync.",
                 new_block.source_peer.node_id.short_str(),
             );
-            return;
+            return false;
         }
+        let Some(pending_guard) = self.pending_inbound_blocks.try_accept(&new_block.source_peer.node_id) else {
+            return false;
+        };
+        let decode_permits = self.block_decode_permits.clone();
         let inbound_nch = self.inbound_nch.clone();
         let mut connectivity_requester = self.connectivity.clone();
         let source_peer = new_block.source_peer.clone();
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
-            let result = handle_incoming_block(inbound_nch, new_block).await;
+            // Released when the task finishes, however it finishes
+            let _pending_guard = pending_guard;
+            let result = handle_incoming_block(inbound_nch, decode_permits, new_block).await;
 
             match result {
                 Ok(()) => {},
@@ -371,6 +409,7 @@ where B: BlockchainBackend + 'static
                 },
             }
         });
+        true
     }
 
     fn spawn_handle_local_request(
@@ -692,10 +731,29 @@ fn spawn_request_timeout(timeout_sender: Sender<RequestKey>, request_key: Reques
     });
 }
 
+/// Decode an inbound `NewBlock` message on a blocking thread, holding a block decode permit only for the duration of
+/// the decode. The permit bounds this CPU-bound work; it is released before the block is reconciled, since
+/// reconciliation may wait on the network (up to the request timeout) and on block processing.
+async fn decode_block_message(
+    decode_permits: Arc<Semaphore>,
+    msg: Arc<PeerMessage>,
+) -> Result<DomainMessage<Result<NewBlock, ExtractBlockError>>, BaseNodeServiceError> {
+    let _permit = decode_permits
+        .acquire_owned()
+        .await
+        .map_err(|e| CommsInterfaceError::InternalError(format!("Block decode semaphore closed: {e}")))?;
+    let decoded = task::spawn_blocking(move || extract_block(&msg))
+        .await
+        .map_err(|e| CommsInterfaceError::InternalError(format!("Failed to decode inbound block message: {e}")))?;
+    Ok(decoded)
+}
+
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: DomainMessage<Result<NewBlock, ExtractBlockError>>,
+    decode_permits: Arc<Semaphore>,
+    msg: Arc<PeerMessage>,
 ) -> Result<(), BaseNodeServiceError> {
+    let domain_block_msg = decode_block_message(decode_permits, msg).await?;
     let DomainMessage::<_> {
         source_peer,
         inner: new_block,
@@ -715,4 +773,145 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::cmp::max;
+
+    use tari_common_types::types::{FixedHash, PrivateKey};
+    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use tari_node_components::blocks::BlockHeader;
+    use tari_p2p::tari_message::TariMessageType;
+    use tari_service_framework::reply_channel;
+    use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
+    use tokio::sync::broadcast;
+
+    use super::*;
+    use crate::{
+        base_node::comms_interface::OutboundNodeCommsInterface,
+        chain_storage::BlockchainDatabase,
+        mempool::{Mempool, MempoolConfig},
+        proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty},
+        test_helpers::{
+            blockchain::{TempDatabase, create_new_blockchain},
+            create_consensus_rules,
+            create_peer_message,
+        },
+        validation::mocks::MockValidator,
+    };
+
+    type OutboundRequests =
+        reply_channel::Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>;
+
+    fn create_handlers() -> (
+        InboundNodeCommsHandlers<TempDatabase>,
+        BlockchainDatabase<TempDatabase>,
+        Mempool,
+        OutboundRequests,
+    ) {
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            create_consensus_rules(),
+            Box::new(MockValidator::new(true)),
+        );
+        let db = create_new_blockchain();
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, request_receiver) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let inbound_nch = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.clone().into(),
+            mempool.clone(),
+            create_consensus_rules(),
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        (inbound_nch, db, mempool, request_receiver)
+    }
+
+    fn decode_permits() -> Arc<Semaphore> {
+        Arc::new(Semaphore::new(MAX_CONCURRENT_BLOCK_DECODES))
+    }
+
+    #[tokio::test]
+    async fn malformed_block_message_is_rejected_and_releases_the_decode_permit() {
+        let (inbound_nch, _db, mempool, _requests) = create_handlers();
+        let reconciliation_permits = mempool.available_reconciliation_permits();
+        let decode_permits = decode_permits();
+
+        let msg = create_peer_message(TariMessageType::NewBlock, vec![0xff; 64]);
+        let err = handle_incoming_block(inbound_nch.clone(), decode_permits.clone(), msg)
+            .await
+            .unwrap_err();
+        // Unchanged behaviour: an undecodable block message is an `InvalidBlockMessage`
+        assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
+        assert_eq!(decode_permits.available_permits(), MAX_CONCURRENT_BLOCK_DECODES);
+
+        let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::default());
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+        let err = handle_incoming_block(inbound_nch, decode_permits.clone(), msg)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
+        assert_eq!(decode_permits.available_permits(), MAX_CONCURRENT_BLOCK_DECODES);
+        // Decoding never touches the mempool's reconciliation permits
+        assert_eq!(mempool.available_reconciliation_permits(), reconciliation_permits);
+    }
+
+    /// The decode permit only covers decoding: it is back in the pool while reconciliation waits on the network, and
+    /// decoding does not use the mempool's reconciliation permits at all.
+    #[tokio::test]
+    async fn decode_permit_is_released_before_reconciliation_waits_on_the_network() {
+        let (inbound_nch, db, mempool, mut requests) = create_handlers();
+        let reconciliation_permits = mempool.available_reconciliation_permits();
+        let decode_permits = decode_permits();
+
+        // An orphan block (its parent is unknown) with enough proof of work to pass the anti-spam gate, and a kernel
+        // that is not in our mempool, so reconciliation must ask the announcing peer for the full block
+        let tip = db.fetch_last_chain_header().unwrap();
+        let constants = db.consensus_constants().unwrap().clone();
+        let mut min_difficulty = constants.min_pow_difficulty(PowAlgorithm::Sha3x);
+        if tip.header().pow_algo() == PowAlgorithm::Sha3x {
+            min_difficulty = max(
+                tip.accumulated_data()
+                    .target_difficulty
+                    .checked_div_u64(2)
+                    .unwrap_or(min_difficulty),
+                min_difficulty,
+            );
+        }
+        let mut header = BlockHeader::new(tip.header().version);
+        header.height = tip.height() + 5;
+        header.prev_hash = FixedHash::from([7u8; 32]);
+        while sha3x_difficulty(&header).unwrap() < min_difficulty {
+            header.nonce += 1;
+        }
+        let new_block = NewBlock {
+            header,
+            coinbase_kernels: vec![],
+            coinbase_outputs: vec![],
+            kernel_excess_sigs: vec![PrivateKey::default()],
+        };
+        let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::try_from(new_block).unwrap());
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+
+        let task = task::spawn(handle_incoming_block(inbound_nch, decode_permits.clone(), msg));
+        // The full block request reaches the (never answering) outbound interface
+        let request = tokio::time::timeout(Duration::from_secs(30), requests.next())
+            .await
+            .expect("reconciliation did not request the full block")
+            .expect("request stream closed");
+        assert!(matches!(
+            request.request().0,
+            NodeCommsRequest::GetBlockFromAllChains(_)
+        ));
+        // ... while the decode permit has already been returned, and no reconciliation permit is held
+        assert_eq!(decode_permits.available_permits(), MAX_CONCURRENT_BLOCK_DECODES);
+        assert_eq!(mempool.available_reconciliation_permits(), reconciliation_permits);
+        assert!(!task.is_finished());
+        task.abort();
+    }
 }

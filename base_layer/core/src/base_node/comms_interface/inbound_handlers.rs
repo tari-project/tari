@@ -31,7 +31,7 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PrivateKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_node_components::blocks::{
     Block,
@@ -46,6 +46,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
     tari_proof_of_work::{PowAlgorithm, PowError},
+    transaction_components::Transaction,
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{RwLock, watch};
@@ -920,6 +921,7 @@ where B: BlockchainBackend + 'static
                 source_peer
             );
 
+            let requested_excess_sigs = missing_excess_sigs.iter().cloned().collect::<HashSet<_>>();
             let FetchMempoolTransactionsResponse {
                 transactions,
                 not_found,
@@ -927,6 +929,22 @@ where B: BlockchainBackend + 'static
                 .outbound_nci
                 .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
                 .await?;
+
+            // Only keep transactions that we actually asked for. Anything else is dropped before it reaches the mempool
+            // (or the reconstructed block); if that leaves the block incomplete, the MMR root check below falls back to
+            // requesting the full block.
+            let (transactions, num_unrequested) = retain_requested_transactions(transactions, &requested_excess_sigs);
+            if num_unrequested > 0 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer {} returned {} transaction(s) for block #{} ({}) with kernels that were not requested. \
+                     Ignoring them.",
+                    source_peer,
+                    num_unrequested,
+                    header.height,
+                    block_hash.to_hex(),
+                );
+            }
 
             // Add returned transactions to unconfirmed pool
             if !transactions.is_empty() {
@@ -1317,6 +1335,27 @@ where B: BlockchainBackend + 'static
     }
 }
 
+/// Keeps only the transactions whose kernel excess signatures are all in `requested` (and that have at least one
+/// kernel). Returns the retained transactions and the number of transactions that were dropped.
+fn retain_requested_transactions(
+    transactions: Vec<Arc<Transaction>>,
+    requested: &HashSet<PrivateKey>,
+) -> (Vec<Arc<Transaction>>, usize) {
+    let total = transactions.len();
+    let retained = transactions
+        .into_iter()
+        .filter(|tx| {
+            let kernels = tx.body.kernels();
+            !kernels.is_empty() &&
+                kernels
+                    .iter()
+                    .all(|kernel| requested.contains(kernel.excess_sig.get_signature()))
+        })
+        .collect::<Vec<_>>();
+    let dropped = total.saturating_sub(retained.len());
+    (retained, dropped)
+}
+
 impl<B> Clone for InboundNodeCommsHandlers<B> {
     fn clone(&self) -> Self {
         Self {
@@ -1331,5 +1370,73 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             mempool_last_seen: self.mempool_last_seen.clone(),
             mempool_sync_timeout: self.mempool_sync_timeout,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::indexing_slicing)]
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
+
+    use super::*;
+
+    fn create_tx(key_manager: &KeyManager) -> Arc<Transaction> {
+        Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, key_manager)
+                .expect("Failed to get tx")
+                .0,
+        )
+    }
+
+    fn excess_sig(tx: &Transaction) -> PrivateKey {
+        tx.body.kernels()[0].excess_sig.get_signature().clone()
+    }
+
+    #[test]
+    fn only_requested_transactions_are_retained() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let requested1 = create_tx(&key_manager);
+        let requested2 = create_tx(&key_manager);
+        let unrequested = create_tx(&key_manager);
+        // A transaction carrying a requested kernel alongside an unrequested one
+        let mixed = Arc::new(Transaction::new(
+            vec![],
+            vec![],
+            vec![
+                requested1.body.kernels()[0].clone(),
+                unrequested.body.kernels()[0].clone(),
+            ],
+            Default::default(),
+            Default::default(),
+        ));
+        // A transaction with no kernels at all
+        let empty = Arc::new(Transaction::new(
+            vec![],
+            vec![],
+            vec![],
+            Default::default(),
+            Default::default(),
+        ));
+        let requested = [excess_sig(&requested1), excess_sig(&requested2)]
+            .into_iter()
+            .collect::<HashSet<_>>();
+
+        let (retained, dropped) = retain_requested_transactions(
+            vec![requested1.clone(), unrequested, requested2.clone(), mixed, empty],
+            &requested,
+        );
+        assert_eq!(retained, vec![requested1.clone(), requested2.clone()]);
+        assert_eq!(dropped, 3);
+
+        // Nothing to drop
+        let (retained, dropped) =
+            retain_requested_transactions(vec![requested1.clone(), requested2.clone()], &requested);
+        assert_eq!(retained, vec![requested1, requested2]);
+        assert_eq!(dropped, 0);
+
+        // Nothing requested
+        let (retained, dropped) = retain_requested_transactions(vec![create_tx(&key_manager)], &HashSet::new());
+        assert!(retained.is_empty());
+        assert_eq!(dropped, 1);
     }
 }

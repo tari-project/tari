@@ -25,3 +25,16 @@ pub(super) mod greeting_service;
 mod handshake;
 pub(super) mod mock;
 mod smoke;
+
+#[test]
+fn rpc_frame_is_superset_of_messaging_frame() {
+    use crate::protocol::{messaging::MAX_FRAME_LENGTH, rpc};
+    // Anything that fits in a messaging frame (e.g. a propagated block) must also fit in an RPC response payload
+    // (e.g. the same block fetched during sync). Requests have their own, smaller cap.
+    const { assert!(rpc::RPC_MAX_FRAME_SIZE > MAX_FRAME_LENGTH) };
+    const { assert!(rpc::max_response_payload_size() >= MAX_FRAME_LENGTH) };
+    // Requests keep the old 6 MiB cap: only responses need the larger frame
+    const { assert!(rpc::max_request_size() == rpc::RPC_MAX_REQUEST_SIZE) };
+    const { assert!(rpc::RPC_MAX_REQUEST_SIZE < rpc::RPC_MAX_FRAME_SIZE) };
+    assert_eq!(rpc::RPC_MAX_FRAME_SIZE, 8 * 1024 * 1024 + 1024);
+}

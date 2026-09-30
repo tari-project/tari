@@ -850,6 +850,20 @@ where
     #[allow(clippy::too_many_lines)]
     #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
     async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
+        if let Some(rejection) = reject_oversized_request(&request) {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Rejecting a {} byte request, larger than the maximum of {} bytes",
+                self.logging_context_string,
+                request.len(),
+                rpc::max_request_size()
+            );
+            #[cfg(feature = "metrics")]
+            metrics::status_error_counter(&self.protocol, super::RpcStatusCode::BadRequest).inc();
+            self.send_with_deadline(rejection.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
+                .await?;
+            return Ok(());
+        }
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
@@ -1107,6 +1121,16 @@ where
     async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
         let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
             Poll::Ready(Some(Ok(mut msg))) => {
+                if msg.len() > rpc::max_request_size() {
+                    // Never decode an oversized message; a client may only send a FIN here, which is tiny
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring a {} byte message received during a streaming response (maximum {} bytes)",
+                        msg.len(),
+                        rpc::max_request_size()
+                    );
+                    return Poll::Ready(None);
+                }
                 let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
                     Ok(msg) => msg,
                     Err(err) => {
@@ -1172,6 +1196,35 @@ async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_
         if elapsed.as_secs() >= 5 { " (SLOW)" } else { "" }
     );
     ret
+}
+
+/// Just the request id of an `RpcRequest`. Decoding this skips over the other fields, including the payload, without
+/// copying them.
+#[derive(Clone, PartialEq, prost::Message)]
+struct RpcRequestId {
+    #[prost(uint32, tag = "1")]
+    request_id: u32,
+}
+
+/// If `request` is larger than [rpc::RPC_MAX_REQUEST_SIZE], returns the `BadRequest` response to send instead of
+/// decoding it. Only the request id is read, so that the client can match the response. No ban: a peer running a
+/// version with a larger request cap may send such a request honestly.
+fn reject_oversized_request(request: &Bytes) -> Option<proto::rpc::RpcResponse> {
+    if request.len() <= rpc::max_request_size() {
+        return None;
+    }
+    let request_id = RpcRequestId::decode(request.clone()).map(|r| r.request_id).unwrap_or(0);
+    let status = RpcStatus::bad_request(&format!(
+        "The request size exceeded the maximum allowed request size. Max = {} bytes, Got = {} bytes",
+        rpc::max_request_size(),
+        request.len()
+    ));
+    Some(proto::rpc::RpcResponse {
+        request_id,
+        status: status.as_code(),
+        flags: RpcMessageFlags::FIN.bits().into(),
+        payload: status.to_details_bytes(),
+    })
 }
 
 fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcResponse {
