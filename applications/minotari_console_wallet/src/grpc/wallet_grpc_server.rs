@@ -117,8 +117,6 @@ use minotari_app_grpc::tari_rpc::{
     SendShaAtomicSwapResponse,
     SignMessageRequest,
     SignMessageResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
     SubmitValidatorNodeExitRequest,
     SubmitValidatorNodeExitResponse,
     TransactionDirection,
@@ -2710,53 +2708,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
-            },
-        };
-        Ok(Response::new(response))
-    }
-
-    async fn submit_validator_eviction_proof(
-        &self,
-        request: Request<SubmitValidatorEvictionProofRequest>,
-    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
-        let request = request.into_inner();
-        let mut transaction_service = self.get_transaction_service();
-
-        let sidechain_key = Some(request.sidechain_deployment_key)
-            .filter(|k| !k.is_empty())
-            .map(|k| PrivateKey::from_canonical_bytes(&k))
-            .transpose()
-            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
-
-        let proof = request
-            .proof
-            .map(TryInto::try_into)
-            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Failed to convert proof: {e}");
-                Status::invalid_argument(format!("Invalid proof: {e}"))
-            })?;
-
-        let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
-            Status::internal("failed to fetch consensus constants")
-        })?;
-
-        let response = match transaction_service
-            .submit_validator_eviction_proof(
-                constants.validator_node_registration_min_deposit_amount(),
-                proof,
-                request.fee_per_gram.into(),
-                sidechain_key,
-                MemoField::new_open(request.message.into_bytes(), TxType::PaymentToSelf)
-                    .map_err(|e| Status::internal(e.to_string()))?,
-            )
-            .await
-        {
-            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {e}");
-                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))

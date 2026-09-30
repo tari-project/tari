@@ -34,7 +34,6 @@ tari_metrics = { workspace = true, optional = true }
 tari_mmr = { workspace = true }
 tari_p2p = { workspace = true }
 tari_script = { workspace = true }
-tari_sidechain = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }

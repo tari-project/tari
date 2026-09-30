@@ -213,12 +213,6 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
 }
 
 impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
-    fn validator_store_cursor(
-        &self,
-    ) -> Result<LmdbReadCursor<'a, ValidatorNodeStoreKey, ValidatorNodeEntry>, ChainStorageError> {
-        self.new_read_cursor(self.db_validator_nodes.clone())
-    }
-
     fn activation_queue_read_cursor(
         &self,
     ) -> Result<LmdbReadCursor<'a, ActivationQueueKey, CompressedPublicKey>, ChainStorageError> {
@@ -372,75 +366,6 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         }
 
         Ok(activation_epoch)
-    }
-
-    pub fn count_active_validators(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-    ) -> Result<usize, ChainStorageError> {
-        let mut count = 0usize;
-
-        {
-            let mut cursor = self.validator_store_cursor()?;
-            let sidechain_bytes = sid_as_slice(sidechain_pk);
-            if !cursor.seek_range(sidechain_bytes)? {
-                return Ok(0);
-            }
-
-            while let Some((key, vn)) = cursor.next()? {
-                if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
-                    "Key bytes for output hash are too short".to_string(),
-                ))? != sidechain_bytes
-                {
-                    // No further entries for this sidechain
-                    break;
-                }
-
-                if vn.activation_epoch > end_epoch {
-                    break;
-                }
-
-                count = count.saturating_add(1);
-            }
-        }
-
-        // We also need to search the exit queue, if the exit epoch is greater than the end epoch, the validator is
-        // still active
-        let mut cursor = self.exit_queue_read_cursor()?;
-        let prefix = create_exit_queue_prefix_key(sidechain_pk, end_epoch);
-        if !cursor.seek_range(&prefix)? {
-            return Ok(count);
-        }
-        let sidechain_bytes = sid_as_slice(sidechain_pk);
-        while let Some((key, _)) = cursor.next()? {
-            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-            let sid = sections
-                .next()
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "ValidatorNodeStore::count_active_validators",
-                    details: "Malformed exit queue key".to_string(),
-                })?;
-
-            if sid != sidechain_bytes {
-                // No further entries for this sidechain
-                break;
-            }
-
-            let rec_epoch = sections
-                .next_be_u64()
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "ValidatorNodeStore::count_active_validators",
-                    details: "Malformed exit queue key".to_string(),
-                })?;
-            if rec_epoch <= end_epoch.as_u64() {
-                // No further entries for this epoch
-                continue;
-            }
-            count = count.saturating_add(1);
-        }
-
-        Ok(count)
     }
 
     /// Returns a set of <public key, shard id> tuples ordered by epoch of registration.
@@ -1064,21 +989,6 @@ mod tests {
 
             assert!(store.is_vn_active(None, &nodes[0].public_key, VnEpoch(9)).unwrap());
             assert!(!store.is_vn_active(None, &nodes[0].public_key, VnEpoch(12)).unwrap());
-
-            let count = store.count_active_validators(None, VnEpoch(10)).unwrap();
-            assert_eq!(count, 7);
-            let count = store.count_active_validators(None, VnEpoch(11)).unwrap();
-            assert_eq!(count, 5);
-            let count = store.count_active_validators(Some(&sid), VnEpoch(10)).unwrap();
-            assert_eq!(count, 3);
-            let count = store.count_active_validators(Some(&sid), VnEpoch(11)).unwrap();
-            assert_eq!(count, 1);
-            let count = store.count_active_validators(None, VnEpoch(109)).unwrap();
-            assert_eq!(count, 5);
-            let count = store.count_active_validators(None, VnEpoch(110)).unwrap();
-            assert_eq!(count, 3);
-            let count = store.count_active_validators(None, VnEpoch(111)).unwrap();
-            assert_eq!(count, 3);
 
             let exiting = store.get_exiting_in_epoch(None, VnEpoch(11)).unwrap();
             assert_eq!(exiting.len(), 2);

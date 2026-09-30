@@ -19,7 +19,6 @@ tari_common_types = { workspace = true }
 tari_hashing = { workspace = true }
 tari_max_size = { workspace = true }
 tari_mmr = { workspace = true }
-tari_sidechain = { workspace = true }
 tari_script = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_ledger_wallet_common = { workspace = true, features = ["borsh"] }

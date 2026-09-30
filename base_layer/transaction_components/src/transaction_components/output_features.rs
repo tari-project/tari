@@ -33,7 +33,6 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_max_size::MaxSizeBytes;
-use tari_sidechain::EvictionProof;
 
 use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transaction_components::{
@@ -201,22 +200,6 @@ impl OutputFeatures {
             output_type: OutputType::ValidatorNodeExit,
             sidechain_feature: Some(SideChainFeature {
                 data: SideChainFeatureData::ValidatorNodeExit(exit),
-                sidechain_id,
-            }),
-            ..Default::default()
-        }
-    }
-
-    pub fn for_validator_node_eviction(
-        eviction_proof: EvictionProof,
-        sidechain_deployment_key: Option<&PrivateKey>,
-    ) -> OutputFeatures {
-        let sidechain_id =
-            sidechain_deployment_key.map(|k| SideChainId::sign(k, eviction_proof.sidechain_id_message()));
-        OutputFeatures {
-            output_type: OutputType::SidechainProof,
-            sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
                 sidechain_id,
             }),
             ..Default::default()

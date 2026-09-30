@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
-use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     BanPeriod,
     BanReason,
@@ -114,14 +113,6 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
-    #[error("Sidechain proof invalid: `{0}`")]
-    SidechainProofInvalid(#[from] SidechainProofValidationError),
-    #[error("Sidechain eviction proof submitted for unregistered validator {validator_pk}")]
-    SidechainEvictionProofValidatorNotFound { validator_pk: String },
-    #[error(
-        "Sidechain eviction proof invalid: given epoch {epoch} is greater than the epoch at tip height {tip_height}"
-    )]
-    SidechainEvictionProofInvalidEpoch { epoch: VnEpoch, tip_height: u64 },
     #[error("Validator node already registered: {public_key}")]
     ValidatorNodeAlreadyRegistered { public_key: String },
     #[error("Block body contains more than one validator node registration for the same validator node: {public_key}")]
@@ -189,9 +180,6 @@ impl ValidationError {
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::InvalidSerializedPublicKey(_) |
-            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
-            err @ ValidationError::SidechainProofInvalid(_) |
-            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
             err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
             err @ ValidationError::DuplicateValidatorNodeRegistration { .. } |
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |

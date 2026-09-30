@@ -70,7 +70,6 @@ use tari_script::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
@@ -1129,30 +1128,6 @@ where
                         tx_id,
                         template_address,
                     })
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let tx_id = self
-                        .submit_validator_eviction_proof(
-                            amount,
-                            proof,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
-                            fee_per_gram,
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
                 }
                 .await
             },
@@ -3426,74 +3401,6 @@ where
 
         let output_features =
             OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
-
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                amount,
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-
-        // Notify that the transaction was successfully resolved.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-        let all_outputs = transaction
-            .body
-            .outputs()
-            .iter()
-            .map(|o| o.hash())
-            .collect::<Vec<HashOutput>>();
-        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
-        let mut final_payment_id = payment_id.clone();
-        final_payment_id.set_fee(fee);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                self.resources.one_sided_tari_address.clone(),
-                amount,
-                fee,
-                transaction,
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Inbound,
-                None,
-                None,
-                final_payment_id,
-                vec![],
-                all_outputs,
-                vec![],
-                lock_height,
-            )?,
-        )
-        .await?;
-
-        Ok(tx_id)
-    }
-
-    async fn submit_validator_eviction_proof(
-        &mut self,
-        amount: MicroMinotari,
-        eviction_proof: EvictionProof,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
 
         let (fee, transaction, tx_id) = self
             .resources

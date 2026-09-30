@@ -24,7 +24,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
-use tari_sidechain::EvictionProof;
 
 use crate::transaction_components::{
     CodeTemplateRegistration,
@@ -50,7 +49,6 @@ impl SideChainFeature {
             SideChainFeatureData::ValidatorNodeRegistration(reg) => sidechain_id.is_valid(reg.sidechain_id_message()),
             SideChainFeatureData::CodeTemplateRegistration(reg) => sidechain_id.is_valid(reg.sidechain_id_message()),
             SideChainFeatureData::ConfidentialOutput(output) => sidechain_id.is_valid(output.sidechain_id_message()),
-            SideChainFeatureData::EvictionProof(proof) => sidechain_id.is_valid(proof.sidechain_id_message()),
             SideChainFeatureData::ValidatorNodeExit(exit) => sidechain_id.is_valid(exit.sidechain_id_message()),
         }
     }
@@ -88,13 +86,6 @@ impl SideChainFeature {
         }
     }
 
-    pub fn eviction_proof(&self) -> Option<&EvictionProof> {
-        match &self.data {
-            SideChainFeatureData::EvictionProof(v) => Some(v),
-            _ => None,
-        }
-    }
-
     pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
         match &self.data {
             SideChainFeatureData::ConfidentialOutput(v) => Some(v),
@@ -108,7 +99,6 @@ pub enum SideChainFeatureData {
     ValidatorNodeRegistration(Box<ValidatorNodeRegistration>),
     CodeTemplateRegistration(CodeTemplateRegistration),
     ConfidentialOutput(ConfidentialOutputData),
-    EvictionProof(Box<EvictionProof>),
     ValidatorNodeExit(ValidatorNodeExit),
 }
 
@@ -155,5 +145,70 @@ impl SideChainId {
         };
 
         signature.verify(&public_key, message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::epoch::VnEpoch;
+
+    use super::*;
+    use crate::transaction_components::{BuildInfo, TemplateType};
+
+    /// Side-chain data is not bound to the output type, so a live network may hold any variant whose chain checks it
+    /// can pass, and that variant's index is part of the output hash (Borsh) and the stored output (bincode). Only
+    /// `ValidatorNodeExit` is unreachable there - an exit needs an active validator, and live networks cannot activate
+    /// one - so it is the only variant whose index may move. These must not.
+    #[test]
+    fn live_network_variant_indexes_are_stable() {
+        let cases = [
+            (
+                SideChainFeatureData::ValidatorNodeRegistration(Box::new(ValidatorNodeRegistration::new(
+                    Default::default(),
+                    CompressedPublicKey::default(),
+                    VnEpoch(1),
+                ))),
+                0u8,
+            ),
+            (
+                SideChainFeatureData::CodeTemplateRegistration(CodeTemplateRegistration {
+                    author_public_key: CompressedPublicKey::default(),
+                    author_signature: CompressedSignature::default(),
+                    template_name: "t".try_into().unwrap(),
+                    template_version: 0,
+                    template_type: TemplateType::Wasm { abi_version: 0 },
+                    build_info: BuildInfo {
+                        repo_url: "u".try_into().unwrap(),
+                        commit_hash: Default::default(),
+                    },
+                    binary_sha: Default::default(),
+                    binary_url: "u".try_into().unwrap(),
+                }),
+                1,
+            ),
+            (
+                SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
+                    claim_public_key: CompressedPublicKey::default(),
+                }),
+                2,
+            ),
+        ];
+
+        for (data, index) in cases {
+            let borsh_bytes = borsh::to_vec(&data).unwrap();
+            assert_eq!(borsh_bytes.first(), Some(&index), "{data:?}");
+            assert_eq!(SideChainFeatureData::try_from_slice(&borsh_bytes).unwrap(), data);
+
+            let bincode_bytes = bincode::serialize(&data).unwrap();
+            assert_eq!(
+                bincode_bytes.get(..4),
+                Some(u32::from(index).to_le_bytes().as_slice()),
+                "{data:?}"
+            );
+            assert_eq!(
+                bincode::deserialize::<SideChainFeatureData>(&bincode_bytes).unwrap(),
+                data
+            );
+        }
     }
 }
