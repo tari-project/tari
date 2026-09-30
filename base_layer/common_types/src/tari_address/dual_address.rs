@@ -63,6 +63,11 @@ impl DualAddress {
     ) -> Result<DualAddress, TariAddressError> {
         let mut features = features;
         let memo_field_payment_id = match memo_field_payment_id {
+            // An empty payment id is treated as no payment id, so the flag is cleared
+            Some(data) if data.is_empty() => {
+                features.set(TariAddressFeatures::PAYMENT_ID, false);
+                MaxSizeBytes::empty()
+            },
             Some(data) => {
                 if data.len() > MAX_PAYMENT_ID_SIZE {
                     return Err(TariAddressError::PaymentIdTooLarge);
@@ -95,7 +100,9 @@ impl DualAddress {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
         let memo_field_payment_id = MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?;
-        self.features.set(TariAddressFeatures::PAYMENT_ID, true);
+        // An empty payment id is treated as no payment id, so the flag is cleared
+        self.features
+            .set(TariAddressFeatures::PAYMENT_ID, !memo_field_payment_id.is_empty());
         self.memo_field_payment_id = memo_field_payment_id;
         Ok(())
     }
@@ -162,8 +169,19 @@ impl DualAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes
+    /// Construct Tari Address from bytes. A payment id without the `PAYMENT_ID` feature flag is rejected.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
+    where Self: Sized {
+        let address = Self::from_bytes_lenient(bytes)?;
+        if !address.memo_field_payment_id.is_empty() && !address.features.contains(TariAddressFeatures::PAYMENT_ID) {
+            return Err(TariAddressError::InvalidFeatures);
+        }
+        Ok(address)
+    }
+
+    /// Construct Tari Address from bytes, accepting a payment id without the `PAYMENT_ID` feature flag. This is only
+    /// meant for loading already stored addresses; use [`DualAddress::from_bytes`] for everything else.
+    pub fn from_bytes_lenient(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
         if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_PAYMENT_ID_SIZE))

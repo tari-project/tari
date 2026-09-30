@@ -1655,7 +1655,7 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: TxId::from(i.tx_id as u64),
-            source_address: TariAddress::from_bytes(&i.source_address)
+            source_address: TariAddress::from_bytes_lenient(&i.source_address)
                 .map_err(TransactionStorageError::TariAddressError)?,
         })
     }
@@ -1927,7 +1927,7 @@ impl InboundTransaction {
         let i = i.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
-            source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
+            source_address: TariAddress::from_bytes_lenient(&i.source_address).map_err(TransactionKeyError::Source)?,
             amount: MicroMinotari::from(i.amount as u64),
             receiver_protocol: bincode::deserialize(&i.receiver_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
@@ -2188,7 +2188,7 @@ impl OutboundTransaction {
         let mut o = o.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
         let outbound_tx = Self {
             tx_id: (o.tx_id as u64).into(),
-            destination_address: TariAddress::from_bytes(&o.destination_address)
+            destination_address: TariAddress::from_bytes_lenient(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroMinotari::from(o.amount as u64),
             fee: MicroMinotari::from(o.fee as u64),
@@ -2833,8 +2833,8 @@ impl CompletedTransaction {
 
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
-            source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
-            destination_address: TariAddress::from_bytes(&c.destination_address)
+            source_address: TariAddress::from_bytes_lenient(&c.source_address).map_err(TransactionKeyError::Source)?,
+            destination_address: TariAddress::from_bytes_lenient(&c.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroMinotari::from(c.amount as u64),
             fee: MicroMinotari::from(c.fee as u64),

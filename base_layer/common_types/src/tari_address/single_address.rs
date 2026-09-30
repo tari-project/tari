@@ -120,8 +120,20 @@ impl SingleAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes
+    /// Construct Tari Address from bytes. The `PAYMENT_ID` feature flag is rejected, as a single address cannot carry
+    /// a payment id.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
+    where Self: Sized {
+        let address = Self::from_bytes_lenient(bytes)?;
+        if address.features.contains(TariAddressFeatures::PAYMENT_ID) {
+            return Err(TariAddressError::InvalidFeatures);
+        }
+        Ok(address)
+    }
+
+    /// Construct Tari Address from bytes, accepting the `PAYMENT_ID` feature flag. This is only meant for loading
+    /// already stored addresses; use [`SingleAddress::from_bytes`] for everything else.
+    pub fn from_bytes_lenient(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
         if length != TARI_ADDRESS_INTERNAL_SINGLE_SIZE {

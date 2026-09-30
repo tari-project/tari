@@ -129,8 +129,24 @@ impl EncryptedData {
         mask: &PrivateKey,
         memo: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
+        // The memo size drives the buffer sizes below, so it must match the encoded memo
+        let memo_bytes = memo.to_bytes();
+        if memo_bytes.len() != memo.get_size() {
+            return Err(EncryptedDataError::InvalidMemoSize(format!(
+                "Encoded memo is {} bytes, expected {}",
+                memo_bytes.len(),
+                memo.get_size()
+            )));
+        }
+        let data_size = STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo_bytes.len());
+        if data_size > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(EncryptedDataError::InvalidMemoSize(format!(
+                "Encrypted data would be {data_size} bytes, the maximum is {MAX_ENCRYPTED_DATA_SIZE}"
+            )));
+        }
+
         // Encode the value and mask
-        let plaintext_size = SIZE_VALUE.saturating_add(SIZE_MASK).saturating_add(memo.get_size());
+        let plaintext_size = SIZE_VALUE.saturating_add(SIZE_MASK).saturating_add(memo_bytes.len());
         let mut bytes = Zeroizing::new(vec![0; plaintext_size]);
         bytes
             .get_mut(..SIZE_VALUE)
@@ -143,7 +159,7 @@ impl EncryptedData {
         bytes
             .get_mut(SIZE_VALUE + SIZE_MASK..)
             .expect("Already checked")
-            .copy_from_slice(&memo.to_bytes());
+            .copy_from_slice(&memo_bytes);
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -156,7 +172,7 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo.get_size())];
+        let mut data = vec![0; data_size];
         data.get_mut(..SIZE_TAG).expect("Already checked").copy_from_slice(&tag);
         data.get_mut(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
             .expect("Already checked")
@@ -318,6 +334,8 @@ pub enum EncryptedDataError {
     ByteArrayError(String),
     #[error("Incorrect length: {0}")]
     IncorrectLength(String),
+    #[error("Invalid memo size: {0}")]
+    InvalidMemoSize(String),
 }
 
 impl From<ByteArrayError> for EncryptedDataError {
@@ -483,6 +501,31 @@ mod test {
 
         let too_long = borsh::to_vec(&vec![7u8; MAX_ENCRYPTED_DATA_SIZE + 1]).unwrap();
         assert!(EncryptedData::try_from_slice(&too_long).is_err());
+    }
+
+    #[test]
+    fn encrypt_data_rejects_oversized_memos() {
+        let mask = PrivateKey::random(&mut rand::rng());
+        let commitment =
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+        // One byte over the limit, and far over it
+        for len in [
+            MAX_ENCRYPTED_DATA_SIZE - STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+            MAX_ENCRYPTED_DATA_SIZE,
+        ] {
+            let memo = MemoField::raw_unchecked(vec![1u8; len]);
+            let result = EncryptedData::encrypt_data(&PrivateKey::default(), &commitment, 1.into(), &mask, memo);
+            assert!(
+                matches!(result, Err(EncryptedDataError::InvalidMemoSize(_))),
+                "{result:?}"
+            );
+        }
+        // The largest memo that fits
+        let memo = MemoField::raw_unchecked(vec![
+            1u8;
+            MAX_ENCRYPTED_DATA_SIZE - STATIC_ENCRYPTED_DATA_SIZE_TOTAL - 1
+        ]);
+        assert!(EncryptedData::encrypt_data(&PrivateKey::default(), &commitment, 1.into(), &mask, memo).is_ok());
     }
 
     #[test]
