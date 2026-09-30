@@ -37,7 +37,10 @@
 use std::{collections::BTreeSet, str::FromStr};
 
 use log::*;
-use tari_common_types::{transaction::TxId, types::CompressedCommitment};
+use tari_common_types::{
+    transaction::{TransactionDirection, TxId},
+    types::CompressedCommitment,
+};
 use tari_transaction_components::key_manager::TariKeyId;
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
 use tari_utilities::{ByteArray, hex::to_hex};
@@ -100,12 +103,13 @@ pub struct InvalidMaskMigrationSummary {
     pub marked_invalid: usize,
     /// Transactions coupled to a mask-mismatch output that were cancelled by this run
     pub transactions_cancelled: usize,
-    /// Coupled transactions that were not cancelled and will not be retried: not found, not a cancellable kind, or a
-    /// non-retryable error (the transaction row itself cannot be read)
+    /// Coupled transactions that were not cancelled and will not be retried: not found, or a non-retryable error (the
+    /// transaction row itself cannot be read)
     pub transactions_not_reconciled: usize,
-    /// Transaction ids that were due for cancelling (e.g. read from [`INVALID_MASK_PENDING_TXS_KEY`], which lives in
-    /// the app-writable client key/value store) but have no output received in them that definitely fails the mask
-    /// check. They are dropped and never passed to the sink
+    /// Transaction ids that were due for cancelling but must not be cancelled, and are dropped: either no output
+    /// received in them definitely fails the mask check (e.g. an id injected into [`INVALID_MASK_PENDING_TXS_KEY`],
+    /// which lives in the app-writable client key/value store; never passed to the sink), or the transaction is not
+    /// inbound (a change output carries its outbound payment's id; the sink refuses to cancel it)
     pub transactions_rejected_unverified: usize,
     /// Coupled transactions the sink failed on with a retryable error (I/O, connection, ...). They stay in
     /// [`INVALID_MASK_PENDING_TXS_KEY`] and are retried on the next start
@@ -156,8 +160,9 @@ pub enum InvalidOutputTxOutcome {
     AlreadyCancelled,
     /// No transaction with this id exists
     NotFound,
-    /// The transaction is of a kind this reconciliation does not cancel
-    NotReconciled(&'static str),
+    /// The transaction is not inbound (e.g. the output is change of an outbound payment); it is left untouched,
+    /// because cancelling it would reject a real payment
+    NotInbound(&'static str),
 }
 
 /// Cancels the transaction coupled to an output whose value is definitely wrong. Implemented by
@@ -200,6 +205,10 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
         match self.get_any_transaction(tx_id).map_err(error)? {
             None => Ok(InvalidOutputTxOutcome::NotFound),
             Some(WalletTransaction::Completed(tx)) => {
+                // Checked here, not by the caller, so an injected id cannot get an outbound payment rejected either
+                if tx.direction != TransactionDirection::Inbound {
+                    return Ok(InvalidOutputTxOutcome::NotInbound("completed non-inbound transaction"));
+                }
                 if tx.cancelled.is_some() {
                     return Ok(InvalidOutputTxOutcome::AlreadyCancelled);
                 }
@@ -219,7 +228,7 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
                 Ok(InvalidOutputTxOutcome::CancelledPendingInbound)
             },
             Some(WalletTransaction::PendingOutbound(_)) => {
-                Ok(InvalidOutputTxOutcome::NotReconciled("pending outbound transaction"))
+                Ok(InvalidOutputTxOutcome::NotInbound("pending outbound transaction"))
             },
         }
     }
@@ -238,7 +247,8 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
 /// may verify once the key manager error clears. Every mismatch output is marked Invalid whatever happens to its
 /// transaction. A transaction that fails with a retryable error stays pending, the flag is still written and
 /// [`InvalidMaskMigrationOutcome::Incomplete`] is returned; the next start skips the scan and retries only the pending
-/// transactions. Missing, non-cancellable and non-retryable ones are logged, counted and dropped.
+/// transactions. Missing, non-inbound and non-retryable ones are logged, counted and dropped; only inbound
+/// transactions are ever cancelled.
 ///
 /// This is CPU-bound and synchronous; call it from a blocking context.
 pub fn run_invalid_mask_migration<F, B, KM>(
@@ -506,11 +516,12 @@ where
                 summary.transactions_not_reconciled = summary.transactions_not_reconciled.saturating_add(1);
                 warn!(target: LOG_TARGET, "Commitment mask migration: coupled transaction {tx_id} not found");
             },
-            Ok(InvalidOutputTxOutcome::NotReconciled(kind)) => {
-                summary.transactions_not_reconciled = summary.transactions_not_reconciled.saturating_add(1);
+            Ok(InvalidOutputTxOutcome::NotInbound(kind)) => {
+                summary.transactions_rejected_unverified = summary.transactions_rejected_unverified.saturating_add(1);
                 warn!(
                     target: LOG_TARGET,
-                    "Commitment mask migration: coupled transaction {tx_id} is a {kind}, not cancelled"
+                    "Commitment mask migration: coupled transaction {tx_id} is a {kind}; only inbound transactions are \
+                     cancelled, leaving it untouched"
                 );
             },
             Err(e) if e.retryable => {

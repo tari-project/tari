@@ -325,21 +325,11 @@ where
 
                     self.operation_id
                 );
-                // Checked only where this pass could lead to a spendable status: a row in a revivable status (the
-                // set is status-agnostic, so it can hold Invalid rows with mined data), or one that would be marked
-                // unspent because the chain no longer has it spent. Such an output is left entirely unchanged.
-                let unspent_candidate = data.found_in_header.is_some() &&
-                    data.spent_in_header.is_none() &&
-                    output.marked_deleted_at_height.is_some();
-                if (is_revivable_status(output.status) || unspent_candidate) &&
-                    blocks_revival(&self.key_manager, output, "TXO revalidation of spent outputs")
-                {
-                    not_revivable = not_revivable.saturating_add(1);
-                    continue;
-                }
                 // when checking mined height, 0 can be valid so we need to check the hash
                 if data.found_in_header.is_some() {
                     if let Some((spent_height, spent_hash)) = &data.spent_in_header {
+                        // A spend is recorded whatever the output's mask: Spent is not spendable, and every way back
+                        // out of Spent (reorg check, unconfirmed pass, this pass's unspent branch) re-checks the mask
                         spent.push(SpentOutputInfoForBatch {
                             commitment: output.commitment.clone(),
                             confirmed: spent_height.saturating_add(self.config.num_confirmations_required) <=
@@ -353,9 +343,14 @@ where
                             })?,
                         });
                     } else {
-                        // only update to unspent if the output is currently marked as spent in our db
+                        // only update to unspent if the output is currently marked as spent in our db, and never if
+                        // its commitment mask does not verify (the only move into a spendable status in this pass)
                         if output.marked_deleted_at_height.is_some() {
-                            unspent.push((output.hash, true));
+                            if blocks_revival(&self.key_manager, output, "TXO revalidation of spent outputs") {
+                                not_revivable = not_revivable.saturating_add(1);
+                            } else {
+                                unspent.push((output.hash, true));
+                            }
                         }
                     }
                 } else {

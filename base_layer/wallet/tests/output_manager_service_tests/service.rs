@@ -3540,8 +3540,9 @@ async fn test_undecodable_invalid_output_does_not_block_revalidation() {
     assert_eq!(stored_status(&connection, &broken), OutputStatus::Invalid);
 }
 
-/// The spent-output pass sends every mined output for spent detection, including one that fails the commitment mask
-/// check (marking an output spent never makes it spendable), but refuses to mark such an output unspent again.
+/// The spent-output pass sends every mined output for spent detection and records a reported spend whatever the
+/// output's commitment mask (Unspent or Invalid; marking an output spent never makes it spendable), but refuses to
+/// mark a bad-mask output unspent again.
 #[tokio::test]
 async fn test_spent_pass_detects_spends_of_bad_mask_outputs_but_does_not_unspend_them() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -3572,6 +3573,17 @@ async fn test_spent_pass_detects_spends_of_bad_mask_outputs_but_does_not_unspend
         mined1.clone(),
         None,
     );
+    // Invalid with a bad mask (as left by the migration); the chain says it has been spent at height 2
+    let tampered_invalid = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1050,
+        true,
+        OutputStatus::Invalid,
+        mined1.clone(),
+        None,
+    );
     // Marked spent (unconfirmed) at height 2; the chain now says they are not spent
     let marked_spent = |value, tamper| {
         add_output_with_state(
@@ -3590,7 +3602,7 @@ async fn test_spent_pass_detects_spends_of_bad_mask_outputs_but_does_not_unspend
 
     oms.base_node_mock
         .set_mined_utxos(
-            [&tampered_unspent, &genuine_marked, &tampered_marked]
+            [&tampered_unspent, &tampered_invalid, &genuine_marked, &tampered_marked]
                 .iter()
                 .map(|kmo| MinedUtxoInfo {
                     utxo_hash: kmo.hash.to_vec(),
@@ -3603,16 +3615,28 @@ async fn test_spent_pass_detects_spends_of_bad_mask_outputs_but_does_not_unspend
         )
         .await;
     oms.base_node_mock
-        .set_spent_utxos(vec![(tampered_unspent.hash.to_vec(), 2, block2.clone().unwrap())])
+        .set_spent_utxos(vec![
+            (tampered_unspent.hash.to_vec(), 2, block2.clone().unwrap()),
+            (tampered_invalid.hash.to_vec(), 2, block2.clone().unwrap()),
+        ])
         .await;
 
     run_txo_validation(&mut oms).await;
 
-    let status = stored_status(&connection, &tampered_unspent);
-    assert!(
-        matches!(status, OutputStatus::Spent | OutputStatus::SpentMinedUnconfirmed),
-        "the spend of a bad-mask output must still be recorded, got {status}"
-    );
+    for kmo in [&tampered_unspent, &tampered_invalid] {
+        let status = stored_status(&connection, kmo);
+        assert!(
+            matches!(status, OutputStatus::Spent | OutputStatus::SpentMinedUnconfirmed),
+            "the spend of a bad-mask output must still be recorded, got {status}"
+        );
+        let mut conn = connection.get_pooled_connection().unwrap();
+        let marked_deleted_at: Option<i64> = outputs::table
+            .select(outputs::marked_deleted_at_height)
+            .filter(outputs::commitment.eq(kmo.commitment.to_vec()))
+            .first(&mut conn)
+            .unwrap();
+        assert_eq!(marked_deleted_at, Some(2));
+    }
     assert_eq!(stored_status(&connection, &genuine_marked), OutputStatus::Unspent);
     assert_eq!(
         stored_status(&connection, &tampered_marked),

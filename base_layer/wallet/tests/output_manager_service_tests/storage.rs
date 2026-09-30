@@ -1938,3 +1938,63 @@ async fn test_invalid_mask_migration_ignores_unverified_pending_tx_ids() {
         None
     );
 }
+
+/// A mismatched output whose received_in_tx_id points at an outbound transaction (a change output carries its
+/// payment's id) is still marked Invalid, but the outbound transaction is never cancelled: the sink refuses it, and it
+/// is counted and dropped rather than retried.
+#[tokio::test]
+async fn test_invalid_mask_migration_does_not_cancel_outbound_transactions() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    let change = add_mask_test_output(&db, &key_manager, 1000);
+    set_received_in_tx(&connection, &change, 5, OutputStatus::Unspent);
+    tamper_value(&connection, &change);
+    tx_db
+        .insert_completed_transaction(
+            5u64.into(),
+            completed_tx(
+                5,
+                LegacyTransactionStatus::MinedConfirmed,
+                TransactionDirection::Outbound,
+            ),
+        )
+        .unwrap();
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 1,
+            mask_mismatches: 1,
+            marked_invalid: 1,
+            transactions_rejected_unverified: 1,
+            ..Default::default()
+        })
+    );
+    assert_eq!(stored_status(&connection, &change), OutputStatus::Invalid);
+    let tx = tx_db.get_completed_transaction_cancelled_or_not(5u64.into()).unwrap();
+    assert_eq!(tx.cancelled, None);
+    assert_eq!(tx.status, LegacyTransactionStatus::MinedConfirmed);
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap(),
+        None
+    );
+    // The sink itself refuses, so an id injected into the pending key cannot get it cancelled either
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(5u64.into()).unwrap(),
+        InvalidOutputTxOutcome::NotInbound("completed non-inbound transaction")
+    );
+}
