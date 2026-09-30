@@ -129,19 +129,20 @@ impl EncryptedData {
         mask: &PrivateKey,
         memo: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
-        // The memo size drives the buffer sizes below, so it must match the encoded memo
+        // The memo size drives the buffer sizes below. It is checked before encoding, as an oversized memo is the
+        // only one that could fail to encode, and then it must match the encoded memo.
+        let data_size = STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo.get_size());
+        if data_size > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(EncryptedDataError::InvalidMemoSize(format!(
+                "Encrypted data would be {data_size} bytes, the maximum is {MAX_ENCRYPTED_DATA_SIZE}"
+            )));
+        }
         let memo_bytes = memo.to_bytes();
         if memo_bytes.len() != memo.get_size() {
             return Err(EncryptedDataError::InvalidMemoSize(format!(
                 "Encoded memo is {} bytes, expected {}",
                 memo_bytes.len(),
                 memo.get_size()
-            )));
-        }
-        let data_size = STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo_bytes.len());
-        if data_size > MAX_ENCRYPTED_DATA_SIZE {
-            return Err(EncryptedDataError::InvalidMemoSize(format!(
-                "Encrypted data would be {data_size} bytes, the maximum is {MAX_ENCRYPTED_DATA_SIZE}"
             )));
         }
 

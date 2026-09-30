@@ -126,16 +126,17 @@ impl Display for TxType {
     }
 }
 
-/// The size limits of every variant are an invariant of this type, as `to_bytes` relies on them. Every checked
-/// constructor enforces them, and so does the hand written `Deserialize` implementation below, which must not be
-/// derived.
+/// The size limits of `AddressAndData` and `TransactionInfo` are an invariant of this type, as `to_bytes` encodes
+/// their lengths as `u8`. Every checked constructor enforces them, and so do `from_bytes` and the hand written
+/// `Deserialize` implementation below, which must not be derived. `Deserialize` accepts every value `from_bytes` can
+/// produce, so `Open` and `Raw` (which `to_bytes` encodes without a length) are not size limited there.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 pub struct MemoField {
     inner: InnerMemoField,
 }
 
-/// Mirror of the serde shape of [`MemoField`], used only to decode the wire format before the size limits are
-/// checked.
+/// Mirror of the serde shape of [`MemoField`], used only to decode the wire format before the size limits of
+/// `AddressAndData` and `TransactionInfo` are checked.
 #[derive(Deserialize)]
 #[serde(rename = "MemoField")]
 struct MemoFieldSerde {
@@ -146,9 +147,10 @@ impl<'de> Deserialize<'de> for MemoField {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let decoded = MemoFieldSerde::deserialize(deserializer)?;
         let memo = match decoded.inner {
-            InnerMemoField::Empty => Ok(MemoField::new_empty()),
-            InnerMemoField::U256(value) => Ok(MemoField::new_u256(value)),
-            InnerMemoField::Open { payment_id, tx_type } => MemoField::new_open(payment_id, tx_type),
+            inner @ (InnerMemoField::Empty |
+            InnerMemoField::U256(_) |
+            InnerMemoField::Open { .. } |
+            InnerMemoField::Raw(_)) => Ok(MemoField { inner }),
             InnerMemoField::AddressAndData {
                 sender_address,
                 sender_one_sided,
@@ -173,7 +175,6 @@ impl<'de> Deserialize<'de> for MemoField {
                 sent_output_hashes,
                 payment_id,
             ),
-            InnerMemoField::Raw(data) => MemoField::new_raw(data),
         }
         .map_err(serde::de::Error::custom)?;
         Ok(memo)
@@ -920,15 +921,7 @@ impl MemoField {
                     .get(MemoField::SIZE_VALUE_AND_META_DATA.saturating_add(size)..)
                     .expect("Already checked")
                     .to_vec();
-                return Ok(MemoField {
-                    inner: InnerMemoField::AddressAndData {
-                        sender_address: address,
-                        sender_one_sided,
-                        fee,
-                        tx_type: tx_meta_data,
-                        payment_id,
-                    },
-                });
+                return MemoField::new_address_and_data(address, fee, sender_one_sided, tx_meta_data, payment_id);
             }
 
             // legacy support for TransactionInfoV1
@@ -937,17 +930,15 @@ impl MemoField {
                     .get(MemoField::SIZE_VALUE_AND_META_DATA.saturating_add(size)..)
                     .expect("Already checked")
                     .to_vec();
-                return Ok(MemoField {
-                    inner: InnerMemoField::TransactionInfo {
-                        recipient_address: address,
-                        sender_one_sided,
-                        amount,
-                        fee,
-                        tx_type: tx_meta_data,
-                        payment_id,
-                        sent_output_hashes: vec![],
-                    },
-                });
+                return MemoField::new_transaction_info(
+                    address,
+                    amount,
+                    fee,
+                    sender_one_sided,
+                    tx_meta_data,
+                    vec![],
+                    payment_id,
+                );
             }
         }
         // now we assume this has to be off type AddressAndData or TransactionInfo
@@ -990,15 +981,7 @@ impl MemoField {
             if !Self::check_padding(bytes, payment_id_start.saturating_add(payment_id_length)) {
                 return Err("Invalid padding for AddressAndData".to_string());
             }
-            return Ok(MemoField {
-                inner: InnerMemoField::AddressAndData {
-                    sender_address: address,
-                    sender_one_sided,
-                    fee,
-                    tx_type: tx_meta_data,
-                    payment_id: payment_id.to_vec(),
-                },
-            });
+            return MemoField::new_address_and_data(address, fee, sender_one_sided, tx_meta_data, payment_id.to_vec());
         }
         // so this must be a TransactionInfo
         let mut amount_bytes = [0u8; SIZE_VALUE];
@@ -1025,17 +1008,15 @@ impl MemoField {
         ) {
             return Err("Invalid padding for TransactionInfo".to_string());
         }
-        Ok(MemoField {
-            inner: InnerMemoField::TransactionInfo {
-                recipient_address: address,
-                sender_one_sided,
-                amount,
-                fee,
-                tx_type: tx_meta_data,
-                payment_id: payment_id.to_vec(),
-                sent_output_hashes,
-            },
-        })
+        MemoField::new_transaction_info(
+            address,
+            amount,
+            fee,
+            sender_one_sided,
+            tx_meta_data,
+            sent_output_hashes,
+            payment_id.to_vec(),
+        )
     }
 
     /// helper function to check padding
@@ -2806,9 +2787,8 @@ mod test {
     #[test]
     fn memo_serde_rejects_oversized_values() {
         let address = TariAddress::default();
+        // Only the variants that `to_bytes` encodes with `u8` lengths are size limited
         let oversized = vec![
-            MemoField::open_unchecked(vec![1u8; MAX_PAYMENT_ID_SIZE - 1], TxType::PaymentToOther),
-            MemoField::raw_unchecked(vec![1u8; MAX_PAYMENT_ID_SIZE]),
             MemoField::address_and_data_unchecked(
                 address.clone(),
                 false,
@@ -2858,6 +2838,8 @@ mod test {
         let valid = vec![
             MemoField::new_raw(vec![1u8; MAX_PAYMENT_ID_SIZE - 1]).unwrap(),
             MemoField::new_open(vec![1u8; MAX_PAYMENT_ID_SIZE - 2], TxType::PaymentToOther).unwrap(),
+            MemoField::raw_unchecked(vec![1u8; 1000]),
+            MemoField::open_unchecked(vec![1u8; 1000], TxType::PaymentToOther),
         ];
         for memo in valid {
             let json = serde_json::to_string(&memo).unwrap();
@@ -2895,5 +2877,108 @@ mod test {
             assert_eq!(again, memo);
             assert_eq!(again.to_bytes(), memo.to_bytes());
         }
+    }
+
+    fn assert_serde_round_trips(memo: &MemoField) {
+        let json = serde_json::to_string(memo).unwrap();
+        assert_eq!(&serde_json::from_str::<MemoField>(&json).unwrap(), memo);
+        let encoded = bincode::serialize(memo).unwrap();
+        assert_eq!(&bincode::deserialize::<MemoField>(&encoded).unwrap(), memo);
+    }
+
+    #[test]
+    fn memo_serde_accepts_everything_from_bytes_produces() {
+        let foreign_tag = [vec![0x09], vec![0xab; MAX_PAYMENT_ID_SIZE - 1]].concat();
+        let raw = [vec![PTag::Raw as u8], vec![0xab; 400]].concat();
+        let open = [vec![PTag::Open as u8, TxType::PaymentToOther.as_u8()], vec![0xab; 400]].concat();
+        let failed_parse = [vec![PTag::AddressAndData as u8], vec![0xab; MAX_PAYMENT_ID_SIZE - 1]].concat();
+        for bytes in [foreign_tag, raw, open, failed_parse] {
+            let memo = MemoField::from_bytes(&bytes);
+            assert!(memo.is_raw() || memo.is_open());
+            assert_serde_round_trips(&memo);
+        }
+    }
+
+    #[test]
+    fn from_bytes_keeps_address_memos_within_limits() {
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap()
+        .to_vec();
+        let address_len = u8::try_from(address.len()).unwrap();
+        let meta_data = vec![0u8; MemoField::SIZE_META_DATA];
+        let amount = vec![0u8; SIZE_VALUE];
+        let inputs = [
+            // AddressAndDataV1 and TransactionInfoV1 with a 300 byte payment id after the address
+            [
+                vec![PTag::AddressAndDataV1 as u8],
+                amount.clone(),
+                meta_data.clone(),
+                address.clone(),
+                vec![1u8; 300],
+            ]
+            .concat(),
+            [
+                vec![PTag::TransactionInfoV1 as u8],
+                amount.clone(),
+                meta_data.clone(),
+                address.clone(),
+                vec![1u8; 300],
+            ]
+            .concat(),
+            // AddressAndData and TransactionInfo with the largest encodable payment id
+            [
+                vec![PTag::AddressAndData as u8],
+                meta_data.clone(),
+                vec![address_len],
+                address.clone(),
+                vec![255],
+                vec![1u8; 255],
+            ]
+            .concat(),
+            [
+                vec![PTag::TransactionInfo as u8],
+                amount.clone(),
+                meta_data.clone(),
+                vec![address_len],
+                address.clone(),
+                vec![255],
+                vec![1u8; 255],
+                vec![0],
+            ]
+            .concat(),
+        ];
+        let mask = PrivateKey::random(&mut rand::rng());
+        let commitment =
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+        for bytes in inputs {
+            let memo = MemoField::from_bytes(&bytes);
+            assert!(memo.is_raw(), "{memo}");
+            assert_eq!(memo.get_raw_bytes().unwrap(), bytes.as_slice());
+            let memo = memo
+                .add_sender_address(TariAddress::default(), false, MicroMinotari::from(1), None)
+                .unwrap();
+            assert_eq!(memo.to_bytes().len(), memo.get_size());
+            assert_serde_round_trips(&memo);
+            let result = EncryptedData::encrypt_data(&PrivateKey::default(), &commitment, 1.into(), &mask, memo);
+            assert!(
+                matches!(
+                    result,
+                    Err(crate::transaction_components::encrypted_data::EncryptedDataError::InvalidMemoSize(_))
+                ),
+                "{result:?}"
+            );
+        }
+
+        // A V1 memo within the limits still decodes as before
+        let bytes = [vec![PTag::AddressAndDataV1 as u8], amount, meta_data, address, vec![
+            1u8;
+            10
+        ]]
+        .concat();
+        let memo = MemoField::from_bytes(&bytes);
+        assert!(memo.is_address_and_data());
+        assert_eq!(memo.get_payment_id(), vec![1u8; 10]);
     }
 }
