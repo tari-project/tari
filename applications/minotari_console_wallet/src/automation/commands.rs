@@ -1527,8 +1527,8 @@ pub async fn command_runner(
                         commitment_mask_key_id,
                         committed_value.as_u64(),
                     ) {
-                        Ok(_) => {},
-                        Err(e) => {
+                        Ok(true) => {},
+                        Err(e) | Ok(false) => {
                             eprintln!("\nError: Could not verify mask! {e}\n");
                             error = true;
                             break;
