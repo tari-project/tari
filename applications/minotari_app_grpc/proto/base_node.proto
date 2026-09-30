@@ -97,8 +97,6 @@ service BaseNode {
   rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
   rpc GetValidatorNodeChanges(GetValidatorNodeChangesRequest) returns (GetValidatorNodeChangesResponse);
   rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
-  // Get templates
-  rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
   rpc GetSideChainUtxos(GetSideChainUtxosRequest) returns (stream GetSideChainUtxosResponse);
   rpc GetNetworkState(GetNetworkStateRequest) returns (GetNetworkStateResponse);
   // PayRef (Payment Reference) lookup for block explorers and external services
@@ -599,16 +597,6 @@ message GetShardKeyRequest {
 
 message GetShardKeyResponse {
   bytes shard_key = 1;
-}
-
-message GetTemplateRegistrationsRequest {
-  bytes start_hash = 1;
-  uint64 count = 2;
-}
-
-message GetTemplateRegistrationResponse {
-  bytes utxo_hash = 1;
-  TemplateRegistration registration = 2;
 }
 
 message BlockInfo {

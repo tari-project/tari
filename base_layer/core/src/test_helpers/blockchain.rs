@@ -81,7 +81,6 @@ use crate::{
         PayrefRebuildStatus,
         Reorg,
         SmtHasher,
-        TemplateRegistrationEntry,
         ValidatorNodeRegistrationInfo,
         Validators,
         create_lmdb_database,
@@ -723,17 +722,6 @@ impl BlockchainBackend for TempDatabase {
         public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().get_validator_node(sidechain_pk, public_key)
-    }
-
-    fn fetch_template_registrations(
-        &self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_template_registrations(start_height, end_height)
     }
 
     fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError> {

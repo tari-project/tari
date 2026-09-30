@@ -15,7 +15,6 @@ use super::{
     BurnCommitmentRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
-    TemplateRegistrationEntry,
     ValidatorNodeRegistrationInfo,
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
 };
@@ -323,12 +322,6 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         sidechain_pk: Option<&CompressedPublicKey>,
         public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError>;
-    /// Returns all template registrations within (inclusive) the given height range.
-    fn fetch_template_registrations(
-        &self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
 
     /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError>;

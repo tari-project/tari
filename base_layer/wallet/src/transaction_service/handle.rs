@@ -38,7 +38,6 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
@@ -53,15 +52,7 @@ use tari_transaction_components::{
         SignedOneSidedWithdrawMultisigTransactionResult,
     },
     rpc::models::FeePerGramStat,
-    transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
-        MemoField,
-        OutputFeatures,
-        TemplateType,
-        Transaction,
-        TransactionOutput,
-    },
+    transaction_components::{MemoField, OutputFeatures, Transaction, TransactionOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::FeeType;
 use tari_utilities::hex::Hex;
@@ -170,16 +161,6 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
-    },
-    RegisterCodeTemplate {
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
         destination: TariAddress,
@@ -543,10 +524,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {count})")
             },
-            Self::RegisterCodeTemplate { template_name, .. } => {
-                // The template name is arbitrary UTF-8; escape it so it can not inject into logs or terminals
-                write!(f, "RegisterCodeTemplate: {}", template_name.as_str().escape_debug())
-            },
             Self::GetPaymentByReference { payref } => {
                 write!(f, "GetPaymentByReference({payref})")
             },
@@ -618,10 +595,6 @@ pub enum TransactionServiceResponse {
         tx_id: TxId,
         proof: Option<Box<PartialBurnClaimProof>>,
     },
-    TemplateRegistrationTransactionSent {
-        tx_id: TxId,
-        template_registration: Box<CodeTemplateRegistration>,
-    },
     TransactionCancelled,
     PendingInboundTransactions(Vec<InboundTransaction>),
     PendingOutboundTransactions(Vec<OutboundTransaction>),
@@ -652,10 +625,6 @@ pub enum TransactionServiceResponse {
     SignedOneSidedDepositMultisigTransaction(Box<SignedOneSidedDepositMultisigTransactionResult>),
     SignedOneSidedWithdrawMultisigTransaction(Box<SignedOneSidedWithdrawMultisigTransactionResult>),
     TransactionReplaced(TxId),
-    CodeRegistrationTransactionSent {
-        tx_id: TxId,
-        template_address: FixedHash,
-    },
 
     PrepareDepositMultisigTransaction(Box<PrepareDepositMultisigTransactionResult>),
     PrepareWithdrawMultisigTransaction(Box<PrepareWithdrawMultisigTransactionResult>),
@@ -934,42 +903,6 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::SubmitValidatorNodeExit".to_string(),
-            )),
-        }
-    }
-
-    pub async fn register_code_template(
-        &mut self,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RegisterCodeTemplate {
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                fee_per_gram,
-                sidechain_deployment_key,
-            })
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::RegisterCodeTemplate({e})"))??
-        {
-            TransactionServiceResponse::CodeRegistrationTransactionSent {
-                tx_id,
-                template_address,
-            } => Ok((tx_id, template_address)),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::RegisterCodeTemplate".to_string(),
             )),
         }
     }
@@ -2094,32 +2027,5 @@ impl TransactionServiceHandle {
                 "TransactionServiceRequest::SetTransactionAsUnmined".to_string(),
             )),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tari_max_size::MaxSizeBytes;
-
-    use super::*;
-
-    #[test]
-    fn register_code_template_display_escapes_the_template_name() {
-        let request = TransactionServiceRequest::RegisterCodeTemplate {
-            template_name: MaxSizeString::try_from("a\n\u{1b}[31mb").unwrap(),
-            template_version: 1,
-            template_type: TemplateType::Flow,
-            build_info: BuildInfo {
-                repo_url: MaxSizeString::try_from("").unwrap(),
-                commit_hash: MaxSizeBytes::empty(),
-            },
-            binary_sha: FixedHash::default(),
-            binary_url: MaxSizeString::try_from("").unwrap(),
-            fee_per_gram: MicroMinotari::from(1),
-            sidechain_deployment_key: None,
-        };
-        let shown = request.to_string();
-        assert_eq!(shown, r"RegisterCodeTemplate: a\n\u{1b}[31mb");
-        assert!(!shown.contains('\n') && !shown.contains('\u{1b}'));
     }
 }

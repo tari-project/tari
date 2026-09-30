@@ -1453,9 +1453,6 @@ service Wallet {
   // }
   rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
 
-  // Creates a transaction with a template registration output
-  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-
   // Signs a message using the wallet's node identity private key.
   //
   // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
@@ -2327,22 +2324,6 @@ message ImportUtxosRequest {
 message ImportUtxosResponse {
   // Transaction IDs corresponding to the imported UTXOs.
   repeated uint64 tx_ids = 1;
-}
-
-message CreateTemplateRegistrationRequest {
-  uint64 fee_per_gram = 1;
-  string template_name = 2;
-  uint32 template_version = 3;
-  TemplateType template_type = 4;
-  BuildInfo build_info = 5;
-  bytes binary_sha = 6;
-  string binary_url = 7;
-  bytes sidechain_deployment_key = 8;
-}
-
-message CreateTemplateRegistrationResponse {
-  uint64 tx_id = 1;
-  bytes template_address = 2;
 }
 
 // Request message for the CancelTransaction RPC.

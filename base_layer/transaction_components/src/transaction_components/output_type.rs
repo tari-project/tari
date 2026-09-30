@@ -102,10 +102,6 @@ impl OutputType {
         )
     }
 
-    pub fn is_template_registration(&self) -> bool {
-        matches!(self, OutputType::CodeTemplateRegistration)
-    }
-
     pub fn is_burn(&self) -> bool {
         matches!(self, OutputType::Burn)
     }

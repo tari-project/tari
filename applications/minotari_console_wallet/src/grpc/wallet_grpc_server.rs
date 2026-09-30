@@ -52,8 +52,6 @@ use minotari_app_grpc::tari_rpc::{
     CoinSplitResponse,
     CreateBurnTransactionRequest,
     CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
     DbWalletOutputInfo,
     DebugTransactionRequest,
     DebugTransactionResponse,
@@ -2532,64 +2530,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 txn.status()
             )))
         }
-    }
-
-    async fn create_template_registration(
-        &self,
-        request: Request<CreateTemplateRegistrationRequest>,
-    ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut transaction_service = self.wallet.transaction_service.clone();
-        let message = request.into_inner();
-
-        let fee_per_gram = message.fee_per_gram.into();
-
-        let (tx_id, template_address) = transaction_service
-            .register_code_template(
-                message
-                    .template_name
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
-                message
-                    .template_version
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
-                if let Some(tt) = message.template_type {
-                    tt.try_into()
-                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("template type is missing"));
-                },
-                if let Some(bi) = message.build_info {
-                    bi.try_into()
-                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("build info is missing"));
-                },
-                message
-                    .binary_sha
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
-                message
-                    .binary_url
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
-                fee_per_gram,
-                if message.sidechain_deployment_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
-                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
-                    )
-                },
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(CreateTemplateRegistrationResponse {
-            tx_id: tx_id.as_u64(),
-            template_address: template_address.to_vec(),
-        }))
     }
 
     async fn register_validator_node(
