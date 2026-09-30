@@ -1304,6 +1304,7 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             marked_invalid: 3,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            reconciliation_errors: 0,
         })
     );
     assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
@@ -1378,6 +1379,7 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
             marked_invalid: 1,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            reconciliation_errors: 0,
         })
     );
     assert_eq!(stored_status(&connection, &last), OutputStatus::Invalid);
@@ -1487,6 +1489,7 @@ async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged
             marked_invalid: 1,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            reconciliation_errors: 0,
         })
     );
     assert_eq!(stored_status(&connection, &spent_garbage), OutputStatus::Spent);
@@ -1686,6 +1689,7 @@ async fn test_invalid_mask_migration_cancels_coupled_transactions() {
             marked_invalid: 4,
             transactions_cancelled: 2,
             transactions_not_reconciled: 1,
+            reconciliation_errors: 0,
         })
     );
     for kmo in [&tampered_completed, &tampered_pending, &unverifiable, &orphaned] {
@@ -1725,4 +1729,116 @@ async fn test_invalid_mask_migration_cancels_coupled_transactions() {
     );
     assert_eq!(completed(1).cancelled, None);
     assert_eq!(completed(4).cancelled, None);
+}
+
+/// A sink that fails on one transaction and delegates everything else.
+struct FailingSink<'a, T: InvalidOutputTransactionSink> {
+    inner: &'a T,
+    fail_tx: TxId,
+}
+
+impl<T: InvalidOutputTransactionSink> InvalidOutputTransactionSink for FailingSink<'_, T> {
+    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, String> {
+        if tx_id == self.fail_tx {
+            return Err("simulated storage error".to_string());
+        }
+        self.inner.cancel_for_invalid_encrypted_value(tx_id)
+    }
+}
+
+/// If the sink fails on a coupled transaction, that transaction's output is left as it is and the flag is not
+/// written; the other outputs are still marked. The next start retries just the remaining output and finishes.
+#[tokio::test]
+async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    let mut tampered = Vec::new();
+    for (tx_id, value) in [(1u64, 1000u64), (2, 1100)] {
+        let kmo = add_mask_test_output(&db, &key_manager, value);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        tamper_value(&connection, &kmo);
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_inbound_tx(tx_id, LegacyTransactionStatus::MinedConfirmed),
+            )
+            .unwrap();
+        tampered.push(kmo);
+    }
+
+    let failing = FailingSink {
+        inner: &tx_db,
+        fail_tx: 2u64.into(),
+    };
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&failing), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Incomplete(InvalidMaskMigrationSummary {
+            scanned: 2,
+            mask_mismatches: 2,
+            verification_errors: 0,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 1,
+            transactions_cancelled: 1,
+            transactions_not_reconciled: 0,
+            reconciliation_errors: 1,
+        })
+    );
+    assert_eq!(stored_status(&connection, &tampered[0]), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &tampered[1]), OutputStatus::Unspent);
+    assert_eq!(
+        tx_db
+            .get_completed_transaction_cancelled_or_not(2u64.into())
+            .unwrap()
+            .cancelled,
+        None
+    );
+    assert!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap()
+            .is_none(),
+        "the flag must not be written while a reconciliation failed"
+    );
+
+    // Next start, healthy sink: only the remaining output is rescanned, and the migration completes
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 1,
+            mask_mismatches: 1,
+            verification_errors: 0,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 1,
+            transactions_cancelled: 1,
+            transactions_not_reconciled: 0,
+            reconciliation_errors: 0,
+        })
+    );
+    assert_eq!(stored_status(&connection, &tampered[1]), OutputStatus::Invalid);
+    assert_eq!(
+        tx_db
+            .get_completed_transaction_cancelled_or_not(2u64.into())
+            .unwrap()
+            .cancelled,
+        Some(TxCancellationReason::InvalidEncryptedValue)
+    );
+    assert!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap()
+            .is_some()
+    );
 }

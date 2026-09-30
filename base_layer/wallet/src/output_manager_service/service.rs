@@ -269,6 +269,15 @@ where
                     summary.scanned
                 );
             },
+            Ok(Ok(InvalidMaskMigrationOutcome::Incomplete(summary))) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration incomplete: {} coupled transaction(s) could not be reconciled, it will be \
+                     retried on the next start ({} output(s) marked Invalid this run)",
+                    summary.reconciliation_errors,
+                    summary.marked_invalid
+                );
+            },
             Ok(Ok(_)) => {},
             Ok(Err(e)) => {
                 error!(
