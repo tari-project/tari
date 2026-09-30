@@ -19,7 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, fmt, fmt::Display, ops::Range, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    fmt::Display,
+    ops::Range,
+    sync::Arc,
+};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{StreamExt, pin_mut};
@@ -99,6 +105,7 @@ use crate::{
         TRANSACTION_INPUTS_LIMIT,
         TRANSACTION_OUTPUTS_LIMIT,
         UtxoSelectionFilter,
+        commitment_mask,
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
         handle::{
@@ -116,7 +123,7 @@ use crate::{
             OutputStatus,
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-            sqlite_db::CoinBucket,
+            sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch},
         },
         tasks::TxoValidationTask,
     },
@@ -124,6 +131,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
+
+/// The mined and unspent updates of a validation state fix that are allowed to be applied.
+type ValidationStateRevivals = (Vec<ReceivedOutputInfoForBatch>, Vec<(FixedHash, bool)>);
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -465,6 +475,8 @@ where
                 unmined_invalid,
                 unspent_updates,
             } => {
+                let (mined_updates, unspent_updates) =
+                    self.drop_unverifiable_revivals(mined_updates, unspent_updates)?;
                 if !mined_updates.is_empty() {
                     self.resources
                         .db
@@ -746,6 +758,50 @@ where
         });
 
         Ok(id)
+    }
+
+    /// Remove from externally supplied validation fixes any update that would move an Invalid (or cancelled inbound)
+    /// output back to a spendable status when its commitment does not open to its stored value and mask. Updates for
+    /// outputs that cannot be found are passed through unchanged so the storage layer reports them as before.
+    fn drop_unverifiable_revivals(
+        &self,
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    ) -> Result<ValidationStateRevivals, OutputManagerError> {
+        const CONTEXT: &str = "Output validation state update";
+        let key_manager = &self.resources.key_manager;
+        let blocked = |output: &DbWalletOutput| commitment_mask::blocks_revival(key_manager, output, CONTEXT);
+
+        let mut kept_mined = Vec::with_capacity(mined_updates.len());
+        for update in mined_updates {
+            match self
+                .resources
+                .db
+                .fetch_by_commitment(update.commitment.clone(), key_manager)
+            {
+                Ok(output) if blocked(&output) => {},
+                _ => kept_mined.push(update),
+            }
+        }
+
+        let unspent_hashes: Vec<FixedHash> = unspent_updates.iter().map(|(hash, _)| *hash).collect();
+        let blocked_hashes: HashSet<FixedHash> = if unspent_hashes.is_empty() {
+            HashSet::new()
+        } else {
+            self.resources
+                .db
+                .fetch_many_outputs(&unspent_hashes, key_manager)?
+                .iter()
+                .filter(|output| blocked(output))
+                .map(|output| output.hash)
+                .collect()
+        };
+        let kept_unspent = unspent_updates
+            .into_iter()
+            .filter(|(hash, _)| !blocked_hashes.contains(hash))
+            .collect();
+
+        Ok((kept_mined, kept_unspent))
     }
 
     fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {

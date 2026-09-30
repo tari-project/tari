@@ -23,6 +23,7 @@ use thiserror::Error;
 use crate::{
     error::WalletStorageError,
     output_manager_service::{
+        commitment_mask::{MaskCheck, check_commitment_mask},
         error::OutputManagerStorageError,
         storage::{
             OutputStatus,
@@ -110,8 +111,8 @@ where
         for row in &batch {
             summary.scanned = summary.scanned.saturating_add(1);
             match verify_row(row, key_manager) {
-                Ok(true) => {},
-                Ok(false) => {
+                MaskCheck::Valid => {},
+                MaskCheck::Mismatch => {
                     summary.mask_mismatches = summary.mask_mismatches.saturating_add(1);
                     warn!(
                         target: LOG_TARGET,
@@ -124,7 +125,7 @@ where
                     );
                     to_invalidate.push(row.id);
                 },
-                Err(e) => {
+                MaskCheck::Unverifiable(e) => {
                     summary.verification_errors = summary.verification_errors.saturating_add(1);
                     error!(
                         target: LOG_TARGET,
@@ -159,28 +160,34 @@ where
     Ok(InvalidMaskMigrationOutcome::Completed(summary))
 }
 
-/// `Ok(true)` if the stored commitment opens to the stored value under the stored commitment mask key, `Ok(false)`
-/// if it does not, `Err` if the check could not be performed.
+/// Parse the raw row and run the shared commitment mask check on it. Parse failures are `Unverifiable`.
 fn verify_row<KM: LegacyTransactionKeyManagerInterface>(
     row: &OutputMaskVerificationRow,
     key_manager: &KM,
-) -> Result<bool, String> {
+) -> MaskCheck {
     let key_id = match TariKeyId::from_str(&row.spending_key) {
         Ok(key_id) => key_id,
         Err(_) => {
-            let legacy = LegacyTariKeyId::from_str(&row.spending_key)
-                .map_err(|e| format!("unrecognised commitment mask key id: {e}"))?;
-            key_manager
-                .convert_legacy_tari_key_id_to_current(&legacy)
-                .map_err(|e| format!("could not convert legacy commitment mask key id: {e}"))?
+            let legacy = match LegacyTariKeyId::from_str(&row.spending_key) {
+                Ok(legacy) => legacy,
+                Err(e) => return MaskCheck::Unverifiable(format!("unrecognised commitment mask key id: {e}")),
+            };
+            match key_manager.convert_legacy_tari_key_id_to_current(&legacy) {
+                Ok(key_id) => key_id,
+                Err(e) => {
+                    return MaskCheck::Unverifiable(format!("could not convert legacy commitment mask key id: {e}"));
+                },
+            }
         },
     };
-    let commitment =
-        CompressedCommitment::from_vec(&row.commitment).map_err(|e| format!("malformed commitment: {e}"))?;
-    let value = u64::try_from(row.value).map_err(|_| format!("negative stored value {}", row.value))?;
-    key_manager
-        .verify_mask(&commitment, &key_id, value)
-        .map_err(|e| format!("verify_mask failed: {e}"))
+    let commitment = match CompressedCommitment::from_vec(&row.commitment) {
+        Ok(commitment) => commitment,
+        Err(e) => return MaskCheck::Unverifiable(format!("malformed commitment: {e}")),
+    };
+    let Ok(value) = u64::try_from(row.value) else {
+        return MaskCheck::Unverifiable(format!("negative stored value {}", row.value));
+    };
+    check_commitment_mask(key_manager, &commitment, &key_id, value)
 }
 
 fn status_name(status: i32) -> String {

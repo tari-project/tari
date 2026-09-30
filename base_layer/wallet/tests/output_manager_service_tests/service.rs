@@ -23,9 +23,10 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use chrono::Utc;
+use diesel::prelude::*;
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityHandle,
@@ -33,15 +34,17 @@ use minotari_wallet::{
         UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
-        handle::OutputManagerHandle,
+        handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
+            OutputSource,
             OutputStatus,
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
-            models::SpendingPriority,
-            sqlite_db::{OutputManagerSqliteDatabase, SpentOutputInfoForBatch},
+            models::{DbWalletOutput, SpendingPriority},
+            sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         },
     },
+    schema::outputs,
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
@@ -49,6 +52,7 @@ use minotari_wallet::{
 };
 use rand::Rng;
 use tari_common::configuration::Network;
+use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -65,6 +69,7 @@ use tari_transaction_components::{
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    rpc::models::MinedUtxoInfo,
     tari_amount::{MicroMinotari, T, uT},
     test_helpers::{TestParams, create_consensus_manager, create_wallet_output_with_data},
     transaction_builder::PendingOutput,
@@ -87,13 +92,14 @@ use tari_transaction_key_manager::legacy_key_manager::{
     MemoryKeyManager,
     create_new_random_key_manager,
 };
+use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
 };
 
 use crate::support::{
-    base_node_http_service_mock::MockHttpClientFactory,
+    base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features},
 };
@@ -191,6 +197,7 @@ fn assert_insufficient_funds_quote(quoted: MicroMinotari, fee_per_gram: MicroMin
 
 struct TestOmsService {
     pub output_manager_handle: OutputManagerHandle<MemoryKeyManager>,
+    pub base_node_mock: HttpBaseNodeMock,
     pub _wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
     pub _shutdown: Shutdown,
     pub _transaction_service_handle: TransactionServiceHandle,
@@ -220,7 +227,9 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (event_publisher_bns, _) = broadcast::channel(100);
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
 
-    let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
+    let client_factory = MockHttpClientFactory::default();
+    let base_node_mock = client_factory.get_client();
+    let wallet_connectivity_mock = WalletConnectivityHandle::new(client_factory);
 
     let key_manager = create_new_random_key_manager().await.unwrap();
 
@@ -252,6 +261,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     TestOmsService {
         output_manager_handle: output_manager_service_handle,
+        base_node_mock,
         _wallet_connectivity_mock: wallet_connectivity_mock,
         _shutdown: shutdown,
         _transaction_service_handle: ts_handle,
@@ -2908,4 +2918,232 @@ async fn get_outputs_by_query_excludes_spent_output_when_filtering_unspent_only(
         "a Spent output must not be returned by a caller filtering for OutputStatus::Unspent only - this is the exact \
          multisig double-spend vulnerability greptile-apps flagged on PR #8028"
     );
+}
+
+/// Mined / spent data to force onto a test output row: `(height, block hash)`.
+type ChainPosition = Option<(i64, Option<Vec<u8>>)>;
+
+/// Add an output and then force its row into `status` with the given mined / spent data. When `tamper` is set the
+/// stored value is changed so the commitment no longer opens to it.
+#[allow(clippy::too_many_arguments)]
+fn add_output_with_state(
+    connection: &minotari_wallet::storage::sqlite_utilities::WalletDbConnection,
+    db: &OutputManagerDatabase<OutputManagerSqliteDatabase>,
+    key_manager: &MemoryKeyManager,
+    value: u64,
+    tamper: bool,
+    status: OutputStatus,
+    mined_in: ChainPosition,
+    spent_in: ChainPosition,
+) -> DbWalletOutput {
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(value),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo.clone(), key_manager).unwrap();
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let row = outputs::table.filter(outputs::commitment.eq(kmo.commitment.to_vec()));
+    let (mined_height, mined_in_block) = mined_in.map_or((None, None), |(h, b)| (Some(h), b));
+    let (spent_height, spent_in_block) = spent_in.map_or((None, None), |(h, b)| (Some(h), b));
+    diesel::update(row.clone())
+        .set((
+            outputs::status.eq(status as i32),
+            outputs::mined_height.eq(mined_height),
+            outputs::mined_in_block.eq(mined_in_block),
+            outputs::marked_deleted_at_height.eq(spent_height),
+            outputs::marked_deleted_in_block.eq(spent_in_block),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+    if tamper {
+        diesel::update(row)
+            .set(outputs::value.eq(outputs::value + 1))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    kmo
+}
+
+fn stored_status(
+    connection: &minotari_wallet::storage::sqlite_utilities::WalletDbConnection,
+    kmo: &DbWalletOutput,
+) -> OutputStatus {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let status: i32 = outputs::table
+        .select(outputs::status)
+        .filter(outputs::commitment.eq(kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap();
+    OutputStatus::try_from(status).unwrap()
+}
+
+/// TXO validation must not revive an Invalid output whose commitment does not open to its stored value and mask,
+/// even when the base node reports it mined and unspent; a genuine Invalid output in the same position is still
+/// revived. Each pair of cases reaches a different revive path in the validation task.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_txo_validation_does_not_revive_invalid_outputs_with_bad_commitment_mask() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let mut headers = HashMap::new();
+    for height in [1u64, 2] {
+        let mut header = tari_node_components::blocks::BlockHeader::new(1);
+        header.height = height;
+        headers.insert(height, header);
+    }
+    let block1 = Some(headers[&1].hash().to_vec());
+    let block2 = Some(headers[&2].hash().to_vec());
+    oms.base_node_mock.set_blocks(headers).await.unwrap();
+    let mined1 = Some((1i64, block1.clone()));
+
+    let invalid = |value, tamper, mined_in: ChainPosition, spent_in: ChainPosition| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::Invalid,
+            mined_in,
+            spent_in,
+        )
+    };
+
+    // A spent output still on the main chain at height 2 stops the reorg check's walk over spent outputs there.
+    let anchor = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        900,
+        false,
+        OutputStatus::Spent,
+        mined1.clone(),
+        Some((2, block2)),
+    );
+
+    // (output, expected status after validation)
+    let cases = [
+        // Unmined: the unconfirmed-output pass, then the invalid-output pass
+        (invalid(1000, false, None, None), OutputStatus::Unspent),
+        (invalid(1100, true, None, None), OutputStatus::Invalid),
+        // Mined and marked deleted without a block, below the reorg anchor: the spent-output pass
+        (
+            invalid(1200, false, mined1.clone(), Some((1, None))),
+            OutputStatus::Unspent,
+        ),
+        (
+            invalid(1300, true, mined1.clone(), Some((1, None))),
+            OutputStatus::Invalid,
+        ),
+        // Mined and unspent, as left by the commitment mask migration: `update_invalid_outputs`
+        (invalid(1400, false, mined1.clone(), None), OutputStatus::Unspent),
+        (invalid(1500, true, mined1.clone(), None), OutputStatus::Invalid),
+        // Spent in a block the base node no longer has: the reorg check, then the unconfirmed-output pass
+        (
+            invalid(1600, false, mined1.clone(), Some((3, Some(vec![7u8; 32])))),
+            OutputStatus::Unspent,
+        ),
+        (
+            invalid(1700, true, mined1.clone(), Some((3, Some(vec![7u8; 32])))),
+            OutputStatus::Invalid,
+        ),
+    ];
+
+    // The base node reports every case as mined and unspent at height 1, tip at 100
+    oms.base_node_mock
+        .set_mined_utxos(
+            cases
+                .iter()
+                .map(|(kmo, _)| MinedUtxoInfo {
+                    utxo_hash: kmo.hash.to_vec(),
+                    mined_in_hash: block1.clone().unwrap(),
+                    mined_in_height: 1,
+                    mined_in_timestamp: 0,
+                })
+                .collect(),
+            100,
+        )
+        .await;
+
+    let mut events = oms.output_manager_handle.get_event_stream();
+    let id = oms.output_manager_handle.validate_txos().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            match &*events.recv().await.unwrap() {
+                OutputManagerEvent::TxoValidationSuccess(done) if *done == id => break,
+                OutputManagerEvent::TxoValidationCommunicationFailure(done) |
+                OutputManagerEvent::TxoValidationInternalFailure(done)
+                    if *done == id =>
+                {
+                    panic!("TXO validation failed")
+                },
+                _ => {},
+            }
+        }
+    })
+    .await
+    .expect("TXO validation did not complete");
+
+    assert_eq!(stored_status(&connection, &anchor), OutputStatus::Spent);
+    for (i, (kmo, expected)) in cases.iter().enumerate() {
+        assert_eq!(stored_status(&connection, kmo), *expected, "case {i}");
+    }
+}
+
+/// Manually applied validation fixes (the console / gRPC "validate outputs" command) must not revive an Invalid output
+/// whose commitment mask does not verify, while a genuine Invalid output is still revived.
+#[tokio::test]
+async fn test_update_output_validation_state_does_not_revive_invalid_outputs_with_bad_commitment_mask() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+    let block = Some((1i64, Some(vec![1u8; 32])));
+    let invalid = |value, tamper, position: ChainPosition| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::Invalid,
+            position.clone(),
+            position,
+        )
+    };
+
+    let genuine_mined = invalid(1000, false, None);
+    let tampered_mined = invalid(1100, true, None);
+    let genuine_unspent = invalid(1200, false, block.clone());
+    let tampered_unspent = invalid(1300, true, block);
+
+    let mined_update = |kmo: &DbWalletOutput| ReceivedOutputInfoForBatch {
+        commitment: kmo.commitment.clone(),
+        mined_height: 1,
+        mined_in_block: FixedHash::from([1u8; 32]),
+        confirmed: true,
+        mined_timestamp: 0,
+    };
+    oms.output_manager_handle
+        .update_output_validation_state(
+            vec![mined_update(&genuine_mined), mined_update(&tampered_mined)],
+            vec![],
+            vec![],
+            vec![(genuine_unspent.hash, true), (tampered_unspent.hash, true)],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(stored_status(&connection, &genuine_mined), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered_mined), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &genuine_unspent), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered_unspent), OutputStatus::Invalid);
 }
