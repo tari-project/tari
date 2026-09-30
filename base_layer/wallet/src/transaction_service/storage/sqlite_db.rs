@@ -308,32 +308,44 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => {
                 let mut result = Vec::new();
+                let mut first_error = None;
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, false)? {
                     let tx_id = o.tx_id;
                     match OutboundTransaction::try_from(o, &self.cipher) {
                         Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ TransactionStorageError::AeadError(_)) => return Err(e),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Skipping undecodable pending outbound transaction {tx_id}: {e}")
+                            error!(target: LOG_TARGET, "Skipping undecodable pending outbound transaction {tx_id}: {e}");
+                            first_error.get_or_insert(e);
                         },
                     }
+                }
+                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+                if let Some(e) = first_error &&
+                    result.is_empty()
+                {
+                    return Err(e);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
                 let mut result = Vec::new();
+                let mut first_error = None;
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, false)? {
                     let tx_id = i.tx_id;
                     match InboundTransaction::try_from(i, &self.cipher) {
                         Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ TransactionStorageError::AeadError(_)) => return Err(e),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Skipping undecodable pending inbound transaction {tx_id}: {e}")
+                            error!(target: LOG_TARGET, "Skipping undecodable pending inbound transaction {tx_id}: {e}");
+                            first_error.get_or_insert(e);
                         },
                     }
+                }
+                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+                if let Some(e) = first_error &&
+                    result.is_empty()
+                {
+                    return Err(e);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
@@ -341,45 +353,51 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)? {
-                    let tx_id = c.tx_id;
-                    match CompletedTransaction::try_from(c, &self.cipher, &mut conn) {
-                        Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ CompletedTransactionConversionError::AeadError(_)) => return Err(e.into()),
-                        Err(e) => warn!(target: LOG_TARGET, "Skipping undecodable completed transaction {tx_id}: {e}"),
-                    }
+                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
                 let mut result = Vec::new();
+                let mut first_error = None;
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, true)? {
                     let tx_id = o.tx_id;
                     match OutboundTransaction::try_from(o, &self.cipher) {
                         Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ TransactionStorageError::AeadError(_)) => return Err(e),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Skipping undecodable cancelled pending outbound transaction {tx_id}: {e}")
+                            error!(target: LOG_TARGET, "Skipping undecodable cancelled pending outbound transaction {tx_id}: {e}");
+                            first_error.get_or_insert(e);
                         },
                     }
+                }
+                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+                if let Some(e) = first_error &&
+                    result.is_empty()
+                {
+                    return Err(e);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
                 let mut result = Vec::new();
+                let mut first_error = None;
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, true)? {
                     let tx_id = i.tx_id;
                     match InboundTransaction::try_from(i, &self.cipher) {
                         Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ TransactionStorageError::AeadError(_)) => return Err(e),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Skipping undecodable cancelled pending inbound transaction {tx_id}: {e}")
+                            error!(target: LOG_TARGET, "Skipping undecodable cancelled pending inbound transaction {tx_id}: {e}");
+                            first_error.get_or_insert(e);
                         },
                     }
+                }
+                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+                if let Some(e) = first_error &&
+                    result.is_empty()
+                {
+                    return Err(e);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
@@ -387,15 +405,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CancelledCompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)? {
-                    let tx_id = c.tx_id;
-                    match CompletedTransaction::try_from(c, &self.cipher, &mut conn) {
-                        Ok(tx) => result.push(tx),
-                        // A wrong key fails every row, so that is still an error for the whole list
-                        Err(e @ CompletedTransactionConversionError::AeadError(_)) => return Err(e.into()),
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Skipping undecodable cancelled completed transaction {tx_id}: {e}")
-                        },
-                    }
+                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -3157,7 +3167,10 @@ mod test {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::Rng;
     use tari_common::configuration::Network;
-    use tari_common_sqlite::{PRAGMA_BUSY_TIMEOUT, sqlite_connection_pool::SqliteConnectionPool};
+    use tari_common_sqlite::{
+        PRAGMA_BUSY_TIMEOUT,
+        sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
+    };
     use tari_common_types::{
         encryption::Encryptable,
         tari_address::TariAddress,
@@ -3909,7 +3922,8 @@ mod test {
     }
 
     #[test]
-    fn undecodable_rows_are_skipped_in_lists_only() {
+    #[allow(clippy::too_many_lines)]
+    fn undecodable_rows_are_skipped_in_pending_lists_only() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -3963,9 +3977,49 @@ mod test {
             sql_query("UPDATE outbound_transactions SET destination_address = x'0102' WHERE tx_id = 2")
                 .execute(&mut conn)
                 .unwrap();
+
+            // And an undecodable completed transaction
+            let completed_tx = CompletedTransaction {
+                tx_id: 3u64.into(),
+                source_address: TariAddress::default(),
+                destination_address: TariAddress::default(),
+                amount: MicroMinotari::from(100),
+                fee: MicroMinotari::from(10),
+                transaction: Transaction::new(
+                    vec![],
+                    vec![],
+                    vec![],
+                    PrivateKey::random(&mut rand::rng()),
+                    PrivateKey::random(&mut rand::rng()),
+                ),
+                status: LegacyTransactionStatus::Completed,
+                timestamp: Utc::now(),
+                cancelled: None,
+                direction: TransactionDirection::Unknown,
+                send_count: 0,
+                last_send_timestamp: None,
+                sent_output_hashes: vec![],
+                received_output_hashes: vec![],
+                change_output_hashes: vec![],
+                transaction_signature: CompressedSignature::default(),
+                mined_height: None,
+                mined_in_block: None,
+                mined_timestamp: None,
+                payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+                lock_height: 0,
+                rejection_reason: None,
+            };
+            CompletedTransactionSql::try_from(completed_tx, &cipher)
+                .unwrap()
+                .commit(&mut conn)
+                .unwrap();
+            sql_query("UPDATE completed_transactions SET source_address = x'0102' WHERE tx_id = 3")
+                .execute(&mut conn)
+                .unwrap();
         }
 
-        let db = TransactionServiceSqliteDatabase::new(WalletDbConnection::new(pool, None), cipher);
+        let connection = WalletDbConnection::new(pool, None);
+        let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
         match db.fetch(&DbKey::PendingOutboundTransactions).unwrap() {
             Some(DbValue::PendingOutboundTransactions(txs)) => {
                 assert_eq!(txs.iter().map(|tx| tx.tx_id).collect::<Vec<_>>(), vec![TxId::from(
@@ -3977,6 +4031,17 @@ mod test {
         // Fetching the undecodable row on its own is still an error
         assert!(db.fetch(&DbKey::AnyTransaction(2u64.into())).is_err());
         assert!(db.fetch(&DbKey::AnyTransaction(1u64.into())).unwrap().is_some());
+        // Completed transactions are never skipped
+        assert!(db.fetch(&DbKey::CompletedTransactions(0)).is_err());
+
+        // When every pending row is undecodable the list is an error, not empty
+        {
+            let mut conn = connection.get_pooled_connection().unwrap();
+            sql_query("UPDATE outbound_transactions SET destination_address = x'0102' WHERE tx_id = 1")
+                .execute(&mut conn)
+                .unwrap();
+        }
+        assert!(db.fetch(&DbKey::PendingOutboundTransactions).is_err());
     }
 
     #[ignore]
