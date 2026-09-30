@@ -54,6 +54,9 @@ impl SingleAddress {
         network: Network,
         features: TariAddressFeatures,
     ) -> Result<SingleAddress, TariAddressError> {
+        // A single address cannot carry a payment id, so the flag is dropped
+        let mut features = features;
+        features.set(TariAddressFeatures::PAYMENT_ID, false);
         Ok(Self {
             network,
             features,

@@ -344,7 +344,7 @@ impl TariAddress {
 
     /// Construct Tari Address from hex
     pub fn from_base58(bas58_str: &str) -> Result<TariAddress, TariAddressError> {
-        if bas58_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE {
+        if bas58_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE || bas58_str.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
 
@@ -1407,5 +1407,29 @@ mod test {
         }}"#;
         let err = serde_json::from_str::<TariAddress>(single).unwrap_err();
         assert!(err.to_string().contains("Invalid features"), "{}", err);
+    }
+
+    #[test]
+    fn single_address_constructor_drops_payment_id_flag() {
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let features = TariAddressFeatures::default() | TariAddressFeatures::PAYMENT_ID;
+        let address = TariAddress::new_single_address(spend_key, Network::MainNet, features).unwrap();
+        assert_eq!(address.features(), TariAddressFeatures::default());
+        assert_eq!(TariAddress::from_bytes(&address.to_vec()).unwrap(), address);
+    }
+
+    #[test]
+    fn from_base58_rejects_overlong_strings() {
+        // The longest dual address, with the largest payment id, still parses
+        let address = random_dual_address(Some(vec![0xff; MAX_PAYMENT_ID_SIZE]));
+        let base58 = address.to_base58();
+        assert!(base58.len() <= INTERNAL_DUAL_BASE58_MAX_SIZE, "{}", base58.len());
+        assert_eq!(TariAddress::from_base58(&base58).unwrap(), address);
+        assert_eq!(TariAddress::from_str(&base58).unwrap(), address);
+
+        let overlong = "1".repeat(INTERNAL_DUAL_BASE58_MAX_SIZE + 1);
+        assert_eq!(TariAddress::from_base58(&overlong), Err(TariAddressError::InvalidSize));
+        let huge = "z".repeat(4_000_000);
+        assert_eq!(TariAddress::from_base58(&huge), Err(TariAddressError::InvalidSize));
     }
 }
