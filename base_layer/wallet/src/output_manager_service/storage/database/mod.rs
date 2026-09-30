@@ -136,6 +136,10 @@ pub struct OutputMaskVerificationRow {
     pub value: i64,
     /// Raw `OutputStatus` value
     pub status: i32,
+    /// The transaction the output was received in, if any
+    pub received_in_tx_id: Option<TxId>,
+    /// The transaction the output was spent in, if any
+    pub spent_in_tx_id: Option<TxId>,
 }
 
 /// This structure holds an inner type that implements the `OutputManagerBackend` trait and contains the more complex

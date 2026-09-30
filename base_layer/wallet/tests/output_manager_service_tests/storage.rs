@@ -23,10 +23,12 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::convert::TryFrom;
+use std::{convert::TryFrom, mem::size_of};
 
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::prelude::*;
 use minotari_wallet::{
+    legacy_transaction_protocol::ReceiverTransactionProtocol,
     output_manager_service::{
         RangeLimit,
         UtxoSelectionCriteria,
@@ -35,6 +37,8 @@ use minotari_wallet::{
             INVALID_MASK_MIGRATION_KEY,
             InvalidMaskMigrationOutcome,
             InvalidMaskMigrationSummary,
+            InvalidOutputTransactionSink,
+            InvalidOutputTxOutcome,
             run_invalid_mask_migration,
         },
         service::Balance,
@@ -52,15 +56,25 @@ use minotari_wallet::{
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::WalletDbConnection,
     },
+    transaction_service::storage::{
+        database::TransactionDatabase,
+        models::{CompletedTransaction, InboundTransaction, TxCancellationReason, WalletTransaction},
+        sqlite_db::TransactionServiceSqliteDatabase,
+    },
 };
 use rand::Rng;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
-    transaction::TxId,
+    tari_address::TariAddress,
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{MicroMinotari, key_manager::TariKeyId, transaction_components::OutputFeatures};
+use tari_transaction_components::{
+    MicroMinotari,
+    key_manager::TariKeyId,
+    transaction_components::{MemoField, OutputFeatures, Transaction, memo_field::TxType},
+};
 use tari_transaction_key_manager::legacy_key_manager::{
     LegacyTariKeyId,
     LegacyTransactionKeyManagerInterface,
@@ -1279,7 +1293,7 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             .is_none()
     );
 
-    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
     assert_eq!(
         outcome,
         InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
@@ -1288,6 +1302,8 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             verification_errors: 1,
             unverifiable_left_unchanged: 0,
             marked_invalid: 3,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
         })
     );
     assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
@@ -1310,7 +1326,7 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             .execute(&mut conn)
             .unwrap();
     }
-    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
     assert_eq!(outcome, InvalidMaskMigrationOutcome::AlreadyCompleted);
     assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
     assert_eq!(stored_status(&connection, &later_tampered), OutputStatus::Unspent);
@@ -1351,7 +1367,7 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
     assert_eq!(second_page.len(), 2);
     assert!(second_page.iter().all(|r| r.id > first_page[1].id));
 
-    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
     assert_eq!(
         outcome,
         InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
@@ -1360,6 +1376,8 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
             verification_errors: 0,
             unverifiable_left_unchanged: 0,
             marked_invalid: 1,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
         })
     );
     assert_eq!(stored_status(&connection, &last), OutputStatus::Invalid);
@@ -1458,7 +1476,7 @@ async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged
         }
     }
 
-    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
     assert_eq!(
         outcome,
         InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
@@ -1467,6 +1485,8 @@ async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged
             verification_errors: 2,
             unverifiable_left_unchanged: 1,
             marked_invalid: 1,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
         })
     );
     assert_eq!(stored_status(&connection, &spent_garbage), OutputStatus::Spent);
@@ -1530,4 +1550,179 @@ async fn test_received_output_update_stores_null_for_unrepresentable_timestamp()
     let loaded = db.fetch_by_commitment(kmo.commitment.clone(), &key_manager).unwrap();
     assert_eq!(loaded.mined_height, Some(1));
     assert_eq!(loaded.mined_timestamp, None);
+}
+
+/// Create a completed inbound transaction with the given id and status.
+fn completed_inbound_tx(tx_id: u64, status: LegacyTransactionStatus) -> CompletedTransaction {
+    CompletedTransaction::new(
+        tx_id.into(),
+        TariAddress::default(),
+        TariAddress::default(),
+        MicroMinotari::from(1000),
+        MicroMinotari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::default(),
+            PrivateKey::default(),
+        ),
+        status,
+        chrono::Utc::now(),
+        TransactionDirection::Inbound,
+        None,
+        None,
+        MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
+        0,
+    )
+    .unwrap()
+}
+
+fn set_received_in_tx(connection: &WalletDbConnection, kmo: &DbWalletOutput, tx_id: i64, status: OutputStatus) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+        .set((
+            outputs::received_in_tx_id.eq(Some(tx_id)),
+            outputs::status.eq(status as i32),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+}
+
+fn tamper_value(connection: &WalletDbConnection, kmo: &DbWalletOutput) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+        .set(outputs::value.eq(outputs::value + 1))
+        .execute(&mut conn)
+        .unwrap();
+}
+
+/// The migration cancels the transaction each mask-mismatch output was received in (completed: rejected with reason
+/// InvalidEncryptedValue; pending inbound: cancelled), so the history matches what a fresh recovery would produce.
+/// Transactions of genuine and of merely unverifiable outputs are untouched, a missing transaction does not stop the
+/// migration, and a second run is a no-op.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_invalid_mask_migration_cancels_coupled_transactions() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    // tx 1: genuine output, completed
+    let genuine = add_mask_test_output(&db, &key_manager, 1000);
+    set_received_in_tx(&connection, &genuine, 1, OutputStatus::Unspent);
+    tx_db
+        .insert_completed_transaction(
+            1u64.into(),
+            completed_inbound_tx(1, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 2: tampered output, completed
+    let tampered_completed = add_mask_test_output(&db, &key_manager, 1100);
+    set_received_in_tx(&connection, &tampered_completed, 2, OutputStatus::Unspent);
+    tamper_value(&connection, &tampered_completed);
+    tx_db
+        .insert_completed_transaction(
+            2u64.into(),
+            completed_inbound_tx(2, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 3: tampered output, pending inbound
+    let tampered_pending = add_mask_test_output(&db, &key_manager, 1200);
+    set_received_in_tx(&connection, &tampered_pending, 3, OutputStatus::EncumberedToBeReceived);
+    tamper_value(&connection, &tampered_pending);
+    tx_db
+        .add_pending_inbound_transaction(
+            3u64.into(),
+            InboundTransaction::new(
+                3u64.into(),
+                TariAddress::default(),
+                MicroMinotari::from(1200),
+                ReceiverTransactionProtocol::new_placeholder(),
+                LegacyTransactionStatus::Pending,
+                MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
+                chrono::Utc::now(),
+            ),
+        )
+        .unwrap();
+    // tx 4: unverifiable output (unreadable key id), completed; the output is invalidated but its tx is not touched
+    let unverifiable = add_mask_test_output(&db, &key_manager, 1300);
+    set_received_in_tx(&connection, &unverifiable, 4, OutputStatus::Unspent);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&unverifiable.commitment.to_vec())))
+            .set(outputs::spending_key.eq("garbage"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    tx_db
+        .insert_completed_transaction(
+            4u64.into(),
+            completed_inbound_tx(4, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 99: tampered output whose transaction does not exist
+    let orphaned = add_mask_test_output(&db, &key_manager, 1400);
+    set_received_in_tx(&connection, &orphaned, 99, OutputStatus::Unspent);
+    tamper_value(&connection, &orphaned);
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 5,
+            mask_mismatches: 3,
+            verification_errors: 1,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 4,
+            transactions_cancelled: 2,
+            transactions_not_reconciled: 1,
+        })
+    );
+    for kmo in [&tampered_completed, &tampered_pending, &unverifiable, &orphaned] {
+        assert_eq!(stored_status(&connection, kmo), OutputStatus::Invalid);
+    }
+    assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
+
+    let completed = |id: u64| tx_db.get_completed_transaction_cancelled_or_not(id.into()).unwrap();
+    assert_eq!(completed(1).cancelled, None);
+    assert_eq!(completed(1).status, LegacyTransactionStatus::MinedConfirmed);
+    assert_eq!(
+        completed(2).cancelled,
+        Some(TxCancellationReason::InvalidEncryptedValue)
+    );
+    assert_eq!(completed(2).status, LegacyTransactionStatus::Rejected);
+    assert_eq!(completed(4).cancelled, None);
+    assert_eq!(completed(4).status, LegacyTransactionStatus::MinedConfirmed);
+    match tx_db.get_any_transaction(3u64.into()).unwrap() {
+        Some(WalletTransaction::PendingInbound(tx)) => assert!(tx.cancelled),
+        other => panic!("expected pending inbound tx 3, got {other:?}"),
+    }
+
+    // Cancelling again is a no-op
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(2u64.into()).unwrap(),
+        InvalidOutputTxOutcome::AlreadyCancelled
+    );
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(3u64.into()).unwrap(),
+        InvalidOutputTxOutcome::AlreadyCancelled
+    );
+
+    // A second run does nothing
+    assert_eq!(
+        run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap(),
+        InvalidMaskMigrationOutcome::AlreadyCompleted
+    );
+    assert_eq!(completed(1).cancelled, None);
+    assert_eq!(completed(4).cancelled, None);
 }

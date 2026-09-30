@@ -2347,7 +2347,10 @@ bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
  * |   4 | Orphan              |
  * |   5 | TimeLocked          |
  * |   6 | InvalidTransaction  |
- * |   7 | AbandonedCoinbase   |
+ * |   7 | Oversized           |
+ * |   8 | FeeTooLow           |
+ * |   9 | AlreadyMined        |
+ * |  10 | InvalidEncryptedValue (an output does not open to its encrypted value) |
  * # Safety
  * None
  */
@@ -2900,6 +2903,10 @@ void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
  *     Orphan,                 // 4
  *     TimeLocked,             // 5
  *     InvalidTransaction,     // 6
+ *     Oversized,              // 7
+ *     FeeTooLow,              // 8
+ *     AlreadyMined,           // 9
+ *     InvalidEncryptedValue,  // 10
  * }
  * `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
  * when a TXO validation process is completed. The request_key is used to identify which request this

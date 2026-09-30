@@ -116,7 +116,12 @@ use crate::{
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
-        invalid_mask_migration::{InvalidMaskMigrationOutcome, MigrationFlagStore, run_invalid_mask_migration},
+        invalid_mask_migration::{
+            InvalidMaskMigrationOutcome,
+            InvalidOutputTransactionSink,
+            MigrationFlagStore,
+            run_invalid_mask_migration,
+        },
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -162,6 +167,8 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     validation_in_progress: Arc<Mutex<()>>,
     /// Where the one-off commitment mask migration records completion. `None` skips the migration.
     migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
+    /// Where the migration cancels transactions coupled to outputs with a wrong value. `None` leaves them untouched.
+    invalid_output_tx_sink: Option<Arc<dyn InvalidOutputTransactionSink>>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -217,6 +224,7 @@ where
             base_node_service,
             validation_in_progress: Arc::new(Mutex::new(())),
             migration_flag_store: None,
+            invalid_output_tx_sink: None,
         })
     }
 
@@ -224,6 +232,13 @@ where
     #[must_use]
     pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
         self.migration_flag_store = Some(store);
+        self
+    }
+
+    /// Let the commitment mask migration cancel the transactions coupled to outputs whose value is wrong.
+    #[must_use]
+    pub fn with_invalid_output_tx_sink(mut self, sink: Arc<dyn InvalidOutputTransactionSink>) -> Self {
+        self.invalid_output_tx_sink = Some(sink);
         self
     }
 
@@ -235,10 +250,13 @@ where
             debug!(target: LOG_TARGET, "No migration flag store configured, skipping commitment mask migration");
             return;
         };
+        let tx_sink = self.invalid_output_tx_sink.clone();
         let db = self.resources.db.clone();
         let key_manager = self.resources.key_manager.clone();
-        let result =
-            tokio::task::spawn_blocking(move || run_invalid_mask_migration(store.as_ref(), &db, &key_manager)).await;
+        let result = tokio::task::spawn_blocking(move || {
+            run_invalid_mask_migration(store.as_ref(), tx_sink.as_deref(), &db, &key_manager)
+        })
+        .await;
         match result {
             Ok(Ok(InvalidMaskMigrationOutcome::Completed(summary))) if summary.marked_invalid > 0 => {
                 warn!(

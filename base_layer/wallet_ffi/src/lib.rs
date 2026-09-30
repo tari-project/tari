@@ -5104,7 +5104,10 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
 /// |   4 | Orphan              |
 /// |   5 | TimeLocked          |
 /// |   6 | InvalidTransaction  |
-/// |   7 | AbandonedCoinbase   |
+/// |   7 | Oversized           |
+/// |   8 | FeeTooLow           |
+/// |   9 | AlreadyMined        |
+/// |  10 | InvalidEncryptedValue (an output does not open to its encrypted value) |
 /// # Safety
 /// None
 #[unsafe(no_mangle)]
@@ -6284,6 +6287,10 @@ pub(crate) fn get_wallet_database_path(config: &TariWalletDbConfig) -> PathBuf {
 ///     Orphan,                 // 4
 ///     TimeLocked,             // 5
 ///     InvalidTransaction,     // 6
+///     Oversized,              // 7
+///     FeeTooLow,              // 8
+///     AlreadyMined,           // 9
+///     InvalidEncryptedValue,  // 10
 /// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
@@ -10324,6 +10331,51 @@ mod test {
     const NETWORK_STRING: &str = "nextnet";
     #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     const NETWORK_STRING: &str = "localnet";
+
+    /// The cancellation reason reaches FFI clients as its discriminant; `InvalidEncryptedValue` is 10 and round-trips
+    /// back to the same reason.
+    #[test]
+    fn test_completed_transaction_cancellation_reason_invalid_encrypted_value() {
+        use minotari_wallet::transaction_service::storage::models::{CompletedTransaction, TxCancellationReason};
+        use tari_common_types::transaction::{LegacyTransactionStatus, TransactionDirection};
+        use tari_transaction_components::transaction_components::{MemoField, Transaction, memo_field::TxType};
+
+        let mut tx = CompletedTransaction::new(
+            1u64.into(),
+            TariAddress::default(),
+            TariAddress::default(),
+            MicroMinotari::from(100),
+            MicroMinotari::from(10),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                PrivateKey::default(),
+                PrivateKey::default(),
+            ),
+            LegacyTransactionStatus::Rejected,
+            chrono::Utc::now(),
+            TransactionDirection::Inbound,
+            None,
+            None,
+            MemoField::new_open_from_string("1", TxType::PaymentToOther).unwrap(),
+            0,
+        )
+        .unwrap();
+        tx.cancelled = Some(TxCancellationReason::InvalidEncryptedValue);
+        let tx = Box::into_raw(Box::new(tx));
+        let mut error = 0;
+        unsafe {
+            let reason = completed_transaction_get_cancellation_reason(tx, &mut error);
+            assert_eq!(error, 0);
+            assert_eq!(reason, 10);
+            assert_eq!(
+                TxCancellationReason::try_from(u32::try_from(reason).unwrap()).unwrap(),
+                TxCancellationReason::InvalidEncryptedValue
+            );
+            completed_transaction_destroy(tx);
+        }
+    }
 
     #[test]
     // casting is okay in tests

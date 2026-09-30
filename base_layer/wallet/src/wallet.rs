@@ -93,7 +93,7 @@ use crate::{
     transaction_service::{
         TransactionServiceInitializer,
         handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
+        storage::database::{TransactionBackend, TransactionDatabase},
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{RECOVERY_KEY, handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer},
@@ -168,7 +168,8 @@ where
                     factories.clone(),
                     config.network.into(),
                 )
-                .with_migration_flag_store(Arc::new(wallet_database.clone())),
+                .with_migration_flag_store(Arc::new(wallet_database.clone()))
+                .with_invalid_output_tx_sink(Arc::new(TransactionDatabase::new(transaction_backend.clone()))),
             )
             .add_initializer(LegacyTransactionKeyManagerInitializer::new_with_legacy_storage(
                 key_manager_backend,

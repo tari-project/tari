@@ -62,7 +62,7 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
-        invalid_mask_migration::MigrationFlagStore,
+        invalid_mask_migration::{InvalidOutputTransactionSink, MigrationFlagStore},
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
@@ -88,6 +88,7 @@ where T: OutputManagerBackend
     factories: CryptoFactories,
     network: NetworkConsensus,
     migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
+    invalid_output_tx_sink: Option<Arc<dyn InvalidOutputTransactionSink>>,
     phantom_key_manager: PhantomData<TKeyManagerInterface>,
     phantom_http: PhantomData<THttpClientFactory>,
 }
@@ -110,6 +111,7 @@ where
             factories,
             network,
             migration_flag_store: None,
+            invalid_output_tx_sink: None,
             phantom_key_manager: PhantomData,
             phantom_http: PhantomData,
         }
@@ -119,6 +121,13 @@ where
     #[must_use]
     pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
         self.migration_flag_store = Some(store);
+        self
+    }
+
+    /// Let the commitment mask migration cancel the transactions coupled to outputs whose value is wrong.
+    #[must_use]
+    pub fn with_invalid_output_tx_sink(mut self, sink: Arc<dyn InvalidOutputTransactionSink>) -> Self {
+        self.invalid_output_tx_sink = Some(sink);
         self
     }
 }
@@ -150,6 +159,7 @@ where
         let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let network = self.network.as_network();
         let migration_flag_store = self.migration_flag_store.take();
+        let invalid_output_tx_sink = self.invalid_output_tx_sink.take();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
@@ -174,6 +184,10 @@ where
             .expect("Could not initialize Output Manager Service");
             let service = match migration_flag_store {
                 Some(store) => service.with_migration_flag_store(store),
+                None => service,
+            };
+            let service = match invalid_output_tx_sink {
+                Some(sink) => service.with_invalid_output_tx_sink(sink),
                 None => service,
             }
             .start();

@@ -1106,20 +1106,26 @@ impl OutputSql {
                 outputs::spending_key,
                 outputs::value,
                 outputs::status,
+                outputs::received_in_tx_id,
+                outputs::spent_in_tx_id,
             ))
             .filter(outputs::id.gt(last_id))
             .filter(outputs::status.ne(OutputStatus::Invalid as i32))
             .order(outputs::id.asc())
             .limit(batch_size)
-            .load::<(i32, Vec<u8>, String, i64, i32)>(conn)?
+            .load::<(i32, Vec<u8>, String, i64, i32, Option<i64>, Option<i64>)>(conn)?
             .into_iter()
             .map(
-                |(id, commitment, spending_key, value, status)| OutputMaskVerificationRow {
-                    id,
-                    commitment,
-                    spending_key,
-                    value,
-                    status,
+                |(id, commitment, spending_key, value, status, received_in_tx_id, spent_in_tx_id)| {
+                    OutputMaskVerificationRow {
+                        id,
+                        commitment,
+                        spending_key,
+                        value,
+                        status,
+                        received_in_tx_id: received_in_tx_id.map(|t| (t as u64).into()),
+                        spent_in_tx_id: spent_in_tx_id.map(|t| (t as u64).into()),
+                    }
                 },
             )
             .collect())
