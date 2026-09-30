@@ -103,6 +103,10 @@ pub struct InvalidMaskMigrationSummary {
     /// Coupled transactions that were not cancelled and will not be retried: not found, not a cancellable kind, or a
     /// non-retryable error (the transaction row itself cannot be read)
     pub transactions_not_reconciled: usize,
+    /// Transaction ids that were due for cancelling (e.g. read from [`INVALID_MASK_PENDING_TXS_KEY`], which lives in
+    /// the app-writable client key/value store) but have no output received in them that definitely fails the mask
+    /// check. They are dropped and never passed to the sink
+    pub transactions_rejected_unverified: usize,
     /// Coupled transactions the sink failed on with a retryable error (I/O, connection, ...). They stay in
     /// [`INVALID_MASK_PENDING_TXS_KEY`] and are retried on the next start
     pub reconciliation_errors: usize,
@@ -260,7 +264,7 @@ where
             pending.len()
         );
         let mut summary = InvalidMaskMigrationSummary::default();
-        let remaining = reconcile_transactions(tx_sink, &pending, &mut summary);
+        let remaining = reconcile_transactions(tx_sink, output_db, key_manager, &pending, &mut summary);
         store_pending_tx_ids(flag_store, &remaining)?;
         return Ok(outcome(summary));
     }
@@ -343,6 +347,7 @@ where
         flag_store,
         tx_sink,
         output_db,
+        key_manager,
         to_invalidate,
         &mismatched_tx_ids,
         summary,
@@ -351,10 +356,11 @@ where
 
 /// Second half of the migration, in order: persist the coupled transaction ids, cancel them (keeping only retryable
 /// failures pending), mark every mismatch output Invalid, write the flag.
-fn apply_scan_results<F, B>(
+fn apply_scan_results<F, B, KM>(
     flag_store: &F,
     tx_sink: Option<&dyn InvalidOutputTransactionSink>,
     output_db: &OutputManagerDatabase<B>,
+    key_manager: &KM,
     to_invalidate: Vec<i32>,
     mismatched_tx_ids: &BTreeSet<u64>,
     mut summary: InvalidMaskMigrationSummary,
@@ -362,12 +368,13 @@ fn apply_scan_results<F, B>(
 where
     F: MigrationFlagStore + ?Sized,
     B: OutputManagerBackend + 'static,
+    KM: LegacyTransactionKeyManagerInterface,
 {
     // Ids left pending by an earlier interrupted run are carried along
     let mut pending = load_pending_tx_ids(flag_store)?;
     pending.extend(mismatched_tx_ids.iter().copied());
     store_pending_tx_ids(flag_store, &pending)?;
-    let remaining = reconcile_transactions(tx_sink, &pending, &mut summary);
+    let remaining = reconcile_transactions(tx_sink, output_db, key_manager, &pending, &mut summary);
     store_pending_tx_ids(flag_store, &remaining)?;
 
     summary.marked_invalid = output_db.mark_outputs_invalid(to_invalidate)?;
@@ -377,7 +384,7 @@ where
         target: LOG_TARGET,
         "Commitment mask migration complete: {} output(s) scanned, {} mask mismatch(es), {} verification error(s) ({} \
          left unchanged as not spendable), {} marked Invalid, {} transaction(s) cancelled, {} not reconciled, {} \
-         pending retry",
+         dropped as unverified, {} pending retry",
         summary.scanned,
         summary.mask_mismatches,
         summary.verification_errors,
@@ -385,6 +392,7 @@ where
         summary.marked_invalid,
         summary.transactions_cancelled,
         summary.transactions_not_reconciled,
+        summary.transactions_rejected_unverified,
         summary.reconciliation_errors
     );
     Ok(outcome(summary))
@@ -432,11 +440,21 @@ fn store_pending_tx_ids<F: MigrationFlagStore + ?Sized>(
 
 /// Cancel the given coupled transactions. Returns those that failed with a retryable error (or all of them if no sink
 /// is configured), which must stay pending; everything else is done or deliberately dropped.
-fn reconcile_transactions(
+///
+/// Each id is first re-verified against the outputs table (see [`is_coupled_to_mismatch`]) because the pending list
+/// is stored in the app-writable client key/value store; an id that does not verify is dropped and never reaches the
+/// sink.
+fn reconcile_transactions<B, KM>(
     tx_sink: Option<&dyn InvalidOutputTransactionSink>,
+    output_db: &OutputManagerDatabase<B>,
+    key_manager: &KM,
     tx_ids: &BTreeSet<u64>,
     summary: &mut InvalidMaskMigrationSummary,
-) -> BTreeSet<u64> {
+) -> BTreeSet<u64>
+where
+    B: OutputManagerBackend + 'static,
+    KM: LegacyTransactionKeyManagerInterface,
+{
     let mut retry = BTreeSet::new();
     if tx_ids.is_empty() {
         return retry;
@@ -451,6 +469,28 @@ fn reconcile_transactions(
         return tx_ids.clone();
     };
     for tx_id in tx_ids.iter().copied().map(TxId::from) {
+        match is_coupled_to_mismatch(output_db, key_manager, tx_id) {
+            Ok(true) => {},
+            Ok(false) => {
+                summary.transactions_rejected_unverified = summary.transactions_rejected_unverified.saturating_add(1);
+                warn!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration: transaction {tx_id} has no received output that fails the mask \
+                     check; dropping it without cancelling"
+                );
+                continue;
+            },
+            Err(e) => {
+                // Could not read the outputs; keep it pending rather than cancel unverified
+                summary.reconciliation_errors = summary.reconciliation_errors.saturating_add(1);
+                retry.insert(tx_id.as_u64());
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration: could not verify transaction {tx_id}, will retry on the next start: {e}"
+                );
+                continue;
+            },
+        }
         match sink.cancel_for_invalid_encrypted_value(tx_id) {
             Ok(InvalidOutputTxOutcome::CancelledCompleted | InvalidOutputTxOutcome::CancelledPendingInbound) => {
                 summary.transactions_cancelled = summary.transactions_cancelled.saturating_add(1);
@@ -494,6 +534,23 @@ fn reconcile_transactions(
         }
     }
     retry
+}
+
+/// `true` if at least one output received in `tx_id` (in any status) definitely fails the commitment mask check
+/// (`MaskCheck::Mismatch`). An Invalid status alone, or an output that cannot be checked, is not enough.
+fn is_coupled_to_mismatch<B, KM>(
+    output_db: &OutputManagerDatabase<B>,
+    key_manager: &KM,
+    tx_id: TxId,
+) -> Result<bool, OutputManagerStorageError>
+where
+    B: OutputManagerBackend + 'static,
+    KM: LegacyTransactionKeyManagerInterface,
+{
+    Ok(output_db
+        .fetch_outputs_for_mask_verification_by_received_tx(tx_id)?
+        .iter()
+        .any(|row| verify_row(row, key_manager) == MaskCheck::Mismatch))
 }
 
 /// Parse the raw row and run the shared commitment mask check on it. Parse failures are `Unverifiable`.

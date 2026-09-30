@@ -1100,34 +1100,29 @@ impl OutputSql {
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
         Ok(outputs::table
-            .select((
-                outputs::id,
-                outputs::commitment,
-                outputs::spending_key,
-                outputs::value,
-                outputs::status,
-                outputs::received_in_tx_id,
-                outputs::spent_in_tx_id,
-            ))
+            .select(MASK_VERIFICATION_COLUMNS)
             .filter(outputs::id.gt(last_id))
             .filter(outputs::status.ne(OutputStatus::Invalid as i32))
             .order(outputs::id.asc())
             .limit(batch_size)
-            .load::<(i32, Vec<u8>, String, i64, i32, Option<i64>, Option<i64>)>(conn)?
+            .load::<MaskVerificationColumns>(conn)?
             .into_iter()
-            .map(
-                |(id, commitment, spending_key, value, status, received_in_tx_id, spent_in_tx_id)| {
-                    OutputMaskVerificationRow {
-                        id,
-                        commitment,
-                        spending_key,
-                        value,
-                        status,
-                        received_in_tx_id: received_in_tx_id.map(|t| (t as u64).into()),
-                        spent_in_tx_id: spent_in_tx_id.map(|t| (t as u64).into()),
-                    }
-                },
-            )
+            .map(to_mask_verification_row)
+            .collect())
+    }
+
+    /// The same columns as `fetch_for_mask_verification`, for every output (any status) received in `tx_id`.
+    pub fn fetch_for_mask_verification_by_received_tx(
+        tx_id: TxId,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .select(MASK_VERIFICATION_COLUMNS)
+            .filter(outputs::received_in_tx_id.eq(tx_id.as_i64_wrapped()))
+            .order(outputs::id.asc())
+            .load::<MaskVerificationColumns>(conn)?
+            .into_iter()
+            .map(to_mask_verification_row)
             .collect())
     }
 
@@ -1345,5 +1340,41 @@ impl OutputSql {
             spent_in_tx_id: self.spent_in_tx_id.map(|d| (d as u64).into()),
             payment_id,
         })
+    }
+}
+
+/// Columns selected for commitment mask verification: id, commitment, spending_key, value, status, received_in_tx_id,
+/// spent_in_tx_id.
+const MASK_VERIFICATION_COLUMNS: (
+    outputs::id,
+    outputs::commitment,
+    outputs::spending_key,
+    outputs::value,
+    outputs::status,
+    outputs::received_in_tx_id,
+    outputs::spent_in_tx_id,
+) = (
+    outputs::id,
+    outputs::commitment,
+    outputs::spending_key,
+    outputs::value,
+    outputs::status,
+    outputs::received_in_tx_id,
+    outputs::spent_in_tx_id,
+);
+
+type MaskVerificationColumns = (i32, Vec<u8>, String, i64, i32, Option<i64>, Option<i64>);
+
+fn to_mask_verification_row(
+    (id, commitment, spending_key, value, status, received_in_tx_id, spent_in_tx_id): MaskVerificationColumns,
+) -> OutputMaskVerificationRow {
+    OutputMaskVerificationRow {
+        id,
+        commitment,
+        spending_key,
+        value,
+        status,
+        received_in_tx_id: received_in_tx_id.map(|t| (t as u64).into()),
+        spent_in_tx_id: spent_in_tx_id.map(|t| (t as u64).into()),
     }
 }

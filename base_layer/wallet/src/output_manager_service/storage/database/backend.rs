@@ -235,6 +235,11 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         last_id: i32,
         batch_size: i64,
     ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError>;
+    /// The mask verification columns of every output (any status) received in `tx_id`.
+    fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError>;
     /// Set the status of the given outputs (by row id) to `Invalid` in a single transaction. Outputs that are already
     /// `Invalid` are left alone. Returns the number of outputs changed.
     fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError>;

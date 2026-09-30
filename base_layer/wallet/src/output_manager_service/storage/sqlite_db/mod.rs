@@ -1561,6 +1561,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         OutputSql::fetch_for_mask_verification(last_id, batch_size, &mut conn)
     }
 
+    fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::fetch_for_mask_verification_by_received_tx(tx_id, &mut conn)
+    }
+
     fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
         if output_ids.is_empty() {
             return Ok(0);

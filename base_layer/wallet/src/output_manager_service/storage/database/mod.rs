@@ -633,6 +633,14 @@ where T: OutputManagerBackend + 'static
         self.db.fetch_outputs_for_mask_verification(last_id, batch_size)
     }
 
+    /// See `OutputManagerBackend::fetch_outputs_for_mask_verification_by_received_tx`.
+    pub fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        self.db.fetch_outputs_for_mask_verification_by_received_tx(tx_id)
+    }
+
     /// See `OutputManagerBackend::mark_outputs_invalid`.
     pub fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
         self.db.mark_outputs_invalid(output_ids)

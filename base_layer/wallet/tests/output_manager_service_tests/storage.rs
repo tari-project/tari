@@ -1306,6 +1306,7 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             marked_invalid: 3,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
             reconciliation_errors: 0,
         })
     );
@@ -1381,6 +1382,7 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
             marked_invalid: 1,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
             reconciliation_errors: 0,
         })
     );
@@ -1491,6 +1493,7 @@ async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged
             marked_invalid: 1,
             transactions_cancelled: 0,
             transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
             reconciliation_errors: 0,
         })
     );
@@ -1559,6 +1562,10 @@ async fn test_received_output_update_stores_null_for_unrepresentable_timestamp()
 
 /// Create a completed inbound transaction with the given id and status.
 fn completed_inbound_tx(tx_id: u64, status: LegacyTransactionStatus) -> CompletedTransaction {
+    completed_tx(tx_id, status, TransactionDirection::Inbound)
+}
+
+fn completed_tx(tx_id: u64, status: LegacyTransactionStatus, direction: TransactionDirection) -> CompletedTransaction {
     CompletedTransaction::new(
         tx_id.into(),
         TariAddress::default(),
@@ -1574,7 +1581,7 @@ fn completed_inbound_tx(tx_id: u64, status: LegacyTransactionStatus) -> Complete
         ),
         status,
         chrono::Utc::now(),
-        TransactionDirection::Inbound,
+        direction,
         None,
         None,
         MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
@@ -1691,6 +1698,7 @@ async fn test_invalid_mask_migration_cancels_coupled_transactions() {
             marked_invalid: 4,
             transactions_cancelled: 2,
             transactions_not_reconciled: 1,
+            transactions_rejected_unverified: 0,
             reconciliation_errors: 0,
         })
     );
@@ -1813,6 +1821,7 @@ async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
             marked_invalid: 3,
             transactions_cancelled: 1,
             transactions_not_reconciled: 1,
+            transactions_rejected_unverified: 0,
             reconciliation_errors: 1,
         })
     );
@@ -1850,5 +1859,82 @@ async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
     assert_eq!(
         run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap(),
         InvalidMaskMigrationOutcome::AlreadyCompleted
+    );
+}
+
+/// The pending key lives in the app-writable client key/value store, so every id in it is re-verified against the
+/// outputs table before it is cancelled: ids with no received output that definitely fails the mask check (a genuine
+/// inbound transaction, an outbound one) are dropped without being cancelled, and the key is cleared. A legitimately
+/// pending id is still cancelled.
+#[tokio::test]
+async fn test_invalid_mask_migration_ignores_unverified_pending_tx_ids() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    // tx 10: genuine inbound; tx 20: outbound with a genuine change output; tx 30: legitimately pending (tampered)
+    for (tx_id, direction, tamper) in [
+        (10u64, TransactionDirection::Inbound, false),
+        (20, TransactionDirection::Outbound, false),
+        (30, TransactionDirection::Inbound, true),
+    ] {
+        let kmo = add_mask_test_output(&db, &key_manager, 1000 + tx_id);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        if tamper {
+            tamper_value(&connection, &kmo);
+            // Already marked by an earlier run
+            let mut conn = connection.get_pooled_connection().unwrap();
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set(outputs::status.eq(OutputStatus::Invalid as i32))
+                .execute(&mut conn)
+                .unwrap();
+        }
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_tx(tx_id, LegacyTransactionStatus::MinedConfirmed, direction),
+            )
+            .unwrap();
+    }
+    // A completed migration with injected pending ids (plus one with no outputs at all)
+    wallet_db
+        .set_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string(), "1".to_string())
+        .unwrap();
+    wallet_db
+        .set_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string(), "10,20,30,40".to_string())
+        .unwrap();
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            transactions_cancelled: 1,
+            transactions_rejected_unverified: 3,
+            ..Default::default()
+        })
+    );
+    let cancelled = |id: u64| {
+        tx_db
+            .get_completed_transaction_cancelled_or_not(id.into())
+            .unwrap()
+            .cancelled
+    };
+    assert_eq!(cancelled(10), None);
+    assert_eq!(cancelled(20), None);
+    assert_eq!(cancelled(30), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap(),
+        None
     );
 }
