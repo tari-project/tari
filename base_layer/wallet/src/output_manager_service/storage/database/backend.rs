@@ -18,7 +18,7 @@ use crate::output_manager_service::{
     input_selection::UtxoSelectionCriteria,
     service::Balance,
     storage::{
-        database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
+        database::{DbKey, DbValue, OutputBackendQuery, OutputMaskVerificationRow, WriteOperation},
         models::DbWalletOutput,
         sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
@@ -83,6 +83,14 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError>;
+    /// As `set_received_outputs_mined_height_and_statuses`, but a row that is currently `Invalid` is only updated if
+    /// its commitment is in `revivable`. Used by TXO validation so that a status written after it read an output
+    /// (e.g. by the commitment mask migration) is not overwritten.
+    fn set_received_outputs_mined_height_and_statuses_guarded(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unmined and invalid state
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     /// Fetch kernel signature (nonce, key) for a completed transaction by tx_id.
@@ -106,6 +114,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unspent status
     fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError>;
+    /// As `mark_outputs_as_unspent`, but a row that is currently `Invalid` is only updated if its hash is in
+    /// `revivable`; rows skipped that way are not an error.
+    fn mark_outputs_as_unspent_guarded(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.
@@ -136,8 +151,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
-    /// If an invalid output is found to be valid this function will turn it back into an unspent output
-    fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
     fn get_last_mined_output<KM: LegacyTransactionKeyManagerInterface>(
@@ -214,4 +227,20 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         spending_key: String,
         script_private_key: String,
     ) -> Result<(), OutputManagerStorageError>;
+    /// Fetch a batch of the columns needed to re-check the commitment mask of every output whose status is not
+    /// `Invalid`. Keyset pagination as for `fetch_outputs_with_legacy_key_ids`: pass `last_id = 0` first, then the
+    /// last id of the previous batch.
+    fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError>;
+    /// The mask verification columns of every output (any status) received in `tx_id`.
+    fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError>;
+    /// Set the status of the given outputs (by row id) to `Invalid` in a single transaction. Outputs that are already
+    /// `Invalid` are left alone. Returns the number of outputs changed.
+    fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError>;
 }

@@ -23,14 +23,26 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::convert::TryFrom;
+use std::{convert::TryFrom, mem::size_of};
 
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use diesel::prelude::*;
 use minotari_wallet::{
+    legacy_transaction_protocol::ReceiverTransactionProtocol,
     output_manager_service::{
         RangeLimit,
         UtxoSelectionCriteria,
         error::OutputManagerStorageError,
+        invalid_mask_migration::{
+            INVALID_MASK_MIGRATION_KEY,
+            INVALID_MASK_PENDING_TXS_KEY,
+            InvalidMaskMigrationOutcome,
+            InvalidMaskMigrationSummary,
+            InvalidOutputTransactionSink,
+            InvalidOutputTxError,
+            InvalidOutputTxOutcome,
+            run_invalid_mask_migration,
+        },
         service::Balance,
         storage::{
             OutputSource,
@@ -41,21 +53,36 @@ use minotari_wallet::{
         },
     },
     schema::outputs,
+    storage::{
+        database::WalletDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::WalletDbConnection,
+    },
+    transaction_service::storage::{
+        database::TransactionDatabase,
+        models::{CompletedTransaction, InboundTransaction, TxCancellationReason, WalletTransaction},
+        sqlite_db::TransactionServiceSqliteDatabase,
+    },
 };
 use rand::Rng;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
-    transaction::TxId,
+    tari_address::TariAddress,
+    transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{MicroMinotari, key_manager::TariKeyId, transaction_components::OutputFeatures};
+use tari_transaction_components::{
+    MicroMinotari,
+    key_manager::TariKeyId,
+    transaction_components::{MemoField, OutputFeatures, Transaction, memo_field::TxType},
+};
 use tari_transaction_key_manager::legacy_key_manager::{
     LegacyTariKeyId,
     LegacyTransactionKeyManagerInterface,
     create_new_random_key_manager,
 };
-use tari_utilities::{ByteArray, hex::Hex};
+use tari_utilities::{ByteArray, SafePassword, hex::Hex};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
@@ -1197,4 +1224,830 @@ async fn test_migrate_legacy_output_key_ids_roundtrip() {
         unspent.iter().any(|o| o.hash == kmo2.hash),
         "clean output should still be loadable after migration"
     );
+}
+
+/// Status of the output with the given commitment, read straight from the table.
+fn stored_status(connection: &WalletDbConnection, kmo: &DbWalletOutput) -> OutputStatus {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let status: i32 = outputs::table
+        .select(outputs::status)
+        .filter(outputs::commitment.eq(&kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap();
+    OutputStatus::try_from(status).unwrap()
+}
+
+/// Add an output with the given value and mark it unspent.
+fn add_mask_test_output<KM: LegacyTransactionKeyManagerInterface>(
+    db: &OutputManagerDatabase<OutputManagerSqliteDatabase>,
+    key_manager: &KM,
+    value: u64,
+) -> DbWalletOutput {
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(value),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo.clone(), key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
+    kmo
+}
+
+/// Only outputs whose commitment does not open to their stored value and mask (or whose mask cannot be checked) are
+/// marked Invalid, the completion flag is set, and a second run is a no-op.
+#[tokio::test]
+async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let valid = add_mask_test_output(&db, &key_manager, 2000);
+    let tampered = add_mask_test_output(&db, &key_manager, 3000);
+    let bad_key = add_mask_test_output(&db, &key_manager, 4000);
+    let spent_tampered = add_mask_test_output(&db, &key_manager, 5000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        // Stored value no longer matches the commitment
+        for (kmo, status) in [
+            (&tampered, OutputStatus::Unspent),
+            (&spent_tampered, OutputStatus::Spent),
+        ] {
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set((outputs::value.eq(outputs::value + 1), outputs::status.eq(status as i32)))
+                .execute(&mut conn)
+                .unwrap();
+        }
+        // Commitment mask key id cannot be parsed, so the mask cannot be checked
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&bad_key.commitment.to_vec())))
+            .set(outputs::spending_key.eq("not a key id"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    assert!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap()
+            .is_none()
+    );
+
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 4,
+            mask_mismatches: 2,
+            verification_errors: 1,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 3,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
+            reconciliation_errors: 0,
+        })
+    );
+    assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &spent_tampered), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &bad_key), OutputStatus::Invalid);
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap(),
+        Some("3".to_string())
+    );
+
+    // A second run does not scan anything, even if a new bad output appears
+    let later_tampered = add_mask_test_output(&db, &key_manager, 6000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&later_tampered.commitment.to_vec())))
+            .set(outputs::value.eq(outputs::value + 1))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
+    assert_eq!(outcome, InvalidMaskMigrationOutcome::AlreadyCompleted);
+    assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &later_tampered), OutputStatus::Unspent);
+}
+
+/// The migration pages through the table; outputs beyond the first page are still checked, and an already-Invalid
+/// output is not rescanned.
+#[tokio::test]
+async fn test_invalid_mask_migration_pages_and_skips_invalid() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let already_invalid = add_mask_test_output(&db, &key_manager, 1000);
+    for _ in 0..3 {
+        add_mask_test_output(&db, &key_manager, 1000);
+    }
+    let last = add_mask_test_output(&db, &key_manager, 7000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&already_invalid.commitment.to_vec())))
+            .set(outputs::status.eq(OutputStatus::Invalid as i32))
+            .execute(&mut conn)
+            .unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&last.commitment.to_vec())))
+            .set(outputs::value.eq(outputs::value - 1))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    // Keyset paging only ever returns rows after the cursor and skips Invalid rows
+    let first_page = db.fetch_outputs_for_mask_verification(0, 2).unwrap();
+    assert_eq!(first_page.len(), 2);
+    let second_page = db.fetch_outputs_for_mask_verification(first_page[1].id, 100).unwrap();
+    assert_eq!(second_page.len(), 2);
+    assert!(second_page.iter().all(|r| r.id > first_page[1].id));
+
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 4,
+            mask_mismatches: 1,
+            verification_errors: 0,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 1,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
+            reconciliation_errors: 0,
+        })
+    );
+    assert_eq!(stored_status(&connection, &last), OutputStatus::Invalid);
+    assert_eq!(db.mark_outputs_invalid(vec![]).unwrap(), 0);
+}
+
+/// The guarded batch updates used by TXO validation leave a row that is currently Invalid alone unless it is listed
+/// as revivable, update every other listed row, and do not treat a skipped row as an error.
+#[tokio::test]
+async fn test_guarded_revival_updates_do_not_overwrite_unlisted_invalid_rows() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let set_status = |kmo: &DbWalletOutput, status: OutputStatus| {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+            .set(outputs::status.eq(status as i32))
+            .execute(&mut conn)
+            .unwrap();
+    };
+
+    // Received-output upsert
+    let invalid_unlisted = add_mask_test_output(&db, &key_manager, 1000);
+    let invalid_listed = add_mask_test_output(&db, &key_manager, 1100);
+    let unconfirmed = add_mask_test_output(&db, &key_manager, 1200);
+    set_status(&invalid_unlisted, OutputStatus::Invalid);
+    set_status(&invalid_listed, OutputStatus::Invalid);
+    set_status(&unconfirmed, OutputStatus::UnspentMinedUnconfirmed);
+    let update = |kmo: &DbWalletOutput| ReceivedOutputInfoForBatch {
+        commitment: kmo.commitment.clone(),
+        mined_height: 1,
+        mined_in_block: FixedHash::from([1u8; 32]),
+        confirmed: true,
+        mined_timestamp: 0,
+    };
+    db.set_received_outputs_mined_height_and_statuses_guarded(
+        vec![update(&invalid_unlisted), update(&invalid_listed), update(&unconfirmed)],
+        vec![invalid_listed.commitment.clone()],
+    )
+    .unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &invalid_listed), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &unconfirmed), OutputStatus::Unspent);
+
+    // Mark-unspent update
+    let invalid_unlisted = add_mask_test_output(&db, &key_manager, 2000);
+    let invalid_listed = add_mask_test_output(&db, &key_manager, 2100);
+    let spent = add_mask_test_output(&db, &key_manager, 2200);
+    set_status(&invalid_unlisted, OutputStatus::Invalid);
+    set_status(&invalid_listed, OutputStatus::Invalid);
+    set_status(&spent, OutputStatus::Spent);
+    db.mark_outputs_as_unspent_guarded(
+        vec![
+            (invalid_unlisted.hash, true),
+            (invalid_listed.hash, true),
+            (spent.hash, false),
+        ],
+        vec![invalid_listed.hash],
+    )
+    .unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &invalid_listed), OutputStatus::Unspent);
+    assert_eq!(
+        stored_status(&connection, &spent),
+        OutputStatus::UnspentMinedUnconfirmed
+    );
+
+    // The unguarded variants keep their behaviour: every listed row is updated
+    db.mark_outputs_as_unspent(vec![(invalid_unlisted.hash, true)]).unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Unspent);
+}
+
+/// An output whose mask cannot be checked is only marked Invalid if it is spendable or pending: a spent row with an
+/// unreadable key id is left as it is, since as an Invalid row it would be fetched by every TXO revalidation run.
+#[tokio::test]
+async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let spent_garbage = add_mask_test_output(&db, &key_manager, 1000);
+    let unspent_garbage = add_mask_test_output(&db, &key_manager, 1100);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        for (kmo, status) in [
+            (&spent_garbage, OutputStatus::Spent),
+            (&unspent_garbage, OutputStatus::Unspent),
+        ] {
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set((outputs::spending_key.eq("garbage"), outputs::status.eq(status as i32)))
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
+    let outcome = run_invalid_mask_migration(&wallet_db, None, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 2,
+            mask_mismatches: 0,
+            verification_errors: 2,
+            unverifiable_left_unchanged: 1,
+            marked_invalid: 1,
+            transactions_cancelled: 0,
+            transactions_not_reconciled: 0,
+            transactions_rejected_unverified: 0,
+            reconciliation_errors: 0,
+        })
+    );
+    assert_eq!(stored_status(&connection, &spent_garbage), OutputStatus::Spent);
+    assert_eq!(stored_status(&connection, &unspent_garbage), OutputStatus::Invalid);
+}
+
+/// Fetching invalid outputs for revalidation skips a row that cannot be decoded instead of failing, so one such row
+/// cannot stop every other Invalid output from being revalidated.
+#[tokio::test]
+async fn test_fetch_invalid_outputs_skips_undecodable_rows() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let good = add_mask_test_output(&db, &key_manager, 1000);
+    let garbage = add_mask_test_output(&db, &key_manager, 1100);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table)
+            .set(outputs::status.eq(OutputStatus::Invalid as i32))
+            .execute(&mut conn)
+            .unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&garbage.commitment.to_vec())))
+            .set(outputs::spending_key.eq("garbage"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let invalid = db
+        .fetch_invalid_outputs(chrono::Utc::now().timestamp() + 60, &key_manager)
+        .unwrap();
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0].commitment, good.commitment);
+}
+
+/// A mined timestamp that cannot be represented is stored as a real NULL (not the text 'NULL'), so the row still loads.
+#[tokio::test]
+async fn test_received_output_update_stores_null_for_unrepresentable_timestamp() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let kmo = add_mask_test_output(&db, &key_manager, 1000);
+
+    db.set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
+        commitment: kmo.commitment.clone(),
+        mined_height: 1,
+        mined_in_block: FixedHash::from([1u8; 32]),
+        confirmed: true,
+        // Far beyond the range chrono can represent
+        mined_timestamp: 1u64 << 62,
+    }])
+    .unwrap();
+
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let is_null: bool = outputs::table
+        .select(outputs::mined_timestamp.is_null())
+        .filter(outputs::commitment.eq(&kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap();
+    assert!(is_null, "mined_timestamp must be SQL NULL");
+    let loaded = db.fetch_by_commitment(kmo.commitment.clone(), &key_manager).unwrap();
+    assert_eq!(loaded.mined_height, Some(1));
+    assert_eq!(loaded.mined_timestamp, None);
+}
+
+/// Create a completed inbound transaction with the given id and status.
+fn completed_inbound_tx(tx_id: u64, status: LegacyTransactionStatus) -> CompletedTransaction {
+    completed_tx(tx_id, status, TransactionDirection::Inbound)
+}
+
+fn completed_tx(tx_id: u64, status: LegacyTransactionStatus, direction: TransactionDirection) -> CompletedTransaction {
+    CompletedTransaction::new(
+        tx_id.into(),
+        TariAddress::default(),
+        TariAddress::default(),
+        MicroMinotari::from(1000),
+        MicroMinotari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::default(),
+            PrivateKey::default(),
+        ),
+        status,
+        chrono::Utc::now(),
+        direction,
+        None,
+        None,
+        MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
+        0,
+    )
+    .unwrap()
+}
+
+fn set_received_in_tx(connection: &WalletDbConnection, kmo: &DbWalletOutput, tx_id: i64, status: OutputStatus) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+        .set((
+            outputs::received_in_tx_id.eq(Some(tx_id)),
+            outputs::status.eq(status as i32),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+}
+
+fn tamper_value(connection: &WalletDbConnection, kmo: &DbWalletOutput) {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+        .set(outputs::value.eq(outputs::value + 1))
+        .execute(&mut conn)
+        .unwrap();
+}
+
+/// The migration cancels the transaction each mask-mismatch output was received in (completed: rejected with reason
+/// InvalidEncryptedValue; pending inbound: cancelled), so the history matches what a fresh recovery would produce.
+/// Transactions of genuine and of merely unverifiable outputs are untouched, a missing transaction does not stop the
+/// migration, and a second run is a no-op.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_invalid_mask_migration_cancels_coupled_transactions() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    // tx 1: genuine output, completed
+    let genuine = add_mask_test_output(&db, &key_manager, 1000);
+    set_received_in_tx(&connection, &genuine, 1, OutputStatus::Unspent);
+    tx_db
+        .insert_completed_transaction(
+            1u64.into(),
+            completed_inbound_tx(1, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 2: tampered output, completed
+    let tampered_completed = add_mask_test_output(&db, &key_manager, 1100);
+    set_received_in_tx(&connection, &tampered_completed, 2, OutputStatus::Unspent);
+    tamper_value(&connection, &tampered_completed);
+    tx_db
+        .insert_completed_transaction(
+            2u64.into(),
+            completed_inbound_tx(2, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 3: tampered output, pending inbound
+    let tampered_pending = add_mask_test_output(&db, &key_manager, 1200);
+    set_received_in_tx(&connection, &tampered_pending, 3, OutputStatus::EncumberedToBeReceived);
+    tamper_value(&connection, &tampered_pending);
+    tx_db
+        .add_pending_inbound_transaction(
+            3u64.into(),
+            InboundTransaction::new(
+                3u64.into(),
+                TariAddress::default(),
+                MicroMinotari::from(1200),
+                ReceiverTransactionProtocol::new_placeholder(),
+                LegacyTransactionStatus::Pending,
+                MemoField::new_open_from_string("test", TxType::PaymentToOther).unwrap(),
+                chrono::Utc::now(),
+            ),
+        )
+        .unwrap();
+    // tx 4: unverifiable output (unreadable key id), completed; the output is invalidated but its tx is not touched
+    let unverifiable = add_mask_test_output(&db, &key_manager, 1300);
+    set_received_in_tx(&connection, &unverifiable, 4, OutputStatus::Unspent);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&unverifiable.commitment.to_vec())))
+            .set(outputs::spending_key.eq("garbage"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    tx_db
+        .insert_completed_transaction(
+            4u64.into(),
+            completed_inbound_tx(4, LegacyTransactionStatus::MinedConfirmed),
+        )
+        .unwrap();
+    // tx 99: tampered output whose transaction does not exist
+    let orphaned = add_mask_test_output(&db, &key_manager, 1400);
+    set_received_in_tx(&connection, &orphaned, 99, OutputStatus::Unspent);
+    tamper_value(&connection, &orphaned);
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 5,
+            mask_mismatches: 3,
+            verification_errors: 1,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 4,
+            transactions_cancelled: 2,
+            transactions_not_reconciled: 1,
+            transactions_rejected_unverified: 0,
+            reconciliation_errors: 0,
+        })
+    );
+    for kmo in [&tampered_completed, &tampered_pending, &unverifiable, &orphaned] {
+        assert_eq!(stored_status(&connection, kmo), OutputStatus::Invalid);
+    }
+    assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
+
+    let completed = |id: u64| tx_db.get_completed_transaction_cancelled_or_not(id.into()).unwrap();
+    assert_eq!(completed(1).cancelled, None);
+    assert_eq!(completed(1).status, LegacyTransactionStatus::MinedConfirmed);
+    assert_eq!(
+        completed(2).cancelled,
+        Some(TxCancellationReason::InvalidEncryptedValue)
+    );
+    assert_eq!(completed(2).status, LegacyTransactionStatus::Rejected);
+    assert_eq!(completed(4).cancelled, None);
+    assert_eq!(completed(4).status, LegacyTransactionStatus::MinedConfirmed);
+    match tx_db.get_any_transaction(3u64.into()).unwrap() {
+        Some(WalletTransaction::PendingInbound(tx)) => assert!(tx.cancelled),
+        other => panic!("expected pending inbound tx 3, got {other:?}"),
+    }
+
+    // Cancelling again is a no-op
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(2u64.into()).unwrap(),
+        InvalidOutputTxOutcome::AlreadyCancelled
+    );
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(3u64.into()).unwrap(),
+        InvalidOutputTxOutcome::AlreadyCancelled
+    );
+
+    // A second run does nothing
+    assert_eq!(
+        run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap(),
+        InvalidMaskMigrationOutcome::AlreadyCompleted
+    );
+    assert_eq!(completed(1).cancelled, None);
+    assert_eq!(completed(4).cancelled, None);
+}
+
+/// A sink that fails on some transactions (retryably or not) and delegates everything else.
+struct FailingSink<'a, T: InvalidOutputTransactionSink> {
+    inner: &'a T,
+    retryable_fail: TxId,
+    permanent_fail: TxId,
+}
+
+impl<T: InvalidOutputTransactionSink> InvalidOutputTransactionSink for FailingSink<'_, T> {
+    fn cancel_for_invalid_encrypted_value(&self, tx_id: TxId) -> Result<InvalidOutputTxOutcome, InvalidOutputTxError> {
+        if tx_id == self.retryable_fail || tx_id == self.permanent_fail {
+            return Err(InvalidOutputTxError {
+                retryable: tx_id == self.retryable_fail,
+                message: "simulated storage error".to_string(),
+            });
+        }
+        self.inner.cancel_for_invalid_encrypted_value(tx_id)
+    }
+}
+
+/// Transaction reconciliation never holds the outputs back: every mismatch output is marked Invalid and the flag is
+/// written even when cancelling a coupled transaction fails. A retryable failure is kept under the pending key and the
+/// next start retries only that transaction, without rescanning, then clears the key; a non-retryable failure is
+/// dropped.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_invalid_mask_migration_retries_after_reconciliation_error() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    let mut tampered = Vec::new();
+    for (tx_id, value) in [(1u64, 1000u64), (2, 1100), (3, 1200)] {
+        let kmo = add_mask_test_output(&db, &key_manager, value);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        tamper_value(&connection, &kmo);
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_inbound_tx(tx_id, LegacyTransactionStatus::MinedConfirmed),
+            )
+            .unwrap();
+        tampered.push(kmo);
+    }
+    let cancelled = |id: u64| {
+        tx_db
+            .get_completed_transaction_cancelled_or_not(id.into())
+            .unwrap()
+            .cancelled
+    };
+    let pending_key = || {
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap()
+    };
+
+    let failing = FailingSink {
+        inner: &tx_db,
+        retryable_fail: 2u64.into(),
+        permanent_fail: 3u64.into(),
+    };
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&failing), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Incomplete(InvalidMaskMigrationSummary {
+            scanned: 3,
+            mask_mismatches: 3,
+            verification_errors: 0,
+            unverifiable_left_unchanged: 0,
+            marked_invalid: 3,
+            transactions_cancelled: 1,
+            transactions_not_reconciled: 1,
+            transactions_rejected_unverified: 0,
+            reconciliation_errors: 1,
+        })
+    );
+    // Every mismatch output is Invalid, whatever happened to its transaction
+    for kmo in &tampered {
+        assert_eq!(stored_status(&connection, kmo), OutputStatus::Invalid);
+    }
+    assert_eq!(cancelled(1), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(cancelled(2), None);
+    assert_eq!(cancelled(3), None);
+    assert!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap()
+            .is_some(),
+        "the outputs are done, so the main flag is written"
+    );
+    // Only the retryable failure stays pending
+    assert_eq!(pending_key(), Some("2".to_string()));
+
+    // Next start, healthy sink: no rescan, only the pending transaction is retried, and the key is cleared
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            transactions_cancelled: 1,
+            ..Default::default()
+        })
+    );
+    assert_eq!(cancelled(2), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(cancelled(3), None, "a non-retryable failure is not retried");
+    assert_eq!(pending_key(), None);
+
+    // And after that the migration is simply done
+    assert_eq!(
+        run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap(),
+        InvalidMaskMigrationOutcome::AlreadyCompleted
+    );
+}
+
+/// The pending key lives in the app-writable client key/value store, so every id in it is re-verified against the
+/// outputs table before it is cancelled: ids with no received output that definitely fails the mask check (a genuine
+/// inbound transaction, an outbound one) are dropped without being cancelled, and the key is cleared. A legitimately
+/// pending id is still cancelled.
+#[tokio::test]
+async fn test_invalid_mask_migration_ignores_unverified_pending_tx_ids() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    // tx 10: genuine inbound; tx 20: outbound with a genuine change output; tx 30: legitimately pending (tampered)
+    for (tx_id, direction, tamper) in [
+        (10u64, TransactionDirection::Inbound, false),
+        (20, TransactionDirection::Outbound, false),
+        (30, TransactionDirection::Inbound, true),
+    ] {
+        let kmo = add_mask_test_output(&db, &key_manager, 1000 + tx_id);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        if tamper {
+            tamper_value(&connection, &kmo);
+            // Already marked by an earlier run
+            let mut conn = connection.get_pooled_connection().unwrap();
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set(outputs::status.eq(OutputStatus::Invalid as i32))
+                .execute(&mut conn)
+                .unwrap();
+        }
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_tx(tx_id, LegacyTransactionStatus::MinedConfirmed, direction),
+            )
+            .unwrap();
+    }
+    // A completed migration with injected pending ids (plus one with no outputs at all)
+    wallet_db
+        .set_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string(), "1".to_string())
+        .unwrap();
+    wallet_db
+        .set_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string(), "10,20,30,40".to_string())
+        .unwrap();
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            transactions_cancelled: 1,
+            transactions_rejected_unverified: 3,
+            ..Default::default()
+        })
+    );
+    let cancelled = |id: u64| {
+        tx_db
+            .get_completed_transaction_cancelled_or_not(id.into())
+            .unwrap()
+            .cancelled
+    };
+    assert_eq!(cancelled(10), None);
+    assert_eq!(cancelled(20), None);
+    assert_eq!(cancelled(30), Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap(),
+        None
+    );
+}
+
+/// A mismatched output whose received_in_tx_id points at an outbound transaction (a change output carries its
+/// payment's id) is still marked Invalid, but the outbound transaction is never cancelled: the sink refuses it, and it
+/// is counted and dropped rather than retried.
+#[tokio::test]
+async fn test_invalid_mask_migration_does_not_cancel_outbound_transactions() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    let change = add_mask_test_output(&db, &key_manager, 1000);
+    set_received_in_tx(&connection, &change, 5, OutputStatus::Unspent);
+    tamper_value(&connection, &change);
+    tx_db
+        .insert_completed_transaction(
+            5u64.into(),
+            completed_tx(
+                5,
+                LegacyTransactionStatus::MinedConfirmed,
+                TransactionDirection::Outbound,
+            ),
+        )
+        .unwrap();
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 1,
+            mask_mismatches: 1,
+            marked_invalid: 1,
+            transactions_rejected_unverified: 1,
+            ..Default::default()
+        })
+    );
+    assert_eq!(stored_status(&connection, &change), OutputStatus::Invalid);
+    let tx = tx_db.get_completed_transaction_cancelled_or_not(5u64.into()).unwrap();
+    assert_eq!(tx.cancelled, None);
+    assert_eq!(tx.status, LegacyTransactionStatus::MinedConfirmed);
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_PENDING_TXS_KEY.to_string())
+            .unwrap(),
+        None
+    );
+    // The sink itself refuses, so an id injected into the pending key cannot get it cancelled either
+    assert_eq!(
+        tx_db.cancel_for_invalid_encrypted_value(5u64.into()).unwrap(),
+        InvalidOutputTxOutcome::NotInbound("completed outbound transaction")
+    );
+}
+
+/// The direction of a faux record of a scanned output comes from the sender-controlled memo, so it is not trusted: a
+/// OneSidedConfirmed record marked Outbound and coupled to a mismatched output is still cancelled, while an
+/// interactively built MinedConfirmed Outbound transaction in the same position is not.
+#[tokio::test]
+async fn test_invalid_mask_migration_cancels_faux_records_whatever_their_direction() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    for (tx_id, status) in [
+        (7u64, LegacyTransactionStatus::OneSidedConfirmed),
+        (8, LegacyTransactionStatus::MinedConfirmed),
+    ] {
+        let kmo = add_mask_test_output(&db, &key_manager, 1000 + tx_id);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        tamper_value(&connection, &kmo);
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_tx(tx_id, status, TransactionDirection::Outbound),
+            )
+            .unwrap();
+    }
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 2,
+            mask_mismatches: 2,
+            marked_invalid: 2,
+            transactions_cancelled: 1,
+            transactions_rejected_unverified: 1,
+            ..Default::default()
+        })
+    );
+    let faux = tx_db.get_completed_transaction_cancelled_or_not(7u64.into()).unwrap();
+    assert_eq!(faux.cancelled, Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(faux.status, LegacyTransactionStatus::Rejected);
+    let interactive = tx_db.get_completed_transaction_cancelled_or_not(8u64.into()).unwrap();
+    assert_eq!(interactive.cancelled, None);
+    assert_eq!(interactive.status, LegacyTransactionStatus::MinedConfirmed);
 }

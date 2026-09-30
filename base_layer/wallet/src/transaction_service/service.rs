@@ -57,7 +57,6 @@ use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_max_size::MaxSizeString;
 use tari_script::{
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
@@ -70,7 +69,6 @@ use tari_script::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
@@ -100,12 +98,9 @@ use tari_transaction_components::{
         RecipientSpec,
     },
     transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
         EncryptedData,
         KernelFeatures,
         OutputFeatures,
-        TemplateType,
         Transaction,
         TransactionError,
         TransactionOutput,
@@ -1084,69 +1079,6 @@ where
                             sidechain_deployment_key,
                             selection_criteria,
                             max_epoch,
-                            fee_per_gram,
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
-                }
-                .await
-            },
-
-            TransactionServiceRequest::RegisterCodeTemplate {
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                fee_per_gram,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let payment_id = MemoField::new_open(
-                        format!("Template Registration: {template_name}").into_bytes(),
-                        TxType::CodeTemplateRegistration,
-                    )
-                    .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-                    let (tx_id, template_address) = self
-                        .register_code_template(
-                            fee_per_gram,
-                            template_name,
-                            template_version,
-                            template_type,
-                            build_info,
-                            binary_sha,
-                            binary_url,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
-                        tx_id,
-                        template_address,
-                    })
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let tx_id = self
-                        .submit_validator_eviction_proof(
-                            amount,
-                            proof,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
                             fee_per_gram,
                             payment_id,
                             transaction_broadcast_join_handles,
@@ -3489,160 +3421,6 @@ where
         Ok(tx_id)
     }
 
-    async fn submit_validator_eviction_proof(
-        &mut self,
-        amount: MicroMinotari,
-        eviction_proof: EvictionProof,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
-
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                amount,
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-
-        // Notify that the transaction was successfully resolved.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-        let all_outputs = transaction
-            .body
-            .outputs()
-            .iter()
-            .map(|o| o.hash())
-            .collect::<Vec<HashOutput>>();
-        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
-        let mut final_payment_id = payment_id.clone();
-        final_payment_id.set_fee(fee);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                self.resources.one_sided_tari_address.clone(),
-                amount,
-                fee,
-                transaction,
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Inbound,
-                None,
-                None,
-                final_payment_id,
-                vec![],
-                all_outputs,
-                vec![],
-                lock_height,
-            )?,
-        )
-        .await?;
-
-        Ok(tx_id)
-    }
-
-    async fn register_code_template(
-        &mut self,
-        fee_per_gram: MicroMinotari,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        payment_id: MemoField,
-
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        let author_key_id = TariKeyId::CodeTemplateAuthor;
-        let author_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&author_key_id)?;
-        let nonce = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
-        let mut template_registration = CodeTemplateRegistration {
-            author_public_key: author_key.clone(),
-            author_signature: CompressedSignature::default(),
-            template_name,
-            template_version,
-            template_type,
-            build_info,
-            binary_sha,
-            binary_url,
-        };
-
-        let signature_message = template_registration.create_signature_message(&nonce.pub_key);
-
-        let author_sig = self
-            .resources
-            .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key_id, &nonce.key_id, &signature_message)
-            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-
-        template_registration.author_signature = author_sig;
-
-        let output_features =
-            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                0.into(),
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-        let template_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type.is_template_registration())
-            .ok_or_else(|| {
-                TransactionServiceError::ServiceError(format!(
-                    "Transaction {tx_id} did not contain a template registration utxo"
-                ))
-            })?;
-        let template_address = template_output.hash();
-
-        self.submit_transaction_to_self(
-            transaction_broadcast_join_handles,
-            tx_id,
-            transaction,
-            fee,
-            0.into(),
-            payment_id,
-        )
-        .await?;
-        Ok((tx_id, template_address))
-    }
-
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -3957,9 +3735,13 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
+            self.resources.shutdown_signal.clone(),
         );
 
         let validation_in_progress = self.validation_in_progress.clone();
+        // The protocol holds the wallet database and does remote I/O: stop it on shutdown rather than let it run on
+        // after the wallet's shutdown drain has completed
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
 
@@ -3978,6 +3760,11 @@ where
                 tokio::pin!(exec_fut);
                 loop {
                     tokio::select! {
+                        biased;
+                        _ = shutdown.wait() => {
+                            debug!(target: LOG_TARGET, "Transaction Validation Protocol (Id: {id}) stopped by shutdown signal");
+                            return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::Shutdown));
+                        },
                         result = &mut exec_fut => {
                            return result;
                         },

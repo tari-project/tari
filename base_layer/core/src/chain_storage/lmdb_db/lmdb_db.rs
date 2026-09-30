@@ -132,7 +132,6 @@ use tari_common_types::{
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
-use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{BYTES_PER_MB, LMDBBuilder, LMDBConfig, LMDBStore, db};
 use tari_transaction_components::{
     MicroMinotari,
@@ -160,8 +159,6 @@ use tari_utilities::{
 use tokio::sync::watch;
 
 use super::{
-    cursors::KeyPrefixCursor,
-    lmdb::lmdb_get_prefix_cursor,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
     stats_collector::{DatabaseStats, LMDBStatsCollector, MigrationPhase},
@@ -180,7 +177,6 @@ use crate::{
         MmrTree,
         Optional,
         Reorg,
-        TemplateRegistrationEntry,
         ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
         db_transaction::{
@@ -299,6 +295,7 @@ const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_queue";
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
+/// Retired: code template registrations are no longer indexed. Only opened by the v9 migration, which drops it.
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA_V1: &str = "jmt_value_data";
@@ -342,7 +339,6 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_VALIDATOR_NODES,
         LMDB_DB_VALIDATOR_NODES_ACTIVATION,
         LMDB_DB_VALIDATOR_NODES_EXIT,
-        LMDB_DB_TEMPLATE_REGISTRATIONS,
         LMDB_DB_UTXO_SMT,
         LMDB_DB_JMT_VALUE_DATA_V2,
         LMDB_DB_JMT_NODE_DATA_V2,
@@ -351,8 +347,6 @@ pub fn get_all_database_names() -> Vec<&'static str> {
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
-/// Height(8), Hash(32)
-type CodeTemplateRegistrationKey = CompositeKey<40>;
 /// Core database creation logic shared between public functions.
 ///
 /// Exposed `pub(crate)` so tests can open an LMDB at a known path with the exact same
@@ -410,7 +404,6 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_ACTIVATION, flags | db::DUPSORT | db::DUPFIXED)
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
-        .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .add_database(LMDB_DB_UTXO_SMT, flags)
         .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags)
         .add_database(LMDB_DB_JMT_NODE_DATA_V2, flags)
@@ -877,8 +870,6 @@ pub struct LMDBDatabase {
     validator_nodes_activation_queue: DatabaseRef,
     /// Maps <VN Public Key, Height, Commitment> -> ValidatorNodeEntry
     validator_nodes_exit_queue: DatabaseRef,
-    /// Maps CodeTemplateRegistration <block_height, output hash> -> TemplateRegistration
-    template_registrations: DatabaseRef,
     /// Stores a cache of the sparse merkle tree on the latest mod 1000 height
     utxo_smt: DatabaseRef,
     jmt_value_data: DatabaseRef,
@@ -941,7 +932,6 @@ impl LMDBDatabase {
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_activation_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_ACTIVATION)?,
             validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
-            template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA_V2)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA_V2)?,
@@ -1230,7 +1220,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 34] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 33] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -1277,7 +1267,6 @@ impl LMDBDatabase {
                 &self.validator_nodes_activation_queue,
             ),
             (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
-            (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
             (LMDB_DB_JMT_VALUE_DATA_V2, &self.jmt_value_data),
             (LMDB_DB_JMT_NODE_DATA_V2, &self.jmt_node_data),
@@ -1853,23 +1842,8 @@ impl LMDBDatabase {
                         self.validator_node_store(txn)
                             .delete(sidechain_features.sidechain_public_key(), vn_reg.public_key())?;
                     },
-                    SideChainFeatureData::CodeTemplateRegistration(_) => {
-                        let key = CodeTemplateRegistrationKey::try_from_parts(&[
-                            height.to_be_bytes().as_slice(),
-                            output_hash.as_slice(),
-                        ])?;
-                        lmdb_delete(txn, &self.template_registrations, &key, "template_registrations")?;
-                    },
-                    SideChainFeatureData::ConfidentialOutput(_) => {
+                    SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
                         // Nothing to do
-                    },
-                    SideChainFeatureData::EvictionProof(evict) => {
-                        let next_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
-                        self.validator_node_store(txn).undo_exit(
-                            sidechain_features.sidechain_public_key(),
-                            next_epoch,
-                            evict.node_to_evict(),
-                        )?;
                     },
                     SideChainFeatureData::ValidatorNodeExit(vn_exit) => {
                         // The exit must be on or after the next epoch
@@ -2358,36 +2332,8 @@ impl LMDBDatabase {
                     vn_reg,
                 )?;
             },
-            SideChainFeatureData::CodeTemplateRegistration(template_reg) => {
-                let output_hash = output.hash();
-                let record = TemplateRegistrationEntry {
-                    registration_data: template_reg.clone(),
-                    output_hash,
-                    block_height: header.height,
-                    block_hash: header.hash(),
-                };
-
-                self.insert_template_registration(txn, &record)?;
-            },
-            SideChainFeatureData::ConfidentialOutput(_) => {
+            SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
                 // Nothing to do
-            },
-            SideChainFeatureData::EvictionProof(proof) => {
-                let store = self.validator_node_store(txn);
-                let evict_node = proof.node_to_evict();
-                let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants
-                    .block_height_to_epoch(header.height)
-                    .saturating_add(VnEpoch(1));
-                let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
-                info!(
-                    target: LOG_TARGET,
-                    "Evicting ValidatorNode in {}: public_key: {}, sidechain_public_key: {:?}",
-                    next_epoch,
-                    evict_node,
-                    sidechain_pk.map(|pk| pk.to_hex()),
-                );
-                store.exit(sidechain_pk, evict_node, next_epoch)?;
             },
             SideChainFeatureData::ValidatorNodeExit(exit) => {
                 let store = self.validator_node_store(txn);
@@ -2898,24 +2844,6 @@ impl LMDBDatabase {
         debug!(target: LOG_TARGET, "Cleaned out {num_deleted} stale bad blocks");
 
         Ok(())
-    }
-
-    fn insert_template_registration(
-        &self,
-        txn: &WriteTransaction<'_>,
-        template_registration: &TemplateRegistrationEntry,
-    ) -> Result<(), ChainStorageError> {
-        let key = CodeTemplateRegistrationKey::try_from_parts(&[
-            template_registration.block_height.to_le_bytes().as_slice(),
-            template_registration.output_hash.as_slice(),
-        ])?;
-        lmdb_insert(
-            txn,
-            &self.template_registrations,
-            &key,
-            template_registration,
-            "template_registrations",
-        )
     }
 
     /// Fetches every output indexed under `output_hash`. A hash may map to multiple indexes (e.g. the
@@ -4462,28 +4390,6 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(is_active)
     }
 
-    fn validator_node_is_active_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        validator_node_pk: &CompressedPublicKey,
-        _shard_group: ShardGroup,
-    ) -> Result<bool, ChainStorageError> {
-        // TODO: account for shard group
-        self.validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
-    }
-
-    fn validator_nodes_count_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        _shard_group: ShardGroup,
-    ) -> Result<usize, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        let vn_store = self.validator_node_store(&txn);
-        vn_store.count_active_validators(sidechain_pk, end_epoch)
-    }
-
     fn get_validator_node(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
@@ -4533,24 +4439,6 @@ impl BlockchainBackend for LMDBDatabase {
             original_registration: reg.clone(),
             minimum_value_promise: vn.minimum_value_promise,
         }))
-    }
-
-    fn fetch_template_registrations(
-        &self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        let mut result = vec![];
-        for _ in start_height..=end_height {
-            let height = start_height.to_le_bytes();
-            let mut cursor: KeyPrefixCursor<TemplateRegistrationEntry> =
-                lmdb_get_prefix_cursor(&txn, &self.template_registrations, &height)?;
-            while let Some((_, val)) = cursor.next()? {
-                result.push(val);
-            }
-        }
-        Ok(result)
     }
 
     fn set_stats_total_height(&self, total: u64) {
@@ -5104,7 +4992,7 @@ pub(crate) fn rewind_migration_version_for_test(db: &LMDBDatabase, version: u64)
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let _unused = verify_metadata_keys(db);
 
-    const MIGRATION_VERSION: u64 = 9;
+    const MIGRATION_VERSION: u64 = 10;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -5493,9 +5381,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // gains a strict mode at and above the activation height: full header validation, and a rewind if a block
         // no longer validates under the post-fork rules.
         //
-        // Deliberately not wrapped in `continue` on the skip path, unlike the earlier migrations: this is the last
-        // block in the loop, so skipping the version bump below would leave the database at version 8 and re-run
-        // this block on the next startup.
+        // Deliberately not wrapped in `continue` on the skip path, unlike the earlier migrations: skipping the version
+        // bump below would leave the database at version 8 and re-run this block on the next startup.
         if migrate_from_version == 8 {
             let activation = ConsensusConstants::bipartite_cuckaroo_activation_height(
                 db.consensus_manager.consensus_constants_vec(),
@@ -5634,6 +5521,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
         }
 
+        // MIGRATION: Drop the retired `template_registrations` table. Code template registrations are no longer
+        // indexed, and new databases never create the table.
+        if migrate_from_version == 9 {
+            drop_template_registrations_db(db)?;
+        }
+
         // Let's update the migration version
         {
             let migrated_to_version = migrate_from_version.saturating_add(1);
@@ -5652,6 +5545,23 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         }
     }
     Ok(())
+}
+
+fn drop_template_registrations_db(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
+    let name = LMDB_DB_TEMPLATE_REGISTRATIONS;
+    match Database::open(db.env.clone(), Some(name), &DatabaseOptions::defaults()) {
+        Ok(legacy) => {
+            legacy.delete().map_err(|e| {
+                ChainStorageError::AccessError(format!("Failed to delete legacy database `{name}`: {e}"))
+            })?;
+            info!(target: LOG_TARGET, "[MIGRATIONS] v9: Dropped legacy database `{name}`");
+            Ok(())
+        },
+        Err(LmdbError::Code(code)) if code == NOTFOUND => Ok(()),
+        Err(e) => Err(ChainStorageError::AccessError(format!(
+            "Could not open legacy database `{name}`: {e}"
+        ))),
+    }
 }
 
 /// Rebuild the JMT from the canonical UTXO set under the new v2 layout and drop the legacy
@@ -6454,5 +6364,55 @@ fn summarize_value(v: &MetadataValue) -> String {
         },
         MetadataValue::JMTVersion(v) => format!("{v}"),
         MetadataValue::BurnCommitmentRebuildStatus(s) => format!("{s:?}"),
+    }
+}
+
+#[cfg(test)]
+mod template_registrations_migration_test {
+    use lmdb_zero::put;
+
+    use super::*;
+    use crate::test_helpers::{blockchain::TempDatabase, create_consensus_rules};
+
+    fn legacy_table_exists(db: &LMDBDatabase) -> bool {
+        match Database::open(
+            db.env.clone(),
+            Some(LMDB_DB_TEMPLATE_REGISTRATIONS),
+            &DatabaseOptions::defaults(),
+        ) {
+            Ok(_) => true,
+            Err(LmdbError::Code(code)) if code == NOTFOUND => false,
+            Err(e) => panic!("Could not open `{LMDB_DB_TEMPLATE_REGISTRATIONS}`: {e}"),
+        }
+    }
+
+    #[test]
+    fn v9_migration_drops_the_template_registrations_table() {
+        let path = tari_test_utils::paths::create_temporary_data_path();
+        {
+            let mut temp = TempDatabase::from_path_with_rules(&path, create_consensus_rules());
+            temp.disable_delete_on_drop();
+            let db = temp.db();
+            assert!(!legacy_table_exists(db), "a new database must not create the table");
+
+            // Put the database back to how a node running the previous release left it
+            let legacy = Database::open(
+                db.env.clone(),
+                Some(LMDB_DB_TEMPLATE_REGISTRATIONS),
+                &DatabaseOptions::new(db::CREATE | db::DUPSORT),
+            )
+            .unwrap();
+            let txn = db.write_transaction().unwrap();
+            txn.access()
+                .put(&legacy, b"key", b"value", put::Flags::empty())
+                .unwrap();
+            txn.commit().unwrap();
+            drop(legacy);
+            assert!(legacy_table_exists(db));
+            rewind_migration_version_for_test(db, 9).unwrap();
+        }
+
+        let temp = TempDatabase::from_path_with_rules(&path, create_consensus_rules());
+        assert!(!legacy_table_exists(temp.db()));
     }
 }

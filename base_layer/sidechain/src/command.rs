@@ -6,32 +6,28 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
 use tari_hashing::layer2::command_hasher;
 
-use crate::{eviction_proof::EvictNodeAtom, serde::hex_or_bytes};
+use crate::serde::hex_or_bytes;
 
 pub trait ToCommand {
     fn to_command(&self) -> Command;
 }
 
+/// A command's hash is its Borsh encoding, which the sidechain commits to in its command merkle root, so each
+/// variant's discriminant is load-bearing. 6 was the retired `EvictNode` command and must not be reused.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
+#[repr(u8)]
 pub enum Command {
-    LocalOnly,
-    LocalPrepare,
-    LocalAccept,
-    AllAccept,
-    SomeAccept,
-    ForeignProposal,
-    EvictNode(EvictNodeAtom),
-    EndEpoch(EndEpochAtom),
+    LocalOnly = 0,
+    LocalPrepare = 1,
+    LocalAccept = 2,
+    AllAccept = 3,
+    SomeAccept = 4,
+    ForeignProposal = 5,
+    EndEpoch(EndEpochAtom) = 7,
 }
 
 impl Command {
-    pub fn evict_node(&self) -> Option<&EvictNodeAtom> {
-        match self {
-            Self::EvictNode(evict_node_atom) => Some(evict_node_atom),
-            _ => None,
-        }
-    }
-
     pub fn end_epoch(&self) -> Option<&EndEpochAtom> {
         match self {
             Self::EndEpoch(end_epoch_atom) => Some(end_epoch_atom),
@@ -72,5 +68,27 @@ impl EndEpochAtom {
 impl ToCommand for EndEpochAtom {
     fn to_command(&self) -> Command {
         Command::EndEpoch(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discriminants_are_stable() {
+        let cases = [
+            (Command::LocalOnly, 0u8),
+            (Command::LocalPrepare, 1),
+            (Command::LocalAccept, 2),
+            (Command::AllAccept, 3),
+            (Command::SomeAccept, 4),
+            (Command::ForeignProposal, 5),
+            (Command::EndEpoch(EndEpochAtom::new(FixedHash::zero())), 7),
+        ];
+        for (command, discriminant) in cases {
+            let encoded = borsh::to_vec(&command).unwrap();
+            assert_eq!(encoded.first(), Some(&discriminant), "{command:?}");
+        }
     }
 }

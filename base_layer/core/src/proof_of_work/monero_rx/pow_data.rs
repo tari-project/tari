@@ -110,6 +110,9 @@ use crate::{consensus::BaseNodeConsensusManager, proof_of_work::monero_rx::helpe
 /// The bound is [`MAX_MONERO_COINBASE_PREFIX_SIZE`], derived in `consensus_constants.rs` from what a Monero
 /// coinbase prefix can actually be. It is a type-level invariant rather than a runtime check so it holds for every
 /// value that exists, including ones decoded straight from a peer.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub type CoinbaseTxPrefix = MaxSizeBytes<MAX_MONERO_COINBASE_PREFIX_SIZE>;
 
 /// Which of the two coinbase wire formats a [`MoneroPowData`] uses (GHSA-3qmx-q9pv-f3m4).

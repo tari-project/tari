@@ -122,6 +122,26 @@ pub enum WriteOperation {
     Remove(DbKey),
 }
 
+/// The columns of a stored output needed to re-check that its commitment opens to its stored value and commitment
+/// mask key. Values are raw column values; interpretation is left to the caller.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputMaskVerificationRow {
+    /// Primary key, used as the keyset pagination cursor
+    pub id: i32,
+    /// Compressed commitment bytes
+    pub commitment: Vec<u8>,
+    /// Commitment mask key id, as stored (current or legacy `TariKeyId` string)
+    pub spending_key: String,
+    /// Stored value in MicroMinotari
+    pub value: i64,
+    /// Raw `OutputStatus` value
+    pub status: i32,
+    /// The transaction the output was received in, if any
+    pub received_in_tx_id: Option<TxId>,
+    /// The transaction the output was spent in, if any
+    pub spent_in_tx_id: Option<TxId>,
+}
+
 /// This structure holds an inner type that implements the `OutputManagerBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
@@ -417,10 +437,6 @@ where T: OutputManagerBackend + 'static
         self.db.update_output_metadata_signature(&output)
     }
 
-    pub fn revalidate_output(&self, commitment: CompressedCommitment) -> Result<(), OutputManagerStorageError> {
-        self.db.revalidate_unspent_output(&commitment)
-    }
-
     pub fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         self.db.reinstate_cancelled_inbound_output(tx_id)
     }
@@ -513,6 +529,25 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    /// See `OutputManagerBackend::set_received_outputs_mined_height_and_statuses_guarded`.
+    pub fn set_received_outputs_mined_height_and_statuses_guarded(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .set_received_outputs_mined_height_and_statuses_guarded(updates, revivable)
+    }
+
+    /// See `OutputManagerBackend::mark_outputs_as_unspent_guarded`.
+    pub fn mark_outputs_as_unspent_guarded(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db.mark_outputs_as_unspent_guarded(hashes, revivable)
+    }
+
     pub fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.set_outputs_to_unmined_and_invalid(hashes)?;
@@ -587,6 +622,28 @@ where T: OutputManagerBackend + 'static
         batch_size: i64,
     ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
         self.db.fetch_outputs_with_legacy_key_ids(last_id, batch_size)
+    }
+
+    /// See `OutputManagerBackend::fetch_outputs_for_mask_verification`.
+    pub fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        self.db.fetch_outputs_for_mask_verification(last_id, batch_size)
+    }
+
+    /// See `OutputManagerBackend::fetch_outputs_for_mask_verification_by_received_tx`.
+    pub fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        self.db.fetch_outputs_for_mask_verification_by_received_tx(tx_id)
+    }
+
+    /// See `OutputManagerBackend::mark_outputs_invalid`.
+    pub fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
+        self.db.mark_outputs_invalid(output_ids)
     }
 
     /// See `OutputManagerBackend::update_output_key_ids`.

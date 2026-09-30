@@ -310,7 +310,18 @@ where KeyManagerInterface: LegacyTransactionKeyManagerInterface
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    self.check_connectivity().await;
+                    // The connectivity check reaches the base node (`get_tip_info`), bounded only by the HTTP
+                    // client's timeouts. Race it against shutdown so this task releases its shutdown signal, and
+                    // with it the wallet's shutdown drain, immediately rather than when the request completes.
+                    let mut check_shutdown = shutdown_signal.clone();
+                    tokio::select! {
+                        biased;
+                        _ = check_shutdown.wait() => {
+                            info!(target: LOG_TARGET, "Connectivity monitor shutting down during a connectivity check");
+                            break;
+                        },
+                        _ = self.check_connectivity() => {},
+                    }
                 },
                 _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Connectivity monitor shutting down");

@@ -7,7 +7,6 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
-use tari_sidechain::ShardGroup;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 use super::{
@@ -16,7 +15,6 @@ use super::{
     BurnCommitmentRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
-    TemplateRegistrationEntry,
     ValidatorNodeRegistrationInfo,
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
 };
@@ -318,31 +316,12 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError>;
 
-    fn validator_node_is_active_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        epoch: VnEpoch,
-        validator_node_pk: &CompressedPublicKey,
-        shard_group: ShardGroup,
-    ) -> Result<bool, ChainStorageError>;
-    fn validator_nodes_count_for_shard_group(
-        &self,
-        sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        shard_group: ShardGroup,
-    ) -> Result<usize, ChainStorageError>;
     /// Returns the validator node for the given sidechain and public key if it exists
     fn get_validator_node(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
         public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError>;
-    /// Returns all template registrations within (inclusive) the given height range.
-    fn fetch_template_registrations(
-        &self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
 
     /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError>;

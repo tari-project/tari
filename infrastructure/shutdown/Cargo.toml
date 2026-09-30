@@ -10,7 +10,7 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-futures = "^0.3"
+futures = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }

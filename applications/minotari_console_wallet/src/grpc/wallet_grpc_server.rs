@@ -52,8 +52,6 @@ use minotari_app_grpc::tari_rpc::{
     CoinSplitResponse,
     CreateBurnTransactionRequest,
     CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
     DbWalletOutputInfo,
     DebugTransactionRequest,
     DebugTransactionResponse,
@@ -117,8 +115,6 @@ use minotari_app_grpc::tari_rpc::{
     SendShaAtomicSwapResponse,
     SignMessageRequest,
     SignMessageResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
     SubmitValidatorNodeExitRequest,
     SubmitValidatorNodeExitResponse,
     TransactionDirection,
@@ -2536,64 +2532,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
     }
 
-    async fn create_template_registration(
-        &self,
-        request: Request<CreateTemplateRegistrationRequest>,
-    ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut transaction_service = self.wallet.transaction_service.clone();
-        let message = request.into_inner();
-
-        let fee_per_gram = message.fee_per_gram.into();
-
-        let (tx_id, template_address) = transaction_service
-            .register_code_template(
-                message
-                    .template_name
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
-                message
-                    .template_version
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
-                if let Some(tt) = message.template_type {
-                    tt.try_into()
-                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("template type is missing"));
-                },
-                if let Some(bi) = message.build_info {
-                    bi.try_into()
-                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("build info is missing"));
-                },
-                message
-                    .binary_sha
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
-                message
-                    .binary_url
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
-                fee_per_gram,
-                if message.sidechain_deployment_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
-                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
-                    )
-                },
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(CreateTemplateRegistrationResponse {
-            tx_id: tx_id.as_u64(),
-            template_address: template_address.to_vec(),
-        }))
-    }
-
     async fn register_validator_node(
         &self,
         request: Request<RegisterValidatorNodeRequest>,
@@ -2710,53 +2648,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
-            },
-        };
-        Ok(Response::new(response))
-    }
-
-    async fn submit_validator_eviction_proof(
-        &self,
-        request: Request<SubmitValidatorEvictionProofRequest>,
-    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
-        let request = request.into_inner();
-        let mut transaction_service = self.get_transaction_service();
-
-        let sidechain_key = Some(request.sidechain_deployment_key)
-            .filter(|k| !k.is_empty())
-            .map(|k| PrivateKey::from_canonical_bytes(&k))
-            .transpose()
-            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
-
-        let proof = request
-            .proof
-            .map(TryInto::try_into)
-            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Failed to convert proof: {e}");
-                Status::invalid_argument(format!("Invalid proof: {e}"))
-            })?;
-
-        let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
-            Status::internal("failed to fetch consensus constants")
-        })?;
-
-        let response = match transaction_service
-            .submit_validator_eviction_proof(
-                constants.validator_node_registration_min_deposit_amount(),
-                proof,
-                request.fee_per_gram.into(),
-                sidechain_key,
-                MemoField::new_open(request.message.into_bytes(), TxType::PaymentToSelf)
-                    .map_err(|e| Status::internal(e.to_string()))?,
-            )
-            .await
-        {
-            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {e}");
-                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))

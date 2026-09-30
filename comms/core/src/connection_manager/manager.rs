@@ -24,7 +24,10 @@ use std::{fmt, sync::Arc};
 
 use log::*;
 use multiaddr::Multiaddr;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::{
+    ShutdownSignal,
+    oneshot_trigger::{OneshotSignal, OneshotTrigger},
+};
 use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -208,7 +211,8 @@ pub(crate) struct ConnectionManager<TTransport, TBackoff> {
     listener_info: Option<ListenerInfo>,
     listening_notifiers: Vec<oneshot::Sender<ListenerInfo>>,
     connection_manager_events_tx: broadcast::Sender<Arc<ConnectionManagerEvent>>,
-    complete_trigger: Shutdown,
+    /// Never broadcast: dropped when this service exits, which resolves `complete_signal` with `None`.
+    complete_trigger: OneshotTrigger<()>,
 }
 
 impl<TTransport, TBackoff> ConnectionManager<TTransport, TBackoff>
@@ -289,7 +293,7 @@ where
             aux_listener,
             listening_notifiers: Vec::new(),
             connection_manager_events_tx,
-            complete_trigger: Shutdown::new(),
+            complete_trigger: OneshotTrigger::new(),
         }
     }
 
@@ -298,7 +302,7 @@ where
         self
     }
 
-    pub fn complete_signal(&self) -> ShutdownSignal {
+    pub fn complete_signal(&self) -> OneshotSignal<()> {
         self.complete_trigger.to_signal()
     }
 

@@ -58,12 +58,30 @@ macro_rules! script {
 }
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
-/// The maximum length of a serialised script accepted by [TariScript::from_bytes]
+/// The maximum length of a serialised script accepted by [TariScript::from_bytes].
+///
+/// This is a stand-alone consensus rule applied on every decode path: [`TariScript::from_bytes`] rejects a longer
+/// script, and it is the decoder used by the protobuf, serde and database paths, while the borsh decoder
+/// (`BorshDeserialize for TariScript`) rejects a longer length prefix before reading the body. A script longer than
+/// this can therefore never be decoded by a node, whatever the network's consensus constants say, so changing it is
+/// a flag-day (hard) fork.
+///
+/// It must stay `>=` every network's `max_script_byte_size` validation rule, so that every script that rule accepts
+/// can be decoded; lowering it below that would silently make the decode-time limit the binding one.
 pub const MAX_SCRIPT_BYTES: usize = 4096;
-/// The maximum number of opcodes in a script
+
+/// The maximum number of opcodes in a script, the bound of [`ScriptOpcodes`].
+///
+/// Like [`MAX_SCRIPT_BYTES`] this is applied by every decoder, since they all go through
+/// [`TariScript::from_bytes`] or [`TariScript::new`]. The smallest opcode encodes to a single byte, so a script of
+/// `max_script_byte_size` bytes could hold more opcodes than this; the opcode cap is therefore the binding limit on
+/// short-opcode scripts and is itself a consensus rule. Changing it is a flag-day (hard) fork.
 pub const MAX_SCRIPT_OPCODES: usize = 128;
 
-/// The sized vector of opcodes that make up a script
+/// The sized vector of opcodes that make up a script, at most [`MAX_SCRIPT_OPCODES`] opcodes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub type ScriptOpcodes = MaxSizeVec<Opcode, MAX_SCRIPT_OPCODES>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,7 +205,7 @@ impl TariScript {
         // Local execution state
         let mut state = ExecutionState::default();
 
-        for opcode in self.script.iter() {
+        for opcode in &self.script {
             if self.should_execute(opcode, &state)? {
                 self.execute_opcode(opcode, &mut stack, context, &mut state)?
             } else {
@@ -771,6 +789,19 @@ impl TariScript {
     }
 }
 
+// `TariScript` deliberately does not implement `Iterator`: `next()` would destructively pop opcodes off the front
+// of the script, so iterating a script would silently change it. Iterate through `IntoIterator` instead.
+
+impl IntoIterator for TariScript {
+    type IntoIter = std::vec::IntoIter<Opcode>;
+    type Item = Opcode;
+
+    /// Consumes the script, yielding its opcodes in order.
+    fn into_iter(self) -> Self::IntoIter {
+        self.script.into_iter()
+    }
+}
+
 impl<'a> IntoIterator for &'a TariScript {
     type IntoIter = std::slice::Iter<'a, Opcode>;
     type Item = &'a Opcode;
@@ -870,6 +901,26 @@ mod test {
 
     fn context_with_height(height: u64) -> ScriptContext {
         ScriptContext::new(height, &HashValue::default(), &CompressedPedersenCommitment::default())
+    }
+
+    #[test]
+    fn owned_and_borrowed_iteration_yield_all_opcodes_in_order() {
+        use crate::Opcode;
+        let script = script!(Nop PushZero PushOne).unwrap();
+        let expected = vec![Opcode::Nop, Opcode::PushZero, Opcode::PushOne];
+
+        // Borrowed iteration does not consume or modify the script
+        let borrowed = (&script).into_iter().cloned().collect::<Vec<_>>();
+        assert_eq!(borrowed, expected);
+        let mut count = 0;
+        for _ in &script {
+            count += 1;
+        }
+        assert_eq!(count, 3);
+        assert_eq!(script, script!(Nop PushZero PushOne).unwrap());
+
+        let owned = script.into_iter().collect::<Vec<_>>();
+        assert_eq!(owned, expected);
     }
 
     #[test]

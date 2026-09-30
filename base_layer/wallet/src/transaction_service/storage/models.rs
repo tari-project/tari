@@ -804,6 +804,9 @@ pub enum TxCancellationReason {
     Oversized,          // 7
     FeeTooLow,          // 8
     AlreadyMined,       // 9
+    /// An output of the transaction does not open to the value its encrypted data claims (its commitment does not
+    /// verify against the stored value and mask); a fresh recovery would never create this transaction
+    InvalidEncryptedValue, // 10
 }
 
 impl TryFrom<u32> for TxCancellationReason {
@@ -819,6 +822,9 @@ impl TryFrom<u32> for TxCancellationReason {
             5 => Ok(TxCancellationReason::TimeLocked),
             6 => Ok(TxCancellationReason::InvalidTransaction),
             7 => Ok(TxCancellationReason::Oversized),
+            8 => Ok(TxCancellationReason::FeeTooLow),
+            9 => Ok(TxCancellationReason::AlreadyMined),
+            10 => Ok(TxCancellationReason::InvalidEncryptedValue),
             code => Err(TransactionConversionError { code: code as i32 }),
         }
     }
@@ -839,6 +845,7 @@ impl Display for TxCancellationReason {
             Oversized => "Oversized",
             FeeTooLow => "Fee Too Low",
             AlreadyMined => "Already Mined",
+            InvalidEncryptedValue => "Invalid Encrypted Value",
         };
         fmt.write_str(response)
     }
@@ -868,6 +875,31 @@ mod test {
     };
 
     use super::*;
+
+    #[test]
+    fn tx_cancellation_reason_round_trips_through_u32() {
+        for reason in [
+            TxCancellationReason::Unknown,
+            TxCancellationReason::UserCancelled,
+            TxCancellationReason::Timeout,
+            TxCancellationReason::DoubleSpend,
+            TxCancellationReason::Orphan,
+            TxCancellationReason::TimeLocked,
+            TxCancellationReason::InvalidTransaction,
+            TxCancellationReason::Oversized,
+            TxCancellationReason::FeeTooLow,
+            TxCancellationReason::AlreadyMined,
+            TxCancellationReason::InvalidEncryptedValue,
+        ] {
+            assert_eq!(TxCancellationReason::try_from(reason as u32).unwrap(), reason);
+        }
+        assert_eq!(TxCancellationReason::InvalidEncryptedValue as u32, 10);
+        assert_eq!(
+            TxCancellationReason::InvalidEncryptedValue.to_string(),
+            "Invalid Encrypted Value"
+        );
+        assert!(TxCancellationReason::try_from(11).is_err());
+    }
 
     fn create_test_completed_transaction(num_outputs: usize) -> CompletedTransaction {
         // Create minimal test outputs with dummy data

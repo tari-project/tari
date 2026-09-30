@@ -39,7 +39,11 @@ mod output_set;
 mod serde;
 mod token;
 
+#[cfg(test)]
+pub(crate) use arguments::MAX_BYTES_ARG_SIZE;
 pub use covenant::Covenant;
+#[cfg(test)]
+pub(crate) use covenant::{MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS};
 pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]

@@ -24,21 +24,28 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
-    cmp,
     convert::TryFrom,
-    fmt::Display,
+    fmt::{self, Display},
     ops::{Deref, DerefMut},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+};
 use tari_utilities::{
     ByteArray,
     ByteArrayError,
     hex::{HexError, from_hex, to_hex},
 };
 
-use crate::checked_de::{read_bytes, read_checked_len};
+use crate::{
+    bounded_serde::{Field, FieldSeed, visit_bounded_seq},
+    checked_de::{read_bytes, read_checked_len},
+};
 
 /// A byte vector that can be at most `MAX` bytes long.
 ///
@@ -50,19 +57,106 @@ pub struct MaxSizeBytes<const MAX: usize> {
     inner: Vec<u8>,
 }
 
-/// Mirror of [`MaxSizeBytes`] used only to decode the wire format before the bound is checked.
-/// It must keep the exact same (serde) shape as `MaxSizeBytes` so that the serialized
-/// representation is unchanged.
-#[derive(Deserialize)]
-#[serde(rename = "MaxSizeBytes")]
-struct MaxSizeBytesShadow {
-    inner: Vec<u8>,
-}
+/// The serde shape of [`MaxSizeBytes`], which must match what `#[derive(Serialize)]` produces.
+const SERDE_NAME: &str = "MaxSizeBytes";
+const SERDE_VALUE_FIELD: &str = "inner";
+const SERDE_FIELDS: &[&str] = &[SERDE_VALUE_FIELD];
 
 impl<'de, const MAX: usize> Deserialize<'de> for MaxSizeBytes<MAX> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let shadow = MaxSizeBytesShadow::deserialize(deserializer)?;
-        Self::try_from(shadow.inner).map_err(serde::de::Error::custom)
+        // The bound is checked while the bytes are decoded, so an oversized payload is rejected at the `MAX + 1`-th
+        // byte (or up front, if the format provides the length) rather than being decoded in full first.
+        deserializer.deserialize_struct(SERDE_NAME, SERDE_FIELDS, MaxSizeBytesVisitor::<MAX>)
+    }
+}
+
+struct MaxSizeBytesVisitor<const MAX: usize>;
+
+impl<'de, const MAX: usize> Visitor<'de> for MaxSizeBytesVisitor<MAX> {
+    type Value = MaxSizeBytes<MAX>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("struct MaxSizeBytes")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        let inner = seq
+            .next_element_seed(BoundedBytesSeed::<MAX>)?
+            .ok_or_else(|| de::Error::invalid_length(0, &"struct MaxSizeBytes with 1 element"))?;
+        Ok(MaxSizeBytes { inner })
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut inner = None;
+        while let Some(field) = map.next_key_seed(FieldSeed {
+            value: SERDE_VALUE_FIELD,
+            marker: None,
+        })? {
+            match field {
+                Field::Value => {
+                    if inner.is_some() {
+                        return Err(de::Error::duplicate_field(SERDE_VALUE_FIELD));
+                    }
+                    inner = Some(map.next_value_seed(BoundedBytesSeed::<MAX>)?);
+                },
+                Field::Marker | Field::Ignore => {
+                    map.next_value::<de::IgnoredAny>()?;
+                },
+            }
+        }
+        let inner = inner.ok_or_else(|| de::Error::missing_field(SERDE_VALUE_FIELD))?;
+        Ok(MaxSizeBytes { inner })
+    }
+}
+
+/// Decodes the `inner` field as at most `MAX` bytes.
+///
+/// The field is serialized as a sequence of `u8` (that is what the derived `Serialize` of a `Vec<u8>` produces), so
+/// it is requested as a sequence; formats that hand over a byte buffer instead are accepted too.
+struct BoundedBytesSeed<const MAX: usize>;
+
+impl<const MAX: usize> BoundedBytesSeed<MAX> {
+    fn check_len<E: de::Error>(len: usize) -> Result<(), E> {
+        if len > MAX {
+            return Err(E::custom(MaxSizeBytesError::MaxSizeBytesLengthError {
+                expected: MAX,
+                actual: len,
+            }));
+        }
+        Ok(())
+    }
+}
+
+impl<'de, const MAX: usize> DeserializeSeed<'de> for BoundedBytesSeed<MAX> {
+    type Value = Vec<u8>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_seq(self)
+    }
+}
+
+impl<'de, const MAX: usize> Visitor<'de> for BoundedBytesSeed<MAX> {
+    type Value = Vec<u8>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "at most {MAX} bytes")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
+        visit_bounded_seq(seq, MAX, |actual| MaxSizeBytesError::MaxSizeBytesLengthError {
+            expected: MAX,
+            actual,
+        })
+    }
+
+    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        Ok(v.to_vec())
+    }
+
+    fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Self::Value, E> {
+        Self::check_len(v.len())?;
+        Ok(v)
     }
 }
 
@@ -93,12 +187,6 @@ impl<const MAX: usize> MaxSizeBytes<MAX> {
 
     pub fn empty() -> Self {
         Self { inner: Vec::new() }
-    }
-
-    pub fn from_bytes_truncate<T: AsRef<[u8]>>(bytes: T) -> Self {
-        let mut b = bytes.as_ref().to_vec();
-        b.truncate(cmp::min(b.len(), MAX));
-        Self { inner: b }
     }
 
     pub fn max_size(&self) -> usize {
@@ -276,5 +364,42 @@ mod tests {
         let over_max = format!(r#"{{"inner":{over_max}}}"#);
         let err = serde_json::from_str::<Bytes>(&over_max).unwrap_err();
         assert!(err.to_string().contains("Invalid Bytes length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_json_rejects_an_oversized_array_without_decoding_the_rest() {
+        let body = ["0"; MAX + 1].join(",");
+        let payload = format!(r#"{{"inner":[{body},this is not json"#);
+        let err = serde_json::from_str::<Bytes>(&payload).unwrap_err();
+        assert!(err.to_string().contains("Invalid Bytes length"), "{}", err);
+    }
+
+    #[test]
+    fn bincode_rejects_an_oversized_length_prefix_without_reading_the_body() {
+        let payload = u64::MAX.to_le_bytes();
+        let err = bincode::deserialize::<Bytes>(&payload).unwrap_err();
+        assert!(err.to_string().contains("Invalid Bytes length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_keeps_the_derived_field_handling() {
+        let bytes = serde_json::from_str::<Bytes>(r#"{"other":"x","inner":[1,2,3]}"#).unwrap();
+        assert_eq!(bytes.into_vec(), vec![1, 2, 3]);
+        let err = serde_json::from_str::<Bytes>(r#"{"inner":[1],"inner":[2]}"#).unwrap_err();
+        assert!(err.to_string().contains("duplicate field `inner`"), "{}", err);
+        let err = serde_json::from_str::<Bytes>(r#"{}"#).unwrap_err();
+        assert!(err.to_string().contains("missing field `inner`"), "{}", err);
+    }
+
+    #[test]
+    fn serde_bounds_byte_buffers() {
+        use serde::de::{Visitor, value::Error};
+
+        let at_max: Result<Vec<u8>, Error> = BoundedBytesSeed::<MAX>.visit_bytes(&[0u8; MAX]);
+        assert_eq!(at_max.unwrap().len(), MAX);
+        let over_max: Result<Vec<u8>, Error> = BoundedBytesSeed::<MAX>.visit_bytes(&[0u8; MAX + 1]);
+        assert!(over_max.unwrap_err().to_string().contains("Invalid Bytes length"));
+        let over_max: Result<Vec<u8>, Error> = BoundedBytesSeed::<MAX>.visit_byte_buf(vec![0u8; MAX + 1]);
+        assert!(over_max.unwrap_err().to_string().contains("Invalid Bytes length"));
     }
 }

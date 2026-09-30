@@ -1210,9 +1210,13 @@ impl TransactionKeyManagerInterface for KeyManager {
                     }
                 },
             };
-        self.crypto_factories
+        if !self
+            .crypto_factories
             .range_proof
-            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?
+        {
+            return Ok(None);
+        }
 
         Ok(Some((key_id, value, payment_id)))
     }
@@ -1235,8 +1239,8 @@ impl TransactionKeyManagerInterface for KeyManager {
             };
         self.crypto_factories
             .range_proof
-            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
-        Ok(true)
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())
+            .map_err(Into::into)
     }
 
     /// Compute a partial script offset for `script_key_ids`, generating `sender_offset_count` fresh sender offset

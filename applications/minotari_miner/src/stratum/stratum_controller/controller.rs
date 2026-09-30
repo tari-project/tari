@@ -19,7 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::TryFrom, sync::mpsc, thread, time::SystemTime};
+use std::{
+    convert::TryFrom,
+    sync::mpsc,
+    time::{Duration, SystemTime},
+};
 
 use borsh::BorshDeserialize;
 use futures::stream::StreamExt;
@@ -39,6 +43,25 @@ pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
 type CurrentBlob = MaxSizeBytes<{ 4 * 1024 * 1024 }>; // 4 MiB
+
+/// Decodes the blob of a job received from the pool.
+///
+/// The blob is untrusted pool input. If it does not fit in a [`CurrentBlob`] this logs a warning and returns `None`
+/// so that the caller skips the job and keeps mining the current one, instead of returning an error out of the
+/// controller loop and stopping the miner.
+fn decode_job_blob(height: u64, job_id: u64, blob: Vec<u8>) -> Option<CurrentBlob> {
+    let blob_len = blob.len();
+    match CurrentBlob::try_from(blob) {
+        Ok(blob) => Some(blob),
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Skipping job {job_id} at height {height}: blob of {blob_len} bytes is invalid ({e})"
+            );
+            None
+        },
+    }
+}
 
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
@@ -83,7 +106,12 @@ impl Controller {
                 debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
                 match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
-                        match self.should_we_update_job(height, job_id, diff, CurrentBlob::try_from(blob)?) {
+                        // A job from the pool with an oversized blob is skipped; it must not stop the controller
+                        // (and with it the job currently being mined).
+                        let Some(blob) = decode_job_blob(height, job_id, blob) else {
+                            continue;
+                        };
+                        match self.should_we_update_job(height, job_id, diff, blob) {
                             Ok(should_we_update) => {
                                 if should_we_update {
                                     let header = self
@@ -111,7 +139,7 @@ impl Controller {
                                     "Miner could not decipher miner message: {e:?}"
                                 );
                                 // lets wait a second before we try again
-                                thread::sleep(std::time::Duration::from_millis(1000));
+                                tokio::time::sleep(Duration::from_secs(1)).await;
                                 continue;
                             },
                         }
@@ -205,17 +233,61 @@ impl Controller {
             diff != self.current_difficulty_target ||
             blob != self.current_blob
         {
-            self.current_height = height;
-            self.current_job_id = job_id;
-            self.current_blob = blob.clone();
-            self.current_difficulty_target = diff;
+            // Decode first so that a blob which is not a valid header leaves the current job untouched
             let mut buffer = blob.as_bytes();
             let tari_header: tari_node_components::blocks::BlockHeader = BorshDeserialize::deserialize(&mut buffer)
                 .map_err(|_| Error::General("Byte Blob is not a valid header".to_string()))?;
+            self.current_height = height;
+            self.current_job_id = job_id;
+            self.current_blob = blob;
+            self.current_difficulty_target = diff;
             self.current_header = Some(minotari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
             Ok(true)
         } else {
             Ok(false)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const MAX_BLOB: usize = 4 * 1024 * 1024;
+
+    #[test]
+    fn decode_job_blob_accepts_blobs_up_to_the_limit() {
+        assert_eq!(decode_job_blob(1, 2, vec![]).unwrap().len(), 0);
+        assert_eq!(decode_job_blob(1, 2, vec![7u8; 10]).unwrap().as_bytes(), &[7u8; 10]);
+        assert_eq!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB]).unwrap().len(), MAX_BLOB);
+    }
+
+    #[test]
+    fn decode_job_blob_skips_an_oversized_blob_instead_of_failing() {
+        assert!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB + 1]).is_none());
+    }
+
+    #[test]
+    fn an_invalid_header_blob_leaves_the_current_job_untouched() {
+        use borsh::BorshSerialize;
+
+        let mut controller = Controller::new(1).unwrap();
+        let mut valid = Vec::new();
+        tari_node_components::blocks::BlockHeader::new(0)
+            .serialize(&mut valid)
+            .unwrap();
+        let valid = CurrentBlob::try_from(valid).unwrap();
+        assert!(controller.should_we_update_job(5, 7, 11, valid.clone()).unwrap());
+        let header = controller.current_header.clone();
+        assert!(header.is_some());
+
+        // Fits in a `CurrentBlob`, but is not a borsh `BlockHeader`
+        let invalid = CurrentBlob::try_from(vec![0xffu8; 16]).unwrap();
+        assert!(controller.should_we_update_job(6, 8, 12, invalid).is_err());
+        assert_eq!(controller.current_height, 5);
+        assert_eq!(controller.current_job_id, 7);
+        assert_eq!(controller.current_difficulty_target, 11);
+        assert_eq!(controller.current_blob, valid);
+        assert_eq!(controller.current_header, header);
     }
 }

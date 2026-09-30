@@ -59,6 +59,14 @@ struct Covenant;
 
 struct EmojiSet;
 
+/**
+ * Encrypted value, mask and payment id of a transaction output.
+ *
+ * `STATIC_ENCRYPTED_DATA_SIZE_TOTAL <= len() <= MAX_ENCRYPTED_DATA_SIZE` is an invariant of this type: every
+ * constructor, and every decoder (serde and borsh, see the hand written `Deserialize` and `BorshDeserialize`
+ * implementations below), routes through [`EncryptedData::from_bytes`]. Decoders must not be derived, as a derived
+ * decoder would only enforce the upper bound of the inner `MaxSizeBytes` and accept values that are too short.
+ */
 struct EncryptedData;
 
 struct FeePerGramStat;
@@ -2339,7 +2347,10 @@ bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
  * |   4 | Orphan              |
  * |   5 | TimeLocked          |
  * |   6 | InvalidTransaction  |
- * |   7 | AbandonedCoinbase   |
+ * |   7 | Oversized           |
+ * |   8 | FeeTooLow           |
+ * |   9 | AlreadyMined        |
+ * |  10 | InvalidEncryptedValue (an output does not open to its encrypted value) |
  * # Safety
  * None
  */
@@ -2892,6 +2903,10 @@ void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
  *     Orphan,                 // 4
  *     TimeLocked,             // 5
  *     InvalidTransaction,     // 6
+ *     Oversized,              // 7
+ *     FeeTooLow,              // 8
+ *     AlreadyMined,           // 9
+ *     InvalidEncryptedValue,  // 10
  * }
  * `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
  * when a TXO validation process is completed. The request_key is used to identify which request this
@@ -4036,6 +4051,10 @@ void emoji_set_destroy(struct EmojiSet *emoji_set);
 
 /**
  * Frees memory for a TariWallet
+ *
+ * Triggers the wallet's shutdown and then blocks the calling thread until the wallet's tasks have exited, for up to
+ * `WALLET_SHUTDOWN_DRAIN_TIMEOUT` (30 seconds). Do not call this on a UI / main thread; call it from a background
+ * thread.
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer

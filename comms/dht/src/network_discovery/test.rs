@@ -95,7 +95,7 @@ mod state_machine {
 
     #[tokio::test]
     async fn it_shuts_down() {
-        let (discovery, _, _, _, _, mut shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
+        let (discovery, _, _, _, _, shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
 
         shutdown.trigger();
         tokio::time::timeout(Duration::from_secs(5), discovery.run())

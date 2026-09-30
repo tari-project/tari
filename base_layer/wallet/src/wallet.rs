@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -93,13 +93,15 @@ use crate::{
     transaction_service::{
         TransactionServiceInitializer,
         handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
+        storage::database::{TransactionBackend, TransactionDatabase},
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{RECOVERY_KEY, handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer},
 };
 
 const LOG_TARGET: &str = "wallet";
+/// How long [`Wallet::wait_until_shutdown`] waits for wallet tasks to exit after the shutdown signal fires.
+pub const WALLET_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -159,16 +161,16 @@ where
         );
         trace!(target: LOG_TARGET, "Wallet config: {config:?}");
         let stack = StackBuilder::new(shutdown_signal.clone())
-            .add_initializer(OutputManagerServiceInitializer::<
-                V,
-                TKeyManagerInterface,
-                THttpClientFactory,
-            >::new(
-                config.output_manager_service_config.clone(),
-                output_manager_backend.clone(),
-                factories.clone(),
-                config.network.into(),
-            ))
+            .add_initializer(
+                OutputManagerServiceInitializer::<V, TKeyManagerInterface, THttpClientFactory>::new(
+                    config.output_manager_service_config.clone(),
+                    output_manager_backend.clone(),
+                    factories.clone(),
+                    config.network.into(),
+                )
+                .with_migration_flag_store(Arc::new(wallet_database.clone()))
+                .with_invalid_output_tx_sink(Arc::new(TransactionDatabase::new(transaction_backend.clone()))),
+            )
             .add_initializer(LegacyTransactionKeyManagerInitializer::new_with_legacy_storage(
                 key_manager_backend,
                 master_seed,
@@ -279,10 +281,29 @@ where
         })
     }
 
-    /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
-    /// exiting.
+    /// Wait for the wallet's shutdown signal, then wait (bounded by [`WALLET_SHUTDOWN_DRAIN_TIMEOUT`]) for every task
+    /// holding a signal for the same shutdown to exit.
+    ///
+    /// This method consumes the wallet so that its handles are dropped, which lets the services' async loops exit.
     pub async fn wait_until_shutdown(self) {
-        self.shutdown_signal.await;
+        let mut shutdown_signal = self.shutdown_signal.clone();
+        (&mut shutdown_signal).await;
+        debug!(
+            target: LOG_TARGET,
+            "Wallet shutdown signal received ({:?}); waiting for wallet tasks to exit",
+            shutdown_signal.reason()
+        );
+        // Drop our own handles (and the signals they hold) before draining, or the drain would wait on itself
+        drop(self);
+        if tokio::time::timeout(WALLET_SHUTDOWN_DRAIN_TIMEOUT, shutdown_signal.drained())
+            .await
+            .is_err()
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Timed out after {:.0?} waiting for wallet tasks to exit", WALLET_SHUTDOWN_DRAIN_TIMEOUT
+            );
+        }
     }
 
     pub async fn check_for_update(&self) -> Option<String> {

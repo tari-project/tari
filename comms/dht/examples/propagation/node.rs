@@ -78,7 +78,7 @@ pub async fn create(
     let builder = CommsBuilder::new()
         .allow_test_addresses()
         .with_network_byte(0x25)
-        .with_shutdown_signal(shutdown_signal)
+        .with_shutdown_signal(shutdown_signal.clone())
         .with_node_info(NodeNetworkInfo {
             major_version: 0,
             minor_version: 0,
@@ -96,6 +96,7 @@ pub async fn create(
     let (event_tx, _) = broadcast::channel(1);
 
     let mut hs_builder = tor::HiddenServiceBuilder::new()
+        .with_shutdown_signal(shutdown_signal)
         .with_port_mapping(onion_port)
         .with_control_server_address(TOR_CONTROL_PORT_ADDR.parse().unwrap());
 

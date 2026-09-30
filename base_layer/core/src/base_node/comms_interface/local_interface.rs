@@ -44,13 +44,7 @@ use crate::{
         comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
     },
-    chain_storage::{
-        InputMinedInfo,
-        MinedInfo,
-        OutputMinedInfo,
-        TemplateRegistrationEntry,
-        ValidatorNodeRegistrationInfo,
-    },
+    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, ValidatorNodeRegistrationInfo},
     proof_of_work::AdjustedTarget,
 };
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -354,24 +348,6 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::GetValidatorNode(vn) => Ok(vn),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_template_registrations(
-        &mut self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, CommsInterfaceError> {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchTemplateRegistrations {
-                start_height,
-                end_height,
-            })
-            .await??
-        {
-            NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

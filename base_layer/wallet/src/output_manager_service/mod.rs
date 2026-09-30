@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod commitment_mask;
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod invalid_mask_migration;
 
 mod input_selection;
 pub use input_selection::{RangeLimit, UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
@@ -33,7 +35,7 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use futures::future;
 use log::*;
@@ -60,6 +62,7 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        invalid_mask_migration::{InvalidOutputTransactionSink, MigrationFlagStore},
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
@@ -84,6 +87,8 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
+    migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
+    invalid_output_tx_sink: Option<Arc<dyn InvalidOutputTransactionSink>>,
     phantom_key_manager: PhantomData<TKeyManagerInterface>,
     phantom_http: PhantomData<THttpClientFactory>,
 }
@@ -105,9 +110,25 @@ where
             backend: Some(backend),
             factories,
             network,
+            migration_flag_store: None,
+            invalid_output_tx_sink: None,
             phantom_key_manager: PhantomData,
             phantom_http: PhantomData,
         }
+    }
+
+    /// Have the service run the one-off commitment mask migration on start, recording completion in `store`.
+    #[must_use]
+    pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
+        self.migration_flag_store = Some(store);
+        self
+    }
+
+    /// Let the commitment mask migration cancel the transactions coupled to outputs whose value is wrong.
+    #[must_use]
+    pub fn with_invalid_output_tx_sink(mut self, sink: Arc<dyn InvalidOutputTransactionSink>) -> Self {
+        self.invalid_output_tx_sink = Some(sink);
+        self
     }
 }
 
@@ -137,6 +158,8 @@ where
         // entry raw would hand out fork rules that are not live on this network.
         let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let network = self.network.as_network();
+        let migration_flag_store = self.migration_flag_store.take();
+        let invalid_output_tx_sink = self.invalid_output_tx_sink.take();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
@@ -158,7 +181,15 @@ where
                 utxo_scanner_handle,
             )
             .await
-            .expect("Could not initialize Output Manager Service")
+            .expect("Could not initialize Output Manager Service");
+            let service = match migration_flag_store {
+                Some(store) => service.with_migration_flag_store(store),
+                None => service,
+            };
+            let service = match invalid_output_tx_sink {
+                Some(sink) => service.with_invalid_output_tx_sink(sink),
+                None => service,
+            }
             .start();
 
             futures::pin_mut!(service);

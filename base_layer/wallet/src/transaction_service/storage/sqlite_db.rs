@@ -88,6 +88,15 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
+/// A completed transaction cancelled with this reason stays cancelled: reorg handling, revalidation and mined updates
+/// leave it untouched. It was rejected because one of its outputs does not open to its encrypted value, which no
+/// chain event can change.
+const STICKY_CANCELLATION: i32 = TxCancellationReason::InvalidEncryptedValue as i32;
+
+/// `true` for a completed transaction row that must not be un-cancelled (see [`STICKY_CANCELLATION`]).
+fn is_sticky_cancellation(cancelled: Option<i32>) -> bool {
+    cancelled == Some(STICKY_CANCELLATION)
+}
 
 // Helper functions for FixedHash <-> Vec<u8> conversion
 fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
@@ -944,6 +953,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .filter(completed_transactions::mined_in_block.is_not_null())
             .filter(completed_transactions::mined_height.is_not_null())
             .filter(completed_transactions::mined_height.gt(0))
+            // A sticky cancellation is never un-mined or revalidated, so it must not anchor the reorg check
+            .filter(
+                completed_transactions::cancelled
+                    .is_null()
+                    .or(completed_transactions::cancelled.ne(STICKY_CANCELLATION)),
+            )
             .order_by(completed_transactions::mined_height.desc())
             .first::<CompletedTransactionSql>(&mut conn)
             .optional()?;
@@ -1030,6 +1045,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+            .filter(
+                completed_transactions::cancelled
+                    .is_null()
+                    .or(completed_transactions::cancelled.ne(STICKY_CANCELLATION)),
+            )
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
@@ -1057,6 +1077,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table)
             .filter(completed_transactions::status.eq(LegacyTransactionStatus::Rejected as i32))
+            .filter(
+                completed_transactions::cancelled
+                    .is_null()
+                    .or(completed_transactions::cancelled.ne(STICKY_CANCELLATION)),
+            )
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
@@ -1067,6 +1092,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         // we want to double check unmined coinbases again, so lets set those
         let result = diesel::update(completed_transactions::table)
             .filter(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
+            .filter(
+                completed_transactions::cancelled
+                    .is_null()
+                    .or(completed_transactions::cancelled.ne(STICKY_CANCELLATION)),
+            )
             .set((
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
@@ -2295,6 +2325,15 @@ impl CompletedTransactionSql {
         cancelled: bool,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
+        let current: Option<i32> = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .select(completed_transactions::cancelled)
+            .first(conn)?;
+        if is_sticky_cancellation(current) {
+            return Err(TransactionStorageError::UnexpectedResult(format!(
+                "Transaction {tx_id} was rejected for an invalid encrypted value and cannot be changed"
+            )));
+        }
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 cancelled: Some(Some(i32::from(cancelled))),
@@ -2458,6 +2497,13 @@ impl CompletedTransactionSql {
         let existing_tx = completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
             .first::<CompletedTransactionSql>(conn)?;
+        if is_sticky_cancellation(existing_tx.cancelled) {
+            debug!(
+                target: LOG_TARGET,
+                "update_mined_height: tx_id '{tx_id}' was rejected for an invalid encrypted value, left unchanged"
+            );
+            return Ok(());
+        }
 
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
@@ -2538,6 +2584,13 @@ impl CompletedTransactionSql {
             let existing_tx = completed_transactions::table
                 .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
                 .first::<CompletedTransactionSql>(conn)?;
+            if is_sticky_cancellation(existing_tx.cancelled) {
+                debug!(
+                    target: LOG_TARGET,
+                    "set_as_unmined: tx_id '{tx_id}' was rejected for an invalid encrypted value, left unchanged"
+                );
+                return Ok(());
+            }
 
             let (current_status, current_mined_height) = *completed_transactions::table
                 .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))

@@ -90,7 +90,6 @@ use super::{
     CheckFailure,
     MinedInfo,
     PayrefRebuildStatus,
-    TemplateRegistrationEntry,
     ValidatorNodeRegistrationInfo,
     smt_hasher::SmtHasher,
 };
@@ -2272,20 +2271,6 @@ where B: BlockchainBackend
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_validators_exiting_in_epoch(sidechain_pk.as_ref(), epoch)
-    }
-
-    pub fn fetch_template_registrations<T: RangeBounds<u64>>(
-        &self,
-        range: T,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        let (start, mut end) = convert_to_option_bounds(range);
-        if end.is_none() {
-            // `(n..)` means fetch block headers until this node's tip
-            end = Some(db.fetch_last_header()?.height);
-        }
-        let (start, end) = (start.unwrap_or(0), end.unwrap());
-        db.fetch_template_registrations(start, end)
     }
 
     /// Generates a proof that the burn output with the given commitment was mined, against the `block_output_mr` of

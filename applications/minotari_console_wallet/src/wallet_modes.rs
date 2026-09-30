@@ -22,7 +22,7 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, io::Stdout, path::PathBuf};
+use std::{fs, io::Stdout, path::PathBuf, time::Duration};
 
 use clap::Parser;
 use futures::TryFutureExt;
@@ -52,7 +52,7 @@ use url::Url;
 use crate::{
     automation::commands::command_runner,
     cli::{Cli, CliCommands},
-    grpc::WalletGrpcServer,
+    grpc::{WalletGrpcServer, bind_grpc_listener, serve_with_shutdown_grace},
     notifier::Notifier,
     recovery::wallet_recovery,
     ui,
@@ -390,6 +390,12 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     Ok(())
 }
 
+/// How long in-flight gRPC requests and streams get to finish once the wallet shuts down. tonic's graceful shutdown
+/// waits for every open HTTP/2 stream, and each connection task holds a clone of the gRPC service (and so of its wallet
+/// handles and their shutdown signals). After this period the remaining connections are closed, so a client that stops
+/// reading a stream cannot hold the wallet's shutdown drain until it times out.
+const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
 async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
@@ -419,11 +425,17 @@ async fn run_grpc(
         Server::builder()
     };
 
-    server_builder
-        .add_service(service)
-        .serve_with_shutdown(address, wallet.wait_until_shutdown())
-        .await
-        .map_err(|e| format!("GRPC server returned error:{e}"))?;
+    let listener = bind_grpc_listener(address).map_err(|e| format!("Unable to bind gRPC server to {address}: {e}"))?;
+    // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` waits for every wallet handle to be
+    // dropped, including the gRPC service's own, which are only released once the server's connections are closed.
+    let serve_result = serve_with_shutdown_grace(
+        server_builder.add_service(service),
+        listener,
+        wallet.shutdown_signal,
+        GRPC_SHUTDOWN_GRACE_PERIOD,
+    )
+    .await;
+    serve_result.map_err(|e| format!("GRPC server returned error:{e}"))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (gRPC mode completed)";

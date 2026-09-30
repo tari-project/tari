@@ -57,6 +57,16 @@ struct State {
     online: bool,
     http_address: Option<String>,
     last_request_latency: Option<Duration>,
+    /// Outputs the mock reports as mined (and unspent), keyed by output hash. `None` until a test opts in with
+    /// `set_mined_utxos`; until then the UTXO queries panic as before, so tests that do not configure them are not
+    /// affected by a TXO validation run.
+    mined_utxos: Option<HashMap<Vec<u8>, models::MinedUtxoInfo>>,
+    best_block_height: u64,
+    /// Called on every `get_utxos_mined_info` query, before the response is built. Lets a test change wallet state
+    /// between the validation task reading outputs and writing its results.
+    on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Outputs `query_deleted_utxos` reports as spent: output hash -> (height, block hash)
+    spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
 }
 
 impl State {
@@ -125,6 +135,26 @@ impl HttpBaseNodeMock {
         Ok(())
     }
 
+    /// Report these outputs as mined and unspent from `get_utxos_mined_info` and `query_deleted_utxos`.
+    pub async fn set_mined_utxos(&self, mined_utxos: Vec<models::MinedUtxoInfo>, best_block_height: u64) {
+        let mut state = self.state.write().await;
+        state.mined_utxos = Some(mined_utxos.into_iter().map(|m| (m.utxo_hash.clone(), m)).collect());
+        state.best_block_height = best_block_height;
+    }
+
+    /// Report these outputs as spent from `query_deleted_utxos`: `(output hash, spent height, spent block hash)`.
+    pub async fn set_spent_utxos(&self, spent_utxos: Vec<(Vec<u8>, u64, Vec<u8>)>) {
+        self.state.write().await.spent_utxos = spent_utxos
+            .into_iter()
+            .map(|(hash, height, block)| (hash, (height, block)))
+            .collect();
+    }
+
+    /// Run `hook` on every `get_utxos_mined_info` query.
+    pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
+        self.state.write().await.on_mined_info_query = Some(hook);
+    }
+
     pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_last_request_latency(last_request_latency);
@@ -155,10 +185,27 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
 
     async fn get_utxos_mined_info(
         &self,
-        _hashes: Vec<Vec<u8>>,
+        hashes: Vec<Vec<u8>>,
         _version: u32,
     ) -> Result<GetUtxosMinedInfoResponse, Error> {
-        todo!()
+        let hook = self.state.read().await.on_mined_info_query.clone();
+        if let Some(hook) = hook {
+            hook();
+        }
+        let state = self.state.read().await;
+        let mined_utxos = state
+            .mined_utxos
+            .as_ref()
+            .expect("mined UTXOs not configured on the mock");
+        Ok(GetUtxosMinedInfoResponse {
+            utxos: hashes
+                .iter()
+                .filter_map(|hash| mined_utxos.get(hash).cloned())
+                .collect(),
+            best_block_hash: vec![0u8; 32],
+            best_block_height: state.best_block_height,
+            mempool_utxos: vec![],
+        })
     }
 
     async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
@@ -167,10 +214,28 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
 
     async fn query_deleted_utxos(
         &self,
-        _hashes: Vec<Vec<u8>>,
+        hashes: Vec<Vec<u8>>,
         _must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, Error> {
-        todo!()
+        let state = self.state.read().await;
+        let mined_utxos = state
+            .mined_utxos
+            .as_ref()
+            .expect("mined UTXOs not configured on the mock");
+        Ok(GetUtxosDeletedInfoResponse {
+            utxos: hashes
+                .into_iter()
+                .map(|hash| models::DeletedUtxoInfo {
+                    found_in_header: mined_utxos
+                        .get(&hash)
+                        .map(|m| (m.mined_in_height, m.mined_in_hash.clone())),
+                    spent_in_header: state.spent_utxos.get(&hash).cloned(),
+                    utxo_hash: hash,
+                })
+                .collect(),
+            best_block_hash: vec![0u8; 32],
+            best_block_height: state.best_block_height,
+        })
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {

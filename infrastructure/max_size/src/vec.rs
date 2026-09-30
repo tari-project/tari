@@ -22,7 +22,7 @@
 
 use std::{
     convert::TryFrom,
-    iter::FromIterator,
+    fmt,
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
@@ -33,9 +33,17 @@ use borsh::{
     error::ERROR_ZST_FORBIDDEN,
     io::{Error, ErrorKind},
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+};
 
-use crate::checked_de::{cautious_capacity, read_checked_len};
+use crate::{
+    bounded_serde::{Field, FieldSeed, visit_bounded_seq},
+    checked_de::{cautious_capacity, read_checked_len},
+};
 
 /// A vector that has a maximum size of `MAX_SIZE`.
 ///
@@ -48,20 +56,94 @@ pub struct MaxSizeVec<T, const MAX_SIZE: usize> {
     _marker: PhantomData<T>,
 }
 
-/// Mirror of [`MaxSizeVec`] used only to decode the wire format before the bound is checked.
-/// It must keep the exact same (serde) shape as `MaxSizeVec` so that the serialized
-/// representation is unchanged.
-#[derive(Deserialize)]
-#[serde(rename = "MaxSizeVec")]
-struct MaxSizeVecShadow<T> {
-    vec: Vec<T>,
-    _marker: PhantomData<T>,
-}
+/// The serde shape of [`MaxSizeVec`], which must match what `#[derive(Serialize)]` produces.
+const SERDE_NAME: &str = "MaxSizeVec";
+const SERDE_VALUE_FIELD: &str = "vec";
+const SERDE_MARKER_FIELD: &str = "_marker";
+const SERDE_FIELDS: &[&str] = &[SERDE_VALUE_FIELD, SERDE_MARKER_FIELD];
 
 impl<'de, T: Deserialize<'de>, const MAX_SIZE: usize> Deserialize<'de> for MaxSizeVec<T, MAX_SIZE> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let shadow = MaxSizeVecShadow::<T>::deserialize(deserializer)?;
-        Self::try_from(shadow.vec).map_err(serde::de::Error::custom)
+        // The bound is checked while the elements are decoded, so an oversized payload is rejected at the
+        // `MAX_SIZE + 1`-th element (or up front, if the format provides the length) rather than being decoded in
+        // full first.
+        deserializer.deserialize_struct(SERDE_NAME, SERDE_FIELDS, MaxSizeVecVisitor::<T, MAX_SIZE>(PhantomData))
+    }
+}
+
+struct MaxSizeVecVisitor<T, const MAX_SIZE: usize>(PhantomData<T>);
+
+impl<'de, T: Deserialize<'de>, const MAX_SIZE: usize> Visitor<'de> for MaxSizeVecVisitor<T, MAX_SIZE> {
+    type Value = MaxSizeVec<T, MAX_SIZE>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("struct MaxSizeVec")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        let vec = seq
+            .next_element_seed(BoundedVecSeed::<T, MAX_SIZE>(PhantomData))?
+            .ok_or_else(|| de::Error::invalid_length(0, &"struct MaxSizeVec with 2 elements"))?;
+        let _marker = seq
+            .next_element::<PhantomData<T>>()?
+            .ok_or_else(|| de::Error::invalid_length(1, &"struct MaxSizeVec with 2 elements"))?;
+        Ok(MaxSizeVec { vec, _marker })
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut vec = None;
+        let mut marker = None;
+        while let Some(field) = map.next_key_seed(FieldSeed {
+            value: SERDE_VALUE_FIELD,
+            marker: Some(SERDE_MARKER_FIELD),
+        })? {
+            match field {
+                Field::Value => {
+                    if vec.is_some() {
+                        return Err(de::Error::duplicate_field(SERDE_VALUE_FIELD));
+                    }
+                    vec = Some(map.next_value_seed(BoundedVecSeed::<T, MAX_SIZE>(PhantomData))?);
+                },
+                Field::Marker => {
+                    if marker.is_some() {
+                        return Err(de::Error::duplicate_field(SERDE_MARKER_FIELD));
+                    }
+                    marker = Some(map.next_value::<PhantomData<T>>()?);
+                },
+                Field::Ignore => {
+                    map.next_value::<de::IgnoredAny>()?;
+                },
+            }
+        }
+        let vec = vec.ok_or_else(|| de::Error::missing_field(SERDE_VALUE_FIELD))?;
+        let _marker = marker.ok_or_else(|| de::Error::missing_field(SERDE_MARKER_FIELD))?;
+        Ok(MaxSizeVec { vec, _marker })
+    }
+}
+
+/// Decodes the `vec` field as a sequence of at most `MAX_SIZE` elements.
+struct BoundedVecSeed<T, const MAX_SIZE: usize>(PhantomData<T>);
+
+impl<'de, T: Deserialize<'de>, const MAX_SIZE: usize> DeserializeSeed<'de> for BoundedVecSeed<T, MAX_SIZE> {
+    type Value = Vec<T>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_seq(self)
+    }
+}
+
+impl<'de, T: Deserialize<'de>, const MAX_SIZE: usize> Visitor<'de> for BoundedVecSeed<T, MAX_SIZE> {
+    type Value = Vec<T>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "a sequence of at most {MAX_SIZE} elements")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
+        visit_bounded_seq(seq, MAX_SIZE, |actual| MaxSizeVecError::MaxSizeVecLengthError {
+            expected: MAX_SIZE,
+            actual,
+        })
     }
 }
 
@@ -134,13 +216,28 @@ impl<T, const MAX_SIZE: usize> MaxSizeVec<T, MAX_SIZE> {
         }
     }
 
-    /// Creates a `MaxSizeVec` from the given items, truncating if necessary.
-    pub fn from_items_truncate(items: Vec<T>) -> Self {
-        let len = std::cmp::min(items.len(), MAX_SIZE);
-        Self {
-            vec: items.into_iter().take(len).collect(),
-            _marker: PhantomData,
+    /// Creates a `MaxSizeVec` from an iterator, failing if it yields more than `MAX_SIZE` items.
+    ///
+    /// The iterator is consumed lazily and abandoned at the `MAX_SIZE + 1`-th item, so an unbounded (or very long)
+    /// iterator can not make this allocate more than `MAX_SIZE` elements. There is intentionally no infallible
+    /// (`FromIterator`) or truncating constructor: silently dropping items would make the value differ from its
+    /// input.
+    pub fn try_from_iter<I: IntoIterator<Item = T>>(iter: I) -> Result<Self, MaxSizeVecError> {
+        let iter = iter.into_iter();
+        let mut vec = Vec::with_capacity(iter.size_hint().0.min(MAX_SIZE));
+        for item in iter {
+            if vec.len() >= MAX_SIZE {
+                return Err(MaxSizeVecError::MaxSizeVecLengthError {
+                    expected: MAX_SIZE,
+                    actual: MAX_SIZE.saturating_add(1),
+                });
+            }
+            vec.push(item);
         }
+        Ok(Self {
+            vec,
+            _marker: PhantomData,
+        })
     }
 
     /// Returns the maximum size of the `MaxSizeVec`.
@@ -211,33 +308,37 @@ impl<T, const MAX_SIZE: usize> DerefMut for MaxSizeVec<T, MAX_SIZE> {
     }
 }
 
-impl<T, const MAX_SIZE: usize> Iterator for MaxSizeVec<T, MAX_SIZE> {
+// `MaxSizeVec` deliberately does not implement `Iterator`: an `Iterator` impl on a container makes `next()`
+// destructively (and in `O(n)`) pop from the front, so merely iterating a borrowed-then-cloned or `&mut` value
+// silently empties it. Iterate through `IntoIterator` (owned, `&` or `&mut`) or the slice methods instead.
+
+impl<T, const MAX_SIZE: usize> IntoIterator for MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::vec::IntoIter<T>;
     type Item = T;
 
-    /// Iterates over the `MaxSizeVec`.
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.vec.is_empty() {
-            None
-        } else {
-            Some(self.vec.remove(0))
-        }
+    /// Consumes the `MaxSizeVec`, yielding its elements in order.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.into_iter()
     }
 }
 
-impl<T, const MAX_SIZE: usize> FromIterator<T> for MaxSizeVec<T, MAX_SIZE> {
-    /// Creates a `MaxSizeVec` from an iterator.
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut vec = Vec::new();
-        for item in iter {
-            if vec.len() >= MAX_SIZE {
-                break;
-            }
-            vec.push(item);
-        }
-        Self {
-            vec,
-            _marker: PhantomData,
-        }
+impl<'a, T, const MAX_SIZE: usize> IntoIterator for &'a MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::slice::Iter<'a, T>;
+    type Item = &'a T;
+
+    /// Iterates over references to the elements, in order, without modifying the `MaxSizeVec`.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.iter()
+    }
+}
+
+impl<'a, T, const MAX_SIZE: usize> IntoIterator for &'a mut MaxSizeVec<T, MAX_SIZE> {
+    type IntoIter = std::slice::IterMut<'a, T>;
+    type Item = &'a mut T;
+
+    /// Iterates over mutable references to the elements, in order. The length can not change.
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.iter_mut()
     }
 }
 
@@ -253,6 +354,63 @@ mod tests {
 
     const MAX: usize = 10;
     type Vec32 = MaxSizeVec<u32, MAX>;
+
+    #[test]
+    fn try_from_iter_accepts_up_to_max() {
+        assert_eq!(Vec32::try_from_iter(std::iter::empty()).unwrap().len(), 0);
+        let v = Vec32::try_from_iter(0..u32::try_from(MAX).unwrap()).unwrap();
+        assert_eq!(v.into_vec(), (0..u32::try_from(MAX).unwrap()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn try_from_iter_rejects_max_plus_one() {
+        let err = Vec32::try_from_iter(0..=u32::try_from(MAX).unwrap()).unwrap_err();
+        assert_eq!(err, MaxSizeVecError::MaxSizeVecLengthError {
+            expected: MAX,
+            actual: MAX + 1
+        });
+    }
+
+    #[test]
+    fn try_from_iter_stops_consuming_at_max_plus_one() {
+        // An unbounded iterator must be abandoned as soon as the bound is exceeded
+        let mut pulled = 0usize;
+        let iter = std::iter::repeat_with(|| {
+            pulled += 1;
+            0u32
+        });
+        assert!(Vec32::try_from_iter(iter).is_err());
+        assert_eq!(pulled, MAX + 1);
+    }
+
+    #[test]
+    fn owned_iteration_yields_all_elements_in_order() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        assert_eq!(v.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn borrowed_iteration_yields_all_elements_in_order_and_does_not_mutate() {
+        let v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        let mut seen = Vec::new();
+        for item in &v {
+            seen.push(*item);
+        }
+        assert_eq!(seen, vec![1, 2, 3]);
+        // Iterating a second time sees the same elements: nothing was consumed
+        assert_eq!((&v).into_iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn mutable_iteration_yields_all_elements_in_order_and_keeps_the_length() {
+        let mut v = Vec32::try_from(vec![1u32, 2, 3]).unwrap();
+        for item in &mut v {
+            *item *= 10;
+        }
+        assert_eq!(v.into_vec(), vec![10, 20, 30]);
+    }
 
     #[test]
     fn borsh_round_trips_a_valid_value() {
@@ -332,5 +490,42 @@ mod tests {
         let over_max = format!(r#"{{"vec":{over_max},"_marker":null}}"#);
         let err = serde_json::from_str::<Vec32>(&over_max).unwrap_err();
         assert!(err.to_string().contains("Invalid vector length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_json_rejects_an_oversized_array_without_decoding_the_rest() {
+        // The error is raised at the MAX+1-th element: the (invalid) JSON after it is never parsed
+        let body = ["0"; MAX + 1].join(",");
+        let payload = format!(r#"{{"vec":[{body},this is not json"#);
+        let err = serde_json::from_str::<Vec32>(&payload).unwrap_err();
+        assert!(err.to_string().contains("Invalid vector length"), "{}", err);
+    }
+
+    #[test]
+    fn bincode_rejects_an_oversized_length_prefix_without_reading_the_body() {
+        // A length prefix of 2^64-1 elements and no data at all: this must fail on the length check alone
+        let payload = u64::MAX.to_le_bytes();
+        let err = bincode::deserialize::<Vec32>(&payload).unwrap_err();
+        assert!(err.to_string().contains("Invalid vector length"), "{}", err);
+    }
+
+    #[test]
+    fn serde_keeps_the_derived_field_handling() {
+        // Unknown fields are ignored
+        let v = serde_json::from_str::<Vec32>(r#"{"other":[1,2],"vec":[1,2,3],"_marker":null}"#).unwrap();
+        assert_eq!(v.into_vec(), vec![1, 2, 3]);
+        // Duplicate fields are rejected
+        let err = serde_json::from_str::<Vec32>(r#"{"vec":[1],"vec":[2],"_marker":null}"#).unwrap_err();
+        assert!(err.to_string().contains("duplicate field `vec`"), "{}", err);
+        let err = serde_json::from_str::<Vec32>(r#"{"vec":[1],"_marker":null,"_marker":null}"#).unwrap_err();
+        assert!(err.to_string().contains("duplicate field `_marker`"), "{}", err);
+        // Missing fields are rejected
+        let err = serde_json::from_str::<Vec32>(r#"{"_marker":null}"#).unwrap_err();
+        assert!(err.to_string().contains("missing field `vec`"), "{}", err);
+        let err = serde_json::from_str::<Vec32>(r#"{"vec":[1]}"#).unwrap_err();
+        assert!(err.to_string().contains("missing field `_marker`"), "{}", err);
+        // The sequence form of a struct is accepted too
+        let v = serde_json::from_str::<Vec32>(r#"[[1,2,3],null]"#).unwrap();
+        assert_eq!(v.into_vec(), vec![1, 2, 3]);
     }
 }

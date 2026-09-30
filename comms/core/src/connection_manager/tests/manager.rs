@@ -61,7 +61,7 @@ async fn connect_to_nonexistent_peer() {
     let (request_tx, request_rx) = mpsc::channel(1);
     let (event_tx, _) = broadcast::channel(1);
     let mut requester = ConnectionManagerRequester::new(request_tx, event_tx.clone());
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
 
@@ -333,7 +333,7 @@ async fn dial_success_aux_tcp_listener() {
 
 #[tokio::test]
 async fn simultaneous_dial_events() {
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identities = ordered_node_identities(2, Default::default());
 
@@ -423,7 +423,7 @@ async fn simultaneous_dial_events() {
 
 #[tokio::test]
 async fn dial_cancelled() {
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::empty());
     let node_identity2 = build_node_identity(PeerFeatures::empty());

@@ -1453,9 +1453,6 @@ service Wallet {
   // }
   rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
 
-  // Creates a transaction with a template registration output
-  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-
   // Signs a message using the wallet's node identity private key.
   //
   // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
@@ -1913,7 +1910,6 @@ service Wallet {
   rpc UserPayForFee(UserPayForFeeRequest) returns (UserPayForFeeResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
-  rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
   rpc GetBurnClaimProof(GetBurnClaimProofRequest) returns (GetBurnClaimProofResponse);
   rpc RescanWallet(RescanWalletRequest) returns (RescanWalletResponse);
@@ -2330,22 +2326,6 @@ message ImportUtxosResponse {
   repeated uint64 tx_ids = 1;
 }
 
-message CreateTemplateRegistrationRequest {
-  uint64 fee_per_gram = 1;
-  string template_name = 2;
-  uint32 template_version = 3;
-  TemplateType template_type = 4;
-  BuildInfo build_info = 5;
-  bytes binary_sha = 6;
-  string binary_url = 7;
-  bytes sidechain_deployment_key = 8;
-}
-
-message CreateTemplateRegistrationResponse {
-  uint64 tx_id = 1;
-  bytes template_address = 2;
-}
-
 // Request message for the CancelTransaction RPC.
 message CancelTransactionRequest {
   // The transaction ID to be cancelled.
@@ -2440,17 +2420,6 @@ message RegisterValidatorNodeResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
-}
-
-message SubmitValidatorEvictionProofRequest {
-  EvictionProof proof = 1;
-  uint64 fee_per_gram = 2;
-  string message = 3;
-  bytes sidechain_deployment_key = 4;
-}
-
-message SubmitValidatorEvictionProofResponse {
-  uint64 tx_id = 1;
 }
 
 message SubmitValidatorNodeExitRequest {

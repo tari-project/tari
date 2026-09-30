@@ -23,6 +23,7 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
+    future::Future,
     time::{Duration, Instant},
 };
 
@@ -129,6 +130,10 @@ where
                     return Ok(());
                 },
                 Err(e) => {
+                    if self.shutdown_signal.is_triggered() {
+                        debug!(target: LOG_TARGET, "UTXO scanning round stopped by shutdown: {e}");
+                        return Ok(());
+                    }
                     warn!(
                         target: LOG_TARGET,
                         "Failed to scan UTXO's from base node: {e}"
@@ -138,8 +143,13 @@ where
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
-                    // Wait a bit of time otherwise we spam the node with requests
-                    sleep(Duration::from_secs(5)).await;
+                    // Wait a bit of time otherwise we spam the node with requests, but do not hold the shutdown drain
+                    // for it
+                    tokio::select! {
+                        biased;
+                        _ = self.shutdown_signal.wait() => return Ok(()),
+                        _ = sleep(Duration::from_secs(5)) => {},
+                    }
                     continue;
                 },
             };
@@ -249,8 +259,17 @@ where
         let mut total_num_recovered = 0;
         let mut total_value_recovered = MicroMinotari::zero();
         let mut scanned_blocks = 0;
+        // Every base node round trip below is raced against shutdown, so a slow or silent base node cannot keep this
+        // task (and its shutdown signal) alive past shutdown and hold the wallet's shutdown drain.
+        let mut shutdown = self.shutdown_signal.clone();
         loop {
-            let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
+            if shutdown.is_triggered() {
+                return Err(shutdown_error());
+            }
+            let (tip_hash, tip_height) =
+                race_shutdown(&mut shutdown, self.get_chain_tip_header(&wallet_service_client)).await?;
+            // Not raced as a whole: it clears reorged-out scanned blocks and then reports the reorg, which must not be
+            // split by cancellation. It races its own base node requests instead.
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block &&
@@ -280,12 +299,14 @@ where
             }
 
             // Otherwise choose a starting point for the scan
-            let next_block_to_scan = self
-                .determine_next_block_to_scan(&last_scanned_block, &wallet_service_client)
-                .await?;
+            let next_block_to_scan = race_shutdown(
+                &mut shutdown,
+                self.determine_next_block_to_scan(&last_scanned_block, &wallet_service_client),
+            )
+            .await?;
 
-            if self.shutdown_signal.is_triggered() {
-                return Err(anyhow!("Shutdown signal received, stopping UTXO scanning task"));
+            if shutdown.is_triggered() {
+                return Err(shutdown_error());
             }
 
             info!(
@@ -305,6 +326,11 @@ where
                     tip_hash,
                 )
                 .await?;
+            // On shutdown `scan_utxos_to_tip` persists the last fully scanned block and returns its partial result;
+            // stop here rather than starting another round of base node requests
+            if shutdown.is_triggered() {
+                return Err(shutdown_error());
+            }
             scanned_blocks = scanned_blocks.saturating_add(scan_result.blocks_scanned);
             total_num_recovered = total_num_recovered.saturating_add(scan_result.total_num_recovered);
             total_value_recovered = total_value_recovered.saturating_add(scan_result.total_value_recovered);
@@ -366,7 +392,8 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = client.get_header_by_height(sb.height).await?;
+                let mut shutdown = self.shutdown_signal.clone();
+                let header = race_shutdown(&mut shutdown, client.get_header_by_height(sb.height)).await?;
                 match header {
                     Some(header) => {
                         let header_hash = header.hash;
@@ -432,34 +459,51 @@ where
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 10;
 
-        let mut total_scanned = 0;
-        let mut total_num_recovered = 0;
+        let mut total_scanned: usize = 0;
+        let mut total_num_recovered: u64 = 0;
         let mut total_value_recovered = MicroMinotari::zero();
-        let mut blocks_scanned = 0;
+        let mut blocks_scanned: u64 = 0;
         let mut starting_header_vec = start_header_hash.to_vec();
         let mut last_saved_hash = None;
 
         loop {
+            let mut stopped_by_shutdown = false;
             let mut utxo_stream = client
                 .sync_utxos_by_block(starting_header_vec.clone(), self.shutdown_signal.clone())
                 .await?;
 
             let mut prev_scanned_block: Option<ScannedBlock> = None;
-            while let Some(response) = utxo_stream.recv().await {
+            'pages: loop {
+                // Race the next page against shutdown, so a slow base node does not keep this task (and its shutdown
+                // signal) alive after shutdown. On shutdown, fall through to persist the last fully scanned block.
+                let response = tokio::select! {
+                    biased;
+                    _ = self.shutdown_signal.wait() => {
+                        stopped_by_shutdown = true;
+                        break 'pages;
+                    },
+                    response = utxo_stream.recv() => match response {
+                        Some(response) => response,
+                        None => break 'pages,
+                    },
+                };
                 if self.shutdown_signal.is_triggered() {
-                    let result = ScanUtxosResult {
-                        total_scanned,
-                        total_num_recovered,
-                        total_value_recovered,
-                        blocks_scanned,
-                    };
-                    return Ok(result);
+                    stopped_by_shutdown = true;
+                    break 'pages;
                 }
 
                 let mut response = response?;
                 response.blocks.sort_by_key(|a| a.height);
                 #[allow(clippy::cast_possible_wrap)]
                 for response in response.blocks {
+                    // Processing a page is CPU-bound (trial-decrypting every output) and only awaits the network for
+                    // blocks with owned outputs, so check for shutdown per block: a large page must not pin this task
+                    // (and the wallet's shutdown drain). This block is not processed or marked as scanned, so it is
+                    // rescanned on the next run.
+                    if self.shutdown_signal.is_triggered() {
+                        stopped_by_shutdown = true;
+                        break 'pages;
+                    }
                     if let Some(previous_block) = &prev_scanned_block {
                         if response.height < previous_block.height {
                             // We do not accept blocks that go backwards in height - fork block re-validation forced.
@@ -516,7 +560,16 @@ where
                             current_height,
                             current_header_hash.to_hex()
                         );
-                        let block = client.get_utxos_by_block(current_header_hash.to_vec()).await?;
+                        // Race the block download against shutdown. This block is not marked as scanned, so it is
+                        // rescanned on the next run.
+                        let block = tokio::select! {
+                            biased;
+                            _ = self.shutdown_signal.wait() => {
+                                stopped_by_shutdown = true;
+                                break 'pages;
+                            },
+                            block = client.get_utxos_by_block(current_header_hash.to_vec()) => block?,
+                        };
 
                         let outputs = block
                             .outputs
@@ -584,6 +637,10 @@ where
                 if last_saved_hash != Some(scanned_block.header_hash) {
                     self.resources.db.save_scanned_block(scanned_block)?;
                 }
+            }
+
+            if stopped_by_shutdown {
+                break;
             }
 
             if starting_header_vec.is_empty() {
@@ -911,4 +968,18 @@ struct ScanUtxosResult {
     total_num_recovered: u64,
     blocks_scanned: u64,
     total_value_recovered: MicroMinotari,
+}
+
+fn shutdown_error() -> anyhow::Error {
+    anyhow!("Shutdown signal received, stopping UTXO scanning task")
+}
+
+/// Run `fut` unless shutdown happens first, in which case it is dropped and a shutdown error is returned.
+async fn race_shutdown<T, F>(shutdown: &mut ShutdownSignal, fut: F) -> Result<T, anyhow::Error>
+where F: Future<Output = Result<T, anyhow::Error>> {
+    tokio::select! {
+        biased;
+        _ = shutdown.wait() => Err(shutdown_error()),
+        res = fut => res,
+    }
 }

@@ -74,10 +74,6 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchTemplateRegistrations {
-        start_height: u64,
-        end_height: u64,
-    },
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
@@ -155,12 +151,6 @@ impl Display for NodeCommsRequest {
                 public_key,
             } => {
                 write!(f, "GetValidatorNode ({sidechain_id:?}), public key ({public_key:?})")
-            },
-            FetchTemplateRegistrations {
-                start_height: start,
-                end_height: end,
-            } => {
-                write!(f, "FetchTemplateRegistrations ({start}..={end})")
             },
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({block_hash})")

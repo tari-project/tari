@@ -171,7 +171,7 @@ async fn peer_to_peer_custom_protocols() {
         .add([TEST_PROTOCOL.clone()], &test_sender)
         .add([ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
 
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let (comms_node1, _, _, _) = spawn_node(protocols1, shutdown.to_signal()).await;
     let (comms_node2, _, _, _) = spawn_node(protocols2, shutdown.to_signal()).await;
 

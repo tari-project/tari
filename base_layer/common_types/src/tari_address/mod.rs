@@ -53,7 +53,13 @@ const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 443; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
-pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
+/// The maximum size of the payment id (memo) carried by an address, and of the payment id part of an output's
+/// encrypted data.
+///
+/// The bound is applied at decode time (for example to `DualAddress`), so changing it changes which addresses and
+/// payment ids can be decoded at all. It is not the same as (and must not be confused with) the size of the
+/// encrypted data of an output, which adds a fixed-size nonce, tag, value and mask to it.
+pub const MAX_PAYMENT_ID_SIZE: usize = 256;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
@@ -343,7 +349,7 @@ impl TariAddress {
     where Self: Sized {
         if !(bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
             (bytes.len() >= TARI_ADDRESS_INTERNAL_DUAL_SIZE &&
-                bytes.len() <= (TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)))
+                bytes.len() <= (TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_PAYMENT_ID_SIZE)))
         {
             return Err(TariAddressError::InvalidSize);
         }

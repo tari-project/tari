@@ -22,9 +22,9 @@
 
 use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
-use futures::{StreamExt, future, future::Either, pin_mut};
+use futures::{StreamExt, future, future::Either};
 use log::*;
-use tari_shutdown::OptionalShutdownSignal;
+use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};
@@ -87,7 +87,7 @@ pub struct HiddenServiceController {
     hs_flags: HsFlags,
     is_authenticated: bool,
     proxy_opts: TorProxyOpts,
-    shutdown_signal: OptionalShutdownSignal,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl HiddenServiceController {
@@ -100,7 +100,7 @@ impl HiddenServiceController {
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
         proxy_opts: TorProxyOpts,
-        shutdown_signal: OptionalShutdownSignal,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             client: None,
@@ -198,41 +198,53 @@ impl HiddenServiceController {
     async fn reestablish_hidden_service(
         &mut self,
         event_tx: broadcast::Sender<TorControlEvent>,
-        shutdown_signal: &mut OptionalShutdownSignal,
+        shutdown_signal: &mut ShutdownSignal,
     ) -> Result<(), HiddenServiceControllerError> {
-        let mut signal = Some(shutdown_signal);
+        // Every await below is raced against the shutdown signal, which is polled first, so a tor control port that is
+        // down or unresponsive never delays shutdown.
         loop {
             warn!(
                 target: LOG_TARGET,
                 "Attempting to reestablish control port connection at '{}'", self.control_server_addr
             );
             let connect_fut = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx.clone());
-            pin_mut!(connect_fut);
-            let either = future::select(connect_fut, signal.take().expect("signal was None")).await;
-            match either {
-                Either::Left((Ok(client), _)) => {
+            let result = tokio::select! {
+                biased;
+                _ = &mut *shutdown_signal => return Err(HiddenServiceControllerError::ShutdownSignalInterrupt),
+                result = connect_fut => result,
+            };
+            match result {
+                Ok(client) => {
                     info!(target: LOG_TARGET, "Connection to tor control port re-established");
                     self.client = Some(client);
-                    self.authenticate().await?;
-                    self.set_events().await?;
-                    let _result = self.create_hidden_service_from_identity().await;
-                    break Ok(());
+                    return tokio::select! {
+                        biased;
+                        _ = &mut *shutdown_signal => Err(HiddenServiceControllerError::ShutdownSignalInterrupt),
+                        result = self.reinitialize_after_reconnect() => result,
+                    };
                 },
-                Either::Left((Err(err), shutdown_signal)) => {
-                    signal = Some(shutdown_signal);
+                Err(err) => {
                     warn!(
                         target: LOG_TARGET,
                         "Failed to reestablish connection with tor control server because '{err:?}'"
                     );
                     warn!(target: LOG_TARGET, "Will attempt again in 5 seconds...");
-                    time::sleep(Duration::from_secs(5)).await;
-                },
-
-                Either::Right(_) => {
-                    break Err(HiddenServiceControllerError::ShutdownSignalInterrupt);
+                    tokio::select! {
+                        biased;
+                        _ = &mut *shutdown_signal => return Err(HiddenServiceControllerError::ShutdownSignalInterrupt),
+                        _ = time::sleep(Duration::from_secs(5)) => {},
+                    }
                 },
             }
         }
+    }
+
+    /// Authenticate, subscribe to events and re-create the hidden service on a freshly reconnected control port.
+    async fn reinitialize_after_reconnect(&mut self) -> Result<(), HiddenServiceControllerError> {
+        self.authenticate().await?;
+        self.set_events().await?;
+        let _result = self.create_hidden_service_from_identity().await;
+        Ok(())
     }
 
     fn client_mut(&mut self) -> Result<&mut TorControlPortClient, HiddenServiceControllerError> {

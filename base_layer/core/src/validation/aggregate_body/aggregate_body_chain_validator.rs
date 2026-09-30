@@ -46,7 +46,6 @@ use crate::{
     validation::{
         ValidationError,
         helpers::{
-            check_eviction_proof,
             check_input_is_utxo,
             check_not_duplicate_txo,
             check_validator_node_exit,
@@ -330,7 +329,6 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_not_duplicate_txo(db, output)?;
         check_validator_node_registration(db, output, epoch)?;
         check_validator_node_exit(db, output, epoch)?;
-        check_eviction_proof(db, output, constants)?;
     }
     Ok(())
 }
@@ -457,7 +455,7 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
 
                 OutputType::ValidatorNodeRegistration => {
                     // Prevents validator node registration output from being spent if the validator is still active.
-                    // Effectively locking the funds in the UTXO until the validator exits/is evicted.
+                    // Effectively locking the funds in the UTXO until the validator exits.
                     let reg = features.validator_node_registration().ok_or_else(|| {
                         ValidationError::OutputTypeNotMatchSidechainData {
                             output_type: features.output_type,
