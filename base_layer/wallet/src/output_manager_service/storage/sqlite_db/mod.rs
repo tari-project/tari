@@ -53,7 +53,15 @@ use crate::{
         service::Balance,
         storage::{
             OutputStatus,
-            database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
+            database::{
+                DbKey,
+                DbKeyValuePair,
+                DbValue,
+                OutputBackendQuery,
+                OutputManagerBackend,
+                OutputMaskVerificationRow,
+                WriteOperation,
+            },
             models::{DbWalletOutput, KnownOneSidedPaymentScript},
         },
     },
@@ -64,6 +72,8 @@ use crate::{
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
+/// Maximum number of ids bound into a single `UPDATE ... WHERE id IN (...)` by `mark_outputs_invalid`
+const MARK_INVALID_CHUNK_SIZE: usize = 500;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -1480,6 +1490,30 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     ) -> Result<(), OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         OutputSql::update_key_ids(output_id, &spending_key, &script_private_key, &mut conn)
+    }
+
+    fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::fetch_for_mask_verification(last_id, batch_size, &mut conn)
+    }
+
+    fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
+        if output_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.transaction::<_, OutputManagerStorageError, _>(|conn| {
+            let mut updated = 0usize;
+            // Chunked to stay well under SQLite's bound-parameter limit
+            for chunk in output_ids.chunks(MARK_INVALID_CHUNK_SIZE) {
+                updated = updated.saturating_add(OutputSql::mark_invalid_by_ids(chunk, conn)?);
+            }
+            Ok(updated)
+        })
     }
 }
 

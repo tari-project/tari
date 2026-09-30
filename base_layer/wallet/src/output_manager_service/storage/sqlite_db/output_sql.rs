@@ -77,7 +77,7 @@ use crate::{
         storage::{
             OutputSource,
             OutputStatus,
-            database::{OutputBackendQuery, SortDirection},
+            database::{OutputBackendQuery, OutputMaskVerificationRow, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
         },
@@ -1090,6 +1090,51 @@ impl OutputSql {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
         Ok(())
+    }
+
+    /// Fetch a keyset-paginated batch of the columns needed to re-check an output's commitment mask, for every output
+    /// whose status is not already `Invalid`. Rows are filtered by `id > last_id` and returned ordered ascending.
+    pub fn fetch_for_mask_verification(
+        last_id: i32,
+        batch_size: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .select((
+                outputs::id,
+                outputs::commitment,
+                outputs::spending_key,
+                outputs::value,
+                outputs::status,
+            ))
+            .filter(outputs::id.gt(last_id))
+            .filter(outputs::status.ne(OutputStatus::Invalid as i32))
+            .order(outputs::id.asc())
+            .limit(batch_size)
+            .load::<(i32, Vec<u8>, String, i64, i32)>(conn)?
+            .into_iter()
+            .map(
+                |(id, commitment, spending_key, value, status)| OutputMaskVerificationRow {
+                    id,
+                    commitment,
+                    spending_key,
+                    value,
+                    status,
+                },
+            )
+            .collect())
+    }
+
+    /// Set the status of the given outputs to `Invalid`, skipping any that are already `Invalid`. Returns the number
+    /// of rows changed.
+    pub fn mark_invalid_by_ids(ids: &[i32], conn: &mut SqliteConnection) -> Result<usize, OutputManagerStorageError> {
+        Ok(diesel::update(
+            outputs::table
+                .filter(outputs::id.eq_any(ids))
+                .filter(outputs::status.ne(OutputStatus::Invalid as i32)),
+        )
+        .set(outputs::status.eq(OutputStatus::Invalid as i32))
+        .execute(conn)?)
     }
 
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {

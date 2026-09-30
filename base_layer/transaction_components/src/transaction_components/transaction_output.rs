@@ -346,7 +346,9 @@ impl TransactionOutput {
         commitment_mask_key: &PrivateKey,
         value: u64,
     ) -> Result<bool, TransactionError> {
-        prover.verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value).into()
+        prover
+            .verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)
+            .map_err(Into::into)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.

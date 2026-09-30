@@ -42,7 +42,10 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::database::OutputManagerDatabase,
+    output_manager_service::{
+        invalid_mask_migration::{InvalidMaskMigrationOutcome, run_invalid_mask_migration},
+        storage::database::OutputManagerDatabase,
+    },
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
@@ -345,6 +348,9 @@ pub async fn init_wallet(
         "Wallet started in {}ms", now.elapsed().as_millis()
     );
 
+    // One-off: mark stored outputs whose commitment does not open to their stored value and mask as Invalid
+    run_invalid_mask_migration_once(&wallet).await;
+
     if let Some(file_name) = seed_words_file_name {
         if wallet.db.get_wallet_type()? != Some(LegacyWalletType::DerivedKeys) {
             return Err(ExitError::new(
@@ -362,6 +368,42 @@ pub async fn init_wallet(
     };
 
     Ok(wallet)
+}
+
+/// Runs the one-off commitment mask migration on a blocking thread. Failure is logged but does not stop the wallet;
+/// the completion flag is not set, so the migration is retried on the next start.
+async fn run_invalid_mask_migration_once(wallet: &WalletSqlite) {
+    let wallet_db = wallet.db.clone();
+    let output_db = wallet.output_db.clone();
+    let key_manager = wallet.key_manager_service.clone();
+    let result =
+        tokio::task::spawn_blocking(move || run_invalid_mask_migration(&wallet_db, &output_db, &key_manager)).await;
+    match result {
+        Ok(Ok(InvalidMaskMigrationOutcome::Completed(summary))) if summary.marked_invalid > 0 => {
+            warn!(
+                target: LOG_TARGET,
+                "Commitment mask migration marked {} output(s) Invalid ({} mask mismatch(es), {} verification \
+                 error(s), {} scanned)",
+                summary.marked_invalid,
+                summary.mask_mismatches,
+                summary.verification_errors,
+                summary.scanned
+            );
+        },
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => {
+            error!(
+                target: LOG_TARGET,
+                "Commitment mask migration failed, it will be retried on the next start: {e}"
+            );
+        },
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Commitment mask migration task failed, it will be retried on the next start: {e}"
+            );
+        },
+    }
 }
 
 fn setup_identity_from_db<D: WalletBackend + 'static>(

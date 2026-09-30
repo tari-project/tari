@@ -1528,7 +1528,12 @@ pub async fn command_runner(
                         committed_value.as_u64(),
                     ) {
                         Ok(true) => {},
-                        Err(e) | Ok(false) => {
+                        Ok(false) => {
+                            eprintln!("\nError: Could not verify mask! Commitment does not match value and mask\n");
+                            error = true;
+                            break;
+                        },
+                        Err(e) => {
                             eprintln!("\nError: Could not verify mask! {e}\n");
                             error = true;
                             break;

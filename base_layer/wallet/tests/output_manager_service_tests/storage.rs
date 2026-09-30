@@ -31,6 +31,12 @@ use minotari_wallet::{
         RangeLimit,
         UtxoSelectionCriteria,
         error::OutputManagerStorageError,
+        invalid_mask_migration::{
+            INVALID_MASK_MIGRATION_KEY,
+            InvalidMaskMigrationOutcome,
+            InvalidMaskMigrationSummary,
+            run_invalid_mask_migration,
+        },
         service::Balance,
         storage::{
             OutputSource,
@@ -41,6 +47,11 @@ use minotari_wallet::{
         },
     },
     schema::outputs,
+    storage::{
+        database::WalletDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::WalletDbConnection,
+    },
 };
 use rand::Rng;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
@@ -55,7 +66,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
     LegacyTransactionKeyManagerInterface,
     create_new_random_key_manager,
 };
-use tari_utilities::{ByteArray, hex::Hex};
+use tari_utilities::{ByteArray, SafePassword, hex::Hex};
 
 use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
@@ -1197,4 +1208,158 @@ async fn test_migrate_legacy_output_key_ids_roundtrip() {
         unspent.iter().any(|o| o.hash == kmo2.hash),
         "clean output should still be loadable after migration"
     );
+}
+
+/// Status of the output with the given commitment, read straight from the table.
+fn stored_status(connection: &WalletDbConnection, kmo: &DbWalletOutput) -> OutputStatus {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let status: i32 = outputs::table
+        .select(outputs::status)
+        .filter(outputs::commitment.eq(&kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap();
+    OutputStatus::try_from(status).unwrap()
+}
+
+/// Add an output with the given value and mark it unspent.
+fn add_mask_test_output<KM: LegacyTransactionKeyManagerInterface>(
+    db: &OutputManagerDatabase<OutputManagerSqliteDatabase>,
+    key_manager: &KM,
+    value: u64,
+) -> DbWalletOutput {
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(value),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo.clone(), key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
+    kmo
+}
+
+/// Only outputs whose commitment does not open to their stored value and mask (or whose mask cannot be checked) are
+/// marked Invalid, the completion flag is set, and a second run is a no-op.
+#[tokio::test]
+async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let valid = add_mask_test_output(&db, &key_manager, 2000);
+    let tampered = add_mask_test_output(&db, &key_manager, 3000);
+    let bad_key = add_mask_test_output(&db, &key_manager, 4000);
+    let spent_tampered = add_mask_test_output(&db, &key_manager, 5000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        // Stored value no longer matches the commitment
+        for (kmo, status) in [
+            (&tampered, OutputStatus::Unspent),
+            (&spent_tampered, OutputStatus::Spent),
+        ] {
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set((outputs::value.eq(outputs::value + 1), outputs::status.eq(status as i32)))
+                .execute(&mut conn)
+                .unwrap();
+        }
+        // Commitment mask key id cannot be parsed, so the mask cannot be checked
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&bad_key.commitment.to_vec())))
+            .set(outputs::spending_key.eq("not a key id"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    assert!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap()
+            .is_none()
+    );
+
+    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 4,
+            mask_mismatches: 2,
+            verification_errors: 1,
+            marked_invalid: 3,
+        })
+    );
+    assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &spent_tampered), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &bad_key), OutputStatus::Invalid);
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap(),
+        Some("3".to_string())
+    );
+
+    // A second run does not scan anything, even if a new bad output appears
+    let later_tampered = add_mask_test_output(&db, &key_manager, 6000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&later_tampered.commitment.to_vec())))
+            .set(outputs::value.eq(outputs::value + 1))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    assert_eq!(outcome, InvalidMaskMigrationOutcome::AlreadyCompleted);
+    assert_eq!(stored_status(&connection, &valid), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &later_tampered), OutputStatus::Unspent);
+}
+
+/// The migration pages through the table; outputs beyond the first page are still checked, and an already-Invalid
+/// output is not rescanned.
+#[tokio::test]
+async fn test_invalid_mask_migration_pages_and_skips_invalid() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let already_invalid = add_mask_test_output(&db, &key_manager, 1000);
+    for _ in 0..3 {
+        add_mask_test_output(&db, &key_manager, 1000);
+    }
+    let last = add_mask_test_output(&db, &key_manager, 7000);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&already_invalid.commitment.to_vec())))
+            .set(outputs::status.eq(OutputStatus::Invalid as i32))
+            .execute(&mut conn)
+            .unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&last.commitment.to_vec())))
+            .set(outputs::value.eq(outputs::value - 1))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    // Keyset paging only ever returns rows after the cursor and skips Invalid rows
+    let first_page = db.fetch_outputs_for_mask_verification(0, 2).unwrap();
+    assert_eq!(first_page.len(), 2);
+    let second_page = db.fetch_outputs_for_mask_verification(first_page[1].id, 100).unwrap();
+    assert_eq!(second_page.len(), 2);
+    assert!(second_page.iter().all(|r| r.id > first_page[1].id));
+
+    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 4,
+            mask_mismatches: 1,
+            verification_errors: 0,
+            marked_invalid: 1,
+        })
+    );
+    assert_eq!(stored_status(&connection, &last), OutputStatus::Invalid);
+    assert_eq!(db.mark_outputs_invalid(vec![]).unwrap(), 0);
 }

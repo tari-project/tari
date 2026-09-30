@@ -18,7 +18,7 @@ use crate::output_manager_service::{
     input_selection::UtxoSelectionCriteria,
     service::Balance,
     storage::{
-        database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
+        database::{DbKey, DbValue, OutputBackendQuery, OutputMaskVerificationRow, WriteOperation},
         models::DbWalletOutput,
         sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
     },
@@ -214,4 +214,15 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         spending_key: String,
         script_private_key: String,
     ) -> Result<(), OutputManagerStorageError>;
+    /// Fetch a batch of the columns needed to re-check the commitment mask of every output whose status is not
+    /// `Invalid`. Keyset pagination as for `fetch_outputs_with_legacy_key_ids`: pass `last_id = 0` first, then the
+    /// last id of the previous batch.
+    fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError>;
+    /// Set the status of the given outputs (by row id) to `Invalid` in a single transaction. Outputs that are already
+    /// `Invalid` are left alone. Returns the number of outputs changed.
+    fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError>;
 }

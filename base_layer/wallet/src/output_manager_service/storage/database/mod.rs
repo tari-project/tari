@@ -122,6 +122,22 @@ pub enum WriteOperation {
     Remove(DbKey),
 }
 
+/// The columns of a stored output needed to re-check that its commitment opens to its stored value and commitment
+/// mask key. Values are raw column values; interpretation is left to the caller.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputMaskVerificationRow {
+    /// Primary key, used as the keyset pagination cursor
+    pub id: i32,
+    /// Compressed commitment bytes
+    pub commitment: Vec<u8>,
+    /// Commitment mask key id, as stored (current or legacy `TariKeyId` string)
+    pub spending_key: String,
+    /// Stored value in MicroMinotari
+    pub value: i64,
+    /// Raw `OutputStatus` value
+    pub status: i32,
+}
+
 /// This structure holds an inner type that implements the `OutputManagerBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
@@ -587,6 +603,20 @@ where T: OutputManagerBackend + 'static
         batch_size: i64,
     ) -> Result<Vec<(i32, String, String)>, OutputManagerStorageError> {
         self.db.fetch_outputs_with_legacy_key_ids(last_id, batch_size)
+    }
+
+    /// See `OutputManagerBackend::fetch_outputs_for_mask_verification`.
+    pub fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        self.db.fetch_outputs_for_mask_verification(last_id, batch_size)
+    }
+
+    /// See `OutputManagerBackend::mark_outputs_invalid`.
+    pub fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
+        self.db.mark_outputs_invalid(output_ids)
     }
 
     /// See `OutputManagerBackend::update_output_key_ids`.

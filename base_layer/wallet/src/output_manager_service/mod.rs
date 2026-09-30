@@ -23,6 +23,7 @@
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod invalid_mask_migration;
 
 mod input_selection;
 pub use input_selection::{RangeLimit, UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};
