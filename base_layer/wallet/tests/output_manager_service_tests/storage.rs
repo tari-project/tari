@@ -1286,6 +1286,7 @@ async fn test_invalid_mask_migration_marks_only_tampered_outputs() {
             scanned: 4,
             mask_mismatches: 2,
             verification_errors: 1,
+            unverifiable_left_unchanged: 0,
             marked_invalid: 3,
         })
     );
@@ -1357,6 +1358,7 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
             scanned: 4,
             mask_mismatches: 1,
             verification_errors: 0,
+            unverifiable_left_unchanged: 0,
             marked_invalid: 1,
         })
     );
@@ -1428,4 +1430,104 @@ async fn test_guarded_revival_updates_do_not_overwrite_unlisted_invalid_rows() {
     // The unguarded variants keep their behaviour: every listed row is updated
     db.mark_outputs_as_unspent(vec![(invalid_unlisted.hash, true)]).unwrap();
     assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Unspent);
+}
+
+/// An output whose mask cannot be checked is only marked Invalid if it is spendable or pending: a spent row with an
+/// unreadable key id is left as it is, since as an Invalid row it would be fetched by every TXO revalidation run.
+#[tokio::test]
+async fn test_invalid_mask_migration_leaves_unverifiable_spent_outputs_unchanged() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let spent_garbage = add_mask_test_output(&db, &key_manager, 1000);
+    let unspent_garbage = add_mask_test_output(&db, &key_manager, 1100);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        for (kmo, status) in [
+            (&spent_garbage, OutputStatus::Spent),
+            (&unspent_garbage, OutputStatus::Unspent),
+        ] {
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+                .set((outputs::spending_key.eq("garbage"), outputs::status.eq(status as i32)))
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
+    let outcome = run_invalid_mask_migration(&wallet_db, &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 2,
+            mask_mismatches: 0,
+            verification_errors: 2,
+            unverifiable_left_unchanged: 1,
+            marked_invalid: 1,
+        })
+    );
+    assert_eq!(stored_status(&connection, &spent_garbage), OutputStatus::Spent);
+    assert_eq!(stored_status(&connection, &unspent_garbage), OutputStatus::Invalid);
+}
+
+/// Fetching invalid outputs for revalidation skips a row that cannot be decoded instead of failing, so one such row
+/// cannot stop every other Invalid output from being revalidated.
+#[tokio::test]
+async fn test_fetch_invalid_outputs_skips_undecodable_rows() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let good = add_mask_test_output(&db, &key_manager, 1000);
+    let garbage = add_mask_test_output(&db, &key_manager, 1100);
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table)
+            .set(outputs::status.eq(OutputStatus::Invalid as i32))
+            .execute(&mut conn)
+            .unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&garbage.commitment.to_vec())))
+            .set(outputs::spending_key.eq("garbage"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let invalid = db
+        .fetch_invalid_outputs(chrono::Utc::now().timestamp() + 60, &key_manager)
+        .unwrap();
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0].commitment, good.commitment);
+}
+
+/// A mined timestamp that cannot be represented is stored as a real NULL (not the text 'NULL'), so the row still loads.
+#[tokio::test]
+async fn test_received_output_update_stores_null_for_unrepresentable_timestamp() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let kmo = add_mask_test_output(&db, &key_manager, 1000);
+
+    db.set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
+        commitment: kmo.commitment.clone(),
+        mined_height: 1,
+        mined_in_block: FixedHash::from([1u8; 32]),
+        confirmed: true,
+        // Far beyond the range chrono can represent
+        mined_timestamp: 1u64 << 62,
+    }])
+    .unwrap();
+
+    let mut conn = connection.get_pooled_connection().unwrap();
+    let is_null: bool = outputs::table
+        .select(outputs::mined_timestamp.is_null())
+        .filter(outputs::commitment.eq(&kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap();
+    assert!(is_null, "mined_timestamp must be SQL NULL");
+    let loaded = db.fetch_by_commitment(kmo.commitment.clone(), &key_manager).unwrap();
+    assert_eq!(loaded.mined_height, Some(1));
+    assert_eq!(loaded.mined_timestamp, None);
 }

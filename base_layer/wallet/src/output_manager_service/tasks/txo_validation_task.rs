@@ -166,12 +166,18 @@ where
             invalid_outputs,
             "TXO revalidation of invalid outputs",
         );
-        if not_revivable > 0 {
+        if !not_revivable.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "{not_revivable} invalid output(s) failed the commitment mask check and stay Invalid (Operation ID: {})",
+                "{} invalid output(s) failed the commitment mask check and stay Invalid (Operation ID: {})",
+                not_revivable.len(),
                 self.operation_id
             );
+            // Record the check so these are only re-examined after `num_of_seconds_to_revalidate_invalid_utxos`,
+            // like invalid outputs the base node does not know
+            self.db
+                .update_last_validation_timestamps(not_revivable.into_iter().map(|o| o.commitment).collect())
+                .for_protocol(self.operation_id)?;
         }
 
         for batch in invalid_outputs.chunks(self.batch_size()) {
@@ -262,16 +268,16 @@ where
             .db
             .fetch_mined_unspent_outputs(&self.key_manager)
             .for_protocol(self.operation_id)?;
-        // This set is status-agnostic, so it includes Invalid outputs that still carry mined and spent data (e.g. a
-        // spent output invalidated by the commitment mask migration). One that the chain reports as unspent would be
-        // marked unspent below; refuse that if its commitment mask does not verify.
+        // This set is status-agnostic, so it includes Invalid and spent outputs that still carry mined and spent data
+        // (e.g. a spent output invalidated by the commitment mask migration). One that the chain reports as unspent
+        // would be marked unspent below; refuse that if its commitment mask does not verify.
         let (mined_outputs, not_revivable) =
             drop_unverifiable_revivals(&self.key_manager, mined_outputs, "TXO revalidation of mined outputs");
-        if not_revivable > 0 {
+        if !not_revivable.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "{not_revivable} mined invalid output(s) failed the commitment mask check and stay Invalid \
-                 (Operation ID: {})",
+                "{} mined output(s) failed the commitment mask check and are left unchanged (Operation ID: {})",
+                not_revivable.len(),
                 self.operation_id
             );
         }
@@ -381,17 +387,18 @@ where
             .fetch_unconfirmed_outputs(&self.key_manager)
             .for_protocol(self.operation_id)?;
         // The unconfirmed set includes every output without a mined height, which covers Invalid outputs after a
-        // reorg or a full revalidation. Those must not be revived if their commitment mask does not verify.
+        // reorg or a full revalidation, and outputs a reorg moved from spent back to unconfirmed. None of them may be
+        // made spendable if their commitment mask does not verify.
         let (unconfirmed_outputs, not_revivable) = drop_unverifiable_revivals(
             &self.key_manager,
             unconfirmed_outputs,
             "TXO revalidation of unconfirmed outputs",
         );
-        if not_revivable > 0 {
+        if !not_revivable.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "{not_revivable} unmined invalid output(s) failed the commitment mask check and stay Invalid \
-                 (Operation ID: {})",
+                "{} unconfirmed output(s) failed the commitment mask check and are left unchanged (Operation ID: {})",
+                not_revivable.len(),
                 self.operation_id
             );
         }
@@ -548,8 +555,9 @@ where
                     self.operation_id
                 );
                 if blocks_revival(&self.key_manager, &last_spent_output, "TXO reorg check") {
-                    // Moving it to UnspentMinedUnconfirmed would let the unconfirmed pass make it spendable. Keep it
-                    // Invalid and clear the stale spent data so the loop moves on to the next spent output.
+                    // Whatever its current status (Spent included), moving it to UnspentMinedUnconfirmed would let
+                    // the unconfirmed pass make it spendable. Mark it Invalid and clear the stale spent data so the
+                    // loop moves on to the next spent output.
                     self.db
                         .set_outputs_to_unmined_and_invalid(vec![last_spent_output.hash])
                         .for_protocol(self.operation_id)?;

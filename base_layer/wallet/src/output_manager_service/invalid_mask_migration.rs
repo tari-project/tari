@@ -27,7 +27,7 @@ use thiserror::Error;
 use crate::{
     error::WalletStorageError,
     output_manager_service::{
-        commitment_mask::{MaskCheck, check_commitment_mask},
+        commitment_mask::{MaskCheck, check_commitment_mask, error_kind},
         error::OutputManagerStorageError,
         storage::{
             OutputStatus,
@@ -63,6 +63,9 @@ pub struct InvalidMaskMigrationSummary {
     pub mask_mismatches: usize,
     /// Outputs that could not be checked at all (bad key id, bad commitment bytes, key derivation failure, ...)
     pub verification_errors: usize,
+    /// Of `verification_errors`, outputs left unchanged because they are spent or not stored (see
+    /// [`unverifiable_may_be_invalidated`])
+    pub unverifiable_left_unchanged: usize,
     /// Outputs whose status was changed to `Invalid`
     pub marked_invalid: usize,
 }
@@ -95,9 +98,10 @@ impl<T: WalletBackend + 'static> MigrationFlagStore for WalletDatabase<T> {
 /// Run the migration unless it has already completed for this wallet.
 ///
 /// Every output whose status is not already `Invalid` is checked. An output is marked `Invalid` if `verify_mask`
-/// returns `Ok(false)` or if the check cannot be performed (`Err`); the two cases are logged and counted
-/// separately. The status update for all failures happens in one database transaction after the scan, and the
-/// completion flag is written only after that transaction commits.
+/// returns `Ok(false)`, or if the check cannot be performed and the output is spendable or pending (see
+/// [`unverifiable_may_be_invalidated`]); unverifiable spent / not-stored outputs are left unchanged. The cases are
+/// logged and counted separately; stored values are only logged at debug. The status update for all failures happens in
+/// one database transaction after the scan, and the completion flag is written only after that transaction commits.
 ///
 /// This is CPU-bound and synchronous; call it from a blocking context.
 pub fn run_invalid_mask_migration<F, B, KM>(
@@ -134,27 +138,41 @@ where
                     summary.mask_mismatches = summary.mask_mismatches.saturating_add(1);
                     warn!(
                         target: LOG_TARGET,
-                        "Commitment mask migration: output id={} commitment {} (status {}, value {}) does not open to \
-                         its stored value and mask; marking Invalid",
+                        "Commitment mask migration: output id={} commitment {} (status {}) does not open to its \
+                         stored value and mask; marking Invalid",
                         row.id,
                         to_hex(&row.commitment),
                         status_name(row.status),
-                        row.value
                     );
+                    debug!(target: LOG_TARGET, "Commitment mask migration: output id={} stored value {}", row.id, row.value);
                     to_invalidate.push(row.id);
                 },
-                MaskCheck::Unverifiable(e) => {
+                MaskCheck::Unverifiable(reason) => {
                     summary.verification_errors = summary.verification_errors.saturating_add(1);
-                    error!(
-                        target: LOG_TARGET,
-                        "Commitment mask migration: could not verify output id={} commitment {} (status {}, value {}): \
-                         {e}; marking Invalid",
-                        row.id,
-                        to_hex(&row.commitment),
-                        status_name(row.status),
-                        row.value
-                    );
-                    to_invalidate.push(row.id);
+                    if unverifiable_may_be_invalidated(row.status) {
+                        error!(
+                            target: LOG_TARGET,
+                            "Commitment mask migration: could not verify output id={} commitment {} (status {}): \
+                             {reason}; marking Invalid",
+                            row.id,
+                            to_hex(&row.commitment),
+                            status_name(row.status),
+                        );
+                        to_invalidate.push(row.id);
+                    } else {
+                        // A spent or not-stored row cannot be spent again, and an undecodable row in Invalid would be
+                        // fetched by every TXO revalidation run. Leave it where it is.
+                        summary.unverifiable_left_unchanged = summary.unverifiable_left_unchanged.saturating_add(1);
+                        error!(
+                            target: LOG_TARGET,
+                            "Commitment mask migration: could not verify output id={} commitment {} (status {}): \
+                             {reason}; not spendable, leaving unchanged",
+                            row.id,
+                            to_hex(&row.commitment),
+                            status_name(row.status),
+                        );
+                    }
+                    debug!(target: LOG_TARGET, "Commitment mask migration: output id={} stored value {}", row.id, row.value);
                 },
             }
         }
@@ -165,11 +183,12 @@ where
 
     info!(
         target: LOG_TARGET,
-        "Commitment mask migration complete: {} output(s) scanned, {} mask mismatch(es), {} verification error(s), {} \
-         marked Invalid",
+        "Commitment mask migration complete: {} output(s) scanned, {} mask mismatch(es), {} verification error(s) ({} \
+         left unchanged as not spendable), {} marked Invalid",
         summary.scanned,
         summary.mask_mismatches,
         summary.verification_errors,
+        summary.unverifiable_left_unchanged,
         summary.marked_invalid
     );
     Ok(InvalidMaskMigrationOutcome::Completed(summary))
@@ -185,24 +204,42 @@ fn verify_row<KM: LegacyTransactionKeyManagerInterface>(
         Err(_) => {
             let legacy = match LegacyTariKeyId::from_str(&row.spending_key) {
                 Ok(legacy) => legacy,
-                Err(e) => return MaskCheck::Unverifiable(format!("unrecognised commitment mask key id: {e}")),
+                Err(_) => return MaskCheck::Unverifiable("unrecognised commitment mask key id format".to_string()),
             };
             match key_manager.convert_legacy_tari_key_id_to_current(&legacy) {
                 Ok(key_id) => key_id,
                 Err(e) => {
-                    return MaskCheck::Unverifiable(format!("could not convert legacy commitment mask key id: {e}"));
+                    return MaskCheck::Unverifiable(format!(
+                        "could not convert legacy commitment mask key id ({})",
+                        error_kind(&e)
+                    ));
                 },
             }
         },
     };
     let commitment = match CompressedCommitment::from_vec(&row.commitment) {
         Ok(commitment) => commitment,
-        Err(e) => return MaskCheck::Unverifiable(format!("malformed commitment: {e}")),
+        Err(e) => return MaskCheck::Unverifiable(format!("malformed commitment ({})", error_kind(&e))),
     };
     let Ok(value) = u64::try_from(row.value) else {
-        return MaskCheck::Unverifiable(format!("negative stored value {}", row.value));
+        return MaskCheck::Unverifiable("negative stored value".to_string());
     };
     check_commitment_mask(key_manager, &commitment, &key_id, value)
+}
+
+/// Whether an output whose mask cannot be checked is marked Invalid: only if it is spendable or pending. Spent,
+/// SpentMinedUnconfirmed, NotStored (and unknown) rows are left alone.
+pub fn unverifiable_may_be_invalidated(status: i32) -> bool {
+    matches!(
+        OutputStatus::try_from(status),
+        Ok(OutputStatus::Unspent |
+            OutputStatus::UnspentMinedUnconfirmed |
+            OutputStatus::EncumberedToBeReceived |
+            OutputStatus::ShortTermEncumberedToBeReceived |
+            OutputStatus::EncumberedToBeSpent |
+            OutputStatus::ShortTermEncumberedToBeSpent |
+            OutputStatus::CancelledInbound)
+    )
 }
 
 fn status_name(status: i32) -> String {

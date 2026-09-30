@@ -53,8 +53,19 @@ pub fn check_commitment_mask<KM: TransactionKeyManagerInterface>(
     match key_manager.verify_mask(commitment, commitment_mask_key_id, value) {
         Ok(true) => MaskCheck::Valid,
         Ok(false) => MaskCheck::Mismatch,
-        Err(e) => MaskCheck::Unverifiable(format!("verify_mask failed: {e}")),
+        // Only the error kind: the full error can embed the (possibly encrypted) key id
+        Err(e) => MaskCheck::Unverifiable(format!("verify_mask failed ({})", error_kind(&e))),
     }
+}
+
+/// The variant name of an error, without its payload, for logs that must not carry key material.
+pub fn error_kind<E: std::fmt::Debug>(error: &E) -> String {
+    let debug = format!("{error:?}");
+    debug
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .next()
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Check a stored output's commitment against its stored value and commitment mask key.
@@ -67,13 +78,14 @@ pub fn check_output_mask<KM: TransactionKeyManagerInterface>(key_manager: &KM, o
     )
 }
 
-/// Statuses from which an output can be moved back to a spendable (or pending incoming) status by revalidation.
+/// Statuses from which TXO validation revives outputs directly (the invalid-output pass). Used to decide which rows a
+/// validation write may overwrite if they have become `Invalid` since they were read.
 pub fn is_revivable_status(status: OutputStatus) -> bool {
     matches!(status, OutputStatus::Invalid | OutputStatus::CancelledInbound)
 }
 
-/// `true` if `output`'s commitment mask verifies, so it may be moved back to a spendable status. Otherwise logs at warn
-/// with `context` and returns `false`.
+/// `true` if `output`'s commitment mask verifies, so it may be moved to a spendable status. Otherwise logs at warn with
+/// `context` (commitment and status only; the value at debug) and returns `false`.
 pub fn mask_allows_revival<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     output: &DbWalletOutput,
@@ -85,36 +97,38 @@ pub fn mask_allows_revival<KM: TransactionKeyManagerInterface>(
     }
     warn!(
         target: LOG_TARGET,
-        "{context}: not reviving output {} (status {}, value {}): {check}",
+        "{context}: not moving output {} (status {}) to a spendable status: {check}",
         output.commitment.to_hex(),
         output.status,
+    );
+    debug!(
+        target: LOG_TARGET,
+        "{context}: refused output {} has stored value {}",
+        output.commitment.to_hex(),
         output.wallet_output.value()
     );
     false
 }
 
-/// `true` if moving `output` to a spendable status must be refused: it is currently in a revivable status (see
-/// [`is_revivable_status`]) and its commitment mask does not verify. Refusals are logged at warn with `context`.
+/// `true` if moving `output` into a spendable or pending status (Unspent, UnspentMinedUnconfirmed,
+/// EncumberedToBeReceived) must be refused because its commitment mask does not verify. The check runs whatever the
+/// output's current status is: a Spent or SpentMinedUnconfirmed row can be moved back to unspent by a reorg, so it
+/// must not skip the check. Refusals are logged at warn with `context`.
 pub fn blocks_revival<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     output: &DbWalletOutput,
     context: &str,
 ) -> bool {
-    is_revivable_status(output.status) && !mask_allows_revival(key_manager, output, context)
+    !mask_allows_revival(key_manager, output, context)
 }
 
-/// Remove every output that [`blocks_revival`], returning the rest and the number removed. Outputs not in a revivable
-/// status are passed through unchecked.
+/// Split `outputs` into those that may be moved to a spendable status and those that [`blocks_revival`].
 pub fn drop_unverifiable_revivals<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     outputs: Vec<DbWalletOutput>,
     context: &str,
-) -> (Vec<DbWalletOutput>, usize) {
-    let total = outputs.len();
-    let kept: Vec<_> = outputs
+) -> (Vec<DbWalletOutput>, Vec<DbWalletOutput>) {
+    outputs
         .into_iter()
-        .filter(|output| !blocks_revival(key_manager, output, context))
-        .collect();
-    let dropped = total.saturating_sub(kept.len());
-    (kept, dropped)
+        .partition(|output| !blocks_revival(key_manager, output, context))
 }

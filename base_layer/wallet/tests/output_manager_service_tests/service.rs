@@ -3111,6 +3111,25 @@ async fn test_txo_validation_does_not_revive_invalid_outputs_with_bad_commitment
     for (i, (kmo, expected)) in cases.iter().enumerate() {
         assert_eq!(stored_status(&connection, kmo), *expected, "case {i}");
     }
+    // Outputs refused by the invalid-output pass record the check, so they wait out the revalidation interval
+    for i in [1, 5] {
+        assert!(
+            last_validation_timestamp(&connection, &cases[i].0).is_some(),
+            "case {i} must have a last validation timestamp"
+        );
+    }
+}
+
+fn last_validation_timestamp(
+    connection: &minotari_wallet::storage::sqlite_utilities::WalletDbConnection,
+    kmo: &DbWalletOutput,
+) -> Option<chrono::NaiveDateTime> {
+    let mut conn = connection.get_pooled_connection().unwrap();
+    outputs::table
+        .select(outputs::last_validation_timestamp)
+        .filter(outputs::commitment.eq(kmo.commitment.to_vec()))
+        .first(&mut conn)
+        .unwrap()
 }
 
 /// Manually applied validation fixes (the console / gRPC "validate outputs" command) must not revive an Invalid output
@@ -3342,4 +3361,181 @@ async fn test_output_manager_service_runs_mask_migration_on_start() {
             .unwrap(),
         Some("1".to_string())
     );
+}
+
+/// A tampered Invalid output must not reach a spendable status through Spent: the manual fix path refuses to mark it
+/// spent, and an output that is already Spent is checked when a reorg would move it back to unconfirmed, so the
+/// unconfirmed pass cannot then make it Unspent. A genuine output in the same position is still moved back.
+#[tokio::test]
+async fn test_invalid_output_cannot_be_revived_through_spent() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let mut header1 = tari_node_components::blocks::BlockHeader::new(1);
+    header1.height = 1;
+    let block1 = Some(header1.hash().to_vec());
+    oms.base_node_mock
+        .set_blocks(HashMap::from([(1, header1)]))
+        .await
+        .unwrap();
+    let mined1 = Some((1i64, block1.clone()));
+    // A spending block the base node does not have, i.e. one that has been reorged out
+    let reorged_block = vec![7u8; 32];
+
+    // Invalid and tampered: a manual "spent" fix must be refused
+    let tampered_invalid = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1000,
+        true,
+        OutputStatus::Invalid,
+        mined1.clone(),
+        None,
+    );
+    oms.output_manager_handle
+        .update_output_validation_state(
+            vec![],
+            vec![SpentOutputInfoForBatch {
+                commitment: tampered_invalid.commitment.clone(),
+                confirmed: true,
+                mark_deleted_at_height: 3,
+                mark_deleted_in_block: FixedHash::try_from(reorged_block.clone()).unwrap(),
+            }],
+            vec![],
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert_eq!(stored_status(&connection, &tampered_invalid), OutputStatus::Invalid);
+
+    // Already Spent in the reorged-out block (e.g. via that fix before it was refused)
+    let spent = |value, tamper| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::Spent,
+            mined1.clone(),
+            Some((3, Some(reorged_block.clone()))),
+        )
+    };
+    let genuine_spent = spent(1100, false);
+    let tampered_spent = spent(1200, true);
+
+    oms.base_node_mock
+        .set_mined_utxos(
+            [&tampered_invalid, &genuine_spent, &tampered_spent]
+                .iter()
+                .map(|kmo| MinedUtxoInfo {
+                    utxo_hash: kmo.hash.to_vec(),
+                    mined_in_hash: block1.clone().unwrap(),
+                    mined_in_height: 1,
+                    mined_in_timestamp: 0,
+                })
+                .collect(),
+            100,
+        )
+        .await;
+
+    run_txo_validation(&mut oms).await;
+
+    assert_eq!(stored_status(&connection, &tampered_invalid), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &genuine_spent), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered_spent), OutputStatus::Invalid);
+}
+
+/// An Invalid row that cannot be decoded must not stop the invalid-output pass: validation still succeeds and a
+/// genuine Invalid output is still revived.
+#[tokio::test]
+async fn test_undecodable_invalid_output_does_not_block_revalidation() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let mut headers = HashMap::new();
+    for height in [1u64, 2] {
+        let mut header = tari_node_components::blocks::BlockHeader::new(1);
+        header.height = height;
+        headers.insert(height, header);
+    }
+    let block1 = Some(headers[&1].hash().to_vec());
+    let block2 = Some(headers[&2].hash().to_vec());
+    oms.base_node_mock.set_blocks(headers).await.unwrap();
+
+    // The highest mined output, still on the main chain, so the reorg check stops before reaching the broken row
+    let anchor = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        900,
+        false,
+        OutputStatus::Unspent,
+        Some((2, block2.clone())),
+        None,
+    );
+    let genuine = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1000,
+        false,
+        OutputStatus::Invalid,
+        Some((1, block1.clone())),
+        None,
+    );
+    // Only the invalid-output pass reads this row: it has a mined height (not unconfirmed), a spending block but no
+    // spent height (neither in the mined-unspent set nor a last spent output)
+    let broken = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1100,
+        false,
+        OutputStatus::Invalid,
+        Some((1, block1.clone())),
+        None,
+    );
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(broken.commitment.to_vec())))
+            .set((
+                outputs::spending_key.eq("garbage"),
+                outputs::marked_deleted_in_block.eq(Some(vec![9u8; 32])),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+        // Keep the genuine row out of the mined-unspent pass too, so only the invalid-output pass can revive it
+        diesel::update(outputs::table.filter(outputs::commitment.eq(genuine.commitment.to_vec())))
+            .set(outputs::marked_deleted_in_block.eq(Some(vec![9u8; 32])))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    oms.base_node_mock
+        .set_mined_utxos(
+            [(&anchor, 2u64, &block2), (&genuine, 1, &block1), (&broken, 1, &block1)]
+                .iter()
+                .map(|(kmo, height, block)| MinedUtxoInfo {
+                    utxo_hash: kmo.hash.to_vec(),
+                    mined_in_hash: (*block).clone().unwrap(),
+                    mined_in_height: *height,
+                    mined_in_timestamp: 0,
+                })
+                .collect(),
+            100,
+        )
+        .await;
+
+    run_txo_validation(&mut oms).await;
+
+    assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &broken), OutputStatus::Invalid);
 }

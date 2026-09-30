@@ -124,7 +124,7 @@ use crate::{
             OutputStatus,
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-            sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch},
+            sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         },
         tasks::TxoValidationTask,
     },
@@ -133,8 +133,18 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
-/// The mined and unspent updates of a validation state fix that are allowed to be applied.
-type ValidationStateRevivals = (Vec<ReceivedOutputInfoForBatch>, Vec<(FixedHash, bool)>);
+/// The parts of an externally supplied validation state fix that may be applied, see
+/// `OutputManagerService::filter_validation_fixes`.
+#[derive(Default)]
+struct FilteredValidationFixes {
+    mined: Vec<ReceivedOutputInfoForBatch>,
+    /// Commitments of mined updates whose output was read in a revivable status
+    mined_revivable: Vec<CompressedCommitment>,
+    spent: Vec<SpentOutputInfoForBatch>,
+    unspent: Vec<(FixedHash, bool)>,
+    /// Hashes of unspent updates whose output was read in a revivable status
+    unspent_revivable: Vec<FixedHash>,
+}
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -530,21 +540,22 @@ where
                 unmined_invalid,
                 unspent_updates,
             } => {
-                let (mined_updates, unspent_updates) =
-                    self.drop_unverifiable_revivals(mined_updates, unspent_updates)?;
-                if !mined_updates.is_empty() {
+                let fixes = self.filter_validation_fixes(mined_updates, spent_updates, unspent_updates)?;
+                if !fixes.mined.is_empty() {
                     self.resources
                         .db
-                        .set_received_outputs_mined_height_and_statuses(mined_updates)?;
+                        .set_received_outputs_mined_height_and_statuses_guarded(fixes.mined, fixes.mined_revivable)?;
                 }
-                if !spent_updates.is_empty() {
-                    self.resources.db.mark_outputs_as_spent(spent_updates)?;
+                if !fixes.spent.is_empty() {
+                    self.resources.db.mark_outputs_as_spent(fixes.spent)?;
                 }
                 if !unmined_invalid.is_empty() {
                     self.resources.db.set_outputs_to_unmined_and_invalid(unmined_invalid)?;
                 }
-                if !unspent_updates.is_empty() {
-                    self.resources.db.mark_outputs_as_unspent(unspent_updates)?;
+                if !fixes.unspent.is_empty() {
+                    self.resources
+                        .db
+                        .mark_outputs_as_unspent_guarded(fixes.unspent, fixes.unspent_revivable)?;
                 }
                 Ok(OutputManagerResponse::OutputValidationStateUpdated)
             },
@@ -815,53 +826,81 @@ where
         Ok(id)
     }
 
-    /// Remove from externally supplied validation fixes any update that would move an Invalid (or cancelled inbound)
-    /// output back to a spendable status when its commitment does not open to its stored value and mask. Updates for
-    /// outputs that cannot be found are passed through unchanged so the storage layer reports them as before; any other
-    /// failure to load an output is returned as an error and nothing is applied.
-    fn drop_unverifiable_revivals(
+    /// Filter externally supplied validation fixes (the console / gRPC "validate outputs" command):
+    /// - a mined or unspent update is dropped if the output's commitment does not open to its stored value and mask,
+    ///   whatever its current status, since both move it into a spendable status;
+    /// - a spent update is dropped for an Invalid output that fails the check, so it cannot be laundered through Spent
+    ///   and a later reorg back into a spendable status.
+    ///
+    /// Updates for outputs that do not exist pass through so the storage layer reports them as before; any other
+    /// failure to load an output is returned as an error and nothing is applied. Also returns, for the guarded writes,
+    /// the outputs that were read in a revivable status and so may overwrite a row that is Invalid at write time.
+    fn filter_validation_fixes(
         &self,
         mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
         unspent_updates: Vec<(FixedHash, bool)>,
-    ) -> Result<ValidationStateRevivals, OutputManagerError> {
+    ) -> Result<FilteredValidationFixes, OutputManagerError> {
         const CONTEXT: &str = "Output validation state update";
         let key_manager = &self.resources.key_manager;
-        let blocked = |output: &DbWalletOutput| commitment_mask::blocks_revival(key_manager, output, CONTEXT);
+        let fetch = |commitment: &CompressedCommitment| -> Result<Option<DbWalletOutput>, OutputManagerError> {
+            match self.resources.db.fetch_by_commitment(commitment.clone(), key_manager) {
+                Ok(output) => Ok(Some(output)),
+                Err(OutputManagerStorageError::ValueNotFound) => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        };
 
-        let mut kept_mined = Vec::with_capacity(mined_updates.len());
+        let mut fixes = FilteredValidationFixes::default();
         for update in mined_updates {
-            match self
-                .resources
-                .db
-                .fetch_by_commitment(update.commitment.clone(), key_manager)
-            {
-                Ok(output) if blocked(&output) => {},
-                // Unknown outputs pass through so the storage layer reports them as before
-                Ok(_) | Err(OutputManagerStorageError::ValueNotFound) => kept_mined.push(update),
-                // Any other failure (e.g. an unconvertible key id) means the output cannot be checked: fail closed,
-                // like the unspent branch below
-                Err(e) => return Err(e.into()),
+            match fetch(&update.commitment)? {
+                Some(output) if commitment_mask::blocks_revival(key_manager, &output, CONTEXT) => {},
+                Some(output) => {
+                    if commitment_mask::is_revivable_status(output.status) {
+                        fixes.mined_revivable.push(output.commitment);
+                    }
+                    fixes.mined.push(update);
+                },
+                None => fixes.mined.push(update),
             }
         }
 
-        let unspent_hashes: Vec<FixedHash> = unspent_updates.iter().map(|(hash, _)| *hash).collect();
-        let blocked_hashes: HashSet<FixedHash> = if unspent_hashes.is_empty() {
-            HashSet::new()
-        } else {
-            self.resources
-                .db
-                .fetch_many_outputs(&unspent_hashes, key_manager)?
-                .iter()
-                .filter(|output| blocked(output))
-                .map(|output| output.hash)
-                .collect()
-        };
-        let kept_unspent = unspent_updates
-            .into_iter()
-            .filter(|(hash, _)| !blocked_hashes.contains(hash))
-            .collect();
+        for update in spent_updates {
+            match fetch(&update.commitment)? {
+                Some(output)
+                    if output.status == OutputStatus::Invalid &&
+                        commitment_mask::blocks_revival(key_manager, &output, CONTEXT) => {},
+                _ => fixes.spent.push(update),
+            }
+        }
 
-        Ok((kept_mined, kept_unspent))
+        let unspent_hashes: HashSet<FixedHash> = unspent_updates.iter().map(|(hash, _)| *hash).collect();
+        if !unspent_hashes.is_empty() {
+            let outputs = self
+                .resources
+                .db
+                .fetch_many_outputs(&unspent_hashes.iter().copied().collect::<Vec<_>>(), key_manager)?;
+            if outputs.len() != unspent_hashes.len() {
+                // As the unguarded update did: every output to mark unspent must exist
+                return Err(OutputManagerStorageError::ValuesNotFound.into());
+            }
+            let mut blocked = HashSet::new();
+            for output in &outputs {
+                if commitment_mask::blocks_revival(key_manager, output, CONTEXT) {
+                    blocked.insert(output.hash);
+                } else if commitment_mask::is_revivable_status(output.status) {
+                    fixes.unspent_revivable.push(output.hash);
+                } else {
+                    // Mask verifies and the row is not Invalid: the plain guarded update applies
+                }
+            }
+            fixes.unspent = unspent_updates
+                .into_iter()
+                .filter(|(hash, _)| !blocked.contains(hash))
+                .collect();
+        }
+
+        Ok(fixes)
     }
 
     fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {

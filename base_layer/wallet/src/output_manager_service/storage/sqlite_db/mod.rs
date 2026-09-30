@@ -49,6 +49,7 @@ use tokio::time::Instant;
 use crate::{
     output_manager_service::{
         UtxoSelectionCriteria,
+        commitment_mask::error_kind,
         error::OutputManagerStorageError,
         service::Balance,
         storage::{
@@ -174,7 +175,7 @@ impl OutputManagerSqliteDatabase {
                 .iter()
                 .map(|update| {
                     format!(
-                        "(x'{}', {}, x'{}', {}, '{}', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                        "(x'{}', {}, x'{}', {}, {}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
                         update.commitment.to_hex(),
                         update.mined_height as i64,
                         update.mined_in_block.to_hex(),
@@ -183,11 +184,9 @@ impl OutputManagerSqliteDatabase {
                         } else {
                             OutputStatus::UnspentMinedUnconfirmed as i32
                         },
-                        if let Some(val) = DateTime::from_timestamp(update.mined_timestamp as i64, 0) {
-                            val.naive_utc().to_string()
-                        } else {
-                            "NULL".to_string()
-                        },
+                        // Quoted timestamp, or an unquoted SQL NULL (a quoted 'NULL' would be stored as text)
+                        DateTime::from_timestamp(update.mined_timestamp as i64, 0)
+                            .map_or_else(|| "NULL".to_string(), |val| format!("'{}'", val.naive_utc())),
                     )
                 })
                 .collect::<Vec<String>>()
@@ -534,10 +533,23 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
 
-        outputs
+        // Skip, rather than fail on, rows that cannot be decoded: one such row would otherwise make every TXO
+        // revalidation of invalid outputs fail, so no Invalid output could ever be revived
+        Ok(outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output(key_manager))
-            .collect::<Result<Vec<_>, _>>()
+            .filter_map(|o| {
+                let (id, commitment) = (o.id, o.commitment.to_hex());
+                o.to_db_wallet_output(key_manager)
+                    .inspect_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Skipping invalid output id={id} commitment {commitment} that cannot be decoded ({})",
+                            error_kind(e)
+                        );
+                    })
+                    .ok()
+            })
+            .collect())
     }
 
     fn fetch_many_outputs<KM: LegacyTransactionKeyManagerInterface>(
