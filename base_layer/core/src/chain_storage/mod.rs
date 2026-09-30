@@ -101,9 +101,6 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, HashOutput},
 };
-mod template_registation;
-pub use template_registation::TemplateRegistrationEntry;
-
 mod smt_hasher;
 
 pub use smt_hasher::SmtHasher;

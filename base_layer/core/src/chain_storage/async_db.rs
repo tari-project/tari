@@ -53,7 +53,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::{BlockchainCheckStatus, MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{BlockchainCheckStatus, MinedInfo, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
@@ -439,8 +439,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         ) -> Option<ValidatorNodeRegistrationInfo>,
         "get_validator_node"
     );
-
-    make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
 

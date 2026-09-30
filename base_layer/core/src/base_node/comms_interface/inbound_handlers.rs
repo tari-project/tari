@@ -520,18 +520,6 @@ where B: BlockchainBackend + 'static
                 let vn = self.blockchain_db.get_validator_node(sidechain_id, public_key).await?;
                 Ok(NodeCommsResponse::GetValidatorNode(vn))
             },
-            NodeCommsRequest::FetchTemplateRegistrations {
-                start_height,
-                end_height,
-            } => {
-                let template_registrations = self
-                    .blockchain_db
-                    .fetch_template_registrations(start_height..=end_height)
-                    .await?;
-                Ok(NodeCommsResponse::FetchTemplateRegistrationsResponse(
-                    template_registrations,
-                ))
-            },
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))

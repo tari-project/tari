@@ -152,24 +152,6 @@ impl OutputFeatures {
         }
     }
 
-    /// Creates template registration output features
-    pub fn for_template_registration(
-        template_registration: CodeTemplateRegistration,
-        sidechain_deployment_key: Option<&PrivateKey>,
-    ) -> OutputFeatures {
-        let sidechain_id =
-            sidechain_deployment_key.map(|k| SideChainId::sign(k, template_registration.sidechain_id_message()));
-
-        OutputFeatures {
-            output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::CodeTemplateRegistration(template_registration),
-                sidechain_id,
-            }),
-            ..Default::default()
-        }
-    }
-
     pub fn for_validator_node_registration(
         signature: ValidatorNodeSignature,
         claim_public_key: CompressedPublicKey,

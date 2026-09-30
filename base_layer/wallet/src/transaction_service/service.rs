@@ -57,7 +57,6 @@ use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_max_size::MaxSizeString;
 use tari_script::{
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
@@ -99,12 +98,9 @@ use tari_transaction_components::{
         RecipientSpec,
     },
     transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
         EncryptedData,
         KernelFeatures,
         OutputFeatures,
-        TemplateType,
         Transaction,
         TransactionError,
         TransactionOutput,
@@ -1089,45 +1085,6 @@ where
                         )
                         .await?;
                     Ok(TransactionServiceResponse::TransactionSent(tx_id))
-                }
-                .await
-            },
-
-            TransactionServiceRequest::RegisterCodeTemplate {
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                fee_per_gram,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let payment_id = MemoField::new_open(
-                        format!("Template Registration: {template_name}").into_bytes(),
-                        TxType::CodeTemplateRegistration,
-                    )
-                    .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-                    let (tx_id, template_address) = self
-                        .register_code_template(
-                            fee_per_gram,
-                            template_name,
-                            template_version,
-                            template_type,
-                            build_info,
-                            binary_sha,
-                            binary_url,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
-                        tx_id,
-                        template_address,
-                    })
                 }
                 .await
             },
@@ -3453,92 +3410,6 @@ where
         .await?;
 
         Ok(tx_id)
-    }
-
-    async fn register_code_template(
-        &mut self,
-        fee_per_gram: MicroMinotari,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        payment_id: MemoField,
-
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        let author_key_id = TariKeyId::CodeTemplateAuthor;
-        let author_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&author_key_id)?;
-        let nonce = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
-        let mut template_registration = CodeTemplateRegistration {
-            author_public_key: author_key.clone(),
-            author_signature: CompressedSignature::default(),
-            template_name,
-            template_version,
-            template_type,
-            build_info,
-            binary_sha,
-            binary_url,
-        };
-
-        let signature_message = template_registration.create_signature_message(&nonce.pub_key);
-
-        let author_sig = self
-            .resources
-            .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key_id, &nonce.key_id, &signature_message)
-            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-
-        template_registration.author_signature = author_sig;
-
-        let output_features =
-            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                0.into(),
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-        let template_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type.is_template_registration())
-            .ok_or_else(|| {
-                TransactionServiceError::ServiceError(format!(
-                    "Transaction {tx_id} did not contain a template registration utxo"
-                ))
-            })?;
-        let template_address = template_output.hash();
-
-        self.submit_transaction_to_self(
-            transaction_broadcast_join_handles,
-            tx_id,
-            transaction,
-            fee,
-            0.into(),
-            payment_id,
-        )
-        .await?;
-        Ok((tx_id, template_address))
     }
 
     /// Sends a one side payment transaction to a recipient

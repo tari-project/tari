@@ -65,6 +65,7 @@ pub enum GrpcMethod {
     GetActiveValidatorNodes,
     GetValidatorNodeChanges,
     GetShardKey,
+    /// No longer served. Still parsed so that existing `grpc_server_allow_methods` lists keep loading.
     GetTemplateRegistrations,
     GetSideChainUtxos,
     SearchPaymentReferences,
