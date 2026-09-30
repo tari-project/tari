@@ -35,6 +35,7 @@ use minotari_wallet::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
+        invalid_mask_migration::{INVALID_MASK_MIGRATION_KEY, MigrationFlagStore},
         service::OutputManagerService,
         storage::{
             OutputSource,
@@ -45,6 +46,7 @@ use minotari_wallet::{
         },
     },
     schema::outputs,
+    storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
@@ -92,7 +94,7 @@ use tari_transaction_key_manager::legacy_key_manager::{
     MemoryKeyManager,
     create_new_random_key_manager,
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -211,6 +213,18 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     backend: T,
     _with_connection: bool,
 ) -> TestOmsService {
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    setup_output_manager_service_with_key_manager(backend, None, key_manager).await
+}
+
+/// As `setup_output_manager_service`, with a given key manager and optionally a commitment mask migration flag store.
+#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_lines)]
+async fn setup_output_manager_service_with_key_manager<T: OutputManagerBackend + 'static>(
+    backend: T,
+    migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
+    key_manager: MemoryKeyManager,
+) -> TestOmsService {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 
@@ -230,8 +244,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let client_factory = MockHttpClientFactory::default();
     let base_node_mock = client_factory.get_client();
     let wallet_connectivity_mock = WalletConnectivityHandle::new(client_factory);
-
-    let key_manager = create_new_random_key_manager().await.unwrap();
 
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -255,6 +267,10 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     )
     .await
     .unwrap();
+    let output_manager_service = match migration_flag_store {
+        Some(store) => output_manager_service.with_migration_flag_store(store),
+        None => output_manager_service,
+    };
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
     task::spawn(async move { output_manager_service.start().await.unwrap() });
@@ -3146,4 +3162,184 @@ async fn test_update_output_validation_state_does_not_revive_invalid_outputs_wit
     assert_eq!(stored_status(&connection, &tampered_mined), OutputStatus::Invalid);
     assert_eq!(stored_status(&connection, &genuine_unspent), OutputStatus::Unspent);
     assert_eq!(stored_status(&connection, &tampered_unspent), OutputStatus::Invalid);
+}
+
+/// Run TXO validation and wait for it to finish successfully.
+async fn run_txo_validation(oms: &mut TestOmsService) {
+    let mut events = oms.output_manager_handle.get_event_stream();
+    let id = oms.output_manager_handle.validate_txos().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            match &*events.recv().await.unwrap() {
+                OutputManagerEvent::TxoValidationSuccess(done) if *done == id => break,
+                OutputManagerEvent::TxoValidationCommunicationFailure(done) |
+                OutputManagerEvent::TxoValidationInternalFailure(done)
+                    if *done == id =>
+                {
+                    panic!("TXO validation failed")
+                },
+                _ => {},
+            }
+        }
+    })
+    .await
+    .expect("TXO validation did not complete");
+}
+
+/// An output that becomes Invalid after the validation task read it (as the commitment mask migration would) must not
+/// be overwritten back to a spendable status by that task's write. The mock marks the output Invalid while the task
+/// is waiting on the base node, i.e. between its read and its write.
+#[tokio::test]
+async fn test_txo_validation_does_not_clobber_output_invalidated_mid_run() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let mut header1 = tari_node_components::blocks::BlockHeader::new(1);
+    header1.height = 1;
+    let block1 = Some(header1.hash().to_vec());
+    oms.base_node_mock
+        .set_blocks(HashMap::from([(1, header1)]))
+        .await
+        .unwrap();
+    let mined1 = Some((1i64, block1.clone()));
+
+    // Both are mined but unconfirmed, so the unconfirmed-output pass reads them as UnspentMinedUnconfirmed
+    let unconfirmed = |value, tamper| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::UnspentMinedUnconfirmed,
+            mined1.clone(),
+            None,
+        )
+    };
+    let genuine = unconfirmed(1000, false);
+    let tampered = unconfirmed(1100, true);
+
+    oms.base_node_mock
+        .set_mined_utxos(
+            [&genuine, &tampered]
+                .iter()
+                .map(|kmo| MinedUtxoInfo {
+                    utxo_hash: kmo.hash.to_vec(),
+                    mined_in_hash: block1.clone().unwrap(),
+                    mined_in_height: 1,
+                    mined_in_timestamp: 0,
+                })
+                .collect(),
+            100,
+        )
+        .await;
+    let hook_connection = connection.clone();
+    let tampered_commitment = tampered.commitment.to_vec();
+    oms.base_node_mock
+        .set_on_mined_info_query(Arc::new(move || {
+            let mut conn = hook_connection.get_pooled_connection().unwrap();
+            diesel::update(outputs::table.filter(outputs::commitment.eq(&tampered_commitment)))
+                .set(outputs::status.eq(OutputStatus::Invalid as i32))
+                .execute(&mut conn)
+                .unwrap();
+        }))
+        .await;
+
+    run_txo_validation(&mut oms).await;
+
+    assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered), OutputStatus::Invalid);
+}
+
+/// In the manual validation fix path, an output that cannot be loaded for the mask check (here an unparseable
+/// commitment mask key id) must fail closed: the whole update is rejected and the output stays Invalid.
+#[tokio::test]
+async fn test_update_output_validation_state_fails_closed_when_output_cannot_be_checked() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+    let key_manager = oms.key_manager_handle.clone();
+
+    let broken = add_output_with_state(
+        &connection,
+        &db,
+        &key_manager,
+        1000,
+        false,
+        OutputStatus::Invalid,
+        None,
+        None,
+    );
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(broken.commitment.to_vec())))
+            .set(outputs::spending_key.eq("not a key id"))
+            .execute(&mut conn)
+            .unwrap();
+    }
+
+    let result = oms
+        .output_manager_handle
+        .update_output_validation_state(
+            vec![ReceivedOutputInfoForBatch {
+                commitment: broken.commitment.clone(),
+                mined_height: 1,
+                mined_in_block: FixedHash::from([1u8; 32]),
+                confirmed: true,
+                mined_timestamp: 0,
+            }],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .await;
+    assert!(result.is_err(), "an output that cannot be checked must not be revived");
+    assert_eq!(stored_status(&connection, &broken), OutputStatus::Invalid);
+}
+
+/// The output manager service runs the commitment mask migration itself, before it serves any request, and records
+/// completion in the flag store.
+#[tokio::test]
+async fn test_output_manager_service_runs_mask_migration_on_start() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend.clone());
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("mask migration on start")).unwrap(),
+    );
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let unspent = |value, tamper| {
+        add_output_with_state(
+            &connection,
+            &db,
+            &key_manager,
+            value,
+            tamper,
+            OutputStatus::Unspent,
+            None,
+            None,
+        )
+    };
+    let genuine = unspent(1000, false);
+    let tampered = unspent(1100, true);
+
+    let mut oms =
+        setup_output_manager_service_with_key_manager(backend, Some(Arc::new(wallet_db.clone())), key_manager.clone())
+            .await;
+    // Any reply means the request loop is running, which only happens after the migration has finished
+    oms.output_manager_handle.get_balance().await.unwrap();
+
+    assert_eq!(stored_status(&connection, &genuine), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &tampered), OutputStatus::Invalid);
+    assert_eq!(
+        wallet_db
+            .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())
+            .unwrap(),
+        Some("1".to_string())
+    );
 }

@@ -83,6 +83,14 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError>;
+    /// As `set_received_outputs_mined_height_and_statuses`, but a row that is currently `Invalid` is only updated if
+    /// its commitment is in `revivable`. Used by TXO validation so that a status written after it read an output
+    /// (e.g. by the commitment mask migration) is not overwritten.
+    fn set_received_outputs_mined_height_and_statuses_guarded(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unmined and invalid state
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     /// Fetch kernel signature (nonce, key) for a completed transaction by tx_id.
@@ -106,6 +114,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unspent status
     fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError>;
+    /// As `mark_outputs_as_unspent`, but a row that is currently `Invalid` is only updated if its hash is in
+    /// `revivable`; rows skipped that way are not an error.
+    fn mark_outputs_as_unspent_guarded(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.

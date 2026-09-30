@@ -529,6 +529,25 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    /// See `OutputManagerBackend::set_received_outputs_mined_height_and_statuses_guarded`.
+    pub fn set_received_outputs_mined_height_and_statuses_guarded(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db
+            .set_received_outputs_mined_height_and_statuses_guarded(updates, revivable)
+    }
+
+    /// See `OutputManagerBackend::mark_outputs_as_unspent_guarded`.
+    pub fn mark_outputs_as_unspent_guarded(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db.mark_outputs_as_unspent_guarded(hashes, revivable)
+    }
+
     pub fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.set_outputs_to_unmined_and_invalid(hashes)?;

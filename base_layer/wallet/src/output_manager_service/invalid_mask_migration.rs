@@ -8,8 +8,12 @@
 //! key could be accepted and stored as a normal wallet output. This migration finds those rows and marks them
 //! [`OutputStatus::Invalid`] so they are no longer counted in the balance or selected for spending.
 //!
-//! It is gated by a flag in the wallet's client key/value store. The flag is only written after the scan and the
-//! update have both completed, so a crash part way through simply re-runs the whole scan on the next start.
+//! It is gated by a flag in the wallet's client key/value store (see [`MigrationFlagStore`]). The flag is only
+//! written after the scan and the update have both completed, so a crash part way through simply re-runs the whole
+//! scan on the next start.
+//!
+//! The output manager service runs it from `OutputManagerService::start`, before its request loop, so it completes
+//! before any TXO validation task can be started and nothing can overwrite its result.
 
 use std::str::FromStr;
 
@@ -71,6 +75,23 @@ pub enum InvalidMaskMigrationOutcome {
     Completed(InvalidMaskMigrationSummary),
 }
 
+/// Persistent store for the one-off completion flag. Implemented by [`WalletDatabase`], which keeps it in the wallet's
+/// (encrypted) client key/value table.
+pub trait MigrationFlagStore: Send + Sync {
+    fn get_migration_flag(&self, key: &str) -> Result<Option<String>, WalletStorageError>;
+    fn set_migration_flag(&self, key: &str, value: String) -> Result<(), WalletStorageError>;
+}
+
+impl<T: WalletBackend + 'static> MigrationFlagStore for WalletDatabase<T> {
+    fn get_migration_flag(&self, key: &str) -> Result<Option<String>, WalletStorageError> {
+        self.get_client_key_value(key.to_string())
+    }
+
+    fn set_migration_flag(&self, key: &str, value: String) -> Result<(), WalletStorageError> {
+        self.set_client_key_value(key.to_string(), value)
+    }
+}
+
 /// Run the migration unless it has already completed for this wallet.
 ///
 /// Every output whose status is not already `Invalid` is checked. An output is marked `Invalid` if `verify_mask`
@@ -79,20 +100,17 @@ pub enum InvalidMaskMigrationOutcome {
 /// completion flag is written only after that transaction commits.
 ///
 /// This is CPU-bound and synchronous; call it from a blocking context.
-pub fn run_invalid_mask_migration<W, B, KM>(
-    wallet_db: &WalletDatabase<W>,
+pub fn run_invalid_mask_migration<F, B, KM>(
+    flag_store: &F,
     output_db: &OutputManagerDatabase<B>,
     key_manager: &KM,
 ) -> Result<InvalidMaskMigrationOutcome, InvalidMaskMigrationError>
 where
-    W: WalletBackend + 'static,
+    F: MigrationFlagStore + ?Sized,
     B: OutputManagerBackend + 'static,
     KM: LegacyTransactionKeyManagerInterface,
 {
-    if wallet_db
-        .get_client_key_value(INVALID_MASK_MIGRATION_KEY.to_string())?
-        .is_some()
-    {
+    if flag_store.get_migration_flag(INVALID_MASK_MIGRATION_KEY)?.is_some() {
         debug!(target: LOG_TARGET, "Commitment mask migration already completed, skipping");
         return Ok(InvalidMaskMigrationOutcome::AlreadyCompleted);
     }
@@ -143,10 +161,7 @@ where
     }
 
     summary.marked_invalid = output_db.mark_outputs_invalid(to_invalidate)?;
-    wallet_db.set_client_key_value(
-        INVALID_MASK_MIGRATION_KEY.to_string(),
-        summary.marked_invalid.to_string(),
-    )?;
+    flag_store.set_migration_flag(INVALID_MASK_MIGRATION_KEY, summary.marked_invalid.to_string())?;
 
     info!(
         target: LOG_TARGET,

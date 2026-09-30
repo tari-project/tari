@@ -30,7 +30,7 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, FixedHash},
+    types::{BlockHash, CompressedCommitment, FixedHash},
 };
 use tari_transaction_components::rpc::{MAX_ALLOWED_QUERY_SIZE, models::TxLocation};
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
@@ -39,7 +39,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
-        commitment_mask::{blocks_revival, drop_unverifiable_revivals},
+        commitment_mask::{blocks_revival, drop_unverifiable_revivals, is_revivable_status},
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
         handle::{OutputManagerEvent, OutputManagerEventSender},
@@ -209,6 +209,8 @@ where
                 });
             }
             if !mined_updates.is_empty() {
+                // This pass exists to revive Invalid outputs: every output here was read as Invalid (or cancelled
+                // inbound) and has passed the commitment mask check, so it may overwrite an Invalid row.
                 self.db
                     .set_received_outputs_mined_height_and_statuses(mined_updates)
                     .for_protocol(self.operation_id)?;
@@ -358,8 +360,9 @@ where
                     .for_protocol(self.operation_id)?;
             }
             if !unspent.is_empty() {
+                // As in the unconfirmed pass: don't overwrite an Invalid row unless it was read as revivable
                 self.db
-                    .mark_outputs_as_unspent(unspent)
+                    .mark_outputs_as_unspent_guarded(unspent, revivable_hashes(batch))
                     .for_protocol(self.operation_id)?;
             }
         }
@@ -441,8 +444,10 @@ where
                 });
             }
             if !mined_updates.is_empty() {
+                // Only outputs read in a revivable status (and so mask-checked above) may overwrite an Invalid row;
+                // any other output that became Invalid after it was read keeps that status.
                 self.db
-                    .set_received_outputs_mined_height_and_statuses(mined_updates)
+                    .set_received_outputs_mined_height_and_statuses_guarded(mined_updates, revivable_commitments(batch))
                     .for_protocol(self.operation_id)?;
             }
 
@@ -553,7 +558,10 @@ where
                     // spendable immediately as we first need to find out if this output is unspent, in a mempool,
                     // or spent.
                     self.db
-                        .mark_outputs_as_unspent(vec![(last_spent_output.hash, false)])
+                        .mark_outputs_as_unspent_guarded(
+                            vec![(last_spent_output.hash, false)],
+                            revivable_hashes(std::slice::from_ref(&last_spent_output)),
+                        )
                         .for_protocol(self.operation_id)?;
                 }
             } else {
@@ -766,4 +774,23 @@ where
             );
         }
     }
+}
+
+/// Commitments of the outputs that were read in a revivable status. Callers only pass outputs that have already been
+/// through the commitment mask guard, so these are the ones allowed to overwrite a row that is now `Invalid`.
+fn revivable_commitments(outputs: &[DbWalletOutput]) -> Vec<CompressedCommitment> {
+    outputs
+        .iter()
+        .filter(|o| is_revivable_status(o.status))
+        .map(|o| o.commitment.clone())
+        .collect()
+}
+
+/// Hashes of the outputs that were read in a revivable status; see [`revivable_commitments`].
+fn revivable_hashes(outputs: &[DbWalletOutput]) -> Vec<FixedHash> {
+    outputs
+        .iter()
+        .filter(|o| is_revivable_status(o.status))
+        .map(|o| o.hash)
+        .collect()
 }

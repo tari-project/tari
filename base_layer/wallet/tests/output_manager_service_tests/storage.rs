@@ -1363,3 +1363,69 @@ async fn test_invalid_mask_migration_pages_and_skips_invalid() {
     assert_eq!(stored_status(&connection, &last), OutputStatus::Invalid);
     assert_eq!(db.mark_outputs_invalid(vec![]).unwrap(), 0);
 }
+
+/// The guarded batch updates used by TXO validation leave a row that is currently Invalid alone unless it is listed
+/// as revivable, update every other listed row, and do not treat a skipped row as an error.
+#[tokio::test]
+async fn test_guarded_revival_updates_do_not_overwrite_unlisted_invalid_rows() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let set_status = |kmo: &DbWalletOutput, status: OutputStatus| {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+            .set(outputs::status.eq(status as i32))
+            .execute(&mut conn)
+            .unwrap();
+    };
+
+    // Received-output upsert
+    let invalid_unlisted = add_mask_test_output(&db, &key_manager, 1000);
+    let invalid_listed = add_mask_test_output(&db, &key_manager, 1100);
+    let unconfirmed = add_mask_test_output(&db, &key_manager, 1200);
+    set_status(&invalid_unlisted, OutputStatus::Invalid);
+    set_status(&invalid_listed, OutputStatus::Invalid);
+    set_status(&unconfirmed, OutputStatus::UnspentMinedUnconfirmed);
+    let update = |kmo: &DbWalletOutput| ReceivedOutputInfoForBatch {
+        commitment: kmo.commitment.clone(),
+        mined_height: 1,
+        mined_in_block: FixedHash::from([1u8; 32]),
+        confirmed: true,
+        mined_timestamp: 0,
+    };
+    db.set_received_outputs_mined_height_and_statuses_guarded(
+        vec![update(&invalid_unlisted), update(&invalid_listed), update(&unconfirmed)],
+        vec![invalid_listed.commitment.clone()],
+    )
+    .unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &invalid_listed), OutputStatus::Unspent);
+    assert_eq!(stored_status(&connection, &unconfirmed), OutputStatus::Unspent);
+
+    // Mark-unspent update
+    let invalid_unlisted = add_mask_test_output(&db, &key_manager, 2000);
+    let invalid_listed = add_mask_test_output(&db, &key_manager, 2100);
+    let spent = add_mask_test_output(&db, &key_manager, 2200);
+    set_status(&invalid_unlisted, OutputStatus::Invalid);
+    set_status(&invalid_listed, OutputStatus::Invalid);
+    set_status(&spent, OutputStatus::Spent);
+    db.mark_outputs_as_unspent_guarded(
+        vec![
+            (invalid_unlisted.hash, true),
+            (invalid_listed.hash, true),
+            (spent.hash, false),
+        ],
+        vec![invalid_listed.hash],
+    )
+    .unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Invalid);
+    assert_eq!(stored_status(&connection, &invalid_listed), OutputStatus::Unspent);
+    assert_eq!(
+        stored_status(&connection, &spent),
+        OutputStatus::UnspentMinedUnconfirmed
+    );
+
+    // The unguarded variants keep their behaviour: every listed row is updated
+    db.mark_outputs_as_unspent(vec![(invalid_unlisted.hash, true)]).unwrap();
+    assert_eq!(stored_status(&connection, &invalid_unlisted), OutputStatus::Unspent);
+}

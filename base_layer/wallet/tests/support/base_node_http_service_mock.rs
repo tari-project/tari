@@ -62,6 +62,9 @@ struct State {
     /// affected by a TXO validation run.
     mined_utxos: Option<HashMap<Vec<u8>, models::MinedUtxoInfo>>,
     best_block_height: u64,
+    /// Called on every `get_utxos_mined_info` query, before the response is built. Lets a test change wallet state
+    /// between the validation task reading outputs and writing its results.
+    on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl State {
@@ -137,6 +140,11 @@ impl HttpBaseNodeMock {
         state.best_block_height = best_block_height;
     }
 
+    /// Run `hook` on every `get_utxos_mined_info` query.
+    pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
+        self.state.write().await.on_mined_info_query = Some(hook);
+    }
+
     pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_last_request_latency(last_request_latency);
@@ -170,6 +178,10 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         hashes: Vec<Vec<u8>>,
         _version: u32,
     ) -> Result<GetUtxosMinedInfoResponse, Error> {
+        let hook = self.state.read().await.on_mined_info_query.clone();
+        if let Some(hook) = hook {
+            hook();
+        }
         let state = self.state.read().await;
         let mined_utxos = state
             .mined_utxos

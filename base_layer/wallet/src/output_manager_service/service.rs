@@ -116,6 +116,7 @@ use crate::{
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
+        invalid_mask_migration::{InvalidMaskMigrationOutcome, MigrationFlagStore, run_invalid_mask_migration},
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -149,6 +150,8 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     >,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
+    /// Where the one-off commitment mask migration records completion. `None` skips the migration.
+    migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -203,7 +206,55 @@ where
             request_stream: Some(request_stream),
             base_node_service,
             validation_in_progress: Arc::new(Mutex::new(())),
+            migration_flag_store: None,
         })
+    }
+
+    /// Run the one-off commitment mask migration at the start of [`Self::start`], recording completion in `store`.
+    #[must_use]
+    pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
+        self.migration_flag_store = Some(store);
+        self
+    }
+
+    /// Run the one-off commitment mask migration to completion. Called before the request loop starts, so no TXO
+    /// validation task (they are only started from the loop) can overlap it and overwrite its result. The scan is
+    /// CPU-bound, so it runs on a blocking thread. Failure is logged and retried on the next start.
+    async fn run_invalid_mask_migration(&self) {
+        let Some(store) = self.migration_flag_store.clone() else {
+            debug!(target: LOG_TARGET, "No migration flag store configured, skipping commitment mask migration");
+            return;
+        };
+        let db = self.resources.db.clone();
+        let key_manager = self.resources.key_manager.clone();
+        let result =
+            tokio::task::spawn_blocking(move || run_invalid_mask_migration(store.as_ref(), &db, &key_manager)).await;
+        match result {
+            Ok(Ok(InvalidMaskMigrationOutcome::Completed(summary))) if summary.marked_invalid > 0 => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration marked {} output(s) Invalid ({} mask mismatch(es), {} verification \
+                     error(s), {} scanned)",
+                    summary.marked_invalid,
+                    summary.mask_mismatches,
+                    summary.verification_errors,
+                    summary.scanned
+                );
+            },
+            Ok(Ok(_)) => {},
+            Ok(Err(e)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration failed, it will be retried on the next start: {e}"
+                );
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration task failed, it will be retried on the next start: {e}"
+                );
+            },
+        }
     }
 
     pub fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerError> {
@@ -230,6 +281,10 @@ where
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
+
+        // One-off: mark outputs whose commitment does not open to their stored value and mask as Invalid. Awaited
+        // before the request loop so that it is serialised ahead of every TXO validation task.
+        self.run_invalid_mask_migration().await;
 
         // Spawn a background task that converts any legacy key-id strings still stored in the output table to the
         // current format. This runs without blocking service startup - the main event loop below processes requests
@@ -762,7 +817,8 @@ where
 
     /// Remove from externally supplied validation fixes any update that would move an Invalid (or cancelled inbound)
     /// output back to a spendable status when its commitment does not open to its stored value and mask. Updates for
-    /// outputs that cannot be found are passed through unchanged so the storage layer reports them as before.
+    /// outputs that cannot be found are passed through unchanged so the storage layer reports them as before; any other
+    /// failure to load an output is returned as an error and nothing is applied.
     fn drop_unverifiable_revivals(
         &self,
         mined_updates: Vec<ReceivedOutputInfoForBatch>,
@@ -780,7 +836,11 @@ where
                 .fetch_by_commitment(update.commitment.clone(), key_manager)
             {
                 Ok(output) if blocked(&output) => {},
-                _ => kept_mined.push(update),
+                // Unknown outputs pass through so the storage layer reports them as before
+                Ok(_) | Err(OutputManagerStorageError::ValueNotFound) => kept_mined.push(update),
+                // Any other failure (e.g. an unconvertible key id) means the output cannot be checked: fail closed,
+                // like the unspent branch below
+                Err(e) => return Err(e.into()),
             }
         }
 

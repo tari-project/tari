@@ -161,16 +161,15 @@ where
         );
         trace!(target: LOG_TARGET, "Wallet config: {config:?}");
         let stack = StackBuilder::new(shutdown_signal.clone())
-            .add_initializer(OutputManagerServiceInitializer::<
-                V,
-                TKeyManagerInterface,
-                THttpClientFactory,
-            >::new(
-                config.output_manager_service_config.clone(),
-                output_manager_backend.clone(),
-                factories.clone(),
-                config.network.into(),
-            ))
+            .add_initializer(
+                OutputManagerServiceInitializer::<V, TKeyManagerInterface, THttpClientFactory>::new(
+                    config.output_manager_service_config.clone(),
+                    output_manager_backend.clone(),
+                    factories.clone(),
+                    config.network.into(),
+                )
+                .with_migration_flag_store(Arc::new(wallet_database.clone())),
+            )
             .add_initializer(LegacyTransactionKeyManagerInitializer::new_with_legacy_storage(
                 key_manager_backend,
                 master_seed,

@@ -35,7 +35,7 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use futures::future;
 use log::*;
@@ -62,6 +62,7 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
+        invalid_mask_migration::MigrationFlagStore,
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
@@ -86,6 +87,7 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
+    migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
     phantom_key_manager: PhantomData<TKeyManagerInterface>,
     phantom_http: PhantomData<THttpClientFactory>,
 }
@@ -107,9 +109,17 @@ where
             backend: Some(backend),
             factories,
             network,
+            migration_flag_store: None,
             phantom_key_manager: PhantomData,
             phantom_http: PhantomData,
         }
+    }
+
+    /// Have the service run the one-off commitment mask migration on start, recording completion in `store`.
+    #[must_use]
+    pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
+        self.migration_flag_store = Some(store);
+        self
     }
 }
 
@@ -139,6 +149,7 @@ where
         // entry raw would hand out fork rules that are not live on this network.
         let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
         let network = self.network.as_network();
+        let migration_flag_store = self.migration_flag_store.take();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
@@ -160,7 +171,11 @@ where
                 utxo_scanner_handle,
             )
             .await
-            .expect("Could not initialize Output Manager Service")
+            .expect("Could not initialize Output Manager Service");
+            let service = match migration_flag_store {
+                Some(store) => service.with_migration_flag_store(store),
+                None => service,
+            }
             .start();
 
             futures::pin_mut!(service);
