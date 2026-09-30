@@ -19,7 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, fmt, fmt::Display, ops::Range, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    fmt::Display,
+    ops::Range,
+    sync::Arc,
+};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{StreamExt, pin_mut};
@@ -99,6 +105,7 @@ use crate::{
         TRANSACTION_INPUTS_LIMIT,
         TRANSACTION_OUTPUTS_LIMIT,
         UtxoSelectionFilter,
+        commitment_mask,
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
         handle::{
@@ -109,6 +116,12 @@ use crate::{
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
+        invalid_mask_migration::{
+            InvalidMaskMigrationOutcome,
+            InvalidOutputTransactionSink,
+            MigrationFlagStore,
+            run_invalid_mask_migration,
+        },
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -116,7 +129,7 @@ use crate::{
             OutputStatus,
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-            sqlite_db::CoinBucket,
+            sqlite_db::{CoinBucket, ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
         },
         tasks::TxoValidationTask,
     },
@@ -124,6 +137,19 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
+
+/// The parts of an externally supplied validation state fix that may be applied, see
+/// `OutputManagerService::filter_validation_fixes`.
+#[derive(Default)]
+struct FilteredValidationFixes {
+    mined: Vec<ReceivedOutputInfoForBatch>,
+    /// Commitments of mined updates whose output was read in a revivable status
+    mined_revivable: Vec<CompressedCommitment>,
+    spent: Vec<SpentOutputInfoForBatch>,
+    unspent: Vec<(FixedHash, bool)>,
+    /// Hashes of unspent updates whose output was read in a revivable status
+    unspent_revivable: Vec<FixedHash>,
+}
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -139,6 +165,10 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     >,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
+    /// Where the one-off commitment mask migration records completion. `None` skips the migration.
+    migration_flag_store: Option<Arc<dyn MigrationFlagStore>>,
+    /// Where the migration cancels transactions coupled to outputs with a wrong value. `None` leaves them untouched.
+    invalid_output_tx_sink: Option<Arc<dyn InvalidOutputTransactionSink>>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -193,7 +223,75 @@ where
             request_stream: Some(request_stream),
             base_node_service,
             validation_in_progress: Arc::new(Mutex::new(())),
+            migration_flag_store: None,
+            invalid_output_tx_sink: None,
         })
+    }
+
+    /// Run the one-off commitment mask migration at the start of [`Self::start`], recording completion in `store`.
+    #[must_use]
+    pub fn with_migration_flag_store(mut self, store: Arc<dyn MigrationFlagStore>) -> Self {
+        self.migration_flag_store = Some(store);
+        self
+    }
+
+    /// Let the commitment mask migration cancel the transactions coupled to outputs whose value is wrong.
+    #[must_use]
+    pub fn with_invalid_output_tx_sink(mut self, sink: Arc<dyn InvalidOutputTransactionSink>) -> Self {
+        self.invalid_output_tx_sink = Some(sink);
+        self
+    }
+
+    /// Run the one-off commitment mask migration to completion. Called before the request loop starts, so no TXO
+    /// validation task (they are only started from the loop) can overlap it and overwrite its result. The scan is
+    /// CPU-bound, so it runs on a blocking thread. Failure is logged and retried on the next start.
+    async fn run_invalid_mask_migration(&self) {
+        let Some(store) = self.migration_flag_store.clone() else {
+            debug!(target: LOG_TARGET, "No migration flag store configured, skipping commitment mask migration");
+            return;
+        };
+        let tx_sink = self.invalid_output_tx_sink.clone();
+        let db = self.resources.db.clone();
+        let key_manager = self.resources.key_manager.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            run_invalid_mask_migration(store.as_ref(), tx_sink.as_deref(), &db, &key_manager)
+        })
+        .await;
+        match result {
+            Ok(Ok(InvalidMaskMigrationOutcome::Completed(summary))) if summary.marked_invalid > 0 => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration marked {} output(s) Invalid ({} mask mismatch(es), {} verification \
+                     error(s), {} scanned)",
+                    summary.marked_invalid,
+                    summary.mask_mismatches,
+                    summary.verification_errors,
+                    summary.scanned
+                );
+            },
+            Ok(Ok(InvalidMaskMigrationOutcome::Incomplete(summary))) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration: outputs done ({} marked Invalid), but {} coupled transaction \
+                     cancellation(s) failed and will be retried on the next start",
+                    summary.marked_invalid,
+                    summary.reconciliation_errors
+                );
+            },
+            Ok(Ok(_)) => {},
+            Ok(Err(e)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration failed, it will be retried on the next start: {e}"
+                );
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Commitment mask migration task failed, it will be retried on the next start: {e}"
+                );
+            },
+        }
     }
 
     pub fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerError> {
@@ -220,6 +318,10 @@ where
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
+
+        // One-off: mark outputs whose commitment does not open to their stored value and mask as Invalid. Awaited
+        // before the request loop so that it is serialised ahead of every TXO validation task.
+        self.run_invalid_mask_migration().await;
 
         // Spawn a background task that converts any legacy key-id strings still stored in the output table to the
         // current format. This runs without blocking service startup - the main event loop below processes requests
@@ -465,19 +567,22 @@ where
                 unmined_invalid,
                 unspent_updates,
             } => {
-                if !mined_updates.is_empty() {
+                let fixes = self.filter_validation_fixes(mined_updates, spent_updates, unspent_updates)?;
+                if !fixes.mined.is_empty() {
                     self.resources
                         .db
-                        .set_received_outputs_mined_height_and_statuses(mined_updates)?;
+                        .set_received_outputs_mined_height_and_statuses_guarded(fixes.mined, fixes.mined_revivable)?;
                 }
-                if !spent_updates.is_empty() {
-                    self.resources.db.mark_outputs_as_spent(spent_updates)?;
+                if !fixes.spent.is_empty() {
+                    self.resources.db.mark_outputs_as_spent(fixes.spent)?;
                 }
                 if !unmined_invalid.is_empty() {
                     self.resources.db.set_outputs_to_unmined_and_invalid(unmined_invalid)?;
                 }
-                if !unspent_updates.is_empty() {
-                    self.resources.db.mark_outputs_as_unspent(unspent_updates)?;
+                if !fixes.unspent.is_empty() {
+                    self.resources
+                        .db
+                        .mark_outputs_as_unspent_guarded(fixes.unspent, fixes.unspent_revivable)?;
                 }
                 Ok(OutputManagerResponse::OutputValidationStateUpdated)
             },
@@ -746,6 +851,83 @@ where
         });
 
         Ok(id)
+    }
+
+    /// Filter externally supplied validation fixes (the console / gRPC "validate outputs" command):
+    /// - a mined or unspent update is dropped if the output's commitment does not open to its stored value and mask,
+    ///   whatever its current status, since both move it into a spendable status;
+    /// - a spent update is dropped for an Invalid output that fails the check, so it cannot be laundered through Spent
+    ///   and a later reorg back into a spendable status.
+    ///
+    /// Updates for outputs that do not exist pass through so the storage layer reports them as before; any other
+    /// failure to load an output is returned as an error and nothing is applied. Also returns, for the guarded writes,
+    /// the outputs that were read in a revivable status and so may overwrite a row that is Invalid at write time.
+    fn filter_validation_fixes(
+        &self,
+        mined_updates: Vec<ReceivedOutputInfoForBatch>,
+        spent_updates: Vec<SpentOutputInfoForBatch>,
+        unspent_updates: Vec<(FixedHash, bool)>,
+    ) -> Result<FilteredValidationFixes, OutputManagerError> {
+        const CONTEXT: &str = "Output validation state update";
+        let key_manager = &self.resources.key_manager;
+        let fetch = |commitment: &CompressedCommitment| -> Result<Option<DbWalletOutput>, OutputManagerError> {
+            match self.resources.db.fetch_by_commitment(commitment.clone(), key_manager) {
+                Ok(output) => Ok(Some(output)),
+                Err(OutputManagerStorageError::ValueNotFound) => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        };
+
+        let mut fixes = FilteredValidationFixes::default();
+        for update in mined_updates {
+            match fetch(&update.commitment)? {
+                Some(output) if commitment_mask::blocks_revival(key_manager, &output, CONTEXT) => {},
+                Some(output) => {
+                    if commitment_mask::is_revivable_status(output.status) {
+                        fixes.mined_revivable.push(output.commitment);
+                    }
+                    fixes.mined.push(update);
+                },
+                None => fixes.mined.push(update),
+            }
+        }
+
+        for update in spent_updates {
+            match fetch(&update.commitment)? {
+                Some(output)
+                    if output.status == OutputStatus::Invalid &&
+                        commitment_mask::blocks_revival(key_manager, &output, CONTEXT) => {},
+                _ => fixes.spent.push(update),
+            }
+        }
+
+        let unspent_hashes: HashSet<FixedHash> = unspent_updates.iter().map(|(hash, _)| *hash).collect();
+        if !unspent_hashes.is_empty() {
+            let outputs = self
+                .resources
+                .db
+                .fetch_many_outputs(&unspent_hashes.iter().copied().collect::<Vec<_>>(), key_manager)?;
+            if outputs.len() != unspent_hashes.len() {
+                // As the unguarded update did: every output to mark unspent must exist
+                return Err(OutputManagerStorageError::ValuesNotFound.into());
+            }
+            let mut blocked = HashSet::new();
+            for output in &outputs {
+                if commitment_mask::blocks_revival(key_manager, output, CONTEXT) {
+                    blocked.insert(output.hash);
+                } else if commitment_mask::is_revivable_status(output.status) {
+                    fixes.unspent_revivable.push(output.hash);
+                } else {
+                    // Mask verifies and the row is not Invalid: the plain guarded update applies
+                }
+            }
+            fixes.unspent = unspent_updates
+                .into_iter()
+                .filter(|(hash, _)| !blocked.contains(hash))
+                .collect();
+        }
+
+        Ok(fixes)
     }
 
     fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {
@@ -1692,7 +1874,31 @@ where
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
     /// cancelled.
+    ///
+    /// Reinstating moves the outputs to EncumberedToBeReceived, which leads to a spendable status, so it is refused if
+    /// any of them fails the commitment mask check.
     fn reinstate_cancelled_inbound_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        let key_manager = &self.resources.key_manager;
+        let refused = self
+            .resources
+            .db
+            .fetch_outputs_by_tx_id(tx_id, key_manager)?
+            .iter()
+            .filter(|output| output.status == OutputStatus::CancelledInbound)
+            .filter(|output| {
+                commitment_mask::blocks_revival(key_manager, output, "Reinstate cancelled inbound transaction")
+            })
+            .count();
+        if refused > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Not reinstating cancelled inbound transaction {tx_id}: {refused} output(s) failed the commitment mask \
+                 check"
+            );
+            return Err(OutputManagerError::CommitmentMaskVerificationFailed(format!(
+                "{refused} output(s) of transaction {tx_id}"
+            )));
+        }
         self.resources.db.reinstate_cancelled_inbound_output(tx_id)?;
 
         Ok(())

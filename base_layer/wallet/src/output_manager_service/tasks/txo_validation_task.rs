@@ -30,7 +30,7 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, FixedHash},
+    types::{BlockHash, CompressedCommitment, FixedHash},
 };
 use tari_transaction_components::rpc::{MAX_ALLOWED_QUERY_SIZE, models::TxLocation};
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
@@ -39,6 +39,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
+        commitment_mask::{blocks_revival, drop_unverifiable_revivals, is_revivable_status},
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
         handle::{OutputManagerEvent, OutputManagerEventSender},
@@ -158,6 +159,27 @@ where
             )
             .for_protocol(self.operation_id)?;
 
+        // An Invalid output whose commitment does not open to its stored value and mask must never be revived, even
+        // if the base node reports its commitment mined or in the mempool: the stored value would be wrong.
+        let (invalid_outputs, not_revivable) = drop_unverifiable_revivals(
+            &self.key_manager,
+            invalid_outputs,
+            "TXO revalidation of invalid outputs",
+        );
+        if !not_revivable.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "{} invalid output(s) failed the commitment mask check and stay Invalid (Operation ID: {})",
+                not_revivable.len(),
+                self.operation_id
+            );
+            // Record the check so these are only re-examined after `num_of_seconds_to_revalidate_invalid_utxos`,
+            // like invalid outputs the base node does not know
+            self.db
+                .update_last_validation_timestamps(not_revivable.into_iter().map(|o| o.commitment).collect())
+                .for_protocol(self.operation_id)?;
+        }
+
         for batch in invalid_outputs.chunks(self.batch_size()) {
             let (mined, in_mempool, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
@@ -193,6 +215,8 @@ where
                 });
             }
             if !mined_updates.is_empty() {
+                // This pass exists to revive Invalid outputs: every output here was read as Invalid (or cancelled
+                // inbound) and has passed the commitment mask check, so it may overwrite an Invalid row.
                 self.db
                     .set_received_outputs_mined_height_and_statuses(mined_updates)
                     .for_protocol(self.operation_id)?;
@@ -244,6 +268,9 @@ where
             .db
             .fetch_mined_unspent_outputs(&self.key_manager)
             .for_protocol(self.operation_id)?;
+        // Every output here is sent for spent detection unfiltered: marking an output spent never makes it spendable.
+        // The commitment mask is only checked, per output below, where this pass could lead to a spendable status.
+        let mut not_revivable = 0usize;
         debug!(
             target: LOG_TARGET,
             "Found {} mined outputs to validate (Operation ID: {})",
@@ -301,6 +328,8 @@ where
                 // when checking mined height, 0 can be valid so we need to check the hash
                 if data.found_in_header.is_some() {
                     if let Some((spent_height, spent_hash)) = &data.spent_in_header {
+                        // A spend is recorded whatever the output's mask: Spent is not spendable, and every way back
+                        // out of Spent (reorg check, unconfirmed pass, this pass's unspent branch) re-checks the mask
                         spent.push(SpentOutputInfoForBatch {
                             commitment: output.commitment.clone(),
                             confirmed: spent_height.saturating_add(self.config.num_confirmations_required) <=
@@ -314,9 +343,14 @@ where
                             })?,
                         });
                     } else {
-                        // only update to unspent if the output is currently marked as spent in our db
+                        // only update to unspent if the output is currently marked as spent in our db, and never if
+                        // its commitment mask does not verify (the only move into a spendable status in this pass)
                         if output.marked_deleted_at_height.is_some() {
-                            unspent.push((output.hash, true));
+                            if blocks_revival(&self.key_manager, output, "TXO revalidation of spent outputs") {
+                                not_revivable = not_revivable.saturating_add(1);
+                            } else {
+                                unspent.push((output.hash, true));
+                            }
                         }
                     }
                 } else {
@@ -329,13 +363,22 @@ where
                     .for_protocol(self.operation_id)?;
             }
             if !unspent.is_empty() {
+                // As in the unconfirmed pass: don't overwrite an Invalid row unless it was read as revivable
                 self.db
-                    .mark_outputs_as_unspent(unspent)
+                    .mark_outputs_as_unspent_guarded(unspent, revivable_hashes(batch))
                     .for_protocol(self.operation_id)?;
             }
         }
         if !spent.is_empty() {
             self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
+        }
+        if not_revivable > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "{not_revivable} mined output(s) failed the commitment mask check and are left unchanged (Operation ID: \
+                 {})",
+                self.operation_id
+            );
         }
         Ok(())
     }
@@ -348,6 +391,22 @@ where
             .db
             .fetch_unconfirmed_outputs(&self.key_manager)
             .for_protocol(self.operation_id)?;
+        // The unconfirmed set includes every output without a mined height, which covers Invalid outputs after a
+        // reorg or a full revalidation, and outputs a reorg moved from spent back to unconfirmed. None of them may be
+        // made spendable if their commitment mask does not verify.
+        let (unconfirmed_outputs, not_revivable) = drop_unverifiable_revivals(
+            &self.key_manager,
+            unconfirmed_outputs,
+            "TXO revalidation of unconfirmed outputs",
+        );
+        if !not_revivable.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "{} unconfirmed output(s) failed the commitment mask check and are left unchanged (Operation ID: {})",
+                not_revivable.len(),
+                self.operation_id
+            );
+        }
         debug!(
             target: LOG_TARGET,
             "Found {} unconfirmed outputs to validate (Operation ID: {})",
@@ -397,8 +456,10 @@ where
                 });
             }
             if !mined_updates.is_empty() {
+                // Only outputs read in a revivable status (and so mask-checked above) may overwrite an Invalid row;
+                // any other output that became Invalid after it was read keeps that status.
                 self.db
-                    .set_received_outputs_mined_height_and_statuses(mined_updates)
+                    .set_received_outputs_mined_height_and_statuses_guarded(mined_updates, revivable_commitments(batch))
                     .for_protocol(self.operation_id)?;
             }
 
@@ -498,11 +559,24 @@ where
                     last_spent_output.commitment.to_hex(),
                     self.operation_id
                 );
-                // we mark the output as UnspentMinedUnconfirmed so it wont get picked it by the OMS to be spendable
-                // immediately as we first need to find out if this output is unspent, in a mempool, or spent.
-                self.db
-                    .mark_outputs_as_unspent(vec![(last_spent_output.hash, false)])
-                    .for_protocol(self.operation_id)?;
+                if blocks_revival(&self.key_manager, &last_spent_output, "TXO reorg check") {
+                    // Whatever its current status (Spent included), moving it to UnspentMinedUnconfirmed would let
+                    // the unconfirmed pass make it spendable. Mark it Invalid and clear the stale spent data so the
+                    // loop moves on to the next spent output.
+                    self.db
+                        .set_outputs_to_unmined_and_invalid(vec![last_spent_output.hash])
+                        .for_protocol(self.operation_id)?;
+                } else {
+                    // we mark the output as UnspentMinedUnconfirmed so it wont get picked it by the OMS to be
+                    // spendable immediately as we first need to find out if this output is unspent, in a mempool,
+                    // or spent.
+                    self.db
+                        .mark_outputs_as_unspent_guarded(
+                            vec![(last_spent_output.hash, false)],
+                            revivable_hashes(std::slice::from_ref(&last_spent_output)),
+                        )
+                        .for_protocol(self.operation_id)?;
+                }
             } else {
                 debug!(
                     target: LOG_TARGET,
@@ -713,4 +787,23 @@ where
             );
         }
     }
+}
+
+/// Commitments of the outputs that were read in a revivable status. Callers only pass outputs that have already been
+/// through the commitment mask guard, so these are the ones allowed to overwrite a row that is now `Invalid`.
+fn revivable_commitments(outputs: &[DbWalletOutput]) -> Vec<CompressedCommitment> {
+    outputs
+        .iter()
+        .filter(|o| is_revivable_status(o.status))
+        .map(|o| o.commitment.clone())
+        .collect()
+}
+
+/// Hashes of the outputs that were read in a revivable status; see [`revivable_commitments`].
+fn revivable_hashes(outputs: &[DbWalletOutput]) -> Vec<FixedHash> {
+    outputs
+        .iter()
+        .filter(|o| is_revivable_status(o.status))
+        .map(|o| o.hash)
+        .collect()
 }

@@ -806,3 +806,102 @@ async fn test_lock_height_status_transitions() {
         "Outbound transaction (lock_height=0) should go directly to MinedConfirmed"
     );
 }
+
+/// A completed transaction rejected with `InvalidEncryptedValue` stays rejected through reorg handling, mined-height
+/// updates and both revalidation paths, and does not anchor the reorg check. Other rejections behave as before.
+#[tokio::test]
+async fn invalid_encrypted_value_rejection_is_sticky() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_path = format!("{}/{db_name}", db_tempdir.path().to_str().unwrap());
+    let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection,
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    let block = FixedHash::from([7u8; 32]);
+    for (tx_id, mined_height) in [(1u64, 20u64), (2, 10)] {
+        let tx = CompletedTransaction::new(
+            TxId::from(tx_id),
+            TariAddress::default(),
+            TariAddress::default(),
+            MicroMinotari::from(100000),
+            MicroMinotari::from(0),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                PrivateKey::random(&mut rand::rng()),
+                PrivateKey::random(&mut rand::rng()),
+            ),
+            LegacyTransactionStatus::MinedConfirmed,
+            Utc::now(),
+            TransactionDirection::Inbound,
+            None,
+            None,
+            MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+            0,
+        )
+        .unwrap();
+        db.insert_completed_transaction(TxId::from(tx_id), tx).unwrap();
+        db.set_transaction_mined_height(
+            TxId::from(tx_id),
+            mined_height,
+            block,
+            0,
+            true,
+            LegacyTransactionStatus::MinedConfirmed,
+            100,
+        )
+        .unwrap();
+    }
+    db.reject_completed_transaction(1u64.into(), TxCancellationReason::InvalidEncryptedValue, None)
+        .unwrap();
+    db.reject_completed_transaction(2u64.into(), TxCancellationReason::Orphan, None)
+        .unwrap();
+
+    let assert_sticky = |step: &str| {
+        let tx = db.get_completed_transaction_cancelled_or_not(1u64.into()).unwrap();
+        assert_eq!(
+            tx.cancelled,
+            Some(TxCancellationReason::InvalidEncryptedValue),
+            "after {step}"
+        );
+        assert_eq!(tx.status, LegacyTransactionStatus::Rejected, "after {step}");
+    };
+
+    // The higher-mined sticky transaction does not anchor the reorg check
+    assert_eq!(
+        db.fetch_last_mined_transaction().unwrap().unwrap().tx_id,
+        TxId::from(2u64)
+    );
+
+    db.set_transaction_as_unmined(1u64.into()).unwrap();
+    assert_sticky("set_transaction_as_unmined");
+    db.set_transaction_mined_height(
+        1u64.into(),
+        30,
+        block,
+        0,
+        true,
+        LegacyTransactionStatus::MinedConfirmed,
+        100,
+    )
+    .unwrap();
+    assert_sticky("set_transaction_mined_height");
+    db.mark_all_non_coinbases_transactions_as_unvalidated().unwrap();
+    assert_sticky("mark_all_non_coinbases_transactions_as_unvalidated");
+    db.mark_all_rejected_transactions_as_unvalidated().unwrap();
+    assert_sticky("mark_all_rejected_transactions_as_unvalidated");
+
+    // Other rejections are still cleared by revalidation
+    assert_eq!(
+        db.get_completed_transaction_cancelled_or_not(2u64.into())
+            .unwrap()
+            .cancelled,
+        None
+    );
+}
