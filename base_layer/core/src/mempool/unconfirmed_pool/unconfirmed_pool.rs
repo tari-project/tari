@@ -260,9 +260,6 @@ struct Selection {
     /// The number of skips counted towards `weight_tx_skip_count`
     #[cfg_attr(not(test), allow(dead_code))]
     weight_skips_counted: usize,
-    /// Whether the pass reached [MAX_WALKED_FRAMES_PER_PASS]
-    #[cfg_attr(not(test), allow(dead_code))]
-    frame_budget_exhausted: bool,
     /// The candidate on which the walking budget ran out, if it did
     #[cfg_attr(not(test), allow(dead_code))]
     out_of_frames_candidate: Option<TransactionKey>,
@@ -286,9 +283,16 @@ struct Selection {
     swept_branches: usize,
     /// Whether the pass ended before considering every candidate
     ended_early: bool,
-    /// The candidates whose ancestors this pass walked and that it then dropped (for conflicting, or for not fitting
-    /// by weight or bytes). Never a candidate that was still queued.
+    /// Whether the pass ended because a work budget ([MAX_WALKED_FRAMES_PER_PASS] or [MAX_FOLLOWED_LINKS_PER_PASS])
+    /// ran out
+    budget_exhausted: bool,
+    /// Candidates this pass dropped for an INTRINSIC reason, one no ordering changes: too many ancestors or links,
+    /// a branch that double-spends or duplicates internally (or contains a remembered colliding pair), or a
+    /// transaction invalid on its own. Never a candidate that was still queued.
     walked_dropped: HashSet<TransactionKey>,
+    /// Candidates this pass walked and dropped for a STATE-DEPENDENT reason: conflicting with this pass's selection,
+    /// or not fitting the weight or bytes it had left. Another ordering may select them.
+    state_dropped: HashSet<TransactionKey>,
 }
 
 /// The working state of one selection pass
@@ -333,9 +337,13 @@ struct SelectionState<'a> {
     links_left: usize,
     frame_budget_exhausted: bool,
     out_of_frames_candidate: Option<TransactionKey>,
-    /// Candidates to leave out of this pass (see [UnconfirmedPool::fetch_selection])
+    /// Candidates to leave out of this pass (see [UnconfirmedPool::fetch_selection]): the first pass's intrinsic
+    /// drops, and also its state-dependent drops if it ran out of a work budget
     excluded: HashSet<TransactionKey>,
+    /// See [Selection::walked_dropped]
     walked_dropped: HashSet<TransactionKey>,
+    /// See [Selection::state_dropped]
+    state_dropped: HashSet<TransactionKey>,
     /// For transactions whose ancestors were walked: a lower bound on the weight of the transaction together with its
     /// unselected ancestors, `w(X) + max(bound(dependency))`. Sound for a DAG; cleared whenever anything is selected.
     /// Lets a candidate whose dependencies are already known to be too heavy be passed over without walking them
@@ -386,6 +394,7 @@ impl SelectionState<'_> {
             out_of_frames_candidate: None,
             excluded,
             walked_dropped: HashSet::new(),
+            state_dropped: HashSet::new(),
             ancestor_weight_bounds: HashMap::new(),
             byte_bound: false,
             stopped: false,
@@ -667,13 +676,7 @@ impl UnconfirmedPool {
         if !by_weight.byte_bound {
             return Ok(by_weight);
         }
-        // If the first pass ended early, leave the candidates it walked and dropped out of the second pass, so that it
-        // spends its budget on the rest
-        let excluded = if by_weight.ended_early {
-            by_weight.walked_dropped.clone()
-        } else {
-            HashSet::new()
-        };
+        let excluded = Self::second_pass_exclusions(&by_weight);
         let by_effective_weight = self.select_txs_with(
             total_weight,
             max_body_bytes,
@@ -702,6 +705,22 @@ impl UnconfirmedPool {
             }
         }
         Ok(chosen)
+    }
+
+    /// The candidates to leave out of the second pass, given the first. If the first pass ended early, the candidates
+    /// it dropped for intrinsic reasons are left out: no ordering can select them, so re-walking them would only spend
+    /// the second pass's budget. Candidates it dropped for state-dependent reasons (a conflict with its choices, or not
+    /// fitting what it had left) may fit under the second pass's different choices, so they are only left out when the
+    /// first pass died of budget exhaustion: then re-walking the same junk would burn the second pass's budget too.
+    fn second_pass_exclusions(first: &Selection) -> HashSet<TransactionKey> {
+        if !first.ended_early {
+            return HashSet::new();
+        }
+        let mut excluded = first.walked_dropped.clone();
+        if first.budget_exhausted {
+            excluded.extend(first.state_dropped.iter().copied());
+        }
+        excluded
     }
 
     /// The weight a transaction is ranked by for the given ordering
@@ -824,12 +843,14 @@ impl UnconfirmedPool {
             // If it cannot fit on its own, neither can its branch
             if prioritized_transaction.body_size > state.remaining_bytes() {
                 state.byte_skip();
+                state.state_dropped.insert(*tx_key);
                 continue;
             }
             // If it spends an output that the selection already spends, it can never be mined with it: drop it without
             // counting it (O(1))
             if state.conflicting.contains(tx_key) {
                 state.conflict_drop();
+                state.state_dropped.insert(*tx_key);
                 continue;
             }
             // If its dependencies are already known to be too heavy, so is its branch
@@ -957,7 +978,7 @@ impl UnconfirmedPool {
             if conflicts {
                 // An ancestor spends an input that is already spent: the branch can never be mined with the selection
                 state.conflict_drop();
-                state.walked_dropped.insert(*tx_key);
+                state.state_dropped.insert(*tx_key);
             } else if invalid {
                 // Two of its own transactions double-spend or duplicate an output: never valid in a block
                 state.invalid_branch_drops = state.invalid_branch_drops.saturating_add(1);
@@ -991,7 +1012,7 @@ impl UnconfirmedPool {
             } else if !needs_recheck && fits_weight {
                 // Only the bytes do not fit
                 state.byte_skip();
-                state.walked_dropped.insert(*tx_key);
+                state.state_dropped.insert(*tx_key);
             } else {
                 let stop = if needs_recheck {
                     // A dependency is no longer in the pool: the branch is rechecked (removed and re-validated) after
@@ -1003,7 +1024,7 @@ impl UnconfirmedPool {
                     false
                 } else {
                     // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
-                    state.walked_dropped.insert(*tx_key);
+                    state.state_dropped.insert(*tx_key);
                     state.weight_skip(self.config.weight_tx_skip_count)
                 };
                 if stop {
@@ -1044,12 +1065,13 @@ impl UnconfirmedPool {
             early_weight_skips: state.early_weight_skips,
             too_many_ancestors_drops: state.too_many_ancestors_drops,
             weight_skips_counted: state.weight_skips,
-            frame_budget_exhausted: state.frame_budget_exhausted,
             out_of_frames_candidate: state.out_of_frames_candidate,
             walk_work: MAX_WALKED_FRAMES_PER_PASS.saturating_sub(state.frames_left),
             links_followed: MAX_FOLLOWED_LINKS_PER_PASS.saturating_sub(state.links_left),
             ended_early: !exhausted,
             walked_dropped: state.walked_dropped,
+            state_dropped: state.state_dropped,
+            budget_exhausted: state.frame_budget_exhausted,
             invalid_branch_drops: state.invalid_branch_drops,
             pair_drops: state.pair_drops,
             pair_lookup_work: state.pair_lookup_work,
@@ -1397,7 +1419,7 @@ impl UnconfirmedPool {
                 // Spends an input that a selected transaction already spends: it can never be mined alongside it.
                 // Not counted towards any limit (its walk was paid once, when it was queued).
                 state.conflict_drop();
-                state.walked_dropped.insert(tx_key);
+                state.state_dropped.insert(tx_key);
             } else if invalid {
                 state.invalid_branch_drops = state.invalid_branch_drops.saturating_add(1);
                 state.walked_dropped.insert(tx_key);
@@ -1426,9 +1448,9 @@ impl UnconfirmedPool {
             } else if fits_weight {
                 // Only the bytes do not fit
                 state.byte_skip();
-                state.walked_dropped.insert(tx_key);
+                state.state_dropped.insert(tx_key);
             } else {
-                state.walked_dropped.insert(tx_key);
+                state.state_dropped.insert(tx_key);
                 let stop = state.weight_skip(self.config.weight_tx_skip_count);
                 // The final drain (threshold 0) selects every queued branch that still fits, whatever was skipped
                 if stop && fee_per_byte_threshold > 0 {
@@ -3160,9 +3182,14 @@ mod test {
         let by_weight = unconfirmed_pool
             .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
             .unwrap();
-        assert!(by_weight.frame_budget_exhausted);
+        assert!(by_weight.budget_exhausted);
         assert!(by_weight.ended_early);
         assert!(by_weight.byte_bound);
+        // The children dropped in the drain (conflicts with the first one selected) are state-dependent drops; since
+        // the first pass died of budget exhaustion, the second pass leaves them out too
+        assert!(!by_weight.state_dropped.is_empty());
+        let exclusions = UnconfirmedPool::second_pass_exclusions(&by_weight);
+        assert!(by_weight.state_dropped.iter().all(|key| exclusions.contains(key)));
         assert!(by_weight.results.retrieved_transactions.contains(&honest_child));
         assert!(by_weight.results.retrieved_transactions.contains(&honest[0]));
 
@@ -3341,7 +3368,7 @@ mod test {
             }
             assert!(children.iter().all(|child| !selected.contains(child)), "{ranking:?}");
             assert_eq!(selection.too_many_ancestors_drops, children.len(), "{ranking:?}");
-            assert!(!selection.frame_budget_exhausted, "{ranking:?}");
+            assert!(!selection.budget_exhausted, "{ranking:?}");
             assert!(!selection.ended_early, "{ranking:?}");
         }
         let results = unconfirmed_pool
@@ -3474,11 +3501,15 @@ mod test {
         let by_weight = unconfirmed_pool
             .select_txs(u64::MAX, usize::MAX / 2, Ranking::Weight)
             .unwrap();
-        assert!(by_weight.frame_budget_exhausted);
+        assert!(by_weight.budget_exhausted);
         assert_eq!(by_weight.out_of_frames_candidate, Some(target_key));
         assert!(!by_weight.results.retrieved_transactions.contains(&target));
-        // It is not excluded from the second pass ...
+        // It is not excluded from the second pass (the junk children dropped in the drain are, since the first pass
+        // died of budget exhaustion) ...
+        assert!(by_weight.budget_exhausted);
         assert!(!by_weight.walked_dropped.contains(&target_key));
+        assert!(!by_weight.state_dropped.contains(&target_key));
+        assert!(!UnconfirmedPool::second_pass_exclusions(&by_weight).contains(&target_key));
         // ... where it is selected
         let by_effective_weight = unconfirmed_pool
             .select_txs_with(
@@ -3489,7 +3520,7 @@ mod test {
                     max_body_bytes: usize::MAX / 2,
                 },
                 max_weight(),
-                by_weight.walked_dropped.clone(),
+                UnconfirmedPool::second_pass_exclusions(&by_weight),
             )
             .unwrap();
         assert!(by_effective_weight.results.retrieved_transactions.contains(&target));
@@ -4255,6 +4286,74 @@ mod test {
             selection.pair_lookup_work
         );
         assert!(selection.links_followed < 100_000, "{}", selection.links_followed);
+    }
+
+    #[tokio::test]
+    async fn state_dependent_drops_stay_selectable_in_the_second_pass() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        // A: byte-heavy, the highest fee per gram
+        let a = Arc::new(
+            tx!(MicroMinotari(500_000), fee: MicroMinotari(10), inputs: 12, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        // B: small, spends one of A's inputs (conflicts with A), a lower fee per gram but a higher fee per effective
+        // gram
+        let b = {
+            let tx = tx!(MicroMinotari(500_000), fee: MicroMinotari(8), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
+            Arc::new(Transaction::new(
+                vec![a.body.inputs()[0].clone()],
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        // Normal transactions: the first pass fits A and the first 10 of them, then runs out of bytes with the rest
+        // unvisited (ending early, but not for lack of budget)
+        let normal = normal_txs(&key_manager, 15, 5);
+        let budget = body_size(&a) + normal.iter().take(10).map(body_size).sum::<usize>() + 100;
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 100,
+            weight_tx_skip_count: 20,
+            min_fee: 0,
+        })
+        .with_max_body_bytes(budget);
+        unconfirmed_pool
+            .insert_many(
+                [a.clone(), b.clone()].into_iter().chain(normal.iter().cloned()),
+                &tx_weight,
+            )
+            .unwrap();
+        let key_of = |tx: &Arc<Transaction>| {
+            *unconfirmed_pool
+                .tx_by_key
+                .iter()
+                .find(|(_, p)| &p.transaction == tx)
+                .unwrap()
+                .0
+        };
+
+        let by_weight = unconfirmed_pool.select_txs(u64::MAX, budget, Ranking::Weight).unwrap();
+        assert!(by_weight.ended_early);
+        assert!(!by_weight.budget_exhausted);
+        assert!(by_weight.results.retrieved_transactions.contains(&a));
+        assert!(!by_weight.results.retrieved_transactions.contains(&b));
+        // B was dropped because of the first pass's choice of A: a state-dependent drop, not an intrinsic one
+        assert!(by_weight.state_dropped.contains(&key_of(&b)));
+        assert!(!by_weight.walked_dropped.contains(&key_of(&b)));
+        assert!(!UnconfirmedPool::second_pass_exclusions(&by_weight).contains(&key_of(&b)));
+
+        // So the second pass can select B, and does so for more fees
+        let chosen = unconfirmed_pool
+            .fetch_selection(u64::MAX, budget, max_weight())
+            .unwrap();
+        assert!(chosen.results.retrieved_transactions.contains(&b));
+        assert!(!chosen.results.retrieved_transactions.contains(&a));
+        assert!(chosen.total_fees > by_weight.total_fees);
     }
 
     #[tokio::test]
