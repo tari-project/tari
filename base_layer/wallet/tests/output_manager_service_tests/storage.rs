@@ -1995,6 +1995,59 @@ async fn test_invalid_mask_migration_does_not_cancel_outbound_transactions() {
     // The sink itself refuses, so an id injected into the pending key cannot get it cancelled either
     assert_eq!(
         tx_db.cancel_for_invalid_encrypted_value(5u64.into()).unwrap(),
-        InvalidOutputTxOutcome::NotInbound("completed non-inbound transaction")
+        InvalidOutputTxOutcome::NotInbound("completed outbound transaction")
     );
+}
+
+/// The direction of a faux record of a scanned output comes from the sender-controlled memo, so it is not trusted: a
+/// OneSidedConfirmed record marked Outbound and coupled to a mismatched output is still cancelled, while an
+/// interactively built MinedConfirmed Outbound transaction in the same position is not.
+#[tokio::test]
+async fn test_invalid_mask_migration_cancels_faux_records_whatever_their_direction() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let wallet_db = WalletDatabase::new(
+        WalletSqliteDatabase::new(connection.clone(), SafePassword::from("invalid mask migration")).unwrap(),
+    );
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection.clone()));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let tx_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(
+        connection.clone(),
+        XChaCha20Poly1305::new(Key::from_slice(&key)),
+    ));
+
+    for (tx_id, status) in [
+        (7u64, LegacyTransactionStatus::OneSidedConfirmed),
+        (8, LegacyTransactionStatus::MinedConfirmed),
+    ] {
+        let kmo = add_mask_test_output(&db, &key_manager, 1000 + tx_id);
+        set_received_in_tx(&connection, &kmo, i64::try_from(tx_id).unwrap(), OutputStatus::Unspent);
+        tamper_value(&connection, &kmo);
+        tx_db
+            .insert_completed_transaction(
+                tx_id.into(),
+                completed_tx(tx_id, status, TransactionDirection::Outbound),
+            )
+            .unwrap();
+    }
+
+    let outcome = run_invalid_mask_migration(&wallet_db, Some(&tx_db), &db, &key_manager).unwrap();
+    assert_eq!(
+        outcome,
+        InvalidMaskMigrationOutcome::Completed(InvalidMaskMigrationSummary {
+            scanned: 2,
+            mask_mismatches: 2,
+            marked_invalid: 2,
+            transactions_cancelled: 1,
+            transactions_rejected_unverified: 1,
+            ..Default::default()
+        })
+    );
+    let faux = tx_db.get_completed_transaction_cancelled_or_not(7u64.into()).unwrap();
+    assert_eq!(faux.cancelled, Some(TxCancellationReason::InvalidEncryptedValue));
+    assert_eq!(faux.status, LegacyTransactionStatus::Rejected);
+    let interactive = tx_db.get_completed_transaction_cancelled_or_not(8u64.into()).unwrap();
+    assert_eq!(interactive.cancelled, None);
+    assert_eq!(interactive.status, LegacyTransactionStatus::MinedConfirmed);
 }

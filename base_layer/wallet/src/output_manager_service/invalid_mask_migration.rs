@@ -160,8 +160,9 @@ pub enum InvalidOutputTxOutcome {
     AlreadyCancelled,
     /// No transaction with this id exists
     NotFound,
-    /// The transaction is not inbound (e.g. the output is change of an outbound payment); it is left untouched,
-    /// because cancelling it would reject a real payment
+    /// An interactively built transaction that is not known to be inbound (outbound, e.g. the output is change of a
+    /// payment, or of unknown direction), or a pending outbound transaction; it is left untouched, because cancelling
+    /// it could reject a real payment. Faux records of scanned / imported outputs never get this outcome
     NotInbound(&'static str),
 }
 
@@ -205,12 +206,28 @@ impl<T: TransactionBackend + 'static> InvalidOutputTransactionSink for Transacti
         match self.get_any_transaction(tx_id).map_err(error)? {
             None => Ok(InvalidOutputTxOutcome::NotFound),
             Some(WalletTransaction::Completed(tx)) => {
-                // Checked here, not by the caller, so an injected id cannot get an outbound payment rejected either
-                if tx.direction != TransactionDirection::Inbound {
-                    return Ok(InvalidOutputTxOutcome::NotInbound("completed non-inbound transaction"));
-                }
                 if tx.cancelled.is_some() {
                     return Ok(InvalidOutputTxOutcome::AlreadyCancelled);
+                }
+                // A faux record of a scanned / imported output (Imported, OneSided*, Coinbase*) is cancelled whatever
+                // its direction: that direction comes from the memo in the output's encrypted data, which the sender
+                // controls, and a fresh recovery would never create such a record for a mismatched output. Only an
+                // interactively built transaction keeps the inbound-only guard, which protects a genuine outbound
+                // payment whose change output mismatched. Checked here, not by the caller, so an injected id cannot
+                // bypass it.
+                let faux = tx.status.is_imported_from_chain() || tx.status.is_coinbase();
+                if !faux {
+                    match tx.direction {
+                        TransactionDirection::Inbound => {},
+                        TransactionDirection::Outbound => {
+                            return Ok(InvalidOutputTxOutcome::NotInbound("completed outbound transaction"));
+                        },
+                        TransactionDirection::Unknown => {
+                            return Ok(InvalidOutputTxOutcome::NotInbound(
+                                "completed transaction of unknown direction",
+                            ));
+                        },
+                    }
                 }
                 self.reject_completed_transaction(
                     tx_id,
