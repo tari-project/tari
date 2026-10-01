@@ -88,7 +88,7 @@ pub fn is_valid_config_key(key: &str) -> bool {
 /// (i.e. starts with `<section>.`), in the order they were stored. Entries with an invalid key are skipped with a
 /// warning, so a bad stored entry can never stop a section from loading.
 fn config_overrides_for(config: &Config, section: &str) -> Vec<(String, String)> {
-    let prefix = format!("{section}.");
+    let prefix = format!("{}.", section.to_lowercase());
     let Ok(entries) = config.get_array(CONFIG_OVERRIDES_KEY) else {
         return Vec::new();
     };
@@ -100,14 +100,19 @@ fn config_overrides_for(config: &Config, section: &str) -> Vec<(String, String)>
         let Some((key, value)) = entry.split_once('=') else {
             continue;
         };
+        let key = key.to_lowercase();
         if !key.starts_with(&prefix) {
             continue;
         }
-        if !is_valid_config_key(key) {
-            warn!(target: LOG_TARGET, "Ignoring config override with an invalid key '{key}'");
+        if !is_valid_config_key(&key) {
+            warn!(
+                target: LOG_TARGET,
+                "Ignoring config override with an invalid key '{}'",
+                crate::configuration::utils::sanitize_for_display(&key)
+            );
             continue;
         }
-        result.push((key.to_string(), value.to_string()));
+        result.push((key, value.to_string()));
     }
     result
 }

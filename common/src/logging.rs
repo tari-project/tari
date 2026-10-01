@@ -34,11 +34,14 @@ use log4rs::config::RawConfig;
 use crate::{
     ConfigError,
     LOG_TARGET,
-    configuration::utils::{untrusted_reasons, write_warning},
+    configuration::utils::{print_warning, sanitize_for_display, untrusted_reasons},
 };
 
 /// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
 /// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
+///
+/// If the file could have been written by another user (see [`untrusted_reasons`]), it is not loaded: the reasons are
+/// printed to stderr, `default` is used instead, and the reasons are also logged once logging is up.
 pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
@@ -68,29 +71,45 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
 
     // Always print the findings to stderr first: no logger exists yet, and the log config being checked could itself
     // silence them. Once logging is up they are also logged.
-    let untrusted = untrusted_reasons(config_file);
+    let (contents, untrusted) = choose_log_config(config_file, default)?;
     for reason in &untrusted {
-        write_warning(&mut std::io::stderr(), reason);
+        print_warning(reason);
     }
-    let result = read_and_init_logging(config_file, base_path);
-    if result.is_ok() {
-        for reason in &untrusted {
-            warn!(target: LOG_TARGET, "⚠️  {reason}");
-        }
+    if !untrusted.is_empty() {
+        print_warning("Untrusted log config ignored; using the built-in default logging configuration");
     }
-    result
+    init_logging_from_str(&contents, base_path)?;
+    for reason in &untrusted {
+        warn!(target: LOG_TARGET, "⚠️  {reason}");
+    }
+    if !untrusted.is_empty() {
+        warn!(
+            target: LOG_TARGET,
+            "⚠️  Untrusted log config {} ignored; using the built-in default logging configuration",
+            sanitize_for_display(&config_file.display().to_string())
+        );
+    }
+    Ok(())
 }
 
-/// Reads the log4rs config file, substitutes `{{log_dir}}` and starts log4rs.
-fn read_and_init_logging(config_file: &Path, base_path: &Path) -> Result<(), ConfigError> {
+/// Returns the log4rs config text to use and the reasons the file at `config_file` cannot be trusted. An untrusted
+/// file (see [`untrusted_reasons`]) is not read at all; `default` is used instead.
+fn choose_log_config(config_file: &Path, default: &str) -> Result<(String, Vec<String>), ConfigError> {
+    let untrusted = untrusted_reasons(config_file);
+    if !untrusted.is_empty() {
+        return Ok((default.to_string(), untrusted));
+    }
     let mut file =
         File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
     let mut contents = String::new();
-
     file.read_to_string(&mut contents)
         .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
+    Ok((contents, untrusted))
+}
 
-    let contents = substitute_log_dir(&contents, base_path)?;
+/// Substitutes `{{log_dir}}` in a log4rs config and starts log4rs with it.
+fn init_logging_from_str(contents: &str, base_path: &Path) -> Result<(), ConfigError> {
+    let contents = substitute_log_dir(contents, base_path)?;
 
     let config: RawConfig = serde_yaml::from_str(&contents).map_err(|e| {
         ConfigError::new(
@@ -181,6 +200,31 @@ mod test {
     use std::path::Path;
 
     use super::substitute_log_dir;
+
+    #[cfg(unix)]
+    #[test]
+    fn untrusted_log_config_is_ignored() {
+        use std::os::unix::fs::PermissionsExt;
+
+        use super::choose_log_config;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = dir.path().join("log4rs.yml");
+        std::fs::write(&path, "from file").unwrap();
+
+        // Trusted: the file is loaded
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let (contents, reasons) = choose_log_config(&path, "default").unwrap();
+        assert_eq!(contents, "from file");
+        assert!(reasons.is_empty(), "{reasons:?}");
+
+        // World-writable: the file is not read and the default is used
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let (contents, reasons) = choose_log_config(&path, "default").unwrap();
+        assert_eq!(contents, "default");
+        assert!(!reasons.is_empty());
+    }
 
     #[test]
     fn log_dir_is_escaped_for_yaml() {

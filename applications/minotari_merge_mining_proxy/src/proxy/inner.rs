@@ -41,6 +41,7 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use rand::random;
 use serde_json as json;
 use serde_json::json;
+use tari_common::configuration::utils::mask_value;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::BaseNodeConsensusManager,
@@ -745,7 +746,7 @@ impl InnerService {
             let pos = self.config.monerod_url.iter().position(|x| x == server).unwrap_or(0);
             debug!(
                 target: LOG_TARGET, "Trying to connect to Monerod server at: {} (entry {} of {})",
-                url.as_str(), pos.saturating_add(1), self.config.monerod_url.len()
+                mask_value("monerod_url", url.as_str()), pos.saturating_add(1), self.config.monerod_url.len()
             );
             match timeout(self.config.monerod_connection_timeout, reqwest::get(url.clone())).await {
                 // For this availability check we deliberately do not provide the body of the request if it is a POST
@@ -769,7 +770,7 @@ impl InnerService {
                             Ok(data) => data.content_length().unwrap_or_default(),
                             Err(_) => 0,
                         },
-                        url.as_str()
+                        mask_value("monerod_url", url.as_str())
                     );
                     return Ok(Some(url));
                 },
@@ -777,7 +778,7 @@ impl InnerService {
                     warn!(
                         target: LOG_TARGET,
                         "Monerod server unavailable (timeout in {:.2?}): {}",
-                        start.elapsed(), url.as_str()
+                        start.elapsed(), mask_value("monerod_url", url.as_str())
                     );
                 },
             }
@@ -785,7 +786,14 @@ impl InnerService {
 
         // Clear the "busy qualifying" state
         self.clear_current_monerod_server_lock(None, None);
-        Err(MmProxyError::ServersUnavailable(format!("{}", self.config.monerod_url)))
+        Err(MmProxyError::ServersUnavailable(
+            self.config
+                .monerod_url
+                .iter()
+                .map(|url| mask_value("monerod_url", url))
+                .collect::<Vec<_>>()
+                .join(","),
+        ))
     }
 
     // Modifies the Monero `getblocktemplate` request to reserve space for the Minotari merge mining tag.
@@ -888,7 +896,7 @@ impl InnerService {
             debug!(
                 target: LOG_TARGET,
                 "[monerod] '{}' request: {} {} (trace_id: {})",
-                monerod_method, request.method(), monerod_url, trace_id
+                monerod_method, request.method(), mask_value("monerod_url", monerod_url.as_str()), trace_id
             );
 
             if self_select_response {

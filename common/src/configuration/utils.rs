@@ -10,6 +10,7 @@ use std::{
     marker::PhantomData,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use config::{Config, ValueKind};
@@ -78,13 +79,19 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
 ///
 /// So the scoped table beats the file's unscoped keys, and an explicit env var or `-p` override beats both.
 ///
-/// A `-p`, `TARI_*` env or application override that sets this application's own `<section>.network` key to a
-/// network other than the resolved one is rejected with an error (see [`check_network_overrides`]). A contradicting
-/// env override for another application's section, or a contradiction coming only from the config file (e.g. a
-/// `[miner]` section in a config shared with the node), is only warned about.
+/// A `-p` override that sets any `<section>.network` key to a network other than the resolved one is rejected with an
+/// error, and so is a `TARI_*` env override for this application's own section (see [`check_network_overrides`]). A
+/// contradicting env override for another application's section, or a contradiction coming only from the config file
+/// (e.g. a `[miner]` section in a config shared with the node), is only warned about.
 ///
-/// A `-p <network>.<section>.<key>` override for the resolved network is also re-applied as `<section>.<key>`, so it
-/// beats a `TARI_*` env var on the unscoped key.
+/// The replayed overrides form a ladder, lowest to highest (see [`build_replay_list`]):
+/// 1. `TARI_*` env vars as given (unscoped `<section>.<key>` and scoped `<network>.<section>.<key>`),
+/// 2. env vars scoped to the resolved network, copied to `<section>.<key>`, so a scoped env var beats the unscoped one,
+/// 3. `-p` and application-injected overrides,
+/// 4. `-p`/application overrides scoped to the resolved network, copied to `<section>.<key>`.
+///
+/// Keys are lowercased for the replay. `-p` keys that start with `__` or contain `[`/`]` are rejected, so the reserved
+/// [`CONFIG_OVERRIDES_KEY`] cannot be touched from the command line.
 pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     overrides: &TOverride,
@@ -132,6 +139,9 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
     let overrides = overrides.get_config_property_overrides(&network);
+    for (key, _) in &overrides {
+        check_override_key(key)?;
+    }
     for (key, value) in &overrides {
         trace!(target: LOG_TARGET, "Config property override: {key}={}", mask_value(key, value));
     }
@@ -147,12 +157,13 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     check_network_overrides(&env_overrides, &overrides, network)?;
 
     // Store env and -p/app overrides in the config so that `merge_subconfig` can re-apply them on top of the
-    // network-scoped tables. Env first, so that a -p/app override on the same key wins.
-    let mut all_overrides = env_overrides;
-    all_overrides.extend(overrides.iter().cloned());
-    let override_keys: Vec<String> = all_overrides.iter().map(|(key, _)| key.clone()).collect();
-    all_overrides.extend(unscoped_copies(&overrides, network));
-    let reapply: Vec<String> = all_overrides
+    // network-scoped tables.
+    let override_keys: Vec<String> = env_overrides
+        .iter()
+        .chain(&overrides)
+        .map(|(key, _)| key.to_lowercase())
+        .collect();
+    let reapply: Vec<String> = build_replay_list(&env_overrides, &overrides, network)
         .iter()
         .map(|(key, value)| format!("{key}={value}"))
         .collect();
@@ -188,11 +199,12 @@ fn tari_env_overrides() -> Vec<(String, String)> {
             continue;
         };
         let key = key.replace("__", ".");
-        if !is_valid_config_key(&key) {
+        if !is_valid_config_key(&key) || check_override_key(&key).is_err() {
             warn!(
                 target: LOG_TARGET,
-                "Ignoring environment variable TARI_{}: '{key}' is not a valid config key",
-                name.strip_prefix("tari_").unwrap_or(&name).to_uppercase()
+                "Ignoring environment variable TARI_{}: '{}' is not a valid config key",
+                sanitize_for_display(&name.strip_prefix("tari_").unwrap_or(&name).to_uppercase()),
+                sanitize_for_display(&key)
             );
             continue;
         }
@@ -201,9 +213,25 @@ fn tari_env_overrides() -> Vec<(String, String)> {
     result
 }
 
-/// For each `-p`/application override scoped to the resolved network (`<network>.<section>.<key>`), returns a copy
-/// without the network prefix (`<section>.<key>`). `merge_subconfig` only re-applies `<section>.`-prefixed entries,
-/// so without the copy an env var on `<section>.<key>` would beat the explicit scoped `-p` value.
+/// Returns an error if an override key could touch the reserved [`CONFIG_OVERRIDES_KEY`] or index into an array:
+/// keys (lowercased, trimmed) that start with `__` or contain `[` or `]`.
+fn check_override_key(key: &str) -> Result<(), ConfigError> {
+    let key = key.trim().to_lowercase();
+    if key.starts_with("__") || key.contains(['[', ']']) {
+        return Err(ConfigError::new(
+            "Invalid config override key",
+            Some(format!(
+                "'{}' is reserved or uses array indexing, which overrides do not support",
+                sanitize_for_display(&key)
+            )),
+        ));
+    }
+    Ok(())
+}
+
+/// For each override scoped to the resolved network (`<network>.<section>.<key>`), returns a copy without the network
+/// prefix (`<section>.<key>`). `merge_subconfig` only re-applies `<section>.`-prefixed entries, so without the copy a
+/// less specific override on `<section>.<key>` would beat the scoped one. Keys are lowercased.
 fn unscoped_copies(overrides: &[(String, String)], network: Network) -> Vec<(String, String)> {
     let prefix = format!("{}.", network.as_key_str());
     let mut result = Vec::new();
@@ -217,13 +245,36 @@ fn unscoped_copies(overrides: &[(String, String)], network: Network) -> Vec<(Str
     result
 }
 
+/// Builds the list of overrides that `merge_subconfig` re-applies, with lowercased keys, in this order (later wins):
+/// env vars as given, env vars scoped to the resolved network copied unscoped, `-p`/application overrides, then
+/// `-p`/application overrides scoped to the resolved network copied unscoped.
+fn build_replay_list(
+    env_overrides: &[(String, String)],
+    app_overrides: &[(String, String)],
+    network: Network,
+) -> Vec<(String, String)> {
+    let mut result: Vec<(String, String)> = env_overrides
+        .iter()
+        .map(|(key, value)| (key.to_lowercase(), value.clone()))
+        .collect();
+    result.extend(unscoped_copies(env_overrides, network));
+    result.extend(
+        app_overrides
+            .iter()
+            .map(|(key, value)| (key.to_lowercase(), value.clone())),
+    );
+    result.extend(unscoped_copies(app_overrides, network));
+    result
+}
+
 /// Warns about overrides that do not do what they look like they do.
 fn warn_about_network_overrides(overrides: &[(String, String)], network: Network) {
     for (key, value) in overrides {
         if key == "network" {
             warn!(
                 target: LOG_TARGET,
-                "The config override 'network={value}' is ignored. Use --network or TARI_NETWORK to choose the network."
+                "The config override 'network={}' is ignored. Use --network or TARI_NETWORK to choose the network.",
+                sanitize_for_display(value)
             );
         }
         if key == "common.base_path" {
@@ -231,8 +282,9 @@ fn warn_about_network_overrides(overrides: &[(String, String)], network: Network
             if last != network.as_key_str() {
                 warn!(
                     target: LOG_TARGET,
-                    "The base path '{value}' does not end in the network name '{network}', but the network is \
-                     '{network}'. Check --base-path and --network."
+                    "The base path '{}' does not end in the network name '{network}', but the network is \
+                     '{network}'. Check --base-path and --network.",
+                    sanitize_for_display(value)
                 );
             }
         }
@@ -265,9 +317,9 @@ fn network_key_section(key: &str, network: Network) -> &str {
 /// network other than the resolved `network`. Every override is checked on its own, so a contradicting env var is
 /// caught even when an application-injected override on the same key wins in the merged config.
 ///
-/// The running application's own sections are the `<section>` of every unscoped `<section>.network` key in
-/// `app_overrides` (the `-p` and application-injected overrides; each application injects its own
-/// `<section>.network`). A contradiction for one of those sections is an error. A contradicting env var for any other
+/// A contradicting `-p` (or application-injected) override is always an error. A contradicting env var is an error
+/// for the running application's own sections: the `<section>` of every unscoped `<section>.network` key in
+/// `app_overrides` (each application injects its own `<section>.network`). A contradicting env var for any other
 /// section (e.g. a stale `TARI_MINER__NETWORK` when starting the node) is only warned about. Values that are not a
 /// network name are left for the section's own deserialization to report.
 fn check_network_overrides(
@@ -286,7 +338,8 @@ fn check_network_overrides(
         }
     }
 
-    for (key, value) in env_overrides.iter().chain(app_overrides) {
+    let explicit = app_overrides.iter().map(|entry| (entry, true));
+    for ((key, value), is_explicit) in env_overrides.iter().map(|entry| (entry, false)).chain(explicit) {
         let key = key.to_lowercase();
         if !is_applicable_network_key(&key, network) {
             continue;
@@ -298,19 +351,20 @@ fn check_network_overrides(
             continue;
         }
         let section = network_key_section(&key, network);
-        if app_sections.iter().any(|s| s == section) {
+        if is_explicit || app_sections.iter().any(|s| s == section) {
             return Err(ConfigError::new(
                 "Conflicting network configuration",
                 Some(format!(
-                    "Config key {key} is set to {configured} but the network is {network}; use --network or \
-                     TARI_NETWORK"
+                    "Config key {} is set to {configured} but the network is {network}; use --network or TARI_NETWORK",
+                    sanitize_for_display(&key)
                 )),
             ));
         }
         warn!(
             target: LOG_TARGET,
-            "Override {key}={configured} does not match the network {network}. It is not for this application, so it \
-             is ignored; use --network or TARI_NETWORK to choose the network."
+            "Override {}={configured} does not match the network {network}. It is not for this application, so it \
+             is ignored; use --network or TARI_NETWORK to choose the network.",
+            sanitize_for_display(&key)
         );
     }
     Ok(())
@@ -341,8 +395,9 @@ fn warn_about_file_network_keys(cfg: &Config, network: Network, override_keys: &
         if configured != network {
             warn!(
                 target: LOG_TARGET,
-                "Config key {key} is set to {configured} in the config file but the network is {network}. The value \
-                 is ignored for this run; use --network or TARI_NETWORK to choose the network."
+                "Config key {} is set to {configured} in the config file but the network is {network}. The value \
+                 is ignored for this run; use --network or TARI_NETWORK to choose the network.",
+                sanitize_for_display(&key)
             );
         }
     }
@@ -418,6 +473,9 @@ fn find_secret_keys_in(prefix: &str, table: config::Map<String, config::Value>, 
             if non_empty {
                 found.push(full_key);
             }
+        } else if is_url_key(&full_key) && value_contains_at(&value) {
+            // Credentials in a URL, e.g. `monerod_url = ["http://user:pass@host"]`
+            found.push(full_key);
         } else if let ValueKind::Table(table) = value.kind {
             find_secret_keys_in(&full_key, table, found);
         } else {
@@ -426,43 +484,110 @@ fn find_secret_keys_in(prefix: &str, table: config::Map<String, config::Value>, 
     }
 }
 
-/// Warns if the config file holds a secret but can be read by the group or by other users.
-#[cfg(unix)]
-fn warn_if_secrets_readable(path: &Path, file_cfg: &Config) {
-    use std::os::unix::fs::MetadataExt;
+/// Returns true if the last segment of a config key ends with `_url` or `_address`.
+fn is_url_key(key: &str) -> bool {
+    let last = key.rsplit('.').next().unwrap_or(key).to_lowercase();
+    last.ends_with("_url") || last.ends_with("_address")
+}
 
-    let Ok(metadata) = fs::metadata(path) else {
-        return;
-    };
-    if metadata.mode() & 0o044 == 0 {
-        return;
-    }
-    for key in find_secret_keys(file_cfg) {
-        emit_warning(&format!(
-            "Config file {} is readable by other users (mode {:o}) and contains the secret '{}'. Run `chmod 600 {}`, \
-             or move the secret to an environment variable or command line argument.",
-            path.display(),
-            metadata.mode() & 0o7777,
-            key,
-            path.display()
-        ));
+/// Returns true if a string value, or any string element of an array value, contains `@` (URL userinfo).
+fn value_contains_at(value: &config::Value) -> bool {
+    match &value.kind {
+        ValueKind::String(s) => s.contains('@'),
+        ValueKind::Array(items) => items
+            .iter()
+            .any(|item| matches!(&item.kind, ValueKind::String(s) if s.contains('@'))),
+        _ => false,
     }
 }
 
-#[cfg(not(unix))]
-fn warn_if_secrets_readable(_path: &Path, _file_cfg: &Config) {}
+/// Warns if the config file holds a secret but can be read by the group or by other users.
+fn warn_if_secrets_readable(path: &Path, file_cfg: &Config) {
+    for message in secrets_readable_messages(path, file_cfg) {
+        emit_warning(&message);
+    }
+}
 
-/// Writes a security warning as `WARNING: <message>` to `writer`.
+/// Returns one warning per secret in `file_cfg` if the config file at `path` is readable by the group or by other
+/// users. Keys and paths are sanitized for display.
+#[cfg(unix)]
+fn secrets_readable_messages(path: &Path, file_cfg: &Config) -> Vec<String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return Vec::new();
+    };
+    if metadata.mode() & 0o044 == 0 {
+        return Vec::new();
+    }
+    let shown_path = display_path(path);
+    find_secret_keys(file_cfg)
+        .into_iter()
+        .map(|key| {
+            format!(
+                "Config file {} is readable by other users (mode {:o}) and contains the secret '{}'. Run `chmod 600 \
+                 {}`, or move the secret to an environment variable or command line argument.",
+                shown_path,
+                metadata.mode() & 0o7777,
+                sanitize_for_display(&key),
+                shown_path
+            )
+        })
+        .collect()
+}
+
+#[cfg(not(unix))]
+fn secrets_readable_messages(_path: &Path, _file_cfg: &Config) -> Vec<String> {
+    Vec::new()
+}
+
+/// Returns `s` with every control character (including ESC, CR, LF, DEL and C1 controls) replaced by its `\u{..}`
+/// escape, so text from config files, paths or env vars cannot inject terminal escape sequences or fake log lines.
+pub fn sanitize_for_display(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_control() {
+            result.extend(c.escape_unicode());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+/// [`sanitize_for_display`] for a path.
+fn display_path(path: &Path) -> String {
+    sanitize_for_display(&path.display().to_string())
+}
+
+/// Number of security warnings printed to stderr by this process (see [`print_warning`]).
+static WARNINGS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+
+/// Returns how many security warnings (untrusted files, readable secrets, ...) this process has printed. Applications
+/// can use this to make sure an interactive user sees them, e.g. before a full-screen UI hides the terminal.
+pub fn warnings_emitted() -> usize {
+    WARNINGS_EMITTED.load(Ordering::Relaxed)
+}
+
+/// Writes a security warning as `WARNING: <message>` to `writer`. The message is sanitized for display.
 pub(crate) fn write_warning<W: Write>(writer: &mut W, message: &str) {
-    if writeln!(writer, "WARNING: {message}").is_err() {
+    if writeln!(writer, "WARNING: {}", sanitize_for_display(message)).is_err() {
         // Nowhere else to report a failed write to stderr
     }
 }
 
-/// Prints a security warning to stderr and also logs it. Printing does not depend on the logger, so the warning is seen
-/// even when no logger is set up yet or a (possibly planted) log config silences it.
-pub(crate) fn emit_warning(message: &str) {
+/// Prints a security warning to stderr and counts it (see [`warnings_emitted`]).
+pub(crate) fn print_warning(message: &str) {
+    WARNINGS_EMITTED.fetch_add(1, Ordering::Relaxed);
     write_warning(&mut std::io::stderr(), message);
+}
+
+/// Prints a security warning to stderr and also logs it. Printing does not depend on the logger, so the warning is seen
+/// even when no logger is set up yet or a (possibly planted) log config silences it. The message is sanitized for
+/// display once and the same text goes to both.
+pub(crate) fn emit_warning(message: &str) {
+    let message = sanitize_for_display(message);
+    print_warning(&message);
     warn!(target: LOG_TARGET, "⚠️  {message}");
 }
 
@@ -477,38 +602,56 @@ pub fn warn_if_untrusted(path: &Path) {
 /// Returns why a file that is about to be loaded (config or log config) could have been written by someone else, or
 /// an empty list if it looks fine. On Unix the file (following symlinks) and its immediate parent directory must be
 /// owned by the effective user and must not be group- or world-writable. If the file is a symlink, the directory of
-/// its target is checked too, and a symlink whose target does not exist is reported. On other platforms this returns
-/// nothing.
+/// every hop in the symlink chain (up to 32 hops) is checked too, and a symlink whose target does not exist is
+/// reported. Paths in the messages are sanitized for display. On other platforms this returns nothing.
 #[cfg(unix)]
 pub fn untrusted_reasons(path: &Path) -> Vec<String> {
     use std::os::unix::fs::MetadataExt;
 
+    const MAX_SYMLINK_HOPS: usize = 32;
+
     // SAFETY: geteuid has no preconditions and cannot fail.
     let euid = unsafe { libc::geteuid() };
-    let parent = match path.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
-        _ => PathBuf::from("."),
-    };
+    let parent = parent_or_current(path);
     let mut reasons = Vec::new();
     let mut to_check = vec![("file", path.to_path_buf()), ("directory", parent.clone())];
+    let mut seen_dirs = vec![fs::canonicalize(&parent).unwrap_or(parent)];
 
-    if let Ok(link_metadata) = fs::symlink_metadata(path) &&
+    // Walk the symlink chain one hop at a time and check the directory each hop lives in
+    let mut current = path.to_path_buf();
+    for _ in 0..MAX_SYMLINK_HOPS {
+        let Ok(link_metadata) = fs::symlink_metadata(&current) else {
+            break;
+        };
+        if !link_metadata.file_type().is_symlink() {
+            break;
+        }
+        let Ok(target) = fs::read_link(&current) else {
+            break;
+        };
+        let next = if target.is_absolute() {
+            target
+        } else {
+            parent_or_current(&current).join(target)
+        };
+        let next_dir = parent_or_current(&next);
+        let canonical_dir = fs::canonicalize(&next_dir).unwrap_or_else(|_| next_dir.clone());
+        if !seen_dirs.contains(&canonical_dir) {
+            seen_dirs.push(canonical_dir.clone());
+            to_check.push(("directory (symlink hop)", canonical_dir.clone()));
+        }
+        current = next;
+    }
+
+    if fs::metadata(path).is_err() &&
+        let Ok(link_metadata) = fs::symlink_metadata(path) &&
         link_metadata.file_type().is_symlink()
     {
-        match fs::canonicalize(path) {
-            Ok(target) => {
-                if let Some(target_parent) = target.parent() &&
-                    fs::canonicalize(&parent).ok().as_deref() != Some(target_parent)
-                {
-                    to_check.push(("directory (symlink target)", target_parent.to_path_buf()));
-                }
-            },
-            Err(_) => reasons.push(format!(
-                "{} is a symlink whose target does not exist (owner uid {}); remove it or point it at a real file.",
-                path.display(),
-                link_metadata.uid()
-            )),
-        }
+        reasons.push(format!(
+            "{} is a symlink whose target does not exist (owner uid {}); remove it or point it at a real file.",
+            display_path(path),
+            link_metadata.uid()
+        ));
     }
 
     for (kind, p) in to_check {
@@ -516,17 +659,18 @@ pub fn untrusted_reasons(path: &Path) -> Vec<String> {
             continue;
         };
         let mode = metadata.mode() & 0o7777;
+        let shown = display_path(&p);
         if metadata.uid() != euid {
             reasons.push(format!(
                 "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
                  control its contents. Fix with `chown {} {}` or use a base path you own.",
                 kind,
-                p.display(),
+                shown,
                 metadata.uid(),
                 mode,
                 euid,
                 euid,
-                p.display()
+                shown
             ));
         }
         if mode & 0o022 != 0 {
@@ -534,14 +678,23 @@ pub fn untrusted_reasons(path: &Path) -> Vec<String> {
                 "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
                  contents. Fix with `chmod go-w {}`.",
                 kind,
-                p.display(),
+                shown,
                 metadata.uid(),
                 mode,
-                p.display()
+                shown
             ));
         }
     }
     reasons
+}
+
+/// Returns the parent directory of `path`, or `.` if it has none.
+#[cfg(unix)]
+fn parent_or_current(path: &Path) -> PathBuf {
+    match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    }
 }
 
 #[cfg(not(unix))]
@@ -610,10 +763,10 @@ fn check_for_incorrect_env_vars() {
                     "⚠️  Environment variable '{}={}' uses an unrecognised prefix and will be ignored. Did you mean \
                      '{}{}'? Configuration environment variables must use the 'TARI_' prefix with '__' as the nested \
                      key separator.",
-                    var_name,
-                    mask_value(&var_name, &var_value),
+                    sanitize_for_display(&var_name),
+                    sanitize_for_display(&mask_value(&var_name, &var_value)),
                     correct_prefix,
-                    suffix
+                    sanitize_for_display(suffix)
                 );
             }
         }
@@ -918,31 +1071,179 @@ mod test {
         }
     }
 
-    #[test]
-    fn scoped_override_beats_env_on_the_unscoped_key() {
+    /// Builds a config the way `load_configuration_with_overrides` does: file keys, then env and -p overrides
+    /// applied directly, then the replay list stored under the reserved key. Loads `SeedsTestConfig` from it.
+    fn load_seeds_test(
+        file: &[(&str, &str)],
+        env: &[(String, String)],
+        app: &[(String, String)],
+        network: Network,
+    ) -> SeedsTestConfig {
         use crate::DefaultConfigLoader;
 
-        // Mirrors load_configuration_with_overrides: env entry first, then the -p entry, then its unscoped copy
-        let network = Network::Esmeralda;
-        let env = pairs(&[("seeds_test.peer_seeds", "Y")]);
-        let app = pairs(&[("esmeralda.seeds_test.peer_seeds", "X")]);
-        let mut all = env.clone();
-        all.extend(app.iter().cloned());
-        all.extend(unscoped_copies(&app, network));
-        let reapply: Vec<String> = all.iter().map(|(k, v)| format!("{k}={v}")).collect();
-        let cfg = Config::builder()
-            .set_override("seeds_test.override_from", "esmeralda")
-            .unwrap()
-            .set_override("seeds_test.peer_seeds", "Y")
-            .unwrap()
-            .set_override("esmeralda.seeds_test.peer_seeds", "X")
-            .unwrap()
+        let mut builder = Config::builder();
+        for (key, value) in file {
+            builder = builder.set_default(*key, *value).unwrap();
+        }
+        for (key, value) in env.iter().chain(app) {
+            builder = builder.set_override(key.as_str(), value.as_str()).unwrap();
+        }
+        let reapply: Vec<String> = build_replay_list(env, app, network)
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+        let cfg = builder
             .set_override(CONFIG_OVERRIDES_KEY, reapply)
             .unwrap()
             .build()
             .unwrap();
-        let loaded = <SeedsTestConfig as DefaultConfigLoader>::load_from(&cfg).unwrap();
-        assert_eq!(loaded.peer_seeds, "X");
+        <SeedsTestConfig as DefaultConfigLoader>::load_from(&cfg).unwrap()
+    }
+
+    const SEEDS_FILE: &[(&str, &str)] = &[
+        ("seeds_test.override_from", "esmeralda"),
+        ("seeds_test.peer_seeds", "file"),
+        ("esmeralda.seeds_test.peer_seeds", "scoped file"),
+    ];
+
+    #[test]
+    fn scoped_override_beats_env_on_the_unscoped_key() {
+        let env = pairs(&[("seeds_test.peer_seeds", "Y")]);
+        let app = pairs(&[("esmeralda.seeds_test.peer_seeds", "X")]);
+        assert_eq!(
+            load_seeds_test(SEEDS_FILE, &env, &app, Network::Esmeralda).peer_seeds,
+            "X"
+        );
+    }
+
+    #[test]
+    fn scoped_env_beats_unscoped_env_and_p_beats_both() {
+        let env = pairs(&[
+            ("seeds_test.peer_seeds", "unscoped env"),
+            ("esmeralda.seeds_test.peer_seeds", "scoped env"),
+        ]);
+        assert_eq!(
+            load_seeds_test(SEEDS_FILE, &env, &[], Network::Esmeralda).peer_seeds,
+            "scoped env"
+        );
+        let app = pairs(&[("seeds_test.peer_seeds", "from -p")]);
+        assert_eq!(
+            load_seeds_test(SEEDS_FILE, &env, &app, Network::Esmeralda).peer_seeds,
+            "from -p"
+        );
+    }
+
+    #[test]
+    fn mixed_case_p_override_is_replayed() {
+        let env = pairs(&[("seeds_test.peer_seeds", "Y")]);
+        let app = pairs(&[("Seeds_Test.peer_seeds", "X")]);
+        assert_eq!(
+            load_seeds_test(SEEDS_FILE, &env, &app, Network::Esmeralda).peer_seeds,
+            "X"
+        );
+    }
+
+    #[test]
+    fn reserved_and_indexed_override_keys_are_rejected() {
+        assert!(check_override_key("__tari_overrides[0]").is_err());
+        assert!(check_override_key(" __Tari_Overrides").is_err());
+        assert!(check_override_key("__anything").is_err());
+        assert!(check_override_key("base_node.x[-9999999999]").is_err());
+        assert!(check_override_key("base_node.grpc_address").is_ok());
+
+        // And through the loader
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "").unwrap();
+        let network = crate::network_check::is_network_choice_valid(Network::MainNet)
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::NextNet))
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::Esmeralda))
+            .unwrap();
+        for key in ["__tari_overrides[0]", "__tari_overrides"] {
+            let overrides = TestOverrides(vec![(key.to_string(), "x".to_string())]);
+            let err = load_configuration_with_overrides(&path, &overrides, Some(network)).unwrap_err();
+            assert!(err.to_string().contains("__tari_overrides"), "{err}");
+        }
+    }
+
+    #[test]
+    fn control_characters_are_escaped() {
+        assert_eq!(
+            sanitize_for_display("a\u{1b}c\r\n\u{7f}\u{9b}b"),
+            "a\\u{1b}c\\u{d}\\u{a}\\u{7f}\\u{9b}b"
+        );
+        assert_eq!(sanitize_for_display("plain text"), "plain text");
+
+        let mut out = Vec::new();
+        write_warning(&mut out, "key \u{1b}c and \u{1b}[2J");
+        let out = String::from_utf8(out).unwrap();
+        assert!(!out.contains('\u{1b}'));
+        assert!(out.contains("\\u{1b}c"));
+        assert!(out.contains("\\u{1b}[2J"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn planted_key_and_path_escapes_are_escaped() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        // A quoted TOML key holding an escape sequence, in a world-readable file
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "[wallet]\n\"password\\u001bc\" = \"x\"\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let file_cfg = Config::builder()
+            .add_source(config::File::from(path.as_path()))
+            .build()
+            .unwrap();
+        let messages = secrets_readable_messages(&path, &file_cfg);
+        assert!(!messages.is_empty());
+        for message in &messages {
+            assert!(!message.contains('\u{1b}'), "{message}");
+            assert!(message.contains("\\u{1b}c"), "{message}");
+        }
+
+        // A directory name with an escape sequence, writable by others
+        let bad_dir = dir.path().join("x\u{1b}[2Jy");
+        fs::create_dir_all(&bad_dir).unwrap();
+        fs::set_permissions(&bad_dir, fs::Permissions::from_mode(0o777)).unwrap();
+        let file = bad_dir.join("log4rs.yml");
+        fs::write(&file, "").unwrap();
+        let reasons = untrusted_reasons(&file);
+        assert!(!reasons.is_empty());
+        for reason in &reasons {
+            assert!(!reason.contains('\u{1b}'), "{reason}");
+        }
+        assert!(reasons.iter().any(|r| r.contains("\\u{1b}[2J")), "{reasons:?}");
+    }
+
+    #[test]
+    fn url_credentials_in_config_are_secrets() {
+        let cfg = Config::builder()
+            .add_source(config::File::from_str(
+                r#"
+[merge_mining_proxy]
+monerod_url = ["http://node.example:18081", "http://user:pass@host:18081"]
+base_node_grpc_address = "http://u:p@127.0.0.1:18142"
+p2pool_node_grpc_address = "http://127.0.0.1:18145"
+"#,
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap();
+        let mut found = find_secret_keys(&cfg);
+        found.sort();
+        assert_eq!(found, vec![
+            "merge_mining_proxy.base_node_grpc_address".to_string(),
+            "merge_mining_proxy.monerod_url".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn emitted_warnings_are_counted() {
+        let before = warnings_emitted();
+        emit_warning("test warning");
+        assert!(warnings_emitted() > before);
     }
 
     #[test]
@@ -1120,9 +1421,44 @@ password = "scoped"
 
         let reasons = untrusted_reasons(&link);
         assert!(
-            reasons.iter().any(|r| r.contains("directory (symlink target)")),
+            reasons.iter().any(|r| r.contains("directory (symlink hop)")),
             "{reasons:?}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_symlink_hop_directory_is_checked() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        // a/config.toml -> b/hop.toml -> c/config.toml, with only b writable by others
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a");
+        let b = dir.path().join("b");
+        let c = dir.path().join("c");
+        for d in [&a, &b, &c] {
+            fs::create_dir_all(d).unwrap();
+            fs::set_permissions(d, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        fs::set_permissions(&b, fs::Permissions::from_mode(0o777)).unwrap();
+        let file = c.join("config.toml");
+        fs::write(&file, "").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        symlink(&file, b.join("hop.toml")).unwrap();
+        // Relative hop, resolved against the link's own directory
+        symlink("../b/hop.toml", a.join("config.toml")).unwrap();
+
+        let reasons = untrusted_reasons(&a.join("config.toml"));
+        let b_shown = fs::canonicalize(&b).unwrap().display().to_string();
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("directory (symlink hop)") && r.contains(&b_shown) && r.contains("writable")),
+            "{reasons:?}"
+        );
+        // The final target's directory is fine
+        let c_shown = fs::canonicalize(&c).unwrap().display().to_string();
+        assert!(!reasons.iter().any(|r| r.contains(&c_shown)), "{reasons:?}");
     }
 
     #[cfg(unix)]

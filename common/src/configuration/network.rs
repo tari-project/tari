@@ -30,7 +30,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ConfigurationError, configuration::utils::emit_warning, network_check::is_network_choice_valid};
+use crate::{
+    ConfigurationError,
+    configuration::utils::{emit_warning, sanitize_for_display},
+    network_check::is_network_choice_valid,
+};
 
 static CURRENT_NETWORK: OnceLock<Network> = OnceLock::new();
 
@@ -128,7 +132,8 @@ fn network_from_env() -> Option<Network> {
             ENV_WARNING.call_once(|| {
                 // This can run before any logger exists, so also print it
                 emit_warning(&format!(
-                    "Ignoring TARI_NETWORK={value}: {e}. Using the default network instead."
+                    "Ignoring TARI_NETWORK={}: {e}. Using the default network instead.",
+                    sanitize_for_display(&value)
                 ));
             });
             return None;
@@ -140,7 +145,8 @@ fn network_from_env() -> Option<Network> {
             ENV_WARNING.call_once(|| {
                 // This can run before any logger exists, so also print it
                 emit_warning(&format!(
-                    "Ignoring TARI_NETWORK={value}: {e}. Using the default network instead."
+                    "Ignoring TARI_NETWORK={}: {e}. Using the default network instead.",
+                    sanitize_for_display(&value)
                 ));
             });
             None

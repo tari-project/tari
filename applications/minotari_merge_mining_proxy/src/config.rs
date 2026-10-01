@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    fmt,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -29,7 +30,7 @@ use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
     SubConfigPath,
-    configuration::{Network, StringList, serializers},
+    configuration::{Network, StringList, serializers, utils::mask_value},
 };
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
@@ -53,7 +54,7 @@ where S: serde::Serializer {
 
 pub(crate) const TARI_MONEROD_SERVERS: [&str; 1] = ["https://xmr-01.tari.com"];
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
@@ -122,6 +123,63 @@ pub struct MergeMiningProxyConfig {
     /// The timeout duration for connecting to monerod (default = 2s)
     #[serde(with = "serializers::seconds")]
     pub monerod_connection_timeout: Duration,
+}
+
+/// Masks a URL or address for display, so credentials in it never reach the logs (see [`mask_value`]).
+fn masked(field: &str, value: &str) -> String {
+    mask_value(field, value)
+}
+
+/// `Debug` is written by hand so URL and address fields, which may carry `user:pass@` credentials, are masked. The
+/// configuration is dumped to the log at startup.
+impl fmt::Debug for MergeMiningProxyConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let monerod_url: Vec<String> = self.monerod_url.iter().map(|url| masked("monerod_url", url)).collect();
+        f.debug_struct("MergeMiningProxyConfig")
+            .field("override_from", &self.override_from)
+            .field("use_dynamic_fail_data", &self.use_dynamic_fail_data)
+            .field("monero_fail_url", &masked("monero_fail_url", &self.monero_fail_url))
+            .field("monerod_url", &monerod_url)
+            .field("monerod_username", &self.monerod_username)
+            .field("monerod_password", &self.monerod_password)
+            .field("monerod_use_auth", &self.monerod_use_auth)
+            .field(
+                "base_node_grpc_address",
+                &self
+                    .base_node_grpc_address
+                    .as_deref()
+                    .map(|a| masked("base_node_grpc_address", a)),
+            )
+            .field(
+                "p2pool_node_grpc_address",
+                &self
+                    .p2pool_node_grpc_address
+                    .as_deref()
+                    .map(|a| masked("p2pool_node_grpc_address", a)),
+            )
+            .field("base_node_grpc_authentication", &self.base_node_grpc_authentication)
+            .field("base_node_grpc_tls_domain_name", &self.base_node_grpc_tls_domain_name)
+            .field("base_node_grpc_ca_cert_filename", &self.base_node_grpc_ca_cert_filename)
+            .field("listener_address", &self.listener_address)
+            .field("submit_to_origin", &self.submit_to_origin)
+            .field(
+                "wait_for_initial_sync_at_startup",
+                &self.wait_for_initial_sync_at_startup,
+            )
+            .field(
+                "check_tari_difficulty_before_submit",
+                &self.check_tari_difficulty_before_submit,
+            )
+            .field("max_randomx_vms", &self.max_randomx_vms)
+            .field("coinbase_extra", &self.coinbase_extra)
+            .field("network", &self.network)
+            .field("config_dir", &self.config_dir)
+            .field("wallet_payment_address", &self.wallet_payment_address)
+            .field("range_proof_type", &self.range_proof_type)
+            .field("p2pool_enabled", &self.p2pool_enabled)
+            .field("monerod_connection_timeout", &self.monerod_connection_timeout)
+            .finish()
+    }
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -206,7 +264,7 @@ impl SubConfigPath for MergeMiningProxyConfig {
 #[cfg(test)]
 mod test {
 
-    use tari_common::DefaultConfigLoader;
+    use tari_common::{DefaultConfigLoader, configuration::StringList};
 
     use crate::config::MergeMiningProxyConfig;
 
@@ -259,6 +317,18 @@ mod test {
             config.base_node_grpc_address,
             Some("http://base_node_a:8080".to_string())
         );
+    }
+
+    #[test]
+    fn debug_masks_url_credentials() {
+        let config = MergeMiningProxyConfig {
+            monerod_url: StringList::from(vec!["http://u:p@host:18081".to_string()]),
+            base_node_grpc_address: Some("http://u:p@127.0.0.1:18142".to_string()),
+            ..Default::default()
+        };
+        let debug = format!("{config:?}");
+        assert!(debug.contains("***"));
+        assert!(!debug.contains("u:p"), "{debug}");
     }
 
     #[test]

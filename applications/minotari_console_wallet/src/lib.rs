@@ -118,6 +118,18 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
     run_wallet_with_cli(shutdown, runtime, config, cli)
 }
 
+/// If any security warnings (untrusted config files, readable secrets, ...) were printed, waits for the user to press
+/// Enter. End of input counts as continue.
+fn pause_if_security_warnings() {
+    if tari_common::configuration::utils::warnings_emitted() == 0 {
+        return;
+    }
+    println!("Security warnings were printed above; press Enter to continue");
+    let mut line = String::new();
+    // EOF or a read error also continues
+    let _unused = std::io::stdin().read_line(&mut line);
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn run_wallet_with_cli(
     shutdown: &mut Shutdown,
@@ -231,6 +243,11 @@ pub fn run_wallet_with_cli(
     }
 
     let wallet_mode = wallet_mode(&cli, boot_mode);
+
+    // The full-screen UI hides anything printed so far, so make sure security warnings are seen first
+    if matches!(wallet_mode, WalletMode::Tui) && !cli.non_interactive_mode {
+        pause_if_security_warnings();
+    }
 
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &wallet_mode))?;
