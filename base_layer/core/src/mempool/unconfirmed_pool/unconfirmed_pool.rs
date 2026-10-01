@@ -32,6 +32,7 @@ use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     MicroMinotari,
+    aggregated_body::AggregateBody,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
@@ -233,11 +234,10 @@ pub struct UnconfirmedPool {
 /// A validator node registered or exited by a transaction: (sidechain public key, validator node public key), as bytes
 type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
 
-/// The validator nodes `tx` registers or exits. A registration and an exit for the same validator node share a key:
+/// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
 /// they can never both be valid against the same chain state.
-fn validator_node_keys(tx: &Transaction) -> Vec<ValidatorNodeKey> {
-    tx.body
-        .outputs()
+fn validator_node_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
+    body.outputs()
         .iter()
         .filter_map(|output| {
             let features = output.features.sidechain_feature.as_ref()?;
@@ -616,7 +616,7 @@ impl UnconfirmedPool {
             self.txs_by_signature.entry(sig.clone()).or_default().push(new_key);
         }
 
-        for vn_key in validator_node_keys(&prioritized_tx.transaction) {
+        for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
         }
 
@@ -643,7 +643,7 @@ impl UnconfirmedPool {
         {
             return false;
         }
-        validator_node_keys(tx)
+        validator_node_keys(&tx.body)
             .iter()
             .any(|vn_key| self.txs_by_validator_node.contains_key(vn_key))
     }
@@ -1318,7 +1318,7 @@ impl UnconfirmedPool {
                     .all(|excess| !excesses.contains(excess) && branch_excesses.insert(*excess));
                 // Insertion rejects a second pool transaction for the same validator node
                 // (`has_validator_node_conflict`), so this should never fire; it keeps a template valid regardless.
-                valid &= validator_node_keys(&tx.transaction)
+                valid &= validator_node_keys(&tx.transaction.body)
                     .into_iter()
                     .all(|vn_key| !vn_keys.contains(&vn_key) && branch_vn_keys.insert(vn_key));
             }
@@ -1925,8 +1925,40 @@ impl UnconfirmedPool {
         }
 
         removed_transactions.extend(self.remove_by_commitments_and_kernel_excesses(published_block)?);
+        removed_transactions.extend(self.remove_by_validator_node_keys(published_block)?);
 
         Ok(removed_transactions)
+    }
+
+    /// Removes every pool transaction that registers or exits a validator node `published_block` registers or exits
+    /// (through a different transaction, e.g. a resend, fee bump or replayed exit). It can never be valid now (already
+    /// registered, not registered, or exit already queued), and block templates are not validated before mining, so
+    /// leaving it would cost a locally mined block. The pool holds at most one transaction per validator node.
+    fn remove_by_validator_node_keys(
+        &mut self,
+        published_block: &Block,
+    ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        let vn_keys = validator_node_keys(&published_block.body);
+        if vn_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let to_remove = vn_keys
+            .iter()
+            .filter_map(|vn_key| self.txs_by_validator_node.get(vn_key))
+            .copied()
+            .collect::<Vec<_>>();
+        let mut removed = Vec::with_capacity(to_remove.len());
+        for key in to_remove {
+            if let Some(tx) = self.remove_transaction(key)? {
+                removed.push(tx);
+            }
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Found {} transactions registering or exiting the same validator nodes as the block in the unconfirmed pool",
+            removed.len()
+        );
+        Ok(removed)
     }
 
     /// Removes every pool transaction that produces an output commitment `published_block` produced (as an output or
@@ -2075,7 +2107,7 @@ impl UnconfirmedPool {
             }
         }
 
-        for vn_key in validator_node_keys(&prioritized_transaction.transaction) {
+        for vn_key in validator_node_keys(&prioritized_transaction.transaction.body) {
             if self.txs_by_validator_node.get(&vn_key) == Some(&tx_key) {
                 self.txs_by_validator_node.remove(&vn_key);
             }
@@ -5090,6 +5122,45 @@ mod test {
             pool.remove_transaction(key).unwrap();
             assert!(pool.txs_by_validator_node.is_empty());
             assert!(!pool.has_validator_node_conflict(&vn_exit_tx(&vn_secret_key, 6, &key_manager)));
+            assert!(pool.check_data_consistency());
+        }
+
+        fn block_with(tx: &Transaction) -> Block {
+            Block::new(tari_node_components::blocks::BlockHeader::new(0), tx.body.clone())
+        }
+
+        #[test]
+        fn a_published_block_evicts_pool_transactions_for_the_same_validator_node() {
+            // The pool holds T1 exiting validator node A; a peer's block exits A through a different transaction T2
+            // (e.g. a resend or a replayed exit). T1 can never be valid now and must not wait for a locally mined
+            // block to fail.
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn_a = PrivateKey::random(&mut rand::rng());
+            let vn_b = PrivateKey::random(&mut rand::rng());
+            let t1 = vn_exit_tx(&vn_a, 5, &key_manager);
+            let unrelated = vn_exit_tx(&vn_b, 5, &key_manager);
+            let mut pool = pool();
+            let weight = TransactionWeight::latest();
+            pool.insert(t1.clone(), None, &weight).unwrap();
+            pool.insert(unrelated.clone(), None, &weight).unwrap();
+
+            let t2 = vn_exit_tx(&vn_a, 7, &key_manager);
+            let removed = pool
+                .remove_published_and_discard_deprecated_transactions(&block_with(&t2))
+                .unwrap();
+
+            assert_eq!(removed, vec![t1.clone()]);
+            assert!(!pool.has_tx_with_excess_sig(&t1.body.kernels()[0].excess_sig));
+            assert!(pool.has_tx_with_excess_sig(&unrelated.body.kernels()[0].excess_sig));
+            assert_eq!(pool.txs_by_validator_node.len(), 1);
+            assert!(pool.check_data_consistency());
+
+            // Registration variant: a published registration for B evicts the pool's exit for B
+            let registration = vn_registration_tx(&vn_b, &key_manager);
+            pool.remove_published_and_discard_deprecated_transactions(&block_with(&registration))
+                .unwrap();
+            assert!(!pool.has_tx_with_excess_sig(&unrelated.body.kernels()[0].excess_sig));
+            assert!(pool.txs_by_validator_node.is_empty());
             assert!(pool.check_data_consistency());
         }
 

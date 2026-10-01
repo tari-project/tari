@@ -564,5 +564,31 @@ mod test {
             assert!(template.contains(&other));
             assert!(!template.contains(&exit2));
         }
+
+        #[tokio::test]
+        async fn a_published_block_evicts_a_pool_transaction_for_the_same_validator_node() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn_secret_key = PrivateKey::random(&mut rand::rng());
+            let t1 = tx_with(exit_features(&vn_secret_key), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(t1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // A peer's block exits the same validator node through a different transaction
+            let t2 = tx_with(exit_features(&vn_secret_key), 7, &key_manager);
+            let block = Arc::new(tari_node_components::blocks::Block::new(
+                tari_node_components::blocks::BlockHeader::new(0),
+                t2.body.clone(),
+            ));
+            mempool.process_published_block(block).await.unwrap();
+
+            assert_ne!(
+                mempool.has_transaction(t1).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
     }
 }
