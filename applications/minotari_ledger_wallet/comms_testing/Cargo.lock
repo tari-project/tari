@@ -2151,6 +2151,7 @@ name = "tari_max_size"
 version = "6.0.1-pre.2"
 dependencies = [
  "borsh",
+ "integer-encoding",
  "serde",
  "tari_utilities",
  "thiserror 2.0.20",
