@@ -64,11 +64,11 @@ use tari_core::{
         state_machine_service::states::StateInfo,
         tari_pulse_service::TariPulseHandle,
     },
-    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo, adjusted_target_difficulties_in_range},
     consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
-    proof_of_work::AdjustedTarget,
+    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK},
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -406,11 +406,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
 
+        let consensus_rules = self.consensus_rules.clone();
+
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
             for (start, end) in page_iter {
+                // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so every
+                // page also reads the headers just before it to seed the backoff run.
+                let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
                 // headers are returned by height
-                let headers = match handler.get_headers(start..=end).await {
+                let headers = match handler.get_headers(lookback_start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {err:?}");
@@ -424,6 +429,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
+                let headers = adjusted_target_difficulties_in_range(headers, start, &consensus_rules);
+
                 if headers.is_empty() {
                     let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
                         report_error_flag,
@@ -432,7 +439,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                for chain_header in &headers {
+                for (chain_header, adjusted_difficulty) in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
@@ -500,6 +507,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
                         coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
+                        adjusted_difficulty: Some(adjusted_difficulty.as_u64()),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {

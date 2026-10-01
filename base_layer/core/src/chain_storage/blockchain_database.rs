@@ -139,7 +139,6 @@ use crate::{
         MAX_BACKOFF_RUN_LOOKBACK,
         PowBackoffTracker,
         TargetDifficultyWindow,
-        adjust_target,
         randomx_factory::RandomXFactory,
     },
     validation::{
@@ -1753,6 +1752,15 @@ where B: BlockchainBackend
         fetch_target_difficulties_for_next_block(&*db, &self.consensus_manager, &current_block_hash)
     }
 
+    /// Returns the target difficulty the proof of work of the given block had to clear, i.e. its stored (unadjusted)
+    /// target difficulty with the TIP-RFC-MT-0004 same-algorithm backoff applied. This is not stored, so it is
+    /// recomputed from the PoW algorithms of the preceding headers. It equals the stored target where no backoff
+    /// applies.
+    pub fn fetch_adjusted_target_difficulty(&self, block_hash: HashOutput) -> Result<Difficulty, ChainStorageError> {
+        let db = self.db_read_access()?;
+        adjusted_target_difficulty(&*db, &self.consensus_manager, &block_hash)
+    }
+
     pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let NewBlockTemplate { header, mut body, .. } = template;
         if header.height == 0 {
@@ -2895,13 +2903,10 @@ pub(crate) fn target_difficulty_for_next_block<T: ChainHeaderSource + ?Sized>(
 
     // Pass 2: replay oldest -> newest so that each block's backoff modifier is derived from its own predecessors.
     let tracker = replay_difficulty_window(&walk, |entry, tracker| {
-        let header_constants = consensus_manager.consensus_constants(entry.height);
-        let modifier = tracker.modifier_for(entry.algo, header_constants.pow_backoff_cap());
-        let adjusted_target = adjust_target(
+        let adjusted_target = tracker.adjusted_target(
+            entry.algo,
             entry.target_difficulty,
-            modifier,
-            header_constants.min_pow_difficulty(entry.algo),
-            header_constants.max_pow_difficulty(entry.algo),
+            consensus_manager.consensus_constants(entry.height),
         );
         // LWMA works with the "newest" value being at the back of the array
         target_difficulties.add_back(entry.timestamp, entry.target_difficulty, adjusted_target);
@@ -2910,6 +2915,63 @@ pub(crate) fn target_difficulty_for_next_block<T: ChainHeaderSource + ?Sized>(
     target_difficulties.set_next_modifier(tracker.modifier_for(pow_algo, constants.pow_backoff_cap()));
 
     Ok(target_difficulties)
+}
+
+/// Pairs every header at or above `start` with its backoff adjusted target difficulty, the same value
+/// [`BlockchainDatabase::fetch_adjusted_target_difficulty`] returns for it.
+///
+/// `headers` must be consecutive main chain headers ordered by height, starting up to [`MAX_BACKOFF_RUN_LOOKBACK`]
+/// headers below `start` (or at genesis). The headers below `start` only seed the backoff run and are not returned.
+/// Reading them in the same call as the rest means a reorg cannot seed the run from a different chain.
+pub fn adjusted_target_difficulties_in_range(
+    headers: Vec<ChainHeader>,
+    start: u64,
+    consensus_manager: &BaseNodeConsensusManager,
+) -> Vec<(ChainHeader, Difficulty)> {
+    let mut tracker = PowBackoffTracker::new();
+    let mut result = Vec::with_capacity(headers.len());
+    for header in headers {
+        let algo = header.header().pow_algo();
+        if header.height() >= start {
+            let target = header.accumulated_data().target_difficulty;
+            // Genesis has no proof of work to clear, so it shows its stored target unchanged
+            let adjusted = if header.height() == 0 {
+                target
+            } else {
+                tracker.adjusted_target(algo, target, consensus_manager.consensus_constants(header.height()))
+            };
+            result.push((header, adjusted));
+        }
+        tracker.push(algo);
+    }
+    result
+}
+
+/// Recomputes the backoff adjusted target difficulty of the block with the given hash. See
+/// [`BlockchainDatabase::fetch_adjusted_target_difficulty`].
+pub(crate) fn adjusted_target_difficulty<T: ChainHeaderSource + ?Sized>(
+    db: &T,
+    consensus_manager: &BaseNodeConsensusManager,
+    block_hash: &HashOutput,
+) -> Result<Difficulty, ChainStorageError> {
+    let header = db.fetch_chain_header(block_hash)?;
+    // Genesis has no proof of work to clear. Its stored target is below the minimum difficulty, which clamping would
+    // otherwise raise, so show it unchanged.
+    if header.height() == 0 {
+        return Ok(header.accumulated_data().target_difficulty);
+    }
+    // The block itself is the only window entry; the walk adds the lookback needed for its backoff run.
+    let walk = walk_difficulty_window(db, header, |_| (true, true))?;
+    let mut adjusted = None;
+    replay_difficulty_window(&walk, |entry, tracker| {
+        adjusted = Some(tracker.adjusted_target(
+            entry.algo,
+            entry.target_difficulty,
+            consensus_manager.consensus_constants(entry.height),
+        ));
+        Ok(())
+    })?;
+    adjusted.ok_or_else(|| ChainStorageError::UnexpectedResult("Block missing from its own walk".to_string()))
 }
 
 #[allow(clippy::ptr_arg)]

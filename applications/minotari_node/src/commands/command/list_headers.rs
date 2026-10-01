@@ -60,6 +60,11 @@ impl CommandContext {
             for header in headers {
                 println!("\n\nHeader hash: {}", header.hash().to_hex());
                 println!("{header}");
+                let adjusted = self
+                    .blockchain_db
+                    .fetch_adjusted_target_difficulty(*header.hash())
+                    .await?;
+                println!("Adjusted target difficulty (TIP-004 backoff): {adjusted}");
             }
             Ok(())
         }
