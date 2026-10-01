@@ -35,7 +35,14 @@ use tari_core::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        ChainStorageError,
+        DbTransaction,
+        Validators,
+    },
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig},
     proof_of_work::randomx_factory::RandomXFactory,
@@ -45,7 +52,7 @@ use tari_core::{
     },
     validation::{ValidationError, mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_node_components::blocks::{Block, ChainBlock, NewBlock};
+use tari_node_components::blocks::{Block, BlockHeader, ChainBlock, NewBlock};
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
@@ -69,7 +76,13 @@ use tari_transaction_components::{
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{
-    block_builders::{append_block, chain_block_with_coinbase, create_coinbase, find_header_with_achieved_difficulty},
+    block_builders::{
+        append_block,
+        chain_block_with_coinbase,
+        create_chain_header,
+        create_coinbase,
+        find_header_with_achieved_difficulty,
+    },
     sample_blockchains::{consensus_constants, create_new_blockchain},
 };
 
@@ -648,6 +661,7 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
 /// resolved from neither makes a block on our main chain invalid, but a block on another chain may spend outputs from
 /// that chain that we have never seen, so the peer that sent it is not banned.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn compact_inputs_that_cannot_be_hydrated() {
     let network = Network::LocalNet;
     let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
@@ -739,6 +753,57 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     let err = handlers
         .handle_block(unknown_spend(orphan.hash()), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
+
+    // A pruned node deletes outputs spent at or below its pruned height
+    let (block2, _) = append_block(
+        &store,
+        &block1,
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+    let mut txn = DbTransaction::new();
+    txn.set_pruned_height(1);
+    store.write(txn).unwrap();
+
+    // Parent at the pruned height: every output it could spend is still held, so invalid, and the peer is banned
+    let err = handlers
+        .handle_block(unknown_spend(*block1.hash()), None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
+    assert!(err.get_ban_reason().is_some());
+
+    // Parent below the pruned height: the output may have been pruned, so dropped without banning the peer
+    let err = handlers
+        .handle_block(unknown_spend(*blocks[0].hash()), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
+
+    // Parent header stored ahead of our best block, as header sync leaves it: its body's outputs are not held yet, so
+    // dropped without banning the peer
+    let mut header3 = BlockHeader::from_previous(block2.header());
+    // As if its body added one kernel, the coinbase; headers are indexed by their kernel MMR size
+    header3.kernel_mmr_size = block2.header().kernel_mmr_size + 1;
+    let header3 = create_chain_header(header3, block2.accumulated_data(), rules.consensus_constants(0));
+    store.insert_valid_headers(vec![header3.clone()]).unwrap();
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 2);
+    let err = handlers
+        .handle_block(unknown_spend(*header3.hash()), None)
         .await
         .unwrap_err();
     assert!(
