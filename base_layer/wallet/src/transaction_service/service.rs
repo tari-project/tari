@@ -1257,7 +1257,9 @@ where
                         Completed(completed_tx) => {
                             let tx_id = completed_tx.tx_id;
                             // The imported record is decoded from client JSON, which bypasses
-                            // `CompletedTransaction::new`; enforce the same status check here.
+                            // `CompletedTransaction::new`; reject the status `new` rejects. The other fields
+                            // `new` derives (e.g. `transaction_signature`) are kept as supplied, a known
+                            // import trust gap tracked separately.
                             if completed_tx.status == LegacyTransactionStatus::Coinbase {
                                 return Err(TransactionServiceError::TransactionStorageError(
                                     TransactionStorageError::CoinbaseNotSupported,

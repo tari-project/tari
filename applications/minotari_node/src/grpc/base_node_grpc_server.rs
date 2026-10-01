@@ -247,7 +247,7 @@ pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
 /// protobuf family does.
 ///
 /// The round-trip does not alter a valid block. Every header field survives (`block_output_mr` is always a 32-byte
-/// hash on the domain side, so the P2P decoder's `unwrap_or_default` never applies), as does every kernel field,
+/// hash on the domain side, which the P2P decoder requires), as does every kernel field,
 /// every output field and every field of a full input, plus the `input_data` of compact inputs (an empty
 /// `ExecutionStack` encodes to, and decodes from, empty bytes). The proto form carries no version for a compact
 /// input, nor for the spent output behind a full input, so both come back as V0 (`get_current_version`). Only V0 is

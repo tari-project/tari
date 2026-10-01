@@ -100,8 +100,12 @@ ALLOWED = {
     "decode. A mismatch only yields inputs and outputs the node rejects (and a different TxId); checking a stored "
     "`change_output` against its transaction is a separate follow-up",
     "base_layer/transaction_components:WalletType@base_layer/transaction_components/src/key_manager/wallet_types.rs": "`new_random` fails only on key derivation errors",
-    "base_layer/wallet:CompletedTransaction@base_layer/wallet/src/transaction_service/storage/models.rs": "`new` rejects the `Coinbase` status. Records decoded from client JSON "
-    "(gRPC `import_transactions`) are stored through `import_transaction`, which applies the same check; the FFI "
+    "base_layer/wallet:CompletedTransaction@base_layer/wallet/src/transaction_service/storage/models.rs": "`new` rejects the `Coinbase` status and derives "
+    "`transaction_signature` from the transaction's first kernel. Records decoded from client JSON (gRPC "
+    "`import_transactions`, the console wallet's import command) are stored through `import_transaction`, which "
+    "rejects `Coinbase` too but keeps the caller's `transaction_signature`, `mined_in_block` and similar fields, and "
+    "does not check `tx_id` against pending transactions. That import trust gap (status spoofing, blocking a pending "
+    "transaction; no funds move) predates this check and is tracked as a follow-up. The FFI "
     "`create_tari_completed_transaction_from_json` only feeds getters and stores nothing",
     # A validating constructor whose decoder is left lenient on purpose
     "base_layer/common_types:ChainMetadata@base_layer/common_types/src/chain_metadata.rs": "`new` rejects a zero accumulated difficulty and a pruned height above "
