@@ -5,6 +5,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    io::BufRead,
     path::Path,
     str::FromStr,
 };
@@ -12,12 +13,23 @@ use std::{
 use super::error::ConfigError;
 use crate::configuration::Network;
 
+/// Prints the question and reads a yes/no answer from stdin. See [`prompt_from`].
 pub fn prompt(question: &str) -> bool {
     println!("{question}");
-    let mut input = "".to_string();
-    io::stdin().read_line(&mut input).unwrap();
-    let input = input.trim().to_lowercase();
-    input == "y" || input.is_empty()
+    prompt_from(io::stdin().lock())
+}
+
+/// Reads a single yes/no answer from `reader`. An empty line or `y` means yes. End of input (no line at all) or a
+/// read error means no, so a closed or redirected stdin never opts into anything.
+fn prompt_from<R: BufRead>(mut reader: R) -> bool {
+    let mut input = String::new();
+    match reader.read_line(&mut input) {
+        Ok(0) | Err(_) => false,
+        Ok(_) => {
+            let input = input.trim().to_lowercase();
+            input == "y" || input.is_empty()
+        },
+    }
 }
 
 pub fn install_configuration<F>(application_type: ApplicationType, path: &Path, installer: F)
@@ -146,6 +158,20 @@ pub fn wallet_get_default_seed_https_address(network: Network) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn prompt_from_eof_is_no() {
+        assert!(!prompt_from(&b""[..]));
+    }
+
+    #[test]
+    fn prompt_from_answers() {
+        assert!(prompt_from(&b"\n"[..]));
+        assert!(prompt_from(&b"y\n"[..]));
+        assert!(prompt_from(&b"Y"[..]));
+        assert!(!prompt_from(&b"n\n"[..]));
+        assert!(!prompt_from(&b"no\n"[..]));
+    }
 
     #[test]
     fn application_type_as_str_test() {

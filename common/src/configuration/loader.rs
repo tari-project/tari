@@ -58,9 +58,29 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
+    sync::RwLock,
 };
 
 use config::{Config, ValueKind};
+
+/// Env and `-p`/application overrides recorded by
+/// [`load_configuration_with_overrides`](crate::configuration::utils::load_configuration_with_overrides). They are
+/// re-applied by [`ConfigPath::merge_subconfig`] after the network-scoped table, so they win over it.
+static CONFIG_OVERRIDES: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
+
+/// Records the overrides that [`ConfigPath::merge_subconfig`] re-applies on top of the network-scoped table. Later
+/// entries win over earlier entries with the same key.
+pub fn set_config_overrides(overrides: Vec<(String, String)>) {
+    let mut lock = CONFIG_OVERRIDES.write().unwrap_or_else(|e| e.into_inner());
+    *lock = overrides;
+}
+
+/// Returns the recorded overrides whose key is inside the `section` table (i.e. starts with `<section>.`).
+fn config_overrides_for(section: &str) -> Vec<(String, String)> {
+    let prefix = format!("{section}.");
+    let lock = CONFIG_OVERRIDES.read().unwrap_or_else(|e| e.into_inner());
+    lock.iter().filter(|(k, _)| k.starts_with(&prefix)).cloned().collect()
+}
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
@@ -79,6 +99,10 @@ pub trait ConfigPath {
     /// Merge and produce sub-config from overload_key_prefix to main_key_prefix,
     /// which can be used to deserialize Self struct
     /// If overload key is not present in config it won't make effect
+    ///
+    /// Order, lowest to highest: struct defaults, `config` (file keys, env and overrides), the overload table, then
+    /// the env and `-p`/application overrides recorded with [`set_config_overrides`] for this section again, so an
+    /// explicit override beats the network-scoped table.
     fn merge_subconfig(config: &Config, defaults: config::Value) -> Result<Config, ConfigurationError> {
         match Self::overload_key_prefix(config)? {
             Some(key) => {
@@ -90,7 +114,18 @@ pub trait ConfigPath {
                 if !matches!(overload.kind, ValueKind::Nil) {
                     config = config.set_override(Self::main_key_prefix(), overload)?;
                 }
+                let config = config.build()?;
 
+                // Re-apply in a second step: overrides in one builder are applied in no particular order, so the
+                // section table above could otherwise land on top of them.
+                let overrides = config_overrides_for(Self::main_key_prefix());
+                if overrides.is_empty() {
+                    return Ok(config);
+                }
+                let mut config = Config::builder().add_source(config);
+                for (key, value) in overrides {
+                    config = config.set_override(key.as_str(), value)?;
+                }
                 let config = config.build()?;
                 Ok(config)
             },
@@ -432,6 +467,39 @@ mod test {
         fn overload_key_prefix(_: &Config) -> Result<Option<String>, ConfigurationError> {
             Ok(None)
         }
+    }
+
+    #[derive(Default, Serialize, Deserialize)]
+    struct ReapplyConfig {
+        overridden: String,
+        scoped_only: String,
+    }
+    impl SubConfigPath for ReapplyConfig {
+        fn main_key_prefix() -> &'static str {
+            "reapply_test"
+        }
+    }
+
+    #[test]
+    fn overrides_win_over_scoped_table() -> anyhow::Result<()> {
+        // Only keys under `reapply_test.` are affected by this, so other tests sharing the process are not.
+        set_config_overrides(vec![
+            ("other_section.overridden".to_string(), "not for us".to_string()),
+            ("reapply_test.overridden".to_string(), "from -p".to_string()),
+        ]);
+        let config = Config::builder()
+            .set_override("reapply_test.override_from", "mainnet")?
+            .set_override("reapply_test.overridden", "from -p")?
+            .set_override("reapply_test.scoped_only", "unscoped file value")?
+            .set_override("mainnet.reapply_test.overridden", "scoped file value")?
+            .set_override("mainnet.reapply_test.scoped_only", "scoped file value")?
+            .build()?;
+        let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
+        // The -p override beats the scoped table
+        assert_eq!(loaded.overridden, "from -p");
+        // With no override, the scoped table still beats the unscoped file key
+        assert_eq!(loaded.scoped_only, "scoped file value");
+        Ok(())
     }
 
     #[test]

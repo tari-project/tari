@@ -125,7 +125,7 @@ pub struct WalletConfig {
     /// The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
     /// For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
     /// responsiveness of the wallet with slightly delayed balance updates
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub balance_enquiry_cooldown_period: Duration,
     /// How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,

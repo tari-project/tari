@@ -73,3 +73,92 @@ pub mod optional_seconds {
         }
     }
 }
+
+pub mod seconds_nonzero {
+    //! Same as [`seconds`](super::seconds), but rejects `0` at deserialization. Use it for intervals that drive a
+    //! timer, where a zero value would spin or panic.
+    //! ```ignore
+    //! #[serde(with = "serializers::seconds_nonzero")]
+    //! pub my_interval: Duration
+    //! ```
+    use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where D: Deserializer<'de> {
+        let secs = u64::deserialize(deserializer)?;
+        if secs == 0 {
+            return Err(D::Error::custom("interval must be at least 1 second, got 0"));
+        }
+        Ok(Duration::from_secs(secs))
+    }
+
+    pub fn serialize<S>(duration: &Duration, s: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        s.serialize_u64(duration.as_secs())
+    }
+}
+
+pub mod optional_seconds_nonzero {
+    //! Same as [`optional_seconds`](super::optional_seconds), but rejects `Some(0)` at deserialization.
+    //! ```ignore
+    //! #[serde(with = "serializers::optional_seconds_nonzero")]
+    //! pub my_interval: Option<Duration>
+    //! ```
+    use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+    where D: Deserializer<'de> {
+        match Option::<u64>::deserialize(deserializer)? {
+            Some(0) => Err(D::Error::custom("interval must be at least 1 second, got 0")),
+            Some(d) => Ok(Some(Duration::from_secs(d))),
+            None => Ok(None),
+        }
+    }
+
+    pub fn serialize<S>(duration: &Option<Duration>, s: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        match duration {
+            Some(d) => s.serialize_u64(d.as_secs()),
+            None => s.serialize_none(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Test {
+        #[serde(with = "super::seconds_nonzero")]
+        interval: Duration,
+    }
+
+    #[derive(Deserialize)]
+    struct TestOptional {
+        #[serde(default, with = "super::optional_seconds_nonzero")]
+        interval: Option<Duration>,
+    }
+
+    #[test]
+    fn seconds_nonzero_rejects_zero() {
+        assert!(toml::from_str::<Test>("interval = 0").is_err());
+        let t = toml::from_str::<Test>("interval = 1").unwrap();
+        assert_eq!(t.interval, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn optional_seconds_nonzero_rejects_zero() {
+        assert!(toml::from_str::<TestOptional>("interval = 0").is_err());
+        let t = toml::from_str::<TestOptional>("interval = 1").unwrap();
+        assert_eq!(t.interval, Some(Duration::from_secs(1)));
+        let t = toml::from_str::<TestOptional>("").unwrap();
+        assert_eq!(t.interval, None);
+    }
+}

@@ -74,6 +74,7 @@ impl<M: DomainSeparation, D: Digest + Default> Default for DomainSeparatedConsen
 mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
+    use tari_common::network_check::is_network_choice_valid;
     use tari_crypto::hash_domain;
     use tari_script::script;
 
@@ -201,8 +202,20 @@ mod tests {
             // SAFETY: This test is not run in parallel, and the environment variable was set earlier in this test.
             unsafe { std::env::remove_var("TARI_NETWORK") };
 
-            // They should be equal
-            assert_eq!(hash_specify_network, inferred_network_hash);
+            // TARI_NETWORK is only honoured for networks this binary was built for; anything else falls back to the
+            // default network.
+            if is_network_choice_valid(network).is_ok() {
+                assert_eq!(hash_specify_network, inferred_network_hash);
+            } else {
+                let default_network_hash =
+                    DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(
+                        label,
+                        Network::default(),
+                    )
+                    .chain(&input)
+                    .finalize();
+                assert_eq!(default_network_hash, inferred_network_hash);
+            }
         }
     }
 }

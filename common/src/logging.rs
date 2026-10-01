@@ -23,16 +23,17 @@
 
 use std::{
     fs,
-    fs::File,
-    io::{Read, Write},
+    fs::{File, OpenOptions},
+    io::{ErrorKind, Read, Write},
     path::Path,
 };
 
 use log4rs::config::RawConfig;
 
-use crate::ConfigError;
+use crate::{ConfigError, configuration::utils::warn_if_untrusted};
 
-/// Set up application-level logging using the Log4rs configuration file specified in
+/// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
+/// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
 pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
@@ -44,11 +45,23 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
             fs::create_dir_all(d)
                 .map_err(|e| ConfigError::new("Could not create parent directory for log file", Some(e.to_string())))?
         };
-        let mut file = File::create(config_file)
-            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
-        file.write_all(default.as_ref())
-            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
+        // `create_new` never follows or truncates a file (or symlink) that appeared after the `exists` check. If one
+        // did appear, it is treated as an existing file below.
+        match OpenOptions::new().write(true).create_new(true).open(config_file) {
+            Ok(mut file) => file
+                .write_all(default.as_ref())
+                .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {},
+            Err(e) => {
+                return Err(ConfigError::new(
+                    "Could not create default log file",
+                    Some(e.to_string()),
+                ));
+            },
+        }
     }
+
+    warn_if_untrusted(config_file);
 
     let mut file =
         File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
@@ -57,19 +70,37 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
     file.read_to_string(&mut contents)
         .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
 
-    let replace_str = base_path
-        .to_str()
-        .expect("Could not replace {{log_dir}} variable from the log4rs config")
-        // log4rs requires the path to be in a unix format regardless of the system it's running on
-        .replace('\\', "/");
+    let contents = substitute_log_dir(&contents, base_path)?;
 
-    let contents = contents.replace("{{log_dir}}", &replace_str);
-
-    let config: RawConfig =
-        serde_yaml::from_str(&contents).expect("Could not parse the contents of the log file as yaml");
-    log4rs::init_raw_config(config).expect("Could not initialize logging");
+    let config: RawConfig = serde_yaml::from_str(&contents).map_err(|e| {
+        ConfigError::new(
+            "Could not parse the contents of the log file as yaml",
+            Some(e.to_string()),
+        )
+    })?;
+    log4rs::init_raw_config(config)
+        .map_err(|e| ConfigError::new("Could not initialize logging", Some(e.to_string())))?;
 
     Ok(())
+}
+
+/// Replaces `{{log_dir}}` in the log4rs config with `base_path`. The placeholder sits inside double-quoted YAML
+/// scalars, so the path must not be able to end the scalar early: backslashes are turned into `/` (log4rs wants unix
+/// paths anyway) and `"` is escaped as `\"`.
+fn substitute_log_dir(contents: &str, base_path: &Path) -> Result<String, ConfigError> {
+    let replace_str = base_path
+        .to_str()
+        .ok_or_else(|| {
+            ConfigError::new(
+                "Could not replace {{log_dir}} variable from the log4rs config",
+                Some(format!("base path {} is not valid UTF-8", base_path.display())),
+            )
+        })?
+        // log4rs requires the path to be in a unix format regardless of the system it's running on
+        .replace('\\', "/")
+        .replace('"', "\\\"");
+
+    Ok(contents.replace("{{log_dir}}", &replace_str))
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
@@ -127,6 +158,21 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
+
+    use super::substitute_log_dir;
+
+    #[test]
+    fn log_dir_is_escaped_for_yaml() {
+        let yaml = "path: \"{{log_dir}}/log/base_node.log\"\n";
+        let contents = substitute_log_dir(yaml, Path::new("/tmp/we\"ird\\dir")).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_str(&contents).unwrap();
+        assert_eq!(
+            value.get("path").and_then(|v| v.as_str()).unwrap(),
+            "/tmp/we\"ird/dir/log/base_node.log"
+        );
+    }
+
     #[test]
     fn log_if_error() {
         let err = Result::<(), _>::Err("What a shame");

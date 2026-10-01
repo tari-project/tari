@@ -751,16 +751,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo_toml"
-version = "0.20.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88da5a13c620b4ca0078845707ea9c3faf11edbc3ffd8497d11d686211cd1ac0"
-dependencies = [
- "serde",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "cassowary"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7684,10 +7674,10 @@ name = "tari_common"
 version = "6.0.1-pre.2"
 dependencies = [
  "anyhow",
- "cargo_toml",
  "config",
  "dirs-next 1.0.2",
  "git2",
+ "libc",
  "log",
  "log4rs",
  "multiaddr",

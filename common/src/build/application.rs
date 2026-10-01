@@ -28,22 +28,32 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use cargo_toml::Manifest;
-
 pub struct StaticApplicationInfo {
-    manifest: Manifest,
+    version: String,
+    authors: String,
     commit: String,
 }
 
 impl StaticApplicationInfo {
+    /// Reads the version and authors cargo passes to the build script, and the git commit of the workspace the crate
+    /// is built in (or "unknown" if it is not built from a git checkout).
     pub fn initialize() -> Result<Self, anyhow::Error> {
-        let git_root = find_git_root()?;
-        let manifest = extract_manifest(&git_root)?;
-        let commit = get_commit(&git_root).unwrap_or_else(|e| {
-            emit_cargo_warn(e);
-            "NoGitRepository".to_string()
-        });
-        Ok(Self { manifest, commit })
+        let version = env::var("CARGO_PKG_VERSION")?;
+        // Cargo joins multiple authors with ':'
+        let authors = env::var("CARGO_PKG_AUTHORS").unwrap_or_default().replace(':', ",");
+        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+        let commit = match find_git_root(&manifest_dir) {
+            Some(git_root) => get_commit(&git_root).unwrap_or_else(|e| {
+                emit_cargo_warn(e);
+                "unknown".to_string()
+            }),
+            None => "unknown".to_string(),
+        };
+        Ok(Self {
+            version,
+            authors,
+            commit,
+        })
     }
 
     /// Writes the consts file to the given file in the OUT_DIR. Returns the written file path.
@@ -52,119 +62,64 @@ impl StaticApplicationInfo {
         let out_dir = env::var_os("OUT_DIR").unwrap();
         let out_path = Path::new(&out_dir).join(filename);
         let mut file = fs::File::create(&out_path)?;
-        let full_version = self.get_full_version()?;
-        let version_number = self.get_version_number()?;
-        let authors = get_authors(&self.manifest).join(",");
-        writeln!(
-            file,
-            r#"#[allow(dead_code)] pub const APP_VERSION: &str = "{full_version}";"#,
-        )?;
-        writeln!(
-            file,
-            r#"#[allow(dead_code)] pub const APP_VERSION_NUMBER: &str = "{version_number}";"#,
-        )?;
-        writeln!(
-            file,
-            r#"#[allow(dead_code)] pub const APP_AUTHORS: &str = "{authors}";"#
-        )?;
+        writeln!(file, "{}", const_line("APP_VERSION", &self.get_full_version()))?;
+        writeln!(file, "{}", const_line("APP_VERSION_NUMBER", &self.version))?;
+        writeln!(file, "{}", const_line("APP_AUTHORS", &self.authors))?;
         Ok(out_path)
     }
 
     /// Add the git version commit and built type to the version number
     /// The final output looks like 0.1.2-fc435c-release
-    fn get_full_version(&self) -> Result<String, anyhow::Error> {
+    fn get_full_version(&self) -> String {
         let build = env::var("PROFILE").unwrap_or_else(|e| {
             emit_cargo_warn(e);
             "Unknown".to_string()
         });
-        Ok(format!("{}-{}-{}", self.get_version_number()?, self.commit, build))
-    }
-
-    /// Get the version number only
-    /// The final output looks like 0.1.2
-    fn get_version_number(&self) -> Result<String, anyhow::Error> {
-        get_version_number(&self.manifest)
+        format!("{}-{}-{}", self.version, self.commit, build)
     }
 }
 
-/// Resolve the package version from a parsed manifest.
-///
-/// When called from a git checkout, `find_git_root` lands on the workspace root and the version
-/// lives under `[workspace.package]`. When called from an unpacked registry crate (e.g. as a
-/// build-dep of a consumer pulling tari from crates.io) there is no `.git` and no workspace
-/// table — cargo strips workspace inheritance on publish and substitutes the literal value into
-/// `[package].version`. Try both, in that order.
-fn get_version_number(manifest: &Manifest) -> Result<String, anyhow::Error> {
-    if let Some(version) = manifest
-        .workspace
-        .as_ref()
-        .and_then(|w| w.package.as_ref())
-        .and_then(|p| p.version.clone())
-    {
-        return Ok(version);
-    }
-    if let Some(version) = manifest.package.as_ref().and_then(|p| p.version.get().ok()) {
-        return Ok(version.clone());
-    }
-    Err(anyhow::anyhow!(
-        "Could not determine package version: neither [workspace.package].version nor [package].version is set"
-    ))
+/// Formats a `&str` const. The value is written with `{:?}` so it is always a valid, escaped Rust string literal.
+fn const_line(name: &str, value: &str) -> String {
+    format!("#[allow(dead_code)] pub const {name}: &str = {value:?};")
 }
 
-/// Resolve package authors from a parsed manifest, applying the same workspace → package
-/// fallback as [`get_version_number`].
-fn get_authors(manifest: &Manifest) -> Vec<String> {
-    if let Some(authors) = manifest
-        .workspace
-        .as_ref()
-        .and_then(|w| w.package.as_ref())
-        .and_then(|p| p.authors.as_ref())
-    {
-        return authors.clone();
-    }
-    if let Some(authors) = manifest.package.as_ref().and_then(|p| p.authors.get().ok().cloned()) {
-        return authors;
-    }
-    Vec::new()
-}
-
-fn extract_manifest<P: AsRef<Path>>(git_root: P) -> Result<Manifest, anyhow::Error> {
-    let cargo_path = git_root.as_ref().join("Cargo.toml");
-    let cargo = fs::read(cargo_path)?;
-    let cargo = std::str::from_utf8(&cargo)?;
-    let manifest = toml::from_str(cargo)?;
-    Ok(manifest)
-}
-
-fn find_git_root() -> Result<PathBuf, anyhow::Error> {
-    let manifest = env::var("CARGO_MANIFEST_DIR")?;
-    let manifest_path = PathBuf::from(&manifest);
-
-    let mut current = manifest_path.as_path();
-    loop {
-        if current.join(".git").exists() {
-            return Ok(current.to_path_buf());
+/// Finds the directory to read the git commit from. The search is bounded by the workspace root: the first ancestor of
+/// `manifest_dir` (including itself) whose `Cargo.toml` has a `[workspace]` table. A `.git` is only accepted at the
+/// workspace root or between it and `manifest_dir`, so a crate unpacked from a registry inside some unrelated git
+/// checkout does not pick up that checkout's commit.
+fn find_git_root(manifest_dir: &Path) -> Option<PathBuf> {
+    let workspace_root = manifest_dir.ancestors().find(|dir| is_workspace_root(dir))?;
+    for dir in manifest_dir.ancestors() {
+        if dir.join(".git").exists() {
+            return Some(dir.to_path_buf());
         }
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => {
-                emit_cargo_warn("Not a git repository — no ancestor of CARGO_MANIFEST_DIR contains a .git directory");
-                return Ok(manifest_path);
-            },
+        if dir == workspace_root {
+            break;
         }
+    }
+    None
+}
+
+/// Returns true if `dir/Cargo.toml` contains a `[workspace]` table header.
+fn is_workspace_root(dir: &Path) -> bool {
+    match fs::read_to_string(dir.join("Cargo.toml")) {
+        Ok(contents) => contents.lines().any(|line| line.trim() == "[workspace]"),
+        Err(_) => false,
     }
 }
 
 fn get_commit<P: AsRef<Path>>(git_root: P) -> Result<String, anyhow::Error> {
     let repo = git2::Repository::open(git_root)?;
     let head = repo.revparse_single("HEAD")?;
-    let id = format!("{:?}", head.id());
+    let id = head.id().to_string();
 
-    id.split_at_checked(7)
-        .ok_or(anyhow::anyhow!("invalid utf8 in commit id"))?
+    let short = id
+        .split_at_checked(7)
+        .ok_or(anyhow::anyhow!("commit id is too short"))?
         .0
         .to_string();
-    Ok(id)
+    Ok(short)
 }
 
 fn emit_cargo_warn<T: fmt::Display>(e: T) {
@@ -175,64 +130,36 @@ fn emit_cargo_warn<T: fmt::Display>(e: T) {
 mod tests {
     use super::*;
 
-    fn parse(toml_str: &str) -> Manifest {
-        toml::from_str(toml_str).expect("test manifest parses")
-    }
-
-    // Mirrors the workspace root Cargo.toml seen during an in-tree git checkout build.
-    const WORKSPACE_MANIFEST: &str = r#"
-[workspace.package]
-version = "1.2.3"
-authors = ["alice", "bob"]
-
-[workspace]
-members = []
-"#;
-
-    // Mirrors a published crate's Cargo.toml as unpacked into the cargo registry: cargo strips
-    // workspace inheritance on publish and substitutes the literal values into [package].
-    const REGISTRY_MANIFEST: &str = r#"
-[package]
-name = "demo"
-version = "1.2.3"
-authors = ["alice", "bob"]
-edition = "2021"
-"#;
-
     #[test]
-    fn reads_version_from_workspace_package() {
-        assert_eq!(get_version_number(&parse(WORKSPACE_MANIFEST)).unwrap(), "1.2.3");
+    fn const_line_escapes_values() {
+        let line = const_line("APP_AUTHORS", r#"a"b\c"#);
+        assert_eq!(line, r#"#[allow(dead_code)] pub const APP_AUTHORS: &str = "a\"b\\c";"#);
+        // The literal part round-trips back to the original value
+        let literal = line
+            .strip_prefix("#[allow(dead_code)] pub const APP_AUTHORS: &str = ")
+            .unwrap()
+            .strip_suffix(';')
+            .unwrap();
+        let unescaped: String = serde_json::from_str(literal).unwrap();
+        assert_eq!(unescaped, r#"a"b\c"#);
     }
 
     #[test]
-    fn falls_back_to_package_version_when_workspace_table_missing() {
-        assert_eq!(get_version_number(&parse(REGISTRY_MANIFEST)).unwrap(), "1.2.3");
-    }
+    fn git_root_is_bounded_by_workspace_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outer = tmp.path();
+        let workspace = outer.join("ws");
+        let krate = workspace.join("crate");
+        fs::create_dir_all(&krate).unwrap();
+        fs::write(workspace.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+        fs::write(krate.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
 
-    #[test]
-    fn errors_when_no_version_is_set_anywhere() {
-        let manifest: Manifest = parse(
-            r#"
-[workspace]
-members = []
-"#,
-        );
-        assert!(get_version_number(&manifest).is_err());
-    }
+        // A .git above the workspace root is ignored
+        fs::create_dir_all(outer.join(".git")).unwrap();
+        assert_eq!(find_git_root(&krate), None);
 
-    #[test]
-    fn reads_authors_from_workspace_package() {
-        assert_eq!(get_authors(&parse(WORKSPACE_MANIFEST)), vec![
-            "alice".to_string(),
-            "bob".to_string()
-        ]);
-    }
-
-    #[test]
-    fn falls_back_to_package_authors_when_workspace_table_missing() {
-        assert_eq!(get_authors(&parse(REGISTRY_MANIFEST)), vec![
-            "alice".to_string(),
-            "bob".to_string()
-        ]);
+        // A .git at the workspace root is used
+        fs::create_dir_all(workspace.join(".git")).unwrap();
+        assert_eq!(find_git_root(&krate), Some(workspace.clone()));
     }
 }

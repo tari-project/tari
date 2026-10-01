@@ -1,9 +1,18 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path::Path, str::FromStr};
+use std::{
+    fmt,
+    fmt::Display,
+    fs,
+    fs::OpenOptions,
+    io::{ErrorKind, Write},
+    marker::PhantomData,
+    path::Path,
+    str::FromStr,
+};
 
-use config::Config;
+use config::{Config, ValueKind};
 use log::{debug, info, trace, warn};
 use serde::{
     Deserialize,
@@ -15,7 +24,7 @@ use serde::{
 use crate::{
     ConfigError,
     LOG_TARGET,
-    configuration::{ConfigOverrideProvider, Network, bootstrap::prompt},
+    configuration::{ConfigOverrideProvider, Network, bootstrap::prompt, loader::set_config_overrides},
     network_check::set_network_if_choice_valid,
 };
 
@@ -42,11 +51,6 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         } else {
             prompt_default_config()
         };
-        debug!(
-            target: LOG_TARGET,
-            "Created new configuration file {}",
-            config_path.as_ref().display()
-        );
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     } else {
@@ -57,18 +61,35 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
 }
 
 /// Loads the config at the given path applying all overrides.
+///
+/// Precedence, lowest to highest:
+/// 1. unscoped keys in the config file (e.g. `[base_node]`),
+/// 2. `TARI_*` environment variables,
+/// 3. `-p` and application-injected overrides,
+/// 4. the network-scoped table selected by `<section>.override_from` (e.g. `[mainnet.base_node]`), merged later by
+///    [`ConfigPath::merge_subconfig`](crate::ConfigPath::merge_subconfig),
+/// 5. `TARI_*` environment variables and `-p`/application overrides again: they are recorded here with
+///    [`set_config_overrides`] and re-applied by `merge_subconfig` on top of the scoped table.
+///
+/// So the scoped table beats the file's unscoped keys, and an explicit env var or `-p` override beats both.
 pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     overrides: &TOverride,
     cli_network: Option<Network>,
 ) -> Result<Config, ConfigError> {
     check_for_incorrect_env_vars();
+    warn_if_untrusted(config_path.as_ref());
     let filename = config_path
         .as_ref()
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
-    let cfg = Config::builder()
+    let file_cfg = Config::builder()
         .add_source(config::File::with_name(filename))
+        .build()
+        .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
+    warn_if_secrets_readable(config_path.as_ref(), &file_cfg);
+    let cfg = Config::builder()
+        .add_source(file_cfg)
         .add_source(
             config::Environment::with_prefix("TARI")
                 .prefix_separator("_")
@@ -98,40 +119,304 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
     let overrides = overrides.get_config_property_overrides(&network);
-    trace!(target: LOG_TARGET, "Config property overrides: {overrides:?}" );
+    for (key, value) in &overrides {
+        trace!(target: LOG_TARGET, "Config property override: {key}={}", mask_value(key, value));
+    }
+    warn_about_network_overrides(&overrides, network);
 
     // Set the static network variable according to the user chosen network (for use with
     // `get_current_or_user_setting_or_default()`) -
     set_network_if_choice_valid(network)?;
 
-    if overrides.is_empty() {
-        return Ok(cfg);
-    }
+    // Record env and -p/app overrides so that `merge_subconfig` can re-apply them on top of the network-scoped tables.
+    // Env first, so that a -p/app override on the same key wins.
+    let mut reapply = tari_env_overrides();
+    reapply.extend(overrides.iter().cloned());
+    set_config_overrides(reapply);
 
-    let mut cfg = Config::builder().add_source(cfg);
-    for (key, value) in overrides {
-        trace!(target: LOG_TARGET, "Set override: ({key}, {value})");
-        cfg = cfg
-            .set_override(key.as_str(), value.as_str())
-            .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
-    }
-    let cfg = cfg
-        .build()
-        .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
+    let cfg = if overrides.is_empty() {
+        cfg
+    } else {
+        let mut cfg = Config::builder().add_source(cfg);
+        for (key, value) in overrides {
+            trace!(target: LOG_TARGET, "Set override: ({key}, {})", mask_value(&key, &value));
+            cfg = cfg
+                .set_override(key.as_str(), value.as_str())
+                .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
+        }
+        cfg.build()
+            .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?
+    };
+
+    check_network_keys(&cfg, network)?;
 
     Ok(cfg)
 }
 
-/// Substrings that mark an environment variable name as sensitive; matching values are masked in logs and output.
-const SENSITIVE_KEYWORDS: &[&str] = &["PASSWORD", "SECRET", "KEY", "SEED"];
+/// Returns the `TARI_*` environment variables as config overrides, using the same key mapping as the
+/// `config::Environment` source in [`load_configuration_with_overrides`] (lowercase, `TARI_` stripped, `__` → `.`).
+fn tari_env_overrides() -> Vec<(String, String)> {
+    let mut result = Vec::new();
+    for (name, value) in std::env::vars_os() {
+        let (Some(name), Some(value)) = (name.to_str(), value.to_str()) else {
+            continue;
+        };
+        let name = name.to_lowercase();
+        if let Some(key) = name.strip_prefix("tari_") {
+            result.push((key.replace("__", "."), value.to_string()));
+        }
+    }
+    result
+}
 
-/// Returns the value to display for an env var, masking it if the name indicates it holds a sensitive value.
-fn mask_if_sensitive<'a>(name: &str, value: &'a str) -> &'a str {
-    let upper = name.to_uppercase();
-    if SENSITIVE_KEYWORDS.iter().any(|kw| upper.contains(kw)) {
-        "***"
-    } else {
-        value
+/// Warns about overrides that do not do what they look like they do.
+fn warn_about_network_overrides(overrides: &[(String, String)], network: Network) {
+    for (key, value) in overrides {
+        if key == "network" {
+            warn!(
+                target: LOG_TARGET,
+                "The config override 'network={value}' is ignored. Use --network or TARI_NETWORK to choose the network."
+            );
+        }
+        if key == "common.base_path" {
+            let last = Path::new(value).file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if last != network.as_key_str() {
+                warn!(
+                    target: LOG_TARGET,
+                    "The base path '{value}' does not end in the network name '{network}', but the network is \
+                     '{network}'. Check --base-path and --network."
+                );
+            }
+        }
+    }
+}
+
+/// Returns an error if any `<section>.network` key (scoped or not, e.g. `base_node.network` or
+/// `mainnet.base_node.network`) is set to a network other than the resolved `network`. The top-level `network` key is
+/// the input to network resolution and is not checked here. Values that are not a network name are left for the
+/// section's own deserialization to report.
+fn check_network_keys(cfg: &Config, network: Network) -> Result<(), ConfigError> {
+    let root = cfg
+        .cache
+        .clone()
+        .into_table()
+        .map_err(|ce| ConfigError::new("Could not read config", Some(ce.to_string())))?;
+    let mut leaves = Vec::new();
+    collect_leaves("", root, &mut leaves);
+    for (key, value) in leaves {
+        if key == "network" || !key.ends_with(".network") {
+            continue;
+        }
+        let Ok(value) = value.into_string() else {
+            continue;
+        };
+        let Ok(configured) = Network::from_str(&value) else {
+            continue;
+        };
+        if configured != network {
+            return Err(ConfigError::new(
+                "Conflicting network configuration",
+                Some(format!(
+                    "Config key {key} is set to {configured} but the network is {network}; use --network or \
+                     TARI_NETWORK"
+                )),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Flattens a config table into `(dotted.key, value)` pairs. Tables are descended into; every other value is a leaf.
+fn collect_leaves(prefix: &str, table: config::Map<String, config::Value>, out: &mut Vec<(String, config::Value)>) {
+    for (key, value) in table {
+        let full_key = if prefix.is_empty() {
+            key
+        } else {
+            format!("{prefix}.{key}")
+        };
+        match value.kind {
+            ValueKind::Table(table) => collect_leaves(&full_key, table, out),
+            _ => out.push((full_key, value)),
+        }
+    }
+}
+
+/// Returns true if the last segment of a config key names a secret.
+fn is_secret_key(key: &str) -> bool {
+    let last = key.rsplit('.').next().unwrap_or(key).to_lowercase();
+    last == "password" ||
+        last.ends_with("_password") ||
+        last.ends_with("_authentication") ||
+        last.ends_with("control_auth") ||
+        last.ends_with("socks_auth")
+}
+
+/// Returns the secret-bearing keys in `cfg` that hold a non-empty value. `"none"` and `"auto"` are not secrets.
+fn find_secret_keys(cfg: &Config) -> Vec<String> {
+    let Ok(root) = cfg.cache.clone().into_table() else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    find_secret_keys_in("", root, &mut found);
+    found
+}
+
+fn find_secret_keys_in(prefix: &str, table: config::Map<String, config::Value>, found: &mut Vec<String>) {
+    for (key, value) in table {
+        let full_key = if prefix.is_empty() {
+            key
+        } else {
+            format!("{prefix}.{key}")
+        };
+        if is_secret_key(&full_key) {
+            let non_empty = match &value.kind {
+                ValueKind::Nil => false,
+                ValueKind::String(s) => {
+                    let s = s.trim().to_lowercase();
+                    !(s.is_empty() || s == "none" || s == "auto")
+                },
+                ValueKind::Table(t) => !t.is_empty(),
+                ValueKind::Array(a) => !a.is_empty(),
+                _ => true,
+            };
+            if non_empty {
+                found.push(full_key);
+            }
+        } else if let ValueKind::Table(table) = value.kind {
+            find_secret_keys_in(&full_key, table, found);
+        } else {
+            // Not a secret and not a table
+        }
+    }
+}
+
+/// Warns if the config file holds a secret but can be read by the group or by other users.
+#[cfg(unix)]
+fn warn_if_secrets_readable(path: &Path, file_cfg: &Config) {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    if metadata.mode() & 0o044 == 0 {
+        return;
+    }
+    for key in find_secret_keys(file_cfg) {
+        warn!(
+            target: LOG_TARGET,
+            "⚠️  Config file {} is readable by other users (mode {:o}) and contains the secret '{}'. Run `chmod 600 {}`, \
+             or move the secret to an environment variable or command line argument.",
+            path.display(),
+            metadata.mode() & 0o7777,
+            key,
+            path.display()
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn warn_if_secrets_readable(_path: &Path, _file_cfg: &Config) {}
+
+/// Warns if a file that is about to be loaded (config or log config) could have been written by someone else. On Unix
+/// the file (following symlinks) and its immediate parent directory must be owned by the effective user and must not
+/// be group- or world-writable. This only warns; loading always continues. On other platforms this does nothing.
+#[cfg(unix)]
+pub fn warn_if_untrusted(path: &Path) {
+    use std::os::unix::fs::MetadataExt;
+
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    for (kind, p) in [("file", path), ("directory", parent)] {
+        let Ok(metadata) = fs::metadata(p) else {
+            continue;
+        };
+        let mode = metadata.mode() & 0o7777;
+        if metadata.uid() != euid {
+            warn!(
+                target: LOG_TARGET,
+                "⚠️  The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
+                 control its contents. Fix with `chown {} {}` or use a base path you own.",
+                kind,
+                p.display(),
+                metadata.uid(),
+                mode,
+                euid,
+                euid,
+                p.display()
+            );
+        }
+        if mode & 0o022 != 0 {
+            warn!(
+                target: LOG_TARGET,
+                "⚠️  The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
+                 contents. Fix with `chmod go-w {}`.",
+                kind,
+                p.display(),
+                metadata.uid(),
+                mode,
+                p.display()
+            );
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub fn warn_if_untrusted(_path: &Path) {}
+
+/// Returns the value to display for a config key or environment variable. Values are masked as `***` unless the last
+/// key segment (split on `.` and `__`, case-insensitive, with any `tari_`/`minotari_` prefix removed) is known to be
+/// safe to show: `*_address`, `*_port`, `*_enabled`, `*_interval`, `*_timeout`, `*_path`, `*_dir`, `*_url` (with any
+/// `user:pass@` removed), `network`, `base_path` or `override_from`. Boolean and numeric values are always shown.
+pub fn mask_value(key: &str, value: &str) -> String {
+    let lower = key.to_lowercase();
+    let last = lower.rsplit('.').next().unwrap_or("");
+    let last = last.rsplit("__").next().unwrap_or(last);
+    let last = last
+        .strip_prefix("minotari_")
+        .or_else(|| last.strip_prefix("tari_"))
+        .unwrap_or(last);
+
+    let trimmed = value.trim();
+    if trimmed.parse::<bool>().is_ok() || trimmed.parse::<f64>().is_ok() {
+        return value.to_string();
+    }
+    if last.ends_with("_url") {
+        return value
+            .split(',')
+            .map(strip_url_credentials)
+            .collect::<Vec<_>>()
+            .join(",");
+    }
+    let safe_suffixes = [
+        "_address",
+        "_port",
+        "_enabled",
+        "_interval",
+        "_timeout",
+        "_path",
+        "_dir",
+    ];
+    let safe_names = ["network", "base_path", "override_from"];
+    if safe_suffixes.iter().any(|s| last.ends_with(s)) || safe_names.contains(&last) {
+        return value.to_string();
+    }
+    "***".to_string()
+}
+
+/// Removes a `user:pass@` part from the authority of a URL, e.g. `http://u:p@host:18081` → `http://host:18081`.
+fn strip_url_credentials(url: &str) -> String {
+    let (scheme, rest) = match url.split_once("://") {
+        Some((scheme, rest)) => (format!("{scheme}://"), rest),
+        None => (String::new(), url),
+    };
+    let (authority, path) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+    match authority.rsplit_once('@') {
+        Some((_credentials, host)) => format!("{scheme}{host}{path}"),
+        None => url.to_string(),
     }
 }
 
@@ -157,7 +442,7 @@ fn check_for_incorrect_env_vars() {
                      '{}{}'? Configuration environment variables must use the 'TARI_' prefix with '__' as the nested \
                      key separator.",
                     var_name,
-                    mask_if_sensitive(&var_name, &var_value),
+                    mask_value(&var_name, &var_value),
                     correct_prefix,
                     suffix
                 );
@@ -166,14 +451,14 @@ fn check_for_incorrect_env_vars() {
     }
 }
 
-/// Prints all TARI_* and MINOTARI_* environment variables to stdout, masking sensitive values.
+/// Prints all TARI_* and MINOTARI_* environment variables to stdout, masking sensitive values (see [`mask_value`]).
 /// Also prints any config property overrides (`-p` args) if provided.
 /// This is useful for debugging configuration issues.
 pub fn print_env_vars(config_overrides: &[(String, String)]) {
     let mut env_vars: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| k.starts_with("TARI_") || k.starts_with("MINOTARI_"))
         .map(|(k, v)| {
-            let display_value = mask_if_sensitive(&k, &v).to_string();
+            let display_value = mask_value(&k, &v);
             (k, display_value)
         })
         .collect();
@@ -193,7 +478,7 @@ pub fn print_env_vars(config_overrides: &[(String, String)]) {
     } else {
         println!("\nConfig property overrides (-p args):");
         for (key, value) in config_overrides {
-            let display_value = mask_if_sensitive(key, value);
+            let display_value = mask_value(key, value);
             println!("  {key}={display_value}");
         }
     }
@@ -237,16 +522,34 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
 }
 
 /// Writes a single file concatenating all the provided sources to the specified path. If the parent directory does not
-/// exist, it is created. If the file already exists, it is overwritten.
+/// exist, it is created. The file is created with `create_new`, so an existing file (or symlink) is never followed or
+/// overwritten: if one is already there, it is left untouched and will be loaded (and trust-checked) as an existing
+/// config file.
 pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), std::io::Error> {
     if let Some(d) = path.as_ref().parent() {
         fs::create_dir_all(d)?
     };
-    let mut file = File::create(path)?;
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(path.as_ref()) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            warn!(
+                target: LOG_TARGET,
+                "Configuration file {} already exists, it was not overwritten",
+                path.as_ref().display()
+            );
+            return Ok(());
+        },
+        Err(e) => return Err(e),
+    };
     for source in sources {
         file.write_all(source.as_bytes())?;
         file.write_all(b"\n")?;
     }
+    debug!(
+        target: LOG_TARGET,
+        "Created new configuration file {}",
+        path.as_ref().display()
+    );
     Ok(())
 }
 
@@ -289,4 +592,139 @@ where
     }
 
     deserializer.deserialize_any(StringOrStruct(PhantomData))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn mask_value_shows_only_safe_keys() {
+        // Allow-listed suffixes and names print
+        assert_eq!(
+            mask_value("base_node.grpc_address", "/ip4/127.0.0.1/tcp/18142"),
+            "/ip4/127.0.0.1/tcp/18142"
+        );
+        assert_eq!(mask_value("TARI_BASE_NODE__GRPC_ADDRESS", "127.0.0.1"), "127.0.0.1");
+        assert_eq!(mask_value("wallet.log_path", "/tmp/x"), "/tmp/x");
+        assert_eq!(mask_value("TARI_BASE_DIR", "/home/me/.tari"), "/home/me/.tari");
+        assert_eq!(mask_value("TARI_NETWORK", "esmeralda"), "esmeralda");
+        assert_eq!(mask_value("common.base_path", "/home/me/.tari"), "/home/me/.tari");
+        assert_eq!(mask_value("base_node.override_from", "mainnet"), "mainnet");
+        // Secrets and unknown keys are masked
+        assert_eq!(mask_value("wallet.password", "hunter2"), "***");
+        assert_eq!(mask_value("MINOTARI_WALLET_PASSWORD", "hunter2"), "***");
+        assert_eq!(
+            mask_value("TARI_WALLET__GRPC_AUTHENTICATION", "{ username = \"a\" }"),
+            "***"
+        );
+        assert_eq!(
+            mask_value("base_node.p2p.transport.tor.control_auth", "password=x"),
+            "***"
+        );
+        assert_eq!(mask_value("something.unknown", "value"), "***");
+        // Booleans and numbers print
+        assert_eq!(mask_value("something.unknown", "true"), "true");
+        assert_eq!(mask_value("something.unknown", "42"), "42");
+        assert_eq!(mask_value("something.unknown", "1.5"), "1.5");
+        // URL credentials are stripped
+        assert_eq!(
+            mask_value(
+                "merge_mining_proxy.monerod_url",
+                "http://user:pass@node.example:18081/json_rpc"
+            ),
+            "http://node.example:18081/json_rpc"
+        );
+        assert_eq!(
+            mask_value("merge_mining_proxy.monerod_url", "http://a:b@one:1,https://two:2"),
+            "http://one:1,https://two:2"
+        );
+        assert_eq!(mask_value("x.some_url", "https://node.example"), "https://node.example");
+    }
+
+    #[test]
+    fn network_key_mismatch_is_an_error() {
+        let cfg = Config::builder()
+            .set_override("network", "esmeralda")
+            .unwrap()
+            .set_override("base_node.network", "esmeralda")
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(check_network_keys(&cfg, Network::MainNet).is_err());
+        assert!(check_network_keys(&cfg, Network::Esmeralda).is_ok());
+
+        let cfg = Config::builder()
+            .set_override("mainnet.wallet.network", "nextnet")
+            .unwrap()
+            .build()
+            .unwrap();
+        let err = check_network_keys(&cfg, Network::MainNet).unwrap_err();
+        assert!(err.to_string().contains("mainnet.wallet.network"));
+
+        // The top-level key is not checked here
+        let cfg = Config::builder()
+            .set_override("network", "nextnet")
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(check_network_keys(&cfg, Network::MainNet).is_ok());
+    }
+
+    #[test]
+    fn secret_keys_are_found() {
+        let cfg = Config::builder()
+            .add_source(config::File::from_str(
+                r#"
+[wallet]
+password = "hunter2"
+grpc_authentication = { username = "admin", password = "x" }
+p2p.transport.tor.control_auth = "auto"
+p2p.transport.tor.socks_auth = "none"
+[merge_mining_proxy]
+monerod_password = ""
+base_node_grpc_authentication = { username = "miner", password = "y" }
+[mainnet.wallet]
+password = "scoped"
+"#,
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap();
+        let mut found = find_secret_keys(&cfg);
+        found.sort();
+        assert_eq!(found, vec![
+            "mainnet.wallet.password".to_string(),
+            "merge_mining_proxy.base_node_grpc_authentication".to_string(),
+            "wallet.grpc_authentication".to_string(),
+            "wallet.password".to_string(),
+        ]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn warn_if_untrusted_only_warns() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "[wallet]\npassword = \"x\"\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+        warn_if_untrusted(&path);
+        warn_if_untrusted(&dir.path().join("does_not_exist.toml"));
+        let file_cfg = Config::builder()
+            .add_source(config::File::from(path.as_path()))
+            .build()
+            .unwrap();
+        warn_if_secrets_readable(&path, &file_cfg);
+    }
+
+    #[test]
+    fn write_config_to_does_not_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config").join("config.toml");
+        write_config_to(&path, &["first"]).unwrap();
+        write_config_to(&path, &["second"]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "first\n");
+    }
 }
