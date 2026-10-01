@@ -128,6 +128,19 @@ pub mod optional_seconds_nonzero {
     }
 }
 
+/// Deserializes a `u64` that must not be 0, e.g. an interval in seconds kept as a plain number for compatibility.
+/// Use with `#[serde(deserialize_with = "serializers::deserialize_nonzero_u64")]`.
+pub fn deserialize_nonzero_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where D: serde::Deserializer<'de> {
+    use serde::{Deserialize, de::Error};
+
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 {
+        return Err(D::Error::custom("value must be at least 1, got 0"));
+    }
+    Ok(value)
+}
+
 #[cfg(test)]
 mod test {
     use std::time::Duration;
@@ -144,6 +157,18 @@ mod test {
     struct TestOptional {
         #[serde(default, with = "super::optional_seconds_nonzero")]
         interval: Option<Duration>,
+    }
+
+    #[derive(Deserialize)]
+    struct TestU64 {
+        #[serde(deserialize_with = "super::deserialize_nonzero_u64")]
+        interval: u64,
+    }
+
+    #[test]
+    fn nonzero_u64_rejects_zero() {
+        assert!(toml::from_str::<TestU64>("interval = 0").is_err());
+        assert_eq!(toml::from_str::<TestU64>("interval = 60").unwrap().interval, 60);
     }
 
     #[test]

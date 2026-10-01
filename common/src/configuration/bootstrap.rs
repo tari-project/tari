@@ -27,15 +27,33 @@ pub fn prompt_default_yes_on_eof(question: &str) -> bool {
     prompt_from(io::stdin().lock(), true)
 }
 
+/// Like [`prompt`], but end of input (closed stdin) or a read error is an error instead of an answer. Use this where
+/// neither yes nor no is a safe default, e.g. choosing between a hardware and a software wallet.
+pub fn prompt_required(question: &str) -> Result<bool, ConfigError> {
+    println!("{question}");
+    read_answer(io::stdin().lock()).ok_or_else(|| {
+        ConfigError::new(
+            "No answer to a required prompt",
+            Some("stdin is closed or could not be read".to_string()),
+        )
+    })
+}
+
 /// Reads a single yes/no answer from `reader`. An empty line or `y` means yes. End of input (no line at all) or a
 /// read error returns `eof_answer`.
-fn prompt_from<R: BufRead>(mut reader: R, eof_answer: bool) -> bool {
+fn prompt_from<R: BufRead>(reader: R, eof_answer: bool) -> bool {
+    read_answer(reader).unwrap_or(eof_answer)
+}
+
+/// Reads a single yes/no answer from `reader`: `Some(true)` for an empty line or `y`, `Some(false)` for anything
+/// else, and `None` at end of input (no line at all) or on a read error.
+fn read_answer<R: BufRead>(mut reader: R) -> Option<bool> {
     let mut input = String::new();
     match reader.read_line(&mut input) {
-        Ok(0) | Err(_) => eof_answer,
+        Ok(0) | Err(_) => None,
         Ok(_) => {
             let input = input.trim().to_lowercase();
-            input == "y" || input.is_empty()
+            Some(input == "y" || input.is_empty())
         },
     }
 }
@@ -171,6 +189,14 @@ mod test {
     fn prompt_from_eof_uses_eof_answer() {
         assert!(!prompt_from(&b""[..], false));
         assert!(prompt_from(&b""[..], true));
+    }
+
+    #[test]
+    fn read_answer_eof_is_none() {
+        assert_eq!(read_answer(&b""[..]), None);
+        assert_eq!(read_answer(&b"\n"[..]), Some(true));
+        assert_eq!(read_answer(&b"y\n"[..]), Some(true));
+        assert_eq!(read_answer(&b"n\n"[..]), Some(false));
     }
 
     #[test]

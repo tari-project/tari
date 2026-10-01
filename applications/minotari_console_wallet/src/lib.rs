@@ -148,7 +148,7 @@ pub fn run_wallet_with_cli(
         cli.non_interactive_mode,
         cli.view_private_key.clone(),
         cli.spend_key.clone(),
-    );
+    )?;
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli, &wallet_type)?;
 

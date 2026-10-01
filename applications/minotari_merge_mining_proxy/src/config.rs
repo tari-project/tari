@@ -34,9 +34,23 @@ use tari_common::{
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_transaction_components::transaction_components::RangeProofType;
+use tari_utilities::SafePassword;
 
 // The default Monero fail URL for mainnet
 pub(crate) const MONERO_FAIL_MAINNET_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";
+fn deserialize_safe_password<'de, D>(deserializer: D) -> Result<SafePassword, D::Error>
+where D: serde::Deserializer<'de> {
+    let password: String = Deserialize::deserialize(deserializer)?;
+    Ok(SafePassword::from(password))
+}
+
+/// Serializes the password as a string, so a serialized config (e.g. the defaults merged by the config loader) reads
+/// back with [`deserialize_safe_password`].
+fn serialize_safe_password<S>(password: &SafePassword, serializer: S) -> Result<S::Ok, S::Error>
+where S: serde::Serializer {
+    serializer.serialize_str(&String::from_utf8_lossy(password.reveal()))
+}
+
 pub(crate) const TARI_MONEROD_SERVERS: [&str; 1] = ["https://xmr-01.tari.com"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -56,8 +70,13 @@ pub struct MergeMiningProxyConfig {
     pub monerod_url: StringList,
     /// Username for curl
     pub monerod_username: String,
-    /// Password for curl
-    pub monerod_password: String,
+    /// Password for curl. Kept in a `SafePassword` so it is redacted from `Debug` output (e.g. the configuration
+    /// dump at startup).
+    #[serde(
+        deserialize_with = "deserialize_safe_password",
+        serialize_with = "serialize_safe_password"
+    )]
+    pub monerod_password: SafePassword,
     /// If authentication is being used for curl
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
@@ -147,7 +166,7 @@ impl Default for MergeMiningProxyConfig {
             monero_fail_url: MONERO_FAIL_MAINNET_URL.into(),
             monerod_url: StringList::from(monerod_servers),
             monerod_username: String::new(),
-            monerod_password: String::new(),
+            monerod_password: SafePassword::from(""),
             monerod_use_auth: false,
             base_node_grpc_address: None,
             p2pool_node_grpc_address: None,
@@ -223,7 +242,7 @@ mod test {
         assert_eq!(config.monerod_url.as_slice(), &["http://network.b.org".to_string()]);
         assert!(!config.submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
-        assert_eq!(config.monerod_password.as_str(), "password_stagenet");
+        assert_eq!(config.monerod_password.reveal(), b"password_stagenet");
         assert_eq!(
             config.base_node_grpc_address,
             Some("http://base_node_b:8080".to_string())
@@ -234,7 +253,8 @@ mod test {
         assert_eq!(config.monerod_url.as_slice(), &["http://network.a.org".to_string()]);
         assert!(config.submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
-        assert_eq!(config.monerod_password.as_str(), "password_igor");
+        assert_eq!(config.monerod_password.reveal(), b"password_igor");
+        assert!(!format!("{config:?}").contains("password_igor"));
         assert_eq!(
             config.base_node_grpc_address,
             Some("http://base_node_a:8080".to_string())

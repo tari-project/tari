@@ -881,7 +881,8 @@ impl InnerService {
 
             if self.config.monerod_use_auth {
                 // Use HTTP basic auth. This is the only reason we are using `reqwest` over the standard hyper client.
-                builder = builder.basic_auth(&self.config.monerod_username, Some(&self.config.monerod_password));
+                let password = String::from_utf8_lossy(self.config.monerod_password.reveal());
+                builder = builder.basic_auth(&self.config.monerod_username, Some(password));
             }
 
             debug!(

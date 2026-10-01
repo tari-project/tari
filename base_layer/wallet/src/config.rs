@@ -133,7 +133,8 @@ pub struct WalletConfig {
     pub http_server_url: String,
     /// The fallback url address to use if the base node at http_server_url does not respond
     pub fallback_http_server_url: String,
-    /// the scanning interval for the utxo scanner service
+    /// the scanning interval for the utxo scanner service, in seconds (must be at least 1)
+    #[serde(deserialize_with = "serializers::deserialize_nonzero_u64")]
     pub scanning_interval: u64,
     /// grpc database write timeout in ms. This is how long the grpc server will wait for a database write to complete
     /// before returning an error to the client. This should be long enough to cover the majority of database writes

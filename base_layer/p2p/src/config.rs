@@ -141,7 +141,7 @@ pub struct P2pConfig {
     /// A value of 0 will disallow any liveness sessions.
     pub listener_liveness_max_sessions: usize,
     /// If Some, enables periodic socket-level liveness checks
-    #[serde(with = "serializers::optional_seconds")]
+    #[serde(with = "serializers::optional_seconds_nonzero")]
     pub listener_self_liveness_check_interval: Option<Duration>,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: StringList,

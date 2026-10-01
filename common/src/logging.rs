@@ -31,7 +31,11 @@ use std::{
 use log::warn;
 use log4rs::config::RawConfig;
 
-use crate::{ConfigError, LOG_TARGET, configuration::utils::untrusted_reasons};
+use crate::{
+    ConfigError,
+    LOG_TARGET,
+    configuration::utils::{untrusted_reasons, write_warning},
+};
 
 /// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
 /// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
@@ -62,14 +66,16 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
         }
     }
 
-    // No logger exists yet, so the findings are logged once logging is up, or printed if it fails to start
+    // Always print the findings to stderr first: no logger exists yet, and the log config being checked could itself
+    // silence them. Once logging is up they are also logged.
     let untrusted = untrusted_reasons(config_file);
+    for reason in &untrusted {
+        write_warning(&mut std::io::stderr(), reason);
+    }
     let result = read_and_init_logging(config_file, base_path);
-    for reason in untrusted {
-        if result.is_ok() {
+    if result.is_ok() {
+        for reason in &untrusted {
             warn!(target: LOG_TARGET, "⚠️  {reason}");
-        } else {
-            eprintln!("WARNING: {reason}");
         }
     }
     result

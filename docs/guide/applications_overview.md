@@ -59,7 +59,7 @@ provides network services.
 
 **Core Node Configuration**:
 
-- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p base_node.network=...` or `TARI_BASE_NODE__NETWORK` override that contradicts the selected network is rejected at startup; a contradictory `network` key that only comes from the config file is warned about and ignored.
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p base_node.network=...` or `TARI_BASE_NODE__NETWORK` override that contradicts the selected network is rejected at startup, because it is this application's own section. Contradicting overrides for other applications' sections (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `base_node.identity_file=<path>` - Node identity file path
 - `base_node.use_libtor=<bool>` - Use built-in Tor instance
 - `base_node.tor_identity_file=<path>` - Tor identity file path
@@ -544,7 +544,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Mining Configuration**:
 
-- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p miner.network=...` or `TARI_MINER__NETWORK` override that contradicts the selected network is rejected at startup; a contradictory `network` key that only comes from the config file is warned about and ignored.
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p miner.network=...` or `TARI_MINER__NETWORK` override that contradicts the selected network is rejected at startup, because it is this application's own section. Contradicting overrides for other applications' sections (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `miner.base_node_grpc_address=<address>` - Base node gRPC address (default: "http://127.0.0.1:18142")
 - `miner.base_node_grpc_authentication=<auth>` - Base node gRPC authentication (username/password)
 - `miner.base_node_grpc_tls_domain_name=<domain>` - gRPC TLS domain name
@@ -605,7 +605,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Proxy Configuration**:
 
-- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p merge_mining_proxy.network=...` or `TARI_MERGE_MINING_PROXY__NETWORK` override that contradicts the selected network is rejected at startup; a contradictory `network` key that only comes from the config file is warned about and ignored.
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p merge_mining_proxy.network=...` or `TARI_MERGE_MINING_PROXY__NETWORK` override that contradicts the selected network is rejected at startup, because it is this application's own section. Contradicting overrides for other applications' sections (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `merge_mining_proxy.listener_address=<address>` - Proxy listener address (default: "/ip4/127.0.0.1/tcp/18081")
 - `merge_mining_proxy.submit_to_origin=<bool>` - Submit to Monero blockchain (default: true)
 - `merge_mining_proxy.wait_for_initial_sync_at_startup=<bool>` - Wait for base node sync (default: true)
