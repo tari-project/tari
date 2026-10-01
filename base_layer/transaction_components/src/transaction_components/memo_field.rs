@@ -847,6 +847,15 @@ impl MemoField {
         }
     }
 
+    /// Parses a memo like [`MemoField::from_bytes`], then applies the size limits every serde and borsh decoder of
+    /// this type applies (see [`MemoField`]). Use this for memo bytes from outside the wallet, so that the wallet
+    /// never builds a memo it could not decode again.
+    pub fn from_bytes_checked(bytes: &[u8]) -> Result<Self, String> {
+        MemoField::validate(MemoFieldRaw {
+            inner: MemoField::from_bytes(bytes).inner,
+        })
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let raw_bytes = bytes.to_vec();
@@ -2970,6 +2979,42 @@ mod test {
         buf.write_varint(MAX_ENCODED_MEMO_SIZE + 1).unwrap();
         let err = borsh::from_slice::<MemoField>(&buf).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn from_bytes_checked_accepts_exactly_what_the_decoders_accept() {
+        let samples = [
+            vec![],
+            [vec![PTag::Open as u8, TxType::PaymentToOther.as_u8()], vec![
+                0xab;
+                MAX_PAYMENT_ID_SIZE -
+                    2
+            ]]
+            .concat(),
+            [vec![PTag::Open as u8, TxType::PaymentToOther.as_u8()], vec![
+                0xab;
+                MAX_PAYMENT_ID_SIZE -
+                    1
+            ]]
+            .concat(),
+            [vec![PTag::Raw as u8], vec![0xab; MAX_PAYMENT_ID_SIZE]].concat(),
+            [vec![PTag::Raw as u8], vec![0xab; MAX_PAYMENT_ID_SIZE + 1]].concat(),
+            [vec![0x09], vec![0xab; MAX_PAYMENT_ID_SIZE - 1]].concat(),
+            [vec![0x09], vec![0xab; MAX_PAYMENT_ID_SIZE]].concat(),
+            vec![0xab; 1000],
+        ];
+        for bytes in samples {
+            let checked = MemoField::from_bytes_checked(&bytes).ok();
+            let memo = MemoField::from_bytes(&bytes);
+            let json = serde_json::from_str::<MemoField>(&serde_json::to_string(&memo).unwrap()).ok();
+            let borsh = borsh::from_slice::<MemoField>(&borsh::to_vec(&memo).unwrap()).ok();
+            assert_eq!(checked, json, "{} bytes", bytes.len());
+            assert_eq!(checked, borsh, "{} bytes", bytes.len());
+            if let Some(checked) = checked {
+                assert_eq!(checked, memo);
+            }
+        }
+        assert!(MemoField::from_bytes_checked(&[0xab; MAX_PAYMENT_ID_SIZE + 2]).is_err());
     }
 
     #[test]

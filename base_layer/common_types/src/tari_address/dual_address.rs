@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_max_size::MaxSizeBytes;
@@ -44,9 +44,9 @@ use crate::{
 
 /// A dual (view and spend key) Tari address.
 ///
-/// This type has no `Deserialize` implementation of its own, as a derived one would skip the checksum and feature flag
-/// checks of [`DualAddress::from_bytes`]. A `TariAddress` decodes the legacy `{"Dual": {...}}` JSON form through
-/// [`LegacyDualAddress`] and then through `from_bytes`.
+/// `Deserialize` is not derived, as a derived decoder would skip the feature flag checks of
+/// [`DualAddress::from_bytes`]. It reads the same fields the derived `Serialize` writes (see [`LegacyDualAddress`])
+/// and then builds the address through `from_bytes`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct DualAddress {
     network: Network,
@@ -61,6 +61,7 @@ pub struct DualAddress {
 /// [`DualAddress`] writes them. They are not checked here: [`LegacyDualAddress::into_unchecked_bytes`] encodes them,
 /// and the caller must decode the result with `TariAddress::from_bytes`.
 #[derive(Deserialize)]
+#[serde(rename = "DualAddress")]
 pub(super) struct LegacyDualAddress {
     network: Network,
     features: TariAddressFeatures,
@@ -81,6 +82,13 @@ impl LegacyDualAddress {
             memo_field_payment_id: self.memo_field_payment_id,
         }
         .to_vec()
+    }
+}
+
+impl<'de> Deserialize<'de> for DualAddress {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let fields = LegacyDualAddress::deserialize(deserializer)?;
+        DualAddress::from_bytes(&fields.into_unchecked_bytes()).map_err(D::Error::custom)
     }
 }
 
@@ -321,7 +329,44 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
-    use crate::types::PrivateKey;
+    use crate::{dammsum::compute_checksum, types::PrivateKey};
+
+    #[test]
+    fn deserialize_reads_the_derived_shape_and_applies_the_byte_checks() {
+        let mut rng = rand::rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let address = DualAddress::new(
+            view_key,
+            spend_key,
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+
+        // The derived `Serialize` shape round-trips through JSON and bincode
+        let json = serde_json::to_string(&address).unwrap();
+        assert!(json.contains(r#""memo_field_payment_id""#), "{json}");
+        assert_eq!(serde_json::from_str::<DualAddress>(&json).unwrap(), address);
+        let encoded = bincode::serialize(&address).unwrap();
+        assert_eq!(bincode::deserialize::<DualAddress>(&encoded).unwrap(), address);
+        // The old field name is still accepted
+        let legacy_json = json.replace("memo_field_payment_id", "payment_id_user_data");
+        assert_eq!(serde_json::from_str::<DualAddress>(&legacy_json).unwrap(), address);
+
+        // A payment id without the `PAYMENT_ID` flag is rejected, as `from_bytes` rejects it
+        let mut bytes = address.to_vec();
+        let last = bytes.len() - 1;
+        bytes[1] = TariAddressFeatures::default().as_u8();
+        bytes[last] = compute_checksum(&bytes[..last]);
+        let inconsistent = DualAddress::from_bytes_lenient(&bytes).unwrap();
+        assert_eq!(DualAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
+        let json = serde_json::to_string(&inconsistent).unwrap();
+        assert!(serde_json::from_str::<DualAddress>(&json).is_err());
+        let encoded = bincode::serialize(&inconsistent).unwrap();
+        assert!(bincode::deserialize::<DualAddress>(&encoded).is_err());
+    }
 
     #[test]
     /// Test valid dual tari address

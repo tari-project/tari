@@ -3559,8 +3559,9 @@ mod test {
     // - `KernelFeatures::from_bits`, the `PowData` / `CoinBaseExtra` / `MaxSizeString` / covenant length bounds,
     //   `EncryptedData::from_bytes` minimum length, and `TariScript::from_bytes` / `ExecutionStack::from_bytes` (the
     //   borsh decoders of those types apply the same checks, including the `MAX_SCRIPT_BYTES` cap on scripts).
-    // `minotari_app_grpc/tests/decoder_parity.rs` checks that serde_json, bincode, borsh and both protobuf families
-    // accept and reject the same blocks and transactions.
+    // `minotari_app_grpc/tests/decoder_parity.rs` checks, for a fixed set of sample values of the fields it lists, that
+    // serde_json and both protobuf families (and borsh and bincode, where a sample can be expressed in them) make the
+    // same accept or reject decision on a block or transaction. Fields and values it does not sample are not checked.
     #[test]
     fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
         let block = mainnet_genesis();

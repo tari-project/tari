@@ -11,9 +11,15 @@
 //!
 //! Such a type implements [`ValidatedDecode`] instead: it names its unvalidated wire form, [`ValidatedDecode::Raw`],
 //! and how to validate it. [`impl_validated_decode!`](crate::impl_validated_decode) then generates the serde
-//! `Deserialize` and the `BorshDeserialize` implementations, which both decode the raw form and then validate it, so
-//! the two decoders can not drift apart from each other or from the constructor. `scripts/decoder_parity_check.py`
-//! fails CI when a type with a fallible `from_bytes` derives either decoder instead.
+//! `Deserialize` and the `BorshDeserialize` implementations, which both decode the raw form and then call
+//! [`ValidatedDecode::validate`]. That keeps the serde and borsh decoders on one validation function. It does not by
+//! itself make `validate` apply the same checks as the type's constructor or its protobuf decoder: `validate` should
+//! call that constructor, and the decoder parity tests check the result for sampled values.
+//!
+//! `scripts/decoder_parity_check.py` fails CI when a type with a fallible `from_*` / `try_from_*` constructor (one
+//! returning a `Result` or an `Option`) derives `Deserialize` or `BorshDeserialize`, unless the type is allowlisted
+//! there. It is a text scan, so it can miss unusual code; the decoder parity tests also require every type listed
+//! there to implement [`ValidatedDecode`].
 
 use std::{fmt, marker::PhantomData};
 

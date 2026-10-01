@@ -332,12 +332,15 @@ jobs:
   # applications/minotari_app_grpc/tests/decoder_parity.rs).
   decoder-parity:
     name: decoder parity
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    # GitHub-hosted, with the same dependency setup as the `ci` job
+    runs-on: [ubuntu-latest]
     steps:
       - name: checkout
         uses: actions/checkout@v7
-      - name: check that no type with a fallible from_bytes derives its serde or borsh decoder
-        run: python3 ./scripts/decoder_parity_check.py
+      - name: check that no type with a fallible from_* constructor derives its serde or borsh decoder
+        run: |
+          python3 ./scripts/decoder_parity_check.py --self-test
+          python3 ./scripts/decoder_parity_check.py
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -347,22 +350,7 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: Cache cargo files and outputs
-        if: startsWith(runner.environment,'github-hosted')
         uses: Swatinem/rust-cache@v2
-      - name: caching (stable)
-        if: startsWith(runner.environment,'self-hosted')
-        uses: maxnowack/local-cache@v3
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/CACHEDIR.TAG
-            ~/.cargo/git
-            target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-decoder-parity
-          restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
       - name: cross-family decoder parity (serde_json, bincode, borsh, P2P proto, gRPC proto)
         run: cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
       - name: ValidatedDecode tests
@@ -372,10 +360,10 @@ jobs:
           cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
       - name: TariAddress decoder tests
         run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
-      - name: MemoField, EncryptedData, KernelFeatures and Covenant decoder tests
+      - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody and Difficulty decoder tests
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
-          memo_field encrypted_data kernel_features covenants
+          memo_field encrypted_data kernel_features covenants aggregated_body tari_proof_of_work::difficulty
 
   test:
     name: test
