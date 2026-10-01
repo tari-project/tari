@@ -136,6 +136,9 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     // network-scoped tables. Env first, so that a -p/app override on the same key wins.
     let mut all_overrides = tari_env_overrides();
     all_overrides.extend(overrides.iter().cloned());
+    // Check the explicit overrides themselves: in the merged config an app-injected `<app>.network` would hide a
+    // contradicting env var on the same key.
+    check_network_overrides(&all_overrides, network)?;
     let override_keys: Vec<String> = all_overrides.iter().map(|(key, _)| key.clone()).collect();
     let reapply: Vec<String> = all_overrides
         .iter()
@@ -155,7 +158,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         .build()
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
-    check_network_keys(&cfg, network, &override_keys)?;
+    warn_about_file_network_keys(&cfg, network, &override_keys)?;
 
     Ok(cfg)
 }
@@ -198,44 +201,35 @@ fn warn_about_network_overrides(overrides: &[(String, String)], network: Network
     }
 }
 
-/// Checks unscoped `<section>.network` keys (e.g. `base_node.network`) and keys scoped to the resolved network (e.g.
-/// `mainnet.base_node.network` when running mainnet) against the resolved `network`. Tables scoped to other networks
-/// are ignored. The top-level `network` key is the input to network resolution and is not checked here. Values that
-/// are not a network name are left for the section's own deserialization to report.
-///
-/// A mismatch is an error only if the key was set by an explicit override (`override_keys`: `-p`, `TARI_*` env or
-/// application-injected). A mismatch that comes only from the config file is logged as a warning, so a shared config
-/// with, say, `[miner] network = "esmeralda"` does not stop a node started with another `--network`.
-fn check_network_keys(cfg: &Config, network: Network, override_keys: &[String]) -> Result<(), ConfigError> {
-    let root = cfg
-        .cache
-        .clone()
-        .into_table()
-        .map_err(|ce| ConfigError::new("Could not read config", Some(ce.to_string())))?;
-    let mut leaves = Vec::new();
-    collect_leaves("", root, &mut leaves);
-    for (key, value) in leaves {
-        if key == "network" || !key.ends_with(".network") {
+/// Returns true if `key` is a `<section>.network` key that applies to the resolved `network`: unscoped (e.g.
+/// `base_node.network`) or scoped to the resolved network (e.g. `mainnet.base_node.network` when running mainnet).
+/// The top-level `network` key (the input to network resolution) and tables scoped to other networks do not apply.
+fn is_applicable_network_key(key: &str, network: Network) -> bool {
+    if key == "network" || !key.ends_with(".network") {
+        return false;
+    }
+    let first_segment = key.split('.').next().unwrap_or("");
+    match Network::from_str(first_segment) {
+        Ok(scope) => scope == network,
+        Err(_) => true,
+    }
+}
+
+/// Returns an error if an explicit override (`-p`, `TARI_*` env or application-injected, in `overrides`) sets an
+/// applicable `<section>.network` key (see [`is_applicable_network_key`]) to a network other than the resolved
+/// `network`. Every override is checked on its own, so a contradicting env var is caught even when an
+/// application-injected override on the same key wins in the merged config. Values that are not a network name are
+/// left for the section's own deserialization to report.
+fn check_network_overrides(overrides: &[(String, String)], network: Network) -> Result<(), ConfigError> {
+    for (key, value) in overrides {
+        let key = key.to_lowercase();
+        if !is_applicable_network_key(&key, network) {
             continue;
         }
-        // A table scoped to another network (e.g. `[mainnet.base_node]` while running esmeralda) is never used, so
-        // its `network` key does not matter.
-        let first_segment = key.split('.').next().unwrap_or("");
-        if let Ok(scope) = Network::from_str(first_segment) &&
-            scope != network
-        {
-            continue;
-        }
-        let Ok(value) = value.into_string() else {
+        let Ok(configured) = Network::from_str(value) else {
             continue;
         };
-        let Ok(configured) = Network::from_str(&value) else {
-            continue;
-        };
-        if configured == network {
-            continue;
-        }
-        if override_keys.iter().any(|k| k.eq_ignore_ascii_case(&key)) {
+        if configured != network {
             return Err(ConfigError::new(
                 "Conflicting network configuration",
                 Some(format!(
@@ -244,11 +238,39 @@ fn check_network_keys(cfg: &Config, network: Network, override_keys: &[String]) 
                 )),
             ));
         }
-        warn!(
-            target: LOG_TARGET,
-            "Config key {key} is set to {configured} in the config file but the network is {network}. The value is \
-             ignored for this run; use --network or TARI_NETWORK to choose the network."
-        );
+    }
+    Ok(())
+}
+
+/// Warns about applicable `<section>.network` keys (see [`is_applicable_network_key`]) in the merged config that differ
+/// from the resolved `network` and were not set by an override (`override_keys`), i.e. that come only from the config
+/// file. These do not stop the start, so a shared config with, say, `[miner] network = "esmeralda"` still lets a node
+/// run with another `--network`. Contradicting overrides are rejected earlier by [`check_network_overrides`].
+fn warn_about_file_network_keys(cfg: &Config, network: Network, override_keys: &[String]) -> Result<(), ConfigError> {
+    let root = cfg
+        .cache
+        .clone()
+        .into_table()
+        .map_err(|ce| ConfigError::new("Could not read config", Some(ce.to_string())))?;
+    let mut leaves = Vec::new();
+    collect_leaves("", root, &mut leaves);
+    for (key, value) in leaves {
+        if !is_applicable_network_key(&key, network) || override_keys.iter().any(|k| k.eq_ignore_ascii_case(&key)) {
+            continue;
+        }
+        let Ok(value) = value.into_string() else {
+            continue;
+        };
+        let Ok(configured) = Network::from_str(&value) else {
+            continue;
+        };
+        if configured != network {
+            warn!(
+                target: LOG_TARGET,
+                "Config key {key} is set to {configured} in the config file but the network is {network}. The value \
+                 is ignored for this run; use --network or TARI_NETWORK to choose the network."
+            );
+        }
     }
     Ok(())
 }
@@ -702,46 +724,41 @@ mod test {
         assert_eq!(mask_value("x.some_url", "https://node.example"), "https://node.example");
     }
 
-    fn keys(keys: &[&str]) -> Vec<String> {
-        keys.iter().map(|k| k.to_string()).collect()
+    fn pairs(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
     #[test]
-    fn network_key_mismatch_from_override_is_an_error() {
-        // -p wallet.network=esmeralda on a mainnet resolve
-        let cfg = Config::builder()
-            .set_override("wallet.network", "esmeralda")
-            .unwrap()
-            .build()
-            .unwrap();
-        let err = check_network_keys(&cfg, Network::MainNet, &keys(&["wallet.network"])).unwrap_err();
+    fn network_override_mismatch_is_an_error() {
+        // -p wallet.network=esmeralda on a mainnet resolve, after the app-injected wallet.network=mainnet was replaced
+        let err = check_network_overrides(&pairs(&[("wallet.network", "esmeralda")]), Network::MainNet).unwrap_err();
         assert!(err.to_string().contains("wallet.network"));
-        assert!(check_network_keys(&cfg, Network::Esmeralda, &keys(&["wallet.network"])).is_ok());
+        assert!(err.to_string().contains("esmeralda"));
+        assert!(err.to_string().contains("mainnet"));
 
-        // TARI_MINER__NETWORK=esmeralda, as it appears in the env-override list
-        let cfg = Config::builder()
-            .set_override("miner.network", "esmeralda")
-            .unwrap()
-            .build()
-            .unwrap();
-        assert!(check_network_keys(&cfg, Network::MainNet, &keys(&["miner.network"])).is_err());
+        // TARI_MINER__NETWORK=mainnet (env snapshot first) followed by the app-injected miner.network=esmeralda on the
+        // same key: the app value wins in the merged config, but the env value must still be rejected
+        let overrides = pairs(&[("miner.network", "mainnet"), ("miner.network", "esmeralda")]);
+        let err = check_network_overrides(&overrides, Network::Esmeralda).unwrap_err();
+        assert!(err.to_string().contains("miner.network"));
+
+        // Env and app-injected values equal to the resolved network pass
+        let overrides = pairs(&[("miner.network", "esmeralda"), ("miner.network", "esmeralda")]);
+        assert!(check_network_overrides(&overrides, Network::Esmeralda).is_ok());
 
         // An override in the resolved network's scoped table
-        let cfg = Config::builder()
-            .set_override("mainnet.wallet.network", "nextnet")
-            .unwrap()
-            .build()
-            .unwrap();
-        let err = check_network_keys(&cfg, Network::MainNet, &keys(&["mainnet.wallet.network"])).unwrap_err();
+        let overrides = pairs(&[("mainnet.wallet.network", "nextnet"), ("wallet.network", "mainnet")]);
+        let err = check_network_overrides(&overrides, Network::MainNet).unwrap_err();
         assert!(err.to_string().contains("mainnet.wallet.network"));
 
-        // App-injected override equal to the resolved network
-        let cfg = Config::builder()
-            .set_override("base_node.network", "localnet")
-            .unwrap()
-            .build()
-            .unwrap();
-        assert!(check_network_keys(&cfg, Network::LocalNet, &keys(&["base_node.network"])).is_ok());
+        // Other networks' tables and the top-level key are not checked
+        let overrides = pairs(&[
+            ("mainnet.base_node.network", "mainnet"),
+            ("nextnet.wallet.network", "esmeralda"),
+            ("network", "nextnet"),
+            ("base_node.network", "esmeralda"),
+        ]);
+        assert!(check_network_overrides(&overrides, Network::Esmeralda).is_ok());
     }
 
     #[test]
@@ -756,28 +773,47 @@ mod test {
             .unwrap()
             .build()
             .unwrap();
-        assert!(check_network_keys(&cfg, Network::LocalNet, &keys(&["base_node.network"])).is_ok());
+        let override_keys = vec!["base_node.network".to_string()];
+        assert!(warn_about_file_network_keys(&cfg, Network::LocalNet, &override_keys).is_ok());
     }
 
     #[test]
-    fn network_keys_in_other_network_tables_are_ignored() {
-        let cfg = Config::builder()
-            .set_override("mainnet.base_node.network", "mainnet")
-            .unwrap()
-            .set_override("nextnet.wallet.network", "esmeralda")
-            .unwrap()
-            .build()
-            .unwrap();
-        let override_keys = keys(&["mainnet.base_node.network", "nextnet.wallet.network"]);
-        assert!(check_network_keys(&cfg, Network::Esmeralda, &override_keys).is_ok());
+    fn applicable_network_keys() {
+        assert!(is_applicable_network_key("base_node.network", Network::Esmeralda));
+        assert!(is_applicable_network_key(
+            "esmeralda.base_node.network",
+            Network::Esmeralda
+        ));
+        assert!(!is_applicable_network_key(
+            "mainnet.base_node.network",
+            Network::Esmeralda
+        ));
+        assert!(!is_applicable_network_key("network", Network::Esmeralda));
+        assert!(!is_applicable_network_key("base_node.grpc_address", Network::Esmeralda));
+    }
 
-        // The top-level key is not checked here
-        let cfg = Config::builder()
-            .set_override("network", "nextnet")
-            .unwrap()
-            .build()
+    #[test]
+    fn contradicting_env_style_override_is_rejected_on_load() {
+        // The app injects miner.network=<resolved> after a contradicting entry on the same key, as an env var would be
+        let network = crate::network_check::is_network_choice_valid(Network::MainNet)
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::NextNet))
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::Esmeralda))
             .unwrap();
-        assert!(check_network_keys(&cfg, Network::MainNet, &keys(&["network"])).is_ok());
+        let other = if network == Network::MainNet {
+            Network::Esmeralda
+        } else {
+            Network::MainNet
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "[miner]\n").unwrap();
+        let overrides = TestOverrides(vec![
+            ("miner.network".to_string(), other.to_string()),
+            ("miner.network".to_string(), network.to_string()),
+        ]);
+        assert!(load_configuration_with_overrides(&path, &overrides, Some(network)).is_err());
+        let overrides = TestOverrides(vec![("miner.network".to_string(), network.to_string())]);
+        assert!(load_configuration_with_overrides(&path, &overrides, Some(network)).is_ok());
     }
 
     #[test]
