@@ -48,8 +48,8 @@ pub const VIEW_KEY_BRANCH: &str = "view_key";
 pub const SPEND_KEY_BRANCH: &str = "spend_key";
 /// String prefix for `TariKeyId::Derived` entries.
 ///
-/// Display/parse form: `"derived.<path>"` where `<path>` is an opaque string that
-/// may contain dots. For example: `derived.wallet.receive`
+/// Display/parse form: `"derived.<key_id>"` where `<key_id>` is the string form of another
+/// `TariKeyId`, with or without dots. For example: `derived.ledger_key.Random.0`, `derived.spend_key`
 pub const DERIVED_KEY_BRANCH: &str = "derived";
 /// String prefix for the default zero key `TariKeyId::Zero`.
 ///
@@ -121,12 +121,12 @@ pub enum TariKeyId {
     SpendKey,
     /// A key derived from the hash of the private key of the TariKeyId listed.
     ///
-    /// This allows grouping or namespacing of keys beyond the predefined variants.
-    /// The path can include dots and is serialized as-is after the `derived` branch.
+    /// The nested key id is serialized as-is after the `derived` branch; it must itself be a valid key id string,
+    /// either a single token or one with dots of its own.
     ///
-    /// String form: `derived.<path>` (e.g. `derived.wallet.receive`)
+    /// String form: `derived.<key_id>` (e.g. `derived.ledger_key.Random.0`, `derived.spend_key`)
     Derived {
-        /// The opaque derived key path/label. May contain dots.
+        /// The string form of the key id this key is derived from. May contain dots.
         key: SerializedKeyString,
     },
     /// Identity used to sign or identify code template authors within Tari DAN.
@@ -220,11 +220,12 @@ impl FromStr for TariKeyId {
             Some(val) => match *val {
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    if parts.len() < 3 {
+                    // The nested key id may be a single token (`derived.spend_key`, which the legacy key
+                    // conversion produces) or have parts of its own (`derived.ledger_key.Random.0`)
+                    let key = parts.get(1..).unwrap_or_default().join(".");
+                    if key.is_empty() {
                         return Err("Wrong derived format".to_string());
                     };
-
-                    let key = parts.get(1..).expect("Already checked").join(".");
                     check_key_string(&key)?;
                     Ok(TariKeyId::Derived {
                         key: SerializedKeyString::from(key),
@@ -324,7 +325,7 @@ fn check_key_string(id: &str) -> Result<(), String> {
     let mut rest = id;
     loop {
         // `tail` is everything after the first dot: `FromStr` splits on every dot, so it has `parts.len() >= 3`
-        // exactly when `tail` contains a dot
+        // exactly when `tail` contains a dot, and its nested key (`parts[1..]` joined) is `tail`
         let (branch, tail) = match rest.split_once('.') {
             Some((branch, tail)) => (branch, Some(tail)),
             None => (rest, None),
@@ -332,7 +333,7 @@ fn check_key_string(id: &str) -> Result<(), String> {
         rest = match branch {
             ZERO_KEY_BRANCH => return Ok(()),
             DERIVED_KEY_BRANCH => match tail {
-                Some(key) if key.contains('.') => key,
+                Some(key) if !key.is_empty() => key,
                 _ => return Err("Wrong derived format".to_string()),
             },
             DH_COMMITMENT_MASK_BRANCH | DH_ENCRYPTED_DATA_BRANCH => {
@@ -720,10 +721,12 @@ mod tests {
     fn parse_error_cases() {
         // Empty
         assert_eq!(TariKeyId::from_str("").unwrap_err(), "Wrong generic format");
-        // Derived must have at least 3 parts
+        // Derived must wrap a non-empty, valid key id
+        assert_eq!(TariKeyId::from_str("derived").unwrap_err(), "Wrong derived format");
+        assert_eq!(TariKeyId::from_str("derived.").unwrap_err(), "Wrong derived format");
         assert_eq!(
             TariKeyId::from_str("derived.onlytwo").unwrap_err(),
-            "Wrong derived format"
+            "Wrong generic format"
         );
         // DHCommitmentMask invalid public key
         assert_eq!(
@@ -810,6 +813,31 @@ mod tests {
             },
             ledger.clone(),
             TariKeyId::LedgerEphemeralNonce { handle: 9 },
+            // `Derived` wrapping a single-token key id, which the legacy key conversion produces (a legacy
+            // `derived.managed.comms.0` becomes `derived.spend_key`), also nested in the other wrapping variants
+            TariKeyId::Derived {
+                key: "spend_key".into(),
+            },
+            TariKeyId::Derived { key: "view_key".into() },
+            TariKeyId::Derived { key: "zero".into() },
+            TariKeyId::Derived {
+                key: "code-template-author".into(),
+            },
+            TariKeyId::Derived {
+                key: "derived.spend_key".into(),
+            },
+            TariKeyId::DHCommitmentMask {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: "derived.spend_key".into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: "derived.view_key".into(),
+            },
+            TariKeyId::Encrypted {
+                encrypted: vec![4, 5],
+                key: "derived.zero".into(),
+            },
         ]
     }
 
@@ -873,8 +901,8 @@ mod tests {
     #[test]
     fn decoders_reject_what_from_str_rejects() {
         let invalid = [
-            // `derived.zero` has too few parts
-            TariKeyId::Derived { key: "zero".into() },
+            TariKeyId::Derived { key: "".into() },
+            TariKeyId::Derived { key: "bogus".into() },
             TariKeyId::Derived {
                 key: "bogus.key".into(),
             },
@@ -888,7 +916,7 @@ mod tests {
             },
             TariKeyId::Encrypted {
                 encrypted: vec![1],
-                key: "derived.zero".into(),
+                key: "derived.".into(),
             },
         ];
         for key_id in &invalid {
@@ -954,7 +982,7 @@ mod tests {
         let json = serde_json::to_string(&key_id).unwrap();
         assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id);
 
-        let invalid = format!("{}zero", "derived.".repeat(depth));
+        let invalid = format!("{}bogus", "derived.".repeat(depth));
         assert!(TariKeyId::from_str(&invalid).is_err());
         assert_all_decoders_reject(&TariKeyId::Derived {
             key: invalid.strip_prefix("derived.").unwrap().into(),

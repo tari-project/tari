@@ -369,10 +369,10 @@ jobs:
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
           legacy_transaction_protocol
-      - name: Imported wallet transactions get the same status check as new ones
+      - name: Imported wallet transactions get the same status check as new ones; legacy key ids still load
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
-          import_transaction_rejects_the_coinbase_status
+          import_transaction_rejects_the_coinbase_status test_legacy_derived_spend_key_reads_migrates_and_reads_again
       - name: Node submit paths decode through the P2P proto
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
