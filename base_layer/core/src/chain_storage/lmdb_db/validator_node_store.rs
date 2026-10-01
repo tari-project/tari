@@ -346,6 +346,62 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         }
     }
 
+    /// Returns true if the exit queue holds an exit for validator node `public_key` (in `sidechain_id`), created by the
+    /// registration output with `commitment`, that has not taken effect by `end_epoch` (its exit epoch is later).
+    ///
+    /// Unlike [`Self::is_vn_active`], this is specific to one registration instance: a later registration of the same
+    /// validator node is not matched.
+    pub fn has_pending_exit(
+        &self,
+        sidechain_id: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        end_epoch: VnEpoch,
+    ) -> Result<bool, ChainStorageError> {
+        let mut cursor = self.exit_queue_read_cursor()?;
+        // Exits at `end_epoch` or earlier have taken effect, so start at the next epoch
+        let prefix = create_exit_queue_prefix_key(sidechain_id, end_epoch.saturating_add(VnEpoch(1)));
+        if !cursor.seek_range(&prefix)? {
+            return Ok(false);
+        }
+        let sidechain_bytes = sid_as_slice(sidechain_id);
+        // O(n) in the number of exits queued for the sidechain after `end_epoch`, like `is_vn_active`
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sid = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::has_pending_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if sid != sidechain_bytes {
+                break;
+            }
+            let _epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::has_pending_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            let pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::has_pending_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if pk != public_key.as_bytes() {
+                continue;
+            }
+            let (_, entry) = cursor
+                .current()?
+                .expect("Cursor is not at a valid position in has_pending_exit");
+            if entry.commitment == *commitment {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn get_next_activation_epoch(
         &self,
         sidechain_id: Option<&CompressedPublicKey>,

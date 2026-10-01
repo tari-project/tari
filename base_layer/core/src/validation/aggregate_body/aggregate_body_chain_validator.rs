@@ -541,7 +541,10 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
 /// - the registration output is not (yet) in the chain's unspent set: it is created in the same body or is still in the
 ///   mempool, so it is about to create an entry;
 /// - a registered validator node entry created by this output exists, whether pending activation or active;
-/// - the validator node is still active in `epoch`, which covers one queued to exit in a later epoch.
+/// - an exit of the entry created by this output is queued for an epoch after `epoch` (not yet taken effect).
+///
+/// Both entry checks match on the commitment, so only this registration instance locks the output: a later
+/// registration of the same validator node (possibly by a third party replaying the registration) does not.
 ///
 /// Spending a registration therefore never changes the validator node set (and committing or rewinding a spend never
 /// touches it). This deliberately means a pending registration cannot be cancelled by spending it: it must activate
@@ -572,8 +575,8 @@ fn check_validator_node_registration_spend<B: BlockchainBackend>(
     {
         return reject("the validator node is registered (pending activation or active)");
     }
-    if db.validator_node_is_active(sidechain_pk, epoch, reg.public_key())? {
-        return reject("the validator node is active until its exit epoch");
+    if db.validator_node_has_pending_exit(sidechain_pk, reg.public_key(), commitment, epoch)? {
+        return reject("the validator node's exit has not taken effect yet");
     }
     Ok(())
 }

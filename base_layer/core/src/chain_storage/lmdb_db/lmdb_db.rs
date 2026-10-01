@@ -4406,6 +4406,18 @@ impl BlockchainBackend for LMDBDatabase {
         store.get(sidechain_pk, public_key)
     }
 
+    fn validator_node_has_pending_exit(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        epoch: VnEpoch,
+    ) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let store = self.validator_node_store(&txn);
+        store.has_pending_exit(sidechain_pk, public_key, commitment, epoch)
+    }
+
     fn get_validator_node(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,

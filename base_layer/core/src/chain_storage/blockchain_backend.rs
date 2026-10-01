@@ -325,6 +325,16 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         public_key: &CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError>;
 
+    /// Returns true if validator node `public_key` has an exit queued, created by the registration output with
+    /// `commitment`, that has not taken effect by `epoch`.
+    fn validator_node_has_pending_exit(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        epoch: VnEpoch,
+    ) -> Result<bool, ChainStorageError>;
+
     /// Returns the validator node for the given sidechain and public key if it exists
     fn get_validator_node(
         &self,

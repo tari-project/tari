@@ -1163,7 +1163,22 @@ mod validator_node_exit {
         chain.mine_epochs(2);
         let r2_output = chain.mine(chain.registration_features());
         assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
+        // R1 is spendable while R2 is pending ...
+        chain.check_spend(&r1_output).unwrap();
 
+        // ... and stays spendable once R2 is active: the lock is specific to the registration instance, so a later
+        // registration of the same validator node (e.g. a third party replaying the old registration) cannot re-lock
+        // R1's stake.
+        chain.mine_epochs(2);
+        assert!(chain.activation_epoch().unwrap() <= chain.current_epoch());
+        assert!(
+            chain
+                .db
+                .db_read_access()
+                .unwrap()
+                .validator_node_is_active(None, chain.current_epoch(), &chain.public_key)
+                .unwrap()
+        );
         chain.check_spend(&r1_output).unwrap();
         chain.spend(r1);
         assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
