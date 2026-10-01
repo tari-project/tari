@@ -539,10 +539,11 @@ fn new_handlers(
     )
 }
 
-/// Orphans are stored with hydrated inputs, but must be served in the same compact form as main chain blocks: the
-/// hydrated form of a block within the consensus byte limit can exceed the messaging frame.
+/// Orphans are stored with hydrated inputs, and an orphan that fits in the messaging frame is served that way, so a
+/// peer on another chain can accept it without having the outputs it spends. (An orphan that does not fit is served
+/// compact; that case is covered by the unit test of `orphan_block_to_serve`.)
 #[tokio::test]
-async fn inbound_get_block_from_all_chains_serves_orphans_compact() {
+async fn inbound_get_block_from_all_chains_serves_small_orphans_hydrated() {
     let network = Network::LocalNet;
     let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
     let tx = spend_genesis_output(&outputs, &key_manager);
@@ -580,8 +581,8 @@ async fn inbound_get_block_from_all_chains_serves_orphans_compact() {
         panic!("unexpected response {response}");
     };
     let served = (*served).expect("the orphan is served");
-    assert!(served.body.inputs().iter().all(|input| input.is_compact()));
-    assert_eq!(served, orphan.to_compact());
+    assert!(served.body.inputs().iter().all(|input| !input.is_compact()));
+    assert_eq!(served, orphan);
 }
 
 /// A compact block that is rebuilt from the mempool into a body over the consensus byte limit is rejected right

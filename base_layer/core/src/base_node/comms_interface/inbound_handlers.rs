@@ -30,9 +30,10 @@ use std::{
 };
 
 use log::*;
+use prost::Message;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PrivateKey};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::messaging::MAX_FRAME_LENGTH};
 use tari_node_components::blocks::{
     Block,
     BlockBuilder,
@@ -74,6 +75,7 @@ use crate::{
         sha3x_difficulty,
         tari_randomx_difficulty,
     },
+    proto::{self, base_node::base_node_service_response::Response as ProtoNodeCommsResponse},
     validation::{ValidationError, header::check_randomxt_pow_data, helpers, tari_rx_vm_key_height},
 };
 
@@ -84,6 +86,29 @@ const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 #[cfg(feature = "metrics")]
 const DIFF_INDICATOR_LAG: u64 = 25;
+
+/// Room left in the messaging frame for the DHT envelope around a base node service response
+const DHT_ENVELOPE_ALLOWANCE: usize = 64 * 1024;
+
+/// The form in which to serve an orphan block. Orphans are stored with hydrated inputs, which lets a peer on another
+/// chain accept the block even when it spends outputs that peer has never seen, so an orphan is served hydrated
+/// whenever it fits in the messaging frame. The hydrated form of a block within the consensus byte limit can exceed the
+/// frame, and then the orphan is served in the compact form that main chain blocks are served in.
+fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
+    // Measured as the base node service response that goes on the wire
+    let response_bytes = proto::base_node::BlockResponse::try_from(Some(block.clone())).map(|response| {
+        proto::base_node::BaseNodeServiceResponse {
+            request_key: u64::MAX,
+            response: Some(ProtoNodeCommsResponse::BlockResponse(response)),
+            is_synced: true,
+        }
+        .encoded_len()
+    });
+    match response_bytes {
+        Ok(bytes) if bytes.saturating_add(DHT_ENVELOPE_ALLOWANCE) <= max_frame_length => block,
+        _ => block.to_compact(),
+    }
+}
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
@@ -465,9 +490,6 @@ where B: BlockchainBackend + 'static
 
                         None
                     }) {
-                    // Orphans are stored with hydrated inputs. Serve them in the same compact form as main chain
-                    // blocks: the hydrated form of a block within the consensus byte limit can exceed the messaging
-                    // frame.
                     None => self.blockchain_db.fetch_orphan(hash).await.map_or_else(
                         |e| {
                             warn!(
@@ -477,7 +499,7 @@ where B: BlockchainBackend + 'static
 
                             None
                         },
-                        |block| Some(block.to_compact()),
+                        |block| Some(orphan_block_to_serve(block, MAX_FRAME_LENGTH)),
                     ),
                     Some(block) => Some(block.into_block()),
                 };
@@ -1418,6 +1440,36 @@ mod test {
 
     fn excess_sig(tx: &Transaction) -> PrivateKey {
         tx.body.kernels()[0].excess_sig.get_signature().clone()
+    }
+
+    #[test]
+    fn orphans_are_served_hydrated_unless_that_does_not_fit_the_messaging_frame() {
+        use tari_transaction_components::transaction_components::TransactionInput;
+
+        // A block with a hydrated input
+        let block = Block::new(
+            BlockHeader::new(0),
+            AggregateBody::new_unsorted(vec![TransactionInput::default()], vec![], vec![]),
+        );
+        assert!(!block.body.inputs()[0].is_compact());
+        let response_bytes = proto::base_node::BaseNodeServiceResponse {
+            request_key: u64::MAX,
+            response: Some(ProtoNodeCommsResponse::BlockResponse(
+                Some(block.clone()).try_into().unwrap(),
+            )),
+            is_synced: true,
+        }
+        .encoded_len();
+
+        // Fits, with room for the DHT envelope: served as stored
+        let frame = response_bytes + DHT_ENVELOPE_ALLOWANCE;
+        assert_eq!(orphan_block_to_serve(block.clone(), frame), block);
+        assert!(!orphan_block_to_serve(block.clone(), frame).body.inputs()[0].is_compact());
+
+        // One byte short: served compact
+        let served = orphan_block_to_serve(block.clone(), frame - 1);
+        assert!(served.body.inputs()[0].is_compact());
+        assert_eq!(served, block.to_compact());
     }
 
     #[test]
