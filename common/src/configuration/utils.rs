@@ -24,7 +24,7 @@ use serde::{
 use crate::{
     ConfigError,
     LOG_TARGET,
-    configuration::{ConfigOverrideProvider, Network, bootstrap::prompt, loader::set_config_overrides},
+    configuration::{ConfigOverrideProvider, Network, bootstrap::prompt, loader::CONFIG_OVERRIDES_KEY},
     network_check::set_network_if_choice_valid,
 };
 
@@ -68,8 +68,8 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
 /// 3. `-p` and application-injected overrides,
 /// 4. the network-scoped table selected by `<section>.override_from` (e.g. `[mainnet.base_node]`), merged later by
 ///    [`ConfigPath::merge_subconfig`](crate::ConfigPath::merge_subconfig),
-/// 5. `TARI_*` environment variables and `-p`/application overrides again: they are recorded here with
-///    [`set_config_overrides`] and re-applied by `merge_subconfig` on top of the scoped table.
+/// 5. `TARI_*` environment variables and `-p`/application overrides again: they are stored in the returned `Config`
+///    under the reserved key [`CONFIG_OVERRIDES_KEY`] and re-applied by `merge_subconfig` on top of the scoped table.
 ///
 /// So the scoped table beats the file's unscoped keys, and an explicit env var or `-p` override beats both.
 pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
@@ -128,25 +128,26 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
     // `get_current_or_user_setting_or_default()`) -
     set_network_if_choice_valid(network)?;
 
-    // Record env and -p/app overrides so that `merge_subconfig` can re-apply them on top of the network-scoped tables.
-    // Env first, so that a -p/app override on the same key wins.
-    let mut reapply = tari_env_overrides();
-    reapply.extend(overrides.iter().cloned());
-    set_config_overrides(reapply);
+    // Store env and -p/app overrides in the config so that `merge_subconfig` can re-apply them on top of the
+    // network-scoped tables. Env first, so that a -p/app override on the same key wins.
+    let mut reapply: Vec<String> = tari_env_overrides()
+        .into_iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect();
+    reapply.extend(overrides.iter().map(|(key, value)| format!("{key}={value}")));
 
-    let cfg = if overrides.is_empty() {
-        cfg
-    } else {
-        let mut cfg = Config::builder().add_source(cfg);
-        for (key, value) in overrides {
-            trace!(target: LOG_TARGET, "Set override: ({key}, {})", mask_value(&key, &value));
-            cfg = cfg
-                .set_override(key.as_str(), value.as_str())
-                .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
-        }
-        cfg.build()
-            .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?
-    };
+    let mut builder = Config::builder().add_source(cfg);
+    for (key, value) in overrides {
+        trace!(target: LOG_TARGET, "Set override: ({key}, {})", mask_value(&key, &value));
+        builder = builder
+            .set_override(key.as_str(), value.as_str())
+            .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
+    }
+    let cfg = builder
+        .set_override(CONFIG_OVERRIDES_KEY, reapply)
+        .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?
+        .build()
+        .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
 
     check_network_keys(&cfg, network)?;
 
@@ -191,9 +192,10 @@ fn warn_about_network_overrides(overrides: &[(String, String)], network: Network
     }
 }
 
-/// Returns an error if any `<section>.network` key (scoped or not, e.g. `base_node.network` or
-/// `mainnet.base_node.network`) is set to a network other than the resolved `network`. The top-level `network` key is
-/// the input to network resolution and is not checked here. Values that are not a network name are left for the
+/// Returns an error if an unscoped `<section>.network` key (e.g. `base_node.network`) or a key scoped to the resolved
+/// network (e.g. `mainnet.base_node.network` when running mainnet) is set to a network other than the resolved
+/// `network`. Tables scoped to other networks are ignored. The top-level `network` key is the input to network
+/// resolution and is not checked here. Values that are not a network name are left for the
 /// section's own deserialization to report.
 fn check_network_keys(cfg: &Config, network: Network) -> Result<(), ConfigError> {
     let root = cfg
@@ -205,6 +207,14 @@ fn check_network_keys(cfg: &Config, network: Network) -> Result<(), ConfigError>
     collect_leaves("", root, &mut leaves);
     for (key, value) in leaves {
         if key == "network" || !key.ends_with(".network") {
+            continue;
+        }
+        // A table scoped to another network (e.g. `[mainnet.base_node]` while running esmeralda) is never used, so
+        // its `network` key does not matter.
+        let first_segment = key.split('.').next().unwrap_or("");
+        if let Ok(scope) = Network::from_str(first_segment) &&
+            scope != network
+        {
             continue;
         }
         let Ok(value) = value.into_string() else {
@@ -317,11 +327,19 @@ fn warn_if_secrets_readable(path: &Path, file_cfg: &Config) {
 #[cfg(not(unix))]
 fn warn_if_secrets_readable(_path: &Path, _file_cfg: &Config) {}
 
-/// Warns if a file that is about to be loaded (config or log config) could have been written by someone else. On Unix
-/// the file (following symlinks) and its immediate parent directory must be owned by the effective user and must not
-/// be group- or world-writable. This only warns; loading always continues. On other platforms this does nothing.
-#[cfg(unix)]
+/// Warns if a file that is about to be loaded could have been written by someone else. See [`untrusted_reasons`].
+/// This only warns; loading always continues.
 pub fn warn_if_untrusted(path: &Path) {
+    for reason in untrusted_reasons(path) {
+        warn!(target: LOG_TARGET, "⚠️  {reason}");
+    }
+}
+
+/// Returns why a file that is about to be loaded (config or log config) could have been written by someone else, or
+/// an empty list if it looks fine. On Unix the file (following symlinks) and its immediate parent directory must be
+/// owned by the effective user and must not be group- or world-writable. On other platforms this returns nothing.
+#[cfg(unix)]
+pub fn untrusted_reasons(path: &Path) -> Vec<String> {
     use std::os::unix::fs::MetadataExt;
 
     // SAFETY: geteuid has no preconditions and cannot fail.
@@ -330,15 +348,15 @@ pub fn warn_if_untrusted(path: &Path) {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
     };
+    let mut reasons = Vec::new();
     for (kind, p) in [("file", path), ("directory", parent)] {
         let Ok(metadata) = fs::metadata(p) else {
             continue;
         };
         let mode = metadata.mode() & 0o7777;
         if metadata.uid() != euid {
-            warn!(
-                target: LOG_TARGET,
-                "⚠️  The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
+            reasons.push(format!(
+                "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
                  control its contents. Fix with `chown {} {}` or use a base path you own.",
                 kind,
                 p.display(),
@@ -347,30 +365,34 @@ pub fn warn_if_untrusted(path: &Path) {
                 euid,
                 euid,
                 p.display()
-            );
+            ));
         }
         if mode & 0o022 != 0 {
-            warn!(
-                target: LOG_TARGET,
-                "⚠️  The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
+            reasons.push(format!(
+                "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
                  contents. Fix with `chmod go-w {}`.",
                 kind,
                 p.display(),
                 metadata.uid(),
                 mode,
                 p.display()
-            );
+            ));
         }
     }
+    reasons
 }
 
 #[cfg(not(unix))]
-pub fn warn_if_untrusted(_path: &Path) {}
+pub fn untrusted_reasons(_path: &Path) -> Vec<String> {
+    Vec::new()
+}
 
 /// Returns the value to display for a config key or environment variable. Values are masked as `***` unless the last
 /// key segment (split on `.` and `__`, case-insensitive, with any `tari_`/`minotari_` prefix removed) is known to be
 /// safe to show: `*_address`, `*_port`, `*_enabled`, `*_interval`, `*_timeout`, `*_path`, `*_dir`, `*_url` (with any
-/// `user:pass@` removed), `network`, `base_path` or `override_from`. Boolean and numeric values are always shown.
+/// `user:pass@` removed), `network`, `base_path` or `override_from`. Otherwise boolean and numeric values are shown.
+/// Keys that name a secret (password, passphrase, secret, seed, auth, token, cookie, mnemonic, private, ...) are
+/// always masked, whatever the value.
 pub fn mask_value(key: &str, value: &str) -> String {
     let lower = key.to_lowercase();
     let last = lower.rsplit('.').next().unwrap_or("");
@@ -380,6 +402,21 @@ pub fn mask_value(key: &str, value: &str) -> String {
         .or_else(|| last.strip_prefix("tari_"))
         .unwrap_or(last);
 
+    // Secrets are masked before anything else, so a numeric password or PIN is never shown
+    let secret_words = [
+        "password",
+        "passphrase",
+        "secret",
+        "seed",
+        "auth",
+        "token",
+        "cookie",
+        "mnemonic",
+        "private",
+    ];
+    if is_secret_key(last) || secret_words.iter().any(|w| last.contains(w)) {
+        return "***".to_string();
+    }
     let trimmed = value.trim();
     if trimmed.parse::<bool>().is_ok() || trimmed.parse::<f64>().is_ok() {
         return value.to_string();
@@ -623,6 +660,12 @@ mod test {
             "***"
         );
         assert_eq!(mask_value("something.unknown", "value"), "***");
+        // Secrets are masked even when numeric or boolean
+        assert_eq!(mask_value("wallet.password", "12345678"), "***");
+        assert_eq!(mask_value("MINOTARI_WALLET_PASSWORD", "123456"), "***");
+        assert_eq!(mask_value("TARI_WALLET__PASSPHRASE", "true"), "***");
+        assert_eq!(mask_value("some.api_token", "42"), "***");
+        assert_eq!(mask_value("base_node.grpc_port", "18142"), "18142");
         // Booleans and numbers print
         assert_eq!(mask_value("something.unknown", "true"), "true");
         assert_eq!(mask_value("something.unknown", "42"), "42");
@@ -661,6 +704,23 @@ mod test {
             .unwrap();
         let err = check_network_keys(&cfg, Network::MainNet).unwrap_err();
         assert!(err.to_string().contains("mainnet.wallet.network"));
+
+        // A table scoped to another network is ignored, even if it names that network
+        let cfg = Config::builder()
+            .set_override("mainnet.base_node.network", "mainnet")
+            .unwrap()
+            .set_override("nextnet.wallet.network", "esmeralda")
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(check_network_keys(&cfg, Network::Esmeralda).is_ok());
+        // ... but a mismatch in the resolved network's own table is still an error
+        let cfg = Config::builder()
+            .set_override("esmeralda.base_node.network", "mainnet")
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(check_network_keys(&cfg, Network::Esmeralda).is_err());
 
         // The top-level key is not checked here
         let cfg = Config::builder()
@@ -711,12 +771,57 @@ password = "scoped"
         fs::write(&path, "[wallet]\npassword = \"x\"\n").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
         warn_if_untrusted(&path);
+        assert!(!untrusted_reasons(&path).is_empty());
         warn_if_untrusted(&dir.path().join("does_not_exist.toml"));
         let file_cfg = Config::builder()
             .add_source(config::File::from(path.as_path()))
             .build()
             .unwrap();
         warn_if_secrets_readable(&path, &file_cfg);
+    }
+
+    struct TestOverrides(Vec<(String, String)>);
+    impl ConfigOverrideProvider for TestOverrides {
+        fn get_config_property_overrides(&self, _network: &Network) -> Vec<(String, String)> {
+            self.0.clone()
+        }
+    }
+
+    #[derive(Default, serde::Serialize, Deserialize)]
+    struct LoaderTestConfig {
+        overridden: String,
+        scoped_only: String,
+    }
+    impl crate::SubConfigPath for LoaderTestConfig {
+        fn main_key_prefix() -> &'static str {
+            "loader_test"
+        }
+    }
+
+    #[test]
+    fn loaded_config_carries_overrides_past_the_scoped_table() {
+        use crate::DefaultConfigLoader;
+
+        // Use the network this build allows, since loading sets the process-wide network
+        let network = crate::network_check::is_network_choice_valid(Network::MainNet)
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::NextNet))
+            .or_else(|_| crate::network_check::is_network_choice_valid(Network::Esmeralda))
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            format!(
+                "[loader_test]\noverride_from = \"{network}\"\noverridden = \"file\"\nscoped_only = \
+                 \"file\"\n\n[{network}.loader_test]\noverridden = \"scoped\"\nscoped_only = \"scoped\"\n"
+            ),
+        )
+        .unwrap();
+        let overrides = TestOverrides(vec![("loader_test.overridden".to_string(), "from -p".to_string())]);
+        let cfg = load_configuration_with_overrides(&path, &overrides, Some(network)).unwrap();
+        let loaded = <LoaderTestConfig as DefaultConfigLoader>::load_from(&cfg).unwrap();
+        assert_eq!(loaded.overridden, "from -p");
+        assert_eq!(loaded.scoped_only, "scoped");
     }
 
     #[test]

@@ -59,7 +59,7 @@ provides network services.
 
 **Core Node Configuration**:
 
-- `base_node.network=<network>` - Network type (mainnet, esmeralda, nextnet, stagenet, igor)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p base_node.network=...` value that differs from the selected network is rejected at startup.
 - `base_node.identity_file=<path>` - Node identity file path
 - `base_node.use_libtor=<bool>` - Use built-in Tor instance
 - `base_node.tor_identity_file=<path>` - Tor identity file path
@@ -544,7 +544,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Mining Configuration**:
 
-- `miner.network=<network>` - Mining network (mainnet, esmeralda, nextnet, stagenet)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p miner.network=...` value that differs from the selected network is rejected at startup.
 - `miner.base_node_grpc_address=<address>` - Base node gRPC address (default: "http://127.0.0.1:18142")
 - `miner.base_node_grpc_authentication=<auth>` - Base node gRPC authentication (username/password)
 - `miner.base_node_grpc_tls_domain_name=<domain>` - gRPC TLS domain name
@@ -605,7 +605,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Proxy Configuration**:
 
-- `merge_mining_proxy.network=<network>` - Proxy network (mainnet, esmeralda, nextnet, stagenet)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. A `-p merge_mining_proxy.network=...` value that differs from the selected network is rejected at startup.
 - `merge_mining_proxy.listener_address=<address>` - Proxy listener address (default: "/ip4/127.0.0.1/tcp/18081")
 - `merge_mining_proxy.submit_to_origin=<bool>` - Submit to Monero blockchain (default: true)
 - `merge_mining_proxy.wait_for_initial_sync_at_startup=<bool>` - Wait for base node sync (default: true)
@@ -621,6 +621,9 @@ The wallet supports extensive subcommands for various operations:
 - `merge_mining_proxy.use_dynamic_fail_data=<bool>` - Use dynamic monerod URLs from monero.fail (default: true)
 - `merge_mining_proxy.monero_fail_url=<url>` - Monero fail URL for dynamic URLs
 - `merge_mining_proxy.monerod_url=<urls>` - Static monerod URLs list (when dynamic disabled)
+  - **Security:** the proxy builds Monero block templates from the monerod it talks to. A public or untrusted monerod
+    can return a template that pays the Monero block reward to someone else; run your own monerod if you can.
+    `monerod_username`/`monerod_password` sent to an `http://` URL travel in cleartext; use `https://` for remote nodes.
 - `merge_mining_proxy.monerod_username=<user>` - Monerod username
 - `merge_mining_proxy.monerod_password=<pass>` - Monerod password
 - `merge_mining_proxy.monerod_use_auth=<bool>` - Enable monerod authentication (default: false)
@@ -738,8 +741,8 @@ All applications support configuration overrides using the `-p` parameter:
 **Examples**:
 
 ```bash
-# Set network
--p "base_node.network=esmeralda"
+# Set network (use --network, not -p)
+--network esmeralda
 
 # Configure gRPC
 -p "base_node.grpc_enabled=true"

@@ -28,9 +28,10 @@ use std::{
     path::Path,
 };
 
+use log::warn;
 use log4rs::config::RawConfig;
 
-use crate::{ConfigError, configuration::utils::warn_if_untrusted};
+use crate::{ConfigError, LOG_TARGET, configuration::utils::untrusted_reasons};
 
 /// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
 /// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
@@ -61,8 +62,21 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
         }
     }
 
-    warn_if_untrusted(config_file);
+    // No logger exists yet, so the findings are logged once logging is up, or printed if it fails to start
+    let untrusted = untrusted_reasons(config_file);
+    let result = read_and_init_logging(config_file, base_path);
+    for reason in untrusted {
+        if result.is_ok() {
+            warn!(target: LOG_TARGET, "⚠️  {reason}");
+        } else {
+            eprintln!("WARNING: {reason}");
+        }
+    }
+    result
+}
 
+/// Reads the log4rs config file, substitutes `{{log_dir}}` and starts log4rs.
+fn read_and_init_logging(config_file: &Path, base_path: &Path) -> Result<(), ConfigError> {
     let mut file =
         File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
     let mut contents = String::new();
