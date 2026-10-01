@@ -327,14 +327,55 @@ jobs:
       - name: run the license check
         run: ./scripts/file_license_check.sh
 
+  # Unlike the `test` job, this one must pass: it fails when a type's serde, borsh and protobuf decoders stop
+  # accepting the same values (see scripts/decoder_parity_check.py and
+  # applications/minotari_app_grpc/tests/decoder_parity.rs).
   decoder-parity:
     name: decoder parity
-    runs-on: [ubuntu-latest]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v7
       - name: check that no type with a fallible from_bytes derives its serde or borsh decoder
         run: python3 ./scripts/decoder_parity_check.py
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+      - name: caching (stable)
+        if: startsWith(runner.environment,'self-hosted')
+        uses: maxnowack/local-cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-decoder-parity
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+      - name: cross-family decoder parity (serde_json, bincode, borsh, P2P proto, gRPC proto)
+        run: cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
+      - name: ValidatedDecode tests
+        run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_max_size --lib -- validated_decode
+      - name: TariScript and ExecutionStack decoder tests
+        run: >-
+          cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
+      - name: TariAddress decoder tests
+        run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
+      - name: MemoField, EncryptedData, KernelFeatures and Covenant decoder tests
+        run: >-
+          cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
+          memo_field encrypted_data kernel_features covenants
 
   test:
     name: test
