@@ -898,6 +898,22 @@ mod validator_node_exit {
             )
         }
 
+        /// Runs the mempool's chain-linked validation of a body spending `output`
+        fn check_spend(&self, output: &TransactionOutput) -> Result<(), ValidationError> {
+            let input = TransactionInput::new_current_version(
+                SpentOutput::create_from_output(output.clone()),
+                ExecutionStack::default(),
+                Default::default(),
+            );
+            let body = AggregateBody::new_unsorted(vec![input], vec![], vec![]);
+            let tip = self.db.fetch_tip_header().unwrap();
+            AggregateBodyChainLinkedValidator::new(self.db.rules().clone()).validate_transaction_body(
+                &body,
+                tip.header(),
+                &*self.db.db_read_access().unwrap(),
+            )
+        }
+
         fn check_registration(&self, output: &TransactionOutput) -> Result<(), ValidationError> {
             check_validator_node_registration(&*self.db.db_read_access().unwrap(), output, self.current_epoch())
         }
@@ -1087,69 +1103,6 @@ mod validator_node_exit {
     }
 
     #[test]
-    fn it_commits_the_spend_of_a_registration_after_its_exit_has_taken_effect() {
-        // The normal way to reclaim the stake. The exit already moved the entry out of the registered set, so the spend
-        // must not try to remove it again (that used to fail at commit time and halt block templates).
-        let mut chain = Chain::new();
-        let (_, registration) = chain.mine_spendable(chain.registration_features());
-        chain.mine_epochs(2);
-        let activation_epoch = chain.activation_epoch().unwrap();
-        chain.mine(chain.exit_features(activation_epoch));
-        chain.mine_epochs(2);
-        assert!(
-            !chain
-                .db
-                .db_read_access()
-                .unwrap()
-                .validator_node_is_active(None, chain.current_epoch(), &chain.public_key)
-                .unwrap()
-        );
-
-        chain.spend(registration);
-        assert_eq!(chain.activation_epoch(), None);
-    }
-
-    #[test]
-    fn spending_an_old_registration_does_not_remove_a_newer_one() {
-        // register R1 -> exit -> (exit takes effect) -> register R2 -> spend R1: the registered set is keyed by public
-        // key only, so the spend of R1 must leave R2's entry alone (and R2's own spend must then still work).
-        let mut chain = Chain::new();
-        let (_, r1) = chain.mine_spendable(chain.registration_features());
-        chain.mine_epochs(2);
-        let activation_epoch = chain.activation_epoch().unwrap();
-        chain.mine(chain.exit_features(activation_epoch));
-        chain.mine_epochs(2);
-        let (r2_output, r2) = chain.mine_spendable(chain.registration_features());
-        assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
-
-        chain.spend(r1);
-        assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
-
-        // R2 has not activated yet, so it may be spent, which removes it
-        chain.spend(r2);
-        assert_eq!(chain.registered_commitment(), None);
-    }
-
-    #[test]
-    fn rewinding_a_pre_activation_registration_spend_and_the_registration_is_clean() {
-        // register -> spend before activation -> rewind the spend -> rewind the registration. The spend removed the
-        // entry and rewinding it does not restore it (KNOWN RESIDUAL, see `tip_delete_block_inputs_outputs`), so
-        // rewinding the registration must tolerate the missing entry instead of aborting the reorg.
-        let mut chain = Chain::new();
-        let height_before = chain.tip_height();
-        let (_, registration) = chain.mine_spendable(chain.registration_features());
-        assert!(chain.activation_epoch().unwrap() > chain.current_epoch());
-        chain.spend(registration);
-        assert_eq!(chain.activation_epoch(), None);
-
-        chain.db.rewind_to_height(height_before + 1).unwrap();
-        assert_eq!(chain.activation_epoch(), None);
-        chain.db.rewind_to_height(height_before).unwrap();
-        assert_eq!(chain.activation_epoch(), None);
-        assert_eq!(chain.tip_height(), height_before);
-    }
-
-    #[test]
     fn rewinding_an_exit_and_the_registration_restores_and_then_removes_the_entry() {
         let mut chain = Chain::new();
         let height_before = chain.tip_height();
@@ -1164,40 +1117,155 @@ mod validator_node_exit {
         assert_eq!(chain.registered_commitment(), None);
     }
 
+    fn assert_spend_disallowed(result: Result<(), ValidationError>) {
+        let err = result.unwrap_err();
+        assert!(matches!(err, ValidationError::OutputSpendRuleDisallow { .. }), "{err}");
+    }
+
+    #[test]
+    fn a_registration_cannot_be_spent_until_its_exit_has_taken_effect() {
+        // Unmined (e.g. in the same body or still in the mempool): rejected
+        let mut chain = Chain::new();
+        assert_spend_disallowed(chain.check_spend(&chain.registration_output()));
+
+        // Pending activation: rejected (a pending registration cannot be cancelled by spending it)
+        let (registration, wallet_output) = chain.mine_spendable(chain.registration_features());
+        assert!(chain.activation_epoch().unwrap() > chain.current_epoch());
+        assert_spend_disallowed(chain.check_spend(&registration));
+
+        // Active: rejected
+        chain.mine_epochs(2);
+        let activation_epoch = chain.activation_epoch().unwrap();
+        assert!(activation_epoch <= chain.current_epoch());
+        assert_spend_disallowed(chain.check_spend(&registration));
+
+        // Exit queued for a later epoch: still rejected
+        chain.mine(chain.exit_features(activation_epoch));
+        assert_spend_disallowed(chain.check_spend(&registration));
+
+        // Exit taken effect: the stake can be reclaimed, and the spend commits without touching the validator node set
+        chain.mine_epochs(2);
+        chain.check_spend(&registration).unwrap();
+        chain.spend(wallet_output);
+        assert_eq!(chain.activation_epoch(), None);
+    }
+
+    #[test]
+    fn spending_an_old_registration_does_not_touch_a_newer_one() {
+        // register R1 -> exit -> (exit takes effect) -> register R2 -> spend R1: the registered set is keyed by public
+        // key only, but R2's entry was created by a different output, so R1 is spendable and R2 is untouched (and
+        // locked).
+        let mut chain = Chain::new();
+        let (r1_output, r1) = chain.mine_spendable(chain.registration_features());
+        chain.mine_epochs(2);
+        let activation_epoch = chain.activation_epoch().unwrap();
+        chain.mine(chain.exit_features(activation_epoch));
+        chain.mine_epochs(2);
+        let r2_output = chain.mine(chain.registration_features());
+        assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
+
+        chain.check_spend(&r1_output).unwrap();
+        chain.spend(r1);
+        assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
+        assert_spend_disallowed(chain.check_spend(&r2_output));
+    }
+
+    #[test]
+    fn rewinding_a_registration_removes_its_entry() {
+        let mut chain = Chain::new();
+        let height_before = chain.tip_height();
+        let registration = chain.mine(chain.registration_features());
+        assert_eq!(chain.registered_commitment(), Some(registration.commitment));
+        chain.db.rewind_to_height(height_before).unwrap();
+        assert_eq!(chain.registered_commitment(), None);
+    }
+
+    #[test]
+    fn rewinding_an_exit_spent_in_the_same_block_restores_the_validator_node() {
+        // The exit output is also spent in the block that mines it. Applying the block ran the exit for it, so
+        // rewinding the block must undo the exit too (it used to be skipped as an "immediate spend").
+        let mut chain = Chain::new();
+        let (_, activation_epoch) = chain.register_and_activate();
+        let height_activated = chain.tip_height();
+        let entry_before = chain
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_validator_node_entry(None, &chain.public_key)
+            .unwrap()
+            .unwrap();
+
+        let from = chain.spendable.pop().unwrap();
+        let (mut txs, outputs) = schema_to_transaction(
+            &[txn_schema!(from: vec![from], to: vec![T], features: chain.exit_features(activation_epoch))],
+            &chain.key_manager,
+        );
+        let exit = outputs
+            .into_iter()
+            .find(|o| o.features().sidechain_feature.is_some())
+            .unwrap();
+        let (spend, _) = schema_to_transaction(
+            &[txn_schema!(from: vec![exit], to: vec![MicroMinotari(500_000)])],
+            &chain.key_manager,
+        );
+        txs.extend(spend);
+        chain.mine_txs(txs);
+        assert_eq!(chain.registered_commitment(), None);
+
+        chain.db.rewind_to_height(height_activated).unwrap();
+        let entry_after = chain
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_validator_node_entry(None, &chain.public_key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(entry_after.commitment, entry_before.commitment);
+        assert_eq!(entry_after.activation_epoch, entry_before.activation_epoch);
+        assert_eq!(entry_after.registration_epoch, entry_before.registration_epoch);
+        assert_eq!(entry_after.shard_key, entry_before.shard_key);
+        // And it can exit again
+        chain.check_exit(&chain.exit_output(activation_epoch)).unwrap();
+    }
+
     #[test]
     fn the_mempool_evaluates_the_registration_spend_lock_at_the_next_block_height() {
-        // The registration activates in the epoch after the tip's, and the tip is the last block of its epoch. A spend
-        // of the registration is not locked at the tip, but is in the next block (the earliest it could be mined in),
-        // so the mempool must reject it.
+        // The validator node is queued to exit at the start of the next epoch, and the tip is the last block of the
+        // current one. At the tip the validator node still counts as active, but in the next block (the earliest the
+        // spend can be mined in) its exit has taken effect, so the mempool accepts the spend.
         let mut chain = Chain::new();
-        let registration = chain.mine(chain.registration_features());
+        let (registration, activation_epoch) = chain.register_and_activate();
+        chain.mine(chain.exit_features(activation_epoch));
         let epoch_length = chain.db.consensus_constants().unwrap().epoch_length();
+        let tip_height = chain.tip_height();
+        let blocks_to_epoch_end = epoch_length - 1 - tip_height % epoch_length;
         add_many_chained_blocks(
-            usize::try_from(epoch_length - 1 - chain.tip_height()).unwrap(),
+            usize::try_from(blocks_to_epoch_end).unwrap(),
             &chain.db,
             &chain.key_manager,
         );
-        let tip = chain.db.fetch_tip_header().unwrap();
         let tip_epoch = chain
             .db
             .consensus_constants()
             .unwrap()
-            .block_height_to_epoch(tip.height());
-        assert_eq!(chain.activation_epoch(), Some(tip_epoch.saturating_add(VnEpoch(1))));
-        let db = chain.db.db_read_access().unwrap();
-        assert!(!db.validator_node_is_active(None, tip_epoch, &chain.public_key).unwrap());
-
-        let input = TransactionInput::new_current_version(
-            SpentOutput::create_from_output(registration),
-            ExecutionStack::default(),
-            Default::default(),
+            .block_height_to_epoch(chain.tip_height());
+        assert!(
+            chain
+                .db
+                .db_read_access()
+                .unwrap()
+                .validator_node_is_active(None, tip_epoch, &chain.public_key)
+                .unwrap()
         );
-        let body = AggregateBody::new_unsorted(vec![input], vec![], vec![]);
-        let validator = AggregateBodyChainLinkedValidator::new(chain.db.rules().clone());
-        let err = validator
-            .validate_transaction_body(&body, tip.header(), &*db)
-            .unwrap_err();
-        assert!(matches!(err, ValidationError::OutputSpendRuleDisallow { .. }), "{err}");
+        assert!(
+            !chain
+                .db
+                .db_read_access()
+                .unwrap()
+                .validator_node_is_active(None, chain.current_epoch(), &chain.public_key)
+                .unwrap()
+        );
+        chain.check_spend(&registration).unwrap();
     }
 
     #[test]

@@ -121,13 +121,11 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
     }
 
     /// Removes the registered validator node `public_key` only if its entry was created by the registration output with
-    /// `commitment`. Returns whether it was removed.
+    /// `commitment`, returning whether it was removed. Used when rewinding the block that mined that registration.
     ///
-    /// The entry may legitimately be absent - the validator node exited (its entry moved to the exit queue), or the
-    /// registration was already removed - or belong to a later registration of the same validator node (the set is
-    /// keyed by sidechain + public key only). In neither case must anything be removed, and it must not be an error:
-    /// spending (or rewinding) such a registration output is valid, and failing the block at commit time would halt
-    /// block templates.
+    /// The set is keyed by sidechain + public key only, so the commitment check guarantees that an entry belonging to
+    /// a different registration of the same validator node is never removed. A missing or non-matching entry is not an
+    /// error, so that an unexpected state cannot abort a reorg; the caller logs it.
     pub fn delete_registration(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,

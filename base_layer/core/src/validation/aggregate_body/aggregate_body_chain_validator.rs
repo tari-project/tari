@@ -23,7 +23,10 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedCommitment, HashOutput},
+};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
@@ -478,15 +481,17 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     match &input.spent_output {
         SpentOutput::OutputHash(_) => unreachable!("check_output_feature_rules_for_input: SpentOutput not hydrated"),
-        SpentOutput::OutputData { features, .. } => {
+        SpentOutput::OutputData {
+            features, commitment, ..
+        } => {
             match features.output_type {
                 OutputType::Standard | OutputType::Coinbase => {
                     // no special spend rules
                 },
 
                 OutputType::ValidatorNodeRegistration => {
-                    // Prevents validator node registration output from being spent if the validator is still active.
-                    // Effectively locking the funds in the UTXO until the validator exits.
+                    // Locks the registration funds from registration until the validator node's exit has taken
+                    // effect (see `check_validator_node_registration_spend`).
                     let reg = features.validator_node_registration().ok_or_else(|| {
                         ValidationError::OutputTypeNotMatchSidechainData {
                             output_type: features.output_type,
@@ -495,7 +500,7 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
                                 .to_string(),
                         }
                     })?;
-                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), vn_epoch)?
+                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), commitment, vn_epoch)?
                 },
                 OutputType::ValidatorNodeExit => {
                     // should we disallow this? Since this UTXO has been processed w.r.t the active validator set, there
@@ -531,20 +536,44 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
     Ok(())
 }
 
+/// A validator node registration output (`commitment`) cannot be spent while a validator node entry for it exists; it
+/// becomes spendable once the validator node's exit epoch is reached. Specifically, the spend is rejected if:
+/// - the registration output is not (yet) in the chain's unspent set: it is created in the same body or is still in the
+///   mempool, so it is about to create an entry;
+/// - a registered validator node entry created by this output exists, whether pending activation or active;
+/// - the validator node is still active in `epoch`, which covers one queued to exit in a later epoch.
+///
+/// Spending a registration therefore never changes the validator node set (and committing or rewinding a spend never
+/// touches it). This deliberately means a pending registration cannot be cancelled by spending it: it must activate
+/// and exit.
 fn check_validator_node_registration_spend<B: BlockchainBackend>(
     db: &B,
     reg: &ValidatorNodeRegistration,
     sidechain_id: Option<&SideChainId>,
+    commitment: &CompressedCommitment,
     epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
-    if db.validator_node_is_active(sidechain_id.map(|id| id.public_key()), epoch, reg.public_key())? {
-        return Err(ValidationError::OutputSpendRuleDisallow {
+    let sidechain_pk = sidechain_id.map(|id| id.public_key());
+    let reject = |reason: &str| {
+        Err(ValidationError::OutputSpendRuleDisallow {
             output_type: OutputType::ValidatorNodeRegistration,
             details: format!(
-                "Validator node registration {} is active and cannot be spent",
+                "Validator node registration {} cannot be spent: {reason}",
                 reg.public_key()
             ),
-        });
+        })
+    };
+    if db.fetch_unspent_output_hash_by_commitment(commitment)?.is_none() {
+        return reject("the registration output is not mined yet");
+    }
+    if db
+        .fetch_validator_node_entry(sidechain_pk, reg.public_key())?
+        .is_some_and(|entry| entry.commitment == *commitment)
+    {
+        return reject("the validator node is registered (pending activation or active)");
+    }
+    if db.validator_node_is_active(sidechain_pk, epoch, reg.public_key())? {
+        return reject("the validator node is active until its exit epoch");
     }
     Ok(())
 }
