@@ -24,7 +24,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::{
     cmp::max,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -47,7 +47,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
     tari_proof_of_work::{PowAlgorithm, PowError},
-    transaction_components::Transaction,
+    transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{RwLock, watch};
@@ -64,7 +64,15 @@ use crate::{
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
     },
-    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainBackend,
+        ChainStorageError,
+        DbKey,
+        DbValue,
+        MinedInfo,
+        async_db::AsyncBlockchainDb,
+    },
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
@@ -1178,6 +1186,15 @@ where B: BlockchainBackend + 'static
     async fn hydrate_block(&mut self, block: Block) -> Result<Arc<Block>, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
+        // Reject an oversized body before doing any work per input. The limit is measured on the compact form, so this
+        // is the same check whether the inputs arrived compact or hydrated.
+        if let Err(source) =
+            helpers::check_block_body_size(&block, self.consensus_manager.consensus_constants(block_height))
+        {
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError { source },
+            ));
+        }
         if block.body.inputs().is_empty() {
             debug!(
                 target: LOG_TARGET,
@@ -1192,6 +1209,8 @@ where B: BlockchainBackend + 'static
         let (header, mut inputs, outputs, kernels) = block.dissolve();
 
         let db = self.blockchain_db.inner().db_read_access()?;
+        // The hashes of the block's own outputs, computed on the first input that is not in the database
+        let mut block_outputs: Option<HashMap<HashOutput, &TransactionOutput>> = None;
         for input in &mut inputs {
             if !input.is_compact() {
                 continue;
@@ -1200,31 +1219,43 @@ where B: BlockchainBackend + 'static
             // Only the output's contents are used to hydrate the input, and those are identical for
             // every index entry of the same output hash, so taking any entry is equivalent.
             let output_hash = input.output_hash();
-            let output = match db.fetch_outputs(&output_hash)?.into_iter().next() {
-                Some(output_mined_info) => output_mined_info.output,
-                // An output created and spent in the same block
-                None => match outputs.iter().find(|o| o.hash() == output_hash) {
-                    Some(output) => output.clone(),
-                    None => {
-                        let details = format!("Output {output_hash} to be spent does not exist in db");
-                        // A block on our tip can only spend outputs we have, so it is invalid. A block on another
-                        // chain can spend outputs from that chain that we have never seen, which says nothing about
-                        // the peer that sent it, so it is dropped without blaming the peer.
-                        if header.prev_hash == *db.fetch_chain_metadata()?.best_block_hash() {
-                            return Err(CommsInterfaceError::InvalidFullBlock {
-                                hash: block_hash,
-                                details,
-                            });
-                        }
-                        return Err(CommsInterfaceError::UnknownSpentOutputs {
-                            hash: block_hash,
-                            details,
-                        });
-                    },
-                },
-            };
+            if let Some(output_mined_info) = db.fetch_outputs(&output_hash)?.into_iter().next() {
+                input.add_output_data(output_mined_info.output);
+                continue;
+            }
+            // An output created and spent in the same block
+            let block_outputs = block_outputs.get_or_insert_with(|| outputs.iter().map(|o| (o.hash(), o)).collect());
+            if let Some(output) = block_outputs.get(&output_hash) {
+                input.add_output_data((*output).clone());
+                continue;
+            }
 
-            input.add_output_data(output);
+            let details = format!("Output {output_hash} to be spent does not exist in db");
+            // A block whose parent is on our main chain can only spend outputs from our main chain or from itself, so
+            // it is invalid. That holds only if we still have every output the block could spend: the parent must be
+            // at or below our best block (header sync stores headers ahead of their bodies), and at or above our
+            // pruned height (a pruned node deletes outputs spent at or below it, and an output spent on our chain
+            // after the parent may still be spent by a block on the parent).
+            //
+            // A block on another chain can spend outputs from that chain that we have never seen, which says nothing
+            // about the peer that sent it, so it is dropped without blaming the peer.
+            let metadata = db.fetch_chain_metadata()?;
+            let parent_height = match db.fetch(&DbKey::HeaderHash(header.prev_hash))? {
+                Some(DbValue::HeaderHash(parent)) => Some(parent.height),
+                _ => None,
+            };
+            let parent_outputs_complete = parent_height
+                .is_some_and(|height| height >= metadata.pruned_height() && height <= metadata.best_block_height());
+            if parent_outputs_complete {
+                return Err(CommsInterfaceError::InvalidFullBlock {
+                    hash: block_hash,
+                    details,
+                });
+            }
+            return Err(CommsInterfaceError::UnknownSpentOutputs {
+                hash: block_hash,
+                details,
+            });
         }
         debug!(
             target: LOG_TARGET,

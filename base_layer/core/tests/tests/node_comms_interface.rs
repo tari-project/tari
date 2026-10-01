@@ -56,7 +56,14 @@ use tari_transaction_components::{
     tari_amount::T,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::{create_utxo, schema_to_transaction},
-    transaction_components::{SpentOutput, Transaction, TransactionInput, WalletOutput, covenants::Covenant},
+    transaction_components::{
+        SpentOutput,
+        Transaction,
+        TransactionInput,
+        TransactionOutput,
+        WalletOutput,
+        covenants::Covenant,
+    },
     txn_schema,
 };
 use tokio::sync::{broadcast, mpsc};
@@ -638,15 +645,15 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
 }
 
 /// A compact input is hydrated from the database, or from an output created in the same block. An input that can be
-/// resolved from neither makes a block on our tip invalid, but a block on another chain may spend outputs from that
-/// chain that we have never seen, so the peer that sent it is not banned.
+/// resolved from neither makes a block on our main chain invalid, but a block on another chain may spend outputs from
+/// that chain that we have never seen, so the peer that sent it is not banned.
 #[tokio::test]
 async fn compact_inputs_that_cannot_be_hydrated() {
     let network = Network::LocalNet;
     let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
     let tx = spend_genesis_output(&outputs, &key_manager);
     let block = prepare_block(&store, &blocks[0], vec![tx], &rules, &key_manager);
-    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    let mut handlers = new_handlers(&store, new_mempool(), rules.clone());
 
     // An extra input spending an output of the same block is hydrated from the block. The block is then invalid for
     // other reasons (its MMR roots), but not because the input could not be hydrated.
@@ -694,7 +701,25 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
     assert!(err.get_ban_reason().is_some());
 
-    // On another chain: dropped without banning the peer
+    // On a main chain block that is not the tip: still invalid, and the peer is banned
+    let (block1, _) = append_block(
+        &store,
+        &blocks[0],
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+    assert_eq!(store.get_height().unwrap(), 1);
+    let err = handlers
+        .handle_block(unknown_spend(*blocks[0].hash()), None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
+    assert!(err.get_ban_reason().is_some());
+
+    // On an unknown parent: dropped without banning the peer
     let err = handlers
         .handle_block(unknown_spend(FixedHash::from([9u8; 32])), None)
         .await
@@ -704,4 +729,64 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         "{err:?}"
     );
     assert!(err.get_ban_reason().is_none());
+
+    // On a parent that is in the orphan pool: dropped without banning the peer
+    let orphan = prepare_block(&store, &block1, vec![], &rules, &key_manager);
+    let mut orphan_header = orphan.header.clone();
+    orphan_header.prev_hash = FixedHash::from([5u8; 32]);
+    let orphan = Block::new(orphan_header, orphan.body);
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    let err = handlers
+        .handle_block(unknown_spend(orphan.hash()), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
+}
+
+/// Inputs that are not in the database are looked up among the block's own outputs. That lookup must not cost a pass
+/// over every output for every input.
+#[tokio::test]
+async fn hydrating_many_in_block_spends_completes() {
+    const COUNT: usize = 5_000;
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, _) = create_new_blockchain(network);
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+
+    let outputs = (0..COUNT)
+        .map(|i| TransactionOutput {
+            minimum_value_promise: MicroMinotari::from(u64::try_from(i).unwrap()),
+            ..Default::default()
+        })
+        .collect::<Vec<_>>();
+    // Every input spends an output of the block, except the last, which spends an output nobody has
+    let mut inputs = outputs
+        .iter()
+        .map(|output| {
+            TransactionInput::new_current_version(
+                SpentOutput::OutputHash(output.hash()),
+                Default::default(),
+                Default::default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    inputs.push(TransactionInput::new_current_version(
+        SpentOutput::OutputHash(FixedHash::from([7u8; 32])),
+        Default::default(),
+        Default::default(),
+    ));
+    let mut header = blocks[0].header().clone();
+    header.height = 1;
+    header.prev_hash = FixedHash::from([9u8; 32]);
+    let block = Block::new(header, AggregateBody::new_unsorted(inputs, outputs, vec![]));
+
+    let err = handlers.handle_block(block, None).await.unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        "{err:?}"
+    );
 }
