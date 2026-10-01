@@ -98,7 +98,7 @@ pub(super) struct RawTransactionInfo {
     pub total_sender_nonce: CompressedPublicKey,
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
-    /// A user payment ID for the sender/receiver. Read without the memo size limits, see
+    /// A user payment ID for the sender/receiver. Read without the `Open` / `Raw` memo size limits, see
     /// `deserialize_legacy_unchecked`.
     #[serde(deserialize_with = "deserialize_legacy_unchecked")]
     pub payment_id: MemoField,
@@ -118,7 +118,7 @@ pub struct SingleRoundSenderData {
     pub public_nonce: CompressedPublicKey,
     /// Metadata used to construct the transaction kernel
     pub metadata: TransactionMetadata,
-    /// A user payment ID for the sender/receiver. Read without the memo size limits, see
+    /// A user payment ID for the sender/receiver. Read without the `Open` / `Raw` memo size limits, see
     /// `deserialize_legacy_unchecked`.
     #[serde(deserialize_with = "deserialize_legacy_unchecked")]
     pub payment_id: MemoField,

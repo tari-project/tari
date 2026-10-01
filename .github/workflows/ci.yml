@@ -352,30 +352,30 @@ jobs:
       - name: Cache cargo files and outputs
         uses: Swatinem/rust-cache@v2
       - name: cross-family decoder parity (serde_json, bincode, borsh, P2P proto, gRPC proto)
-        run: cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
       - name: ValidatedDecode tests
-        run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_max_size --lib -- validated_decode
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_max_size --lib -- validated_decode
       - name: TariScript and ExecutionStack decoder tests
         run: >-
-          cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
       - name: TariAddress decoder tests
-        run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
       - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody, Difficulty and TariKeyId decoder tests
         run: >-
-          cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
           memo_field encrypted_data kernel_features covenants aggregated_body tari_proof_of_work::difficulty
           key_manager::key_id
       - name: Legacy wallet records with oversized memos still load
         run: >-
-          cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
           legacy_transaction_protocol
       - name: Imported wallet transactions get the same status check as new ones; legacy key ids still load
         run: >-
-          cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
           import_transaction_rejects_the_coinbase_status test_legacy_derived_spend_key_reads_migrates_and_reads_again
       - name: Node submit paths decode through the P2P proto
         run: >-
-          cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
           grpc::base_node_grpc_server::test http::handler::json_rpc
 
   test:

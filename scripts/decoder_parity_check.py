@@ -39,6 +39,7 @@
 #       functions, and those call the P2P round-trip. The gRPC conversions currently agree with the P2P ones on every
 #       value the decoder parity tests sample, so for `submit_block` and `submit_transaction` this check, not a
 #       behavioural test, is what fails if the round-trip is removed.
+#    The scan fails if `GRPC_SERVER` or `JSON_RPC_HANDLER` is not found under `INGRESS_DIR`.
 #    Not checked: decoders reached in other ways (another extractor type, a decode call through a generic function,
 #    a helper that is listed but does something else), and code outside `applications/minotari_node/src`.
 #
@@ -89,9 +90,14 @@ ALLOWED = {
     "base_layer/wallet:CompletedTransaction": "`new` rejects the `Coinbase` status. Records decoded from client JSON "
     "(gRPC `import_transactions`) are stored through `import_transaction`, which applies the same check; the FFI "
     "`create_tari_completed_transaction_from_json` only feeds getters and stores nothing",
+    # A validating constructor whose decoder is left lenient on purpose
+    "base_layer/common_types:ChainMetadata": "`new` rejects a zero accumulated difficulty and a pruned height above "
+    "the best block height; every value is built through it (the fields are private), including the P2P protobuf "
+    "conversion. The serde form is also decoded from a remote base node's HTTP JSON (`TipInfoResponse.metadata` in "
+    "`base_node_wallet_client`), whose wallet consumers only read `best_block_height` and `best_block_hash`, and from "
+    "the node's own LMDB and the wallet's cached copy. That cache is written from the HTTP value (so a remote node can put "
+    "any value there) and may predate #6146, which added the checks, so the decoder is left lenient",
     # Validating constructors of data that is only decoded from the node's own database
-    "base_layer/common_types:ChainMetadata": "`new` rejects a zero accumulated difficulty; the P2P protobuf "
-    "conversion builds it through `new`, and the serde form is only read from the node's own database",
     "base_layer/mmr:BranchNode": "`new` checks the children of a sparse Merkle tree branch; the tree is only decoded "
     "from the node's own database, never from peers or RPC input",
     "base_layer/mmr:macro@base_layer/mmr/src/sparse_merkle_tree/node.rs": "`hash_type!` declares fixed `[u8; 32]` "
@@ -132,6 +138,9 @@ HTTP_REQUEST_TYPES = {
     "TransactionQueryQueryParams",
 }
 GRPC_SERVER = os.path.join(INGRESS_DIR, "grpc", "base_node_grpc_server.rs")
+JSON_RPC_HANDLER = os.path.join(INGRESS_DIR, "http", "handler", "json_rpc", "mod.rs")
+# The scan fails if any of these is not found, so that moving a file can not silently disable a check
+REQUIRED_INGRESS_FILES = [GRPC_SERVER, JSON_RPC_HANDLER]
 # function -> the function it must call
 GRPC_SUBMIT_CALLS = {
     "submit_block": "decode_submit_block_request",
@@ -455,6 +464,7 @@ def scan_tree():
     constructors = {}
     macro_types = []
     ingress = []
+    visited = set()
     for top in SCAN_DIRS:
         for root, dirs, files in os.walk(top):
             dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
@@ -464,8 +474,12 @@ def scan_tree():
                     scan_file(path, derived, constructors, macro_types)
                     if path.startswith(INGRESS_DIR + os.sep):
                         scan_ingress_file(path, ingress)
+                        visited.add(path)
                     if path == GRPC_SERVER:
                         scan_grpc_submit_wiring(path, ingress)
+    for required in REQUIRED_INGRESS_FILES:
+        if required not in visited:
+            ingress.append(f"{required}: not found; update INGRESS_DIR / REQUIRED_INGRESS_FILES if it moved")
     return findings(derived, constructors, macro_types) + ingress
 
 

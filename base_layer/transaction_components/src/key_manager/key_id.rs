@@ -214,6 +214,8 @@ impl FromStr for TariKeyId {
     type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
+        // Checks the whole string, every nested key id and the nesting depth up front
+        check_key_string(id)?;
         let parts: Vec<&str> = id.split('.').collect();
         match parts.first() {
             None => Err("Out of bounds".to_string()),
@@ -226,7 +228,6 @@ impl FromStr for TariKeyId {
                     if key.is_empty() {
                         return Err("Wrong derived format".to_string());
                     };
-                    check_key_string(&key)?;
                     Ok(TariKeyId::Derived {
                         key: SerializedKeyString::from(key),
                     })
@@ -238,7 +239,6 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
-                    check_key_string(&private_key)?;
                     Ok(TariKeyId::DHCommitmentMask {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -251,7 +251,6 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
-                    check_key_string(&private_key)?;
                     Ok(TariKeyId::DHEncryptedData {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -264,7 +263,6 @@ impl FromStr for TariKeyId {
                     let encrypted: Vec<u8> = from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid encrypted bytes".to_string())?;
                     let key = parts.get(2..).expect("Already checked").join(".");
-                    check_key_string(&key)?;
                     Ok(TariKeyId::Encrypted {
                         encrypted,
                         key: SerializedKeyString::from(key),
@@ -318,12 +316,24 @@ impl FromStr for TariKeyId {
     }
 }
 
-/// Checks that `id` is a key id string `TariKeyId::from_str` accepts, including every nested key id, with the same
-/// error messages. A nested key id is always the tail of the string, so this walks it in a loop rather than
-/// recursing, which keeps a long chain of nested key ids from overflowing the stack.
+/// The most key ids a key id may wrap (`Derived`, `DHCommitmentMask`, `DHEncryptedData` and `Encrypted` each wrap
+/// one). The key manager resolves a key id by recursing once per level, so an unbounded chain from an untrusted
+/// source (offline signing JSON, a signed result) could overflow its stack. Real key ids wrap at most four: an
+/// `Encrypted` or `DH*` key wraps the view key, the spend key or a sender offset key, a script key is `Derived` from
+/// a commitment mask key, and the legacy conversion adds `derived.derived.*`.
+pub const MAX_KEY_ID_NESTING: usize = 16;
+
+/// Checks that `id` is a valid key id string, including every nested key id and the nesting depth
+/// ([`MAX_KEY_ID_NESTING`]). `TariKeyId::from_str` and the serde and borsh decoders all apply it. A nested key id is
+/// always the tail of the string, so this walks it in a loop rather than recursing.
 fn check_key_string(id: &str) -> Result<(), String> {
     let mut rest = id;
+    let mut nesting = 0usize;
     loop {
+        nesting = nesting.saturating_add(1);
+        if nesting > MAX_KEY_ID_NESTING + 1 {
+            return Err(format!("Key id nests more than {MAX_KEY_ID_NESTING} key ids"));
+        }
         // `tail` is everything after the first dot: `FromStr` splits on every dot, so it has `parts.len() >= 3`
         // exactly when `tail` contains a dot, and its nested key (`parts[1..]` joined) is `tail`
         let (branch, tail) = match rest.split_once('.') {
@@ -969,23 +979,61 @@ mod tests {
         }
     }
 
-    /// Key ids nest through their string form; neither `FromStr` nor the decoders recurse, so a long chain can not
-    /// overflow the stack.
+    /// The nesting depth is capped, so a key id the decoders accept can not overflow the key manager's stack when it
+    /// resolves the key (it recurses once per level). `FromStr` and the decoders themselves do not recurse.
     #[test]
-    fn deeply_nested_key_ids_do_not_overflow_the_stack() {
-        let depth = 200_000;
-        let valid = format!("{}ledger_key.Random.0", "derived.".repeat(depth));
-        assert!(TariKeyId::from_str(&valid).is_ok());
-        let key_id = TariKeyId::Derived {
-            key: valid.strip_prefix("derived.").unwrap().into(),
+    fn key_id_nesting_is_capped() {
+        let pk = CompressedPublicKey::from_hex(PK).unwrap();
+        // `levels` wrapping key ids around a ledger key, cycling through every wrapping variant
+        let nested = |levels: usize| {
+            let mut key_id = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 1,
+            };
+            for level in 0..levels {
+                let inner = SerializedKeyString::from(&key_id);
+                key_id = match level % 4 {
+                    0 => TariKeyId::Derived { key: inner },
+                    1 => TariKeyId::DHCommitmentMask {
+                        public_key: pk.clone(),
+                        private_key: inner,
+                    },
+                    2 => TariKeyId::DHEncryptedData {
+                        public_key: pk.clone(),
+                        private_key: inner,
+                    },
+                    _ => TariKeyId::Encrypted {
+                        encrypted: vec![7],
+                        key: inner,
+                    },
+                };
+            }
+            key_id
         };
-        let json = serde_json::to_string(&key_id).unwrap();
-        assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id);
 
-        let invalid = format!("{}bogus", "derived.".repeat(depth));
-        assert!(TariKeyId::from_str(&invalid).is_err());
-        assert_all_decoders_reject(&TariKeyId::Derived {
-            key: invalid.strip_prefix("derived.").unwrap().into(),
-        });
+        let at_cap = nested(MAX_KEY_ID_NESTING);
+        assert_eq!(TariKeyId::from_str(&at_cap.to_string()).unwrap(), at_cap);
+        let json = serde_json::to_string(&at_cap).unwrap();
+        assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), at_cap);
+        let bytes = bincode::serialize(&at_cap).unwrap();
+        assert_eq!(bincode::deserialize::<TariKeyId>(&bytes).unwrap(), at_cap);
+        assert_eq!(
+            TariKeyId::try_from_slice(&borsh::to_vec(&at_cap).unwrap()).unwrap(),
+            at_cap
+        );
+
+        let over_cap = nested(MAX_KEY_ID_NESTING + 1);
+        assert_eq!(
+            TariKeyId::from_str(&over_cap.to_string()).unwrap_err(),
+            format!("Key id nests more than {MAX_KEY_ID_NESTING} key ids")
+        );
+        assert_all_decoders_reject(&over_cap);
+
+        // A single-token innermost key id counts the same
+        let derived = |levels: usize| format!("{}zero", "derived.".repeat(levels));
+        assert!(TariKeyId::from_str(&derived(MAX_KEY_ID_NESTING)).is_ok());
+        assert!(TariKeyId::from_str(&derived(MAX_KEY_ID_NESTING + 1)).is_err());
+        // A very long chain is rejected quickly, without recursing
+        assert!(TariKeyId::from_str(&derived(200_000)).is_err());
     }
 }

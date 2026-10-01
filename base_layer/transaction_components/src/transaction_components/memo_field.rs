@@ -225,15 +225,22 @@ impl ValidatedDecode for MemoField {
 
 impl_validated_decode!(MemoField);
 
-/// A serde `deserialize_with` function that reads the serde form of a [`MemoField`] without applying the size limits.
+/// A serde `deserialize_with` function that reads the serde form of a [`MemoField`] without the size limits on
+/// `Open` and `Raw` memos, which the serde decoder did not apply before they were added at decode time. Every other
+/// check applies as in [`MemoField`]'s own decoder: `AddressAndData` and `TransactionInfo` memos still go through
+/// their constructors, whose size limits the serde decoder always applied (and `to_bytes` relies on).
 ///
-/// Only for reading legacy wallet records written before the limits were applied at decode time (the legacy
-/// transaction protocol structs), so that a stored record with an oversized memo still loads. The encoding is the same
-/// as `MemoField`'s. Do not use it for anything decoded from outside the wallet.
+/// Only for the legacy transaction protocol structs, so that a stored record with an oversized `Open` or `Raw` memo
+/// still loads. Those structs are also decoded from client input: gRPC `import_transactions` and the console wallet's
+/// import command take pending transactions as JSON, whose sender protocol holds such a memo. Do not use it anywhere
+/// else. The encoding is the same as `MemoField`'s.
 pub fn deserialize_legacy_unchecked<'de, D>(deserializer: D) -> Result<MemoField, D::Error>
 where D: serde::Deserializer<'de> {
     let raw = <MemoFieldRaw as Deserialize>::deserialize(deserializer)?;
-    Ok(MemoField { inner: raw.inner })
+    match raw.inner {
+        inner @ (InnerMemoField::Open { .. } | InnerMemoField::Raw(_)) => Ok(MemoField { inner }),
+        inner => MemoField::validate(MemoFieldRaw { inner }).map_err(serde::de::Error::custom),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -1466,6 +1473,79 @@ mod test {
             memo_field::{MemoField, TxType},
         },
     };
+
+    /// Reads a memo the way the legacy transaction protocol structs do
+    #[derive(Deserialize)]
+    struct LegacyRecord {
+        #[serde(deserialize_with = "deserialize_legacy_unchecked")]
+        memo: MemoField,
+    }
+
+    #[derive(Serialize)]
+    struct Record<'a> {
+        memo: &'a MemoField,
+    }
+
+    fn legacy_decodes(memo: &MemoField) -> (bool, bool) {
+        let json = serde_json::to_string(&Record { memo }).unwrap();
+        let bytes = bincode::serialize(&Record { memo }).unwrap();
+        let from_json = serde_json::from_str::<LegacyRecord>(&json).map(|r| r.memo);
+        let from_bincode = bincode::deserialize::<LegacyRecord>(&bytes).map(|r| r.memo);
+        if let Ok(decoded) = &from_json {
+            assert_eq!(decoded, memo);
+        }
+        if let Ok(decoded) = &from_bincode {
+            assert_eq!(decoded, memo);
+        }
+        (from_json.is_ok(), from_bincode.is_ok())
+    }
+
+    /// The legacy shim lifts only the `Open` and `Raw` size limits; `AddressAndData` and `TransactionInfo` keep their
+    /// constructor checks, which the serde decoder always applied.
+    #[test]
+    fn the_legacy_shim_only_lifts_the_open_and_raw_limits() {
+        let oversized = vec![1u8; 1000];
+        let open = MemoField::open_unchecked(oversized.clone(), TxType::PaymentToOther);
+        assert_eq!(legacy_decodes(&open), (true, true));
+        let raw = MemoField {
+            inner: InnerMemoField::Raw(oversized.clone()),
+        };
+        assert_eq!(legacy_decodes(&raw), (true, true));
+
+        let address_and_data = MemoField {
+            inner: InnerMemoField::AddressAndData {
+                sender_address: TariAddress::default(),
+                sender_one_sided: false,
+                fee: MicroMinotari::from(1),
+                tx_type: TxType::PaymentToOther,
+                payment_id: oversized.clone(),
+            },
+        };
+        assert_eq!(legacy_decodes(&address_and_data), (false, false));
+        let transaction_info = MemoField {
+            inner: InnerMemoField::TransactionInfo {
+                recipient_address: TariAddress::default(),
+                sender_one_sided: false,
+                amount: MicroMinotari::from(1),
+                fee: MicroMinotari::from(1),
+                tx_type: TxType::PaymentToOther,
+                sent_output_hashes: vec![],
+                payment_id: oversized,
+            },
+        };
+        assert_eq!(legacy_decodes(&transaction_info), (false, false));
+
+        // Valid memos of those kinds still load
+        let valid = MemoField::new_address_and_data(
+            TariAddress::default(),
+            MicroMinotari::from(1),
+            false,
+            TxType::PaymentToOther,
+            vec![1, 2, 3],
+        )
+        .unwrap();
+        assert_eq!(legacy_decodes(&valid), (true, true));
+    }
 
     fn create_random_fixed_hash() -> FixedHash {
         use rand::Rng;
