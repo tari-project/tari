@@ -33,6 +33,7 @@ use std::{fmt, str::FromStr};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::CompressedPublicKey;
+use tari_max_size::{ValidatedDecode, impl_validated_decode};
 use tari_utilities::hex::{Hex, from_hex};
 
 /// String prefix used when serializing and parsing a `TariKeyId::ViewKey`.
@@ -88,9 +89,7 @@ pub const LEDGER_EPHEMERAL_NONCE_BRANCH: &str = "ledger_ephemeral_nonce";
 /// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
-#[derive(
-    Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq, borsh::BorshSerialize, borsh::BorshDeserialize,
-)]
+#[derive(Default, Clone, Debug, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
 /// Identifiers for different logical key types used by Tari components.
 ///
 /// A `TariKeyId` is an enum that captures the purpose and derivation context of a
@@ -107,6 +106,10 @@ pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 /// - Hex-encoded fields use lowercase hex in `Display` and accept case-insensitive hex in `FromStr`.
 ///
 /// See individual variants for details and examples.
+///
+/// The serde and borsh decoders are generated from the [`ValidatedDecode`] implementation below and must not be
+/// derived: they accept exactly the values whose string form `FromStr` accepts, so a key id decoded from JSON (for
+/// example an offline signing file) can be stored as text and read back.
 pub enum TariKeyId {
     /// The deterministic view key used to scan for outputs and decrypt view-related data.
     ///
@@ -222,7 +225,7 @@ impl FromStr for TariKeyId {
                     };
 
                     let key = parts.get(1..).expect("Already checked").join(".");
-                    let _check_valid_key = TariKeyId::from_str(&key)?;
+                    check_key_string(&key)?;
                     Ok(TariKeyId::Derived {
                         key: SerializedKeyString::from(key),
                     })
@@ -234,7 +237,7 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
-                    let _check_valid_key = TariKeyId::from_str(&private_key)?;
+                    check_key_string(&private_key)?;
                     Ok(TariKeyId::DHCommitmentMask {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -247,7 +250,7 @@ impl FromStr for TariKeyId {
                     let public_key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid public key".to_string())?;
                     let private_key = parts.get(2..).expect("Already checked").join(".");
-                    let _check_valid_key = TariKeyId::from_str(&private_key)?;
+                    check_key_string(&private_key)?;
                     Ok(TariKeyId::DHEncryptedData {
                         public_key,
                         private_key: SerializedKeyString::from(private_key),
@@ -260,7 +263,7 @@ impl FromStr for TariKeyId {
                     let encrypted: Vec<u8> = from_hex(parts.get(1).expect("Already checked"))
                         .map_err(|_| "Invalid encrypted bytes".to_string())?;
                     let key = parts.get(2..).expect("Already checked").join(".");
-                    let _check_valid_key = TariKeyId::from_str(&key)?;
+                    check_key_string(&key)?;
                     Ok(TariKeyId::Encrypted {
                         encrypted,
                         key: SerializedKeyString::from(key),
@@ -313,6 +316,149 @@ impl FromStr for TariKeyId {
         }
     }
 }
+
+/// Checks that `id` is a key id string `TariKeyId::from_str` accepts, including every nested key id, with the same
+/// error messages. A nested key id is always the tail of the string, so this walks it in a loop rather than
+/// recursing, which keeps a long chain of nested key ids from overflowing the stack.
+fn check_key_string(id: &str) -> Result<(), String> {
+    let mut rest = id;
+    loop {
+        // `tail` is everything after the first dot: `FromStr` splits on every dot, so it has `parts.len() >= 3`
+        // exactly when `tail` contains a dot
+        let (branch, tail) = match rest.split_once('.') {
+            Some((branch, tail)) => (branch, Some(tail)),
+            None => (rest, None),
+        };
+        rest = match branch {
+            ZERO_KEY_BRANCH => return Ok(()),
+            DERIVED_KEY_BRANCH => match tail {
+                Some(key) if key.contains('.') => key,
+                _ => return Err("Wrong derived format".to_string()),
+            },
+            DH_COMMITMENT_MASK_BRANCH | DH_ENCRYPTED_DATA_BRANCH => {
+                let Some((public_key, private_key)) = tail.and_then(|t| t.split_once('.')) else {
+                    return Err(if branch == DH_COMMITMENT_MASK_BRANCH {
+                        "Wrong dh_commitment_mask format".to_string()
+                    } else {
+                        "Wrong encryted data format".to_string()
+                    });
+                };
+                CompressedPublicKey::from_hex(public_key).map_err(|_| "Invalid public key".to_string())?;
+                private_key
+            },
+            ENCRYPTED_BRANCH => {
+                let Some((encrypted, key)) = tail.and_then(|t| t.split_once('.')) else {
+                    return Err("Wrong encrypted format".to_string());
+                };
+                from_hex(encrypted).map_err(|_| "Invalid encrypted bytes".to_string())?;
+                key
+            },
+            SPEND_KEY_BRANCH | VIEW_KEY_BRANCH | CODE_TEMPLATE_AUTHOR => {
+                if tail.is_some() {
+                    return Err(match branch {
+                        SPEND_KEY_BRANCH => "Wrong spend key format".to_string(),
+                        VIEW_KEY_BRANCH => "Wrong view key format".to_string(),
+                        _ => "Wrong code template format".to_string(),
+                    });
+                }
+                return Ok(());
+            },
+            LEDGER_KEY_BRANCH => {
+                let Some((ledger_branch, index)) = tail
+                    .and_then(|t| t.split_once('.'))
+                    .filter(|(_, index)| !index.contains('.'))
+                else {
+                    return Err("Wrong ledger key format".to_string());
+                };
+                LedgerKeyBranch::from_str(ledger_branch)?;
+                index
+                    .parse::<u64>()
+                    .map_err(|_| "Invalid ledger key index".to_string())?;
+                return Ok(());
+            },
+            LEDGER_EPHEMERAL_NONCE_BRANCH => {
+                let Some(handle) = tail.filter(|t| !t.contains('.')) else {
+                    return Err("Wrong ledger ephemeral nonce format".to_string());
+                };
+                handle
+                    .parse::<u64>()
+                    .map_err(|_| "Invalid ledger ephemeral nonce handle".to_string())?;
+                return Ok(());
+            },
+            _ => return Err("Wrong generic format".to_string()),
+        };
+    }
+}
+
+/// The raw form of [`TariKeyId`]: the same variants, fields and order as the derived serde and borsh shapes, decoded
+/// before the string form is checked.
+#[derive(Deserialize, borsh::BorshDeserialize)]
+#[serde(rename = "TariKeyId")]
+pub enum TariKeyIdRaw {
+    ViewKey,
+    SpendKey,
+    Derived {
+        key: SerializedKeyString,
+    },
+    CodeTemplateAuthor,
+    Zero,
+    DHCommitmentMask {
+        public_key: CompressedPublicKey,
+        private_key: SerializedKeyString,
+    },
+    DHEncryptedData {
+        public_key: CompressedPublicKey,
+        private_key: SerializedKeyString,
+    },
+    Encrypted {
+        encrypted: Vec<u8>,
+        key: SerializedKeyString,
+    },
+    LedgerKey {
+        branch: LedgerKeyBranch,
+        index: u64,
+    },
+    LedgerEphemeralNonce {
+        handle: u64,
+    },
+}
+
+impl ValidatedDecode for TariKeyId {
+    type Error = String;
+    type Raw = TariKeyIdRaw;
+
+    /// Accepts the key id only if `FromStr` accepts its string form, which is how the wallet stores it.
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        let key_id = match raw {
+            TariKeyIdRaw::ViewKey => TariKeyId::ViewKey,
+            TariKeyIdRaw::SpendKey => TariKeyId::SpendKey,
+            TariKeyIdRaw::Derived { key } => TariKeyId::Derived { key },
+            TariKeyIdRaw::CodeTemplateAuthor => TariKeyId::CodeTemplateAuthor,
+            TariKeyIdRaw::Zero => TariKeyId::Zero,
+            TariKeyIdRaw::DHCommitmentMask {
+                public_key,
+                private_key,
+            } => TariKeyId::DHCommitmentMask {
+                public_key,
+                private_key,
+            },
+            TariKeyIdRaw::DHEncryptedData {
+                public_key,
+                private_key,
+            } => TariKeyId::DHEncryptedData {
+                public_key,
+                private_key,
+            },
+            TariKeyIdRaw::Encrypted { encrypted, key } => TariKeyId::Encrypted { encrypted, key },
+            TariKeyIdRaw::LedgerKey { branch, index } => TariKeyId::LedgerKey { branch, index },
+            TariKeyIdRaw::LedgerEphemeralNonce { handle } => TariKeyId::LedgerEphemeralNonce { handle },
+        };
+        check_key_string(&key_id.to_string())?;
+        Ok(key_id)
+    }
+}
+
+impl_validated_decode!(TariKeyId);
 
 impl fmt::Display for TariKeyId {
     // This trait requires `fmt` with this exact signature.
@@ -634,5 +780,184 @@ mod tests {
             TariKeyId::from_str("unknown.branch").unwrap_err(),
             "Wrong generic format"
         );
+    }
+
+    const PK: &str = "28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d5c9";
+
+    /// One key id of every variant, all valid
+    fn valid_key_ids() -> Vec<TariKeyId> {
+        let ledger = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::Random,
+            index: 42,
+        };
+        vec![
+            TariKeyId::ViewKey,
+            TariKeyId::SpendKey,
+            TariKeyId::Derived { key: (&ledger).into() },
+            TariKeyId::CodeTemplateAuthor,
+            TariKeyId::Zero,
+            TariKeyId::DHCommitmentMask {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: (&ledger).into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: "view_key".into(),
+            },
+            TariKeyId::Encrypted {
+                encrypted: vec![1, 2, 3],
+                key: "view_key".into(),
+            },
+            ledger.clone(),
+            TariKeyId::LedgerEphemeralNonce { handle: 9 },
+        ]
+    }
+
+    fn assert_all_decoders_reject(key_id: &TariKeyId) {
+        let json = serde_json::to_string(key_id).unwrap();
+        assert!(
+            serde_json::from_str::<TariKeyId>(&json).is_err(),
+            "serde_json accepted {json}"
+        );
+        let bincode_bytes = bincode::serialize(key_id).unwrap();
+        assert!(
+            bincode::deserialize::<TariKeyId>(&bincode_bytes).is_err(),
+            "bincode accepted {key_id}"
+        );
+        let borsh_bytes = borsh::to_vec(key_id).unwrap();
+        assert!(
+            TariKeyId::try_from_slice(&borsh_bytes).is_err(),
+            "borsh accepted {key_id}"
+        );
+    }
+
+    /// The decoders are generated from `TariKeyIdRaw` rather than derived; the encodings must stay exactly what the
+    /// derived decoders read, so stored and exchanged key ids keep decoding.
+    #[test]
+    fn decoders_keep_the_derived_encodings() {
+        let key_id = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+            private_key: "zero".into(),
+        };
+        let json = serde_json::to_string(&key_id).unwrap();
+        assert_eq!(
+            json,
+            format!(r#"{{"DHCommitmentMask":{{"public_key":"{PK}","private_key":{{"inner":"zero"}}}}}}"#)
+        );
+        // Variant 5, the public key behind a u32 length prefix, then the string behind a u32 length prefix
+        let mut borsh_bytes = vec![5u8, 32, 0, 0, 0];
+        borsh_bytes.extend(hex::decode(PK).unwrap());
+        borsh_bytes.extend([4, 0, 0, 0]);
+        borsh_bytes.extend(b"zero");
+        assert_eq!(borsh::to_vec(&key_id).unwrap(), borsh_bytes);
+        let mut bincode_bytes = vec![5u8, 0, 0, 0];
+        bincode_bytes.extend(bincode::serialize(&CompressedPublicKey::from_hex(PK).unwrap()).unwrap());
+        bincode_bytes.extend([4, 0, 0, 0, 0, 0, 0, 0]);
+        bincode_bytes.extend(b"zero");
+        assert_eq!(bincode::serialize(&key_id).unwrap(), bincode_bytes);
+        assert_eq!(serde_json::to_string(&TariKeyId::Zero).unwrap(), r#""Zero""#);
+
+        for key_id in valid_key_ids() {
+            assert_eq!(TariKeyId::from_str(&key_id.to_string()).unwrap(), key_id);
+            let json = serde_json::to_string(&key_id).unwrap();
+            assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id);
+            let bytes = bincode::serialize(&key_id).unwrap();
+            assert_eq!(bincode::deserialize::<TariKeyId>(&bytes).unwrap(), key_id);
+            let bytes = borsh::to_vec(&key_id).unwrap();
+            assert_eq!(TariKeyId::try_from_slice(&bytes).unwrap(), key_id);
+        }
+    }
+
+    /// A key id whose string form `FromStr` rejects can not be stored as text and read back, so no decoder may
+    /// accept it either.
+    #[test]
+    fn decoders_reject_what_from_str_rejects() {
+        let invalid = [
+            // `derived.zero` has too few parts
+            TariKeyId::Derived { key: "zero".into() },
+            TariKeyId::Derived {
+                key: "bogus.key".into(),
+            },
+            TariKeyId::DHCommitmentMask {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: "ledger_key.Random.notnumber".into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+                private_key: "".into(),
+            },
+            TariKeyId::Encrypted {
+                encrypted: vec![1],
+                key: "derived.zero".into(),
+            },
+        ];
+        for key_id in &invalid {
+            assert!(TariKeyId::from_str(&key_id.to_string()).is_err(), "{key_id}");
+            assert_all_decoders_reject(key_id);
+        }
+    }
+
+    #[test]
+    fn check_key_string_matches_from_str() {
+        let mut samples: Vec<String> = valid_key_ids().iter().map(|k| k.to_string()).collect();
+        samples.extend(
+            [
+                "",
+                ".",
+                "zero.anything",
+                "derived",
+                "derived.",
+                "derived.zero",
+                "derived.zero.x",
+                "derived.view_key.x",
+                "derived.ledger_key.Random.1",
+                "derived.ledger_key.Random.1.2",
+                "derived.ledger_key.Bogus.1",
+                "dh_commitment_mask",
+                "dh_commitment_mask.nothex.zero",
+                "dh_encrypted_data.ab",
+                "encrypted..zero",
+                "encrypted.zz.zero",
+                "encrypted.0102",
+                "spend_key.",
+                "view_key",
+                "ledger_key.Random",
+                "ledger_ephemeral_nonce.",
+                "ledger_ephemeral_nonce.-1",
+                "ledger_ephemeral_nonce.18446744073709551616",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
+        samples.push(format!("dh_commitment_mask.{PK}.derived.zero"));
+        samples.push(format!("dh_commitment_mask.{PK}.derived.encrypted.00.zero"));
+        samples.push(format!("dh_encrypted_data.{PK}.spend_key.x"));
+        for sample in &samples {
+            assert_eq!(
+                check_key_string(sample),
+                TariKeyId::from_str(sample).map(|_| ()),
+                "{sample:?}"
+            );
+        }
+    }
+
+    /// Key ids nest through their string form; neither `FromStr` nor the decoders recurse, so a long chain can not
+    /// overflow the stack.
+    #[test]
+    fn deeply_nested_key_ids_do_not_overflow_the_stack() {
+        let depth = 200_000;
+        let valid = format!("{}ledger_key.Random.0", "derived.".repeat(depth));
+        assert!(TariKeyId::from_str(&valid).is_ok());
+        let key_id = TariKeyId::Derived {
+            key: valid.strip_prefix("derived.").unwrap().into(),
+        };
+        let json = serde_json::to_string(&key_id).unwrap();
+        assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id);
+
+        let invalid = format!("{}zero", "derived.".repeat(depth));
+        assert!(TariKeyId::from_str(&invalid).is_err());
+        assert_all_decoders_reject(&TariKeyId::Derived {
+            key: invalid.strip_prefix("derived.").unwrap().into(),
+        });
     }
 }

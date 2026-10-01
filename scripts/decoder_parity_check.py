@@ -22,12 +22,25 @@
 #    A type declared inside a macro (`struct $name`) that derives a decoder can not be matched to its constructors, so
 #    it is reported for manual review unless listed in `ALLOWED` as `"<crate dir>:macro@<file>"`.
 #
-# 2. Node ingress.
+# 2. Node ingress (`applications/minotari_node/src`, outside `#[cfg(test)]` modules).
 #
-#    The node is safe against values its peers would reject only because every block or transaction it receives
-#    through serde or borsh is round-tripped through the P2P protobuf conversions. This fails when
-#    `applications/minotari_node/src` decodes a `Transaction`, `Block`, `BlockHeader`, `AggregateBody` or
-#    `NewBlockTemplate` with serde_json, bincode or borsh outside the helpers in `INGRESS_HELPERS` (or a test module).
+#    The node holds only blocks and transactions a peer could have sent because every one it receives is decoded or
+#    round-tripped through the P2P protobuf conversions. The behavioural tests in the node (the `submit_*` tests in
+#    `grpc/base_node_grpc_server.rs` and `http/handler/json_rpc/mod.rs`) check that for gRPC `submit_block_blob` and
+#    JSON-RPC `submit_transaction`; this scan adds three text checks:
+#    a. Every serde_json, bincode or borsh decode call outside the helpers in `INGRESS_HELPERS` must name the type it
+#       decodes (a turbofish, `T::try_from_slice` / `T::deserialize_reader`, or a `let x: T =` annotation), and that
+#       type must be in `INGRESS_DECODE_TYPES`, possibly inside the standard containers in `CONTAINER_TYPES`
+#       (`Vec<T>`, `Option<T>`, ...). An unnamed type, any other type (a wrapper, a chain type) fails.
+#    b. Every axum `Json<T>`, `Query<T>` or `Form<T>` parameter (`name: Json<T>`, also with an `axum::` or
+#       `axum::extract::` path) must have `T` in `HTTP_REQUEST_TYPES`, request types known to hold no chain type.
+#    c. In `grpc/base_node_grpc_server.rs`, each function in `GRPC_SUBMIT_CALLS` must exist and call the function it
+#       is mapped to: the gRPC `submit_block`, `submit_block_blob` and `submit_transaction` handlers call their decode
+#       functions, and those call the P2P round-trip. The gRPC conversions currently agree with the P2P ones on every
+#       value the decoder parity tests sample, so for `submit_block` and `submit_transaction` this check, not a
+#       behavioural test, is what fails if the round-trip is removed.
+#    Not checked: decoders reached in other ways (another extractor type, a decode call through a generic function,
+#    a helper that is listed but does something else), and code outside `applications/minotari_node/src`.
 #
 # It is a text scan, not a parser: comments, string literals and char literals are removed first, impl headers may span
 # lines, and block bodies are found by matching braces. The decoder parity tests additionally require every type that
@@ -61,7 +74,6 @@ ALLOWED = {
     "base_layer/p2p:SocksAuthentication": "`FromStr` parses the configuration text form",
     "base_layer/p2p:TorControlAuthentication": "`FromStr` / `TryFrom<String>` parse the configuration text form",
     "base_layer/transaction_components:MicroMinotari": "`FromStr` parses an amount with units; any u64 is valid",
-    "base_layer/transaction_components:TariKeyId": "`FromStr` parses the key id text form",
     "base_layer/transaction_key_manager:LegacyTariKeyId": "`FromStr` parses the legacy key id text form",
     "common:DnsNameServer": "`FromStr` parses the configuration text form",
     "common_sqlite:DbConnectionUrl": "`TryFrom<String>` parses the configuration text form",
@@ -69,11 +81,14 @@ ALLOWED = {
     "base_layer/common_types:FixedHash": "`TryFrom<&[u8]>` / `TryFrom<Vec<u8>>` only check the length",
     "comms/core:NodeId": "`TryFrom<&[u8]>` only checks the length",
     # Fallible for reasons other than validating the serialized fields
-    "base_layer/transaction_components:WalletOutput": "the constructors fail on key manager errors while deriving "
-    "the commitment and proofs, not on invalid fields; wallet-local data",
+    "base_layer/transaction_components:WalletOutput": "decoded from offline signing JSON and gRPC `from_json`; its "
+    "constructors (`new_from_parts` is infallible) fail only on key manager errors while deriving the commitment and "
+    "proofs, and every field that has an invariant validates itself in its own decoder (`TariKeyId`, `EncryptedData`, "
+    "`MemoField`, `Covenant`, `TariScript`, `ExecutionStack`)",
     "base_layer/transaction_components:WalletType": "`new_random` fails only on key derivation errors",
-    "base_layer/wallet:CompletedTransaction": "`new` rejects the coinbase status for new records; stored rows are "
-    "wallet-local and are read back through the same serde form they were written with",
+    "base_layer/wallet:CompletedTransaction": "`new` rejects the `Coinbase` status. Records decoded from client JSON "
+    "(gRPC `import_transactions`) are stored through `import_transaction`, which applies the same check; the FFI "
+    "`create_tari_completed_transaction_from_json` only feeds getters and stores nothing",
     # Validating constructors of data that is only decoded from the node's own database
     "base_layer/common_types:ChainMetadata": "`new` rejects a zero accumulated difficulty; the P2P protobuf "
     "conversion builds it through `new`, and the serde form is only read from the node's own database",
@@ -89,13 +104,44 @@ ALLOWED = {
 }
 
 INGRESS_DIR = os.path.join("applications", "minotari_node", "src")
+# Functions that decode a block or transaction and then round-trip it through the P2P protobuf conversion
 INGRESS_HELPERS = {
     "decode_transaction",
-    "normalise_block_via_p2p_proto",
-    "normalise_transaction_via_p2p_proto",
     "decode_block_blob",
 }
-CHAIN_TYPES = r"\b(?:Transaction|Block|BlockHeader|AggregateBody|NewBlockTemplate)\b"
+# Types the node may decode with serde_json, bincode or borsh outside the helpers: none holds a block or transaction
+INGRESS_DECODE_TYPES = {
+    "ConsensusConstants",  # the node's own consensus constants file
+    "Value",  # untyped JSON (the xmrig proxy)
+    "PeerMetadata",  # the node's own peer database
+}
+# Standard containers a decoded type from INGRESS_DECODE_TYPES may be wrapped in
+CONTAINER_TYPES = {"Vec", "Option", "Box", "String", "HashMap", "BTreeMap"}
+# axum request types (`Json<T>`, `Query<T>`, `Form<T>`) known to hold no block or transaction
+HTTP_REQUEST_TYPES = {
+    "JsonRpcRequest",  # `params` is a `serde_json::Value`; the transaction is decoded by `decode_transaction`
+    "GenerateBurnOutputProofParams",
+    "GetHeaderByHeightQueryParams",
+    "GetHeightAtTimeQueryParams",
+    "GetMempoolFeePerGramStatsQueryParams",
+    "GetUtxoQueryParams",
+    "GetUtxosByBlockQueryParams",
+    "GetUtxosDeletedInfoParams",
+    "GetUtxosMinedInfoParams",
+    "SyncUtxosByBlockQueryParams",
+    "TransactionQueryQueryParams",
+}
+GRPC_SERVER = os.path.join(INGRESS_DIR, "grpc", "base_node_grpc_server.rs")
+# function -> the function it must call
+GRPC_SUBMIT_CALLS = {
+    "submit_block": "decode_submit_block_request",
+    "submit_block_blob": "decode_block_blob",
+    "submit_transaction": "decode_submit_transaction_request",
+    "decode_submit_block_request": "normalise_block_via_p2p_proto",
+    "decode_block_blob": "normalise_block_via_p2p_proto",
+    "decode_submit_transaction_request": "normalise_transaction_via_p2p_proto",
+}
+EXTRACTOR_RE = re.compile(r":\s*(?:axum\s*::\s*(?:extract\s*::\s*)?)?(Json|Query|Form)\s*<\s*([\w:]+)")
 
 CONSTRUCTOR_RE = re.compile(
     r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+"
@@ -318,26 +364,90 @@ def allowed_regions(text):
         if m.group(1) in INGRESS_HELPERS:
             open_brace = text.find("{", m.end())
             regions.append((m.start(), matching_brace(text, open_brace)))
-    for m in re.finditer(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{", text):
-        regions.append((m.start(), matching_brace(text, m.end() - 1)))
-    return regions
+    return regions + test_regions(text)
+
+
+def decoded_type(text, m, statement_start):
+    """The type expression a decode call names (`Vec<Foo>`, `Foo`), or None"""
+    after = re.match(r"\s*::\s*<", text[m.end():])
+    if after:
+        start = m.end() + after.end()
+        depth = 1
+        i = start
+        while i < len(text) and depth:
+            depth += {"<": 1, ">": -1}.get(text[i], 0)
+            i += 1
+        return text[start : i - 1]
+    if m.group(0) in ("try_from_slice", "deserialize_reader"):
+        before = re.search(r"(\w+)\s*::\s*$", text[statement_start:m.start()])
+        if before and before.group(1) != "BorshDeserialize":
+            return before.group(1)
+    annotation = re.search(r"\blet\s+(?:mut\s+)?\w+\s*:\s*([^=]+?)\s*=", text[statement_start:m.start()])
+    if annotation:
+        return annotation.group(1)
+    return None
+
+
+def allowed_decode_type(type_expression):
+    """Whether a decoded type is one of `INGRESS_DECODE_TYPES`, possibly inside standard containers"""
+    if type_expression is None:
+        return False
+    names = re.findall(r"\b[A-Z]\w*", type_expression)
+    return any(n in INGRESS_DECODE_TYPES for n in names) and all(
+        n in INGRESS_DECODE_TYPES or n in CONTAINER_TYPES for n in names
+    )
 
 
 def scan_ingress_file(path, findings):
     with open(path, encoding="utf-8", errors="replace") as f:
         text = strip_comments_and_literals(f.read())
     regions = allowed_regions(text)
+    tests = test_regions(text)
     for m in INGRESS_DECODE_RE.finditer(text):
         if any(start <= m.start() <= end for start, end in regions):
             continue
-        # The statement around the call
-        start = max(text.rfind(c, 0, m.start()) for c in ";{}") + 1
-        ends = [i for i in (text.find(";", m.end()), text.find("{", m.end())) if i != -1]
-        end = min(ends) if ends else len(text)
-        statement = text[start:end]
-        untyped_borsh = "Borsh" in m.group(0) or "borsh" in m.group(0) or "deserialize_reader" in m.group(0)
-        if re.search(CHAIN_TYPES, statement) or (untyped_borsh and "::<" not in statement):
-            findings.append(f"{path}:{line_of(text, m.start())}: `{m.group(0)}` outside the ingress helpers")
+        statement_start = max(text.rfind(c, 0, m.start()) for c in ";{}") + 1
+        type_expression = decoded_type(text, m, statement_start)
+        if not allowed_decode_type(type_expression):
+            what = "an unnamed type" if type_expression is None else f"`{' '.join(type_expression.split())}`"
+            findings.append(
+                f"{path}:{line_of(text, m.start())}: `{m.group(0)}` decodes {what} outside the ingress helpers "
+                "(see INGRESS_DECODE_TYPES)"
+            )
+    for m in EXTRACTOR_RE.finditer(text):
+        if any(start <= m.start() <= end for start, end in tests):
+            continue
+        type_name = m.group(2).split("::")[-1]
+        if type_name not in HTTP_REQUEST_TYPES:
+            findings.append(
+                f"{path}:{line_of(text, m.start())}: axum `{m.group(1)}<{type_name}>` extractor is not in "
+                "HTTP_REQUEST_TYPES"
+            )
+
+
+def test_regions(text):
+    """The spans of `#[cfg(test)]` modules"""
+    return [
+        (m.start(), matching_brace(text, m.end() - 1))
+        for m in re.finditer(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{", text)
+    ]
+
+
+def scan_grpc_submit_wiring(path, findings):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = strip_comments_and_literals(f.read())
+    tests = test_regions(text)
+    for caller, callee in GRPC_SUBMIT_CALLS.items():
+        bodies = []
+        for m in re.finditer(r"\bfn\s+" + caller + r"\b", text):
+            if any(start <= m.start() <= end for start, end in tests):
+                continue
+            open_brace = text.find("{", m.end())
+            bodies.append(text[open_brace : matching_brace(text, open_brace) + 1])
+        if not bodies:
+            findings.append(f"{path}: `fn {caller}` not found (see GRPC_SUBMIT_CALLS)")
+        elif not all(re.search(r"\b" + callee + r"\s*\(", body) for body in bodies):
+            findings.append(f"{path}: `fn {caller}` does not call `{callee}` (see GRPC_SUBMIT_CALLS)")
 
 
 def scan_tree():
@@ -354,6 +464,8 @@ def scan_tree():
                     scan_file(path, derived, constructors, macro_types)
                     if path.startswith(INGRESS_DIR + os.sep):
                         scan_ingress_file(path, ingress)
+                    if path == GRPC_SERVER:
+                        scan_grpc_submit_wiring(path, ingress)
     return findings(derived, constructors, macro_types) + ingress
 
 
@@ -500,17 +612,53 @@ SELF_TEST_INGRESS = {
     "annotated_serde": "fn handler(s: &str) { let block: Block = serde_json::from_str(s).unwrap(); }",
     "untyped_borsh": "fn handler(mut b: &[u8]) { let header = BorshDeserialize::deserialize(&mut b)?; }",
     "bincode_template": "fn handler(b: &[u8]) { let t = bincode::deserialize::<NewBlockTemplate>(b); }",
+    "vec_of_chain_type": "fn handler(s: &str) { let t = serde_json::from_str::<Vec<Transaction>>(s); }",
+    "mixed_generic": "fn h(s: &str) { let t: HashMap<String, Block> = serde_json::from_str(s)?; }",
+    "wrapper_type": "fn handler(v: Value) { let p = serde_json::from_value::<SubmitParams>(v)?; }",
+    "wrapper_annotated": "fn h(v: Value) { let p: SubmitParams = serde_json::from_value(serde_json::Value::from(v))?; }",
+    "untyped_serde": "fn handler(s: &str) { let p = serde_json::from_str(s)?; handle(p) }",
+    "try_from_slice": "fn handler(b: &[u8]) { let p = SubmitParams::try_from_slice(b)?; }",
+    "json_extractor": "async fn h(Json(req): Json<SubmitBlockRequest>) -> Json<Resp> { todo!() }",
+    "form_extractor": "async fn h(f: axum::extract::Form<Block>) {}",
+    "query_extractor": "async fn h(Query(q): axum::Query<Params>) {}",
 }
 
 SELF_TEST_INGRESS_CLEAN = """
 fn decode_transaction(v: Value) -> Transaction { serde_json::from_value::<Transaction>(v).unwrap() }
 fn decode_block_blob(mut h: &[u8]) { let header = BorshDeserialize::deserialize(&mut h)?; }
 fn config(s: &str) { let c: ConsensusConstants = serde_json::from_str(s).unwrap(); }
+fn configs(s: &str) { match serde_json::from_str::<Vec<ConsensusConstants>>(&s) { Ok(c) => c } }
+fn proxy(b: &[u8]) { let json: Value = serde_json::from_slice(&b)?; }
+fn peers(v: &[u8]) { v.and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok()) }
+async fn rpc(Json(mut request): Json<JsonRpcRequest>) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
+    Err((StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e))))
+}
+async fn utxo(Query(params): Query<GetUtxoQueryParams>) {}
 #[cfg(test)]
 mod test {
     fn t(b: &[u8]) { let block = borsh::from_slice::<Block>(b).unwrap(); }
+    async fn h(Json(req): Json<Block>) {}
 }
 """
+
+SELF_TEST_GRPC_WIRING = """
+impl BaseNode for Server {
+    async fn submit_block(&self, r: Request) { let block = decode_submit_block_request(r.into_inner(), f)?; }
+    async fn submit_block_blob(&self, r: Request) { let block = decode_block_blob(&r.h, &r.b, f)?; }
+    async fn submit_transaction(&self, r: Request) { let tx = decode_submit_transaction_request(r, f)?; }
+}
+fn decode_submit_block_request(r: Block, f: bool) { normalise_block_via_p2p_proto(Block::try_from(r)?, f) }
+fn decode_submit_transaction_request(r: Tx, f: bool) { normalise_transaction_via_p2p_proto(r.try_into()?, f) }
+fn decode_block_blob(h: &[u8], b: &[u8], f: bool) { normalise_block_via_p2p_proto(Block::new(h, b), f) }
+"""
+
+# (original, replacement) pairs, each applied to SELF_TEST_GRPC_WIRING; each result must be reported
+SELF_TEST_GRPC_WIRING_BROKEN = [
+    ("normalise_block_via_p2p_proto(Block::try_from(r)?, f)", "Ok(Block::try_from(r)?)"),
+    ("normalise_transaction_via_p2p_proto(r.try_into()?, f)", "r.try_into()"),
+    ("let block = decode_submit_block_request(r.into_inner(), f)?;", "let block = r.into_inner().try_into()?;"),
+    ("fn decode_block_blob(", "fn decode_blob("),
+]
 
 
 def self_test():
@@ -539,6 +687,20 @@ def self_test():
             if bool(ingress) != (name != "ingress_clean"):
                 print(f"self-test {name}: expected {'a finding' if name != 'ingress_clean' else 'no finding'}")
                 failed = True
+        wiring_cases = [("grpc_wiring_clean", SELF_TEST_GRPC_WIRING)] + [
+            (f"grpc_wiring_broken_{i}", SELF_TEST_GRPC_WIRING.replace(old, new))
+            for i, (old, new) in enumerate(SELF_TEST_GRPC_WIRING_BROKEN)
+        ]
+        for name, source in wiring_cases:
+            assert name == "grpc_wiring_clean" or source != SELF_TEST_GRPC_WIRING, name
+            path = os.path.join(d, name + ".rs")
+            with open(path, "w") as f:
+                f.write(source)
+            wiring = []
+            scan_grpc_submit_wiring(path, wiring)
+            if bool(wiring) != (name != "grpc_wiring_clean"):
+                print(f"self-test {name}: expected {'no finding' if name == 'grpc_wiring_clean' else 'a finding'}")
+                failed = True
     print("Self-test failed." if failed else "Self-test passed.")
     return 1 if failed else 0
 
@@ -551,7 +713,8 @@ def main():
         print("Decoder parity check failed. Types that derive a serde or borsh decoder must not skip the checks of a")
         print("fallible constructor: route the decoders through the validation instead (see")
         print("`tari_max_size::ValidatedDecode`), or add the type to ALLOWED in scripts/decoder_parity_check.py with a")
-        print("reason. Blocks and transactions decoded by the node must go through its P2P proto round-trip helpers.\n")
+        print("reason. Blocks and transactions decoded by the node must go through its P2P proto round-trip helpers;")
+        print("see the header of this script for the node ingress rules.\n")
         for failure in failures:
             print(failure)
         return 1

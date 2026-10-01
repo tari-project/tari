@@ -337,7 +337,7 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v7
-      - name: check that no type with a fallible from_* constructor derives its serde or borsh decoder
+      - name: check that no type with a validating constructor derives its serde or borsh decoder, and the node ingress rules
         run: |
           python3 ./scripts/decoder_parity_check.py --self-test
           python3 ./scripts/decoder_parity_check.py
@@ -360,14 +360,23 @@ jobs:
           cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
       - name: TariAddress decoder tests
         run: cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
-      - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody and Difficulty decoder tests
+      - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody, Difficulty and TariKeyId decoder tests
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
           memo_field encrypted_data kernel_features covenants aggregated_body tari_proof_of_work::difficulty
+          key_manager::key_id
       - name: Legacy wallet records with oversized memos still load
         run: >-
           cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
           legacy_transaction_protocol
+      - name: Imported wallet transactions get the same status check as new ones
+        run: >-
+          cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
+          import_transaction_rejects_the_coinbase_status
+      - name: Node submit paths decode through the P2P proto
+        run: >-
+          cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
+          grpc::base_node_grpc_server::test http::handler::json_rpc
 
   test:
     name: test

@@ -51,6 +51,7 @@ use minotari_wallet::{
     transaction_service::{
         TransactionServiceInitializer,
         config::TransactionServiceConfig,
+        error::{TransactionServiceError, TransactionStorageError},
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
         storage::{
@@ -2352,6 +2353,69 @@ async fn test_completed_transactions_ordering() {
             .collect::<Vec<_>>(),
         mined_timestamps
     );
+}
+
+/// `import_transaction` takes records decoded from client JSON (gRPC `import_transactions`), which bypass
+/// `CompletedTransaction::new`. It must still refuse the status `new` refuses.
+#[tokio::test]
+async fn import_transaction_rejects_the_coinbase_status() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+    let address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        Network::LocalNet,
+    )
+    .unwrap();
+    let mut coinbase_tx = create_mock_completed_transaction(
+        address.clone(),
+        address.clone(),
+        MicroMinotari::from(1000),
+        TransactionDirection::Inbound,
+        "coinbase",
+    );
+    coinbase_tx.status = LegacyTransactionStatus::Coinbase;
+    let coinbase_tx_id = coinbase_tx.tx_id;
+    // The record arrives as JSON, the same way gRPC `import_transactions` receives it
+    let json = serde_json::to_string(&vec![WalletTransaction::Completed(coinbase_tx)]).unwrap();
+    let decoded: Vec<WalletTransaction> = serde_json::from_str(&json).unwrap();
+    let err = ts_interface
+        .transaction_service_handle
+        .import_transaction(decoded.into_iter().next().unwrap())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::CoinbaseNotSupported)
+        ),
+        "unexpected error: {err:?}"
+    );
+    assert!(
+        ts_interface
+            .transaction_service_handle
+            .get_any_transaction(coinbase_tx_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Any other status is still imported
+    let completed_tx = create_mock_completed_transaction(
+        address.clone(),
+        address,
+        MicroMinotari::from(1000),
+        TransactionDirection::Inbound,
+        "completed",
+    );
+    let completed_tx_id = completed_tx.tx_id;
+    let imported_id = ts_interface
+        .transaction_service_handle
+        .import_transaction(WalletTransaction::Completed(completed_tx))
+        .await
+        .unwrap();
+    assert_eq!(imported_id, completed_tx_id);
 }
 
 #[tokio::test]

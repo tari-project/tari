@@ -17,7 +17,7 @@
 
 use std::fmt::Debug;
 
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use minotari_app_grpc::tari_rpc as grpc;
 use rand::RngExt;
 use serde_json::Value;
@@ -41,6 +41,7 @@ use tari_script::{ExecutionStack, MAX_SCRIPT_BYTES, StackItem, TariScript, scrip
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     covenant,
+    key_manager::TariKeyId,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         BuildInfo,
@@ -123,7 +124,8 @@ enum Mutation {
     InputData(Vec<u8>),
     InputScriptSignatureEphemeralPubkey(Vec<u8>),
     // The second (full, non-compact) input. The version of a compact input is not sampled: neither protobuf family
-    // carries it (both decode a compact input with the current version), while serde and borsh keep it.
+    // carries it (both decode a compact input with the current version), while serde and borsh keep it. That known
+    // divergence is pinned by `the_protobuf_families_decode_a_compact_v1_input_as_v0`.
     InputVersion(u32),
     FullInputScript(Vec<u8>),
     FullInputEncryptedData(Vec<u8>),
@@ -1845,6 +1847,31 @@ fn transaction_offset_decoders_accept_and_reject_the_same_samples() {
     }
 }
 
+/// Neither protobuf family carries the version of a compact input, so both decode a compact V1 input as V0, while
+/// serde, bincode and borsh keep V1. The node's P2P round-trip relies on this to normalise the version; if a protobuf
+/// family starts carrying it, this fails and the compact input version should be sampled like the others.
+#[test]
+fn the_protobuf_families_decode_a_compact_v1_input_as_v0() {
+    let (mut inputs, outputs, kernels) = base_body().dissolve();
+    let compact = inputs.first_mut().unwrap();
+    assert!(compact.is_compact());
+    compact.version = TransactionInputVersion::V1;
+    let transaction = transaction_with_body(AggregateBody::new_unsorted(inputs, outputs, kernels));
+    let version = |transaction: &Transaction| transaction.body.inputs().first().unwrap().version;
+
+    let p2p = Transaction::try_from(proto::types::Transaction::try_from(transaction.clone()).unwrap()).unwrap();
+    assert_eq!(version(&p2p), TransactionInputVersion::V0);
+    let grpc = Transaction::try_from(grpc::Transaction::try_from(transaction.clone()).unwrap()).unwrap();
+    assert_eq!(version(&grpc), TransactionInputVersion::V0);
+
+    let json = serde_json::from_value::<Transaction>(serde_json::to_value(&transaction).unwrap()).unwrap();
+    assert_eq!(version(&json), TransactionInputVersion::V1);
+    let bincode = bincode::deserialize::<Transaction>(&bincode::serialize(&transaction).unwrap()).unwrap();
+    assert_eq!(version(&bincode), TransactionInputVersion::V1);
+    let body = AggregateBody::try_from_slice(&borsh::to_vec(&transaction.body).unwrap()).unwrap();
+    assert_eq!(body.inputs().first().unwrap().version, TransactionInputVersion::V1);
+}
+
 /// Compiles only if the serde and borsh decoders of `T` are the ones `impl_validated_decode!` generates: the macro is
 /// the only implementor of `DecodesViaValidatedDecode`
 fn assert_validated<T: ValidatedDecode + DecodesViaValidatedDecode>() {}
@@ -1861,6 +1888,7 @@ fn every_invariant_type_decodes_through_validated_decode() {
     assert_validated::<Covenant>();
     assert_validated::<MemoField>();
     assert_validated::<Difficulty>();
+    assert_validated::<TariKeyId>();
 }
 
 #[test]
