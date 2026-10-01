@@ -516,14 +516,18 @@ mod test {
         }
 
         fn registration_features(vn_secret_key: &PrivateKey) -> OutputFeatures {
+            registration_features_until(vn_secret_key, VnEpoch(10))
+        }
+
+        fn registration_features_until(vn_secret_key: &PrivateKey, max_epoch: VnEpoch) -> OutputFeatures {
             let claim = CompressedPublicKey::from_secret_key(vn_secret_key);
             let signature =
-                ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim, VnEpoch(10));
-            OutputFeatures::for_validator_node_registration(signature, claim, None, VnEpoch(10))
+                ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim, max_epoch);
+            OutputFeatures::for_validator_node_registration(signature, claim, None, max_epoch)
         }
 
         #[tokio::test]
-        async fn the_mempool_refuses_a_second_transaction_for_the_same_validator_node() {
+        async fn a_validator_node_slot_is_replaced_only_by_a_strictly_higher_fee() {
             let (_handlers, mempool, _propagated) = create_handlers();
             let key_manager = KeyManager::new_random().unwrap();
             let vn_secret_key = PrivateKey::random(&mut rand::rng());
@@ -539,17 +543,38 @@ mod test {
                 TxStorageResponse::UnconfirmedPool
             );
 
-            // A second exit (even with a higher fee) and a registration for the same validator node are refused
+            // An equal or lower fee for the same validator node (exit or registration) is refused, with a reason that
+            // is not a validation failure
+            for (features, fee) in [
+                (exit_features(&vn_secret_key), 5),
+                (exit_features(&vn_secret_key), 1),
+                (registration_features(&vn_secret_key), 5),
+            ] {
+                assert_eq!(
+                    mempool.insert(tx_with(features, fee, &key_manager)).await.unwrap(),
+                    TxStorageResponse::NotStoredValidatorNodeSlotTaken
+                );
+            }
+
+            // A strictly higher fee replaces the holder
             let exit2 = tx_with(exit_features(&vn_secret_key), 10, &key_manager);
-            assert!(matches!(
+            assert_eq!(
                 mempool.insert(exit2.clone()).await.unwrap(),
-                TxStorageResponse::NotStored(_)
-            ));
-            let registration = tx_with(registration_features(&vn_secret_key), 5, &key_manager);
-            assert!(matches!(
-                mempool.insert(registration).await.unwrap(),
-                TxStorageResponse::NotStored(_)
-            ));
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_ne!(
+                mempool.has_transaction(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // ... and the slot now belongs to the new holder
+            assert_eq!(
+                mempool
+                    .insert(tx_with(exit_features(&vn_secret_key), 10, &key_manager))
+                    .await
+                    .unwrap(),
+                TxStorageResponse::NotStoredValidatorNodeSlotTaken
+            );
+
             // Another validator node is unaffected
             let other = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
             assert_eq!(
@@ -560,9 +585,9 @@ mod test {
             // So a template never carries two transactions for one validator node
             let template = mempool.retrieve(1_000_000).await.unwrap();
             assert_eq!(template.len(), 2);
-            assert!(template.contains(&exit1));
+            assert!(template.contains(&exit2));
             assert!(template.contains(&other));
-            assert!(!template.contains(&exit2));
+            assert!(!template.contains(&exit1));
         }
 
         #[tokio::test]
@@ -589,6 +614,57 @@ mod test {
                 TxStorageResponse::UnconfirmedPool
             );
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn a_published_block_drops_validator_node_transactions_that_expire_before_the_next_epoch() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let epoch_length = create_consensus_rules().consensus_constants(0).epoch_length();
+            let epoch = VnEpoch(1);
+
+            let expiring = tx_with(
+                registration_features_until(&PrivateKey::random(&mut rand::rng()), epoch),
+                5,
+                &key_manager,
+            );
+            let still_valid = tx_with(
+                registration_features_until(&PrivateKey::random(&mut rand::rng()), epoch.saturating_add(VnEpoch(1))),
+                5,
+                &key_manager,
+            );
+            assert_eq!(
+                mempool.insert(expiring.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.insert(still_valid.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // A block that is not the last of the epoch leaves both
+            let mut header = tari_node_components::blocks::BlockHeader::new(0);
+            header.height = (epoch.as_u64() + 1) * epoch_length - 2;
+            let block = |header| {
+                Arc::new(tari_node_components::blocks::Block::new(
+                    header,
+                    tari_transaction_components::aggregated_body::AggregateBody::empty(),
+                ))
+            };
+            mempool.process_published_block(block(header.clone())).await.unwrap();
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+
+            // The last block of the epoch: the next template is in the following epoch, so `expiring` is dropped
+            header.height += 1;
+            mempool.process_published_block(block(header)).await.unwrap();
+            assert_ne!(
+                mempool.has_transaction(expiring).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.has_transaction(still_valid).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
         }
     }
 }

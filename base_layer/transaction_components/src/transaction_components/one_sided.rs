@@ -35,8 +35,8 @@ pub fn public_key_to_output_encryption_key(public_key: &CompressedPublicKey) -> 
     PrivateKey::from_uniform_bytes(
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(public_key.as_bytes())
-            .finalize()
-            .as_ref(),
+            .finalize_zeroizing()
+            .as_slice(),
     )
 }
 
@@ -45,8 +45,8 @@ pub fn public_key_to_output_spending_key(public_key: &CompressedPublicKey) -> Re
     PrivateKey::from_uniform_bytes(
         WalletOutputSpendingKeysDomainHasher::new()
             .chain(public_key.as_bytes())
-            .finalize()
-            .as_ref(),
+            .finalize_zeroizing()
+            .as_slice(),
     )
 }
 
@@ -64,4 +64,41 @@ pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: &CompressedPublicKey
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
         .finalize_zeroizing()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn zeroizing_kdfs_match_the_plain_hash() {
+        // The zeroizing finalize must not change the derived keys
+        let (_, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+        let plain = |hash: &[u8]| PrivateKey::from_uniform_bytes(hash).unwrap();
+        assert_eq!(
+            public_key_to_output_encryption_key(&public_key).unwrap(),
+            plain(
+                WalletOutputEncryptionKeysDomainHasher::new()
+                    .chain(public_key.as_bytes())
+                    .finalize()
+                    .as_ref()
+            )
+        );
+        assert_eq!(
+            public_key_to_output_spending_key(&public_key).unwrap(),
+            plain(
+                WalletOutputSpendingKeysDomainHasher::new()
+                    .chain(public_key.as_bytes())
+                    .finalize()
+                    .as_ref()
+            )
+        );
+        assert_eq!(
+            diffie_hellman_stealth_domain_hasher(&public_key).as_slice(),
+            WalletHasher::new_with_label("stealth_address")
+                .chain(public_key.as_bytes())
+                .finalize()
+                .as_ref()
+        );
+    }
 }

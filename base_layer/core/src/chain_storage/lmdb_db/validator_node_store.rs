@@ -495,78 +495,82 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
                 let mut sid = [0u8; 32];
                 sid.copy_from_slice(sidechain_pk);
-                selected_nodes.push((sid, pks));
+                selected_nodes.push((sid, VnEpoch(activation_epoch), pks));
             }
             selected_nodes
         };
 
         let mut nodes = BTreeSet::new();
 
-        for (sid, pks) in selected_nodes {
+        // An activation key belongs to one registration instance. `exit()` does not remove it, so after a validator
+        // node exits and registers again, its old activation key resolves (by public key) to the new entry. An entry is
+        // only counted under its own activation epoch, otherwise a re-registration would count as active from the
+        // old activation epoch onwards.
+        for (sid, key_activation_epoch, pks) in selected_nodes {
             for pk in pks {
                 let key = create_vn_key_raw(&sid, pk.as_bytes());
                 let maybe_vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?;
-                match maybe_vn {
-                    Some(vn) => {
-                        nodes.insert(vn);
-                    },
-                    None => {
-                        // Validator is queued for exit. Now we need to determine if the exit is before the end_epoch
-                        // i.e an active validator at end_epoch
-                        let mut cursor = self.exit_queue_read_cursor()?;
-                        let prefix = create_exit_queue_prefix_key(Some(&sid), end_epoch);
-                        if !cursor.seek_range(&prefix)? {
-                            continue;
+                if let Some(vn) = maybe_vn &&
+                    vn.activation_epoch == key_activation_epoch
+                {
+                    nodes.insert(vn);
+                    continue;
+                }
+                // Not registered under this activation key (it exited, and possibly registered again since).
+                // Validator is queued for exit. Now we need to determine if the exit is before the end_epoch
+                // i.e an active validator at end_epoch
+                let mut cursor = self.exit_queue_read_cursor()?;
+                let prefix = create_exit_queue_prefix_key(Some(&sid), end_epoch);
+                if !cursor.seek_range(&prefix)? {
+                    continue;
+                }
+
+                while let Some(key) = cursor.next_key()? {
+                    let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+                    let key_sid = sections
+                        .next()
+                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                            function: "ValidatorNodeStore::get_entire_vn_set",
+                            details: "Malformed exit queue key".to_string(),
+                        })?;
+
+                    if key_sid != sid {
+                        // No further entries for this sidechain
+                        break;
+                    }
+
+                    let key_epoch =
+                        sections
+                            .next_be_u64()
+                            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                                function: "ValidatorNodeStore::get_entire_vn_set",
+                                details: "Malformed exit queue key".to_string(),
+                            })?;
+
+                    let key_pk = sections
+                        .next()
+                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                            function: "ValidatorNodeStore::get_entire_vn_set",
+                            details: "Malformed exit queue key".to_string(),
+                        })?;
+
+                    if pk.as_bytes() != key_pk {
+                        continue;
+                    }
+
+                    if key_epoch > end_epoch.as_u64() {
+                        // We've found the exit record for the validator. It is active because the exit happens
+                        // after end_epoch PANIC: the current key exists because
+                        // we are iterating over the keys in the exit queue
+                        let (_, v) = cursor
+                            .current()?
+                            .expect("Cursor is not at a valid position in get_entire_vn_set");
+                        if v.activation_epoch == key_activation_epoch {
+                            nodes.insert(v);
                         }
-
-                        while let Some(key) = cursor.next_key()? {
-                            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-                            let key_sid =
-                                sections
-                                    .next()
-                                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                        function: "ValidatorNodeStore::get_entire_vn_set",
-                                        details: "Malformed exit queue key".to_string(),
-                                    })?;
-
-                            if key_sid != sid {
-                                // No further entries for this sidechain
-                                break;
-                            }
-
-                            let key_epoch =
-                                sections
-                                    .next_be_u64()
-                                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                        function: "ValidatorNodeStore::get_entire_vn_set",
-                                        details: "Malformed exit queue key".to_string(),
-                                    })?;
-
-                            let key_pk =
-                                sections
-                                    .next()
-                                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                        function: "ValidatorNodeStore::get_entire_vn_set",
-                                        details: "Malformed exit queue key".to_string(),
-                                    })?;
-
-                            if pk.as_bytes() != key_pk {
-                                continue;
-                            }
-
-                            if key_epoch > end_epoch.as_u64() {
-                                // We've found the exit record for the validator. It is active because the exit happens
-                                // after end_epoch PANIC: the current key exists because
-                                // we are iterating over the keys in the exit queue
-                                let (_, v) = cursor
-                                    .current()?
-                                    .expect("Cursor is not at a valid position in get_entire_vn_set");
-                                nodes.insert(v);
-                            }
-                            break;
-                        }
-                    },
-                };
+                    }
+                    break;
+                }
             }
         }
 
@@ -621,7 +625,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
             let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
 
-            nodes.insert(vn);
+            // Only count an entry under its own activation epoch (see `get_entire_vn_set`)
+            if vn.activation_epoch == activation_epoch {
+                nodes.insert(vn);
+            }
 
             // Get remaining nodes from DUPSORT db within the same activation epoch
             while let Some((_, pk)) = cursor.next_dup()? {
@@ -631,7 +638,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     .get(&self.db_validator_nodes, &key)
                     .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
                 let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
-                nodes.insert(vn);
+                if vn.activation_epoch == activation_epoch {
+                    nodes.insert(vn);
+                }
             }
         }
 
@@ -683,7 +692,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 }
             })?;
 
-            validators.insert(vn);
+            // Only count an entry under its own activation epoch (see `get_entire_vn_set`)
+            if vn.activation_epoch == epoch {
+                validators.insert(vn);
+            }
         }
 
         Ok(validators)
@@ -1183,6 +1195,56 @@ mod tests {
 
     mod get_entire_vn_set {
         use super::*;
+
+        #[test]
+        fn a_re_registration_is_not_active_before_its_own_activation_epoch() {
+            // register (activates at 1) -> exit (at 10) -> register again (activates at 15). `exit()` leaves the old
+            // activation key (1, pk) in place, and it resolves by public key to the new entry; in between the exit
+            // and the new activation the validator node must not be in the set.
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let nodes = insert_n_vns(&store, 1, 0, 1, None);
+            let public_key = nodes[0].public_key.clone();
+            store.exit(None, &public_key, VnEpoch(10)).unwrap();
+            let entry = ValidatorNodeEntry {
+                public_key: public_key.clone(),
+                shard_key: crate::test_helpers::make_hash2(public_key.as_bytes(), [1u8]),
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
+                activation_epoch: VnEpoch(15),
+                sidechain_public_key: None,
+                ..Default::default()
+            };
+            store.insert(&entry).unwrap();
+
+            // Still active under the first registration until its exit takes effect
+            let set = store.get_entire_vn_set(VnEpoch(5)).unwrap();
+            assert_eq!(set.len(), 1);
+            assert_eq!(set.iter().next().unwrap().activation_epoch, VnEpoch(1));
+            // Between the exit and the new activation: not in the set
+            assert!(store.get_entire_vn_set(VnEpoch(12)).unwrap().is_empty());
+            // These two only look in the registered set, so they cannot report the exited first registration
+            // (pre-existing); they must not report the second one under the first's activation epoch either.
+            assert!(
+                store
+                    .get_vn_set(None, VnEpoch(0), VnEpoch(12))
+                    .unwrap()
+                    .iter()
+                    .all(|vn| vn.activation_epoch != VnEpoch(15))
+            );
+            assert!(
+                store
+                    .get_activating_in_epoch(None, VnEpoch(1))
+                    .unwrap()
+                    .iter()
+                    .all(|vn| vn.activation_epoch != VnEpoch(15))
+            );
+            // From the new activation epoch: in the set, once
+            let set = store.get_entire_vn_set(VnEpoch(15)).unwrap();
+            assert_eq!(set.len(), 1);
+            assert_eq!(set.iter().next().unwrap().activation_epoch, VnEpoch(15));
+            assert_eq!(store.get_activating_in_epoch(None, VnEpoch(15)).unwrap().len(), 1);
+        }
 
         #[test]
         fn it_returns_all_active_validators_at_given_epoch() {

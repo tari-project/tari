@@ -144,6 +144,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored,
                 mined_timestamp: None,

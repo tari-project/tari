@@ -206,6 +206,18 @@ where
             return Ok(false);
         }
 
+        if !response.accepted && response.rejection_reason == TxSubmissionRejectionReason::ValidatorNodeSlotTaken {
+            // Another mempool transaction registers or exits the same validator node. That is not a reason to cancel
+            // this one: it may be accepted once the other is mined or removed, so retry later.
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) not accepted yet: another mempool transaction holds the validator node slot, \
+                 submission will be retried.",
+                self.tx_id
+            );
+            return Ok(false);
+        }
+
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
             if let Some(ref details) = response.details {
                 error!(
@@ -247,6 +259,8 @@ where
                     TransactionServiceError::MempoolRejectionAlreadyMined,
                     TxCancellationReason::AlreadyMined,
                 ),
+                // Handled above (retried, not cancelled)
+                TxSubmissionRejectionReason::ValidatorNodeSlotTaken => return Ok(false),
             };
 
             self.cancel_pending_transaction(reason, response.details.clone()).await;

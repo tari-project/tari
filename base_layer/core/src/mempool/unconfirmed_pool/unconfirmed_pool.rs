@@ -27,7 +27,10 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
+};
 use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
@@ -225,7 +228,7 @@ pub struct UnconfirmedPool {
     /// For each validator node registered or exited by a pool transaction, the (single) pool transaction doing so. A
     /// block may not register or exit the same validator node twice, and the second one only fails when the block is
     /// validated, so two such transactions in the pool would make every block template fail (see
-    /// [UnconfirmedPool::has_validator_node_conflict]).
+    /// [UnconfirmedPool::validator_node_conflict_holders]).
     txs_by_validator_node: HashMap<ValidatorNodeKey, TransactionKey>,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
@@ -251,6 +254,20 @@ fn validator_node_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
             ))
         })
         .collect()
+}
+
+/// The earliest `max_epoch` of the validator node registrations and exits in `body`, if it has any
+fn validator_node_max_epoch(body: &AggregateBody) -> Option<VnEpoch> {
+    body.outputs()
+        .iter()
+        .filter_map(|output| {
+            let features = output.features.sidechain_feature.as_ref()?;
+            features
+                .validator_node_registration()
+                .map(|reg| reg.max_epoch())
+                .or_else(|| features.validator_node_exit().map(|exit| exit.max_epoch()))
+        })
+        .min()
 }
 
 /// The order in which a selection pass considers transactions
@@ -629,23 +646,68 @@ impl UnconfirmedPool {
         Ok(())
     }
 
-    /// Returns true if `tx` registers or exits a validator node that another pool transaction already registers or
-    /// exits. Such a transaction must not be stored: each one is valid on its own, so both would be selected into a
+    /// The pool transactions holding a validator node registration/exit slot that `tx` also registers or exits. At most
+    /// one pool transaction may hold a slot: two would each be valid on their own, so both would be selected into a
     /// block template, the template would fail validation (duplicate registration/exit in one body), and re-validating
-    /// them individually after the failed block would put both back, failing every later template the same way.
-    /// The transaction itself already being in the pool is not a conflict (`insert` deduplicates it).
-    pub fn has_validator_node_conflict(&self, tx: &Transaction) -> bool {
+    /// them individually after the failed block would put both back, failing every later template the same way. Empty
+    /// if `tx` itself is already in the pool (`insert` deduplicates it).
+    pub fn validator_node_conflict_holders(&self, tx: &Transaction) -> Vec<TransactionKey> {
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
-            return false;
+            return Vec::new();
         }
-        validator_node_keys(&tx.body)
+        let mut holders = validator_node_keys(&tx.body)
             .iter()
-            .any(|vn_key| self.txs_by_validator_node.contains_key(vn_key))
+            .filter_map(|vn_key| self.txs_by_validator_node.get(vn_key))
+            .copied()
+            .collect::<Vec<_>>();
+        holders.sort_unstable();
+        holders.dedup();
+        holders
+    }
+
+    #[cfg(test)]
+    pub fn has_validator_node_conflict(&self, tx: &Transaction) -> bool {
+        !self.validator_node_conflict_holders(tx).is_empty()
+    }
+
+    /// The fee per gram (x1000, as used for the stored priority) of the pool transaction `key`
+    pub fn fee_per_gram_millis(&self, key: TransactionKey) -> Option<u64> {
+        self.tx_by_key.get(&key).map(|tx| tx.fee_per_byte)
+    }
+
+    /// Removes every pool transaction with a validator node registration or exit whose `max_epoch` is before `epoch`
+    /// (the epoch the next block template is built for). Such a transaction can never be mined again, and block
+    /// templates are not validated before mining, so leaving it would cost a block. Only transactions in the validator
+    /// node index are considered, so this is cheap. Returns the removed transactions.
+    pub fn remove_expired_validator_node_transactions(
+        &mut self,
+        epoch: VnEpoch,
+    ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        let mut expired = self
+            .txs_by_validator_node
+            .values()
+            .copied()
+            .filter(|key| {
+                self.tx_by_key
+                    .get(key)
+                    .and_then(|tx| validator_node_max_epoch(&tx.transaction.body))
+                    .is_some_and(|max_epoch| max_epoch < epoch)
+            })
+            .collect::<Vec<_>>();
+        expired.sort_unstable();
+        expired.dedup();
+        let mut removed = Vec::with_capacity(expired.len());
+        for key in expired {
+            if let Some(tx) = self.remove_transaction(key)? {
+                removed.push(tx);
+            }
+        }
+        Ok(removed)
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
@@ -1317,7 +1379,7 @@ impl UnconfirmedPool {
                     .iter()
                     .all(|excess| !excesses.contains(excess) && branch_excesses.insert(*excess));
                 // Insertion rejects a second pool transaction for the same validator node
-                // (`has_validator_node_conflict`), so this should never fire; it keeps a template valid regardless.
+                // (`validator_node_conflict_holders`), so this should never fire; it keeps a template valid regardless.
                 valid &= validator_node_keys(&tx.transaction.body)
                     .into_iter()
                     .all(|vn_key| !vn_keys.contains(&vn_key) && branch_vn_keys.insert(vn_key));
