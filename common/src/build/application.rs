@@ -104,9 +104,20 @@ fn find_git_root(manifest_dir: &Path) -> Option<PathBuf> {
 /// Returns true if `dir/Cargo.toml` contains a `[workspace]` table header.
 fn is_workspace_root(dir: &Path) -> bool {
     match fs::read_to_string(dir.join("Cargo.toml")) {
-        Ok(contents) => contents.lines().any(|line| line.trim() == "[workspace]"),
+        Ok(contents) => contents.lines().any(is_workspace_header),
         Err(_) => false,
     }
+}
+
+/// Returns true if the line is the bare `[workspace]` table header, ignoring whitespace and a trailing `# comment`.
+/// `[workspace.package]` and other tables do not count.
+fn is_workspace_header(line: &str) -> bool {
+    let line = line.trim();
+    let line = match line.split_once('#') {
+        Some((before_comment, _)) => before_comment,
+        None => line,
+    };
+    line.trim() == "[workspace]"
 }
 
 fn get_commit<P: AsRef<Path>>(git_root: P) -> Result<String, anyhow::Error> {
@@ -142,6 +153,30 @@ mod tests {
             .unwrap();
         let unescaped: String = serde_json::from_str(literal).unwrap();
         assert_eq!(unescaped, r#"a"b\c"#);
+    }
+
+    #[test]
+    fn workspace_header_matching() {
+        assert!(is_workspace_header("[workspace]"));
+        assert!(is_workspace_header("  [workspace]   "));
+        assert!(is_workspace_header("[workspace] # members below"));
+        assert!(!is_workspace_header("[workspace.package]"));
+        assert!(!is_workspace_header("[dependencies]"));
+        assert!(!is_workspace_header("# [workspace]"));
+
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"1.0.0\"\n\n[workspace] # members below\nmembers = []\n",
+        )
+        .unwrap();
+        assert!(is_workspace_root(dir.path()));
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[workspace.package]\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        assert!(!is_workspace_root(dir.path()));
     }
 
     #[test]
