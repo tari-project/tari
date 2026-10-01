@@ -24,11 +24,18 @@ use serde_json::Value;
 use tari_common::configuration::Network;
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        PrivateKey,
+    },
 };
 use tari_core::{blocks::genesis_block::get_genesis_block, proto};
 use tari_crypto::keys::SecretKey;
-use tari_max_size::ValidatedDecode;
+use tari_max_size::{ValidatedDecode, validated_decode::DecodesViaValidatedDecode};
 use tari_node_components::blocks::{Block, BlockHeader};
 use tari_script::{ExecutionStack, MAX_SCRIPT_BYTES, StackItem, TariScript, script};
 use tari_transaction_components::{
@@ -48,10 +55,13 @@ use tari_transaction_components::{
         SideChainFeature,
         SideChainFeatureData,
         SideChainId,
+        SpentOutput,
         TemplateType,
         Transaction,
         TransactionInput,
         TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutputVersion,
         ValidatorNodeExit,
         ValidatorNodeRegistration,
         ValidatorNodeSignature,
@@ -61,12 +71,19 @@ use tari_transaction_components::{
 };
 use tari_utilities::{ByteArray, hex::to_hex};
 
-/// Asserts that every decoder made the same decision on `sample`: either all rejected it, or all accepted it and
+/// Asserts that every decoder made the expected decision on `sample`: either all rejected it, or all accepted it and
 /// decoded it to the same value. `results` holds the name of each decoder and its result (`None` if it rejected the
 /// sample).
-fn assert_parity<T: PartialEq + Debug>(sample: &str, results: &[(&str, Option<T>)]) {
+fn assert_parity<T: PartialEq + Debug>(sample: &str, accept: bool, results: &[(&str, Option<T>)]) {
     let verdict = |result: &Option<T>| if result.is_some() { "accepted" } else { "rejected" };
     let (first_name, first) = results.first().expect("at least one decoder");
+    assert_eq!(
+        first.is_some(),
+        accept,
+        "{sample}: expected every decoder to {} it, but {first_name} {} it",
+        if accept { "accept" } else { "reject" },
+        verdict(first)
+    );
     for (name, result) in results {
         assert_eq!(
             result.is_some(),
@@ -99,26 +116,55 @@ enum Mutation {
     OutputCommitment(Vec<u8>),
     OutputSenderOffsetPublicKey(Vec<u8>),
     OutputMetadataSignatureUa(Vec<u8>),
+    OutputVersion(u32),
     /// Installs a (valid) side-chain feature on the first output, then changes one of its fields
     OutputSideChain(Box<SideChainFeature>, SideChainChange),
     // The first (compact) input
     InputData(Vec<u8>),
     InputScriptSignatureEphemeralPubkey(Vec<u8>),
-    // The second (full, non-compact) input
+    // The second (full, non-compact) input. The version of a compact input is not sampled: neither protobuf family
+    // carries it (both decode a compact input with the current version), while serde and borsh keep it.
+    InputVersion(u32),
     FullInputScript(Vec<u8>),
     FullInputEncryptedData(Vec<u8>),
+    FullInputCommitment(Vec<u8>),
+    FullInputSenderOffsetPublicKey(Vec<u8>),
+    FullInputMetadataSignatureUa(Vec<u8>),
+    FullInputOutputType(u32),
+    FullInputRangeproofHash(Vec<u8>),
     // The first kernel
     KernelFeatures(u32),
     KernelExcess(Vec<u8>),
     KernelExcessSignature(Vec<u8>),
+    KernelVersion(u32),
+    KernelBurnCommitment(Vec<u8>),
     // Block only
     HeaderBlockOutputMr(Vec<u8>),
+    HeaderHash(HeaderHash, Vec<u8>),
     HeaderVersion(u32),
     HeaderTotalKernelOffset(Vec<u8>),
     HeaderPowAlgo(u64),
     HeaderPowData(Vec<u8>),
     // Transaction only
     TransactionOffset(Vec<u8>),
+}
+
+/// The 32 byte hash fields of a block header (besides `block_output_mr`)
+#[derive(Debug, Clone, Copy)]
+enum HeaderHash {
+    PrevHash,
+    OutputMr,
+    KernelMr,
+    InputMr,
+    ValidatorNodeMr,
+}
+
+/// A template type, as a template registration sample
+#[derive(Debug, Clone, Copy)]
+enum TemplateTypeSample {
+    Wasm(u32),
+    Flow,
+    Manifest,
 }
 
 /// A change to one field of a side-chain feature
@@ -133,6 +179,7 @@ enum SideChainChange {
     TemplateBinarySha(Vec<u8>),
     TemplateBinaryUrl(String),
     TemplateCommitHash(Vec<u8>),
+    TemplateType(TemplateTypeSample),
     SidechainIdPublicKey(Vec<u8>),
     SidechainIdSignature(Vec<u8>),
 }
@@ -189,21 +236,28 @@ fn base_body() -> AggregateBody {
         ExecutionStack::new(vec![StackItem::PublicKey(random_public_key())]),
         Default::default(),
     );
-    // A full input spending the second output, with a script and encrypted data of its own
+    // A full input spending the second output, with fields of its own (so that they are unique in the encodings)
     let spent = &outputs[1];
     let mut encrypted_data = vec![0u8; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 10];
     rand::rng().fill(&mut encrypted_data[..]);
+    let random_scalar = || PrivateKey::random(&mut rand::rng());
     let full_input = TransactionInput::new_with_output_data(
         TransactionInputVersion::get_current_version(),
         spent.features.clone(),
-        spent.commitment.clone(),
+        CompressedCommitment::from_canonical_bytes(&random_public_key_bytes()).unwrap(),
         script!(PushPubKey(Box::new(random_public_key()))).unwrap(),
         ExecutionStack::new(vec![StackItem::PublicKey(random_public_key())]),
         Default::default(),
-        spent.sender_offset_public_key.clone(),
+        random_public_key(),
         spent.covenant.clone(),
         EncryptedData::from_bytes(&encrypted_data).unwrap(),
-        spent.metadata_signature.clone(),
+        ComAndPubSignature::new(
+            CompressedCommitment::from_canonical_bytes(&random_public_key_bytes()).unwrap(),
+            random_public_key(),
+            random_scalar(),
+            random_scalar(),
+            random_scalar(),
+        ),
         FixedHash::from(rand::rng().random::<[u8; 32]>()),
         spent.minimum_value_promise,
     );
@@ -276,6 +330,11 @@ fn side_chain_json(feature: &SideChainFeature, change: &SideChainChange) -> Opti
             format!("{data}/build_info/commit_hash/inner"),
             Value::from(bytes.clone()),
         ),
+        SideChainChange::TemplateType(template_type) => (format!("{data}/template_type"), match template_type {
+            TemplateTypeSample::Wasm(abi_version) => serde_json::json!({ "Wasm": { "abi_version": abi_version } }),
+            TemplateTypeSample::Flow => Value::from("Flow"),
+            TemplateTypeSample::Manifest => Value::from("Manifest"),
+        }),
         SideChainChange::SidechainIdPublicKey(bytes) => {
             ("/sidechain_id/public_key".to_string(), Value::from(to_hex(bytes)))
         },
@@ -287,6 +346,7 @@ fn side_chain_json(feature: &SideChainFeature, change: &SideChainChange) -> Opti
     Some((format!("/body/outputs/0/features/sidechain_feature{field}"), value))
 }
 
+#[allow(clippy::too_many_lines)]
 fn mutate_json(value: &mut Value, mutation: &Mutation) {
     let hex = |bytes: &Vec<u8>| Value::from(to_hex(bytes));
     let (pointer, new_value) = match mutation {
@@ -334,6 +394,66 @@ fn mutate_json(value: &mut Value, mutation: &Mutation) {
             hex(bytes),
         ),
         Mutation::FullInputScript(bytes) => ("/body/inputs/1/spent_output/OutputData/script".to_string(), hex(bytes)),
+        Mutation::FullInputCommitment(bytes) => (
+            "/body/inputs/1/spent_output/OutputData/commitment".to_string(),
+            hex(bytes),
+        ),
+        Mutation::FullInputSenderOffsetPublicKey(bytes) => (
+            "/body/inputs/1/spent_output/OutputData/sender_offset_public_key".to_string(),
+            hex(bytes),
+        ),
+        Mutation::FullInputMetadataSignatureUa(bytes) => (
+            "/body/inputs/1/spent_output/OutputData/metadata_signature/u_a".to_string(),
+            hex(bytes),
+        ),
+        Mutation::FullInputOutputType(output_type) => (
+            "/body/inputs/1/spent_output/OutputData/features/output_type".to_string(),
+            Value::from(*output_type),
+        ),
+        // `FixedHash` is a JSON array of numbers
+        Mutation::FullInputRangeproofHash(bytes) => (
+            "/body/inputs/1/spent_output/OutputData/rangeproof_hash".to_string(),
+            Value::from(bytes.clone()),
+        ),
+        Mutation::InputVersion(version) => (
+            "/body/inputs/1/version".to_string(),
+            enum_json(
+                u8::try_from(*version)
+                    .ok()
+                    .and_then(|v| TransactionInputVersion::try_from(v).ok()),
+                u64::from(*version),
+            ),
+        ),
+        Mutation::OutputVersion(version) => (
+            "/body/outputs/0/version".to_string(),
+            enum_json(
+                u8::try_from(*version)
+                    .ok()
+                    .and_then(|v| TransactionOutputVersion::try_from(v).ok()),
+                u64::from(*version),
+            ),
+        ),
+        Mutation::KernelVersion(version) => (
+            "/body/kernels/0/version".to_string(),
+            enum_json(
+                u8::try_from(*version)
+                    .ok()
+                    .and_then(|v| TransactionKernelVersion::try_from(v).ok()),
+                u64::from(*version),
+            ),
+        ),
+        Mutation::KernelBurnCommitment(bytes) => ("/body/kernels/0/burn_commitment".to_string(), hex(bytes)),
+        // `FixedHash` is a JSON array of numbers
+        Mutation::HeaderHash(field, bytes) => {
+            let name = match field {
+                HeaderHash::PrevHash => "prev_hash",
+                HeaderHash::OutputMr => "output_mr",
+                HeaderHash::KernelMr => "kernel_mr",
+                HeaderHash::InputMr => "input_mr",
+                HeaderHash::ValidatorNodeMr => "validator_node_mr",
+            };
+            (format!("/header/{name}"), Value::from(bytes.clone()))
+        },
         Mutation::FullInputEncryptedData(bytes) => (
             "/body/inputs/1/spent_output/OutputData/encrypted_data/data".to_string(),
             hex(bytes),
@@ -379,6 +499,18 @@ fn mutate_p2p_side_chain(feature: &mut proto::types::SideChainFeature, change: &
         (SideChainChange::TemplateCommitHash(bytes), Data::TemplateRegistration(reg)) => {
             reg.build_info.as_mut().unwrap().commit_hash = bytes.clone()
         },
+        (SideChainChange::TemplateType(template_type), Data::TemplateRegistration(reg)) => {
+            use proto::types::template_type::TemplateType as Type;
+            reg.template_type = Some(proto::types::TemplateType {
+                template_type: Some(match template_type {
+                    TemplateTypeSample::Wasm(abi_version) => Type::Wasm(proto::types::WasmInfo {
+                        abi_version: *abi_version,
+                    }),
+                    TemplateTypeSample::Flow => Type::Flow(proto::types::FlowInfo {}),
+                    TemplateTypeSample::Manifest => Type::Manifest(proto::types::ManifestInfo {}),
+                }),
+            });
+        },
         (SideChainChange::SidechainIdPublicKey(bytes), _) => {
             feature.sidechain_id.as_mut().unwrap().public_key = bytes.clone()
         },
@@ -418,6 +550,18 @@ fn mutate_grpc_side_chain(feature: &mut grpc::SideChainFeature, change: &SideCha
         (SideChainChange::TemplateBinaryUrl(url), Data::TemplateRegistration(reg)) => reg.binary_url = url.clone(),
         (SideChainChange::TemplateCommitHash(bytes), Data::TemplateRegistration(reg)) => {
             reg.build_info.as_mut().unwrap().commit_hash = bytes.clone()
+        },
+        (SideChainChange::TemplateType(template_type), Data::TemplateRegistration(reg)) => {
+            use grpc::template_type::TemplateType as Type;
+            reg.template_type = Some(grpc::TemplateType {
+                template_type: Some(match template_type {
+                    TemplateTypeSample::Wasm(abi_version) => Type::Wasm(grpc::WasmInfo {
+                        abi_version: *abi_version,
+                    }),
+                    TemplateTypeSample::Flow => Type::Flow(grpc::FlowInfo {}),
+                    TemplateTypeSample::Manifest => Type::Manifest(grpc::ManifestInfo {}),
+                }),
+            });
         },
         (SideChainChange::SidechainIdPublicKey(bytes), _) => {
             feature.sidechain_id.as_mut().unwrap().public_key = bytes.clone()
@@ -467,6 +611,19 @@ fn mutate_p2p_body(body: &mut proto::types::AggregateBody, mutation: &Mutation) 
         },
         Mutation::FullInputScript(bytes) => full_input.script = bytes.clone(),
         Mutation::FullInputEncryptedData(bytes) => full_input.encrypted_data = bytes.clone(),
+        Mutation::FullInputCommitment(bytes) => full_input.commitment.as_mut().unwrap().data = bytes.clone(),
+        Mutation::FullInputSenderOffsetPublicKey(bytes) => full_input.sender_offset_public_key = bytes.clone(),
+        Mutation::FullInputMetadataSignatureUa(bytes) => {
+            full_input.metadata_signature.as_mut().unwrap().u_a = bytes.clone()
+        },
+        Mutation::FullInputOutputType(output_type) => full_input.features.as_mut().unwrap().output_type = *output_type,
+        Mutation::FullInputRangeproofHash(bytes) => full_input.rangeproof_hash = bytes.clone(),
+        Mutation::InputVersion(version) => full_input.version = *version,
+        Mutation::OutputVersion(version) => output.version = *version,
+        Mutation::KernelVersion(version) => kernel.version = *version,
+        Mutation::KernelBurnCommitment(bytes) => {
+            kernel.burn_commitment = Some(proto::types::Commitment { data: bytes.clone() })
+        },
         Mutation::KernelFeatures(bits) => kernel.features = *bits,
         Mutation::KernelExcess(bytes) => kernel.excess.as_mut().unwrap().data = bytes.clone(),
         Mutation::KernelExcessSignature(bytes) => kernel.excess_sig.as_mut().unwrap().signature = bytes.clone(),
@@ -505,6 +662,17 @@ fn mutate_grpc_body(body: &mut grpc::AggregateBody, mutation: &Mutation) {
         },
         Mutation::FullInputScript(bytes) => full_input.script = bytes.clone(),
         Mutation::FullInputEncryptedData(bytes) => full_input.encrypted_data = bytes.clone(),
+        Mutation::FullInputCommitment(bytes) => full_input.commitment = bytes.clone(),
+        Mutation::FullInputSenderOffsetPublicKey(bytes) => full_input.sender_offset_public_key = bytes.clone(),
+        Mutation::FullInputMetadataSignatureUa(bytes) => {
+            full_input.metadata_signature.as_mut().unwrap().u_a = bytes.clone()
+        },
+        Mutation::FullInputOutputType(output_type) => full_input.features.as_mut().unwrap().output_type = *output_type,
+        Mutation::FullInputRangeproofHash(bytes) => full_input.rangeproof_hash = bytes.clone(),
+        Mutation::InputVersion(version) => full_input.version = *version,
+        Mutation::OutputVersion(version) => output.version = *version,
+        Mutation::KernelVersion(version) => kernel.version = *version,
+        Mutation::KernelBurnCommitment(bytes) => kernel.burn_commitment = bytes.clone(),
         Mutation::KernelFeatures(bits) => kernel.features = *bits,
         Mutation::KernelExcess(bytes) => kernel.excess = bytes.clone(),
         Mutation::KernelExcessSignature(bytes) => kernel.excess_sig.as_mut().unwrap().signature = bytes.clone(),
@@ -551,6 +719,29 @@ fn varint_splice<T: BorshSerialize + serde::Serialize>(field: &T, after: &[u8]) 
     )
 }
 
+/// A change of the version of an output, input or kernel, its first field: replaces the leading version bytes of
+/// `item`'s encodings with `value` (little endian, at the width each format uses for `version`). `None` if the value
+/// does not fit in a byte.
+fn version_splice<T, V>(item: &T, version: &V, value: u32) -> Option<BinaryMutation>
+where
+    T: BorshSerialize + serde::Serialize,
+    V: BorshSerialize + serde::Serialize,
+{
+    let value = u8::try_from(value).ok()?;
+    let overwrite_prefix = |encoding: Vec<u8>, width: usize| {
+        let mut changed = encoding.clone();
+        changed[..width].copy_from_slice(&u64::from(value).to_le_bytes()[..width]);
+        (encoding, changed)
+    };
+    let (borsh_before, borsh_after) =
+        overwrite_prefix(borsh::to_vec(item).unwrap(), borsh::to_vec(version).unwrap().len());
+    let (bincode_before, bincode_after) = overwrite_prefix(
+        bincode::serialize(item).unwrap(),
+        bincode::serialize(version).unwrap().len(),
+    );
+    Some((borsh_before, borsh_after, bincode_before, bincode_after))
+}
+
 fn side_chain_binary_mutation(feature: &SideChainFeature, change: &SideChainChange) -> Option<BinaryMutation> {
     let data_key = match &feature.data {
         SideChainFeatureData::ValidatorNodeRegistration(reg) => reg.public_key(),
@@ -594,6 +785,8 @@ fn side_chain_binary_mutation(feature: &SideChainFeature, change: &SideChainChan
             Some(byte_vec_splice(field, field.as_bytes(), bytes))
         },
         SideChainChange::TemplateBinarySha(bytes) => same_size(template?.binary_sha.as_slice(), bytes),
+        // Built directly, see `direct_body`
+        SideChainChange::TemplateType(_) => None,
         // Written with `overwrite`
         SideChainChange::TemplateVersion(_) => None,
     }
@@ -649,11 +842,25 @@ fn binary_mutation(
             Some(byte_vec_splice(pow_data, pow_data.as_bytes(), bytes))
         },
         Mutation::TransactionOffset(bytes) => same_size(offset?.as_bytes(), bytes),
+        Mutation::FullInputCommitment(bytes) => same_size(full_input.commitment().unwrap().as_bytes(), bytes),
+        Mutation::FullInputSenderOffsetPublicKey(bytes) => {
+            same_size(full_input.sender_offset_public_key().unwrap().as_bytes(), bytes)
+        },
+        Mutation::FullInputMetadataSignatureUa(bytes) => {
+            same_size(full_input.metadata_signature().unwrap().u_a().as_bytes(), bytes)
+        },
+        Mutation::FullInputRangeproofHash(bytes) => same_size(full_input.rangeproof_hash().unwrap().as_slice(), bytes),
+        Mutation::InputVersion(value) => version_splice(full_input, &full_input.version, *value),
+        Mutation::OutputVersion(value) => version_splice(output, &output.version, *value),
+        Mutation::KernelVersion(value) => version_splice(kernel, &kernel.version, *value),
+        // Built directly, see `direct_body` and `check_block`
+        Mutation::KernelBurnCommitment(_) | Mutation::HeaderHash(..) => None,
         // The script signature of the compact input is the default (all zero), which is not unique in the encoding
         Mutation::InputScriptSignatureEphemeralPubkey(_) => None,
         // Written with `overwrite`
         Mutation::OutputFeaturesVersion(_) |
         Mutation::OutputType(_) |
+        Mutation::FullInputOutputType(_) |
         Mutation::OutputRangeProofType(_) |
         Mutation::KernelFeatures(_) |
         Mutation::HeaderVersion(_) |
@@ -672,7 +879,7 @@ fn overwrite_spec(mutation: &Mutation) -> Option<(u64, usize, usize)> {
                 bincode::serialize(&OutputFeaturesVersion::V0).unwrap(),
             ),
         ),
-        Mutation::OutputType(v) => (
+        Mutation::OutputType(v) | Mutation::FullInputOutputType(v) => (
             u64::from(*v),
             width(
                 borsh::to_vec(&OutputType::Standard).unwrap(),
@@ -710,7 +917,12 @@ fn overwrite_spec(mutation: &Mutation) -> Option<(u64, usize, usize)> {
 
 /// The body with the field an `overwrite` mutation changes set to another valid value, differing in its lowest byte
 fn alternative_body(body: &AggregateBody, mutation: &Mutation) -> AggregateBody {
-    let (inputs, mut outputs, mut kernels) = body.clone().dissolve();
+    let (mut inputs, mut outputs, mut kernels) = body.clone().dissolve();
+    if let Mutation::FullInputOutputType(_) = mutation &&
+        let SpentOutput::OutputData { features, .. } = &mut inputs[1].spent_output
+    {
+        features.output_type = OutputType::from_byte(features.output_type.as_byte() ^ 1).unwrap();
+    }
     let features = &mut outputs[0].features;
     match mutation {
         Mutation::OutputFeaturesVersion(_) => {
@@ -736,6 +948,55 @@ fn alternative_body(body: &AggregateBody, mutation: &Mutation) -> AggregateBody 
         _ => {},
     }
     AggregateBody::new_unsorted(inputs, outputs, kernels)
+}
+
+/// The body with the change applied directly, for changes the binary formats can express but that can not be spliced
+/// (the field changes size, as an absent burn commitment becoming present, or is not unique in the encoding). `None`
+/// for other changes, and for values the Rust type can not hold.
+fn direct_body(body: &AggregateBody, mutation: &Mutation) -> Option<AggregateBody> {
+    let (inputs, mut outputs, mut kernels) = body.clone().dissolve();
+    match mutation {
+        Mutation::KernelBurnCommitment(bytes) => {
+            if bytes.len() != 32 {
+                return None;
+            }
+            kernels[0].burn_commitment = Some(CompressedCommitment::from_canonical_bytes(bytes).ok()?);
+        },
+        Mutation::OutputSideChain(_, SideChainChange::TemplateType(template_type)) => {
+            let Some(SideChainFeatureData::CodeTemplateRegistration(reg)) =
+                outputs[0].features.sidechain_feature.as_mut().map(|f| &mut f.data)
+            else {
+                panic!("a template type change needs a template registration");
+            };
+            reg.template_type = match template_type {
+                TemplateTypeSample::Wasm(abi_version) => TemplateType::Wasm {
+                    abi_version: u16::try_from(*abi_version).ok()?,
+                },
+                TemplateTypeSample::Flow => TemplateType::Flow,
+                TemplateTypeSample::Manifest => TemplateType::Manifest,
+            };
+        },
+        _ => return None,
+    }
+    Some(AggregateBody::new_unsorted(inputs, outputs, kernels))
+}
+
+/// The header with a `HeaderHash` change applied directly (the genesis values of these hashes are not unique in the
+/// encoding, so they can not be spliced). `None` for other changes and for values of the wrong size.
+fn direct_header(header: &BlockHeader, mutation: &Mutation) -> Option<BlockHeader> {
+    let Mutation::HeaderHash(field, bytes) = mutation else {
+        return None;
+    };
+    let hash = FixedHash::try_from(bytes.as_slice()).ok()?;
+    let mut header = header.clone();
+    match field {
+        HeaderHash::PrevHash => header.prev_hash = hash,
+        HeaderHash::OutputMr => header.output_mr = hash,
+        HeaderHash::KernelMr => header.kernel_mr = hash,
+        HeaderHash::InputMr => header.input_mr = hash,
+        HeaderHash::ValidatorNodeMr => header.validator_node_mr = hash,
+    }
+    Some(header)
 }
 
 /// Writes `value` (little endian, `width` bytes) over a fixed width field of `encoding`. The field is found by
@@ -785,8 +1046,12 @@ fn binary_encodings(
     bincode_encoding: Vec<u8>,
     spliced: Option<BinaryMutation>,
     alternative: Option<(Option<Vec<u8>>, Vec<u8>)>,
+    direct: Option<(Option<Vec<u8>>, Vec<u8>)>,
     mutation: &Mutation,
 ) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    if let Some((borsh_direct, bincode_direct)) = direct {
+        return (borsh_direct, Some(bincode_direct));
+    }
     if let Some((borsh_before, borsh_after, bincode_before, bincode_after)) = spliced {
         return (
             borsh_encoding.map(|e| splice(&e, &borsh_before, &borsh_after)),
@@ -806,7 +1071,9 @@ fn binary_encodings(
     (None, None)
 }
 
-fn check_block(base: &Block, name: &str, mutation: &Mutation) {
+fn check_block(base: &Block, sample: &Sample) {
+    let Sample { name, mutation, accept } = sample;
+    let mutation = &mutation;
     let sample = format!("block {name}");
     let block = Block::new(base.header.clone(), prepared_body(&base.body, mutation));
 
@@ -823,6 +1090,28 @@ fn check_block(base: &Block, name: &str, mutation: &Mutation) {
         Mutation::HeaderBlockOutputMr(bytes) => {
             p2p_header.block_output_mr = bytes.clone();
             grpc_header.block_output_mr = bytes.clone();
+        },
+        Mutation::HeaderHash(field, bytes) => match field {
+            HeaderHash::PrevHash => {
+                p2p_header.prev_hash = bytes.clone();
+                grpc_header.prev_hash = bytes.clone();
+            },
+            HeaderHash::OutputMr => {
+                p2p_header.output_mr = bytes.clone();
+                grpc_header.output_mr = bytes.clone();
+            },
+            HeaderHash::KernelMr => {
+                p2p_header.kernel_mr = bytes.clone();
+                grpc_header.kernel_mr = bytes.clone();
+            },
+            HeaderHash::InputMr => {
+                p2p_header.input_mr = bytes.clone();
+                grpc_header.input_mr = bytes.clone();
+            },
+            HeaderHash::ValidatorNodeMr => {
+                p2p_header.validator_node_merkle_root = bytes.clone();
+                grpc_header.validator_node_mr = bytes.clone();
+            },
         },
         Mutation::HeaderVersion(version) => {
             p2p_header.version = *version;
@@ -845,6 +1134,14 @@ fn check_block(base: &Block, name: &str, mutation: &Mutation) {
         },
         _ => {},
     }
+    let direct = match (
+        direct_header(&block.header, mutation),
+        direct_body(&block.body, mutation),
+    ) {
+        (Some(header), _) => Some(Block::new(header, block.body.clone())),
+        (None, Some(body)) => Some(Block::new(block.header.clone(), body)),
+        (None, None) => None,
+    };
     let (borsh_encoding, bincode_encoding) = binary_encodings(
         Some(borsh::to_vec(&block).unwrap()),
         bincode::serialize(&block).unwrap(),
@@ -853,6 +1150,7 @@ fn check_block(base: &Block, name: &str, mutation: &Mutation) {
             Some(borsh::to_vec(&alternative).unwrap()),
             bincode::serialize(&alternative).unwrap(),
         )),
+        direct.map(|b| (Some(borsh::to_vec(&b).unwrap()), bincode::serialize(&b).unwrap())),
         mutation,
     );
 
@@ -875,10 +1173,12 @@ fn check_block(base: &Block, name: &str, mutation: &Mutation) {
         .into_iter()
         .map(|(name, block)| (name, block.map(|b| borsh::to_vec(&b).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, &results);
+    assert_parity(&sample, *accept, &results);
 }
 
-fn check_transaction(base: &Transaction, name: &str, mutation: &Mutation) {
+fn check_transaction(base: &Transaction, sample: &Sample) {
+    let Sample { name, mutation, accept } = sample;
+    let mutation = &mutation;
     let sample = format!("transaction {name}");
     let mut transaction = base.clone();
     transaction.body = prepared_body(&base.body, mutation);
@@ -901,6 +1201,11 @@ fn check_transaction(base: &Transaction, name: &str, mutation: &Mutation) {
         bincode::serialize(&transaction).unwrap(),
         binary_mutation(&transaction.body, None, Some(&transaction.offset), mutation),
         Some((None, bincode::serialize(&alternative).unwrap())),
+        direct_body(&transaction.body, mutation).map(|body| {
+            let mut direct = transaction.clone();
+            direct.body = body;
+            (None, bincode::serialize(&direct).unwrap())
+        }),
         mutation,
     );
 
@@ -920,7 +1225,22 @@ fn check_transaction(base: &Transaction, name: &str, mutation: &Mutation) {
         .into_iter()
         .map(|(name, transaction)| (name, transaction.map(|t| bincode::serialize(&t).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, &results);
+    assert_parity(&sample, *accept, &results);
+}
+
+/// A change to a block or transaction, and whether every decoder must accept it
+struct Sample {
+    name: String,
+    mutation: Mutation,
+    accept: bool,
+}
+
+fn sample(name: impl Into<String>, mutation: Mutation, accept: bool) -> Sample {
+    Sample {
+        name: name.into(),
+        mutation,
+        accept,
+    }
 }
 
 /// The bound of `PowData`
@@ -929,19 +1249,43 @@ const MAX_POW_DATA_SIZE: usize = u16::MAX as usize;
 /// A non-canonical 32 byte value: neither a valid compressed point nor a canonical scalar
 const NON_CANONICAL: [u8; 32] = [0xff; 32];
 
-/// Samples for a 32 byte key, commitment or scalar field: a valid value, a non-canonical value and the wrong sizes
-fn fixed_size_samples(name: &str, valid: Vec<u8>, mutation: fn(Vec<u8>) -> Mutation) -> Vec<(String, Mutation)> {
+/// What a 32 byte field holds, which decides whether a non-canonical value is accepted
+#[derive(Clone, Copy)]
+enum Fixed {
+    /// A compressed point (key or commitment): its decoders only check the size, the point is decompressed when used
+    Point,
+    /// A scalar: its decoders reject a non-canonical encoding
+    Scalar,
+    /// A hash: any 32 bytes are valid
+    Hash,
+}
+
+/// Samples for a 32 byte key, commitment, scalar or hash field: a valid value, a non-canonical value and the wrong
+/// sizes
+fn fixed_size_samples(name: &str, valid: Vec<u8>, kind: Fixed, mutation: fn(Vec<u8>) -> Mutation) -> Vec<Sample> {
     vec![
-        (format!("{name}: a valid value"), mutation(valid)),
-        (format!("{name}: non-canonical"), mutation(NON_CANONICAL.to_vec())),
-        (format!("{name}: 31 bytes"), mutation(vec![1; 31])),
-        (format!("{name}: 33 bytes"), mutation(vec![1; 33])),
-        (format!("{name}: empty"), mutation(vec![])),
+        sample(format!("{name}: a valid value"), mutation(valid), true),
+        sample(
+            format!("{name}: non-canonical"),
+            mutation(NON_CANONICAL.to_vec()),
+            !matches!(kind, Fixed::Scalar),
+        ),
+        sample(format!("{name}: 31 bytes"), mutation(vec![1; 31]), false),
+        sample(format!("{name}: 33 bytes"), mutation(vec![1; 33]), false),
+        sample(format!("{name}: empty"), mutation(vec![]), false),
     ]
 }
 
+/// Samples of a version byte: `valid` versions are accepted, others (and values over a byte) rejected
+fn version_samples(name: &str, valid: &[u32], mutation: fn(u32) -> Mutation) -> Vec<Sample> {
+    [0, 1, 2, 0xff, 0x100]
+        .into_iter()
+        .map(|v| sample(format!("{name} {v:#x}"), mutation(v), valid.contains(&v)))
+        .collect()
+}
+
 #[allow(clippy::too_many_lines)]
-fn side_chain_samples() -> Vec<(String, Mutation)> {
+fn side_chain_samples() -> Vec<Sample> {
     let signature = || CompressedSignature::new(random_public_key(), PrivateKey::random(&mut rand::rng()));
     let sidechain_id = Some(SideChainId::new(random_public_key(), signature()));
     let registration = SideChainFeature {
@@ -992,113 +1336,166 @@ fn side_chain_samples() -> Vec<(String, Mutation)> {
         ("template registration", &template),
         ("confidential output", &confidential),
     ] {
-        changes.push((format!("{name}: valid"), feature, SideChainChange::Nothing));
+        changes.push((format!("{name}: valid"), feature, SideChainChange::Nothing, true));
         changes.push((
             format!("{name}: another valid key"),
             feature,
             SideChainChange::DataPublicKey(random_public_key_bytes()),
+            true,
         ));
+        // Compressed keys are only decompressed when used
         changes.push((
             format!("{name}: non-canonical key"),
             feature,
             SideChainChange::DataPublicKey(NON_CANONICAL.to_vec()),
+            true,
         ));
         changes.push((
             format!("{name}: 31 byte key"),
             feature,
             SideChainChange::DataPublicKey(vec![1; 31]),
+            false,
         ));
     }
     let registration_changes = [
         (
             "claim key valid",
             SideChainChange::RegistrationClaimPublicKey(random_public_key_bytes()),
+            true,
         ),
         (
             "claim key non-canonical",
             SideChainChange::RegistrationClaimPublicKey(NON_CANONICAL.to_vec()),
+            true,
         ),
         (
             "claim key 31 bytes",
             SideChainChange::RegistrationClaimPublicKey(vec![1; 31]),
+            false,
         ),
         (
             "sidechain id key valid",
             SideChainChange::SidechainIdPublicKey(random_public_key_bytes()),
+            true,
         ),
         (
             "sidechain id key non-canonical",
             SideChainChange::SidechainIdPublicKey(NON_CANONICAL.to_vec()),
+            true,
         ),
         (
             "sidechain id key 31 bytes",
             SideChainChange::SidechainIdPublicKey(vec![1; 31]),
+            false,
         ),
         (
             "sidechain id signature valid",
             SideChainChange::SidechainIdSignature(random_scalar_bytes()),
+            true,
         ),
         (
             "sidechain id signature non-canonical",
             SideChainChange::SidechainIdSignature(NON_CANONICAL.to_vec()),
+            false,
         ),
         (
             "sidechain id signature 31 bytes",
             SideChainChange::SidechainIdSignature(vec![1; 31]),
+            false,
         ),
     ];
-    for (name, change) in registration_changes {
-        changes.push((format!("validator node registration: {name}"), &registration, change));
+    for (name, change, accept) in registration_changes {
+        changes.push((
+            format!("validator node registration: {name}"),
+            &registration,
+            change,
+            accept,
+        ));
     }
     let template_changes = [
-        ("name of 32 bytes", SideChainChange::TemplateName("n".repeat(32))),
-        ("name of 33 bytes", SideChainChange::TemplateName("n".repeat(33))),
+        ("name of 32 bytes", SideChainChange::TemplateName("n".repeat(32)), true),
+        ("name of 33 bytes", SideChainChange::TemplateName("n".repeat(33)), false),
         (
             "version u16::MAX",
             SideChainChange::TemplateVersion(u32::from(u16::MAX)),
+            true,
         ),
         (
             "version u16::MAX + 1",
             SideChainChange::TemplateVersion(u32::from(u16::MAX) + 1),
+            false,
         ),
         (
             "binary sha of 32 bytes",
             SideChainChange::TemplateBinarySha(vec![3; 32]),
+            true,
         ),
         (
             "binary sha of 31 bytes",
             SideChainChange::TemplateBinarySha(vec![3; 31]),
+            false,
         ),
         (
             "binary sha of 33 bytes",
             SideChainChange::TemplateBinarySha(vec![3; 33]),
+            false,
         ),
         (
             "binary url of 255 bytes",
             SideChainChange::TemplateBinaryUrl("u".repeat(255)),
+            true,
         ),
         (
             "binary url of 256 bytes",
             SideChainChange::TemplateBinaryUrl("u".repeat(256)),
+            false,
         ),
         (
             "commit hash of 32 bytes",
             SideChainChange::TemplateCommitHash(vec![4; 32]),
+            true,
         ),
         (
             "commit hash of 33 bytes",
             SideChainChange::TemplateCommitHash(vec![4; 33]),
+            false,
+        ),
+        (
+            "wasm template, abi version 1",
+            SideChainChange::TemplateType(TemplateTypeSample::Wasm(1)),
+            true,
+        ),
+        (
+            "wasm template, abi version u16::MAX",
+            SideChainChange::TemplateType(TemplateTypeSample::Wasm(u32::from(u16::MAX))),
+            true,
+        ),
+        (
+            "wasm template, abi version u16::MAX + 1",
+            SideChainChange::TemplateType(TemplateTypeSample::Wasm(u32::from(u16::MAX) + 1)),
+            false,
+        ),
+        (
+            "flow template",
+            SideChainChange::TemplateType(TemplateTypeSample::Flow),
+            true,
+        ),
+        (
+            "manifest template",
+            SideChainChange::TemplateType(TemplateTypeSample::Manifest),
+            true,
         ),
     ];
-    for (name, change) in template_changes {
-        changes.push((format!("template registration: {name}"), &template, change));
+    for (name, change, accept) in template_changes {
+        changes.push((format!("template registration: {name}"), &template, change, accept));
     }
     changes
         .into_iter()
-        .map(|(name, feature, change)| {
-            (
+        .map(|(name, feature, change, accept)| {
+            sample(
                 format!("side-chain {name}"),
                 Mutation::OutputSideChain(Box::new(feature.clone()), change),
+                accept,
             )
         })
         .collect()
@@ -1106,13 +1503,15 @@ fn side_chain_samples() -> Vec<(String, Mutation)> {
 
 /// Body samples, shared by blocks and transactions. Each is named after the change it makes.
 #[allow(clippy::too_many_lines)]
-fn body_samples() -> Vec<(String, Mutation)> {
+fn body_samples() -> Vec<Sample> {
     let key = random_public_key();
     let valid_script = script!(PushPubKey(Box::new(key.clone()))).unwrap().to_bytes();
     let valid_stack = ExecutionStack::new(vec![StackItem::Number(7), StackItem::PublicKey(key)]).to_bytes();
-    let mut samples = vec![("unchanged".to_string(), Mutation::Nothing)];
+    let mut samples = vec![sample("unchanged", Mutation::Nothing, true)];
 
     // EncryptedData: STATIC_ENCRYPTED_DATA_SIZE_TOTAL..=MAX_ENCRYPTED_DATA_SIZE bytes
+    let encrypted_data_size_is_valid =
+        |len: usize| (STATIC_ENCRYPTED_DATA_SIZE_TOTAL..=MAX_ENCRYPTED_DATA_SIZE).contains(&len);
     for len in [
         0,
         1,
@@ -1122,155 +1521,245 @@ fn body_samples() -> Vec<(String, Mutation)> {
         MAX_ENCRYPTED_DATA_SIZE,
         MAX_ENCRYPTED_DATA_SIZE + 1,
     ] {
-        samples.push((
+        samples.push(sample(
             format!("encrypted data of {len} bytes"),
             Mutation::OutputEncryptedData(vec![0xab; len]),
+            encrypted_data_size_is_valid(len),
         ));
     }
 
     // TariScript: well formed opcodes, at most MAX_SCRIPT_BYTES
-    samples.push((
-        "a valid script".to_string(),
+    samples.push(sample(
+        "a valid script",
         Mutation::OutputScript(valid_script.clone()),
+        true,
     ));
-    samples.push(("an empty script".to_string(), Mutation::OutputScript(vec![])));
-    samples.push((
-        "a truncated script".to_string(),
+    samples.push(sample("an empty script", Mutation::OutputScript(vec![]), true));
+    samples.push(sample(
+        "a truncated script",
         Mutation::OutputScript(valid_script[..valid_script.len() - 1].to_vec()),
+        false,
     ));
-    samples.push(("an unknown opcode".to_string(), Mutation::OutputScript(vec![0xff])));
-    samples.push((
-        "a script over MAX_SCRIPT_BYTES".to_string(),
+    samples.push(sample("an unknown opcode", Mutation::OutputScript(vec![0xff]), false));
+    samples.push(sample(
+        "a script over MAX_SCRIPT_BYTES",
         Mutation::OutputScript(valid_script.repeat(MAX_SCRIPT_BYTES / valid_script.len() + 1)),
+        false,
     ));
 
     // Covenant: well formed tokens, no trailing bytes, at most MAX_COVENANT_BYTES
     let hash = FixedHash::from([3u8; 32]);
     let valid_covenant = covenant!(output_hash_eq(@hash(hash))).unwrap().to_bytes();
-    samples.push((
-        "a valid covenant".to_string(),
+    samples.push(sample(
+        "a valid covenant",
         Mutation::OutputCovenant(valid_covenant.clone()),
+        true,
     ));
-    samples.push(("an empty covenant".to_string(), Mutation::OutputCovenant(vec![])));
-    samples.push((
-        "a covenant with trailing bytes".to_string(),
+    samples.push(sample("an empty covenant", Mutation::OutputCovenant(vec![]), true));
+    samples.push(sample(
+        "a covenant with trailing bytes",
         Mutation::OutputCovenant([valid_covenant.clone(), vec![0]].concat()),
+        false,
     ));
-    samples.push((
-        "an unknown covenant token".to_string(),
+    samples.push(sample(
+        "an unknown covenant token",
         Mutation::OutputCovenant(vec![0xff]),
+        false,
     ));
-    samples.push((
-        "a covenant over MAX_COVENANT_BYTES".to_string(),
+    samples.push(sample(
+        "a covenant over MAX_COVENANT_BYTES",
         Mutation::OutputCovenant(valid_covenant.repeat(4096 / valid_covenant.len() + 1)),
+        false,
     ));
 
+    // Versions
+    samples.extend(version_samples("output version", &[0, 1], Mutation::OutputVersion));
+    samples.extend(version_samples("full input version", &[0, 1], Mutation::InputVersion));
+    samples.extend(version_samples("kernel version", &[0], Mutation::KernelVersion));
+
     // Output features: known version, output type and range proof type; coinbase extra of at most 258 bytes
-    for version in [0, 1, 2, 0xff, 0x100] {
-        samples.push((
-            format!("output features version {version:#x}"),
-            Mutation::OutputFeaturesVersion(version),
-        ));
-    }
-    for output_type in [0, 1, 7, 8, 0xff, 0x100] {
-        samples.push((
+    samples.extend(version_samples(
+        "output features version",
+        &[0, 1],
+        Mutation::OutputFeaturesVersion,
+    ));
+    for (output_type, accept) in [
+        (0, true),
+        (1, true),
+        (7, true),
+        (8, false),
+        (0xff, false),
+        (0x100, false),
+    ] {
+        samples.push(sample(
             format!("output type {output_type:#x}"),
             Mutation::OutputType(output_type),
+            accept,
         ));
     }
-    for range_proof_type in [0, 1, 2, 0xff, 0x100] {
-        samples.push((
+    for (range_proof_type, accept) in [(0, true), (1, true), (2, false), (0xff, false), (0x100, false)] {
+        samples.push(sample(
             format!("range proof type {range_proof_type:#x}"),
             Mutation::OutputRangeProofType(range_proof_type),
+            accept,
         ));
     }
     for len in [0, 1, 258, 259] {
-        samples.push((
+        samples.push(sample(
             format!("coinbase extra of {len} bytes"),
             Mutation::OutputCoinbaseExtra(vec![5; len]),
+            len <= 258,
         ));
     }
 
-    // Range proof bytes
+    // Range proof bytes: not validated when decoded (the proof is verified by consensus validation)
     for (name, bytes) in [("empty", vec![]), ("1 byte", vec![1]), ("garbage", vec![0xff; 100])] {
-        samples.push((format!("range proof: {name}"), Mutation::OutputRangeProof(bytes)));
+        samples.push(sample(
+            format!("range proof: {name}"),
+            Mutation::OutputRangeProof(bytes),
+            true,
+        ));
     }
 
-    // Keys, commitments and signature scalars
+    // Keys, commitments, signature scalars and hashes
     samples.extend(fixed_size_samples(
         "output commitment",
         random_public_key_bytes(),
+        Fixed::Point,
         Mutation::OutputCommitment,
     ));
     samples.extend(fixed_size_samples(
         "sender offset public key",
         random_public_key_bytes(),
+        Fixed::Point,
         Mutation::OutputSenderOffsetPublicKey,
     ));
     samples.extend(fixed_size_samples(
         "metadata signature u_a",
         random_scalar_bytes(),
+        Fixed::Scalar,
         Mutation::OutputMetadataSignatureUa,
     ));
     samples.extend(fixed_size_samples(
         "input script signature ephemeral pubkey",
         random_public_key_bytes(),
+        Fixed::Point,
         Mutation::InputScriptSignatureEphemeralPubkey,
     ));
     samples.extend(fixed_size_samples(
         "kernel excess",
         random_public_key_bytes(),
+        Fixed::Point,
         Mutation::KernelExcess,
     ));
     samples.extend(fixed_size_samples(
         "kernel excess signature",
         random_scalar_bytes(),
+        Fixed::Scalar,
         Mutation::KernelExcessSignature,
     ));
+    // An empty burn commitment means "none" in gRPC but is invalid in P2P, so only present values are sampled
+    for (name, bytes, accept) in [
+        ("a valid value", random_public_key_bytes(), true),
+        ("non-canonical", NON_CANONICAL.to_vec(), true),
+        ("31 bytes", vec![1; 31], false),
+        ("33 bytes", vec![1; 33], false),
+    ] {
+        samples.push(sample(
+            format!("kernel burn commitment: {name}"),
+            Mutation::KernelBurnCommitment(bytes),
+            accept,
+        ));
+    }
 
     // Side-chain features
     samples.extend(side_chain_samples());
 
-    // The full (non-compact) input: its script and encrypted data
-    samples.push((
-        "full input: a valid script".to_string(),
+    // The full (non-compact) input
+    samples.push(sample(
+        "full input: a valid script",
         Mutation::FullInputScript(valid_script.clone()),
+        true,
     ));
-    samples.push((
-        "full input: an unknown opcode".to_string(),
+    samples.push(sample(
+        "full input: an unknown opcode",
         Mutation::FullInputScript(vec![0xff]),
+        false,
     ));
     for len in [
         STATIC_ENCRYPTED_DATA_SIZE_TOTAL - 1,
         STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
         MAX_ENCRYPTED_DATA_SIZE + 1,
     ] {
-        samples.push((
+        samples.push(sample(
             format!("full input: encrypted data of {len} bytes"),
             Mutation::FullInputEncryptedData(vec![0xab; len]),
+            encrypted_data_size_is_valid(len),
+        ));
+    }
+    samples.extend(fixed_size_samples(
+        "full input commitment",
+        random_public_key_bytes(),
+        Fixed::Point,
+        Mutation::FullInputCommitment,
+    ));
+    samples.extend(fixed_size_samples(
+        "full input sender offset public key",
+        random_public_key_bytes(),
+        Fixed::Point,
+        Mutation::FullInputSenderOffsetPublicKey,
+    ));
+    samples.extend(fixed_size_samples(
+        "full input metadata signature u_a",
+        random_scalar_bytes(),
+        Fixed::Scalar,
+        Mutation::FullInputMetadataSignatureUa,
+    ));
+    samples.extend(fixed_size_samples(
+        "full input rangeproof hash",
+        vec![9; 32],
+        Fixed::Hash,
+        Mutation::FullInputRangeproofHash,
+    ));
+    for (output_type, accept) in [(0, true), (7, true), (8, false), (0x100, false)] {
+        samples.push(sample(
+            format!("full input output type {output_type:#x}"),
+            Mutation::FullInputOutputType(output_type),
+            accept,
         ));
     }
 
     // ExecutionStack: well formed items, at most MAX_STACK_SIZE of them
-    samples.push(("valid input data".to_string(), Mutation::InputData(valid_stack.clone())));
-    samples.push(("empty input data".to_string(), Mutation::InputData(vec![])));
-    samples.push((
-        "truncated input data".to_string(),
-        Mutation::InputData(valid_stack[..valid_stack.len() - 1].to_vec()),
+    samples.push(sample(
+        "valid input data",
+        Mutation::InputData(valid_stack.clone()),
+        true,
     ));
-    samples.push((
-        "an unknown stack item type".to_string(),
+    samples.push(sample("empty input data", Mutation::InputData(vec![]), true));
+    samples.push(sample(
+        "truncated input data",
+        Mutation::InputData(valid_stack[..valid_stack.len() - 1].to_vec()),
+        false,
+    ));
+    samples.push(sample(
+        "an unknown stack item type",
         Mutation::InputData(vec![0xff]),
+        false,
     ));
     let number = ExecutionStack::new(vec![StackItem::Number(1)]).to_bytes();
-    samples.push((
-        "input data over MAX_STACK_SIZE items".to_string(),
+    samples.push(sample(
+        "input data over MAX_STACK_SIZE items",
         Mutation::InputData(number.repeat(256)),
+        false,
     ));
 
     // KernelFeatures: known bits only, a single byte
     for bits in [0, 1, 2, 3, 4, 0x80, 0xff, 0x100] {
-        samples.push((format!("kernel features {bits:#x}"), Mutation::KernelFeatures(bits)));
+        samples.push(sample(
+            format!("kernel features {bits:#x}"),
+            Mutation::KernelFeatures(bits),
+            bits <= 3,
+        ));
     }
     samples
 }
@@ -1279,9 +1768,9 @@ fn body_samples() -> Vec<(String, Mutation)> {
 fn block_and_transaction_decoders_accept_and_reject_the_same_samples() {
     let block = base_block();
     let transaction = transaction_with_body(block.body.clone());
-    for (name, mutation) in body_samples() {
-        check_block(&block, &name, &mutation);
-        check_transaction(&transaction, &name, &mutation);
+    for sample in body_samples() {
+        check_block(&block, &sample);
+        check_transaction(&transaction, &sample);
     }
 }
 
@@ -1290,47 +1779,78 @@ fn block_header_decoders_accept_and_reject_the_same_samples() {
     let block = base_block();
     let mut samples = Vec::new();
     for len in [0, 31, 32, 33] {
-        samples.push((
+        samples.push(sample(
             format!("block_output_mr of {len} bytes"),
             Mutation::HeaderBlockOutputMr(vec![7; len]),
+            len == 32,
         ));
     }
+    for field in [
+        HeaderHash::PrevHash,
+        HeaderHash::OutputMr,
+        HeaderHash::KernelMr,
+        HeaderHash::InputMr,
+        HeaderHash::ValidatorNodeMr,
+    ] {
+        for len in [0, 31, 32, 33] {
+            samples.push(sample(
+                format!("{field:?} of {len} bytes"),
+                Mutation::HeaderHash(field, vec![7; len]),
+                len == 32,
+            ));
+        }
+    }
     for version in [0, 1, u32::from(u16::MAX), u32::from(u16::MAX) + 1] {
-        samples.push((format!("header version {version:#x}"), Mutation::HeaderVersion(version)));
+        samples.push(sample(
+            format!("header version {version:#x}"),
+            Mutation::HeaderVersion(version),
+            version <= u32::from(u16::MAX),
+        ));
     }
     samples.extend(fixed_size_samples(
         "total kernel offset",
         random_scalar_bytes(),
+        Fixed::Scalar,
         Mutation::HeaderTotalKernelOffset,
     ));
     for algo in [0, 1, 2, 3, 4, 0xff, 0x100] {
-        samples.push((format!("pow algorithm {algo:#x}"), Mutation::HeaderPowAlgo(algo)));
-    }
-    for len in [0, 1, MAX_POW_DATA_SIZE, MAX_POW_DATA_SIZE + 1] {
-        samples.push((
-            format!("pow data of {len} bytes"),
-            Mutation::HeaderPowData(vec![6; len]),
+        samples.push(sample(
+            format!("pow algorithm {algo:#x}"),
+            Mutation::HeaderPowAlgo(algo),
+            algo <= 3,
         ));
     }
-    for (name, mutation) in samples {
-        check_block(&block, &name, &mutation);
+    for len in [0, 1, MAX_POW_DATA_SIZE, MAX_POW_DATA_SIZE + 1] {
+        samples.push(sample(
+            format!("pow data of {len} bytes"),
+            Mutation::HeaderPowData(vec![6; len]),
+            len <= MAX_POW_DATA_SIZE,
+        ));
+    }
+    for sample in samples {
+        check_block(&block, &sample);
     }
 }
 
 #[test]
 fn transaction_offset_decoders_accept_and_reject_the_same_samples() {
     let transaction = transaction_with_body(base_body());
-    for (name, mutation) in fixed_size_samples("transaction offset", random_scalar_bytes(), Mutation::TransactionOffset)
-    {
-        check_transaction(&transaction, &name, &mutation);
+    for sample in fixed_size_samples(
+        "transaction offset",
+        random_scalar_bytes(),
+        Fixed::Scalar,
+        Mutation::TransactionOffset,
+    ) {
+        check_transaction(&transaction, &sample);
     }
 }
 
-/// Compiles only if `T` decodes through `ValidatedDecode`
-fn assert_validated<T: ValidatedDecode>() {}
+/// Compiles only if the serde and borsh decoders of `T` are the ones `impl_validated_decode!` generates: the macro is
+/// the only implementor of `DecodesViaValidatedDecode`
+fn assert_validated<T: ValidatedDecode + DecodesViaValidatedDecode>() {}
 
-/// Every type with an invariant that its serde and borsh decoders must enforce. Removing a type's `ValidatedDecode`
-/// implementation (for example by deriving its decoders again) fails to compile here, whatever
+/// Every type with an invariant that its serde and borsh decoders must enforce. Removing a type's
+/// `impl_validated_decode!` (for example to derive its decoders again) fails to compile here, whatever
 /// `scripts/decoder_parity_check.py` can see.
 #[test]
 fn every_invariant_type_decodes_through_validated_decode() {

@@ -225,6 +225,17 @@ impl ValidatedDecode for MemoField {
 
 impl_validated_decode!(MemoField);
 
+/// A serde `deserialize_with` function that reads the serde form of a [`MemoField`] without applying the size limits.
+///
+/// Only for reading legacy wallet records written before the limits were applied at decode time (the legacy
+/// transaction protocol structs), so that a stored record with an oversized memo still loads. The encoding is the same
+/// as `MemoField`'s. Do not use it for anything decoded from outside the wallet.
+pub fn deserialize_legacy_unchecked<'de, D>(deserializer: D) -> Result<MemoField, D::Error>
+where D: serde::Deserializer<'de> {
+    let raw = <MemoFieldRaw as Deserialize>::deserialize(deserializer)?;
+    Ok(MemoField { inner: raw.inner })
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 enum InnerMemoField {
     // No payment ID.
