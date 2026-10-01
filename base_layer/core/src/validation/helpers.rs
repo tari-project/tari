@@ -27,6 +27,7 @@ use tari_common_types::{epoch::VnEpoch, types::FixedHash};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_transaction_components::{
+    consensus::ConsensusConstants,
     tari_proof_of_work::{PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
@@ -268,9 +269,26 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
     Ok(())
 }
 
-/// Checks the validity of the validator node exit if applicable
+/// Checks the validity of the validator node exit if applicable.
+///
+/// Everything the commit-time exit (`ValidatorNodeStore::exit` via `get_next_exit_epoch`) can fail on must be rejected
+/// here instead. A failure at commit time is not a validation failure: it surfaces as `AddBlockErrored`, so a locally
+/// built block template carrying the exit would keep failing without the offending transaction being evicted.
+///
+/// The exit is accepted only if:
+/// - exits are permitted at all (`vn_registration_max_exits_per_epoch > 0`; with zero, `get_next_exit_epoch` errors);
+/// - the validator node is in the registered validator node set (NOT already queued in the exit queue - `exit()` reads
+///   only the registered set, so a second exit for a queued validator fails at commit time). Note that
+///   `validator_node_is_active` cannot be used for this: it deliberately still reports a queued validator as active
+///   until its exit epoch so that the registration UTXO stays locked;
+/// - the validator node has activated by `current_epoch`;
+/// - the exit's `activation_epoch` (which is part of the signed message) matches the registered activation epoch,
+///   binding the exit to this registration instance.
+///
+/// Duplicate exits within a single body are rejected by `verify_no_duplicate_validator_node_registrations`.
 pub fn check_validator_node_exit<B: BlockchainBackend>(
     db: &B,
+    constants: &ConsensusConstants,
     output: &TransactionOutput,
     current_epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
@@ -281,6 +299,10 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         return Ok(());
     };
 
+    if constants.vn_registration_max_exits_per_epoch() == 0 {
+        return Err(ValidationError::ValidatorNodeExitNotPermitted);
+    }
+
     if exit.max_epoch() < current_epoch {
         return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
             public_key: exit.public_key().to_string(),
@@ -289,14 +311,31 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         });
     }
 
-    if !db.validator_node_is_active(
-        sidechain_features.sidechain_public_key(),
-        current_epoch,
-        exit.public_key(),
-    )? {
+    let Some(entry) = db.fetch_validator_node_entry(sidechain_features.sidechain_public_key(), exit.public_key())?
+    else {
         return Err(ValidationError::ValidatorNodeNotRegistered {
             public_key: exit.public_key().to_string(),
-            details: format!("exit invalid for validator node that is not active/registered in {current_epoch}"),
+            details: format!(
+                "exit invalid for validator node that is not registered or has already exited in {current_epoch}"
+            ),
+        });
+    };
+
+    if entry.activation_epoch > current_epoch {
+        return Err(ValidationError::ValidatorNodeNotRegistered {
+            public_key: exit.public_key().to_string(),
+            details: format!(
+                "exit invalid for validator node that only activates in {} (current epoch {current_epoch})",
+                entry.activation_epoch
+            ),
+        });
+    }
+
+    if entry.activation_epoch != exit.activation_epoch() {
+        return Err(ValidationError::ValidatorNodeExitActivationEpochMismatch {
+            public_key: exit.public_key().to_string(),
+            exit_activation_epoch: exit.activation_epoch(),
+            registered_activation_epoch: entry.activation_epoch,
         });
     }
 

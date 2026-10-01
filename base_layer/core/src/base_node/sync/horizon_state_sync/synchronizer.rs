@@ -959,7 +959,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                             let constants = self.rules.consensus_constants(current_header.height).clone();
                             validate_output_version(&constants, &output)?;
-                            validate_individual_output(&output, &constants)?;
+                            validate_individual_output(&output, &constants, self.rules.network().as_network())?;
                             batch_verify_range_proofs(&self.prover, &[&output])?;
 
                             txn.insert_output_via_horizon_sync(

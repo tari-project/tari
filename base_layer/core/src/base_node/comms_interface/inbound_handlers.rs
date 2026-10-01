@@ -94,8 +94,11 @@ pub enum BlockEvent {
         block: Arc<Block>,
         source_peer: Option<NodeId>,
     },
+    /// Adding the block failed for a reason other than a validation error (e.g. a storage error at commit time).
+    /// `source_peer` is `None` for a locally submitted block (e.g. a mined block template).
     AddBlockErrored {
         block: Arc<Block>,
+        source_peer: Option<NodeId>,
     },
     BlockSyncComplete(Arc<ChainBlock>, u64),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
@@ -1135,7 +1138,7 @@ where B: BlockchainBackend + 'static
                 #[cfg(feature = "metrics")]
                 metrics::rejected_blocks(block.header.height, &block.hash()).inc();
 
-                self.publish_block_event(BlockEvent::AddBlockErrored { block });
+                self.publish_block_event(BlockEvent::AddBlockErrored { block, source_peer });
                 Err(e.into())
             },
         }

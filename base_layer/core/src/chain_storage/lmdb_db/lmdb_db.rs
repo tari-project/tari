@@ -4390,6 +4390,16 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(is_active)
     }
 
+    fn fetch_validator_node_entry(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let store = self.validator_node_store(&txn);
+        store.get(sidechain_pk, public_key)
+    }
+
     fn get_validator_node(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,

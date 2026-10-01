@@ -70,7 +70,7 @@ use tari_crypto::{
     range_proof::RangeProofService,
     ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
 };
-use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain};
+use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain, ZeroizingFinalize};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::{ByteArray, Hidden, hex::Hex};
 use zeroize::{Zeroize, Zeroizing};
@@ -676,8 +676,8 @@ impl KeyManager {
                 let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
-                let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
-                PrivateKey::from_uniform_bytes(a_hash.as_ref())
+                let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize_zeroizing();
+                PrivateKey::from_uniform_bytes(a_hash.as_slice())
             },
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
@@ -685,8 +685,8 @@ impl KeyManager {
         let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
-        let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
-        let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref())?;
+        let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize_zeroizing();
+        let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_slice())?;
         Ok((nonce_a, nonce_b))
     }
 

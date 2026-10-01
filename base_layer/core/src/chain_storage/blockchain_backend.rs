@@ -15,6 +15,7 @@ use super::{
     BurnCommitmentRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
+    ValidatorNodeEntry,
     ValidatorNodeRegistrationInfo,
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
 };
@@ -315,6 +316,14 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         end_epoch: VnEpoch,
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError>;
+
+    /// Returns the stored validator node entry for the given sidechain and public key if the validator node is in the
+    /// registered validator node set. A validator node that has already been queued to exit is NOT returned.
+    fn fetch_validator_node_entry(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError>;
 
     /// Returns the validator node for the given sidechain and public key if it exists
     fn get_validator_node(

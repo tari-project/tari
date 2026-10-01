@@ -1065,6 +1065,7 @@ where
                 validator_node_public_key,
                 validator_node_signature,
                 sidechain_deployment_key,
+                activation_epoch,
                 max_epoch,
                 selection_criteria,
                 fee_per_gram,
@@ -1078,6 +1079,7 @@ where
                             validator_node_signature,
                             sidechain_deployment_key,
                             selection_criteria,
+                            activation_epoch,
                             max_epoch,
                             fee_per_gram,
                             payment_id,
@@ -3274,6 +3276,7 @@ where
             .as_ref()
             .map(CompressedPublicKey::from_secret_key);
         if !signature.is_valid_registration_signature_for(
+            self.resources.network.as_byte(),
             sidechain_pk.as_ref(),
             &validator_node_claim_public_key,
             max_epoch,
@@ -3350,6 +3353,7 @@ where
         validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
@@ -3361,12 +3365,21 @@ where
         let sidechain_pk = sidechain_deployment_key
             .as_ref()
             .map(CompressedPublicKey::from_secret_key);
-        if !signature.is_valid_exit_signature_for(sidechain_pk.as_ref(), max_epoch) {
+        if !signature.is_valid_exit_signature_for(
+            self.resources.network.as_byte(),
+            sidechain_pk.as_ref(),
+            activation_epoch,
+            max_epoch,
+        ) {
             return Err(TransactionServiceError::InvalidValidatorNodeSignature);
         }
 
-        let output_features =
-            OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
+        let output_features = OutputFeatures::for_validator_node_exit(
+            signature,
+            sidechain_deployment_key.as_ref(),
+            activation_epoch,
+            max_epoch,
+        );
 
         let (fee, transaction, tx_id) = self
             .resources

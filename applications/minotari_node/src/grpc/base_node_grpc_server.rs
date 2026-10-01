@@ -3427,7 +3427,9 @@ mod test {
         SideChainFeature {
             data: SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::signed(
                 &PrivateKey::default(),
+                Network::MainNet.as_byte(),
                 None,
+                VnEpoch(0),
                 VnEpoch(1),
             )),
             sidechain_id: None,

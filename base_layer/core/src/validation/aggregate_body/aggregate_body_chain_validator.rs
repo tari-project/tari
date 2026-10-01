@@ -328,7 +328,7 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
         check_validator_node_registration(db, output, epoch)?;
-        check_validator_node_exit(db, output, epoch)?;
+        check_validator_node_exit(db, constants, output, epoch)?;
     }
     Ok(())
 }
@@ -364,27 +364,31 @@ pub fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), V
     Ok(())
 }
 
-/// Ensures the body does not contain more than one validator node registration for the same validator node (scoped by
-/// sidechain id).
+/// Ensures the body does not contain more than one validator node registration, or more than one validator node exit,
+/// for the same validator node (scoped by sidechain id).
 ///
 /// `check_validator_node_registration` only rejects a registration that duplicates one already in the validator node
 /// set as of the *parent* block. It cannot see other registrations in the same body. Without this check, a single block
 /// carrying two registrations for the same validator node would pass validation and then fail when the second
 /// registration is applied to the validator node set (the set is keyed by sidechain id + public key and inserted with
 /// `NO_OVERWRITE`), aborting the block at commit time rather than rejecting it cleanly during validation.
+///
+/// Exits have the same problem: `check_validator_node_exit` checks each exit against the parent state only, and the
+/// first exit applied moves the validator out of the registered set, so a second exit for the same validator in the
+/// same body would fail at commit time (`ValidatorNodeStore::exit` returns `ValueNotFound`).
 // The `mutable_key_type` lint fires because `CompressedPublicKey` caches its decompressed form in a `OnceLock`. That
 // interior mutability does not affect the `Hash`/`Eq` used here, so the set behaves correctly.
 #[allow(clippy::mutable_key_type)]
 pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut seen = HashSet::new();
+    let mut seen_registrations = HashSet::new();
+    let mut seen_exits = HashSet::new();
     for output in body.outputs() {
         let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
             continue;
         };
-        let Some(vn_reg) = sidechain_features.validator_node_registration() else {
-            continue;
-        };
-        if !seen.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key())) {
+        if let Some(vn_reg) = sidechain_features.validator_node_registration() &&
+            !seen_registrations.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key()))
+        {
             warn!(
                 target: LOG_TARGET,
                 "AggregateBody validation failed due to duplicate validator node registration for {}",
@@ -392,6 +396,18 @@ pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) ->
             );
             return Err(ValidationError::DuplicateValidatorNodeRegistration {
                 public_key: vn_reg.public_key().to_string(),
+            });
+        }
+        if let Some(exit) = sidechain_features.validator_node_exit() &&
+            !seen_exits.insert((sidechain_features.sidechain_public_key(), exit.public_key()))
+        {
+            warn!(
+                target: LOG_TARGET,
+                "AggregateBody validation failed due to duplicate validator node exit for {}",
+                exit.public_key()
+            );
+            return Err(ValidationError::DuplicateValidatorNodeExit {
+                public_key: exit.public_key().to_string(),
             });
         }
     }
@@ -534,11 +550,13 @@ mod test {
     use super::*;
     use crate::test_helpers::blockchain::TempDatabase;
 
+    const NETWORK: u8 = 0x10;
+
     fn registration_output(vn_secret_key: &PrivateKey) -> TransactionOutput {
         let claim_public_key = CompressedPublicKey::from_secret_key(vn_secret_key);
         let max_epoch = VnEpoch(10);
         let signature =
-            ValidatorNodeSignature::sign_for_registration(vn_secret_key, None, &claim_public_key, max_epoch);
+            ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim_public_key, max_epoch);
         TransactionOutput {
             features: OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch),
             ..Default::default()
@@ -569,6 +587,52 @@ mod test {
             err,
             ValidationError::DuplicateValidatorNodeRegistration { .. }
         ));
+    }
+
+    fn exit_output(vn_secret_key: &PrivateKey, max_epoch: VnEpoch) -> TransactionOutput {
+        let signature = ValidatorNodeSignature::sign_for_exit(vn_secret_key, NETWORK, None, VnEpoch(0), max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), max_epoch),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn it_allows_distinct_validator_node_exits() {
+        let outputs = vec![
+            exit_output(&PrivateKey::random(&mut rand::rng()), VnEpoch(10)),
+            exit_output(&PrivateKey::random(&mut rand::rng()), VnEpoch(10)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        assert!(verify_no_duplicate_validator_node_registrations(&body).is_ok());
+    }
+
+    #[test]
+    fn it_rejects_two_exits_for_the_same_validator_node() {
+        // Two distinct exit outputs for the same validator node. Each passes the chain-state check individually (the
+        // validator is in the registered set as of the parent block), but the second fails when applied at commit
+        // time because the first has already moved the validator into the exit queue.
+        let vn_secret_key = PrivateKey::random(&mut rand::rng());
+        let outputs = vec![
+            exit_output(&vn_secret_key, VnEpoch(10)),
+            exit_output(&vn_secret_key, VnEpoch(11)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        let err = verify_no_duplicate_validator_node_registrations(&body).unwrap_err();
+        assert!(matches!(err, ValidationError::DuplicateValidatorNodeExit { .. }));
+    }
+
+    #[test]
+    fn it_allows_a_registration_and_an_exit_for_the_same_validator_node() {
+        // Registrations and exits are deduplicated separately; whether the pair is valid is decided against the chain
+        // state by `check_validator_node_registration` / `check_validator_node_exit`.
+        let vn_secret_key = PrivateKey::random(&mut rand::rng());
+        let outputs = vec![
+            registration_output(&vn_secret_key),
+            exit_output(&vn_secret_key, VnEpoch(10)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        assert!(verify_no_duplicate_validator_node_registrations(&body).is_ok());
     }
 
     fn random_commitment() -> CompressedCommitment {

@@ -117,8 +117,21 @@ pub enum ValidationError {
     ValidatorNodeAlreadyRegistered { public_key: String },
     #[error("Block body contains more than one validator node registration for the same validator node: {public_key}")]
     DuplicateValidatorNodeRegistration { public_key: String },
+    #[error("Block body contains more than one validator node exit for the same validator node: {public_key}")]
+    DuplicateValidatorNodeExit { public_key: String },
     #[error("Validator node {public_key} not registered: {details}")]
     ValidatorNodeNotRegistered { public_key: String, details: String },
+    #[error(
+        "Validator node exit {public_key} activation epoch {exit_activation_epoch} does not match the registered \
+         activation epoch {registered_activation_epoch}"
+    )]
+    ValidatorNodeExitActivationEpochMismatch {
+        public_key: String,
+        exit_activation_epoch: VnEpoch,
+        registered_activation_epoch: VnEpoch,
+    },
+    #[error("Validator node exits are not permitted: the maximum number of exits per epoch is zero")]
+    ValidatorNodeExitNotPermitted,
     #[error("Validator registration {public_key} invalid: max epoch {max_epoch} < current epoch {current_epoch}")]
     ValidatorNodeRegistrationMaxEpoch {
         public_key: String,
@@ -182,7 +195,10 @@ impl ValidationError {
             err @ ValidationError::InvalidSerializedPublicKey(_) |
             err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
             err @ ValidationError::DuplicateValidatorNodeRegistration { .. } |
+            err @ ValidationError::DuplicateValidatorNodeExit { .. } |
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
+            err @ ValidationError::ValidatorNodeExitActivationEpochMismatch { .. } |
+            err @ ValidationError::ValidatorNodeExitNotPermitted |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
             err @ ValidationError::AggregatedBodyValidationError(_) |

@@ -587,6 +587,7 @@ mod clear_all_pending_headers {
 mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
+    use tari_common::configuration::Network;
     use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
     use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
 
@@ -610,7 +611,13 @@ mod validator_node_merkle_root {
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager);
 
         let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
-        let signature = ValidatorNodeSignature::sign_for_registration(&sk, None, &public_key, VnEpoch::zero());
+        let signature = ValidatorNodeSignature::sign_for_registration(
+            &sk,
+            Network::LocalNet.as_byte(),
+            None,
+            &public_key,
+            VnEpoch::zero(),
+        );
         let features =
             OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None, VnEpoch::zero());
         let (tx, _outputs) = schema_to_transaction(
@@ -650,8 +657,13 @@ mod validator_node_merkle_root {
 
         let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
         let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut rand::rng());
-        let signature =
-            ValidatorNodeSignature::sign_for_registration(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
+        let signature = ValidatorNodeSignature::sign_for_registration(
+            &sk,
+            Network::LocalNet.as_byte(),
+            Some(&sidechain_public),
+            &public_key,
+            VnEpoch::zero(),
+        );
         let features = OutputFeatures::for_validator_node_registration(
             signature,
             public_key.clone(),
@@ -689,5 +701,229 @@ mod validator_node_merkle_root {
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(tip.header().validator_node_mr, merkle_root);
         assert_ne!(tip.header().validator_node_mr, VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH);
+    }
+}
+
+/// Chain-state checks on validator node exits. Everything that would make the commit-time exit fail
+/// (`ValidatorNodeStore::exit` / `get_next_exit_epoch`) must be rejected by `check_validator_node_exit` instead.
+mod validator_node_exit {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
+    use std::convert::TryFrom;
+
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedPublicKey, PrivateKey},
+    };
+    use tari_transaction_components::{
+        consensus::ConsensusConstantsBuilder,
+        transaction_components::{OutputFeatures, TransactionOutput, ValidatorNodeSignature},
+    };
+
+    use super::*;
+    use crate::{
+        chain_storage::BlockchainBackend,
+        validation::{
+            ValidationError,
+            helpers::{check_validator_node_exit, check_validator_node_registration},
+        },
+    };
+
+    const NETWORK: Network = Network::LocalNet;
+    const MAX_EPOCH: VnEpoch = VnEpoch(1000);
+
+    struct Registered {
+        db: BlockchainDatabase<TempDatabase>,
+        key_manager: KeyManager,
+        sk: PrivateKey,
+        public_key: CompressedPublicKey,
+        registration: TransactionOutput,
+        activation_epoch: VnEpoch,
+        spendable: Vec<WalletOutput>,
+    }
+
+    /// Registers a validator node and mines blocks until it is active.
+    fn register_and_activate() -> Registered {
+        let db = setup();
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager);
+
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+        let signature =
+            ValidatorNodeSignature::sign_for_registration(&sk, NETWORK.as_byte(), None, &public_key, MAX_EPOCH);
+        let features = OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None, MAX_EPOCH);
+        let (tx, _outputs) = schema_to_transaction(
+            &[txn_schema!(
+                from: vec![outputs[0].clone()],
+                to: vec![50 * T],
+                features: features
+            )],
+            &key_manager,
+        );
+        let registration = tx[0]
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.validator_node_registration().is_some())
+            .unwrap()
+            .clone();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let (block, _) = create_next_block(
+            &db,
+            &blocks[0],
+            tx,
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        );
+        db.add_block(block).unwrap().assert_added();
+
+        let consts = db.consensus_constants().unwrap();
+        let (_, spendable) =
+            add_many_chained_blocks(usize::try_from(consts.epoch_length() * 2).unwrap(), &db, &key_manager);
+
+        let activation_epoch = db
+            .db_read_access()
+            .unwrap()
+            .fetch_validator_node_entry(None, &public_key)
+            .unwrap()
+            .unwrap()
+            .activation_epoch;
+        assert!(activation_epoch <= current_epoch(&db));
+
+        Registered {
+            db,
+            key_manager,
+            sk,
+            public_key,
+            registration,
+            activation_epoch,
+            spendable,
+        }
+    }
+
+    /// The epoch the next block will be validated in
+    fn current_epoch(db: &BlockchainDatabase<TempDatabase>) -> VnEpoch {
+        let height = db.fetch_last_header().unwrap().height + 1;
+        db.consensus_constants().unwrap().block_height_to_epoch(height)
+    }
+
+    fn exit_output(sk: &PrivateKey, activation_epoch: VnEpoch) -> TransactionOutput {
+        let signature = ValidatorNodeSignature::sign_for_exit(sk, NETWORK.as_byte(), None, activation_epoch, MAX_EPOCH);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_exit(signature, None, activation_epoch, MAX_EPOCH),
+            ..Default::default()
+        }
+    }
+
+    fn check_exit(reg: &Registered, output: &TransactionOutput) -> Result<(), ValidationError> {
+        let constants = reg.db.consensus_constants().unwrap().clone();
+        check_validator_node_exit(
+            &*reg.db.db_read_access().unwrap(),
+            &constants,
+            output,
+            current_epoch(&reg.db),
+        )
+    }
+
+    /// Mines a block carrying an exit for the registered validator node. The test database uses mock validators, so
+    /// this goes straight to commit.
+    fn mine_exit(reg: &Registered) {
+        let signature =
+            ValidatorNodeSignature::sign_for_exit(&reg.sk, NETWORK.as_byte(), None, reg.activation_epoch, MAX_EPOCH);
+        let features = OutputFeatures::for_validator_node_exit(signature, None, reg.activation_epoch, MAX_EPOCH);
+        let (tx, _outputs) = schema_to_transaction(
+            &[txn_schema!(
+                from: vec![reg.spendable[0].clone()],
+                to: vec![T],
+                features: features
+            )],
+            &reg.key_manager,
+        );
+        let last_header = reg.db.fetch_last_header().unwrap();
+        let prev_block = reg.db.fetch_block(last_header.height, true).unwrap().into_block();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&reg.key_manager);
+        let (block, _) = create_next_block(
+            &reg.db,
+            &prev_block,
+            tx,
+            &reg.key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        );
+        reg.db.add_block(block).unwrap().assert_added();
+    }
+
+    #[test]
+    fn it_accepts_an_exit_for_an_active_validator_node() {
+        let reg = register_and_activate();
+        check_exit(&reg, &exit_output(&reg.sk, reg.activation_epoch)).unwrap();
+    }
+
+    #[test]
+    fn it_rejects_an_exit_with_the_wrong_activation_epoch() {
+        let reg = register_and_activate();
+        let wrong_epoch = reg.activation_epoch.saturating_add(VnEpoch(1));
+        let err = check_exit(&reg, &exit_output(&reg.sk, wrong_epoch)).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::ValidatorNodeExitActivationEpochMismatch { .. }),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn it_rejects_an_exit_for_a_validator_node_already_in_the_exit_queue() {
+        let reg = register_and_activate();
+        mine_exit(&reg);
+
+        // The validator is queued to exit in a future epoch, so it still counts as active (this keeps the
+        // registration UTXO locked) ...
+        let db = reg.db.db_read_access().unwrap();
+        assert!(
+            db.validator_node_is_active(None, current_epoch(&reg.db), &reg.public_key)
+                .unwrap()
+        );
+        drop(db);
+        // ... but a second exit would fail at commit time (it is no longer in the registered set), so it must be
+        // rejected at validation.
+        let err = check_exit(&reg, &exit_output(&reg.sk, reg.activation_epoch)).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::ValidatorNodeNotRegistered { .. }),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn it_rejects_an_exit_when_exits_are_not_permitted() {
+        let reg = register_and_activate();
+        // Public networks allow zero exits per epoch. With zero, `get_next_exit_epoch` errors at commit time.
+        let constants = ConsensusConstantsBuilder::new(Network::MainNet).build();
+        assert_eq!(constants.vn_registration_max_exits_per_epoch(), 0);
+        let err = check_validator_node_exit(
+            &*reg.db.db_read_access().unwrap(),
+            &constants,
+            &exit_output(&reg.sk, reg.activation_epoch),
+            current_epoch(&reg.db),
+        )
+        .unwrap_err();
+        assert!(matches!(err, ValidationError::ValidatorNodeExitNotPermitted), "{err}");
+    }
+
+    #[test]
+    fn it_still_accepts_a_registration_replay_after_exit() {
+        // KNOWN RESIDUAL (accepted): once a validator node has exited it is no longer in the registered set, so the
+        // original registration (same signature, still within its max_epoch) can be resubmitted by anyone in a new
+        // output and is accepted. The registration signature covers the network, sidechain, claim key and max_epoch,
+        // but nothing that ties it to a single use. A short max_epoch is the mitigation. An exit, by contrast, is
+        // bound to the registration instance through its activation_epoch.
+        let reg = register_and_activate();
+        mine_exit(&reg);
+        check_validator_node_registration(
+            &*reg.db.db_read_access().unwrap(),
+            &reg.registration,
+            current_epoch(&reg.db),
+        )
+        .unwrap();
     }
 }

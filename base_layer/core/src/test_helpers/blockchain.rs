@@ -81,6 +81,7 @@ use crate::{
         PayrefRebuildStatus,
         Reorg,
         SmtHasher,
+        ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
         Validators,
         create_lmdb_database,
@@ -714,6 +715,17 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+    }
+
+    fn fetch_validator_node_entry(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_validator_node_entry(sidechain_pk, public_key)
     }
 
     fn get_validator_node(

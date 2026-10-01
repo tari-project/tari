@@ -20,14 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use blake2::Blake2b;
-use digest::consts::U64;
+use digest::{Output, consts::U64};
 use tari_common_types::types::{CommsDHKE, CompressedPublicKey, PrivateKey};
-use tari_crypto::{
-    hashing::{DomainSeparatedHash, DomainSeparatedHasher},
-    keys::SecretKey as SKtrait,
-};
-use tari_hashing::{WalletHasher, WalletOutputEncryptionKeysDomain, WalletOutputSpendingKeysDomain};
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey as SKtrait};
+use tari_hashing::{WalletHasher, WalletOutputEncryptionKeysDomain, WalletOutputSpendingKeysDomain, ZeroizingFinalize};
 use tari_utilities::{ByteArray, byte_array::ByteArrayError};
+use zeroize::Zeroizing;
 
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U64>, WalletOutputSpendingKeysDomain>;
@@ -52,16 +50,18 @@ pub fn public_key_to_output_spending_key(public_key: &CompressedPublicKey) -> Re
     )
 }
 
-/// Stealth address domain separated hasher using Diffie-Hellman shared secret
-pub fn diffie_hellman_stealth_domain_hasher_dhke(diffie_hellman: CommsDHKE) -> DomainSeparatedHash<Blake2b<U64>> {
+/// Stealth address domain separated hasher using Diffie-Hellman shared secret. The output is key material and is
+/// zeroized on drop.
+pub fn diffie_hellman_stealth_domain_hasher_dhke(diffie_hellman: CommsDHKE) -> Zeroizing<Output<Blake2b<U64>>> {
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
-        .finalize()
+        .finalize_zeroizing()
 }
 
-/// Stealth address domain separated hasher using Diffie-Hellman shared secret
-pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: &CompressedPublicKey) -> DomainSeparatedHash<Blake2b<U64>> {
+/// Stealth address domain separated hasher using Diffie-Hellman shared secret. The output is key material and is
+/// zeroized on drop.
+pub fn diffie_hellman_stealth_domain_hasher(diffie_hellman: &CompressedPublicKey) -> Zeroizing<Output<Blake2b<U64>>> {
     WalletHasher::new_with_label("stealth_address")
         .chain(diffie_hellman.as_bytes())
-        .finalize()
+        .finalize_zeroizing()
 }

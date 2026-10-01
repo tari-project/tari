@@ -290,15 +290,21 @@ impl MempoolInboundHandlers {
             AddBlockValidationFailed {
                 block: failed_block,
                 source_peer,
+            } |
+            AddBlockErrored {
+                block: failed_block,
+                source_peer,
             } => {
-                // Only clear mempool transaction for local block validation failures
+                // Only clear mempool transactions for locally submitted blocks. A block template is built from the
+                // mempool, so if adding it fails - whether at validation or at commit time - one of its transactions
+                // is the likely cause; leaving them in place would make every subsequent template fail the same way.
+                // Blocks from peers say nothing about our mempool and are left alone.
                 if source_peer.is_none() {
                     self.mempool
                         .clear_transactions_for_failed_block(failed_block.clone())
                         .await?;
                 }
             },
-            AddBlockErrored { .. } => {},
         }
 
         self.update_pool_size_metrics().await;
@@ -375,5 +381,81 @@ mod test {
         let (propagated_tx, excluded) = propagated.try_recv().unwrap();
         assert_eq!(propagated_tx, tx);
         assert_eq!(excluded, vec![source]);
+    }
+
+    mod add_block_errored {
+        use tari_node_components::blocks::{Block, BlockHeader};
+
+        use super::*;
+        use crate::mempool::TxStorageResponse;
+
+        /// Inserts a transaction into the mempool and returns it together with a block containing it.
+        async fn insert_tx_and_build_block(mempool: &Mempool) -> (Arc<Transaction>, Arc<Block>) {
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            );
+            mempool.insert(tx.clone()).await.unwrap();
+            assert_eq!(
+                mempool.has_transaction(tx.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            let block = Arc::new(Block::new(BlockHeader::new(0), tx.body.clone()));
+            (tx, block)
+        }
+
+        #[tokio::test]
+        async fn a_local_block_that_fails_at_commit_evicts_its_transactions() {
+            // A locally built block template that passes validation but fails at commit time (e.g. a storage error
+            // applying a validator node exit) is published as `AddBlockErrored` with no source peer. Its transactions
+            // must be evicted, exactly as for a validation failure, otherwise every subsequent template would be
+            // built from the same transactions and fail the same way.
+            let mut config = MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let validator = MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
+            let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
+            let mut handlers =
+                MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            // The offending transaction no longer passes validation once it is re-checked.
+            is_valid.set(false);
+            handlers
+                .handle_block_event(&BlockEvent::AddBlockErrored {
+                    block,
+                    source_peer: None,
+                })
+                .await
+                .unwrap();
+
+            assert_ne!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn a_peer_block_that_fails_at_commit_leaves_the_mempool_alone() {
+            let (mut handlers, mempool, _propagated) = create_handlers();
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            handlers
+                .handle_block_event(&BlockEvent::AddBlockErrored {
+                    block,
+                    source_peer: Some(NodeId::default()),
+                })
+                .await
+                .unwrap();
+
+            assert_eq!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
     }
 }
