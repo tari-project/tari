@@ -410,15 +410,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
-            // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so the first
-            // page also reads the headers just before the requested range to seed the backoff run. Reading them in
-            // the same call as the first page means a reorg cannot seed the run from a different chain.
-            let mut backoff_tracker = PowBackoffTracker::new();
-            let lookback_start = start_height.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
             for (start, end) in page_iter {
-                let fetch_start = if start == start_height { lookback_start } else { start };
+                // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so every
+                // page also reads the headers just before it to seed a fresh backoff run. Reading them in the same
+                // call as the page means a reorg cannot seed the run from a different chain.
+                let mut backoff_tracker = PowBackoffTracker::new();
+                let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
                 // headers are returned by height
-                let headers = match handler.get_headers(fetch_start..=end).await {
+                let headers = match handler.get_headers(lookback_start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {err:?}");
