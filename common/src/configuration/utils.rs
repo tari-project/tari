@@ -551,10 +551,11 @@ pub fn untrusted_reasons(_path: &Path) -> Vec<String> {
 
 /// Returns the value to display for a config key or environment variable. Values are masked as `***` unless the last
 /// key segment (split on `.` and `__`, case-insensitive, with any `tari_`/`minotari_` prefix removed) is known to be
-/// safe to show: `*_address` and `*_url` (each list element with credentials and query strings removed, see
-/// [`sanitize_url`]), `*_port`, `*_enabled`, `*_interval`, `*_timeout`, `*_path`, `*_dir`, `network`, `base_path` or
-/// `override_from`. Otherwise boolean and numeric values are shown. Keys that name a secret (see [`SECRET_WORDS`])
-/// are always masked, whatever the value.
+/// safe to show: `*_address` and `*_url` (masked entirely if the value contains `@` anywhere, since credentials may
+/// contain list separators; otherwise shown with query strings masked, see [`mask_query_strings`]), `*_port`,
+/// `*_enabled`, `*_interval`, `*_timeout`, `*_path`, `*_dir`, `network`, `base_path` or `override_from`. Otherwise
+/// boolean and numeric values are shown. Keys that name a secret (see [`SECRET_WORDS`]) are always masked, whatever the
+/// value.
 pub fn mask_value(key: &str, value: &str) -> String {
     let lower = key.to_lowercase();
     let last = lower.rsplit('.').next().unwrap_or("");
@@ -573,12 +574,11 @@ pub fn mask_value(key: &str, value: &str) -> String {
         return value.to_string();
     }
     if last.ends_with("_url") || last.ends_with("_address") {
-        return value
-            .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
-            .filter(|element| !element.is_empty())
-            .map(sanitize_url)
-            .collect::<Vec<_>>()
-            .join(",");
+        // Userinfo may itself contain `,`, `;` or spaces, so any attempt to strip it from a list can leak part of it
+        if value.contains('@') {
+            return "***".to_string();
+        }
+        return mask_query_strings(value);
     }
     let safe_suffixes = ["_port", "_enabled", "_interval", "_timeout", "_path", "_dir"];
     let safe_names = ["network", "base_path", "override_from"];
@@ -588,27 +588,25 @@ pub fn mask_value(key: &str, value: &str) -> String {
     "***".to_string()
 }
 
-/// Makes a URL or address safe to print: removes a `user:pass@` part (everything between `://`, or the start, and the
-/// last `@` before the first `/`), masks the whole value as `***` if an `@` is still left (e.g. a `/` inside the
-/// password), and replaces any query string with `?***`.
-fn sanitize_url(url: &str) -> String {
-    let (scheme, rest) = match url.split_once("://") {
-        Some((scheme, rest)) => (format!("{scheme}://"), rest),
-        None => (String::new(), url),
-    };
-    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-    let host = match authority.rsplit_once('@') {
-        Some((_credentials, host)) => host,
-        None => authority,
-    };
-    let cleaned = format!("{scheme}{host}{path}");
-    if cleaned.contains('@') {
-        return "***".to_string();
+/// Replaces every query string in a URL (or list of URLs separated by `,`, `;` or whitespace) with `?***`, keeping
+/// everything else, including the separators, unchanged.
+fn mask_query_strings(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut in_query = false;
+    for c in value.chars() {
+        let is_separator = c == ',' || c == ';' || c.is_whitespace();
+        if in_query && !is_separator {
+            continue;
+        }
+        in_query = false;
+        if c == '?' {
+            result.push_str("?***");
+            in_query = true;
+        } else {
+            result.push(c);
+        }
     }
-    match cleaned.split_once('?') {
-        Some((before, _query)) => format!("{before}?***"),
-        None => cleaned,
-    }
+    result
 }
 
 /// Checks for environment variables that look like they are intended to configure Tari applications but use an
@@ -824,39 +822,40 @@ mod test {
         assert_eq!(mask_value("something.unknown", "true"), "true");
         assert_eq!(mask_value("something.unknown", "42"), "42");
         assert_eq!(mask_value("something.unknown", "1.5"), "1.5");
-        // URL credentials are stripped
-        assert_eq!(
-            mask_value(
-                "merge_mining_proxy.monerod_url",
-                "http://user:pass@node.example:18081/json_rpc"
-            ),
-            "http://node.example:18081/json_rpc"
-        );
-        assert_eq!(
-            mask_value("merge_mining_proxy.monerod_url", "http://a:b@one:1,https://two:2"),
-            "http://one:1,https://two:2"
-        );
+        // Any '@' in a URL or address masks the whole value: userinfo may contain list separators
+        for value in [
+            "http://user:pa;ss@host:18081",
+            "http://miner:se,cret@127.0.0.1:18142",
+            "http://user:top secret@host",
+            "http://user:pass@host",
+            "socks5://u:p@host",
+            "http://u:pa/ss@host:18081",
+            "http://127.0.0.1:18081, http://a:b@node.example:18081",
+        ] {
+            assert_eq!(mask_value("merge_mining_proxy.monerod_url", value), "***", "{value}");
+            assert_eq!(mask_value("x.base_node_grpc_address", value), "***", "{value}");
+        }
+        // Without '@', values print unchanged apart from query strings
         assert_eq!(mask_value("x.some_url", "https://node.example"), "https://node.example");
-        // A '/' in the password still leaves an '@' after stripping: mask the whole element
-        assert_eq!(mask_value("x.monerod_url", "http://u:pa/ss@host:18081"), "***");
-        // Semicolon and whitespace separated lists are sanitized per element
         assert_eq!(
-            mask_value("x.monerod_url", "http://a:b@one:1; http://c:d@two:2 https://three"),
-            "http://one:1,http://two:2,https://three"
+            mask_value("x.monerod_url", "http://host:18081?token=x"),
+            "http://host:18081?***"
         );
-        // Query strings are masked
         assert_eq!(
             mask_value("x.monero_fail_url", "https://monero.fail/?chain=monero&token=abc"),
             "https://monero.fail/?***"
         );
-        // Addresses get the same treatment
         assert_eq!(
-            mask_value("x.base_node_grpc_address", "http://user:pass@127.0.0.1:18142"),
-            "http://127.0.0.1:18142"
+            mask_value("x.monerod_url", "http://one:1?a=b; http://two:2"),
+            "http://one:1?***; http://two:2"
         );
         assert_eq!(
-            mask_value("x.listener_address", "/ip4/127.0.0.1/tcp/18081"),
-            "/ip4/127.0.0.1/tcp/18081"
+            mask_value("x.listener_address", "/ip4/1.2.3.4/tcp/18189"),
+            "/ip4/1.2.3.4/tcp/18189"
+        );
+        assert_eq!(
+            mask_value("x.monerod_url", "http://127.0.0.1:18081, http://node.example:18081"),
+            "http://127.0.0.1:18081, http://node.example:18081"
         );
         // A bare `auth` segment is a secret
         assert_eq!(mask_value("p2p.transport.socks.auth", "username_password=u:p"), "***");
