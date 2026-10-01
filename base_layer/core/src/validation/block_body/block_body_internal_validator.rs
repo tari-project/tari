@@ -32,7 +32,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::BaseNodeConsensusManager,
-    validation::{InternalConsistencyValidator, ValidationError},
+    validation::{InternalConsistencyValidator, ValidationError, helpers::check_block_body_size},
 };
 
 pub const LOG_TARGET: &str = "c::val::block_body_internal_consistency_validator";
@@ -86,6 +86,7 @@ fn validate_block_specific_checks(
         warn!(target: LOG_TARGET, "Attempt to validate genesis block");
         return Err(ValidationError::ValidatingGenesis);
     }
+    check_block_body_size(block, constants)?;
     check_coinbase_outputs(block, consensus_manager, factories)?;
     check_coinbase_output_features(&block.body, constants)?;
 

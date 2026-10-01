@@ -35,6 +35,7 @@ use tari_utilities::hex::Hex;
 use crate::{
     MicroMinotari,
     crypto_factories::CryptoFactories,
+    helpers::borsh::SerializedSize,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -414,6 +415,20 @@ impl AggregateBody {
             .map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
 
+    /// The borsh-serialised size, in bytes, of this body in its compact form, i.e. with every input reduced to the hash
+    /// of the output it spends. Blocks are stored and synced in this form, so the result is the same whether the inputs
+    /// of this body are compact or hydrated.
+    pub fn compact_serialized_size(&self) -> std::io::Result<usize> {
+        // The u32 length prefix of the inputs vector
+        let mut size = size_of::<u32>();
+        for input in &self.inputs {
+            size = size.saturating_add(input.to_compact().get_serialized_size()?);
+        }
+        size = size.saturating_add(self.outputs.get_serialized_size()?);
+        size = size.saturating_add(self.kernels.get_serialized_size()?);
+        Ok(size)
+    }
+
     pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {
         Ok(self
             .outputs
@@ -534,6 +549,47 @@ mod test {
 
     use super::*;
     use crate::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion, covenants::Covenant};
+
+    #[test]
+    fn compact_serialized_size_measures_the_compact_form() {
+        let input = TransactionInput::new_with_output_data(
+            TransactionInputVersion::get_current_version(),
+            OutputFeatures::default(),
+            CompressedCommitment::default(),
+            TariScript::default(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+            CompressedPublicKey::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            ComAndPubSignature::default(),
+            FixedHash::zero(),
+            0.into(),
+        );
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::default(),
+            0.into(),
+            0,
+            CompressedCommitment::default(),
+            CompressedSignature::default(),
+            None,
+        );
+        let hydrated = AggregateBody::new_unsorted(
+            vec![input.clone(), input.clone()],
+            vec![TransactionOutput::default()],
+            vec![kernel.clone()],
+        );
+        let compact = AggregateBody::new_unsorted(
+            vec![input.to_compact(), input.to_compact()],
+            vec![TransactionOutput::default()],
+            vec![kernel],
+        );
+
+        let expected = borsh::to_vec(&compact).unwrap().len();
+        assert_eq!(compact.compact_serialized_size().unwrap(), expected);
+        assert_eq!(hydrated.compact_serialized_size().unwrap(), expected);
+        assert!(hydrated.get_serialized_size().unwrap() > expected);
+    }
 
     #[test]
     fn test_sorted() {

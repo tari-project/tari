@@ -362,10 +362,11 @@ mod tests {
     #[test]
     fn an_upgrade_from_the_previous_releases_file_shape_still_raises_the_alarm() {
         // v5.6.0 is the last public release, and therefore the binary most nodes upgrade from.
-        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 3] = [
+        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 4] = [
             "bipartite_cuckaroo_verification",
             "aux_chain_merkle_proof_depth_binding",
             "pow_backoff_cap",
+            "max_block_body_bytes",
         ];
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");

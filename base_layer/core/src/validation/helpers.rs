@@ -24,9 +24,11 @@ use std::convert::TryFrom;
 
 use log::*;
 use tari_common_types::{epoch::VnEpoch, types::FixedHash};
+use tari_comms::protocol::{messaging::MAX_FRAME_LENGTH, rpc::RPC_MAX_FRAME_SIZE};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
-use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError};
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_transaction_components::{
+    consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
     tari_proof_of_work::{PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
@@ -300,6 +302,37 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         });
     }
 
+    Ok(())
+}
+
+// A block is propagated in a single messaging frame and synced in a single RPC response, so the block body byte limit
+// must stay below both, leaving room for the header and the protobuf and response overhead.
+const _: () = assert!(MAX_BLOCK_BODY_BYTES < MAX_FRAME_LENGTH);
+const _: () = assert!(MAX_BLOCK_BODY_BYTES < RPC_MAX_FRAME_SIZE);
+
+/// Checks that the block body, serialised in its compact form, is no larger than the consensus `max_block_body_bytes`.
+/// The compact form is measured so that the result is the same whether the block's inputs are compact or hydrated.
+/// This is cheap, so it runs before any script or range proof check.
+pub fn check_block_body_size(block: &Block, constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    let max_bytes = constants.max_block_body_bytes();
+    let actual_bytes = block
+        .body
+        .compact_serialized_size()
+        .map_err(|e| ValidationError::SerializationError(e.to_string()))?;
+    if actual_bytes > max_bytes {
+        warn!(
+            target: LOG_TARGET,
+            "Block #{} ({}) body is {} bytes, above the maximum of {} bytes",
+            block.header.height,
+            block.hash().to_hex(),
+            actual_bytes,
+            max_bytes
+        );
+        return Err(ValidationError::BlockBodyTooManyBytes {
+            actual_bytes,
+            max_bytes,
+        });
+    }
     Ok(())
 }
 

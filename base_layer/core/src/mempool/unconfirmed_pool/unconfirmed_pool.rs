@@ -32,6 +32,7 @@ use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     MicroMinotari,
+    consensus::consensus_constants::MAX_BLOCK_BODY_BYTES,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
@@ -56,15 +57,21 @@ const fn min_usize(a: usize, b: usize) -> usize {
 }
 
 /// The maximum estimated body size, in bytes, of the transactions selected for a block template, so that a block built
-/// from a template can be both propagated and synced. Transaction bodies are measured by their borsh-serialized size;
-/// the 1 MiB margin covers the coinbase, the header and protobuf encoding overhead. This is a local block-building
-/// policy, not a consensus rule.
+/// from a template can be both propagated and synced, and is never over the consensus block body byte limit.
+/// Transaction bodies are measured by their borsh-serialized size (with hydrated inputs, so this over-estimates the
+/// compact size that consensus measures); the 1 MiB margin covers the coinbase, the header and protobuf encoding
+/// overhead. This is a local block-building policy, not a consensus rule.
 ///
 /// TODO: this is a rollout value, derived from the smaller RPC frame of not-yet-upgraded nodes (5 MiB) so that they can
-/// still sync every block this node builds. Raise it to `RPC_MAX_FRAME_SIZE - 1 MiB` once the network has upgraded.
-pub const MAX_BLOCK_TEMPLATE_BODY_BYTES: usize = min_usize(LEGACY_RPC_MAX_FRAME_SIZE, RPC_MAX_FRAME_SIZE) - 1024 * 1024;
+/// still sync every block this node builds. Drop the legacy frame from the minimum once the network has upgraded.
+pub const MAX_BLOCK_TEMPLATE_BODY_BYTES: usize = min_usize(
+    min_usize(LEGACY_RPC_MAX_FRAME_SIZE, RPC_MAX_FRAME_SIZE),
+    MAX_BLOCK_BODY_BYTES,
+) - 1024 * 1024;
 const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < LEGACY_RPC_MAX_FRAME_SIZE);
 const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE);
+// Every network's `max_block_body_bytes` is MAX_BLOCK_BODY_BYTES, so a template within this budget is always valid
+const _: () = assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES <= MAX_BLOCK_BODY_BYTES);
 
 /// The smallest body a transaction can practically have (one input, one output and one kernel serialize to well over
 /// this). Once less than this remains of the template byte budget, no further transaction can fit and selection stops.
@@ -2191,6 +2198,7 @@ mod test {
     use tari_transaction_components::{
         MicroMinotari,
         aggregated_body::AggregateBody,
+        consensus::ConsensusConstants,
         fee::Fee,
         helpers::borsh::SerializedSize,
         key_manager::KeyManager,
@@ -2311,6 +2319,27 @@ mod test {
         assert_eq!(MAX_BLOCK_TEMPLATE_BODY_BYTES, LEGACY_RPC_MAX_FRAME_SIZE - 1024 * 1024);
         const { assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < RPC_MAX_FRAME_SIZE) };
         const { assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES < LEGACY_RPC_MAX_FRAME_SIZE) };
+        const { assert!(MAX_BLOCK_TEMPLATE_BODY_BYTES <= MAX_BLOCK_BODY_BYTES) };
+    }
+
+    #[test]
+    fn block_template_byte_budget_is_within_every_networks_block_body_limit() {
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            for constants in ConsensusConstants::for_network(network) {
+                assert!(
+                    MAX_BLOCK_TEMPLATE_BODY_BYTES <= constants.max_block_body_bytes(),
+                    "{network} at height {}",
+                    constants.effective_from_height()
+                );
+            }
+        }
     }
 
     #[tokio::test]

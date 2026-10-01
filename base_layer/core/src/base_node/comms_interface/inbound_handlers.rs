@@ -1006,6 +1006,15 @@ where B: BlockchainBackend + 'static
             return Ok(block);
         }
 
+        // The block rebuilt from our mempool matches the header, so it is the block the peer announced. Reject it here
+        // if its body is over the consensus byte limit, before it is handed on to be hydrated and added.
+        let constants = self.consensus_manager.consensus_constants(header.height);
+        if let Err(source) = helpers::check_block_body_size(&block, constants) {
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError { source },
+            ));
+        }
+
         Ok(block)
     }
 

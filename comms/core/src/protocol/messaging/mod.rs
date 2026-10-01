@@ -37,9 +37,14 @@ mod inbound;
 mod metrics;
 mod outbound;
 mod protocol;
-#[cfg(feature = "rpc")]
-pub(crate) use protocol::MAX_FRAME_LENGTH;
-pub use protocol::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocol, SendFailReason};
+pub use protocol::{
+    MAX_FRAME_LENGTH,
+    MessagingEvent,
+    MessagingEventReceiver,
+    MessagingEventSender,
+    MessagingProtocol,
+    SendFailReason,
+};
 
 #[cfg(test)]
 mod test;

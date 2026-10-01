@@ -48,6 +48,8 @@ pub enum ValidationError {
     MaturityError,
     #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
     BlockTooLarge { actual_weight: u64, max_weight: u64 },
+    #[error("The block body is {actual_bytes} bytes, above the maximum of {max_bytes} bytes")]
+    BlockBodyTooManyBytes { actual_bytes: usize, max_bytes: usize },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
     #[error("Contains an unknown input")]
@@ -158,6 +160,7 @@ impl ValidationError {
             err @ ValidationError::BlockError(_) |
             err @ ValidationError::MaturityError |
             err @ ValidationError::BlockTooLarge { .. } |
+            err @ ValidationError::BlockBodyTooManyBytes { .. } |
             err @ ValidationError::UnknownInputs(_) |
             err @ ValidationError::UnknownInput |
             err @ ValidationError::TransactionError(_) |
