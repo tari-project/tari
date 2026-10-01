@@ -266,6 +266,21 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
         });
     }
 
+    // A validator node that has exited but whose exit epoch has not been reached yet is no longer in the registered
+    // set (so `validator_node_exists` is false), but still sits in the exit queue and still counts as active. A
+    // re-registration in that window would let a second exit be queued while the first entry still exists, which can
+    // collide in the exit queue at commit time (and make `undo_exit` restore the wrong instance on a reorg). It must
+    // wait until the pending exit has taken effect.
+    if db.validator_node_is_active(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        vn_reg.public_key(),
+    )? {
+        return Err(ValidationError::ValidatorNodeAlreadyRegistered {
+            public_key: vn_reg.public_key().to_string(),
+        });
+    }
+
     Ok(())
 }
 

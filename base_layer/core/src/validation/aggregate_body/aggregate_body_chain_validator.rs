@@ -95,6 +95,11 @@ impl AggregateBodyChainLinkedValidator {
     /// [`ValidationError::UnknownInputs`] returned, listing the hashes of the outputs that could not be found. A caller
     /// can then look for those outputs elsewhere (i.e. in the mempool), knowing that nothing else about the body is
     /// invalid with respect to the chain.
+    ///
+    /// `header` is the chain tip. The transaction can be mined at the earliest in the next block, so the validator node
+    /// registration/exit epoch rules are evaluated at `header.height + 1`: otherwise a registration or exit whose
+    /// `max_epoch` is the tip's epoch would be accepted here while the tip is the last block of that epoch, and then
+    /// fail every block template it is selected into.
     pub fn validate_transaction_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
@@ -102,9 +107,14 @@ impl AggregateBodyChainLinkedValidator {
         db: &B,
     ) -> Result<(), ValidationError> {
         let constants = self.consensus_manager.consensus_constants(header.height);
+        let next_height = header.height.saturating_add(1);
+        let vn_epoch = self
+            .consensus_manager
+            .consensus_constants(next_height)
+            .block_height_to_epoch(next_height);
 
         self.validate_consensus(body, db)?;
-        self.check_body(body, db, constants, header, true)
+        self.check_body(body, db, constants, header, vn_epoch, true)
     }
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
@@ -121,17 +131,20 @@ impl AggregateBodyChainLinkedValidator {
         constants: &ConsensusConstants,
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
-        self.check_body(body, db, constants, header, false)
+        let vn_epoch = constants.block_height_to_epoch(header.height);
+        self.check_body(body, db, constants, header, vn_epoch, false)
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
-    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed.
+    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `vn_epoch` is the epoch the
+    /// validator node registration/exit rules are evaluated in.
     fn check_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
         header: &BlockHeader,
+        vn_epoch: VnEpoch,
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
         validate_input_maturity(body, header.height)?;
@@ -139,7 +152,7 @@ impl AggregateBodyChainLinkedValidator {
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
-        check_outputs(db, constants, body, header.height)?;
+        check_outputs(db, constants, body, vn_epoch)?;
         verify_no_duplicated_inputs_outputs(body)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
@@ -314,16 +327,16 @@ fn find_unknown_inputs<B: BlockchainBackend>(
 /// 1. that the output type is permitted
 /// 2. the byte size of TariScript does not exceed the maximum
 /// 3. that the outputs do not already exist in the UTxO set.
+/// 4. the validator node registration and exit rules, in `epoch`.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
-    height: u64,
+    epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
     for output in body.outputs() {
-        let epoch = constants.block_height_to_epoch(height);
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;

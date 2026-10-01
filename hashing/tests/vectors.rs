@@ -18,7 +18,8 @@
 //!   `DomainSeparatedHasher::update`, which prepends `u64_le(len(input))`.
 //!
 //! To regenerate after an intentional change: `TARI_HASHING_REGENERATE_VECTORS=1 cargo test -p tari_hashing --test
-//! vectors`, then review the diff.
+//! vectors known_answer_vectors` (the variable must be exactly `1`). That run writes the file and then fails on
+//! purpose; review the diff and re-run without the variable.
 
 use std::{fs, path::PathBuf};
 
@@ -278,8 +279,14 @@ fn vectors_path() -> PathBuf {
 fn known_answer_vectors() {
     let computed = compute();
     let json = serde_json::to_string_pretty(&computed).unwrap() + "\n";
-    if std::env::var("TARI_HASHING_REGENERATE_VECTORS").is_ok() {
+    // Regenerating always fails the run, so a stray variable (e.g. in CI) cannot silently rewrite the vectors and
+    // pass.
+    if std::env::var("TARI_HASHING_REGENERATE_VECTORS").as_deref() == Ok("1") {
         fs::write(vectors_path(), &json).unwrap();
+        panic!(
+            "hashing/tests/vectors.json was regenerated. Review the diff, then re-run without \
+             TARI_HASHING_REGENERATE_VECTORS."
+        );
     }
     let pinned: Vectors = serde_json::from_str(&fs::read_to_string(vectors_path()).unwrap()).unwrap();
     assert_eq!(

@@ -354,6 +354,17 @@ impl MempoolStorage {
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
+        if self.unconfirmed_pool.has_validator_node_conflict(&tx) {
+            debug!(
+                target: LOG_TARGET,
+                "Tx: ({tx_id}) registers or exits a validator node that a pool transaction already registers or exits, \
+                 rejecting"
+            );
+            return Ok(TxStorageResponse::NotStored(Some(
+                "Transaction registers or exits a validator node that a mempool transaction already registers or exits"
+                    .to_string(),
+            )));
+        }
         let weight = self.get_transaction_weighting();
         self.unconfirmed_pool.insert(tx, dependent_outputs, &weight)?;
         debug!(

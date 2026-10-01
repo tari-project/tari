@@ -389,6 +389,16 @@ mod test {
         use super::*;
         use crate::mempool::TxStorageResponse;
 
+        fn create_handlers_with_validator(validator: MockValidator) -> (MempoolInboundHandlers, Mempool) {
+            let mut config = MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
+            let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
+            let handlers =
+                MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+            (handlers, mempool)
+        }
+
         /// Inserts a transaction into the mempool and returns it together with a block containing it.
         async fn insert_tx_and_build_block(mempool: &Mempool) -> (Arc<Transaction>, Arc<Block>) {
             let key_manager = KeyManager::new_random().unwrap();
@@ -406,24 +416,7 @@ mod test {
             (tx, block)
         }
 
-        #[tokio::test]
-        async fn a_local_block_that_fails_at_commit_evicts_its_transactions() {
-            // A locally built block template that passes validation but fails at commit time (e.g. a storage error
-            // applying a validator node exit) is published as `AddBlockErrored` with no source peer. Its transactions
-            // must be evicted, exactly as for a validation failure, otherwise every subsequent template would be
-            // built from the same transactions and fail the same way.
-            let mut config = MempoolConfig::default();
-            config.unconfirmed_pool.min_fee = 0;
-            let validator = MockValidator::new(true);
-            let is_valid = validator.shared_flag();
-            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
-            let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
-            let mut handlers =
-                MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
-            let (tx, block) = insert_tx_and_build_block(&mempool).await;
-
-            // The offending transaction no longer passes validation once it is re-checked.
-            is_valid.set(false);
+        async fn local_block_errored(handlers: &mut MempoolInboundHandlers, block: Arc<Block>) {
             handlers
                 .handle_block_event(&BlockEvent::AddBlockErrored {
                     block,
@@ -431,6 +424,20 @@ mod test {
                 })
                 .await
                 .unwrap();
+        }
+
+        #[tokio::test]
+        async fn a_local_block_failing_at_commit_evicts_a_transaction_that_fails_revalidation() {
+            // A locally built block that fails at commit time (`AddBlockErrored`, no source peer) has each of its
+            // transactions removed and individually re-validated, exactly as for a validation failure. One that is
+            // no longer valid (here: the validator now rejects it) is evicted.
+            let validator = MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let (mut handlers, mempool) = create_handlers_with_validator(validator);
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            is_valid.set(false);
+            local_block_errored(&mut handlers, block).await;
 
             assert_ne!(
                 mempool.has_transaction(tx).await.unwrap(),
@@ -440,10 +447,32 @@ mod test {
         }
 
         #[tokio::test]
-        async fn a_peer_block_that_fails_at_commit_leaves_the_mempool_alone() {
-            let (mut handlers, mempool, _propagated) = create_handlers();
+        async fn a_local_block_failing_at_commit_reinserts_a_transaction_that_still_passes_revalidation() {
+            // Re-validation is individual: a transaction that is valid on its own goes straight back into the pool,
+            // even if it was the cause of the failure in combination with another transaction of the same block (e.g.
+            // two exits for one validator node). Eviction alone therefore cannot break such a loop - that is done by
+            // refusing to store the second transaction in the first place (the unconfirmed pool's validator node
+            // conflict check, see `validator_node_conflicts` below).
+            let (mut handlers, mempool) = create_handlers_with_validator(MockValidator::new(true));
             let (tx, block) = insert_tx_and_build_block(&mempool).await;
 
+            local_block_errored(&mut handlers, block).await;
+
+            assert_eq!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+
+        #[tokio::test]
+        async fn a_peer_block_that_fails_at_commit_leaves_the_mempool_alone() {
+            let validator = MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let (mut handlers, mempool) = create_handlers_with_validator(validator);
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            // Even a transaction that would now fail re-validation is not touched for a peer's block
+            is_valid.set(false);
             handlers
                 .handle_block_event(&BlockEvent::AddBlockErrored {
                     block,
@@ -456,6 +485,84 @@ mod test {
                 mempool.has_transaction(tx).await.unwrap(),
                 TxStorageResponse::UnconfirmedPool
             );
+        }
+    }
+
+    mod validator_node_conflicts {
+        use tari_common_types::{
+            epoch::VnEpoch,
+            types::{CompressedPublicKey, PrivateKey},
+        };
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+
+        use super::*;
+        use crate::mempool::TxStorageResponse;
+
+        const NETWORK: u8 = 0x10;
+
+        fn tx_with(features: OutputFeatures, fee: u64, key_manager: &KeyManager) -> Arc<Transaction> {
+            Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(fee), inputs: 1, outputs: 1, features: features, key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            )
+        }
+
+        fn exit_features(vn_secret_key: &PrivateKey) -> OutputFeatures {
+            let signature =
+                ValidatorNodeSignature::sign_for_exit(vn_secret_key, NETWORK, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        }
+
+        fn registration_features(vn_secret_key: &PrivateKey) -> OutputFeatures {
+            let claim = CompressedPublicKey::from_secret_key(vn_secret_key);
+            let signature =
+                ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim, VnEpoch(10));
+            OutputFeatures::for_validator_node_registration(signature, claim, None, VnEpoch(10))
+        }
+
+        #[tokio::test]
+        async fn the_mempool_refuses_a_second_transaction_for_the_same_validator_node() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn_secret_key = PrivateKey::random(&mut rand::rng());
+
+            let exit1 = tx_with(exit_features(&vn_secret_key), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // The same transaction again is still reported as stored
+            assert_eq!(
+                mempool.insert(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // A second exit (even with a higher fee) and a registration for the same validator node are refused
+            let exit2 = tx_with(exit_features(&vn_secret_key), 10, &key_manager);
+            assert!(matches!(
+                mempool.insert(exit2.clone()).await.unwrap(),
+                TxStorageResponse::NotStored(_)
+            ));
+            let registration = tx_with(registration_features(&vn_secret_key), 5, &key_manager);
+            assert!(matches!(
+                mempool.insert(registration).await.unwrap(),
+                TxStorageResponse::NotStored(_)
+            ));
+            // Another validator node is unaffected
+            let other = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(other.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // So a template never carries two transactions for one validator node
+            let template = mempool.retrieve(1_000_000).await.unwrap();
+            assert_eq!(template.len(), 2);
+            assert!(template.contains(&exit1));
+            assert!(template.contains(&other));
+            assert!(!template.contains(&exit2));
         }
     }
 }
