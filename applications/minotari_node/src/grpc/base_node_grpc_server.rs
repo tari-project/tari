@@ -64,11 +64,11 @@ use tari_core::{
         state_machine_service::states::StateInfo,
         tari_pulse_service::TariPulseHandle,
     },
-    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo, adjusted_target_difficulties_in_range},
     consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
-    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK, PowBackoffTracker},
+    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK},
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -412,9 +412,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         task::spawn(async move {
             for (start, end) in page_iter {
                 // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so every
-                // page also reads the headers just before it to seed a fresh backoff run. Reading them in the same
-                // call as the page means a reorg cannot seed the run from a different chain.
-                let mut backoff_tracker = PowBackoffTracker::new();
+                // page also reads the headers just before it to seed the backoff run.
                 let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
                 // headers are returned by height
                 let headers = match handler.get_headers(lookback_start..=end).await {
@@ -431,12 +429,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
-                let (seed_headers, headers): (Vec<_>, Vec<_>) = headers
-                    .into_iter()
-                    .partition(|chain_header| chain_header.height() < start);
-                for chain_header in &seed_headers {
-                    backoff_tracker.push(chain_header.header().pow.pow_algo);
-                }
+                let headers = adjusted_target_difficulties_in_range(headers, start, &consensus_rules);
 
                 if headers.is_empty() {
                     let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
@@ -446,22 +439,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                for chain_header in &headers {
+                for (chain_header, adjusted_difficulty) in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
                     let pow_algo = chain_header.header().pow.pow_algo;
-                    // Genesis has no proof of work to clear, so it shows its stored target unchanged
-                    let adjusted_difficulty = if current_height == 0 {
-                        current_difficulty
-                    } else {
-                        backoff_tracker.adjusted_target(
-                            pow_algo,
-                            current_difficulty,
-                            consensus_rules.consensus_constants(current_height),
-                        )
-                    };
-                    backoff_tracker.push(pow_algo);
 
                     // update the moving average calculation with the header data
                     let current_hash_rate_moving_average = match pow_algo {

@@ -2917,6 +2917,36 @@ pub(crate) fn target_difficulty_for_next_block<T: ChainHeaderSource + ?Sized>(
     Ok(target_difficulties)
 }
 
+/// Pairs every header at or above `start` with its backoff adjusted target difficulty, the same value
+/// [`BlockchainDatabase::fetch_adjusted_target_difficulty`] returns for it.
+///
+/// `headers` must be consecutive main chain headers ordered by height, starting up to [`MAX_BACKOFF_RUN_LOOKBACK`]
+/// headers below `start` (or at genesis). The headers below `start` only seed the backoff run and are not returned.
+/// Reading them in the same call as the rest means a reorg cannot seed the run from a different chain.
+pub fn adjusted_target_difficulties_in_range(
+    headers: Vec<ChainHeader>,
+    start: u64,
+    consensus_manager: &BaseNodeConsensusManager,
+) -> Vec<(ChainHeader, Difficulty)> {
+    let mut tracker = PowBackoffTracker::new();
+    let mut result = Vec::with_capacity(headers.len());
+    for header in headers {
+        let algo = header.header().pow_algo();
+        if header.height() >= start {
+            let target = header.accumulated_data().target_difficulty;
+            // Genesis has no proof of work to clear, so it shows its stored target unchanged
+            let adjusted = if header.height() == 0 {
+                target
+            } else {
+                tracker.adjusted_target(algo, target, consensus_manager.consensus_constants(header.height()))
+            };
+            result.push((header, adjusted));
+        }
+        tracker.push(algo);
+    }
+    result
+}
+
 /// Recomputes the backoff adjusted target difficulty of the block with the given hash. See
 /// [`BlockchainDatabase::fetch_adjusted_target_difficulty`].
 pub(crate) fn adjusted_target_difficulty<T: ChainHeaderSource + ?Sized>(
