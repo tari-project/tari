@@ -527,6 +527,68 @@ mod test {
         }
 
         #[tokio::test]
+        async fn a_published_block_re_validates_validator_node_transactions_and_drops_invalid_ones() {
+            // A validator node transaction's validity depends on chain state that changes at epoch boundaries and
+            // when validator node transactions are mined (e.g. a cancelling spend becomes invalid once the registration
+            // activates), so such blocks re-check them. Ordinary transactions, and ordinary blocks, are left alone.
+            let validator = crate::validation::mocks::MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let mut config = crate::mempool::MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
+            let key_manager = KeyManager::new_random().unwrap();
+
+            let vn_tx = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            let plain_tx = Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            );
+            for tx in [&vn_tx, &plain_tx] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+            let block_with = |body: &tari_transaction_components::aggregated_body::AggregateBody| {
+                Arc::new(tari_node_components::blocks::Block::new(
+                    tari_node_components::blocks::BlockHeader::new(0),
+                    body.clone(),
+                ))
+            };
+
+            // The chain moves on and the validator node transaction is no longer valid, but a block with no validator
+            // node transactions inside an epoch does not re-check anything
+            is_valid.set(false);
+            let plain_block_tx =
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0;
+            mempool
+                .process_published_block(block_with(&plain_block_tx.body))
+                .await
+                .unwrap();
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+
+            // A block that mines a validator node transaction (for another node) re-checks the pool's validator node
+            // transactions: the stale one is dropped, the ordinary one stays
+            let other_vn_tx = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            mempool
+                .process_published_block(block_with(&other_vn_tx.body))
+                .await
+                .unwrap();
+            assert_ne!(
+                mempool.has_transaction(vn_tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.has_transaction(plain_tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        }
+
+        #[tokio::test]
         async fn a_validator_node_slot_is_replaced_only_by_a_strictly_higher_fee() {
             let (_handlers, mempool, _propagated) = create_handlers();
             let key_manager = KeyManager::new_random().unwrap();

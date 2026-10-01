@@ -239,21 +239,32 @@ type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
 
 /// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
 /// they can never both be valid against the same chain state.
+/// The validator nodes `body` registers or exits (outputs), or whose registration output it spends (inputs, which
+/// cancel a pending registration or reclaim an exited one's stake). Transactions sharing a key are treated as
+/// conflicting in the pool: in almost all cases at most one of them can be valid in a block, and their validity depends
+/// on validator node state that changes with each block. The exception (reclaiming an exited registration's stake and
+/// re-registering the same validator node in one block) is only delayed, since the wallet retries a taken slot.
 fn validator_node_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
-    body.outputs()
-        .iter()
-        .filter_map(|output| {
-            let features = output.features.sidechain_feature.as_ref()?;
-            let public_key = features
-                .validator_node_registration()
-                .map(|reg| reg.public_key())
-                .or_else(|| features.validator_node_exit().map(|exit| exit.public_key()))?;
-            Some((
-                features.sidechain_public_key().map(|pk| pk.as_bytes().to_vec()),
-                public_key.as_bytes().to_vec(),
-            ))
-        })
-        .collect()
+    let outputs = body.outputs().iter().filter_map(|output| {
+        let features = output.features.sidechain_feature.as_ref()?;
+        let public_key = features
+            .validator_node_registration()
+            .map(|reg| reg.public_key())
+            .or_else(|| features.validator_node_exit().map(|exit| exit.public_key()))?;
+        Some((
+            features.sidechain_public_key().map(|pk| pk.as_bytes().to_vec()),
+            public_key.as_bytes().to_vec(),
+        ))
+    });
+    let inputs = body.inputs().iter().filter_map(|input| {
+        let features = input.features().ok()?.sidechain_feature.as_ref()?;
+        let reg = features.validator_node_registration()?;
+        Some((
+            features.sidechain_public_key().map(|pk| pk.as_bytes().to_vec()),
+            reg.public_key().as_bytes().to_vec(),
+        ))
+    });
+    outputs.chain(inputs).collect()
 }
 
 /// The earliest `max_epoch` of the validator node registrations and exits in `body`, if it has any
@@ -708,6 +719,25 @@ impl UnconfirmedPool {
             }
         }
         Ok(removed)
+    }
+
+    /// Every transaction that registers, exits or cancels a validator node, with its key, so that the caller can
+    /// re-check them against the new chain tip. Their validity depends on validator node state (activation and exit
+    /// epochs, the registered set) that changes at epoch boundaries and with every validator node transaction mined,
+    /// unlike ordinary transactions.
+    pub fn validator_node_transactions(&self) -> Vec<(TransactionKey, Arc<Transaction>)> {
+        let mut keys = self.txs_by_validator_node.values().copied().collect::<Vec<_>>();
+        keys.sort_unstable();
+        keys.dedup();
+        keys.into_iter()
+            .filter_map(|key| self.tx_by_key.get(&key).map(|tx| (key, tx.transaction.clone())))
+            .collect()
+    }
+
+    /// Whether `body` registers, exits or cancels any validator node, i.e. whether mining it can change the validator
+    /// node set
+    pub fn body_touches_validator_nodes(body: &AggregateBody) -> bool {
+        !validator_node_keys(body).is_empty()
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
@@ -5129,6 +5159,35 @@ mod test {
         use super::*;
 
         const NETWORK: u8 = 0x10;
+
+        #[test]
+        fn validator_node_keys_include_inputs_that_spend_a_registration() {
+            use tari_script::ExecutionStack;
+            use tari_transaction_components::{
+                aggregated_body::AggregateBody,
+                transaction_components::{SpentOutput, TransactionInput, TransactionOutput},
+            };
+
+            let vn_secret_key = PrivateKey::random(&mut rand::rng());
+            let claim = CompressedPublicKey::from_secret_key(&vn_secret_key);
+            let signature =
+                ValidatorNodeSignature::sign_for_registration(&vn_secret_key, NETWORK, None, &claim, VnEpoch(10));
+            let registration = TransactionOutput {
+                features: OutputFeatures::for_validator_node_registration(signature, claim.clone(), None, VnEpoch(10)),
+                ..Default::default()
+            };
+            // Spending the registration output (cancelling a pending registration) keys the transaction by the
+            // validator node, just like registering or exiting it does
+            let input = TransactionInput::new_current_version(
+                SpentOutput::create_from_output(registration),
+                ExecutionStack::default(),
+                Default::default(),
+            );
+            let body = AggregateBody::new_unsorted(vec![input], vec![], vec![]);
+            assert_eq!(validator_node_keys(&body), vec![(None, claim.as_bytes().to_vec())]);
+            // A body with no validator node features has no keys
+            assert!(validator_node_keys(&AggregateBody::new_unsorted(vec![], vec![], vec![])).is_empty());
+        }
 
         fn vn_exit_tx(vn_secret_key: &PrivateKey, fee: u64, key_manager: &KeyManager) -> Arc<Transaction> {
             let signature =

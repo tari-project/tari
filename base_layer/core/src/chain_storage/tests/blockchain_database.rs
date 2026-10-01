@@ -1123,15 +1123,16 @@ mod validator_node_exit {
     }
 
     #[test]
-    fn a_registration_cannot_be_spent_until_its_exit_has_taken_effect() {
+    fn an_active_registration_cannot_be_spent_until_its_exit_has_taken_effect() {
         // Unmined (e.g. in the same body or still in the mempool): rejected
         let mut chain = Chain::new();
         assert_spend_disallowed(chain.check_spend(&chain.registration_output()));
 
-        // Pending activation: rejected (a pending registration cannot be cancelled by spending it)
+        // Pending activation: spendable, which cancels the registration (see
+        // `a_pending_registration_can_be_cancelled_by_spending_it`); not spent here
         let (registration, wallet_output) = chain.mine_spendable(chain.registration_features());
         assert!(chain.activation_epoch().unwrap() > chain.current_epoch());
-        assert_spend_disallowed(chain.check_spend(&registration));
+        chain.check_spend(&registration).unwrap();
 
         // Active: rejected
         chain.mine_epochs(2);
@@ -1183,6 +1184,41 @@ mod validator_node_exit {
         chain.spend(r1);
         assert_eq!(chain.registered_commitment(), Some(r2_output.commitment.clone()));
         assert_spend_disallowed(chain.check_spend(&r2_output));
+    }
+
+    #[test]
+    fn a_pending_registration_can_be_cancelled_by_spending_it() {
+        let mut chain = Chain::new();
+        let height_before = chain.tip_height();
+        let (registration, wallet_output) = chain.mine_spendable(chain.registration_features());
+        let height_registered = chain.tip_height();
+        let activation_epoch = chain.activation_epoch().unwrap();
+        assert!(activation_epoch > chain.current_epoch());
+
+        // Spending the pending registration is allowed and removes the validator node from the registered set ...
+        chain.check_spend(&registration).unwrap();
+        chain.spend(wallet_output);
+        assert_eq!(chain.registered_commitment(), None);
+        assert!(
+            !chain
+                .db
+                .db_read_access()
+                .unwrap()
+                .validator_node_is_active(None, activation_epoch, &chain.public_key)
+                .unwrap()
+        );
+        // ... so it never activates, and the validator node may register again straight away
+        chain.mine_epochs(2);
+        assert_eq!(chain.activation_epoch(), None);
+        chain.check_registration(&chain.registration_output()).unwrap();
+
+        // Rewinding the spend restores the entry exactly as it was
+        chain.db.rewind_to_height(height_registered).unwrap();
+        assert_eq!(chain.registered_commitment(), Some(registration.commitment.clone()));
+        assert_eq!(chain.activation_epoch(), Some(activation_epoch));
+        // Rewinding the registration itself removes it again
+        chain.db.rewind_to_height(height_before).unwrap();
+        assert_eq!(chain.registered_commitment(), None);
     }
 
     #[test]

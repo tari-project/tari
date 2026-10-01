@@ -42,7 +42,7 @@ use crate::chain_storage::{
         composite_key::CompositeKey,
         cursors::{FromKeyBytes, LmdbReadCursor},
         helpers,
-        lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
+        lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup},
     },
 };
 
@@ -53,6 +53,7 @@ const PK_SIZE: usize = 32;
 
 /// <sid, pk>
 type ValidatorNodeStoreKey = CompositeKey<{ PK_SIZE + PK_SIZE }>;
+const VN_KEY_SECTIONS: [usize; 2] = [PK_SIZE, PK_SIZE];
 /// <sid, epoch, pk>
 type ExitQueueKey = CompositeKey<{ PK_SIZE + U64_SIZE + PK_SIZE }>;
 const EXIT_QUEUE_KEY_SECTIONS: [usize; 3] = [PK_SIZE, U64_SIZE, PK_SIZE];
@@ -65,6 +66,10 @@ pub struct ValidatorNodeStore<'a, Txn> {
     db_validator_nodes: DatabaseRef,
     db_validator_activation_queue: DatabaseRef,
     db_validator_nodes_exit: DatabaseRef,
+    /// <spending block hash, spent registration output hash> -> the entry removed when that pending registration was
+    /// cancelled by spending its output in that block, kept so that rewinding the spend can restore it. Keyed by the
+    /// spending block as well because a byte-identical registration output can be mined again after it was spent.
+    db_validator_nodes_cancelled: DatabaseRef,
 }
 
 impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
@@ -73,12 +78,14 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         db_validator_nodes: DatabaseRef,
         db_validator_activation_queue: DatabaseRef,
         db_validator_nodes_exit: DatabaseRef,
+        db_validator_nodes_cancelled: DatabaseRef,
     ) -> Self {
         Self {
             txn,
             db_validator_nodes,
             db_validator_activation_queue,
             db_validator_nodes_exit,
+            db_validator_nodes_cancelled,
         }
     }
 }
@@ -140,6 +147,56 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             },
             _ => Ok(false),
         }
+    }
+
+    /// Cancels a pending registration: removes the entry for `public_key` if it was created by the output with
+    /// `commitment`, and records the removed entry under (`block_hash`, `output_hash`), the block spending the output,
+    /// so that [`Self::undo_cancel_registration`] can restore it when that block is rewound. Returns `false` (recording
+    /// nothing) if there is no such entry, e.g. because the validator node has exited or a different registration
+    /// instance is registered.
+    pub fn cancel_registration(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        block_hash: &[u8],
+        output_hash: &[u8],
+    ) -> Result<bool, ChainStorageError> {
+        let key = create_vn_key(sidechain_pk, public_key);
+        let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? else {
+            return Ok(false);
+        };
+        if vn.commitment != *commitment {
+            return Ok(false);
+        }
+        self.delete(sidechain_pk, public_key)?;
+        lmdb_insert(
+            self.txn,
+            &self.db_validator_nodes_cancelled,
+            create_cancel_key(block_hash, output_hash).as_slice(),
+            &vn,
+            "validator_nodes_cancelled",
+        )?;
+        Ok(true)
+    }
+
+    /// Restores the entry removed by [`Self::cancel_registration`] for the spend of `output_hash` in `block_hash`, if
+    /// there is one. Blocks are rewound tip-first, so the block that spent a registration is always rewound before the
+    /// block that mined it, and a record is always consumed before its registration is removed.
+    pub fn undo_cancel_registration(&self, block_hash: &[u8], output_hash: &[u8]) -> Result<bool, ChainStorageError> {
+        let key = create_cancel_key(block_hash, output_hash);
+        let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes_cancelled, key.as_slice())?
+        else {
+            return Ok(false);
+        };
+        lmdb_delete(
+            self.txn,
+            &self.db_validator_nodes_cancelled,
+            key.as_slice(),
+            "validator_nodes_cancelled",
+        )?;
+        self.insert(&vn)?;
+        Ok(true)
     }
 
     pub fn exit(
@@ -248,6 +305,36 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
     ) -> Result<LmdbReadCursor<'a, ExitQueueKey, ValidatorNodeEntry>, ChainStorageError> {
         self.new_read_cursor(self.db_validator_nodes_exit.clone())
+    }
+
+    fn registered_read_cursor(
+        &self,
+    ) -> Result<LmdbReadCursor<'a, ValidatorNodeStoreKey, ValidatorNodeEntry>, ChainStorageError> {
+        self.new_read_cursor(self.db_validator_nodes.clone())
+    }
+
+    /// The number of validator nodes in the registered set (pending activation or active) for `sidechain_id`. Entries
+    /// for other sidechains are not counted, so each sidechain has its own uncapped initial-validator phase.
+    pub fn count_registered(&self, sidechain_id: Option<&CompressedPublicKey>) -> Result<usize, ChainStorageError> {
+        let sidechain_bytes = sid_as_slice(sidechain_id);
+        let mut cursor = self.registered_read_cursor()?;
+        if !cursor.seek_range(sidechain_bytes)? {
+            return Ok(0);
+        }
+        let mut count = 0usize;
+        while let Some(key) = cursor.next_key()? {
+            let sid = key.section_iter(VN_KEY_SECTIONS).next().ok_or_else(|| {
+                ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::count_registered",
+                    details: "Malformed validator node key".to_string(),
+                }
+            })?;
+            if sid != sidechain_bytes {
+                break;
+            }
+            count = count.saturating_add(1);
+        }
+        Ok(count)
     }
 
     fn new_read_cursor<K: FromKeyBytes, V: DeserializeOwned>(
@@ -411,8 +498,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     ) -> Result<VnEpoch, ChainStorageError> {
         // Node activates earliest in the next epoch
         let mut activation_epoch = current_epoch.saturating_add(VnEpoch(1));
-        // If there are less than the initial validators, we activate all new validators in the next epoch
-        let len = lmdb_len(self.txn, &self.db_validator_nodes)?;
+        // If this sidechain has fewer than the initial validators, we activate all new validators in the next epoch.
+        // The count is per sidechain: registrations on one sidechain must not end the initial phase of another.
+        let len = self.count_registered(sidechain_id)?;
         if len < initial_validators {
             return Ok(activation_epoch);
         }
@@ -863,6 +951,14 @@ fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: V
     buf
 }
 
+/// <spending block hash, spent output hash>
+fn create_cancel_key(block_hash: &[u8], output_hash: &[u8]) -> Vec<u8> {
+    let mut key = Vec::with_capacity(block_hash.len().saturating_add(output_hash.len()));
+    key.extend_from_slice(block_hash);
+    key.extend_from_slice(output_hash);
+    key
+}
+
 fn create_activation_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> ActivationQueueKey {
     ActivationQueueKey::try_from_parts(&[sid_as_slice(sidechain_pk), &epoch.to_be_bytes()])
         .expect("create_activation_key: Composite key length is incorrect")
@@ -891,6 +987,7 @@ mod tests {
         ("validator_node_store", db::CREATE),
         ("validator_node_activation_queue", db::DUPSORT),
         ("validator_node_exit_queue", db::CREATE),
+        ("validator_node_cancelled", db::CREATE),
     ];
 
     fn create_store<'a, Txn: Deref<Target = ConstTransaction<'a>>>(
@@ -900,7 +997,133 @@ mod tests {
         let store_db = db.get_db(DBS[0].0).clone();
         let activation_queue = db.get_db(DBS[1].0).clone();
         let exit_db = db.get_db(DBS[2].0).clone();
-        ValidatorNodeStore::new(txn, store_db, activation_queue, exit_db)
+        let cancelled_db = db.get_db(DBS[3].0).clone();
+        ValidatorNodeStore::new(txn, store_db, activation_queue, exit_db, cancelled_db)
+    }
+
+    mod count_registered {
+        use super::*;
+
+        #[test]
+        fn it_counts_per_sidechain_and_keeps_the_initial_phase_per_sidechain() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let sidechain = new_public_key();
+            // Three validator nodes on `sidechain`, all queued to activate in epoch 6
+            insert_n_vns(&store, 6, 0, 3, Some(&sidechain));
+            assert_eq!(store.count_registered(Some(&sidechain)).unwrap(), 3);
+            assert_eq!(store.count_registered(None).unwrap(), 0);
+            assert_eq!(store.count_registered(Some(&new_public_key())).unwrap(), 0);
+
+            // `sidechain` is past its initial phase (2 initial validators) and epoch 6 is full (1 per epoch), so the
+            // next activation there is pushed to epoch 7 ...
+            let next = store
+                .get_next_activation_epoch(Some(&sidechain), VnEpoch(5), 2, 1)
+                .unwrap();
+            assert_eq!(next, VnEpoch(7));
+            // ... while the default sidechain, with no registrations, is still in its initial phase and activates in
+            // the next epoch regardless of the other sidechain's registrations.
+            let next = store.get_next_activation_epoch(None, VnEpoch(5), 2, 1).unwrap();
+            assert_eq!(next, VnEpoch(6));
+        }
+    }
+
+    mod cancel_registration {
+        use super::*;
+
+        #[test]
+        fn it_removes_the_entry_and_restores_it_on_undo() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let entry = insert_n_vns(&store, 3, 0, 1, None).remove(0);
+            let output_hash = make_hash(b"registration output");
+            let block = make_hash(b"spending block");
+
+            // A different registration instance (commitment) does not cancel this entry
+            let other = CompressedCommitment::from_compressed_key(new_public_key());
+            assert!(
+                !store
+                    .cancel_registration(None, &entry.public_key, &other, &block, &output_hash)
+                    .unwrap()
+            );
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), Some(entry.clone()));
+
+            assert!(
+                store
+                    .cancel_registration(None, &entry.public_key, &entry.commitment, &block, &output_hash)
+                    .unwrap()
+            );
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), None);
+            assert_eq!(store.count_registered(None).unwrap(), 0);
+            assert!(store.get_vn_set(None, VnEpoch(1), VnEpoch(5)).unwrap().is_empty());
+            // Nothing left to cancel
+            assert!(
+                !store
+                    .cancel_registration(None, &entry.public_key, &entry.commitment, &block, &output_hash)
+                    .unwrap()
+            );
+
+            // The record is specific to the spending block
+            assert!(
+                !store
+                    .undo_cancel_registration(&make_hash(b"other block"), &output_hash)
+                    .unwrap()
+            );
+            assert!(store.undo_cancel_registration(&block, &output_hash).unwrap());
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), Some(entry.clone()));
+            assert_eq!(store.get_vn_set(None, VnEpoch(1), VnEpoch(5)).unwrap().len(), 1);
+            // The record is consumed
+            assert!(!store.undo_cancel_registration(&block, &output_hash).unwrap());
+        }
+
+        #[test]
+        fn a_re_mined_identical_registration_can_be_cancelled_again_and_both_cancels_undone_in_order() {
+            // The same registration output (hash H) is mined in block A, cancelled in block B, mined again
+            // byte-identically in block C and cancelled again in block D. Records are keyed by (spending block, H), so
+            // the second cancel does not collide with the first, and rewinding D, C, B restores and removes the right
+            // instances.
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let entry = insert_n_vns(&store, 3, 0, 1, None).remove(0);
+            let h = make_hash(b"registration output H");
+            let (block_b, block_d) = (make_hash(b"block B"), make_hash(b"block D"));
+
+            assert!(
+                store
+                    .cancel_registration(None, &entry.public_key, &entry.commitment, &block_b, &h)
+                    .unwrap()
+            );
+            // Block C re-mines H: a fresh entry for the same output (with a later activation epoch)
+            let re_mined = ValidatorNodeEntry {
+                activation_epoch: VnEpoch(7),
+                ..entry.clone()
+            };
+            store.insert(&re_mined).unwrap();
+            // Block D cancels it again: no key collision with block B's record
+            assert!(
+                store
+                    .cancel_registration(None, &entry.public_key, &entry.commitment, &block_d, &h)
+                    .unwrap()
+            );
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), None);
+
+            // Rewind D: the re-mined instance is back
+            assert!(store.undo_cancel_registration(&block_d, &h).unwrap());
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), Some(re_mined));
+            // Rewind C: the re-mined registration output is removed
+            assert!(
+                store
+                    .delete_registration(None, &entry.public_key, &entry.commitment)
+                    .unwrap()
+            );
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), None);
+            // Rewind B: the original instance is back, untouched by C's rewind
+            assert!(store.undo_cancel_registration(&block_b, &h).unwrap());
+            assert_eq!(store.get(None, &entry.public_key).unwrap(), Some(entry));
+        }
     }
 
     fn insert_n_vns(

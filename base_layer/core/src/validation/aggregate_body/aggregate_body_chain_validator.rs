@@ -536,19 +536,20 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
     Ok(())
 }
 
-/// A validator node registration output (`commitment`) cannot be spent while a validator node entry for it exists; it
-/// becomes spendable once the validator node's exit epoch is reached. Specifically, the spend is rejected if:
+/// A validator node registration output (`commitment`) cannot be spent while the validator node it registered is
+/// active or has an exit pending; it is spendable while the registration is still pending activation (which cancels
+/// the registration) and again once the validator node's exit epoch is reached. Specifically, the spend is rejected if:
 /// - the registration output is not (yet) in the chain's unspent set: it is created in the same body or is still in the
 ///   mempool, so it is about to create an entry;
-/// - a registered validator node entry created by this output exists, whether pending activation or active;
+/// - a registered validator node entry created by this output exists and is active in `epoch` (`activation_epoch <=
+///   epoch`);
 /// - an exit of the entry created by this output is queued for an epoch after `epoch` (not yet taken effect).
 ///
 /// Both entry checks match on the commitment, so only this registration instance locks the output: a later
 /// registration of the same validator node (possibly by a third party replaying the registration) does not.
 ///
-/// Spending a registration therefore never changes the validator node set (and committing or rewinding a spend never
-/// touches it). This deliberately means a pending registration cannot be cancelled by spending it: it must activate
-/// and exit.
+/// Spending a pending registration cancels it: committing the spend removes the entry (recording it so a rewind can
+/// restore it). Spending a registration whose exit has taken effect does not touch the validator node set.
 fn check_validator_node_registration_spend<B: BlockchainBackend>(
     db: &B,
     reg: &ValidatorNodeRegistration,
@@ -571,9 +572,9 @@ fn check_validator_node_registration_spend<B: BlockchainBackend>(
     }
     if db
         .fetch_validator_node_entry(sidechain_pk, reg.public_key())?
-        .is_some_and(|entry| entry.commitment == *commitment)
+        .is_some_and(|entry| entry.commitment == *commitment && entry.activation_epoch <= epoch)
     {
-        return reject("the validator node is registered (pending activation or active)");
+        return reject("the validator node is active");
     }
     if db.validator_node_has_pending_exit(sidechain_pk, reg.public_key(), commitment, epoch)? {
         return reject("the validator node's exit has not taken effect yet");
