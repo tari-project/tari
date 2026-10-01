@@ -244,16 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
-name = "cargo_toml"
-version = "0.20.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88da5a13c620b4ca0078845707ea9c3faf11edbc3ffd8497d11d686211cd1ac0"
-dependencies = [
- "serde",
- "toml",
-]
-
-[[package]]
 name = "cc"
 version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2068,9 +2058,9 @@ name = "tari_common"
 version = "6.0.1-pre.2"
 dependencies = [
  "anyhow",
- "cargo_toml",
  "config",
  "dirs-next",
+ "libc",
  "log",
  "log4rs",
  "multiaddr",
@@ -2078,9 +2068,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2",
  "tari_features",
- "tempfile",
  "thiserror 2.0.20",
 ]
 
