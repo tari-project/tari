@@ -10,7 +10,10 @@ use std::{
     marker::PhantomData,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use config::{Config, ValueKind};
@@ -504,7 +507,7 @@ fn value_contains_at(value: &config::Value) -> bool {
 /// Warns if the config file holds a secret but can be read by the group or by other users.
 fn warn_if_secrets_readable(path: &Path, file_cfg: &Config) {
     for message in secrets_readable_messages(path, file_cfg) {
-        emit_warning(&message);
+        emit_security_warning(&message);
     }
 }
 
@@ -560,42 +563,75 @@ fn display_path(path: &Path) -> String {
     sanitize_for_display(&path.display().to_string())
 }
 
-/// Number of security warnings printed to stderr by this process (see [`print_warning`]).
+/// Number of security warnings recorded by this process (see [`print_security_warning`]).
 static WARNINGS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 
-/// Returns how many security warnings (untrusted files, readable secrets, ...) this process has printed. Applications
-/// can use this to make sure an interactive user sees them, e.g. before a full-screen UI hides the terminal.
+/// The sanitized texts of the security warnings recorded by this process, in order.
+static SECURITY_WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Returns how many security warnings this process has recorded: trust findings that mean another (non-root) user can
+/// control a config or log file (see [`untrusted_severe_reasons`]) and secrets in a config file others can read.
+/// Routine findings (group-writable files under a umask of 002, root-owned files) are printed but not counted.
+/// Applications can use this to make sure an interactive user sees them, e.g. before a full-screen UI hides the
+/// terminal.
 pub fn warnings_emitted() -> usize {
     WARNINGS_EMITTED.load(Ordering::Relaxed)
 }
 
-/// Writes a security warning as `WARNING: <message>` to `writer`. The message is sanitized for display.
+/// Returns the sanitized texts of the security warnings counted by [`warnings_emitted`], so they can be shown again.
+pub fn security_warnings() -> Vec<String> {
+    SECURITY_WARNINGS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Writes a warning as `WARNING: <message>` to `writer`. The message is sanitized for display.
 pub(crate) fn write_warning<W: Write>(writer: &mut W, message: &str) {
     if writeln!(writer, "WARNING: {}", sanitize_for_display(message)).is_err() {
         // Nowhere else to report a failed write to stderr
     }
 }
 
-/// Prints a security warning to stderr and counts it (see [`warnings_emitted`]).
+/// Prints a warning to stderr. It is not recorded as a security warning.
 pub(crate) fn print_warning(message: &str) {
-    WARNINGS_EMITTED.fetch_add(1, Ordering::Relaxed);
     write_warning(&mut std::io::stderr(), message);
 }
 
-/// Prints a security warning to stderr and also logs it. Printing does not depend on the logger, so the warning is seen
-/// even when no logger is set up yet or a (possibly planted) log config silences it. The message is sanitized for
-/// display once and the same text goes to both.
+/// Prints a security warning to stderr and records it (see [`warnings_emitted`] and [`security_warnings`]).
+pub(crate) fn print_security_warning(message: &str) {
+    let message = sanitize_for_display(message);
+    WARNINGS_EMITTED.fetch_add(1, Ordering::Relaxed);
+    SECURITY_WARNINGS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(message.clone());
+    write_warning(&mut std::io::stderr(), &message);
+}
+
+/// Prints a warning to stderr and also logs it. Printing does not depend on the logger, so the warning is seen even
+/// when no logger is set up yet or a (possibly planted) log config silences it. The message is sanitized for display
+/// once and the same text goes to both. It is not recorded as a security warning; see [`emit_security_warning`].
 pub(crate) fn emit_warning(message: &str) {
     let message = sanitize_for_display(message);
     print_warning(&message);
     warn!(target: LOG_TARGET, "⚠️  {message}");
 }
 
+/// Like [`emit_warning`], but also records the message as a security warning (see [`warnings_emitted`]).
+pub(crate) fn emit_security_warning(message: &str) {
+    let message = sanitize_for_display(message);
+    print_security_warning(&message);
+    warn!(target: LOG_TARGET, "⚠️  {message}");
+}
+
 /// Warns (on stderr and in the log) if a file that is about to be loaded could have been written by someone else.
-/// See [`untrusted_reasons`]. This only warns; loading always continues.
+/// Severe findings (see [`untrusted_severe_reasons`]) are recorded as security warnings; routine ones are only printed
+/// and logged. This only warns; loading always continues.
 pub fn warn_if_untrusted(path: &Path) {
-    for reason in untrusted_reasons(path) {
-        emit_warning(&reason);
+    for (severe, reason) in untrusted_findings(path) {
+        if severe {
+            emit_security_warning(&reason);
+        } else {
+            emit_warning(&reason);
+        }
     }
 }
 
@@ -623,9 +659,10 @@ pub fn untrusted_severe_reasons(path: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Returns `(severe, reason)` pairs for [`untrusted_reasons`] and [`untrusted_severe_reasons`].
+/// Returns `(severe, reason)` pairs from a single check of the file, its directory and its symlink chain. This is
+/// what [`untrusted_reasons`] and [`untrusted_severe_reasons`] are built from; use it directly to decide from one pass.
 #[cfg(unix)]
-fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
+pub fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
     use std::os::unix::fs::MetadataExt;
 
     const MAX_SYMLINK_HOPS: usize = 32;
@@ -730,7 +767,7 @@ fn parent_or_current(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(unix))]
-fn untrusted_findings(_path: &Path) -> Vec<(bool, String)> {
+pub fn untrusted_findings(_path: &Path) -> Vec<(bool, String)> {
     Vec::new()
 }
 
@@ -1272,10 +1309,61 @@ p2pool_node_grpc_address = "http://127.0.0.1:18145"
     }
 
     #[test]
-    fn emitted_warnings_are_counted() {
+    fn security_warnings_are_counted_and_stored() {
         let before = warnings_emitted();
-        emit_warning("test warning");
+        emit_security_warning("unique security warning \u{1b}x");
         assert!(warnings_emitted() > before);
+        assert!(security_warnings().contains(&"unique security warning \\u{1b}x".to_string()));
+
+        emit_warning("unique routine warning");
+        assert!(!security_warnings().iter().any(|w| w.contains("unique routine warning")));
+    }
+
+    /// Returns true if a recorded security warning mentions `needle`. Tests run in parallel and share the record, so
+    /// they look for their own unique temp paths instead of comparing counts.
+    fn recorded_security_warning_mentions(needle: &str) -> bool {
+        security_warnings().iter().any(|w| w.contains(needle))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_severe_findings_are_recorded() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+
+        // Group-writable, owned by us (umask 002): printed, not recorded
+        let group = dir.path().join("group_writable.toml");
+        fs::write(&group, "").unwrap();
+        fs::set_permissions(&group, fs::Permissions::from_mode(0o664)).unwrap();
+        assert!(!untrusted_reasons(&group).is_empty());
+        assert!(untrusted_severe_reasons(&group).is_empty());
+        warn_if_untrusted(&group);
+        assert!(!recorded_security_warning_mentions(&group.display().to_string()));
+
+        // World-writable: recorded
+        let world = dir.path().join("world_writable.toml");
+        fs::write(&world, "").unwrap();
+        fs::set_permissions(&world, fs::Permissions::from_mode(0o666)).unwrap();
+        let before = warnings_emitted();
+        warn_if_untrusted(&world);
+        assert!(warnings_emitted() > before);
+        assert!(recorded_security_warning_mentions(&world.display().to_string()));
+
+        // A readable secret: recorded
+        let secret = dir.path().join("secret.toml");
+        fs::write(&secret, "[wallet]\npassword = \"x\"\n").unwrap();
+        fs::set_permissions(&secret, fs::Permissions::from_mode(0o644)).unwrap();
+        let file_cfg = Config::builder()
+            .add_source(config::File::from(secret.as_path()))
+            .build()
+            .unwrap();
+        warn_if_secrets_readable(&secret, &file_cfg);
+        assert!(recorded_security_warning_mentions(&format!(
+            "{} is readable by other users",
+            secret.display()
+        )));
     }
 
     #[test]

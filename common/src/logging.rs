@@ -34,15 +34,16 @@ use log4rs::config::RawConfig;
 use crate::{
     ConfigError,
     LOG_TARGET,
-    configuration::utils::{print_warning, sanitize_for_display, untrusted_reasons, untrusted_severe_reasons},
+    configuration::utils::{print_security_warning, print_warning, sanitize_for_display, untrusted_findings},
 };
 
 /// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
 /// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
 ///
-/// Every trust finding for the file (see [`untrusted_reasons`]) is printed to stderr and logged once logging is up. If
-/// another (non-root) user can control the file (see [`untrusted_severe_reasons`]), it is not loaded and `default` is
-/// used instead.
+/// Every trust finding for the file (see [`untrusted_reasons`](crate::configuration::utils::untrusted_reasons)) is
+/// printed to stderr and logged once logging is up. If another (non-root) user can control the file (see
+/// [`untrusted_severe_reasons`](crate::configuration::utils::untrusted_severe_reasons)), it is not loaded and `default`
+/// is used instead.
 pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
@@ -73,8 +74,12 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
     // Always print the findings to stderr first: no logger exists yet, and the log config being checked could itself
     // silence them. Once logging is up they are also logged.
     let choice = choose_log_config(config_file, default)?;
-    for reason in &choice.reasons {
-        print_warning(reason);
+    for (severe, reason) in &choice.findings {
+        if *severe {
+            print_security_warning(reason);
+        } else {
+            print_warning(reason);
+        }
     }
     let ignored_message = format!(
         "Untrusted log config {} ignored and its custom settings dropped; using the built-in default logging \
@@ -82,10 +87,10 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
         sanitize_for_display(&config_file.display().to_string())
     );
     if choice.refused {
-        print_warning(&ignored_message);
+        print_security_warning(&ignored_message);
     }
     init_logging_from_str(&choice.contents, base_path)?;
-    for reason in &choice.reasons {
+    for (_, reason) in &choice.findings {
         warn!(target: LOG_TARGET, "⚠️  {reason}");
     }
     if choice.refused {
@@ -94,22 +99,25 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
     Ok(())
 }
 
-/// The log4rs config text to use, every trust finding for the file, and whether the file was refused.
+/// The log4rs config text to use, every trust finding for the file as `(severe, reason)`, and whether the file was
+/// refused.
 struct LogConfigChoice {
     contents: String,
-    reasons: Vec<String>,
+    findings: Vec<(bool, String)>,
     refused: bool,
 }
 
 /// Chooses the log4rs config text to use. A file that another (non-root) user can control (see
-/// [`untrusted_severe_reasons`]) is not read at all and `default` is used instead. Other findings (e.g. a
-/// group-writable file under a umask of 002, or a root-owned read-only file) are only reported.
+/// [`untrusted_severe_reasons`](crate::configuration::utils::untrusted_severe_reasons)) is not read at all and
+/// `default` is used instead. Other findings (e.g. a group-writable file under a umask of 002, or a root-owned
+/// read-only file) are only reported.
 fn choose_log_config(config_file: &Path, default: &str) -> Result<LogConfigChoice, ConfigError> {
-    let reasons = untrusted_reasons(config_file);
-    if !untrusted_severe_reasons(config_file).is_empty() {
+    // One pass decides both what is reported and whether the file is refused
+    let findings = untrusted_findings(config_file);
+    if findings.iter().any(|(severe, _)| *severe) {
         return Ok(LogConfigChoice {
             contents: default.to_string(),
-            reasons,
+            findings,
             refused: true,
         });
     }
@@ -120,7 +128,7 @@ fn choose_log_config(config_file: &Path, default: &str) -> Result<LogConfigChoic
         .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
     Ok(LogConfigChoice {
         contents,
-        reasons,
+        findings,
         refused: false,
     })
 }
@@ -235,21 +243,21 @@ mod test {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         let choice = choose_log_config(&path, "default").unwrap();
         assert_eq!(choice.contents, "from file");
-        assert!(choice.reasons.is_empty(), "{:?}", choice.reasons);
+        assert!(choice.findings.is_empty(), "{:?}", choice.findings);
         assert!(!choice.refused);
 
         // Group-writable (umask 002) and owned by us: loaded, but warned about
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o664)).unwrap();
         let choice = choose_log_config(&path, "default").unwrap();
         assert_eq!(choice.contents, "from file");
-        assert!(!choice.reasons.is_empty());
+        assert!(!choice.findings.is_empty());
         assert!(!choice.refused);
 
         // World-writable: the file is not read and the default is used
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
         let choice = choose_log_config(&path, "default").unwrap();
         assert_eq!(choice.contents, "default");
-        assert!(!choice.reasons.is_empty());
+        assert!(!choice.findings.is_empty());
         assert!(choice.refused);
     }
 
