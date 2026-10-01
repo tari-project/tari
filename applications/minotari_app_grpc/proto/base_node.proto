@@ -265,6 +265,7 @@ message NewBlockCoinbase{
 
 // Network difficulty response
 message NetworkDifficultyResponse {
+  // The block's unadjusted target difficulty. This is the value that accumulates into the chain's total difficulty.
   uint64 difficulty = 1;
   uint64 estimated_hash_rate = 2;
   uint64 height = 3;
@@ -276,6 +277,10 @@ message NetworkDifficultyResponse {
   UDecimalValue cuckaroo_estimated_hash_rate = 11;
   uint64 num_coinbases = 8;
   repeated bytes coinbase_extras = 9;
+  // The target difficulty the block's proof of work had to clear: `difficulty` with the TIP-RFC-MT-0004
+  // same-algorithm backoff applied (up to 32x for a run of consecutive blocks of the same PoW algorithm). Equal to
+  // `difficulty` where no backoff applies.
+  uint64 adjusted_difficulty = 12;
 }
 
 // A generic single value response for a specific height

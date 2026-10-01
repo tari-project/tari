@@ -19,7 +19,12 @@
 
 use std::cmp::min;
 
-use tari_transaction_components::{consensus::consensus_constants::POW_BACKOFF_CAP, tari_proof_of_work::PowAlgorithm};
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, consensus_constants::POW_BACKOFF_CAP},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+};
+
+use crate::proof_of_work::adjust_target;
 
 /// `M_MAX` - the maximum backoff modifier that a run of same-algorithm blocks can accrue.
 pub const MAX_POW_BACKOFF_MODIFIER: u64 = 32;
@@ -76,6 +81,24 @@ impl PowBackoffTracker {
             Some(last) if last == algo => min(min(2u64.pow(self.run_len), cap), MAX_POW_BACKOFF_MODIFIER),
             _ => 1,
         }
+    }
+
+    /// The target difficulty a block of `algo` with the unadjusted `target` must clear when appended to the tracked
+    /// chain, i.e. `target` multiplied by the backoff modifier and clamped. `constants` must be the consensus
+    /// constants in force at that block's height. Where the backoff is disabled this is just `target`.
+    pub fn adjusted_target(
+        &self,
+        algo: PowAlgorithm,
+        target: Difficulty,
+        constants: &ConsensusConstants,
+    ) -> Difficulty {
+        let modifier = self.modifier_for(algo, constants.pow_backoff_cap());
+        adjust_target(
+            target,
+            modifier,
+            constants.min_pow_difficulty(algo),
+            constants.max_pow_difficulty(algo),
+        )
     }
 
     /// Appends a block of `algo` to the tracked chain.

@@ -48,7 +48,7 @@ use tari_node_components::blocks::{
     NewBlockTemplate,
 };
 use tari_transaction_components::{
-    tari_proof_of_work::PowAlgorithm,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::epoch_time::EpochTime;
@@ -392,6 +392,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(
         fetch_target_difficulties_for_next_block(current_block_hash: HashOutput) -> TargetDifficulties,
         "fetch_target_difficulties_for_next_block"
+    );
+
+    make_async_fn!(
+        fetch_adjusted_target_difficulty(block_hash: HashOutput) -> Difficulty,
+        "fetch_adjusted_target_difficulty"
     );
 
     make_async_fn!(

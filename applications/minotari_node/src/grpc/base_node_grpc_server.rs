@@ -68,7 +68,7 @@ use tari_core::{
     consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
-    proof_of_work::AdjustedTarget,
+    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK, PowBackoffTracker},
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -406,8 +406,36 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
 
+        let consensus_rules = self.consensus_rules.clone();
+
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
+            // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so seed the
+            // backoff run with the headers just before the requested range.
+            let mut backoff_tracker = PowBackoffTracker::new();
+            if start_height > 0 {
+                let lookback_start = start_height.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
+                match handler
+                    .get_headers(lookback_start..=start_height.saturating_sub(1))
+                    .await
+                {
+                    Ok(headers) => {
+                        for chain_header in &headers {
+                            backoff_tracker.push(chain_header.header().pow.pow_algo);
+                        }
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Base node service error: {err:?}");
+                        let _ = tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal("Internal error when fetching blocks"),
+                            )))
+                            .await;
+                        return;
+                    },
+                }
+            }
             for (start, end) in page_iter {
                 // headers are returned by height
                 let headers = match handler.get_headers(start..=end).await {
@@ -437,6 +465,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
                     let pow_algo = chain_header.header().pow.pow_algo;
+                    let adjusted_difficulty = backoff_tracker.adjusted_target(
+                        pow_algo,
+                        current_difficulty,
+                        consensus_rules.consensus_constants(current_height),
+                    );
+                    backoff_tracker.push(pow_algo);
 
                     // update the moving average calculation with the header data
                     let current_hash_rate_moving_average = match pow_algo {
@@ -500,6 +534,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
                         coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
+                        adjusted_difficulty: adjusted_difficulty.as_u64(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
