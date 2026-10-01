@@ -4247,6 +4247,7 @@ dependencies = [
  "prost 0.13.5",
  "rand 0.10.1",
  "rcgen",
+ "serde",
  "serde_json",
  "subtle",
  "tari_common",
