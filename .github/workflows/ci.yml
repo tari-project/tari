@@ -327,6 +327,15 @@ jobs:
       - name: run the license check
         run: ./scripts/file_license_check.sh
 
+  decoder-parity:
+    name: decoder parity
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: check that no type with a fallible from_bytes derives its serde or borsh decoder
+        run: python3 ./scripts/decoder_parity_check.py
+
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]

@@ -20,19 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-
-use serde::{
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-    de::{Error, Visitor},
-};
-use tari_utilities::hex::{Hex, from_hex};
+use serde::{Serialize, Serializer};
+use tari_utilities::hex::Hex;
 
 use crate::transaction_components::covenants::Covenant;
 
+// The `Deserialize` implementation is generated from `ValidatedDecode for Covenant` (see `covenant.rs`), so that it
+// applies the same checks as `Covenant::from_bytes`.
 impl Serialize for Covenant {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
@@ -41,49 +35,6 @@ impl Serialize for Covenant {
             ser.serialize_str(&bytes.to_hex())
         } else {
             ser.serialize_bytes(&bytes)
-        }
-    }
-}
-
-struct CovenantVisitor;
-
-impl<'de> Visitor<'de> for CovenantVisitor {
-    type Value = Covenant;
-
-    fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str("Expecting a binary array or hex string")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where E: Error {
-        let bytes = from_hex(v).map_err(|e| E::custom(e.to_string()))?;
-        self.visit_bytes(&bytes)
-    }
-
-    fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-    where E: Error {
-        self.visit_str(&v)
-    }
-
-    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-    where E: Error {
-        let mut v = v;
-        Covenant::from_bytes(&mut v).map_err(|e| E::custom(e.to_string()))
-    }
-
-    fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-    where E: Error {
-        self.visit_bytes(v)
-    }
-}
-
-impl<'de> Deserialize<'de> for Covenant {
-    fn deserialize<D>(de: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        if de.is_human_readable() {
-            de.deserialize_string(CovenantVisitor)
-        } else {
-            de.deserialize_bytes(CovenantVisitor)
         }
     }
 }

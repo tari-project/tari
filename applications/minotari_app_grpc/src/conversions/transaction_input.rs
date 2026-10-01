@@ -115,6 +115,8 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
             Ok(Self {
                 script_signature,
                 output_hash,
+                // The input data is part of a compact input too, as in the P2P encoding
+                input_data: input.input_data.to_bytes(),
                 ..Default::default()
             })
         } else {

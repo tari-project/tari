@@ -17,8 +17,8 @@
 
 use std::io;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use integer_encoding::{VarIntReader, VarIntWriter};
+use borsh::BorshSerialize;
+use integer_encoding::VarIntWriter;
 use tari_crypto::{
     compressed_commitment::CompressedCommitment,
     compressed_key::CompressedKey,
@@ -194,28 +194,6 @@ impl BorshSerialize for ExecutionStack {
             b.serialize(writer)?;
         }
         Ok(())
-    }
-}
-
-impl BorshDeserialize for ExecutionStack {
-    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
-    where R: io::Read {
-        // `len` is the byte length of the encoding, not the number of items. It is bounded by the largest possible
-        // encoding of a valid stack; `from_bytes` then applies the item limit and validates every item, so this
-        // decoder accepts exactly the stacks that `from_bytes` accepts.
-        let len: usize = reader.read_varint()?;
-        if len > MAX_STACK_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Execution stack encoding of {len} bytes exceeds the maximum of {MAX_STACK_BYTES} bytes"),
-            ));
-        }
-        // Bounded by `MAX_STACK_BYTES` above.
-        let mut data = vec![0u8; len];
-        reader.read_exact(&mut data)?;
-        let stack = Self::from_bytes(data.as_slice())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        Ok(stack)
     }
 }
 
@@ -613,7 +591,7 @@ mod test {
     fn a_borsh_length_above_max_stack_bytes_is_rejected_before_reading_the_body() {
         let mut buf = Vec::new();
         buf.write_varint(MAX_STACK_BYTES + 1).unwrap();
-        // No body at all: a decoder that tried to read the body would fail with `UnexpectedEof` instead.
+        // No body at all: a decoder that tried to read the body would fail with "Unexpected length of input" instead.
         let err = ExecutionStack::deserialize(&mut buf.as_slice()).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
 
@@ -621,7 +599,8 @@ mod test {
         let mut buf = Vec::new();
         buf.write_varint(MAX_STACK_BYTES).unwrap();
         let err = ExecutionStack::deserialize(&mut buf.as_slice()).unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "Unexpected length of input");
     }
 
     #[test]

@@ -42,7 +42,12 @@ use crate::{
     types::CompressedPublicKey,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// A dual (view and spend key) Tari address.
+///
+/// This type has no `Deserialize` implementation of its own, as a derived one would skip the checksum and feature flag
+/// checks of [`DualAddress::from_bytes`]. A `TariAddress` decodes the legacy `{"Dual": {...}}` JSON form through
+/// [`LegacyDualAddress`] and then through `from_bytes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct DualAddress {
     network: Network,
     features: TariAddressFeatures,
@@ -50,6 +55,33 @@ pub struct DualAddress {
     public_spend_key: CompressedPublicKey,
     #[serde(alias = "payment_id_user_data")]
     memo_field_payment_id: MaxSizeBytes<MAX_PAYMENT_ID_SIZE>,
+}
+
+/// The fields of the legacy `{"Dual": {...}}` JSON form of a `TariAddress`, as the derived `Serialize` of
+/// [`DualAddress`] writes them. They are not checked here: [`LegacyDualAddress::into_unchecked_bytes`] encodes them,
+/// and the caller must decode the result with `TariAddress::from_bytes`.
+#[derive(Deserialize)]
+pub(super) struct LegacyDualAddress {
+    network: Network,
+    features: TariAddressFeatures,
+    public_view_key: CompressedPublicKey,
+    public_spend_key: CompressedPublicKey,
+    #[serde(alias = "payment_id_user_data")]
+    memo_field_payment_id: MaxSizeBytes<MAX_PAYMENT_ID_SIZE>,
+}
+
+impl LegacyDualAddress {
+    /// The byte encoding of these fields, with a freshly computed checksum.
+    pub(super) fn into_unchecked_bytes(self) -> Vec<u8> {
+        DualAddress {
+            network: self.network,
+            features: self.features,
+            public_view_key: self.public_view_key,
+            public_spend_key: self.public_spend_key,
+            memo_field_payment_id: self.memo_field_payment_id,
+        }
+        .to_vec()
+    }
 }
 
 impl DualAddress {

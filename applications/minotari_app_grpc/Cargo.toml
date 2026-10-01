@@ -37,6 +37,12 @@ tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
 zeroize = "1"
 
+[dev-dependencies]
+tari_common = { workspace = true }
+
+bincode = "1.3"
+serde_json = { workspace = true }
+
 [build-dependencies]
 tari_features = { workspace = true }
 tonic-build = "0.13.1"

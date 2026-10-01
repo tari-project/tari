@@ -1,0 +1,233 @@
+// Copyright 2026 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+//! One decoding pattern for types with an invariant.
+//!
+//! A type whose values must satisfy a rule beyond what its fields' own decoders check (a minimum length, known flag
+//! bits, a well formed byte encoding, ...) usually has a validating constructor such as `from_bytes`, which the
+//! protobuf conversions call. A derived `Deserialize` or `BorshDeserialize` skips that constructor and accepts values
+//! the protobuf decoder rejects. A node that accepts such a value through a serde or borsh path (JSON-RPC, a block
+//! blob, its own database) holds data that every peer refuses.
+//!
+//! Such a type implements [`ValidatedDecode`] instead: it names its unvalidated wire form, [`ValidatedDecode::Raw`],
+//! and how to validate it. [`impl_validated_decode!`](crate::impl_validated_decode) then generates the serde
+//! `Deserialize` and the `BorshDeserialize` implementations, which both decode the raw form and then validate it, so
+//! the two decoders can not drift apart from each other or from the constructor. `scripts/decoder_parity_check.py`
+//! fails CI when a type with a fallible `from_bytes` derives either decoder instead.
+
+use std::{fmt, marker::PhantomData};
+
+#[doc(hidden)]
+pub use borsh;
+use borsh::{
+    BorshDeserialize,
+    io::{Error, ErrorKind, Read},
+};
+use integer_encoding::VarIntReader;
+#[doc(hidden)]
+pub use serde;
+use serde::{
+    Deserialize,
+    Deserializer,
+    de::{self, Visitor},
+};
+use tari_utilities::hex::from_hex;
+
+use crate::checked_de::read_bytes;
+
+/// A type that is decoded by first decoding an unvalidated wire form and then validating it.
+///
+/// Use [`impl_validated_decode!`](crate::impl_validated_decode) to generate the serde and borsh decoders.
+pub trait ValidatedDecode: Sized {
+    /// The unvalidated wire form. Its serde and borsh decoders must accept the encodings produced by the type's
+    /// `Serialize` and `BorshSerialize` implementations; every rule beyond the shape of the encoding belongs in
+    /// [`ValidatedDecode::validate`].
+    type Raw;
+    /// The error returned when the raw form breaks the type's invariant.
+    type Error: fmt::Display;
+
+    /// Builds the value from its raw form, applying every check the type's validating constructor applies.
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error>;
+}
+
+/// Implements serde `Deserialize` and `BorshDeserialize` for a type that implements
+/// [`ValidatedDecode`](crate::ValidatedDecode). Both decode [`ValidatedDecode::Raw`](crate::ValidatedDecode::Raw)
+/// and then call [`ValidatedDecode::validate`](crate::ValidatedDecode::validate).
+#[macro_export]
+macro_rules! impl_validated_decode {
+    ($type:ty) => {
+        impl<'de> $crate::validated_decode::serde::Deserialize<'de> for $type {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where D: $crate::validated_decode::serde::Deserializer<'de> {
+                let raw = <<$type as $crate::ValidatedDecode>::Raw as $crate::validated_decode::serde::Deserialize<
+                    'de,
+                >>::deserialize(deserializer)?;
+                <$type as $crate::ValidatedDecode>::validate(raw)
+                    .map_err(<D::Error as $crate::validated_decode::serde::de::Error>::custom)
+            }
+        }
+
+        impl $crate::validated_decode::borsh::BorshDeserialize for $type {
+            fn deserialize_reader<R: $crate::validated_decode::borsh::io::Read>(
+                reader: &mut R,
+            ) -> $crate::validated_decode::borsh::io::Result<Self> {
+                let raw = <<$type as $crate::ValidatedDecode>::Raw as $crate::validated_decode::borsh::BorshDeserialize>::deserialize_reader(reader)?;
+                <$type as $crate::ValidatedDecode>::validate(raw).map_err(|e| {
+                    $crate::validated_decode::borsh::io::Error::new(
+                        $crate::validated_decode::borsh::io::ErrorKind::InvalidData,
+                        e.to_string(),
+                    )
+                })
+            }
+        }
+    };
+}
+
+/// The raw form of a type that is encoded as its own byte encoding (for example a script or a covenant), of at most
+/// `MAX` bytes.
+///
+/// - serde: a hex string in human readable formats, a byte array otherwise.
+/// - borsh: the bytes behind a varint length prefix. The prefix is checked against `MAX` before any byte is read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedBytes<const MAX: usize>(Vec<u8>);
+
+impl<const MAX: usize> EncodedBytes<MAX> {
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn checked(bytes: Vec<u8>) -> Result<Self, String> {
+        if bytes.len() > MAX {
+            return Err(format!(
+                "Encoding of {} bytes exceeds the maximum of {} bytes",
+                bytes.len(),
+                MAX
+            ));
+        }
+        Ok(Self(bytes))
+    }
+}
+
+struct EncodedBytesVisitor<const MAX: usize>(PhantomData<EncodedBytes<MAX>>);
+
+impl<const MAX: usize> Visitor<'_> for EncodedBytesVisitor<MAX> {
+    type Value = EncodedBytes<MAX>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("Expecting a binary array or hex string")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        let bytes = from_hex(v).map_err(|e| E::custom(e.to_string()))?;
+        EncodedBytes::checked(bytes).map_err(E::custom)
+    }
+
+    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+        EncodedBytes::checked(v.to_vec()).map_err(E::custom)
+    }
+}
+
+impl<'de, const MAX: usize> Deserialize<'de> for EncodedBytes<MAX> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_string(EncodedBytesVisitor(PhantomData))
+        } else {
+            deserializer.deserialize_bytes(EncodedBytesVisitor(PhantomData))
+        }
+    }
+}
+
+impl<const MAX: usize> BorshDeserialize for EncodedBytes<MAX> {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let len: usize = reader.read_varint()?;
+        if len > MAX {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("Encoding of {len} bytes exceeds the maximum of {MAX} bytes"),
+            ));
+        }
+        Ok(Self(read_bytes(reader, len)?))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use borsh::BorshSerialize;
+    use integer_encoding::VarIntWriter;
+
+    use super::*;
+
+    /// A type that only accepts an even number of bytes, to exercise the macro.
+    #[derive(Debug, PartialEq)]
+    struct Even(Vec<u8>);
+
+    impl ValidatedDecode for Even {
+        type Error = String;
+        type Raw = EncodedBytes<4>;
+
+        fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+            if raw.as_bytes().len() % 2 == 0 {
+                Ok(Even(raw.as_bytes().to_vec()))
+            } else {
+                Err("odd".to_string())
+            }
+        }
+    }
+
+    crate::impl_validated_decode!(Even);
+
+    fn borsh_encoding(bytes: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.write_varint(bytes.len()).unwrap();
+        for b in bytes {
+            b.serialize(&mut buf).unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn every_decoder_validates() {
+        for (bytes, valid) in [
+            (vec![], true),
+            (vec![1], false),
+            (vec![1, 2], true),
+            (vec![1, 2, 3], false),
+            (vec![1, 2, 3, 4], true),
+            (vec![1, 2, 3, 4, 5, 6], false),
+        ] {
+            let json = serde_json::from_str::<Even>(&format!("\"{}\"", tari_utilities::hex::to_hex(&bytes)));
+            let bincode = bincode::deserialize::<Even>(&bincode::serialize(&serde_bytes_like(&bytes)).unwrap());
+            let borsh = borsh::from_slice::<Even>(&borsh_encoding(&bytes));
+            assert_eq!(json.is_ok(), valid, "{bytes:?}");
+            assert_eq!(bincode.is_ok(), valid, "{bytes:?}");
+            assert_eq!(borsh.is_ok(), valid, "{bytes:?}");
+            if valid {
+                assert_eq!(json.unwrap(), Even(bytes.clone()));
+                assert_eq!(bincode.unwrap(), Even(bytes.clone()));
+                assert_eq!(borsh.unwrap(), Even(bytes));
+            }
+        }
+    }
+
+    #[test]
+    fn borsh_rejects_an_oversized_length_prefix_before_reading_the_body() {
+        let mut buf = Vec::new();
+        buf.write_varint(5usize).unwrap();
+        let err = borsh::from_slice::<EncodedBytes<4>>(&buf).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    /// bincode encodes a byte array as a `u64` length followed by the bytes, which is what serializing a `&[u8]`
+    /// through `serde_bytes` style `serialize_bytes` produces.
+    fn serde_bytes_like(bytes: &[u8]) -> BytesWrapper<'_> {
+        BytesWrapper(bytes)
+    }
+
+    struct BytesWrapper<'a>(&'a [u8]);
+
+    impl serde::Serialize for BytesWrapper<'_> {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_bytes(self.0)
+        }
+    }
+}
