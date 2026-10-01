@@ -410,35 +410,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
-            // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so seed the
-            // backoff run with the headers just before the requested range.
+            // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so the first
+            // page also reads the headers just before the requested range to seed the backoff run. Reading them in
+            // the same call as the first page means a reorg cannot seed the run from a different chain.
             let mut backoff_tracker = PowBackoffTracker::new();
-            if start_height > 0 {
-                let lookback_start = start_height.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
-                match handler
-                    .get_headers(lookback_start..=start_height.saturating_sub(1))
-                    .await
-                {
-                    Ok(headers) => {
-                        for chain_header in &headers {
-                            backoff_tracker.push(chain_header.header().pow.pow_algo);
-                        }
-                    },
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Base node service error: {err:?}");
-                        let _ = tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal("Internal error when fetching blocks"),
-                            )))
-                            .await;
-                        return;
-                    },
-                }
-            }
+            let lookback_start = start_height.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
             for (start, end) in page_iter {
+                let fetch_start = if start == start_height { lookback_start } else { start };
                 // headers are returned by height
-                let headers = match handler.get_headers(start..=end).await {
+                let headers = match handler.get_headers(fetch_start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {err:?}");
@@ -451,6 +431,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         return;
                     },
                 };
+
+                let (seed_headers, headers): (Vec<_>, Vec<_>) = headers
+                    .into_iter()
+                    .partition(|chain_header| chain_header.height() < start);
+                for chain_header in &seed_headers {
+                    backoff_tracker.push(chain_header.header().pow.pow_algo);
+                }
 
                 if headers.is_empty() {
                     let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
@@ -465,11 +452,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
                     let pow_algo = chain_header.header().pow.pow_algo;
-                    let adjusted_difficulty = backoff_tracker.adjusted_target(
-                        pow_algo,
-                        current_difficulty,
-                        consensus_rules.consensus_constants(current_height),
-                    );
+                    // Genesis has no proof of work to clear, so it shows its stored target unchanged
+                    let adjusted_difficulty = if current_height == 0 {
+                        current_difficulty
+                    } else {
+                        backoff_tracker.adjusted_target(
+                            pow_algo,
+                            current_difficulty,
+                            consensus_rules.consensus_constants(current_height),
+                        )
+                    };
                     backoff_tracker.push(pow_algo);
 
                     // update the moving average calculation with the header data
@@ -534,7 +526,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
                         coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
-                        adjusted_difficulty: adjusted_difficulty.as_u64(),
+                        adjusted_difficulty: Some(adjusted_difficulty.as_u64()),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {

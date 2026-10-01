@@ -2925,6 +2925,11 @@ pub(crate) fn adjusted_target_difficulty<T: ChainHeaderSource + ?Sized>(
     block_hash: &HashOutput,
 ) -> Result<Difficulty, ChainStorageError> {
     let header = db.fetch_chain_header(block_hash)?;
+    // Genesis has no proof of work to clear. Its stored target is below the minimum difficulty, which clamping would
+    // otherwise raise, so show it unchanged.
+    if header.height() == 0 {
+        return Ok(header.accumulated_data().target_difficulty);
+    }
     // The block itself is the only window entry; the walk adds the lookback needed for its backoff run.
     let walk = walk_difficulty_window(db, header, |_| (true, true))?;
     let mut adjusted = None;

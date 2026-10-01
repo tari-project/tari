@@ -459,6 +459,17 @@ mod test {
         }
     }
 
+    /// Genesis shows its stored target unchanged, even though that is below the minimum difficulty.
+    #[test]
+    fn the_adjusted_target_of_genesis_is_its_stored_target() {
+        let chain = MemoryChain::build(&[PowAlgorithm::Sha3x; 3], 1);
+        let consensus_rules = rules(45, POW_BACKOFF_CAP);
+        let genesis = chain.ordered.first().unwrap();
+        assert!(genesis.accumulated_data().target_difficulty.as_u64() < MIN_DIFFICULTY);
+        let adjusted = adjusted_target_difficulty(&chain, &consensus_rules, genesis.hash()).unwrap();
+        assert_eq!(adjusted, genesis.accumulated_data().target_difficulty);
+    }
+
     /// The adjusted target is clamped to the maximum difficulty, like the target the miner had to clear.
     #[test]
     fn the_adjusted_target_of_a_stored_block_is_clamped() {
