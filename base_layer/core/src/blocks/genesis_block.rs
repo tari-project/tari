@@ -439,6 +439,7 @@ mod test {
     #![allow(clippy::arithmetic_side_effects)]
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
+    use tari_common::network_check::is_network_choice_valid;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
     use tari_transaction_components::{
@@ -466,7 +467,9 @@ mod test {
     #[serial]
     fn esmeralda_genesis_sanity_check() {
         let network = Network::Esmeralda;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('esmeralda_genesis_sanity_check()')");
         }
@@ -481,7 +484,9 @@ mod test {
     #[serial]
     fn nextnet_genesis_sanity_check() {
         let network = Network::NextNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('nextnet_genesis_sanity_check()')");
         }
@@ -496,7 +501,9 @@ mod test {
     #[serial]
     fn mainnet_genesis_sanity_check() {
         let network = Network::MainNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('mainnet_genesis_sanity_check()')");
         }
@@ -511,7 +518,9 @@ mod test {
     #[serial]
     fn stagenet_genesis_sanity_check() {
         let network = Network::StageNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('stagenet_genesis_sanity_check()')");
         }
@@ -526,7 +535,9 @@ mod test {
     #[serial]
     fn igor_genesis_sanity_check() {
         let network = Network::Igor;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('igor_genesis_sanity_check()')");
         }
@@ -540,7 +551,9 @@ mod test {
     #[serial]
     fn localnet_genesis_sanity_check() {
         let network = Network::LocalNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('localnet_genesis_sanity_check()')");
         }
@@ -740,11 +753,19 @@ mod test {
         .unwrap();
     }
 
-    fn set_network_by_env_var_or_force_set(network: Network) {
+    /// Selects `network` for the test via `TARI_NETWORK`, falling back to setting it process-wide. Returns false (and
+    /// sets nothing) if this binary is not built for `network`, in which case the test should be skipped: forcing an
+    /// invalid network would pin it for every later test in the same process.
+    fn set_network_by_env_var_or_force_set(network: Network) -> bool {
+        if is_network_choice_valid(network).is_err() {
+            println!("\nSkipping: this binary is not built for {network:?}.\n");
+            return false;
+        }
         set_network_by_env_var(network);
         if Network::get_current_or_user_setting_or_default() != network {
             let _ = Network::set_current(network);
         }
+        true
     }
 
     // Targeted network compilations will override inferred network hashes; this has effect only if
