@@ -17,7 +17,9 @@
 #      Conversions from other structured types (protobuf messages, database rows) are not counted: they decode a
 #      different encoding field by field.
 #    Fieldless enums are exempt: their derived decoders accept exactly the declared variants, so they can not produce
-#    a value a constructor would reject. Types that are known to be fine are listed in `ALLOWED`, with a reason.
+#    a value a constructor would reject. Types that are known to be fine are listed in `ALLOWED`, with a reason,
+#    keyed by crate, type name and the file that derives the decoder (a same-named type in another file is not
+#    exempt). An entry that matches nothing fails the scan.
 #
 #    A type declared inside a macro (`struct $name`) that derives a decoder can not be matched to its constructors, so
 #    it is reported for manual review unless listed in `ALLOWED` as `"<crate dir>:macro@<file>"`.
@@ -40,6 +42,9 @@
 #       value the decoder parity tests sample, so for `submit_block` and `submit_transaction` this check, not a
 #       behavioural test, is what fails if the round-trip is removed.
 #    The scan fails if `GRPC_SERVER` or `JSON_RPC_HANDLER` is not found under `INGRESS_DIR`.
+#    The gRPC template endpoints (`get_new_block`, `get_new_block_blob`, ...) are deliberately outside these checks:
+#    they store nothing, and the blocks built from their output come back through `submit_block` /
+#    `submit_block_blob`, which round-trip.
 #    Not checked: decoders reached in other ways (another extractor type, a decode call through a generic function,
 #    a helper that is listed but does something else), and code outside `applications/minotari_node/src`.
 #
@@ -54,56 +59,64 @@ import sys
 SCAN_DIRS = ["applications", "base_layer", "common", "common_sqlite", "comms", "hashing", "infrastructure"]
 SKIP_DIRS = {"target", "node_modules", ".git"}
 
-# "crate dir:type name" (or "crate dir:macro@file") -> reason
+# "<crate dir>:<type name>@<file that derives the decoder>" (or "<crate dir>:macro@<file>") -> reason. The scan fails
+# when an entry matches nothing, so a stale exemption can not linger.
 ALLOWED = {
-    "comms/core:IdentitySignature": "`from_bytes` only decodes the protobuf form; it has no invariant beyond the field "
+    "comms/core:IdentitySignature@comms/core/src/peer_manager/identity_signature.rs": "`from_bytes` only decodes the protobuf form; it has no invariant beyond the field "
     "decoders, which the serde form (the peer database) shares",
     # Conversions from another type or encoding, not a validating constructor of the serialized fields
-    "base_layer/node_components:NewBlockTemplate": "`from_block` converts a block, it does not validate the fields",
-    "base_layer/transaction_components:UnblindedOutput": "`from_wallet_output` converts a wallet output using the key "
+    "base_layer/node_components:NewBlockTemplate@base_layer/node_components/src/blocks/new_block_template.rs": "`from_block` converts a block, it does not validate the fields",
+    "base_layer/transaction_components:UnblindedOutput@base_layer/transaction_components/src/transaction_components/unblinded_output.rs": "`from_wallet_output` converts a wallet output using the key "
     "manager, it does not validate the fields",
-    "base_layer/common_types:CipherSeed": "`from_enciphered_bytes` decrypts and authenticates the enciphered seed format "
+    "base_layer/common_types:CipherSeed@base_layer/common_types/src/seeds/cipher_seed.rs": "`from_enciphered_bytes` decrypts and authenticates the enciphered seed format "
     "(including its version byte); the plain serde form is a different encoding and is not decoded from untrusted input",
-    "infrastructure/jellyfish:TreeHash": "`try_from_bytes` only checks the slice length; the derived decoders read a "
+    "infrastructure/jellyfish:TreeHash@infrastructure/jellyfish/src/hash.rs": "`try_from_bytes` only checks the slice length; the derived decoders read a "
     "fixed `[u8; 32]`",
     # Text forms parsed by `FromStr` / `TryFrom<String>` (configuration, CLI arguments, user input); the serde form is
     # a different encoding whose fields are decoded by their own decoders
-    "applications/minotari_app_utilities:UniPublicKey": "`FromStr` parses emoji, base58 or hex text forms",
-    "applications/minotari_mcp_node:GrpcMethodConfig": "`FromStr` parses a configuration string",
-    "base_layer/common_types:VnEpoch": "`FromStr` parses the number; any u64 is a valid epoch",
-    "base_layer/p2p:SeedPeer": "`FromStr` / `TryFrom<String>` parse the configuration text form",
-    "base_layer/p2p:SocksAuthentication": "`FromStr` parses the configuration text form",
-    "base_layer/p2p:TorControlAuthentication": "`FromStr` / `TryFrom<String>` parse the configuration text form",
-    "base_layer/transaction_components:MicroMinotari": "`FromStr` parses an amount with units; any u64 is valid",
-    "base_layer/transaction_key_manager:LegacyTariKeyId": "`FromStr` parses the legacy key id text form",
-    "common:DnsNameServer": "`FromStr` parses the configuration text form",
-    "common_sqlite:DbConnectionUrl": "`TryFrom<String>` parses the configuration text form",
+    "applications/minotari_app_utilities:UniPublicKey@applications/minotari_app_utilities/src/utilities.rs": "`FromStr` parses emoji, base58 or hex text forms",
+    "applications/minotari_mcp_node:GrpcMethodConfig@applications/minotari_mcp_node/src/grpc_config_parser.rs": "`FromStr` parses a configuration string",
+    "base_layer/common_types:VnEpoch@base_layer/common_types/src/epoch.rs": "`FromStr` parses the number; any u64 is a valid epoch",
+    "base_layer/p2p:SeedPeer@base_layer/p2p/src/peer_seeds.rs": "`FromStr` / `TryFrom<String>` parse the configuration text form",
+    "base_layer/p2p:SocksAuthentication@base_layer/p2p/src/socks_authentication.rs": "`FromStr` parses the configuration text form",
+    "base_layer/p2p:TorControlAuthentication@base_layer/p2p/src/tor_authentication.rs": "`FromStr` / `TryFrom<String>` parse the configuration text form",
+    "base_layer/transaction_components:MicroMinotari@base_layer/transaction_components/src/tari_amount.rs": "`FromStr` parses an amount with units; any u64 is valid",
+    "base_layer/transaction_key_manager:LegacyTariKeyId@base_layer/transaction_key_manager/src/legacy_key_manager/"
+    "interface.rs": "`FromStr` parses the legacy key id text form, as the wallet's legacy row migration does. The serde "
+    "form is decoded from client JSON too (the legacy sender protocol records in gRPC `import_transactions` and the "
+    "console wallet's import command), but nothing reads those fields or passes them to "
+    "`convert_legacy_tari_key_id_to_current`",
+    "common:DnsNameServer@common/src/configuration/name_server.rs": "`FromStr` parses the configuration text form",
+    "common_sqlite:DbConnectionUrl@common_sqlite/src/connection.rs": "`TryFrom<String>` parses the configuration text form",
     # Fixed size values: the fallible conversion only checks a slice length, the derived decoders read a fixed array
-    "base_layer/common_types:FixedHash": "`TryFrom<&[u8]>` / `TryFrom<Vec<u8>>` only check the length",
-    "comms/core:NodeId": "`TryFrom<&[u8]>` only checks the length",
+    "base_layer/common_types:FixedHash@base_layer/common_types/src/types/fixed_hash.rs": "`TryFrom<&[u8]>` / `TryFrom<Vec<u8>>` only check the length",
+    "comms/core:NodeId@comms/core/src/peer_manager/node_id.rs": "`TryFrom<&[u8]>` only checks the length",
     # Fallible for reasons other than validating the serialized fields
-    "base_layer/transaction_components:WalletOutput": "decoded from offline signing JSON and gRPC `from_json`; its "
-    "constructors (`new_from_parts` is infallible) fail only on key manager errors while deriving the commitment and "
-    "proofs, and every field that has an invariant validates itself in its own decoder (`TariKeyId`, `EncryptedData`, "
-    "`MemoField`, `Covenant`, `TariScript`, `ExecutionStack`)",
-    "base_layer/transaction_components:WalletType": "`new_random` fails only on key derivation errors",
-    "base_layer/wallet:CompletedTransaction": "`new` rejects the `Coinbase` status. Records decoded from client JSON "
+    "base_layer/transaction_components:WalletOutput@base_layer/transaction_components/src/transaction_components/"
+    "wallet_output.rs": "decoded from offline signing JSON and gRPC `from_json`; `new_from_parts` is infallible and "
+    "the other constructors fail only on key manager errors. The fields with invariants of their own validate in "
+    "their own decoders (`TariKeyId`, `EncryptedData`, `MemoField`, `Covenant`, `TariScript`, `ExecutionStack`), but "
+    "`commitment` and `output_hash`, which every constructor derives from the other fields, are not re-derived on "
+    "decode. A mismatch only yields inputs and outputs the node rejects (and a different TxId); checking a stored "
+    "`change_output` against its transaction is a separate follow-up",
+    "base_layer/transaction_components:WalletType@base_layer/transaction_components/src/key_manager/wallet_types.rs": "`new_random` fails only on key derivation errors",
+    "base_layer/wallet:CompletedTransaction@base_layer/wallet/src/transaction_service/storage/models.rs": "`new` rejects the `Coinbase` status. Records decoded from client JSON "
     "(gRPC `import_transactions`) are stored through `import_transaction`, which applies the same check; the FFI "
     "`create_tari_completed_transaction_from_json` only feeds getters and stores nothing",
     # A validating constructor whose decoder is left lenient on purpose
-    "base_layer/common_types:ChainMetadata": "`new` rejects a zero accumulated difficulty and a pruned height above "
+    "base_layer/common_types:ChainMetadata@base_layer/common_types/src/chain_metadata.rs": "`new` rejects a zero accumulated difficulty and a pruned height above "
     "the best block height; every value is built through it (the fields are private), including the P2P protobuf "
     "conversion. The serde form is also decoded from a remote base node's HTTP JSON (`TipInfoResponse.metadata` in "
     "`base_node_wallet_client`), whose wallet consumers only read `best_block_height` and `best_block_hash`, and from "
     "the node's own LMDB and the wallet's cached copy. That cache is written from the HTTP value (so a remote node can put "
     "any value there) and may predate #6146, which added the checks, so the decoder is left lenient",
     # Validating constructors of data that is only decoded from the node's own database
-    "base_layer/mmr:BranchNode": "`new` checks the children of a sparse Merkle tree branch; the tree is only decoded "
+    "base_layer/mmr:BranchNode@base_layer/mmr/src/sparse_merkle_tree/node.rs": "`new` checks the children of a sparse Merkle tree branch; the tree is only decoded "
     "from the node's own database, never from peers or RPC input",
     "base_layer/mmr:macro@base_layer/mmr/src/sparse_merkle_tree/node.rs": "`hash_type!` declares fixed `[u8; 32]` "
     "hash wrappers with no constructor checks",
-    "infrastructure/storage:User": "test fixture",
-    "base_layer/transaction_components:AccumulatedDifficulty": "public API kept for p2pool, whose sliding-window "
+    "infrastructure/storage:User@infrastructure/storage/tests/lmdb.rs": "test fixture",
+    "base_layer/transaction_components:AccumulatedDifficulty@base_layer/transaction_components/src/tari_proof_of_work/accumulated_difficulty.rs": "public API kept for p2pool, whose sliding-window "
     "accounting uses `checked_sub_difficulty` (no callers in this repo) and can produce values below MIN_DIFFICULTY that "
     "a caller may serialize; in this repo it is only decoded from the node's own chain database "
     "(BlockHeaderAccumulatedData), never from peers or RPC input, so it is left lenient",
@@ -480,28 +493,40 @@ def scan_tree():
     for required in REQUIRED_INGRESS_FILES:
         if required not in visited:
             ingress.append(f"{required}: not found; update INGRESS_DIR / REQUIRED_INGRESS_FILES if it moved")
-    return findings(derived, constructors, macro_types) + ingress
+    used = set()
+    failures = findings(derived, constructors, macro_types, used)
+    return failures + unused_allowed(used) + ingress
 
 
-def findings(derived, constructors, macro_types):
+def findings(derived, constructors, macro_types, used=None):
+    """The failures; the `ALLOWED` entries that exempted something are added to `used`"""
+    used = set() if used is None else used
     failures = []
     for key in sorted(set(derived) & set(constructors)):
-        if f"{key[0]}:{key[1]}" in ALLOWED:
-            continue
         for path, number, decoders in derived[key]:
+            allowed = f"{key[0]}:{key[1]}@{path}"
+            if allowed in ALLOWED:
+                used.add(allowed)
+                continue
             for fn_path, fn_number, fn_name in constructors[key]:
                 failures.append(
                     f"{path}:{number}: `{key[1]}` derives {', '.join(decoders)} but has a fallible "
-                    f"`{fn_name}` at {fn_path}:{fn_number}"
+                    f"`{fn_name}` at {fn_path}:{fn_number} (to allowlist it: \"{allowed}\")"
                 )
     for krate, path, number, decoders in macro_types:
-        if f"{krate}:macro@{path}" in ALLOWED:
+        allowed = f"{krate}:macro@{path}"
+        if allowed in ALLOWED:
+            used.add(allowed)
             continue
         failures.append(
             f"{path}:{number}: a type declared in a macro derives {', '.join(decoders)}; review it and allowlist it as "
-            f'"{krate}:macro@{path}"'
+            f'"{allowed}"'
         )
     return failures
+
+
+def unused_allowed(used):
+    return [f'ALLOWED entry "{entry}" matches nothing; remove it' for entry in sorted(set(ALLOWED) - used)]
 
 
 SELF_TEST_CASES = {
@@ -715,6 +740,30 @@ def self_test():
             if bool(wiring) != (name != "grpc_wiring_clean"):
                 print(f"self-test {name}: expected {'no finding' if name == 'grpc_wiring_clean' else 'a finding'}")
                 failed = True
+        # An allowlist entry exempts only the type in its own file, and an entry that matches nothing is reported
+        path = os.path.join(d, "pinned.rs")
+        with open(path, "w") as f:
+            f.write(SELF_TEST_CASES["multi_line_where"])
+        derived, constructors, macro_types = {}, {}, []
+        scan_file(path, derived, constructors, macro_types)
+        krate = crate_dir(path)
+        saved = dict(ALLOWED)
+        try:
+            ALLOWED.clear()
+            ALLOWED[f"{krate}:A@{path}"] = "self-test"
+            used = set()
+            if findings(derived, constructors, macro_types, used) or unused_allowed(used):
+                print("self-test pinned: the entry for the type's own file must exempt it and count as used")
+                failed = True
+            ALLOWED.clear()
+            ALLOWED[f"{krate}:A@elsewhere.rs"] = "self-test"
+            used = set()
+            if not findings(derived, constructors, macro_types, used) or not unused_allowed(used):
+                print("self-test pinned: an entry for another file must not exempt the type, and must be unused")
+                failed = True
+        finally:
+            ALLOWED.clear()
+            ALLOWED.update(saved)
     print("Self-test failed." if failed else "Self-test passed.")
     return 1 if failed else 0
 

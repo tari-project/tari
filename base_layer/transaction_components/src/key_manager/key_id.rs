@@ -220,6 +220,7 @@ impl FromStr for TariKeyId {
         match parts.first() {
             None => Err("Out of bounds".to_string()),
             Some(val) => match *val {
+                // `check_key_string` has rejected a tail ("Wrong zero format")
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
                     // The nested key id may be a single token (`derived.spend_key`, which the legacy key
@@ -341,7 +342,12 @@ fn check_key_string(id: &str) -> Result<(), String> {
             None => (rest, None),
         };
         rest = match branch {
-            ZERO_KEY_BRANCH => return Ok(()),
+            ZERO_KEY_BRANCH => {
+                if tail.is_some() {
+                    return Err("Wrong zero format".to_string());
+                }
+                return Ok(());
+            },
             DERIVED_KEY_BRANCH => match tail {
                 Some(key) if !key.is_empty() => key,
                 _ => return Err("Wrong derived format".to_string()),
@@ -731,6 +737,10 @@ mod tests {
     fn parse_error_cases() {
         // Empty
         assert_eq!(TariKeyId::from_str("").unwrap_err(), "Wrong generic format");
+        // Zero takes no parts, like the other single-token key ids (a tail would give non-canonical ids that
+        // differ under `Eq` but name the same key)
+        assert_eq!(TariKeyId::from_str("zero.anything").unwrap_err(), "Wrong zero format");
+        assert_eq!(TariKeyId::from_str("zero.").unwrap_err(), "Wrong zero format");
         // Derived must wrap a non-empty, valid key id
         assert_eq!(TariKeyId::from_str("derived").unwrap_err(), "Wrong derived format");
         assert_eq!(TariKeyId::from_str("derived.").unwrap_err(), "Wrong derived format");
@@ -912,6 +922,9 @@ mod tests {
     fn decoders_reject_what_from_str_rejects() {
         let invalid = [
             TariKeyId::Derived { key: "".into() },
+            TariKeyId::Derived {
+                key: "zero.anything".into(),
+            },
             TariKeyId::Derived { key: "bogus".into() },
             TariKeyId::Derived {
                 key: "bogus.key".into(),
@@ -943,6 +956,7 @@ mod tests {
                 "",
                 ".",
                 "zero.anything",
+                "zero.",
                 "derived",
                 "derived.",
                 "derived.zero",

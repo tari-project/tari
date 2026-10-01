@@ -372,7 +372,8 @@ jobs:
       - name: Imported wallet transactions get the same status check as new ones; legacy key ids still load
         run: >-
           ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
-          import_transaction_rejects_the_coinbase_status test_legacy_derived_spend_key_reads_migrates_and_reads_again
+          --exact transaction_service_tests::service::import_transaction_rejects_the_coinbase_status
+          output_manager_service_tests::storage::test_legacy_derived_spend_key_reads_migrates_and_reads_again
       - name: Node submit paths decode through the P2P proto
         run: >-
           ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
