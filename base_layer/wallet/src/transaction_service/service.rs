@@ -426,15 +426,14 @@ where
                     let temp_tx_id = TxId::new_random();
 
                     // let override the payment_id if the address says we should
-                    if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                    if let Some(address_payment_id) = address_payment_id(&destination) {
                         debug!(
                             target: LOG_TARGET,
                             "Address contains memo, overriding memo {} with {:?}",
-                            payment_id, destination.get_memo_field_payment_id_bytes()
+                            payment_id, address_payment_id
                         );
-                        payment_id =
-                            MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
-                                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+                        payment_id = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
+                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
                     }
 
                     // Prepare sender part of the transaction
@@ -2284,9 +2283,9 @@ where
         }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
-        if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
-            payment_id = MemoField::new_open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+        if let Some(address_payment_id) = address_payment_id(&dest_address) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, address_payment_id);
+            payment_id = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
                 .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         }
 
@@ -2770,9 +2769,9 @@ where
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         for (address, amount, memo) in &mut destinations {
             self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
-            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+            if let Some(address_payment_id) = address_payment_id(address) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address_payment_id);
+                *memo = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
                     .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
             }
             *memo = memo
@@ -4521,4 +4520,48 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: LegacyTransactionStatus,
+}
+
+/// The payment id that an address asks to be sent with, which then overrides the user's memo. An empty payment id
+/// never overrides the memo, even when the address has the `PAYMENT_ID` flag set.
+fn address_payment_id(address: &TariAddress) -> Option<Vec<u8>> {
+    let payment_id = address.get_memo_field_payment_id_bytes();
+    if address.features().contains(TariAddressFeatures::PAYMENT_ID) && !payment_id.is_empty() {
+        Some(payment_id)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::dammsum::compute_checksum;
+
+    use super::*;
+
+    #[test]
+    fn only_a_non_empty_address_payment_id_overrides_the_memo() {
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        assert_eq!(address_payment_id(&address), None);
+
+        let with_id = address.with_memo_field_payment_id(vec![1, 2, 3]).unwrap();
+        assert_eq!(address_payment_id(&with_id), Some(vec![1, 2, 3]));
+
+        // A decoded address with the flag set and an empty payment id
+        let mut bytes = address.to_vec();
+        let last = bytes.len().saturating_sub(1);
+        if let Some(features) = bytes.get_mut(1) {
+            *features |= TariAddressFeatures::PAYMENT_ID.as_u8();
+        }
+        let checksum = compute_checksum(bytes.get(..last).unwrap());
+        if let Some(byte) = bytes.get_mut(last) {
+            *byte = checksum;
+        }
+        let flag_only = TariAddress::from_bytes(&bytes).unwrap();
+        assert!(flag_only.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(address_payment_id(&flag_only), None);
+    }
 }
