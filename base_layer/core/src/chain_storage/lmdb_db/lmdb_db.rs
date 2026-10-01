@@ -1839,8 +1839,22 @@ impl LMDBDatabase {
             if let Some(sidechain_features) = utxo.output.features.sidechain_feature.as_ref() {
                 match &sidechain_features.data {
                     SideChainFeatureData::ValidatorNodeRegistration(vn_reg) => {
-                        self.validator_node_store(txn)
-                            .delete(sidechain_features.sidechain_public_key(), vn_reg.public_key())?;
+                        // Tolerant: the entry is absent if a later block spent this registration before it activated
+                        // (the spend removed it, and rewinding that spend does not restore it - see the inputs loop
+                        // below), so this must not abort the reorg.
+                        if !self.validator_node_store(txn).delete_registration(
+                            sidechain_features.sidechain_public_key(),
+                            vn_reg.public_key(),
+                            &utxo.output.commitment,
+                        )? {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Rewinding validator node registration {} in block {}: no matching validator node \
+                                 entry to remove",
+                                vn_reg.public_key(),
+                                block_hash.to_hex()
+                            );
+                        }
                     },
                     SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
                         // Nothing to do
@@ -1881,7 +1895,15 @@ impl LMDBDatabase {
             )?;
         }
         // Move inputs in this block back into the unspent set, any outputs spent within this block they will be removed
-        // by deleting all the block's outputs below
+        // by deleting all the block's outputs below.
+        //
+        // KNOWN RESIDUAL: rewinding the spend of a validator node registration output does NOT re-insert the validator
+        // node entry that the spend may have removed (a spend removes it if the registration had not exited, which in
+        // practice means it was spent before it activated). The entry cannot be rebuilt faithfully here: its
+        // activation epoch was assigned from the activation queue as it stood when the registration was mined, and
+        // that state is gone. A reorg that rewinds such a spend therefore leaves this node's validator node set
+        // without that entry (diverging from nodes that did not reorg) until it resyncs. Validator node outputs are
+        // only permitted on igor/localnet. Rewinding the registration itself tolerates the missing entry.
         for (_, row) in inputs {
             // If input spends an output in this block, don't add it to the utxo set
             let output_hash = row.input.output_hash();
@@ -2229,8 +2251,14 @@ impl LMDBDatabase {
             if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
                 let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
-                self.validator_node_store(txn)
-                    .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
+                // Spending a registration only removes the validator node if the entry is still the one this output
+                // created: after an exit the entry has already moved to the exit queue, and after a re-registration it
+                // belongs to the new registration output.
+                self.validator_node_store(txn).delete_registration(
+                    sidechain_feature.sidechain_public_key(),
+                    vn_reg.public_key(),
+                    input_with_output_data.commitment()?,
+                )?;
             }
             trace!(
                 target: LOG_TARGET,

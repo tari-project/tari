@@ -28,7 +28,10 @@ use std::{collections::BTreeSet, ops::Deref};
 use lmdb_zero::{ConstTransaction, WriteTransaction};
 use log::*;
 use serde::de::DeserializeOwned;
-use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedCommitment, CompressedPublicKey},
+};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -115,6 +118,30 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         lmdb_delete_key_value(self.txn, &self.db_validator_activation_queue, &key, &vn.public_key)?;
 
         Ok(())
+    }
+
+    /// Removes the registered validator node `public_key` only if its entry was created by the registration output with
+    /// `commitment`. Returns whether it was removed.
+    ///
+    /// The entry may legitimately be absent - the validator node exited (its entry moved to the exit queue), or the
+    /// registration was already removed - or belong to a later registration of the same validator node (the set is
+    /// keyed by sidechain + public key only). In neither case must anything be removed, and it must not be an error:
+    /// spending (or rewinding) such a registration output is valid, and failing the block at commit time would halt
+    /// block templates.
+    pub fn delete_registration(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+    ) -> Result<bool, ChainStorageError> {
+        let key = create_vn_key(sidechain_pk, public_key);
+        match lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? {
+            Some(vn) if vn.commitment == *commitment => {
+                self.delete(sidechain_pk, public_key)?;
+                Ok(true)
+            },
+            _ => Ok(false),
+        }
     }
 
     pub fn exit(

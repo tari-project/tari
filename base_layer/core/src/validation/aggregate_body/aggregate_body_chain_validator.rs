@@ -97,9 +97,10 @@ impl AggregateBodyChainLinkedValidator {
     /// invalid with respect to the chain.
     ///
     /// `header` is the chain tip. The transaction can be mined at the earliest in the next block, so the validator node
-    /// registration/exit epoch rules are evaluated at `header.height + 1`: otherwise a registration or exit whose
-    /// `max_epoch` is the tip's epoch would be accepted here while the tip is the last block of that epoch, and then
-    /// fail every block template it is selected into.
+    /// epoch rules - registration/exit `max_epoch`, exit activation, and the registration spend lock - are evaluated
+    /// at `header.height + 1`: otherwise e.g. a registration or exit whose `max_epoch` is the tip's epoch, or a spend
+    /// of a registration that activates in the next epoch, would be accepted here while the tip is the last block of
+    /// its epoch, and then fail every block template it is selected into.
     pub fn validate_transaction_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
@@ -148,7 +149,7 @@ impl AggregateBodyChainLinkedValidator {
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
         validate_input_maturity(body, header.height)?;
-        let unknown_inputs = find_unknown_inputs(db, constants, header.height, body)?;
+        let unknown_inputs = find_unknown_inputs(db, vn_epoch, body)?;
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
@@ -281,18 +282,18 @@ fn validate_burn_commitment_not_in_db<B: BlockchainBackend>(
 }
 
 /// Checks that every input is spendable, returning the output hashes of the inputs that spend outputs which are
-/// neither in the database nor created by this body. Any other failure is returned as an error.
+/// neither in the database nor created by this body. Any other failure is returned as an error. `vn_epoch` is the
+/// epoch the validator node registration spend lock is evaluated in.
 fn find_unknown_inputs<B: BlockchainBackend>(
     db: &B,
-    constants: &ConsensusConstants,
-    current_height: u64,
+    vn_epoch: VnEpoch,
     body: &AggregateBody,
 ) -> Result<Vec<HashOutput>, ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
 
     for input in body.inputs() {
-        check_output_feature_rules_for_input(db, constants, current_height, input)?;
+        check_output_feature_rules_for_input(db, vn_epoch, input)?;
         // If spending a unique_id, a new output must contain the unique id
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
@@ -467,11 +468,12 @@ pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(),
     Ok(())
 }
 
-/// If applicable, check any spend rules for output features including sidechain features
+/// If applicable, check any spend rules for output features including sidechain features. `vn_epoch` is the epoch the
+/// spend is evaluated in: the block's epoch, or for the mempool the epoch of the next block (see
+/// `validate_transaction_body`).
 fn check_output_feature_rules_for_input<B: BlockchainBackend>(
     db: &B,
-    constants: &ConsensusConstants,
-    current_height: u64,
+    vn_epoch: VnEpoch,
     input: &TransactionInput,
 ) -> Result<(), ValidationError> {
     match &input.spent_output {
@@ -493,8 +495,7 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
                                 .to_string(),
                         }
                     })?;
-                    let epoch = constants.block_height_to_epoch(current_height);
-                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), epoch)?
+                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), vn_epoch)?
                 },
                 OutputType::ValidatorNodeExit => {
                     // should we disallow this? Since this UTXO has been processed w.r.t the active validator set, there
