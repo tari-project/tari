@@ -465,6 +465,9 @@ where B: BlockchainBackend + 'static
 
                         None
                     }) {
+                    // Orphans are stored with hydrated inputs. Serve them in the same compact form as main chain
+                    // blocks: the hydrated form of a block within the consensus byte limit can exceed the messaging
+                    // frame.
                     None => self.blockchain_db.fetch_orphan(hash).await.map_or_else(
                         |e| {
                             warn!(
@@ -474,7 +477,7 @@ where B: BlockchainBackend + 'static
 
                             None
                         },
-                        Some,
+                        |block| Some(block.to_compact()),
                     ),
                     Some(block) => Some(block.into_block()),
                 };
@@ -1174,16 +1177,32 @@ where B: BlockchainBackend + 'static
 
             // Only the output's contents are used to hydrate the input, and those are identical for
             // every index entry of the same output hash, so taking any entry is equivalent.
-            let output_mined_info = db
-                .fetch_outputs(&input.output_hash())?
-                .into_iter()
-                .next()
-                .ok_or_else(|| CommsInterfaceError::InvalidFullBlock {
-                    hash: block_hash,
-                    details: format!("Output {} to be spent does not exist in db", input.output_hash()),
-                })?;
+            let output_hash = input.output_hash();
+            let output = match db.fetch_outputs(&output_hash)?.into_iter().next() {
+                Some(output_mined_info) => output_mined_info.output,
+                // An output created and spent in the same block
+                None => match outputs.iter().find(|o| o.hash() == output_hash) {
+                    Some(output) => output.clone(),
+                    None => {
+                        let details = format!("Output {output_hash} to be spent does not exist in db");
+                        // A block on our tip can only spend outputs we have, so it is invalid. A block on another
+                        // chain can spend outputs from that chain that we have never seen, which says nothing about
+                        // the peer that sent it, so it is dropped without blaming the peer.
+                        if header.prev_hash == *db.fetch_chain_metadata()?.best_block_hash() {
+                            return Err(CommsInterfaceError::InvalidFullBlock {
+                                hash: block_hash,
+                                details,
+                            });
+                        }
+                        return Err(CommsInterfaceError::UnknownSpentOutputs {
+                            hash: block_hash,
+                            details,
+                        });
+                    },
+                },
+            };
 
-            input.add_output_data(output_mined_info.output);
+            input.add_output_data(output);
         }
         debug!(
             target: LOG_TARGET,

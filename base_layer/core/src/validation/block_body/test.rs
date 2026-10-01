@@ -24,9 +24,22 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
-use tari_common_types::{tari_address::TariAddress, types::PrivateKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{CompressedPublicKey, PrivateKey},
+};
 use tari_node_components::blocks::{Block, BlockValidationError};
-use tari_script::{ExecutionStack, MAX_STACK_SIZE, StackItem, inputs, push_pubkey_script, script};
+use tari_script::{
+    ExecutionStack,
+    MAX_SCRIPT_OPCODES,
+    MAX_STACK_SIZE,
+    Opcode,
+    StackItem,
+    TariScript,
+    inputs,
+    push_pubkey_script,
+    script,
+};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     CoinbaseBuilder,
@@ -40,6 +53,7 @@ use tari_transaction_components::{
         consensus_constants::MAX_BLOCK_BODY_BYTES,
     },
     crypto_factories::CryptoFactories,
+    fee::recipient_output_features_and_scripts_size,
     helpers::borsh::SerializedSize,
     key_manager::{
         KeyManager,
@@ -57,6 +71,8 @@ use tari_transaction_components::{
         MemoField,
         OutputFeatures,
         RangeProofType,
+        SpentOutput,
+        Transaction,
         TransactionError,
         TransactionInput,
         WalletOutput,
@@ -744,10 +760,12 @@ fn create_valid_block_with_an_input(blockchain: &mut TestBlockchain) -> Block {
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km);
     let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let (chain_block, _) = blockchain.create_next_tip(block_spec!("B", parent: "A", transactions: txs));
-    let (mut block, mmr_roots) = blockchain
-        .db()
-        .calculate_mmr_roots(chain_block.block().clone())
-        .unwrap();
+    with_mmr_roots(blockchain, chain_block.block())
+}
+
+/// The block with its MMR roots calculated against the current tip
+fn with_mmr_roots(blockchain: &TestBlockchain, block: &Block) -> Block {
+    let (mut block, mmr_roots) = blockchain.db().calculate_mmr_roots(block.clone()).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
     block.header.block_output_mr = mmr_roots.block_output_mr;
@@ -835,6 +853,177 @@ async fn it_rejects_a_block_body_over_the_byte_limit_before_running_scripts() {
                 if actual_bytes == body_bytes && max_bytes == MAX_BLOCK_BODY_BYTES
         ),
         "{err:?}"
+    );
+}
+
+/// Number of `Drop`s in [max_input_data_script]: one less than the opcode limit, and each one drops one input data item
+const DROPPED_ITEMS: usize = MAX_SCRIPT_OPCODES - 1;
+
+/// A script that drops [DROPPED_ITEMS] items and leaves the bottom input data item, the script public key, as its
+/// result. It is within both the opcode and the byte limits.
+fn max_input_data_script() -> TariScript {
+    TariScript::new(vec![Opcode::Drop; DROPPED_ITEMS]).unwrap()
+}
+
+/// The input data that [max_input_data_script] accepts: the script public key under [DROPPED_ITEMS] signature-sized
+/// (65 byte) items
+fn max_input_data(script_public_key: CompressedPublicKey) -> ExecutionStack {
+    let mut items = vec![StackItem::PublicKey(script_public_key)];
+    items.extend(vec![StackItem::Signature(Default::default()); DROPPED_ITEMS]);
+    ExecutionStack::new(items)
+}
+
+/// A transaction spending `from` into `count` outputs of `value`, each locked by [max_input_data_script] and carrying
+/// [max_input_data] to spend it with, and the change
+fn create_max_input_data_outputs(
+    key_manager: &KeyManager,
+    from: WalletOutput,
+    count: usize,
+    value: MicroMinotari,
+) -> (Transaction, Vec<WalletOutput>, WalletOutput) {
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let script = max_input_data_script();
+    let output_size = recipient_output_features_and_scripts_size(
+        constants.transaction_weight_params(),
+        &OutputFeatures::default(),
+        &script,
+        &Covenant::default(),
+        &MemoField::new_empty(),
+    )
+    .unwrap();
+    let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet).unwrap();
+    builder.with_lock_height(0).with_fee_per_gram(5.into());
+    builder.with_input(from).unwrap();
+    let pending = (0..count)
+        .map(|_| PendingOutput::new(value, output_size))
+        .collect::<Vec<_>>();
+    let sender_offsets = builder.reserve_sender_offset_keys(&pending).unwrap();
+    let mut outputs = Vec::with_capacity(count);
+    for sender_offset in sender_offsets {
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let script_key_id = TariKeyId::Derived {
+            key: (&commitment_mask.key_id).into(),
+        };
+        let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).unwrap();
+        let output = WalletOutputBuilder::new(value, commitment_mask.key_id)
+            .with_features(OutputFeatures::default())
+            .with_script(script.clone())
+            .encrypt_data_for_recovery(key_manager, None, MemoField::new_empty())
+            .unwrap()
+            .with_input_data(max_input_data(script_public_key))
+            .with_covenant(Covenant::default())
+            .with_sender_offset_public_key(sender_offset.pub_key.clone())
+            .with_script_key(script_key_id)
+            .sign_metadata_signature(key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(key_manager)
+            .unwrap();
+        outputs.push(output.clone());
+        builder.with_output(output, sender_offset.key_id, None).unwrap();
+    }
+    let finalized = builder.build().unwrap();
+    (finalized.transaction, outputs, finalized.change.unwrap())
+}
+
+/// A valid block at the real block body byte limit, made of inputs carrying as much input data as a valid script can
+/// consume, is accepted by full validation (weight, scripts, signatures and range proofs), and can be both synced
+/// (one RPC response) and served over messaging (one frame).
+#[tokio::test]
+async fn it_accepts_a_valid_block_of_max_input_data_inputs_at_the_byte_limit() {
+    use prost::Message;
+    use tari_comms::protocol::{messaging::MAX_FRAME_LENGTH, rpc::max_response_payload_size};
+
+    use crate::{base_node::comms_interface::NodeCommsResponse, proto::base_node as proto};
+
+    // The real LocalNet constants (block weight and block body byte limit), except that coinbases mature at once
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+        .add_consensus_constants(
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .with_coinbase_lockheight(0)
+                .build(),
+        )
+        .build()
+        .unwrap();
+    let constants = rules.consensus_constants(0).clone();
+    assert_eq!(constants.max_block_body_bytes(), MAX_BLOCK_BODY_BYTES);
+    let (mut blockchain, validator) = setup_with_rules(rules, false);
+
+    // Room for everything in the block other than the inputs: the coinbase, the spend's outputs and the kernels
+    const NON_INPUT_BYTES: usize = 8 * 1024;
+    let sample_input = TransactionInput::new_current_version(
+        SpentOutput::OutputHash(Default::default()),
+        max_input_data(Default::default()),
+        Default::default(),
+    );
+    let input_bytes = sample_input.get_serialized_size().unwrap();
+    let num_inputs = (MAX_BLOCK_BODY_BYTES - NON_INPUT_BYTES) / input_bytes;
+
+    // Fund the inputs. A transaction has at most 500 outputs, so this takes a chain of transactions, each spending the
+    // change of the one before.
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+    let mut funding_txs = Vec::new();
+    let mut funded = Vec::with_capacity(num_inputs);
+    let mut from = coinbase_a;
+    while funded.len() < num_inputs {
+        let count = (num_inputs - funded.len()).min(400);
+        let (tx, outputs, change) = create_max_input_data_outputs(&blockchain.km, from, count, T);
+        funding_txs.push(tx);
+        funded.extend(outputs);
+        from = change;
+    }
+    blockchain
+        .append(block_spec!("B", parent: "A", transactions: funding_txs))
+        .unwrap();
+
+    // Spend them all in one block
+    let schema = txn_schema!(from: funded, to: vec![T]);
+    let (txs, _) = schema_to_transaction(&[schema], &blockchain.km);
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let (chain_block, _) = blockchain.create_next_tip(block_spec!("C", parent: "B", transactions: txs));
+    let block = with_mmr_roots(&blockchain, chain_block.block());
+    assert_eq!(block.body.inputs().len(), num_inputs);
+    assert!(
+        block
+            .body
+            .calculate_weight(constants.transaction_weight_params())
+            .unwrap() <=
+            constants.max_block_transaction_weight()
+    );
+    let body_bytes = block.body.compact_serialized_size().unwrap();
+    assert!(body_bytes <= MAX_BLOCK_BODY_BYTES);
+    assert!(MAX_BLOCK_BODY_BYTES - body_bytes < input_bytes + NON_INPUT_BYTES);
+
+    let txn = blockchain.db().db_read_access().unwrap();
+    validator.validate_body(&*txn, block.clone()).unwrap();
+
+    // Block sync: one compact block per BlockBodyResponse, in one RPC response
+    let compact = block.to_compact();
+    let sync_bytes = proto::BlockBodyResponse::try_from(compact.clone())
+        .unwrap()
+        .encoded_len();
+    assert!(
+        sync_bytes <= max_response_payload_size(),
+        "{sync_bytes} > {}",
+        max_response_payload_size()
+    );
+    // A full block request (e.g. a compact block that could not be rebuilt): one compact block in one base node
+    // service response, sent in one messaging frame. 64 KiB is left for the DHT envelope.
+    let messaging_bytes = proto::BaseNodeServiceResponse {
+        request_key: u64::MAX,
+        response: Some(NodeCommsResponse::Block(Box::new(Some(compact))).try_into().unwrap()),
+        is_synced: true,
+    }
+    .encoded_len();
+    println!(
+        "{num_inputs} inputs: compact body {body_bytes} bytes, sync response {sync_bytes} bytes, messaging response \
+         {messaging_bytes} bytes"
+    );
+    assert!(
+        messaging_bytes + 64 * 1024 <= MAX_FRAME_LENGTH,
+        "{messaging_bytes} + 64 KiB > {MAX_FRAME_LENGTH}"
     );
 }
 

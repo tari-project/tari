@@ -24,37 +24,47 @@
 use std::{sync::Arc, time::Duration};
 
 use tari_common::configuration::Network;
-use tari_comms::test_utils::mocks::create_connectivity_mock;
+use tari_common_types::types::FixedHash;
+use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
 use tari_core::{
     base_node::comms_interface::{
+        CommsInterfaceError,
         GetNewBlockTemplateRequest,
         InboundNodeCommsHandlers,
         NodeCommsRequest,
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{BlockchainDatabaseConfig, Validators},
-    consensus::BaseNodeConsensusManager,
+    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig},
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::{
-        blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
+        blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
     },
-    validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
+    validation::{ValidationError, mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
+use tari_node_components::blocks::{Block, ChainBlock, NewBlock};
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
     MicroMinotari,
+    aggregated_body::AggregateBody,
+    consensus::emission::Emission,
     key_manager::KeyManager,
+    tari_amount::T,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
-    test_helpers::create_utxo,
-    transaction_components::covenants::Covenant,
+    test_helpers::{create_utxo, schema_to_transaction},
+    transaction_components::{SpentOutput, Transaction, TransactionInput, WalletOutput, covenants::Covenant},
+    txn_schema,
 };
 use tokio::sync::{broadcast, mpsc};
 
-use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
+use crate::helpers::{
+    block_builders::{append_block, chain_block_with_coinbase, create_coinbase, find_header_with_achieved_difficulty},
+    sample_blockchains::{consensus_constants, create_new_blockchain},
+};
 
 fn new_mempool() -> Mempool {
     let rules = create_consensus_rules();
@@ -472,4 +482,225 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
     // handler first observed.
     assert_eq!(template.header.height, 4);
     assert!(template.is_mempool_in_sync);
+}
+
+/// A block on `prev` with the given transactions and a coinbase, ready to be added but not added
+// Overflow in test code panics, which is the desired failure mode for a test.
+#[allow(clippy::arithmetic_side_effects)]
+fn prepare_block(
+    store: &BlockchainDatabase<TempDatabase>,
+    prev: &ChainBlock,
+    txs: Vec<Transaction>,
+    rules: &BaseNodeConsensusManager,
+    key_manager: &KeyManager,
+) -> Block {
+    let height = prev.height() + 1;
+    let mut coinbase_value = rules.emission_schedule().block_reward(height);
+    for tx in &txs {
+        coinbase_value += tx.body.get_total_fee().unwrap();
+    }
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+        coinbase_value,
+        height + rules.consensus_constants(0).coinbase_min_maturity(),
+        None,
+        key_manager,
+    );
+    let template = chain_block_with_coinbase(prev, txs, coinbase_utxo, coinbase_kernel, rules, None);
+    let mut block = store.prepare_new_block(template).unwrap();
+    find_header_with_achieved_difficulty(&mut block.header, Difficulty::min());
+    block
+}
+
+/// A transaction spending the genesis output into a few outputs
+fn spend_genesis_output(outputs: &[Vec<WalletOutput>], key_manager: &KeyManager) -> Transaction {
+    let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T, T, T, T]);
+    let (txs, _) = schema_to_transaction(&[schema], key_manager);
+    (*txs[0]).clone()
+}
+
+fn new_handlers(
+    store: &BlockchainDatabase<TempDatabase>,
+    mempool: Mempool,
+    rules: BaseNodeConsensusManager,
+) -> InboundNodeCommsHandlers<TempDatabase> {
+    let (block_event_sender, _) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let (connectivity, _) = create_connectivity_mock();
+    InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        mempool,
+        rules,
+        outbound_nci,
+        connectivity,
+        RandomXFactory::new(2),
+    )
+}
+
+/// Orphans are stored with hydrated inputs, but must be served in the same compact form as main chain blocks: the
+/// hydrated form of a block within the consensus byte limit can exceed the messaging frame.
+#[tokio::test]
+async fn inbound_get_block_from_all_chains_serves_orphans_compact() {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let tx = spend_genesis_output(&outputs, &key_manager);
+    let orphan = prepare_block(&store, &blocks[0], vec![tx], &rules, &key_manager);
+    assert!(!orphan.body.inputs().is_empty());
+    assert!(orphan.body.inputs().iter().all(|input| !input.is_compact()));
+    // A stronger block at the same height makes `orphan` an orphan
+    append_block(
+        &store,
+        &blocks[0],
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    assert!(
+        store
+            .fetch_orphan(orphan.hash())
+            .unwrap()
+            .body
+            .inputs()
+            .iter()
+            .all(|input| !input.is_compact())
+    );
+
+    let handlers = new_handlers(&store, new_mempool(), rules);
+    let response = handlers
+        .handle_request(NodeCommsRequest::GetBlockFromAllChains(orphan.hash()))
+        .await
+        .unwrap();
+    let NodeCommsResponse::Block(served) = response else {
+        panic!("unexpected response {response}");
+    };
+    let served = (*served).expect("the orphan is served");
+    assert!(served.body.inputs().iter().all(|input| input.is_compact()));
+    assert_eq!(served, orphan.to_compact());
+}
+
+/// A compact block that is rebuilt from the mempool into a body over the consensus byte limit is rejected right
+/// after it is rebuilt, before it is handed on.
+#[tokio::test]
+async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let tx = spend_genesis_output(&outputs, &key_manager);
+    let block = prepare_block(&store, &blocks[0], vec![tx.clone()], &rules, &key_manager);
+    let body_bytes = block.body.compact_serialized_size().unwrap();
+    let rules_with_limit = |max_bytes| {
+        BaseNodeConsensusManagerBuilder::new(network)
+            .add_consensus_constants(
+                consensus_constants(network)
+                    .with_max_block_body_bytes(max_bytes)
+                    .build(),
+            )
+            .with_block(blocks[0].clone())
+            .build()
+            .unwrap()
+    };
+
+    // One byte over the limit: rejected, and the peer is banned
+    let mempool = new_mempool();
+    mempool.insert(Arc::new(tx.clone())).await.unwrap();
+    let mut handlers = new_handlers(&store, mempool, rules_with_limit(body_bytes - 1));
+    let err = handlers
+        .handle_new_block_message(NewBlock::from(&block), NodeId::default())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError {
+                source: ValidationError::BlockBodyTooManyBytes { actual_bytes, max_bytes }
+            }) if *actual_bytes == body_bytes && *max_bytes == body_bytes - 1
+        ),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_some());
+    assert_eq!(store.get_height().unwrap(), 0);
+
+    // At the limit: rebuilt and added
+    let mempool = new_mempool();
+    mempool.insert(Arc::new(tx)).await.unwrap();
+    let mut handlers = new_handlers(&store, mempool, rules_with_limit(body_bytes));
+    handlers
+        .handle_new_block_message(NewBlock::from(&block), NodeId::default())
+        .await
+        .unwrap();
+    assert_eq!(store.get_height().unwrap(), 1);
+}
+
+/// A compact input is hydrated from the database, or from an output created in the same block. An input that can be
+/// resolved from neither makes a block on our tip invalid, but a block on another chain may spend outputs from that
+/// chain that we have never seen, so the peer that sent it is not banned.
+#[tokio::test]
+async fn compact_inputs_that_cannot_be_hydrated() {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let tx = spend_genesis_output(&outputs, &key_manager);
+    let block = prepare_block(&store, &blocks[0], vec![tx], &rules, &key_manager);
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+
+    // An extra input spending an output of the same block is hydrated from the block. The block is then invalid for
+    // other reasons (its MMR roots), but not because the input could not be hydrated.
+    let (header, inputs, outputs_in_block, kernels) = block.clone().to_compact().dissolve();
+    let mut with_in_block_spend = inputs.clone();
+    with_in_block_spend.push(TransactionInput::new_current_version(
+        SpentOutput::OutputHash(outputs_in_block[0].hash()),
+        Default::default(),
+        Default::default(),
+    ));
+    let in_block_spend = Block::new(
+        header.clone(),
+        AggregateBody::new_unsorted(with_in_block_spend, outputs_in_block.clone(), kernels.clone()),
+    );
+    let err = handlers.handle_block(in_block_spend, None).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { .. })
+        ),
+        "{err:?}"
+    );
+
+    // An input spending an output we do not have
+    let mut with_unknown_spend = inputs;
+    with_unknown_spend.push(TransactionInput::new_current_version(
+        SpentOutput::OutputHash(FixedHash::from([7u8; 32])),
+        Default::default(),
+        Default::default(),
+    ));
+    let unknown_spend = |prev_hash| {
+        let mut header = header.clone();
+        header.prev_hash = prev_hash;
+        Block::new(
+            header,
+            AggregateBody::new_unsorted(with_unknown_spend.clone(), outputs_in_block.clone(), kernels.clone()),
+        )
+    };
+
+    // On our tip: invalid, and the peer is banned
+    let err = handlers
+        .handle_block(unknown_spend(*blocks[0].hash()), None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
+    assert!(err.get_ban_reason().is_some());
+
+    // On another chain: dropped without banning the peer
+    let err = handlers
+        .handle_block(unknown_spend(FixedHash::from([9u8; 32])), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
 }

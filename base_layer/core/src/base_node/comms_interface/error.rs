@@ -75,6 +75,8 @@ pub enum CommsInterfaceError {
     InvalidRequest { request: &'static str, details: String },
     #[error("Peer sent invalid full block {hash}: {details}")]
     InvalidFullBlock { hash: FixedHash, details: String },
+    #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
+    UnknownSpentOutputs { hash: FixedHash, details: String },
     #[error("Invalid merge mined block: {0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Invalid difficulty: {0}")]
@@ -114,6 +116,7 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            CommsInterfaceError::UnknownSpentOutputs { .. } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
