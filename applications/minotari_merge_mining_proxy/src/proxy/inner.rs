@@ -613,7 +613,7 @@ impl InnerService {
             trace!(
                 target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
                 error: '{}'",
-                server, host
+                mask_value("monerod_url", &server), host
             );
             return;
         }
@@ -628,7 +628,10 @@ impl InnerService {
         }
         trace!(
             target: LOG_TARGET, "Monerod status - Current: 'None', Last assigned: {}",
-            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            mask_value(
+                "monerod_url",
+                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            )
         );
     }
 
@@ -638,7 +641,10 @@ impl InnerService {
         trace!(
             target: LOG_TARGET, "Monerod status - Current: '{}', Last assigned: {}",
             BUSY_QUALIFYING,
-            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            mask_value(
+                "monerod_url",
+                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            )
         );
     }
 
@@ -652,7 +658,8 @@ impl InnerService {
             .write()
             .expect("Write lock should not fail");
         *lock = Some(server.to_string());
-        trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", server, server);
+        let shown = mask_value("monerod_url", server);
+        trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", shown, shown);
     }
 
     #[allow(clippy::too_many_lines)]

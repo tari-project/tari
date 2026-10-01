@@ -600,12 +600,32 @@ pub fn warn_if_untrusted(path: &Path) {
 }
 
 /// Returns why a file that is about to be loaded (config or log config) could have been written by someone else, or
-/// an empty list if it looks fine. On Unix the file (following symlinks) and its immediate parent directory must be
-/// owned by the effective user and must not be group- or world-writable. If the file is a symlink, the directory of
+/// an empty list if it looks fine. On Unix the file (following symlinks) and its immediate parent directory should be
+/// owned by the effective user and should not be group- or world-writable. If the file is a symlink, the directory of
 /// every hop in the symlink chain (up to 32 hops) is checked too, and a symlink whose target does not exist is
 /// reported. Paths in the messages are sanitized for display. On other platforms this returns nothing.
-#[cfg(unix)]
+///
+/// This includes findings that are common and harmless on many systems (group-writable files under a umask of 002,
+/// root-owned read-only files); see [`untrusted_severe_reasons`] for the subset that means another user can control
+/// the file.
 pub fn untrusted_reasons(path: &Path) -> Vec<String> {
+    untrusted_findings(path).into_iter().map(|(_, reason)| reason).collect()
+}
+
+/// Returns the subset of [`untrusted_reasons`] that means another (non-root) user can control the file: the file or
+/// a checked directory is owned by someone other than the effective user and root, or is world-writable, or the file
+/// is a symlink whose target does not exist. Group-writable and root-owned files are not included.
+pub fn untrusted_severe_reasons(path: &Path) -> Vec<String> {
+    untrusted_findings(path)
+        .into_iter()
+        .filter(|(severe, _)| *severe)
+        .map(|(_, reason)| reason)
+        .collect()
+}
+
+/// Returns `(severe, reason)` pairs for [`untrusted_reasons`] and [`untrusted_severe_reasons`].
+#[cfg(unix)]
+fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
     use std::os::unix::fs::MetadataExt;
 
     const MAX_SYMLINK_HOPS: usize = 32;
@@ -647,10 +667,13 @@ pub fn untrusted_reasons(path: &Path) -> Vec<String> {
         let Ok(link_metadata) = fs::symlink_metadata(path) &&
         link_metadata.file_type().is_symlink()
     {
-        reasons.push(format!(
-            "{} is a symlink whose target does not exist (owner uid {}); remove it or point it at a real file.",
-            display_path(path),
-            link_metadata.uid()
+        reasons.push((
+            true,
+            format!(
+                "{} is a symlink whose target does not exist (owner uid {}); remove it or point it at a real file.",
+                display_path(path),
+                link_metadata.uid()
+            ),
         ));
     }
 
@@ -660,29 +683,38 @@ pub fn untrusted_reasons(path: &Path) -> Vec<String> {
         };
         let mode = metadata.mode() & 0o7777;
         let shown = display_path(&p);
-        if metadata.uid() != euid {
-            reasons.push(format!(
-                "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
-                 control its contents. Fix with `chown {} {}` or use a base path you own.",
-                kind,
-                shown,
-                metadata.uid(),
-                mode,
-                euid,
-                euid,
-                shown
+        let owner = metadata.uid();
+        if owner != euid {
+            // Root can write anything anyway, so a root-owned file is only worth a warning
+            reasons.push((
+                owner != 0,
+                format!(
+                    "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
+                     control its contents. Fix with `chown {} {}` or use a base path you own.",
+                    kind, shown, owner, mode, euid, euid, shown
+                ),
             ));
         }
-        if mode & 0o022 != 0 {
-            reasons.push(format!(
-                "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
-                 contents. Fix with `chmod go-w {}`.",
-                kind,
-                shown,
-                metadata.uid(),
-                mode,
-                shown
+        if mode & 0o002 != 0 {
+            reasons.push((
+                true,
+                format!(
+                    "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
+                     contents. Fix with `chmod o-w {}`.",
+                    kind, shown, owner, mode, shown
+                ),
             ));
+        } else if mode & 0o020 != 0 {
+            reasons.push((
+                false,
+                format!(
+                    "The {} {} (owner uid {}) is writable by its group (mode {:o}). Members of that group could \
+                     control its contents. Fix with `chmod g-w {}` if the group is shared.",
+                    kind, shown, owner, mode, shown
+                ),
+            ));
+        } else {
+            // Not writable by anyone else
         }
     }
     reasons
@@ -698,7 +730,7 @@ fn parent_or_current(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(unix))]
-pub fn untrusted_reasons(_path: &Path) -> Vec<String> {
+fn untrusted_findings(_path: &Path) -> Vec<(bool, String)> {
     Vec::new()
 }
 
@@ -1278,7 +1310,7 @@ p2pool_node_grpc_address = "http://127.0.0.1:18145"
     }
 
     #[test]
-    fn contradicting_env_style_override_is_rejected_on_load() {
+    fn contradicting_p_override_is_rejected_on_load() {
         // A -p miner.network=<other> that replaced the app-injected miner.network=<resolved>
         let network = crate::network_check::is_network_choice_valid(Network::MainNet)
             .or_else(|_| crate::network_check::is_network_choice_valid(Network::NextNet))

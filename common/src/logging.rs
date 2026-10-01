@@ -34,14 +34,15 @@ use log4rs::config::RawConfig;
 use crate::{
     ConfigError,
     LOG_TARGET,
-    configuration::utils::{print_warning, sanitize_for_display, untrusted_reasons},
+    configuration::utils::{print_warning, sanitize_for_display, untrusted_reasons, untrusted_severe_reasons},
 };
 
 /// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
 /// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
 ///
-/// If the file could have been written by another user (see [`untrusted_reasons`]), it is not loaded: the reasons are
-/// printed to stderr, `default` is used instead, and the reasons are also logged once logging is up.
+/// Every trust finding for the file (see [`untrusted_reasons`]) is printed to stderr and logged once logging is up. If
+/// another (non-root) user can control the file (see [`untrusted_severe_reasons`]), it is not loaded and `default` is
+/// used instead.
 pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
@@ -71,40 +72,57 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
 
     // Always print the findings to stderr first: no logger exists yet, and the log config being checked could itself
     // silence them. Once logging is up they are also logged.
-    let (contents, untrusted) = choose_log_config(config_file, default)?;
-    for reason in &untrusted {
+    let choice = choose_log_config(config_file, default)?;
+    for reason in &choice.reasons {
         print_warning(reason);
     }
-    if !untrusted.is_empty() {
-        print_warning("Untrusted log config ignored; using the built-in default logging configuration");
+    let ignored_message = format!(
+        "Untrusted log config {} ignored and its custom settings dropped; using the built-in default logging \
+         configuration",
+        sanitize_for_display(&config_file.display().to_string())
+    );
+    if choice.refused {
+        print_warning(&ignored_message);
     }
-    init_logging_from_str(&contents, base_path)?;
-    for reason in &untrusted {
+    init_logging_from_str(&choice.contents, base_path)?;
+    for reason in &choice.reasons {
         warn!(target: LOG_TARGET, "⚠️  {reason}");
     }
-    if !untrusted.is_empty() {
-        warn!(
-            target: LOG_TARGET,
-            "⚠️  Untrusted log config {} ignored; using the built-in default logging configuration",
-            sanitize_for_display(&config_file.display().to_string())
-        );
+    if choice.refused {
+        warn!(target: LOG_TARGET, "⚠️  {ignored_message}");
     }
     Ok(())
 }
 
-/// Returns the log4rs config text to use and the reasons the file at `config_file` cannot be trusted. An untrusted
-/// file (see [`untrusted_reasons`]) is not read at all; `default` is used instead.
-fn choose_log_config(config_file: &Path, default: &str) -> Result<(String, Vec<String>), ConfigError> {
-    let untrusted = untrusted_reasons(config_file);
-    if !untrusted.is_empty() {
-        return Ok((default.to_string(), untrusted));
+/// The log4rs config text to use, every trust finding for the file, and whether the file was refused.
+struct LogConfigChoice {
+    contents: String,
+    reasons: Vec<String>,
+    refused: bool,
+}
+
+/// Chooses the log4rs config text to use. A file that another (non-root) user can control (see
+/// [`untrusted_severe_reasons`]) is not read at all and `default` is used instead. Other findings (e.g. a
+/// group-writable file under a umask of 002, or a root-owned read-only file) are only reported.
+fn choose_log_config(config_file: &Path, default: &str) -> Result<LogConfigChoice, ConfigError> {
+    let reasons = untrusted_reasons(config_file);
+    if !untrusted_severe_reasons(config_file).is_empty() {
+        return Ok(LogConfigChoice {
+            contents: default.to_string(),
+            reasons,
+            refused: true,
+        });
     }
     let mut file =
         File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
-    Ok((contents, untrusted))
+    Ok(LogConfigChoice {
+        contents,
+        reasons,
+        refused: false,
+    })
 }
 
 /// Substitutes `{{log_dir}}` in a log4rs config and starts log4rs with it.
@@ -215,15 +233,24 @@ mod test {
 
         // Trusted: the file is loaded
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        let (contents, reasons) = choose_log_config(&path, "default").unwrap();
-        assert_eq!(contents, "from file");
-        assert!(reasons.is_empty(), "{reasons:?}");
+        let choice = choose_log_config(&path, "default").unwrap();
+        assert_eq!(choice.contents, "from file");
+        assert!(choice.reasons.is_empty(), "{:?}", choice.reasons);
+        assert!(!choice.refused);
+
+        // Group-writable (umask 002) and owned by us: loaded, but warned about
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o664)).unwrap();
+        let choice = choose_log_config(&path, "default").unwrap();
+        assert_eq!(choice.contents, "from file");
+        assert!(!choice.reasons.is_empty());
+        assert!(!choice.refused);
 
         // World-writable: the file is not read and the default is used
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
-        let (contents, reasons) = choose_log_config(&path, "default").unwrap();
-        assert_eq!(contents, "default");
-        assert!(!reasons.is_empty());
+        let choice = choose_log_config(&path, "default").unwrap();
+        assert_eq!(choice.contents, "default");
+        assert!(!choice.reasons.is_empty());
+        assert!(choice.refused);
     }
 
     #[test]
