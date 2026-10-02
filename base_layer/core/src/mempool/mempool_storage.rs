@@ -355,6 +355,41 @@ impl MempoolStorage {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
         let weight = self.get_transaction_weighting();
+        // At most one pool transaction may register or exit a given validator node (two would make every template
+        // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
+        // fee per gram, so that a third party copying a gossiped registration/exit into a low-fee transaction cannot
+        // squat the slot. The replaced holder is dropped (not moved to the reorg pool); its owner can resubmit with a
+        // higher fee.
+        let holders = self.unconfirmed_pool.validator_node_conflict_holders(&tx);
+        if !holders.is_empty() {
+            let outbids = fee_per_gram_millis(&tx, &weight).is_some_and(|rate| {
+                holders.iter().all(|key| {
+                    self.unconfirmed_pool
+                        .fee_per_gram_millis(*key)
+                        .is_some_and(|held| rate > held)
+                })
+            });
+            if !outbids {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({tx_id}) registers or exits a validator node that a pool transaction with an equal or higher \
+                     fee already registers or exits, rejecting"
+                );
+                return Ok(TxStorageResponse::NotStoredValidatorNodeSlotTaken);
+            }
+            for key in holders {
+                if let Some(replaced) = self.unconfirmed_pool.remove_transaction(key)? {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tx: ({tx_id}) replaces pool transaction {} in its validator node slot with a higher fee",
+                        replaced
+                            .first_kernel_excess_sig()
+                            .map(|sig| sig.get_signature().to_hex())
+                            .unwrap_or_default()
+                    );
+                }
+            }
+        }
         self.unconfirmed_pool.insert(tx, dependent_outputs, &weight)?;
         debug!(
             target: LOG_TARGET,
@@ -432,6 +467,67 @@ impl MempoolStorage {
             published_block.header.hash().to_hex(),
             published_block.body.to_counts_string()
         );
+        // Validator node registrations and exits whose max_epoch is before the epoch of the next block can never be
+        // mined; they are dropped (not moved to the reorg pool).
+        let next_height = published_block.header.height.saturating_add(1);
+        let next_epoch = self
+            .rules
+            .consensus_constants(next_height)
+            .block_height_to_epoch(next_height);
+        let expired = self
+            .unconfirmed_pool
+            .remove_expired_validator_node_transactions(next_epoch)?;
+        if !expired.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "Removed {} validator node transaction(s) that expired before epoch {}",
+                expired.len(),
+                next_epoch
+            );
+        }
+        // The validity of the remaining validator node transactions (registrations, exits and spends of a pending
+        // registration) depends on the validator node set and the epoch: a cancelling spend becomes invalid once its
+        // registration activates, an exit once the node has exited, a registration once the node is registered by
+        // another transaction. Templates are not validated before they are mined, so when this block can have changed
+        // that state (an epoch boundary, or validator node transactions in the block) re-check the chain-linked rules
+        // for each of them in place and drop the ones that fail. Only the cheap chain-linked checks are re-run (not
+        // internal consistency), and only for the validator node transactions, so a flood of them cannot stall the
+        // mempool on every block.
+        let block_epoch = self
+            .rules
+            .consensus_constants(published_block.header.height)
+            .block_height_to_epoch(published_block.header.height);
+        if block_epoch != next_epoch || UnconfirmedPool::body_touches_validator_nodes(&published_block.body) {
+            let mut dropped = 0usize;
+            for (key, tx) in self.unconfirmed_pool.validator_node_transactions() {
+                let still_valid = match validate_chain_linked(self.validator.as_ref(), &tx) {
+                    Ok(None) => true,
+                    Ok(Some(dependent_outputs)) => {
+                        check_pool_parents(&self.unconfirmed_pool, &dependent_outputs).is_ok()
+                    },
+                    Err(response) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Tx: ({}) is no longer valid after block #{}: {response}, dropping",
+                            tx_id(&tx),
+                            published_block.header.height
+                        );
+                        false
+                    },
+                };
+                if !still_valid {
+                    self.unconfirmed_pool.remove_transaction(key)?;
+                    dropped = dropped.saturating_add(1);
+                }
+            }
+            if dropped > 0 {
+                debug!(
+                    target: LOG_TARGET,
+                    "Dropped {dropped} validator node transaction(s) invalidated by block #{}",
+                    published_block.header.height
+                );
+            }
+        }
         let timer = Instant::now();
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
@@ -663,6 +759,17 @@ impl MempoolStorage {
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }
+}
+
+/// Fee per gram x1000, computed as for the stored pool priority (`FeePriority`)
+fn fee_per_gram_millis(tx: &Transaction, weighting: &TransactionWeight) -> Option<u64> {
+    let weight = tx.calculate_weight(weighting).ok()?;
+    tx.body
+        .get_total_fee()
+        .ok()?
+        .as_u64()
+        .saturating_mul(1000)
+        .checked_div(weight)
 }
 
 fn tx_id(tx: &Transaction) -> String {

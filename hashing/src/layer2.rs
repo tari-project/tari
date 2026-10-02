@@ -27,8 +27,21 @@ pub fn tari_consensus_hasher(label: &'static str) -> TariConsensusHasher {
     TariConsensusHasher::new_with_label(label)
 }
 
-pub fn validator_registration_hasher() -> TariDomainHasher<ValidatorNodeHashDomain, U64> {
-    tari_hasher64("registration")
+/// Hasher for the message a validator node signs to register.
+///
+/// The network byte is chained first so that a registration signed for one network can never verify on another, and
+/// the label is distinct from [`validator_exit_hasher`] so that a registration signature can never be presented as an
+/// exit signature (or vice versa), even if the remaining fields happen to line up.
+pub fn validator_registration_hasher(network: u8) -> TariDomainHasher<ValidatorNodeHashDomain, U64> {
+    tari_hasher64("vn_registration").chain(&network)
+}
+
+/// Hasher for the message a validator node signs to exit.
+///
+/// The network byte is chained first so that an exit signed for one network can never verify on another, and the
+/// label is distinct from [`validator_registration_hasher`] so that the two signature purposes cannot be confused.
+pub fn validator_exit_hasher(network: u8) -> TariDomainHasher<ValidatorNodeHashDomain, U64> {
+    tari_hasher64("vn_exit").chain(&network)
 }
 
 pub fn block_hasher() -> TariConsensusHasher {

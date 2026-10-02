@@ -2153,7 +2153,9 @@ dependencies = [
  "blake2 0.10.6",
  "borsh",
  "digest 0.10.7",
+ "generic-array",
  "tari_crypto",
+ "zeroize",
 ]
 
 [[package]]

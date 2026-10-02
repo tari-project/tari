@@ -28,7 +28,7 @@ use std::{
 
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
 use tari_utilities::hex::Hex;
@@ -171,18 +171,6 @@ impl DbTransaction {
             output_hash,
             commitment,
             output_type,
-        });
-        self
-    }
-
-    pub fn delete_validator_node(
-        &mut self,
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteValidatorNode {
-            sidechain_public_key,
-            public_key,
         });
         self
     }
@@ -456,10 +444,6 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
-    DeleteValidatorNode {
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
@@ -628,9 +612,6 @@ impl fmt::Display for WriteOperation {
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
-            DeleteValidatorNode { public_key, .. } => {
-                write!(f, "Delete validator node with public key: {public_key}")
-            },
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,

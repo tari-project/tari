@@ -16,8 +16,10 @@ use digest::Output;
 impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default
 {
-    pub fn new(label: &'static str, network: u64) -> Self {
-        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network as u8));
+    /// `network` is the network byte (`Network::as_byte` on the host). It is a `u8` so that callers holding a wider
+    /// wire value must convert it explicitly (and reject out-of-range values) rather than have it silently truncated.
+    pub fn new(label: &'static str, network: u8) -> Self {
+        let hasher = DomainSeparatedBorshHasher::<M, D>::new_with_label(&format!("{}.n{}", label, network));
         Self { hasher }
     }
 

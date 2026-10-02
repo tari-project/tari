@@ -18,6 +18,8 @@ enum TxSubmissionRejectionReason {
   TxSubmissionRejectionReasonTimeLocked = 4;
   TxSubmissionRejectionReasonValidationFailed = 5;
   TxSubmissionRejectionReasonFeeTooLow = 6;
+  // Another mempool transaction holds this validator node's registration/exit slot; retry later
+  TxSubmissionRejectionReasonValidatorNodeSlotTaken = 7;
 }
 
 message TxSubmissionResponse {

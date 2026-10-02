@@ -47,6 +47,7 @@ pub enum TxSubmissionRejectionReason {
     TimeLocked,
     ValidationFailed,
     FeeTooLow,
+    ValidatorNodeSlotTaken,
 }
 
 impl Display for TxSubmissionRejectionReason {
@@ -60,6 +61,7 @@ impl Display for TxSubmissionRejectionReason {
             TimeLocked => "Time Locked",
             ValidationFailed => "Validation Failed",
             FeeTooLow => "Fee too low",
+            ValidatorNodeSlotTaken => "Validator node slot taken",
             None => "None",
         };
         fmt.write_str(response)
@@ -80,6 +82,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
             TimeLocked => TxSubmissionRejectionReason::TimeLocked,
             ValidationFailed => TxSubmissionRejectionReason::ValidationFailed,
             FeeTooLow => TxSubmissionRejectionReason::FeeTooLow,
+            ValidatorNodeSlotTaken => TxSubmissionRejectionReason::ValidatorNodeSlotTaken,
         })
     }
 }
@@ -96,6 +99,7 @@ impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
             TimeLocked => proto::TxSubmissionRejectionReason::TimeLocked,
             ValidationFailed => proto::TxSubmissionRejectionReason::ValidationFailed,
             FeeTooLow => proto::TxSubmissionRejectionReason::FeeTooLow,
+            ValidatorNodeSlotTaken => proto::TxSubmissionRejectionReason::ValidatorNodeSlotTaken,
         }
     }
 }

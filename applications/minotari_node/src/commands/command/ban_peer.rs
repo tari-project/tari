@@ -37,7 +37,7 @@ pub struct ArgsBan {
     /// hex public key or emoji id
     node_id: UniNodeId,
     /// length of time to ban the peer for in seconds
-    #[clap(default_value_t = std::u64::MAX)]
+    #[clap(default_value_t = u64::MAX)]
     length: u64,
 }
 
@@ -56,7 +56,7 @@ pub struct ArgsUnban {
     /// hex public key or emoji id
     node_id: UniNodeId,
     /// length of time to ban the peer for in seconds
-    #[clap(default_value_t = std::u64::MAX)]
+    #[clap(default_value_t = u64::MAX)]
     length: u64,
 }
 
