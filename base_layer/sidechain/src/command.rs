@@ -26,6 +26,7 @@ pub enum Command {
     LocalAccept(TransactionAtom) = 2,
     AllAccept(TransactionAtom) = 3,
     SomeAccept(TransactionAtom) = 4,
+    /// Carries no atom, so its hash never matches the sidechain's and no inclusion proof over it verifies.
     ForeignProposal = 5,
     EndEpoch(EndEpochAtom) = 7,
 }
