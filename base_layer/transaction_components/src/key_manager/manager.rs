@@ -64,6 +64,7 @@ use tari_common_types::{
 };
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
+    errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
     hashing::DomainSeparatedHasher,
     keys::SecretKey,
@@ -868,10 +869,15 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: u64,
     ) -> Result<bool, KeyManagerError> {
         let commitment_mask_key = self.get_private_key(commitment_mask_key_id)?;
-        self.crypto_factories
+        match self
+            .crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &commitment_mask_key, value)
-            .map_err(|e| e.into())
+        {
+            Ok(()) => Ok(true),
+            Err(RangeProofError::InvalidMask {}) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     fn get_view_key(&self) -> TariKeyAndId {
@@ -1210,12 +1216,14 @@ impl TransactionKeyManagerInterface for KeyManager {
                     }
                 },
             };
-        if !self
+        match self
             .crypto_factories
             .range_proof
-            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())
         {
-            return Ok(None);
+            Ok(()) => {},
+            Err(RangeProofError::InvalidMask {}) => return Ok(None),
+            Err(e) => return Err(e.into()),
         }
 
         Ok(Some((key_id, value, payment_id)))
@@ -1237,10 +1245,15 @@ impl TransactionKeyManagerInterface for KeyManager {
                 Ok(res) => res,
                 Err(_) => return Ok(false),
             };
-        self.crypto_factories
+        match self
+            .crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &private_key, value.into())
-            .map_err(Into::into)
+        {
+            Ok(()) => Ok(true),
+            Err(RangeProofError::InvalidMask {}) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Compute a partial script offset for `script_key_ids`, generating `sender_offset_count` fresh sender offset
