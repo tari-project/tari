@@ -30,7 +30,6 @@ use std::{
 
 use log::warn;
 use log4rs::config::RawConfig;
-use path_clean::PathClean;
 
 use crate::{
     ConfigError,
@@ -126,7 +125,7 @@ struct LogConfigChoice {
 ///
 /// [`untrusted_severe_reasons`]: crate::configuration::utils::untrusted_severe_reasons
 fn choose_log_config(config_file: &Path, base_path: &Path, default: &str) -> Result<LogConfigChoice, ConfigError> {
-    let base = LogDirBase::new(base_path);
+    let base = LogDirBase::new(base_path)?;
     let path_findings = untrusted_path_findings(config_file);
     let mut findings = Vec::new();
     let mut file_contents = None;
@@ -198,15 +197,21 @@ fn open_log_config(config_file: &Path) -> Result<(File, fs::Metadata), ConfigErr
 
 /// The log directory in the two forms used for containment checks.
 struct LogDirBase {
-    /// Absolute and cleaned (no `.` or `..`), and on Unix canonical if it exists. This is what `{{log_dir}}` is
-    /// replaced with.
+    /// Absolute: on Unix the canonical path if it exists (so `..` after a symlink resolves the way the OS does),
+    /// otherwise lexically normalized (see [`lexical_normalize`]). This is what `{{log_dir}}` is replaced with.
     lexical: PathBuf,
     /// Fully resolved (see [`resolve_for_containment`]), if possible.
     canonical: Option<PathBuf>,
 }
 
 impl LogDirBase {
-    fn new(base_path: &Path) -> Self {
+    fn new(base_path: &Path) -> Result<Self, ConfigError> {
+        if base_path.to_str().is_none() {
+            return Err(ConfigError::new(
+                "Could not replace {{log_dir}} variable from the log4rs config",
+                Some(format!("base path {} is not valid UTF-8", base_path.display())),
+            ));
+        }
         let absolute = if base_path.is_absolute() {
             base_path.to_path_buf()
         } else {
@@ -214,16 +219,54 @@ impl LogDirBase {
                 .map(|dir| dir.join(base_path))
                 .unwrap_or_else(|_| base_path.to_path_buf())
         };
-        let cleaned = absolute.clean();
         // On Windows `canonicalize` returns a `\\?\` verbatim path, which log4rs cannot use, so only resolve on Unix
-        let lexical = if cfg!(unix) {
-            fs::canonicalize(&cleaned).unwrap_or(cleaned)
+        let canonical_base = if cfg!(unix) {
+            fs::canonicalize(&absolute).ok()
         } else {
-            cleaned
+            None
         };
+        let lexical = canonical_base.unwrap_or_else(|| PathBuf::from(lexical_normalize(&absolute.to_string_lossy())));
         let canonical = resolve_for_containment(&lexical);
-        Self { lexical, canonical }
+        Ok(Self { lexical, canonical })
     }
+}
+
+/// Normalizes a path without touching the file system: `.` segments are dropped and `..` removes the previous
+/// segment (a `..` at the start of a relative path is kept; at the root it is dropped). Both `/` and `\` are treated
+/// as separators and the result uses `/`, so it works for Windows paths on any OS. A leading drive (`C:`) and root
+/// separator are kept.
+fn lexical_normalize(path: &str) -> String {
+    let mut rest = path;
+    let mut prefix = String::new();
+    let mut chars = rest.chars();
+    if let (Some(drive), Some(':')) = (chars.next(), chars.next()) &&
+        drive.is_ascii_alphabetic()
+    {
+        prefix.push(drive);
+        prefix.push(':');
+        rest = rest.get(2..).unwrap_or("");
+    }
+    let rooted = rest.starts_with(['/', '\\']);
+    if rooted {
+        prefix.push('/');
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for part in rest.split(['/', '\\']) {
+        match part {
+            "" | "." => {},
+            ".." => {
+                if parts.last().is_some_and(|last| *last != "..") {
+                    parts.pop();
+                } else if !rooted {
+                    parts.push("..");
+                } else {
+                    // `..` at the root stays at the root
+                }
+            },
+            part => parts.push(part),
+        }
+    }
+    format!("{prefix}{}", parts.join("/"))
 }
 
 /// Returns one message per log4rs appender path that is outside the log directory: each appender's `path` and its
@@ -294,7 +337,7 @@ fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
             Err(_) => return false,
         }
     };
-    if absolute.clean().starts_with(&base.lexical) {
+    if PathBuf::from(lexical_normalize(&absolute.to_string_lossy())).starts_with(&base.lexical) {
         return true;
     }
     match (&base.canonical, resolve_for_containment(&absolute)) {
@@ -520,6 +563,47 @@ mod test {
         assert!(choice.refused);
     }
 
+    #[test]
+    fn lexical_normalize_handles_both_separators() {
+        use super::lexical_normalize;
+
+        assert_eq!(lexical_normalize("C:\\cwd\\..\\data"), "C:/data");
+        assert_eq!(lexical_normalize("C:\\cwd\\.\\data\\logs"), "C:/cwd/data/logs");
+        assert_eq!(lexical_normalize("/a/./b/../c"), "/a/c");
+        assert_eq!(lexical_normalize("/../a"), "/a");
+        assert_eq!(lexical_normalize("a/../../b"), "../b");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn base_path_resolves_dotdot_after_a_symlink_physically() {
+        use std::os::unix::fs::symlink;
+
+        use super::LogDirBase;
+
+        // `<dir>/a/link/../b` with `link -> <dir>/x/y` is `<dir>/x/b` to the OS, not `<dir>/a/b`
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        std::fs::create_dir_all(dir.path().join("x/y")).unwrap();
+        std::fs::create_dir_all(dir.path().join("x/b")).unwrap();
+        symlink(dir.path().join("x/y"), dir.path().join("a/link")).unwrap();
+        let base = LogDirBase::new(&dir.path().join("a/link/../b")).unwrap();
+        assert_eq!(base.lexical, std::fs::canonicalize(dir.path().join("x/b")).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_base_path_is_an_error() {
+        use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+        use super::{LogDirBase, choose_log_config};
+
+        let bad = Path::new(OsStr::from_bytes(b"/tmp/log\xff"));
+        let err = LogDirBase::new(bad).err().expect("an error");
+        assert!(err.to_string().contains("not valid UTF-8"), "{err}");
+        assert!(choose_log_config(Path::new("/nonexistent/log4rs.yml"), bad, "default").is_err());
+    }
+
     #[cfg(unix)]
     #[test]
     fn symlinked_log_dir_and_dotdot_base_path_are_accepted() {
@@ -561,7 +645,7 @@ mod test {
         use super::{LogDirBase, escaping_appender_paths, substitute_log_dir};
 
         let dir = tempfile::tempdir().unwrap();
-        let base = LogDirBase::new(dir.path());
+        let base = LogDirBase::new(dir.path()).unwrap();
         for (name, yaml) in [
             (
                 "node",
