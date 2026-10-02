@@ -75,6 +75,8 @@ pub enum CommsInterfaceError {
     InvalidRequest { request: &'static str, details: String },
     #[error("Peer sent invalid full block {hash}: {details}")]
     InvalidFullBlock { hash: FixedHash, details: String },
+    #[error("Block {hash} is already known to be bad: {reason}")]
+    KnownBadBlock { hash: String, reason: String },
     #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
     UnknownSpentOutputs { hash: FixedHash, details: String },
     #[error("Invalid merge mined block: {0}")]
@@ -118,6 +120,8 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
+            CommsInterfaceError::KnownBadBlock { .. } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }

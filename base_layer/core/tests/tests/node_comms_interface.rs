@@ -910,14 +910,6 @@ async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
         .handle_new_block_message(NewBlock::from(&invalid), NodeId::default())
         .await
         .unwrap_err();
-    assert!(
-        matches!(
-            err,
-            CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError {
-                source: ValidationError::BadBlockFound { .. }
-            })
-        ),
-        "{err:?}"
-    );
+    assert!(matches!(err, CommsInterfaceError::KnownBadBlock { .. }), "{err:?}");
     assert!(err.get_ban_reason().is_none());
 }

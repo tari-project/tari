@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use tari_core::{
     base_node::{state_machine_service::states::StateEvent, sync::HeaderSyncStatus},
-    chain_storage::BlockchainDatabaseConfig,
+    chain_storage::{BlockchainDatabaseConfig, DbTransaction},
 };
 
 use crate::helpers::{sync, sync::WhatToDelete};
@@ -489,4 +489,47 @@ async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reo
     }
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A peer whose chain contains a block we hold as bad is banned: it is claiming a stronger chain through a block we
+/// have proven invalid, and without a ban we would try to sync from it again on every round.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_peer_chain_contains_a_known_bad_block_with_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+
+    // Alice holds one of Bob's blocks as bad
+    let mut txn = DbTransaction::new();
+    txn.insert_bad_block(*blocks[3].hash(), blocks[3].height(), "planted by a test".to_string());
+    alice_node.blockchain_db.write(txn).unwrap();
+
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeaderSyncFailed(_)), "{event:?}");
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_header_by_block_hash(*blocks[3].hash())
+            .unwrap()
+            .is_none()
+    );
+    assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }

@@ -867,14 +867,10 @@ where B: BlockchainBackend + 'static
                 "Block with hash `{}` already validated as a bad block due to `{}`",
                 block.to_hex(), reason
             );
-            return Err(CommsInterfaceError::ChainStorageError(
-                ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound {
-                        hash: block.to_hex(),
-                        reason,
-                    },
-                },
-            ));
+            return Err(CommsInterfaceError::KnownBadBlock {
+                hash: block.to_hex(),
+                reason,
+            });
         }
         Ok(false)
     }
@@ -1161,6 +1157,11 @@ where B: BlockchainBackend + 'static
                 }
                 Ok(block_hash)
             },
+
+            // Marked bad since we checked in `check_exists_and_not_bad_block`
+            Err(ChainStorageError::ValidationError {
+                source: ValidationError::BadBlockFound { hash, reason },
+            }) => Err(CommsInterfaceError::KnownBadBlock { hash, reason }),
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
                 #[cfg(feature = "metrics")]

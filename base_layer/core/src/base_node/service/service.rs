@@ -69,7 +69,6 @@ use crate::{
     },
     proto as shared_protos,
     proto::base_node as proto,
-    validation::ValidationError,
 };
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
@@ -410,10 +409,7 @@ where B: BlockchainBackend + 'static
                     let expected = matches!(
                         &e,
                         BaseNodeServiceError::CommsInterfaceError(
-                            CommsInterfaceError::UnknownSpentOutputs { .. } |
-                                CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError {
-                                    source: ValidationError::BadBlockFound { .. },
-                                })
+                            CommsInterfaceError::UnknownSpentOutputs { .. } | CommsInterfaceError::KnownBadBlock { .. }
                         )
                     );
                     if expected {

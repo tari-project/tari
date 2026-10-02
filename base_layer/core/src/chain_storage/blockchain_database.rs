@@ -4966,8 +4966,6 @@ fn verdict_can_change(err: &ValidationError) -> bool {
     match err {
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
         ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) => true,
-        // Not a ban (the peer relaying a known bad block is not at fault), but a permanent verdict
-        ValidationError::BadBlockFound { .. } => false,
         e => e.get_ban_reason().is_none(),
     }
 }
