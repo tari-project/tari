@@ -23,8 +23,9 @@
 #![allow(clippy::indexing_slicing)]
 use std::{sync::Arc, time::Duration};
 
+use futures::StreamExt;
 use tari_common::configuration::Network;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
 use tari_core::{
     base_node::comms_interface::{
@@ -556,8 +557,37 @@ fn new_handlers(
     mempool: Mempool,
     rules: BaseNodeConsensusManager,
 ) -> InboundNodeCommsHandlers<TempDatabase> {
-    let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
+    new_handlers_with_requests(store, mempool, rules, request_sender)
+}
+
+/// Handlers whose requests to peers are all answered with `served`
+fn new_handlers_serving(
+    store: &BlockchainDatabase<TempDatabase>,
+    mempool: Mempool,
+    rules: BaseNodeConsensusManager,
+    served: Block,
+) -> InboundNodeCommsHandlers<TempDatabase> {
+    let (request_sender, mut request_receiver) = reply_channel::unbounded();
+    tokio::spawn(async move {
+        while let Some(request_context) = request_receiver.next().await {
+            let (_request, reply_tx) = request_context.split();
+            let _ignore = reply_tx.send(Ok(NodeCommsResponse::Block(Box::new(Some(served.clone())))));
+        }
+    });
+    new_handlers_with_requests(store, mempool, rules, request_sender)
+}
+
+fn new_handlers_with_requests(
+    store: &BlockchainDatabase<TempDatabase>,
+    mempool: Mempool,
+    rules: BaseNodeConsensusManager,
+    request_sender: reply_channel::SenderService<
+        (NodeCommsRequest, Option<NodeId>),
+        Result<NodeCommsResponse, CommsInterfaceError>,
+    >,
+) -> InboundNodeCommsHandlers<TempDatabase> {
+    let (block_event_sender, _) = broadcast::channel(50);
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
@@ -912,4 +942,106 @@ async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
         .unwrap_err();
     assert!(matches!(err, CommsInterfaceError::KnownBadBlock { .. }), "{err:?}");
     assert!(err.get_ban_reason().is_none());
+}
+
+/// An honest chain G <- H0 <- H1, and a peer that sends us H1 first, with a body that is not the one its header commits
+/// to.
+// Overflow in test code panics, which is the desired failure mode for a test.
+#[allow(clippy::arithmetic_side_effects)]
+fn honest_chain_and_fake_child() -> (
+    BlockchainDatabase<TempDatabase>,
+    BaseNodeConsensusManager,
+    Arc<ChainBlock>,
+    Block,
+    Block,
+) {
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, key_manager) = create_new_blockchain(network);
+    let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap() else {
+        panic!("H0 was not added");
+    };
+    let h1 = prepare_block(&store, &h0, vec![], &rules, &key_manager);
+    store.rewind_to_height(0).unwrap();
+    if store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap() {
+        let mut txn = DbTransaction::new();
+        txn.delete_orphan(*h0.hash());
+        store.write(txn).unwrap();
+    }
+    assert!(!store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap());
+
+    // H1's header and outputs, with another kernel
+    let (_, other_kernel, _) = create_coinbase(
+        rules.get_block_reward_at(h1.header.height),
+        h1.header.height + rules.consensus_constants(0).coinbase_min_maturity(),
+        None,
+        &key_manager,
+    );
+    let fake_h1 = Block::new(
+        h1.header.clone(),
+        AggregateBody::new_sorted_unchecked(vec![], h1.body.outputs().clone(), vec![other_kernel]),
+    );
+    (store, rules, h0, h1, fake_h1)
+}
+
+/// A held orphan whose body was never checked against its header fails when an honest relayer completes its chain. The
+/// orphan is not marked bad, and the relayer, whose block was fine, is not banned.
+#[tokio::test]
+async fn a_held_orphan_with_a_fake_body_does_not_get_the_relayer_of_its_parent_banned() {
+    let (store, rules, h0, h1, fake_h1) = honest_chain_and_fake_child();
+    let result = store.add_block(Arc::new(fake_h1)).unwrap();
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    let err = handlers
+        .handle_block(h0.block().clone(), Some(NodeId::default()))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            CommsInterfaceError::ChainStorageError(ChainStorageError::UnverifiedHeldBlockInvalid { hash, .. })
+                if *hash == h1.hash()
+        ),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
+    assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+}
+
+/// A full block fetched for an announcement that does not build on our tip is checked against its header, as far as
+/// that needs no chain state, before it is stored as an orphan: a peer that sends another body is banned.
+#[tokio::test]
+async fn a_fetched_full_block_with_other_outputs_is_rejected_on_arrival() {
+    let (store, rules, _, h1, _) = honest_chain_and_fake_child();
+    // H1's header with only its kernel: its outputs are not the ones the header commits to
+    let fake_h1 = Block::new(
+        h1.header.clone(),
+        AggregateBody::new_sorted_unchecked(vec![], vec![], h1.body.kernels().clone()),
+    );
+    // An announcement of H1 naming a transaction, so that the full block is fetched
+    let announce = || NewBlock {
+        header: h1.header.clone(),
+        coinbase_kernels: h1.body.kernels().clone(),
+        coinbase_outputs: h1.body.outputs().clone(),
+        kernel_excess_sigs: vec![PrivateKey::default()],
+    };
+
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), fake_h1);
+    let err = handlers
+        .handle_new_block_message(announce(), NodeId::default())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
+    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+
+    // The honest body is accepted, as an orphan
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules, h1.clone());
+    handlers
+        .handle_new_block_message(announce(), NodeId::default())
+        .await
+        .unwrap();
+    assert!(store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
 }

@@ -2429,15 +2429,25 @@ impl std::fmt::Display for MmrRoots {
 /// Unlike [calculate_mmr_roots] this needs no state other than the parent's kernel MMR, and it works on compact inputs.
 /// Returns false if the parent's kernel MMR is not available.
 pub fn body_matches_header<T: BlockchainBackend>(db: &T, block: &Block) -> Result<bool, ChainStorageError> {
+    if !inputs_and_outputs_match_header(block)? {
+        return Ok(false);
+    }
     let header = &block.header;
     let Some(BlockAccumulatedData { kernels, .. }) = db.fetch_block_accumulated_data(&header.prev_hash)? else {
         return Ok(false);
     };
-
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
     for kernel in block.body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
+    Ok(header.kernel_mr == kernel_mr_hash_from_pruned_mmr(&kernel_mmr)? &&
+        header.kernel_mmr_size == kernel_mmr.get_leaf_count()? as u64)
+}
+
+/// The part of [body_matches_header] that needs no state at all: whether the body's inputs and outputs are the ones the
+/// header's input and block output MMR roots commit to. The kernels are not covered.
+pub fn inputs_and_outputs_match_header(block: &Block) -> Result<bool, ChainStorageError> {
+    let header = &block.header;
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     for input in block.body.inputs() {
         input_mmr.push(input.canonical_hash().to_vec())?;
@@ -2454,9 +2464,7 @@ pub fn body_matches_header<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
     block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
-    Ok(header.kernel_mr == kernel_mr_hash_from_pruned_mmr(&kernel_mmr)? &&
-        header.kernel_mmr_size == kernel_mmr.get_leaf_count()? as u64 &&
-        header.input_mr == input_mr_hash_from_pruned_mmr(&input_mmr)? &&
+    Ok(header.input_mr == input_mr_hash_from_pruned_mmr(&input_mmr)? &&
         header.block_output_mr == block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?)
 }
 
@@ -2739,7 +2747,8 @@ fn add_block<T: BlockchainBackend>(
     candidate_block: Arc<Block>,
     // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    handle_possible_reorg(
+    let candidate_hash = candidate_block.hash();
+    let result = handle_possible_reorg(
         db,
         config,
         consensus_manager,
@@ -2748,7 +2757,15 @@ fn add_block<T: BlockchainBackend>(
         chain_strength_comparer,
         candidate_block,
         // smt,
-    )
+    );
+    match result {
+        // The block being added is to blame for its own body, whether or not it matches its header. Only a held
+        // block (an orphan) with an unverified body is not attributed to whoever sent the block being added.
+        Err(ChainStorageError::UnverifiedHeldBlockInvalid { hash, source }) if hash == candidate_hash => {
+            Err(ChainStorageError::ValidationError { source })
+        },
+        result => result,
+    }
 }
 
 /// Adds a new block onto the chain tip and sets it to the best block.
@@ -3496,10 +3513,11 @@ fn reorganize_chain<T: BlockchainBackend>(
             // supplied by a peer and never checked against the header, so a fake body under an honest header must
             // not get the honest block blacklisted. The orphan is deleted either way (above), so the honest block
             // can be fetched again.
+            let body_matches = body_matches_header(backend, block.block()).unwrap_or(false);
             if e.get_ban_reason()
                 .is_some_and(|reason| reason.ban_duration != BanPeriod::Short)
             {
-                if body_matches_header(backend, block.block()).unwrap_or(false) {
+                if body_matches {
                     txn.insert_bad_block(block.header().hash(), block.header().height, e.to_string());
                 } else {
                     debug!(
@@ -3519,6 +3537,13 @@ fn reorganize_chain<T: BlockchainBackend>(
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
             restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            // Whoever sent this body is at fault, but that may not be who sent the block being added: see `add_block`
+            if !body_matches {
+                return Err(ChainStorageError::UnverifiedHeldBlockInvalid {
+                    hash: block_hash,
+                    source: e,
+                });
+            }
             return Err(e.into());
         }
 

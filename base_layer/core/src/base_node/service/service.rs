@@ -405,11 +405,16 @@ where B: BlockchainBackend + 'static
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                     }
-                    // A block on a chain we cannot check yet, or one we already hold as bad, is dropped as expected
+                    // A block on a chain we cannot check yet, one we already hold as bad, or a reorg that failed on an
+                    // orphan someone else sent us, is dropped as expected
                     let expected = matches!(
                         &e,
                         BaseNodeServiceError::CommsInterfaceError(
-                            CommsInterfaceError::UnknownSpentOutputs { .. } | CommsInterfaceError::KnownBadBlock { .. }
+                            CommsInterfaceError::UnknownSpentOutputs { .. } |
+                                CommsInterfaceError::KnownBadBlock { .. } |
+                                CommsInterfaceError::ChainStorageError(
+                                    ChainStorageError::UnverifiedHeldBlockInvalid { .. }
+                                )
                         )
                     );
                     if expected {

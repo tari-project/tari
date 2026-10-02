@@ -72,6 +72,7 @@ use crate::{
         DbValue,
         MinedInfo,
         async_db::AsyncBlockchainDb,
+        inputs_and_outputs_match_header,
     },
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolLastSeen},
@@ -1065,7 +1066,16 @@ where B: BlockchainBackend + 'static
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
             .await
         {
-            Ok(Some(block)) => Ok(block),
+            // The block may be stored as an orphan without being validated, so check now, as far as no chain state is
+            // needed, that the peer sent the body the header commits to. The kernels are checked when it is validated.
+            Ok(Some(block)) => match inputs_and_outputs_match_header(&block) {
+                Ok(true) => Ok(block),
+                Ok(false) => Err(CommsInterfaceError::InvalidFullBlock {
+                    hash: block_hash,
+                    details: "The block body is not the one its header commits to".to_string(),
+                }),
+                Err(e) => Err(e.into()),
+            },
             Ok(None) => {
                 debug!(
                     target: LOG_TARGET,

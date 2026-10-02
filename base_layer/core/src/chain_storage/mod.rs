@@ -50,6 +50,7 @@ pub use blockchain_database::{
     fetch_headers,
     fetch_target_difficulties_for_next_block,
     fetch_target_difficulty_for_next_block,
+    inputs_and_outputs_match_header,
     reorg_reintroduces_pre_ghsa_blocks,
 };
 mod blockchain_backend;
