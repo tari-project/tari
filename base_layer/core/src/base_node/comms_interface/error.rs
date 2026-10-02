@@ -81,8 +81,9 @@ pub enum CommsInterfaceError {
     UnknownSpentOutputs {
         hash: FixedHash,
         details: String,
-        /// Whether the block's parent is a held orphan, whose chain was searched for the outputs
-        held_orphan_parent: bool,
+        /// Whether the block's parent is a held orphan, and its chain was searched for the outputs all the way back to
+        /// main chain state whose outputs we hold completely
+        fork_searched_to_main_chain: bool,
     },
     #[error("Invalid merge mined block: {0}")]
     MergeMineError(#[from] MergeMineError),
@@ -100,9 +101,10 @@ impl CommsInterfaceError {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
             err @ CommsInterfaceError::TransportChannelError(_) |
-            // The block builds on a chain we hold, which we searched, and it spends an output that is not on it
+            // The block builds on a fork we hold completely, which we searched, and it spends an output that is not on
+            // it
             err @ CommsInterfaceError::UnknownSpentOutputs {
-                held_orphan_parent: true,
+                fork_searched_to_main_chain: true,
                 ..
             } => Some(BanReason {
                 reason: err.to_string(),
@@ -130,10 +132,10 @@ impl CommsInterfaceError {
             CommsInterfaceError::BlockError(_) |
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
-            // A block on a chain we do not hold: honest peers relay such blocks across forks, so it says nothing about
-            // the peer
+            // A block on a chain we do not hold completely: honest peers relay such blocks across forks, so it says
+            // nothing about the peer
             CommsInterfaceError::UnknownSpentOutputs {
-                held_orphan_parent: false,
+                fork_searched_to_main_chain: false,
                 ..
             } |
             // CommsInterfaceError::Other(_) |

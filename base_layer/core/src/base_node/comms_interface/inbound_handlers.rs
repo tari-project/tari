@@ -107,20 +107,29 @@ const MAX_ORPHAN_ANCESTOR_BYTES: usize = 2 * MAX_BLOCK_BODY_BYTES;
 /// The outputs of the held orphans that a block with parent `prev_hash` builds on: the parent if it is a held orphan,
 /// its parent if that is one too, and so on, within [MAX_ORPHAN_ANCESTORS] and [MAX_ORPHAN_ANCESTOR_BYTES]. Orphans
 /// are stored with their outputs bound to their headers by the arrival check, so these are the outputs those blocks
-/// were mined with. Empty if the parent is not a held orphan (every block has at least a coinbase output).
+/// were mined with.
+///
+/// Also returns whether the walk ended at a block whose outputs we hold completely (see
+/// [main_chain_outputs_are_complete]), i.e. whether every output an honest block on this chain could spend was found.
 fn held_orphan_ancestor_outputs<B: BlockchainBackend>(
     db: &B,
     mut prev_hash: HashOutput,
-) -> Result<HashMap<HashOutput, TransactionOutput>, ChainStorageError> {
+) -> Result<(HashMap<HashOutput, TransactionOutput>, bool), ChainStorageError> {
     let mut outputs = HashMap::new();
+    let mut orphans_read = 0usize;
     let mut bytes_read = 0usize;
-    for _ in 0..MAX_ORPHAN_ANCESTORS {
-        if bytes_read >= MAX_ORPHAN_ANCESTOR_BYTES {
-            break;
+    loop {
+        if !db.contains(&DbKey::OrphanBlock(prev_hash))? {
+            let complete = main_chain_outputs_are_complete(db, prev_hash)?;
+            return Ok((outputs, complete));
+        }
+        if orphans_read >= MAX_ORPHAN_ANCESTORS || bytes_read >= MAX_ORPHAN_ANCESTOR_BYTES {
+            return Ok((outputs, false));
         }
         let Some(DbValue::OrphanBlock(orphan)) = db.fetch(&DbKey::OrphanBlock(prev_hash))? else {
-            break;
+            return Ok((outputs, false));
         };
+        orphans_read = orphans_read.saturating_add(1);
         bytes_read = bytes_read.saturating_add(orphan.get_serialized_size().unwrap_or(MAX_ORPHAN_ANCESTOR_BYTES));
         let (header, _, orphan_outputs, _) = orphan.dissolve();
         prev_hash = header.prev_hash;
@@ -128,7 +137,19 @@ fn held_orphan_ancestor_outputs<B: BlockchainBackend>(
             outputs.entry(output.hash()).or_insert(output);
         }
     }
-    Ok(outputs)
+}
+
+/// Whether `hash` is a block on our main chain for which we hold every output a child block could spend: at or below
+/// our best block (header sync stores headers ahead of their bodies), and at or above our pruned height (a pruned node
+/// deletes outputs spent at or below it, and an output spent on our chain after the block may still be spent by a
+/// child of it).
+fn main_chain_outputs_are_complete<B: BlockchainBackend>(db: &B, hash: HashOutput) -> Result<bool, ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let height = match db.fetch(&DbKey::HeaderHash(hash))? {
+        Some(DbValue::HeaderHash(header)) => header.height,
+        _ => return Ok(false),
+    };
+    Ok(height >= metadata.pruned_height() && height <= metadata.best_block_height())
 }
 
 /// Room left in the messaging frame for the DHT envelope around a base node service response
@@ -1297,6 +1318,7 @@ where B: BlockchainBackend + 'static
         let mut block_outputs: Option<HashMap<HashOutput, &TransactionOutput>> = None;
         // The outputs of the held orphans this block builds on, fetched on the first input found in neither
         let mut orphan_outputs: Option<HashMap<HashOutput, TransactionOutput>> = None;
+        let mut orphan_search_complete = false;
         for input in &mut inputs {
             if !input.is_compact() {
                 continue;
@@ -1318,7 +1340,9 @@ where B: BlockchainBackend + 'static
             // An output created in a held orphan this block builds on, e.g. a fork block we hold whose child is relayed
             // to us by peers that have reorged to the fork
             if orphan_outputs.is_none() {
-                orphan_outputs = Some(held_orphan_ancestor_outputs(&*db, header.prev_hash)?);
+                let (outputs, complete) = held_orphan_ancestor_outputs(&*db, header.prev_hash)?;
+                orphan_outputs = Some(outputs);
+                orphan_search_complete = complete;
             }
             if let Some(output) = orphan_outputs.as_ref().and_then(|outputs| outputs.get(&output_hash)) {
                 input.add_output_data(output.clone());
@@ -1326,33 +1350,22 @@ where B: BlockchainBackend + 'static
             }
 
             let details = format!("Output {output_hash} to be spent does not exist in db");
-            // A block whose parent is on our main chain can only spend outputs from our main chain or from itself, so
-            // it is invalid. That holds only if we still have every output the block could spend: the parent must be
-            // at or below our best block (header sync stores headers ahead of their bodies), and at or above our
-            // pruned height (a pruned node deletes outputs spent at or below it, and an output spent on our chain
-            // after the parent may still be spent by a block on the parent).
-            //
-            // A block on another chain can spend outputs from that chain that we have never seen (or hold only deeper
-            // than we look), which says nothing about the peer that sent it, so it is dropped without a ban. Unless its
-            // parent is a held orphan: an honest block on a chain we hold resolves from that chain, and the search was
-            // not free, so then it is a short ban.
-            let metadata = db.fetch_chain_metadata()?;
-            let parent_height = match db.fetch(&DbKey::HeaderHash(header.prev_hash))? {
-                Some(DbValue::HeaderHash(parent)) => Some(parent.height),
-                _ => None,
-            };
-            let parent_outputs_complete = parent_height
-                .is_some_and(|height| height >= metadata.pruned_height() && height <= metadata.best_block_height());
-            if parent_outputs_complete {
+            // A block whose parent is on our main chain, with its outputs complete, can only spend outputs from our
+            // main chain or from itself, so it is invalid.
+            if main_chain_outputs_are_complete(&*db, header.prev_hash)? {
                 return Err(CommsInterfaceError::InvalidFullBlock {
                     hash: block_hash,
                     details,
                 });
             }
+            // A block on another chain can spend outputs from that chain that we have never seen, which says nothing
+            // about the peer that sent it, so it is dropped without a ban. Unless we hold that chain all the way back
+            // to complete main chain state: then an honest block would have resolved, and the search was not free,
+            // so it is a short ban.
             return Err(CommsInterfaceError::UnknownSpentOutputs {
                 hash: block_hash,
                 details,
-                held_orphan_parent: orphan_outputs.as_ref().is_some_and(|outputs| !outputs.is_empty()),
+                fork_searched_to_main_chain: orphan_search_complete,
             });
         }
         debug!(

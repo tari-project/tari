@@ -704,9 +704,10 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
 }
 
 /// A compact input is hydrated from the database, from an output created in the same block, or from a held orphan the
-/// block builds on. An input that can be resolved from none of these makes a block on our main chain invalid (long ban)
-/// and a block on a held orphan chain suspect (short ban), but a block on a chain we do not hold may spend outputs from
-/// that chain that we have never seen, so the peer that sent it is not banned.
+/// block builds on. An input that can be resolved from none of these makes a block on our main chain invalid (long
+/// ban), but a block on a chain we do not hold may spend outputs from that chain that we have never seen, so the peer
+/// that sent it is not banned. (A fork we hold back to the main chain is covered by
+/// `an_unresolvable_spend_on_a_held_fork_is_banned_only_if_the_whole_fork_was_searched`.)
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn compact_inputs_that_cannot_be_hydrated() {
@@ -791,7 +792,8 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     );
     assert!(err.get_ban_reason().is_none());
 
-    // On a parent that is in the orphan pool: the held chain was searched and the output is not on it, so a short ban
+    // On a parent that is in the orphan pool, but whose own parent we do not hold: the output may be on the part of
+    // that chain we do not hold, so dropped without banning the peer
     let orphan = prepare_block(&store, &block1, vec![], &rules, &key_manager);
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
@@ -804,12 +806,12 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         .unwrap_err();
     assert!(
         matches!(err, CommsInterfaceError::UnknownSpentOutputs {
-            held_orphan_parent: true,
+            fork_searched_to_main_chain: false,
             ..
         }),
         "{err:?}"
     );
-    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+    assert!(err.get_ban_reason().is_none());
 
     // A pruned node deletes outputs spent at or below its pruned height
     let (block2, _) = append_block(
@@ -1286,4 +1288,81 @@ async fn body_matches_header_agrees_with_the_mmr_roots() {
     assert!(inputs_and_outputs_match_header(&tampered[0]).unwrap());
     assert!(!inputs_and_outputs_match_header(&tampered[1]).unwrap());
     assert!(!inputs_and_outputs_match_header(&tampered[2]).unwrap());
+}
+
+/// A chain of `count` held orphans on `parent`, each with a coinbase-like output of its own. Written straight to the
+/// orphan pool: only their outputs and links matter here.
+fn plant_orphan_chain(store: &BlockchainDatabase<TempDatabase>, parent: &BlockHeader, count: u64) -> Vec<Block> {
+    let mut orphans = Vec::new();
+    let mut prev = parent.clone();
+    for i in 0..count {
+        let mut header = BlockHeader::from_previous(&prev);
+        header.nonce = i;
+        let output = TransactionOutput {
+            minimum_value_promise: MicroMinotari::from(i),
+            ..Default::default()
+        };
+        let orphan = Block::new(
+            header,
+            AggregateBody::new_sorted_unchecked(vec![], vec![output], vec![]),
+        );
+        let mut txn = DbTransaction::new();
+        txn.insert_orphan(Arc::new(orphan.clone()));
+        store.write(txn).unwrap();
+        prev = orphan.header.clone();
+        orphans.push(orphan);
+    }
+    orphans
+}
+
+/// A block on `prev_hash` spending an output nobody has
+fn spending_an_unknown_output(prev_hash: FixedHash) -> Block {
+    let mut header = BlockHeader::new(0);
+    header.height = 100;
+    header.prev_hash = prev_hash;
+    let input = TransactionInput::new_current_version(
+        SpentOutput::OutputHash(FixedHash::from([7u8; 32])),
+        Default::default(),
+        Default::default(),
+    );
+    Block::new(header, AggregateBody::new_unsorted(vec![input], vec![], vec![]))
+}
+
+/// A block on a held fork that spends an output found neither on the fork nor on our main chain is a short ban, but
+/// only if we searched the whole fork back to the main chain: an honest block would then have resolved. A search that
+/// stopped early (here, at the orphan count limit of 16) proves nothing, so then there is no ban.
+#[tokio::test]
+async fn an_unresolvable_spend_on_a_held_fork_is_banned_only_if_the_whole_fork_was_searched() {
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, _) = create_new_blockchain(network);
+    let orphans = plant_orphan_chain(&store, blocks[0].header(), 17);
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+
+    // 16 orphans back to the genesis block: searched completely
+    let err = handlers
+        .handle_block(spending_an_unknown_output(orphans[15].hash()), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs {
+            fork_searched_to_main_chain: true,
+            ..
+        }),
+        "{err:?}"
+    );
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+
+    // 17 orphans: the search stops one short of the main chain
+    let err = handlers
+        .handle_block(spending_an_unknown_output(orphans[16].hash()), None)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs {
+            fork_searched_to_main_chain: false,
+            ..
+        }),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
 }
