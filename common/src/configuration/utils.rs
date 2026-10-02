@@ -988,34 +988,77 @@ pub fn mask_value(key: &str, value: &str) -> String {
     "***".to_string()
 }
 
-/// Replaces the path of every URL (an element containing `://`) in a list separated by `,`, `;` or whitespace with
-/// `/***`, keeping `scheme://host[:port]` and the separators. URLs with no path or a bare `/`, and elements that are
-/// not URLs (e.g. multiaddrs such as `/ip4/1.2.3.4/tcp/18189`), are kept as they are.
-fn mask_url_paths(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut element = String::new();
-    for c in value.chars() {
-        if c == ',' || c == ';' || c.is_whitespace() {
-            result.push_str(&mask_url_path(&element));
-            element.clear();
-            result.push(c);
-        } else {
-            element.push(c);
-        }
-    }
-    result.push_str(&mask_url_path(&element));
-    result
+/// Returns true for characters allowed in a URL scheme.
+fn is_scheme_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.'
 }
 
-/// See [`mask_url_paths`]; handles one element.
-fn mask_url_path(element: &str) -> String {
-    let Some((scheme, rest)) = element.split_once("://") else {
-        return element.to_string();
-    };
-    match rest.split_once('/') {
-        Some((authority, path)) if !path.is_empty() => format!("{scheme}://{authority}/***"),
-        _ => element.to_string(),
+/// Returns true if `s` starts with `scheme://`.
+fn starts_with_url(s: &str) -> bool {
+    let scheme_len = s
+        .chars()
+        .take_while(|c| is_scheme_char(*c))
+        .map(char::len_utf8)
+        .sum::<usize>();
+    scheme_len > 0 && s.get(scheme_len..).is_some_and(|rest| rest.starts_with("://"))
+}
+
+/// Returns true for the characters that separate elements of a list value.
+fn is_list_separator(c: char) -> bool {
+    c == ',' || c == ';' || c.is_whitespace()
+}
+
+/// Masks everything after the authority of every URL in a value: each `scheme://host[:port]` is kept and the rest is
+/// replaced by `/***`, whatever it contains (`;`, `\`, `,` or spaces included). A URL ends only where list separators
+/// (`,`, `;`, whitespace) are followed by another `scheme://`, or at the end of the value. A URL with nothing (or only
+/// `/`) after the authority, and text that is not a URL (e.g. multiaddrs such as `/ip4/1.2.3.4/tcp/18189` or plain
+/// hosts), are kept as they are.
+fn mask_url_paths(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(marker) = rest.find("://") {
+        // Text before the scheme (separators, or a value that is not a URL) is kept
+        let (before, from_marker) = rest.split_at(marker);
+        let scheme_start = before
+            .char_indices()
+            .rev()
+            .find(|(_, c)| !is_scheme_char(*c))
+            .map(|(index, c)| index.saturating_add(c.len_utf8()))
+            .unwrap_or(0);
+        let (text, scheme) = before.split_at(scheme_start);
+        result.push_str(text);
+        result.push_str(scheme);
+
+        // `://` and the authority
+        let after_marker = from_marker.get(3..).unwrap_or("");
+        let authority_end = after_marker
+            .find(|c: char| matches!(c, '/' | '\\' | ';' | '?' | '#' | ',') || c.is_whitespace())
+            .unwrap_or(after_marker.len());
+        let (authority, tail) = after_marker.split_at(authority_end);
+        result.push_str("://");
+        result.push_str(authority);
+
+        // The rest of this URL runs up to separators that are followed by the next URL
+        let mut url_end = tail.len();
+        for (index, c) in tail.char_indices() {
+            if is_list_separator(c) &&
+                tail.get(index..)
+                    .is_some_and(|from| starts_with_url(from.trim_start_matches(is_list_separator)))
+            {
+                url_end = index;
+                break;
+            }
+        }
+        let (url_rest, next) = tail.split_at(url_end);
+        if url_rest.is_empty() || url_rest == "/" {
+            result.push_str(url_rest);
+        } else {
+            result.push_str("/***");
+        }
+        rest = next;
     }
+    result.push_str(rest);
+    result
 }
 
 /// Checks for environment variables that look like they are intended to configure Tari applications but use an
@@ -1267,6 +1310,20 @@ mod test {
             assert_eq!(mask_value("x.monerod_url", value), value);
             assert_eq!(mask_value("x.listener_address", value), value);
         }
+        // Everything after the authority is masked, whatever it contains
+        assert_eq!(
+            mask_value("x.monerod_url", "http://h:1/a;APIKEY/json_rpc"),
+            "http://h:1/***"
+        );
+        assert_eq!(mask_value("x.monerod_url", "http://host\\KEY"), "http://host/***");
+        assert_eq!(
+            mask_value("x.monerod_url", "http://a:1/x, http://b:2/y"),
+            "http://a:1/***, http://b:2/***"
+        );
+        assert_eq!(
+            mask_value("x.monerod_url", "http://a:1/x y,z, https://b:2"),
+            "http://a:1/***, https://b:2"
+        );
         // URL paths are masked, host and port kept
         assert_eq!(
             mask_value("x.monerod_url", "http://node:18081/json_rpc"),

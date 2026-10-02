@@ -42,6 +42,23 @@ provides network services.
 - `--network <NETWORK>` - Network to use (env: `TARI_NETWORK`)
 - `-p <KEY=VALUE>` - Configuration property overrides (multiple allowed)
 
+#### Log configuration trust and containment
+
+These rules apply to every application that uses a log4rs YAML file (`--log-config`, or the default
+`<base path>/config/<app>/log4rs.yml`):
+
+- **Trusted file.** On Unix the log config file, its directory and the directory of every symlink in its chain are
+  checked before the file is read. A file is refused when another non-root user can change it: it (or one of those
+  directories) is owned by a user other than you and root, is world-writable, or is group-writable by a group that is
+  not your private group (a group named after you, with no other members). A dangling symlink is refused too.
+  Root-owned files and files writable only by your private group are loaded with a warning.
+- **Containment.** Every file appender `path` and rolling `pattern` must be inside `<log dir>/log`, where the log dir is
+  `--log-path` if given, otherwise the base path. Write paths as `{{log_dir}}/log/...`. Paths with `..`, `$ENV{...}` or
+  `${...}` are refused.
+- **Logging elsewhere.** To keep logs somewhere else, pass `--log-path <dir>`; logs then go to `<dir>/log/...`.
+- **Fallback.** A refused file is not loaded. The built-in default logging configuration is used instead, and the
+  reasons are printed to stderr and written to the log. The application still starts.
+
 **Node-Specific Options**:
 
 - `--init` - Create default configuration file if it doesn't exist
