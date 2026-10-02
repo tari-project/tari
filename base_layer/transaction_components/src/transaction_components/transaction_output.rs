@@ -339,18 +339,17 @@ impl TransactionOutput {
         Ok(())
     }
 
-    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    /// Verify a recovered mask (blinding factor) for a proof against the commitment. Returns
+    /// `Err(TransactionError::InvalidMask)` if the commitment does not open to the value under the mask.
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
         commitment_mask_key: &PrivateKey,
         value: u64,
-    ) -> Result<bool, TransactionError> {
-        match prover.verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value) {
-            Ok(()) => Ok(true),
-            Err(RangeProofError::InvalidMask {}) => Ok(false),
-            Err(e) => Err(e.into()),
-        }
+    ) -> Result<(), TransactionError> {
+        prover
+            .verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)
+            .map_err(Into::into)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.

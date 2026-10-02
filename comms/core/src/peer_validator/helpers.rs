@@ -53,13 +53,11 @@ fn validate_peer_identity_claim_signature(
     public_key: &CommsPublicKey,
     claim: &PeerIdentityClaim,
 ) -> Result<(), PeerValidatorError> {
-    if let Ok(true) = claim.is_valid(public_key) {
-        Ok(())
-    } else {
-        Err(PeerValidatorError::InvalidPeerSignature {
+    claim
+        .verify(public_key)
+        .map_err(|_| PeerValidatorError::InvalidPeerSignature {
             peer: NodeId::from_public_key(public_key),
         })
-    }
 }
 
 /// Verifies a signed claim and returns only the addresses permitted by the

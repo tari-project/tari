@@ -867,17 +867,12 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError> {
+    ) -> Result<(), KeyManagerError> {
         let commitment_mask_key = self.get_private_key(commitment_mask_key_id)?;
-        match self
-            .crypto_factories
+        self.crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &commitment_mask_key, value)
-        {
-            Ok(()) => Ok(true),
-            Err(RangeProofError::InvalidMask {}) => Ok(false),
-            Err(e) => Err(e.into()),
-        }
+            .map_err(Into::into)
     }
 
     fn get_view_key(&self) -> TariKeyAndId {

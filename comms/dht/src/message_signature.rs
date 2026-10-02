@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use tari_comms::types::{CommsPublicKey, CommsSecretKey, CompressedSignature, Signature};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::ByteArray;
 
 use crate::comms_dht_hash_domain_message_signature;
 
@@ -66,16 +66,27 @@ impl MessageSignature {
         }
     }
 
-    /// Returns true if the provided message valid for this message signature, otherwise false.
-    pub fn verify(&self, message: &[u8]) -> Result<bool, ByteArrayError> {
+    /// Verify this message signature against the provided message. Returns
+    /// `Err(MessageSignatureError::InvalidSignature)` if the signature is not valid for the message.
+    pub fn verify(&self, message: &[u8]) -> Result<(), MessageSignatureError> {
         let challenge = construct_message_signature_hash(
             &self.signer_public_key,
             self.signature.get_compressed_public_nonce(),
             message,
         );
-        let signature = self.signature.to_schnorr_signature()?;
-        let key = self.signer_public_key.to_public_key()?;
-        Ok(signature.verify_raw_uniform(&key, &challenge))
+        let signature = self
+            .signature
+            .to_schnorr_signature()
+            .map_err(|_| MessageSignatureError::InvalidSignatureBytes)?;
+        let key = self
+            .signer_public_key
+            .to_public_key()
+            .map_err(|_| MessageSignatureError::InvalidSignerPublicKeyBytes)?;
+        if signature.verify_raw_uniform(&key, &challenge) {
+            Ok(())
+        } else {
+            Err(MessageSignatureError::InvalidSignature)
+        }
     }
 
     /// Consume this instance, returning the public key of the signer.
@@ -133,6 +144,8 @@ pub enum MessageSignatureError {
     InvalidPublicNonceBytes,
     #[error("Message signature contained an invalid signer public key")]
     InvalidSignerPublicKeyBytes,
+    #[error("Message signature is not valid for the message")]
+    InvalidSignature,
 }
 
 #[cfg(test)]
@@ -150,8 +163,11 @@ mod test {
     #[test]
     fn it_secures_the_message() {
         let (mac, _) = setup();
-        assert!(mac.verify(MSG).unwrap());
-        assert!(!mac.verify(b"99.9% genuine").unwrap());
+        mac.verify(MSG).unwrap();
+        assert_eq!(
+            mac.verify(b"99.9% genuine"),
+            Err(MessageSignatureError::InvalidSignature)
+        );
     }
 
     #[test]
@@ -171,7 +187,7 @@ mod test {
             mac.signature.get_signature() + (&msg_scalar * bad_signer_k),
         );
 
-        assert!(!mac.verify(MSG).unwrap());
+        assert_eq!(mac.verify(MSG), Err(MessageSignatureError::InvalidSignature));
     }
 
     #[test]
@@ -186,6 +202,6 @@ mod test {
         // change just the public nonce, an attacker does not need the secret key.
         mac.signature =
             CompressedSignature::new_from_schnorr(Signature::sign_raw_uniform(&signer_k, nonce_k, &msg).unwrap());
-        assert!(!mac.verify(MSG).unwrap());
+        assert_eq!(mac.verify(MSG), Err(MessageSignatureError::InvalidSignature));
     }
 }
