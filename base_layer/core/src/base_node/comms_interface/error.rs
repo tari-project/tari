@@ -78,7 +78,12 @@ pub enum CommsInterfaceError {
     #[error("Block {hash} is already known to be bad: {reason}")]
     KnownBadBlock { hash: String, reason: String },
     #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
-    UnknownSpentOutputs { hash: FixedHash, details: String },
+    UnknownSpentOutputs {
+        hash: FixedHash,
+        details: String,
+        /// Whether the block's parent is a held orphan, whose chain was searched for the outputs
+        held_orphan_parent: bool,
+    },
     #[error("Invalid merge mined block: {0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Invalid difficulty: {0}")]
@@ -94,7 +99,12 @@ impl CommsInterfaceError {
         match self {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
-            err @ CommsInterfaceError::TransportChannelError(_) => Some(BanReason {
+            err @ CommsInterfaceError::TransportChannelError(_) |
+            // The block builds on a chain we hold, which we searched, and it spends an output that is not on it
+            err @ CommsInterfaceError::UnknownSpentOutputs {
+                held_orphan_parent: true,
+                ..
+            } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Short,
             }),
@@ -120,9 +130,12 @@ impl CommsInterfaceError {
             CommsInterfaceError::BlockError(_) |
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
-            // A block on a chain we do not hold enough of to hydrate it: honest peers relay such blocks across forks, so
-            // it says nothing about the peer
-            CommsInterfaceError::UnknownSpentOutputs { .. } |
+            // A block on a chain we do not hold: honest peers relay such blocks across forks, so it says nothing about
+            // the peer
+            CommsInterfaceError::UnknownSpentOutputs {
+                held_orphan_parent: false,
+                ..
+            } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }

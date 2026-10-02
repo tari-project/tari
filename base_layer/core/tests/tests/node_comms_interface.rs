@@ -703,8 +703,9 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
     assert_eq!(store.get_height().unwrap(), 1);
 }
 
-/// A compact input is hydrated from the database, or from an output created in the same block. An input that can be
-/// resolved from neither makes a block on our main chain invalid, but a block on another chain may spend outputs from
+/// A compact input is hydrated from the database, from an output created in the same block, or from a held orphan the
+/// block builds on. An input that can be resolved from none of these makes a block on our main chain invalid (long ban)
+/// and a block on a held orphan chain suspect (short ban), but a block on a chain we do not hold may spend outputs from
 /// that chain that we have never seen, so the peer that sent it is not banned.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -790,7 +791,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     );
     assert!(err.get_ban_reason().is_none());
 
-    // On a parent that is in the orphan pool: dropped without banning the peer
+    // On a parent that is in the orphan pool: the held chain was searched and the output is not on it, so a short ban
     let orphan = prepare_block(&store, &block1, vec![], &rules, &key_manager);
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
@@ -802,10 +803,13 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
+        matches!(err, CommsInterfaceError::UnknownSpentOutputs {
+            held_orphan_parent: true,
+            ..
+        }),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
 
     // A pruned node deletes outputs spent at or below its pruned height
     let (block2, _) = append_block(
@@ -1198,6 +1202,7 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
         .handle_block(f2_compact, Some(NodeId::default()))
         .await
         .unwrap();
+    // (No error, so nothing for the relayer to be banned for)
     // Stored as an orphan, or reorged to (the chain strength is not decided by the test's difficulties alone)
     assert!(store.chain_block_or_orphan_block_exists(f2.hash()).unwrap());
 }

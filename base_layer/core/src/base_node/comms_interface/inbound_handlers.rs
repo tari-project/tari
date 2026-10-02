@@ -44,7 +44,7 @@ use tari_node_components::blocks::{
 };
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
     helpers::borsh::SerializedSize,
     tari_proof_of_work::{PowAlgorithm, PowError},
     transaction_components::{Transaction, TransactionOutput},
@@ -100,19 +100,28 @@ const DIFF_INDICATOR_LAG: u64 = 25;
 /// outputs the block spends. A relayed fork block is normally a short way ahead of what we hold; a deeper fork is
 /// resolved through sync, and the walk reads whole blocks, so it is kept short.
 const MAX_ORPHAN_ANCESTORS: usize = 16;
+/// The walk also stops once it has read this much orphan data (measured as the borsh size of each orphan), because
+/// orphans can be up to the block body byte limit each.
+const MAX_ORPHAN_ANCESTOR_BYTES: usize = 2 * MAX_BLOCK_BODY_BYTES;
 
 /// The outputs of the held orphans that a block with parent `prev_hash` builds on: the parent if it is a held orphan,
-/// its parent if that is one too, and so on, at most [MAX_ORPHAN_ANCESTORS] of them. Orphans are stored with their
-/// outputs bound to their headers by the arrival check, so these are the outputs those blocks were mined with.
+/// its parent if that is one too, and so on, within [MAX_ORPHAN_ANCESTORS] and [MAX_ORPHAN_ANCESTOR_BYTES]. Orphans
+/// are stored with their outputs bound to their headers by the arrival check, so these are the outputs those blocks
+/// were mined with. Empty if the parent is not a held orphan (every block has at least a coinbase output).
 fn held_orphan_ancestor_outputs<B: BlockchainBackend>(
     db: &B,
     mut prev_hash: HashOutput,
 ) -> Result<HashMap<HashOutput, TransactionOutput>, ChainStorageError> {
     let mut outputs = HashMap::new();
+    let mut bytes_read = 0usize;
     for _ in 0..MAX_ORPHAN_ANCESTORS {
+        if bytes_read >= MAX_ORPHAN_ANCESTOR_BYTES {
+            break;
+        }
         let Some(DbValue::OrphanBlock(orphan)) = db.fetch(&DbKey::OrphanBlock(prev_hash))? else {
             break;
         };
+        bytes_read = bytes_read.saturating_add(orphan.get_serialized_size().unwrap_or(MAX_ORPHAN_ANCESTOR_BYTES));
         let (header, _, orphan_outputs, _) = orphan.dissolve();
         prev_hash = header.prev_hash;
         for output in orphan_outputs {
@@ -1324,7 +1333,9 @@ where B: BlockchainBackend + 'static
             // after the parent may still be spent by a block on the parent).
             //
             // A block on another chain can spend outputs from that chain that we have never seen (or hold only deeper
-            // than we look), which says nothing about the peer that sent it, so it is dropped without a ban.
+            // than we look), which says nothing about the peer that sent it, so it is dropped without a ban. Unless its
+            // parent is a held orphan: an honest block on a chain we hold resolves from that chain, and the search was
+            // not free, so then it is a short ban.
             let metadata = db.fetch_chain_metadata()?;
             let parent_height = match db.fetch(&DbKey::HeaderHash(header.prev_hash))? {
                 Some(DbValue::HeaderHash(parent)) => Some(parent.height),
@@ -1341,6 +1352,7 @@ where B: BlockchainBackend + 'static
             return Err(CommsInterfaceError::UnknownSpentOutputs {
                 hash: block_hash,
                 details,
+                held_orphan_parent: orphan_outputs.as_ref().is_some_and(|outputs| !outputs.is_empty()),
             });
         }
         debug!(
