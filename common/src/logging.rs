@@ -30,6 +30,7 @@ use std::{
 
 use log::warn;
 use log4rs::config::RawConfig;
+use path_clean::PathClean;
 
 use crate::{
     ConfigError,
@@ -120,10 +121,12 @@ struct LogConfigChoice {
 /// - any appender writes outside `base_path` (see [`escaping_appender_paths`]).
 ///
 /// Other findings (e.g. a file writable only by the user's private group, or a root-owned read-only file) are only
-/// reported. The built-in default must itself keep its appenders inside `base_path`.
+/// reported. The built-in default is never refused. `base_path` is made absolute and cleaned (so `..` in it is
+/// resolved) before it is substituted for `{{log_dir}}`.
 ///
 /// [`untrusted_severe_reasons`]: crate::configuration::utils::untrusted_severe_reasons
 fn choose_log_config(config_file: &Path, base_path: &Path, default: &str) -> Result<LogConfigChoice, ConfigError> {
+    let base = LogDirBase::new(base_path);
     let path_findings = untrusted_path_findings(config_file);
     let mut findings = Vec::new();
     let mut file_contents = None;
@@ -142,8 +145,8 @@ fn choose_log_config(config_file: &Path, base_path: &Path, default: &str) -> Res
     }
 
     if let Some(contents) = file_contents {
-        let contents = substitute_log_dir(&contents, base_path)?;
-        let escapes = escaping_appender_paths(&contents, base_path)?;
+        let contents = substitute_log_dir(&contents, &base.lexical)?;
+        let escapes = escaping_appender_paths(&contents, &base)?;
         if escapes.is_empty() {
             return Ok(LogConfigChoice {
                 contents,
@@ -154,14 +157,9 @@ fn choose_log_config(config_file: &Path, base_path: &Path, default: &str) -> Res
         findings.extend(escapes.into_iter().map(|reason| (true, reason)));
     }
 
-    let contents = substitute_log_dir(default, base_path)?;
-    let escapes = escaping_appender_paths(&contents, base_path)?;
-    if !escapes.is_empty() {
-        return Err(ConfigError::new(
-            "The built-in default log config writes outside the log directory",
-            Some(escapes.join("; ")),
-        ));
-    }
+    // The built-in default is compiled in and only uses `{{log_dir}}`-relative paths, so it is not checked: refusing it
+    // would leave nothing to start with
+    let contents = substitute_log_dir(default, &base.lexical)?;
     Ok(LogConfigChoice {
         contents,
         findings,
@@ -198,19 +196,51 @@ fn open_log_config(config_file: &Path) -> Result<(File, fs::Metadata), ConfigErr
     Ok((file, metadata))
 }
 
-/// Returns one message per log4rs appender path that is outside `base_path`: each appender's `path` and its rolling
-/// policy's `policy.roller.pattern`. A path is inside if it has no `..` component and the canonical form of its parent
-/// directory (or, if that does not exist yet, of its nearest existing ancestor) is inside the canonical `base_path`.
-/// Relative paths are resolved against the current directory, as log4rs does. `contents` must already have
-/// `{{log_dir}}` substituted.
-fn escaping_appender_paths(contents: &str, base_path: &Path) -> Result<Vec<String>, ConfigError> {
+/// The log directory in the two forms used for containment checks.
+struct LogDirBase {
+    /// Absolute and cleaned (no `.` or `..`), and on Unix canonical if it exists. This is what `{{log_dir}}` is
+    /// replaced with.
+    lexical: PathBuf,
+    /// Fully resolved (see [`resolve_for_containment`]), if possible.
+    canonical: Option<PathBuf>,
+}
+
+impl LogDirBase {
+    fn new(base_path: &Path) -> Self {
+        let absolute = if base_path.is_absolute() {
+            base_path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|dir| dir.join(base_path))
+                .unwrap_or_else(|_| base_path.to_path_buf())
+        };
+        let cleaned = absolute.clean();
+        // On Windows `canonicalize` returns a `\\?\` verbatim path, which log4rs cannot use, so only resolve on Unix
+        let lexical = if cfg!(unix) {
+            fs::canonicalize(&cleaned).unwrap_or(cleaned)
+        } else {
+            cleaned
+        };
+        let canonical = resolve_for_containment(&lexical);
+        Self { lexical, canonical }
+    }
+}
+
+/// Returns one message per log4rs appender path that is outside the log directory: each appender's `path` and its
+/// rolling policy's `policy.roller.pattern`. A path is outside if it contains `$ENV{` or `${` (log4rs expands
+/// environment variables at build time, so the raw string says nothing about where it writes), or has a `..`
+/// component. Otherwise it is inside if its parent directory, made absolute against the current directory (as log4rs
+/// does) and cleaned, starts with the log directory, or if the parent's canonical form (or that of its nearest
+/// existing ancestor) starts with the log directory's canonical form. The lexical check keeps `{{log_dir}}/log/...`
+/// valid when the operator made `log` a symlink to another disk. `contents` must already have `{{log_dir}}`
+/// substituted.
+fn escaping_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<String>, ConfigError> {
     let value: serde_yaml::Value = serde_yaml::from_str(contents).map_err(|e| {
         ConfigError::new(
             "Could not parse the contents of the log file as yaml",
             Some(e.to_string()),
         )
     })?;
-    let base = resolve_for_containment(base_path);
     let mut escapes = Vec::new();
     let Some(appenders) = value.get("appenders").and_then(|a| a.as_mapping()) else {
         return Ok(escapes);
@@ -230,25 +260,47 @@ fn escaping_appender_paths(contents: &str, base_path: &Path) -> Result<Vec<Strin
             paths.push(pattern);
         }
         for path in paths {
-            let parent = match Path::new(path).parent() {
-                Some(p) if !p.as_os_str().is_empty() => p,
-                _ => Path::new("."),
-            };
-            let inside = match (&base, resolve_for_containment(parent)) {
-                (Some(base), Some(resolved)) => resolved.starts_with(base),
-                _ => false,
-            };
-            if !inside {
+            if !is_inside_log_dir(path, base) {
                 escapes.push(format!(
                     "Log appender '{}' writes to {}, outside the log directory {}",
                     sanitize_for_display(name),
                     sanitize_for_display(path),
-                    sanitize_for_display(&base_path.display().to_string())
+                    sanitize_for_display(&base.lexical.display().to_string())
                 ));
             }
         }
     }
     Ok(escapes)
+}
+
+/// See [`escaping_appender_paths`].
+fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
+    if path.contains("$ENV{") || path.contains("${") {
+        return false;
+    }
+    let path = Path::new(path);
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return false;
+    }
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    let absolute = if parent.is_absolute() {
+        parent.to_path_buf()
+    } else {
+        match std::env::current_dir() {
+            Ok(dir) => dir.join(parent),
+            Err(_) => return false,
+        }
+    };
+    if absolute.clean().starts_with(&base.lexical) {
+        return true;
+    }
+    match (&base.canonical, resolve_for_containment(&absolute)) {
+        (Some(base), Some(resolved)) => resolved.starts_with(base),
+        _ => false,
+    }
 }
 
 /// Returns an absolute, canonical form of `path` for containment checks: relative paths are joined to the current
@@ -432,6 +484,31 @@ mod test {
         let choice = choose_log_config(&path, dir.path(), default).unwrap();
         assert!(!choice.refused, "{:?}", choice.findings);
 
+        // Environment variables are expanded by log4rs, so they are never trusted
+        std::fs::write(
+            &path,
+            "appenders:\n  env:\n    kind: file\n    path: \"$ENV{HOME}/.bashrc\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+        std::fs::write(
+            &path,
+            "appenders:\n  env:\n    kind: file\n    path: \"${HOME}/x.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+
+        // {{log_dir}}/../x is refused
+        std::fs::write(
+            &path,
+            "appenders:\n  up:\n    kind: file\n    path: \"{{log_dir}}/../x.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+
         // A rolling pattern that escapes is refused too
         std::fs::write(
             &path,
@@ -443,11 +520,48 @@ mod test {
         assert!(choice.refused);
     }
 
+    #[cfg(unix)]
     #[test]
-    fn embedded_default_log_configs_stay_in_the_log_dir() {
-        use super::{escaping_appender_paths, substitute_log_dir};
+    fn symlinked_log_dir_and_dotdot_base_path_are_accepted() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        use super::choose_log_config;
 
         let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let base = dir.path().join("base");
+        let other_disk = dir.path().join("other_disk");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::create_dir_all(&other_disk).unwrap();
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // `<base>/log` is the operator's own symlink to another disk
+        symlink(&other_disk, base.join("log")).unwrap();
+
+        let path = base.join("log4rs.yml");
+        let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\n";
+        std::fs::write(&path, yaml).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, &base, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+
+        // A base path with `..` in it
+        let dotted = base.join("..").join("base");
+        let choice = choose_log_config(&path, &dotted, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+
+        // The default is used, not refused, even when the user's file is
+        std::fs::write(&path, "appenders:\n  evil:\n    kind: file\n    path: /tmp/evil\n").unwrap();
+        let choice = choose_log_config(&path, &dotted, yaml).unwrap();
+        assert!(choice.refused);
+        assert!(choice.contents.contains("/log/app.log"));
+    }
+
+    #[test]
+    fn embedded_default_log_configs_stay_in_the_log_dir() {
+        use super::{LogDirBase, escaping_appender_paths, substitute_log_dir};
+
+        let dir = tempfile::tempdir().unwrap();
+        let base = LogDirBase::new(dir.path());
         for (name, yaml) in [
             (
                 "node",
@@ -471,8 +585,8 @@ mod test {
             ),
             ("cucumber", include_str!("../../integration_tests/log4rs/cucumber.yml")),
         ] {
-            let contents = substitute_log_dir(yaml, dir.path()).unwrap();
-            let escapes = escaping_appender_paths(&contents, dir.path()).unwrap();
+            let contents = substitute_log_dir(yaml, &base.lexical).unwrap();
+            let escapes = escaping_appender_paths(&contents, &base).unwrap();
             assert!(escapes.is_empty(), "{name}: {escapes:?}");
         }
     }

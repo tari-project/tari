@@ -838,8 +838,10 @@ pub(crate) fn untrusted_path_findings(path: &Path) -> Vec<(bool, String)> {
     findings
 }
 
-/// Returns true if `gid` is the current user's private group: it is the effective gid, it is not one of macOS's
-/// shared `staff` (20) or `admin` (80) groups, and no user other than the current one is listed as a member. If the
+/// Returns true if `gid` is the current user's private group (the user-private-group convention): it is the effective
+/// gid, it is not one of macOS's shared `staff` (20) or `admin` (80) groups, its name equals the user's name, and no
+/// user other than the current one is listed as a member. The name check matters because users whose primary group
+/// it is are not listed as members, so a shared primary group such as `users` can have an empty member list. If the
 /// group or user cannot be looked up, the group is treated as shared.
 #[cfg(unix)]
 pub(crate) fn is_private_group(gid: u32) -> bool {
@@ -851,15 +853,15 @@ pub(crate) fn is_private_group(gid: u32) -> bool {
     if cfg!(target_os = "macos") && (gid == 20 || gid == 80) {
         return false;
     }
-    let (Some(user), Some(members)) = (current_user_name(), group_members(gid)) else {
+    let (Some(user), Some((group_name, members))) = (current_user_name(), group_info(gid)) else {
         return false;
     };
-    members.iter().all(|member| *member == user)
+    group_name == user && members.iter().all(|member| *member == user)
 }
 
-/// Returns the member names of group `gid` (from `getgrgid_r`), or `None` if it cannot be looked up.
+/// Returns the name and member names of group `gid` (from `getgrgid_r`), or `None` if it cannot be looked up.
 #[cfg(unix)]
-pub(crate) fn group_members(gid: u32) -> Option<Vec<String>> {
+pub(crate) fn group_info(gid: u32) -> Option<(String, Vec<String>)> {
     use std::ffi::CStr;
 
     let mut buffer: Vec<libc::c_char> = vec![0; 4096];
@@ -873,9 +875,11 @@ pub(crate) fn group_members(gid: u32) -> Option<Vec<String>> {
             buffer.resize(buffer.len().saturating_mul(2), 0);
             continue;
         }
-        if rc != 0 || result.is_null() {
+        if rc != 0 || result.is_null() || group.gr_name.is_null() {
             return None;
         }
+        // SAFETY: gr_name is a valid, null-terminated C string in `buffer`.
+        let group_name = unsafe { CStr::from_ptr(group.gr_name) }.to_string_lossy().into_owned();
         let mut members = Vec::new();
         let mut entry = group.gr_mem;
         while !entry.is_null() {
@@ -889,7 +893,7 @@ pub(crate) fn group_members(gid: u32) -> Option<Vec<String>> {
             // SAFETY: the array is null-terminated and we stopped at the terminator above.
             entry = unsafe { entry.add(1) };
         }
-        return Some(members);
+        return Some((group_name, members));
     }
 }
 
@@ -1468,8 +1472,8 @@ mod test {
         // SAFETY: getegid has no preconditions and cannot fail.
         let egid = unsafe { libc::getegid() };
         let shared_on_macos = cfg!(target_os = "macos") && (gid == 20 || gid == 80);
-        let only_us = match (current_user_name(), group_members(gid)) {
-            (Some(user), Some(members)) => members.iter().all(|m| *m == user),
+        let only_us = match (current_user_name(), group_info(gid)) {
+            (Some(user), Some((name, members))) => name == user && members.iter().all(|m| *m == user),
             _ => false,
         };
         let expected_private = gid == egid && !shared_on_macos && only_us;
