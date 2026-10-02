@@ -21,9 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use thiserror::Error;
 
-// Rust 1.99 clippy flags `redundant_field_names` inside thiserror's `#[from] source` derive expansion; nothing in this
-// file can be rewritten to satisfy it, so the lint is allowed on the enum.
-#[allow(clippy::redundant_field_names)]
 #[derive(Error, Debug, Clone)]
 pub enum LMDBError {
     #[error("Cannot create LMDB. The path does not exist")]
