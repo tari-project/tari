@@ -72,6 +72,7 @@ use crate::{
         DbValue,
         MinedInfo,
         async_db::AsyncBlockchainDb,
+        body_matches_header,
         inputs_and_outputs_match_header,
     },
     consensus::BaseNodeConsensusManager,
@@ -882,8 +883,29 @@ where B: BlockchainBackend + 'static
         new_block: NewBlock,
     ) -> Result<(), CommsInterfaceError> {
         let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+        self.check_body_matches_header(&block)?;
         self.handle_block(block, Some(source_peer)).await?;
         Ok(())
+    }
+
+    /// A block from a peer may be stored as an orphan without being validated, so check that its body is the one its
+    /// header commits to before it is handed on: completely if we hold its parent, otherwise as far as no chain state
+    /// is needed (its inputs and outputs, but not its kernels, which are then checked when it is validated).
+    fn check_body_matches_header(&self, block: &Block) -> Result<(), CommsInterfaceError> {
+        let db = self.blockchain_db.inner().db_read_access()?;
+        let matches = if db.fetch_block_accumulated_data(&block.header.prev_hash)?.is_some() {
+            body_matches_header(&*db, block)?
+        } else {
+            inputs_and_outputs_match_header(block)?
+        };
+        if matches {
+            Ok(())
+        } else {
+            Err(CommsInterfaceError::InvalidFullBlock {
+                hash: block.hash(),
+                details: "The block body is not the one its header commits to".to_string(),
+            })
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1066,16 +1088,11 @@ where B: BlockchainBackend + 'static
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
             .await
         {
-            // The block may be stored as an orphan without being validated, so check now, as far as no chain state is
-            // needed, that the peer sent the body the header commits to. The kernels are checked when it is validated.
-            Ok(Some(block)) => match inputs_and_outputs_match_header(&block) {
-                Ok(true) => Ok(block),
-                Ok(false) => Err(CommsInterfaceError::InvalidFullBlock {
-                    hash: block_hash,
-                    details: "The block body is not the one its header commits to".to_string(),
-                }),
-                Err(e) => Err(e.into()),
-            },
+            Ok(Some(block)) if block.hash() != block_hash => Err(CommsInterfaceError::InvalidFullBlock {
+                hash: block_hash,
+                details: format!("Peer sent block {} instead", block.hash()),
+            }),
+            Ok(Some(block)) => Ok(block),
             Ok(None) => {
                 debug!(
                     target: LOG_TARGET,

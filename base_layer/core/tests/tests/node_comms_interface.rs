@@ -944,51 +944,100 @@ async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
     assert!(err.get_ban_reason().is_none());
 }
 
-/// An honest chain G <- H0 <- H1, and a peer that sends us H1 first, with a body that is not the one its header commits
-/// to.
+/// H1's header and body, with its coinbase kernel swapped for another one: the inputs and outputs still match the
+/// header, the kernels do not
 // Overflow in test code panics, which is the desired failure mode for a test.
 #[allow(clippy::arithmetic_side_effects)]
-fn honest_chain_and_fake_child() -> (
-    BlockchainDatabase<TempDatabase>,
-    BaseNodeConsensusManager,
-    Arc<ChainBlock>,
-    Block,
-    Block,
-) {
-    let network = Network::LocalNet;
-    let (store, blocks, _, rules, key_manager) = create_new_blockchain(network);
-    let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
-    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap() else {
-        panic!("H0 was not added");
-    };
-    let h1 = prepare_block(&store, &h0, vec![], &rules, &key_manager);
-    store.rewind_to_height(0).unwrap();
-    if store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap() {
-        let mut txn = DbTransaction::new();
-        txn.delete_orphan(*h0.hash());
-        store.write(txn).unwrap();
-    }
-    assert!(!store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap());
-
-    // H1's header and outputs, with another kernel
+fn with_swapped_kernel(h1: &Block, rules: &BaseNodeConsensusManager, key_manager: &KeyManager) -> Block {
     let (_, other_kernel, _) = create_coinbase(
         rules.get_block_reward_at(h1.header.height),
         h1.header.height + rules.consensus_constants(0).coinbase_min_maturity(),
         None,
-        &key_manager,
+        key_manager,
     );
-    let fake_h1 = Block::new(
-        h1.header.clone(),
-        AggregateBody::new_sorted_unchecked(vec![], h1.body.outputs().clone(), vec![other_kernel]),
-    );
-    (store, rules, h0, h1, fake_h1)
+    let mut kernels = h1
+        .body
+        .kernels()
+        .iter()
+        .filter(|k| !k.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+    kernels.push(other_kernel);
+    let mut body = AggregateBody::new_unsorted(h1.body.inputs().clone(), h1.body.outputs().clone(), kernels);
+    body.sort();
+    Block::new(h1.header.clone(), body)
+}
+
+/// An honest chain G <- H0 <- H1, where H1 spends the genesis output, held up to G or (with `hold_h0`) up to H0 and a
+/// competing block X on H0, so that H1 does not build on our tip either way
+fn honest_chain(
+    hold_h0: bool,
+) -> (
+    BlockchainDatabase<TempDatabase>,
+    BaseNodeConsensusManager,
+    KeyManager,
+    Arc<ChainBlock>,
+    Block,
+) {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap() else {
+        panic!("H0 was not added");
+    };
+    let tx = spend_genesis_output(&outputs, &key_manager);
+    let h1 = prepare_block(&store, &h0, vec![tx], &rules, &key_manager);
+    if hold_h0 {
+        append_block(
+            &store,
+            &h0,
+            vec![],
+            &rules,
+            Difficulty::from_u64(10).unwrap(),
+            &key_manager,
+        )
+        .unwrap();
+        assert_eq!(store.get_height().unwrap(), 2);
+    } else {
+        store.rewind_to_height(0).unwrap();
+        if store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap() {
+            let mut txn = DbTransaction::new();
+            txn.delete_orphan(*h0.hash());
+            store.write(txn).unwrap();
+        }
+        assert!(!store.chain_block_or_orphan_block_exists(*h0.hash()).unwrap());
+    }
+    (store, rules, key_manager, h0, h1)
+}
+
+/// An announcement of `block` naming a transaction, so that the full block is fetched
+fn announce_with_a_transaction(block: &Block) -> NewBlock {
+    NewBlock {
+        header: block.header.clone(),
+        coinbase_kernels: block
+            .body
+            .kernels()
+            .iter()
+            .filter(|k| k.is_coinbase())
+            .cloned()
+            .collect(),
+        coinbase_outputs: block
+            .body
+            .outputs()
+            .iter()
+            .filter(|o| o.is_coinbase())
+            .cloned()
+            .collect(),
+        kernel_excess_sigs: vec![PrivateKey::default()],
+    }
 }
 
 /// A held orphan whose body was never checked against its header fails when an honest relayer completes its chain. The
 /// orphan is not marked bad, and the relayer, whose block was fine, is not banned.
 #[tokio::test]
 async fn a_held_orphan_with_a_fake_body_does_not_get_the_relayer_of_its_parent_banned() {
-    let (store, rules, h0, h1, fake_h1) = honest_chain_and_fake_child();
+    let (store, rules, key_manager, h0, h1) = honest_chain(false);
+    let fake_h1 = with_swapped_kernel(&h1, &rules, &key_manager);
     let result = store.add_block(Arc::new(fake_h1)).unwrap();
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
 
@@ -1010,38 +1059,74 @@ async fn a_held_orphan_with_a_fake_body_does_not_get_the_relayer_of_its_parent_b
     assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
 }
 
-/// A full block fetched for an announcement that does not build on our tip is checked against its header, as far as
-/// that needs no chain state, before it is stored as an orphan: a peer that sends another body is banned.
-#[tokio::test]
-async fn a_fetched_full_block_with_other_outputs_is_rejected_on_arrival() {
-    let (store, rules, _, h1, _) = honest_chain_and_fake_child();
-    // H1's header with only its kernel: its outputs are not the ones the header commits to
-    let fake_h1 = Block::new(
-        h1.header.clone(),
-        AggregateBody::new_sorted_unchecked(vec![], vec![], h1.body.kernels().clone()),
-    );
-    // An announcement of H1 naming a transaction, so that the full block is fetched
-    let announce = || NewBlock {
-        header: h1.header.clone(),
-        coinbase_kernels: h1.body.kernels().clone(),
-        coinbase_outputs: h1.body.outputs().clone(),
-        kernel_excess_sigs: vec![PrivateKey::default()],
-    };
-
-    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), fake_h1);
-    let err = handlers
-        .handle_new_block_message(announce(), NodeId::default())
-        .await
-        .unwrap_err();
+fn assert_banned_and_not_stored(err: &CommsInterfaceError, store: &BlockchainDatabase<TempDatabase>, hash: FixedHash) {
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
     assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
-    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+    assert!(!store.chain_block_or_orphan_block_exists(hash).unwrap());
+}
+
+/// A full block fetched for an announcement that does not build on our tip is checked against its header before it is
+/// stored as an orphan: a peer that sends another body is banned.
+#[tokio::test]
+async fn a_fetched_full_block_with_another_body_is_rejected_on_arrival() {
+    let (store, rules, _, _, h1) = honest_chain(false);
+
+    // Other outputs: caught without the parent
+    let other_outputs = Block::new(
+        h1.header.clone(),
+        AggregateBody::new_sorted_unchecked(h1.body.inputs().clone(), vec![], h1.body.kernels().clone()),
+    );
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), other_outputs);
+    let err = handlers
+        .handle_new_block_message(announce_with_a_transaction(&h1), NodeId::default())
+        .await
+        .unwrap_err();
+    assert_banned_and_not_stored(&err, &store, h1.hash());
+
+    // Another block altogether
+    let mut other_block = h1.clone();
+    other_block.header.nonce = other_block.header.nonce.wrapping_add(1);
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), other_block);
+    let err = handlers
+        .handle_new_block_message(announce_with_a_transaction(&h1), NodeId::default())
+        .await
+        .unwrap_err();
+    assert_banned_and_not_stored(&err, &store, h1.hash());
 
     // The honest body is accepted, as an orphan
-    let mut handlers = new_handlers_serving(&store, new_mempool(), rules, h1.clone());
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), h1.clone());
     handlers
-        .handle_new_block_message(announce(), NodeId::default())
+        .handle_new_block_message(announce_with_a_transaction(&h1), NodeId::default())
         .await
         .unwrap();
     assert!(store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+}
+
+/// A swapped kernel is caught on arrival when we hold the block's parent
+#[tokio::test]
+async fn a_fetched_full_block_with_a_swapped_kernel_is_rejected_on_arrival_when_we_hold_its_parent() {
+    let (store, rules, key_manager, _, h1) = honest_chain(true);
+    let fake_h1 = with_swapped_kernel(&h1, &rules, &key_manager);
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules, fake_h1);
+    let err = handlers
+        .handle_new_block_message(announce_with_a_transaction(&h1), NodeId::default())
+        .await
+        .unwrap_err();
+    assert_banned_and_not_stored(&err, &store, h1.hash());
+}
+
+/// An announcement without transactions is built from its own coinbase. If the block had other contents, that is not
+/// the block the header commits to: the peer is banned and nothing is stored.
+#[tokio::test]
+async fn an_announcement_of_a_non_empty_block_without_its_transactions_is_rejected() {
+    let (store, rules, _, _, h1) = honest_chain(false);
+    assert!(!h1.body.inputs().is_empty());
+    let mut announcement = announce_with_a_transaction(&h1);
+    announcement.kernel_excess_sigs = vec![];
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    let err = handlers
+        .handle_new_block_message(announcement, NodeId::default())
+        .await
+        .unwrap_err();
+    assert_banned_and_not_stored(&err, &store, h1.hash());
 }
