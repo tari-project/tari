@@ -1115,18 +1115,36 @@ async fn a_fetched_full_block_with_a_swapped_kernel_is_rejected_on_arrival_when_
     assert_banned_and_not_stored(&err, &store, h1.hash());
 }
 
-/// An announcement without transactions is built from its own coinbase. If the block had other contents, that is not
-/// the block the header commits to: the peer is banned and nothing is stored.
+/// An announcement without transactions is built from its own coinbase. A block with more than its coinbase can still
+/// be announced that way (when it has no kernel of its own), so then the full block is fetched: the honest block is
+/// accepted, and a peer that serves another body is banned and nothing is stored.
 #[tokio::test]
-async fn an_announcement_of_a_non_empty_block_without_its_transactions_is_rejected() {
+async fn an_announcement_of_a_non_empty_block_without_its_transactions_fetches_the_full_block() {
     let (store, rules, _, _, h1) = honest_chain(false);
     assert!(!h1.body.inputs().is_empty());
-    let mut announcement = announce_with_a_transaction(&h1);
-    announcement.kernel_excess_sigs = vec![];
-    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    let announce = || {
+        let mut announcement = announce_with_a_transaction(&h1);
+        announcement.kernel_excess_sigs = vec![];
+        announcement
+    };
+
+    // Another body
+    let other_outputs = Block::new(
+        h1.header.clone(),
+        AggregateBody::new_sorted_unchecked(h1.body.inputs().clone(), vec![], h1.body.kernels().clone()),
+    );
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), other_outputs);
     let err = handlers
-        .handle_new_block_message(announcement, NodeId::default())
+        .handle_new_block_message(announce(), NodeId::default())
         .await
         .unwrap_err();
     assert_banned_and_not_stored(&err, &store, h1.hash());
+
+    // The honest block
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules, h1.clone());
+    handlers
+        .handle_new_block_message(announce(), NodeId::default())
+        .await
+        .unwrap();
+    assert!(store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
 }

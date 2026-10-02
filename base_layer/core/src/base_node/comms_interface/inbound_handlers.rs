@@ -923,11 +923,24 @@ where B: BlockchainBackend + 'static
         // If the block is empty, we dont have to ask for the block, as we already have the full block available
         // to us.
         if excess_sigs.is_empty() {
+            let block_hash = header.hash();
             let block = BlockBuilder::new(header.version)
                 .add_outputs(coinbase_outputs)
                 .add_kernels(coinbase_kernels)
                 .with_header(header)
                 .build();
+            // A block can have inputs and outputs without a kernel of its own (the excess is absorbed into the total
+            // offset), and is then announced without excess signatures too. Its inputs and outputs are not in the
+            // announcement, so fetch the full block.
+            if !inputs_and_outputs_match_header(&block)? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block {} has more than its coinbase. Requesting the full block from peer '{}'.",
+                    block_hash.to_hex(),
+                    source_peer
+                );
+                return self.request_full_block_from_peer(source_peer, block_hash).await;
+            }
             return Ok(block);
         }
 
