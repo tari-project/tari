@@ -381,10 +381,6 @@ criteria = "safe-to-deploy"
 version = "0.1.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.cargo_toml]]
-version = "0.20.5"
-criteria = "safe-to-deploy"
-
 [[exemptions.cassowary]]
 version = "0.3.0"
 criteria = "safe-to-deploy"

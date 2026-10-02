@@ -5,6 +5,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    io::BufRead,
     path::Path,
     str::FromStr,
 };
@@ -12,12 +13,49 @@ use std::{
 use super::error::ConfigError;
 use crate::configuration::Network;
 
+/// Prints the question and reads a yes/no answer from stdin. End of input (closed stdin) or a read error means no,
+/// so a non-interactive start never opts into anything. See [`prompt_from`].
 pub fn prompt(question: &str) -> bool {
     println!("{question}");
-    let mut input = "".to_string();
-    io::stdin().read_line(&mut input).unwrap();
-    let input = input.trim().to_lowercase();
-    input == "y" || input.is_empty()
+    prompt_from(io::stdin().lock(), false)
+}
+
+/// Like [`prompt`], but end of input (closed stdin) or a read error means yes. Use this only where answering no
+/// would stop a start that has always worked without a terminal, e.g. creating a node identity on first start.
+pub fn prompt_default_yes_on_eof(question: &str) -> bool {
+    println!("{question}");
+    prompt_from(io::stdin().lock(), true)
+}
+
+/// Like [`prompt`], but end of input (closed stdin) or a read error is an error instead of an answer. Use this where
+/// neither yes nor no is a safe default, e.g. choosing between a hardware and a software wallet.
+pub fn prompt_required(question: &str) -> Result<bool, ConfigError> {
+    println!("{question}");
+    read_answer(io::stdin().lock()).ok_or_else(|| {
+        ConfigError::new(
+            "No answer to a required prompt",
+            Some("stdin is closed or could not be read".to_string()),
+        )
+    })
+}
+
+/// Reads a single yes/no answer from `reader`. An empty line or `y` means yes. End of input (no line at all) or a
+/// read error returns `eof_answer`.
+fn prompt_from<R: BufRead>(reader: R, eof_answer: bool) -> bool {
+    read_answer(reader).unwrap_or(eof_answer)
+}
+
+/// Reads a single yes/no answer from `reader`: `Some(true)` for an empty line or `y`, `Some(false)` for anything
+/// else, and `None` at end of input (no line at all) or on a read error.
+fn read_answer<R: BufRead>(mut reader: R) -> Option<bool> {
+    let mut input = String::new();
+    match reader.read_line(&mut input) {
+        Ok(0) | Err(_) => None,
+        Ok(_) => {
+            let input = input.trim().to_lowercase();
+            Some(input == "y" || input.is_empty())
+        },
+    }
 }
 
 pub fn install_configuration<F>(application_type: ApplicationType, path: &Path, installer: F)
@@ -146,6 +184,31 @@ pub fn wallet_get_default_seed_https_address(network: Network) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn prompt_from_eof_uses_eof_answer() {
+        assert!(!prompt_from(&b""[..], false));
+        assert!(prompt_from(&b""[..], true));
+    }
+
+    #[test]
+    fn read_answer_eof_is_none() {
+        assert_eq!(read_answer(&b""[..]), None);
+        assert_eq!(read_answer(&b"\n"[..]), Some(true));
+        assert_eq!(read_answer(&b"y\n"[..]), Some(true));
+        assert_eq!(read_answer(&b"n\n"[..]), Some(false));
+    }
+
+    #[test]
+    fn prompt_from_answers() {
+        for eof_answer in [false, true] {
+            assert!(prompt_from(&b"\n"[..], eof_answer));
+            assert!(prompt_from(&b"y\n"[..], eof_answer));
+            assert!(prompt_from(&b"Y"[..], eof_answer));
+            assert!(!prompt_from(&b"n\n"[..], eof_answer));
+            assert!(!prompt_from(&b"no\n"[..], eof_answer));
+        }
+    }
 
     #[test]
     fn application_type_as_str_test() {

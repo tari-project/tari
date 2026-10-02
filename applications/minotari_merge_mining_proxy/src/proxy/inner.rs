@@ -41,6 +41,7 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use rand::random;
 use serde_json as json;
 use serde_json::json;
+use tari_common::configuration::utils::mask_value;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::BaseNodeConsensusManager,
@@ -612,7 +613,7 @@ impl InnerService {
             trace!(
                 target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
                 error: '{}'",
-                server, host
+                mask_value("monerod_url", &server), host
             );
             return;
         }
@@ -627,7 +628,10 @@ impl InnerService {
         }
         trace!(
             target: LOG_TARGET, "Monerod status - Current: 'None', Last assigned: {}",
-            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            mask_value(
+                "monerod_url",
+                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            )
         );
     }
 
@@ -637,7 +641,10 @@ impl InnerService {
         trace!(
             target: LOG_TARGET, "Monerod status - Current: '{}', Last assigned: {}",
             BUSY_QUALIFYING,
-            self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            mask_value(
+                "monerod_url",
+                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            )
         );
     }
 
@@ -651,7 +658,8 @@ impl InnerService {
             .write()
             .expect("Write lock should not fail");
         *lock = Some(server.to_string());
-        trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", server, server);
+        let shown = mask_value("monerod_url", server);
+        trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", shown, shown);
     }
 
     #[allow(clippy::too_many_lines)]
@@ -745,7 +753,7 @@ impl InnerService {
             let pos = self.config.monerod_url.iter().position(|x| x == server).unwrap_or(0);
             debug!(
                 target: LOG_TARGET, "Trying to connect to Monerod server at: {} (entry {} of {})",
-                url.as_str(), pos.saturating_add(1), self.config.monerod_url.len()
+                mask_value("monerod_url", url.as_str()), pos.saturating_add(1), self.config.monerod_url.len()
             );
             match timeout(self.config.monerod_connection_timeout, reqwest::get(url.clone())).await {
                 // For this availability check we deliberately do not provide the body of the request if it is a POST
@@ -769,7 +777,7 @@ impl InnerService {
                             Ok(data) => data.content_length().unwrap_or_default(),
                             Err(_) => 0,
                         },
-                        url.as_str()
+                        mask_value("monerod_url", url.as_str())
                     );
                     return Ok(Some(url));
                 },
@@ -777,7 +785,7 @@ impl InnerService {
                     warn!(
                         target: LOG_TARGET,
                         "Monerod server unavailable (timeout in {:.2?}): {}",
-                        start.elapsed(), url.as_str()
+                        start.elapsed(), mask_value("monerod_url", url.as_str())
                     );
                 },
             }
@@ -785,7 +793,14 @@ impl InnerService {
 
         // Clear the "busy qualifying" state
         self.clear_current_monerod_server_lock(None, None);
-        Err(MmProxyError::ServersUnavailable(format!("{}", self.config.monerod_url)))
+        Err(MmProxyError::ServersUnavailable(
+            self.config
+                .monerod_url
+                .iter()
+                .map(|url| mask_value("monerod_url", url))
+                .collect::<Vec<_>>()
+                .join(","),
+        ))
     }
 
     // Modifies the Monero `getblocktemplate` request to reserve space for the Minotari merge mining tag.
@@ -881,13 +896,14 @@ impl InnerService {
 
             if self.config.monerod_use_auth {
                 // Use HTTP basic auth. This is the only reason we are using `reqwest` over the standard hyper client.
-                builder = builder.basic_auth(&self.config.monerod_username, Some(&self.config.monerod_password));
+                let password = String::from_utf8_lossy(self.config.monerod_password.reveal());
+                builder = builder.basic_auth(&self.config.monerod_username, Some(password));
             }
 
             debug!(
                 target: LOG_TARGET,
                 "[monerod] '{}' request: {} {} (trace_id: {})",
-                monerod_method, request.method(), monerod_url, trace_id
+                monerod_method, request.method(), mask_value("monerod_url", monerod_url.as_str()), trace_id
             );
 
             if self_select_response {
@@ -896,7 +912,8 @@ impl InnerService {
             } else {
                 // Send the request to the current monerod server
                 match timeout(self.config.monerod_connection_timeout, builder.body(body).send()).await {
-                    Ok(response) => match response.map_err(MmProxyError::MonerodRequestFailed) {
+                    // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the error
+                    Ok(response) => match response.map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url())) {
                         Ok(val) => convert_reqwest_response_to_hyper_json_response(val).await?,
                         Err(e) => {
                             warn!(

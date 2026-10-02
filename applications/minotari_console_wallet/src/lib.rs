@@ -148,7 +148,7 @@ pub fn run_wallet_with_cli(
         cli.non_interactive_mode,
         cli.view_private_key.clone(),
         cli.spend_key.clone(),
-    );
+    )?;
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli, &wallet_type)?;
 
@@ -231,6 +231,11 @@ pub fn run_wallet_with_cli(
     }
 
     let wallet_mode = wallet_mode(&cli, boot_mode);
+
+    // The full-screen UI hides anything printed so far, so make sure security warnings are seen first
+    if matches!(wallet_mode, WalletMode::Tui) && !cli.non_interactive_mode {
+        wallet_modes::pause_if_security_warnings();
+    }
 
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &wallet_mode))?;
