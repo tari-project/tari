@@ -225,48 +225,44 @@ impl LogDirBase {
         } else {
             None
         };
-        let lexical = canonical_base.unwrap_or_else(|| PathBuf::from(lexical_normalize(&absolute.to_string_lossy())));
+        let lexical = canonical_base.unwrap_or_else(|| lexical_normalize(&absolute));
         let canonical = resolve_for_containment(&lexical);
         Ok(Self { lexical, canonical })
     }
 }
 
-/// Normalizes a path without touching the file system: `.` segments are dropped and `..` removes the previous
-/// segment (a `..` at the start of a relative path is kept; at the root it is dropped). Both `/` and `\` are treated
-/// as separators and the result uses `/`, so it works for Windows paths on any OS. A leading drive (`C:`) and root
-/// separator are kept.
-fn lexical_normalize(path: &str) -> String {
-    let mut rest = path;
-    let mut prefix = String::new();
-    let mut chars = rest.chars();
-    if let (Some(drive), Some(':')) = (chars.next(), chars.next()) &&
-        drive.is_ascii_alphabetic()
-    {
-        prefix.push(drive);
-        prefix.push(':');
-        rest = rest.get(2..).unwrap_or("");
-    }
-    let rooted = rest.starts_with(['/', '\\']);
-    if rooted {
-        prefix.push('/');
-    }
-    let mut parts: Vec<&str> = Vec::new();
-    for part in rest.split(['/', '\\']) {
-        match part {
-            "" | "." => {},
-            ".." => {
-                if parts.last().is_some_and(|last| *last != "..") {
-                    parts.pop();
+/// Normalizes a path without touching the file system, using the platform's own path rules (`Path::components`):
+/// `.` is dropped and `..` removes the previous normal segment. A prefix (drive, UNC share or verbatim prefix) and the
+/// root are kept and never popped past; a `..` at the start of a relative path is kept. So `\\` is a separator only
+/// on Windows, and `\\server\share\..` stays at the share root.
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    let mut rooted = false;
+    let mut normal_segments = 0usize;
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                result.push(component.as_os_str());
+                rooted = true;
+            },
+            Component::CurDir => {},
+            Component::ParentDir => {
+                if normal_segments > 0 {
+                    result.pop();
+                    normal_segments = normal_segments.saturating_sub(1);
                 } else if !rooted {
-                    parts.push("..");
+                    result.push("..");
                 } else {
-                    // `..` at the root stays at the root
+                    // `..` at the root (or share root) stays there
                 }
             },
-            part => parts.push(part),
+            Component::Normal(segment) => {
+                result.push(segment);
+                normal_segments = normal_segments.saturating_add(1);
+            },
         }
     }
-    format!("{prefix}{}", parts.join("/"))
+    result
 }
 
 /// Returns one message per log4rs appender path that is outside the log directory: each appender's `path` and its
@@ -321,6 +317,11 @@ fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
     if path.contains("$ENV{") || path.contains("${") {
         return false;
     }
+    // Reject `..` whichever separator it hides behind, so no platform difference in what counts as a separator can
+    // be used to climb out
+    if path.split(['/', '\\']).any(|segment| segment == "..") {
+        return false;
+    }
     let path = Path::new(path);
     if path.components().any(|c| matches!(c, Component::ParentDir)) {
         return false;
@@ -337,7 +338,7 @@ fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
             Err(_) => return false,
         }
     };
-    if PathBuf::from(lexical_normalize(&absolute.to_string_lossy())).starts_with(&base.lexical) {
+    if lexical_normalize(&absolute).starts_with(&base.lexical) {
         return true;
     }
     match (&base.canonical, resolve_for_containment(&absolute)) {
@@ -455,7 +456,7 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::substitute_log_dir;
 
@@ -564,14 +565,41 @@ mod test {
     }
 
     #[test]
-    fn lexical_normalize_handles_both_separators() {
+    fn lexical_normalize_uses_platform_path_rules() {
         use super::lexical_normalize;
 
-        assert_eq!(lexical_normalize("C:\\cwd\\..\\data"), "C:/data");
-        assert_eq!(lexical_normalize("C:\\cwd\\.\\data\\logs"), "C:/cwd/data/logs");
-        assert_eq!(lexical_normalize("/a/./b/../c"), "/a/c");
-        assert_eq!(lexical_normalize("/../a"), "/a");
-        assert_eq!(lexical_normalize("a/../../b"), "../b");
+        let norm = |p: &str| lexical_normalize(Path::new(p));
+        assert_eq!(norm("/a/./b/../c"), PathBuf::from("/a/c"));
+        assert_eq!(norm("/../a"), PathBuf::from("/a"));
+        assert_eq!(norm("a/../../b"), PathBuf::from("../b"));
+        // On Unix `\` is an ordinary character, not a separator
+        #[cfg(unix)]
+        assert_eq!(norm("/tmp/q\\..\\x"), PathBuf::from("/tmp/q\\..\\x"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn lexical_normalize_keeps_windows_prefixes() {
+        use super::lexical_normalize;
+
+        let norm = |p: &str| lexical_normalize(Path::new(p));
+        assert_eq!(norm(r"C:\cwd\..\data"), PathBuf::from(r"C:\data"));
+        assert_eq!(norm(r"C:\cwd\.\data\logs"), PathBuf::from(r"C:\cwd\data\logs"));
+        assert_eq!(norm(r"\\server\share\a\..\b"), PathBuf::from(r"\\server\share\b"));
+        assert_eq!(norm(r"\\server\share\.."), PathBuf::from(r"\\server\share\"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_dotdot_cannot_climb_out_of_the_log_dir() {
+        use super::{LogDirBase, is_inside_log_dir};
+
+        let base = LogDirBase::new(Path::new("/home/u/.tari/mainnet")).unwrap();
+        assert!(!is_inside_log_dir(
+            "/tmp/q\\..\\..\\home\\u\\.tari\\mainnet/evil",
+            &base
+        ));
+        assert!(is_inside_log_dir("/home/u/.tari/mainnet/log/app.log", &base));
     }
 
     #[cfg(unix)]
