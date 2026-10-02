@@ -203,13 +203,13 @@ mod tests {
 
     /// Stand-ins for the sidechain's command encoding. The leading id and decision of each atom match the
     /// sidechain's; the fields after them are opaque to this crate.
-    #[derive(BorshSerialize)]
+    #[derive(Clone, BorshSerialize)]
     enum SidechainDecision {
         Commit,
         Abort(SidechainAbortReason),
     }
 
-    #[derive(BorshSerialize)]
+    #[derive(Clone, BorshSerialize)]
     #[allow(dead_code)]
     enum SidechainAbortReason {
         ForeignPledgeInputConflict,
@@ -217,7 +217,7 @@ mod tests {
         LockOutputsFailed,
     }
 
-    #[derive(BorshSerialize)]
+    #[derive(Clone, BorshSerialize)]
     struct SidechainLeaderFee {
         fee: u64,
         global_exhaust_burn: u64,
@@ -231,7 +231,7 @@ mod tests {
         leader_fee: Option<SidechainLeaderFee>,
     }
 
-    #[derive(BorshSerialize)]
+    #[derive(Clone, BorshSerialize)]
     struct SidechainMultiShardAtom {
         id: [u8; 32],
         decision: SidechainDecision,
@@ -246,6 +246,8 @@ mod tests {
     #[allow(dead_code)]
     enum SidechainCommand {
         LocalOnly(SidechainLocalOnlyAtom) = 0,
+        LocalPrepare(SidechainMultiShardAtom) = 1,
+        LocalAccept(SidechainMultiShardAtom) = 2,
         AllAccept(SidechainMultiShardAtom) = 3,
         SomeAccept(SidechainMultiShardAtom) = 4,
     }
@@ -307,17 +309,31 @@ mod tests {
             sidechain_hash(&SidechainCommand::LocalOnly(local_only))
         );
 
-        let all_accept = multi_shard_atom(SidechainDecision::Commit);
-        assert_eq!(
-            Command::AllAccept(atom(&all_accept)).hash(),
-            sidechain_hash(&SidechainCommand::AllAccept(all_accept))
-        );
-
-        let some_accept = multi_shard_atom(SidechainDecision::Abort(SidechainAbortReason::LockOutputsFailed));
-        assert_eq!(
-            Command::SomeAccept(atom(&some_accept)).hash(),
-            sidechain_hash(&SidechainCommand::SomeAccept(some_accept))
-        );
+        for decision in [
+            SidechainDecision::Commit,
+            SidechainDecision::Abort(SidechainAbortReason::LockOutputsFailed),
+        ] {
+            let multi_shard = multi_shard_atom(decision);
+            let tx = atom(&multi_shard);
+            let cases = [
+                (
+                    Command::LocalPrepare(tx.clone()),
+                    SidechainCommand::LocalPrepare(multi_shard.clone()),
+                ),
+                (
+                    Command::LocalAccept(tx.clone()),
+                    SidechainCommand::LocalAccept(multi_shard.clone()),
+                ),
+                (
+                    Command::AllAccept(tx.clone()),
+                    SidechainCommand::AllAccept(multi_shard.clone()),
+                ),
+                (Command::SomeAccept(tx), SidechainCommand::SomeAccept(multi_shard)),
+            ];
+            for (command, sidechain_command) in cases {
+                assert_eq!(command.hash(), sidechain_hash(&sidechain_command), "{command:?}");
+            }
+        }
     }
 
     #[test]
