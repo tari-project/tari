@@ -96,6 +96,32 @@ const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 #[cfg(feature = "metrics")]
 const DIFF_INDICATOR_LAG: u64 = 25;
 
+/// How many held orphans `hydrate_block` walks back through, from a block's parent towards the main chain, to find the
+/// outputs the block spends. A relayed fork block is normally a short way ahead of what we hold; a deeper fork is
+/// resolved through sync, and the walk reads whole blocks, so it is kept short.
+const MAX_ORPHAN_ANCESTORS: usize = 16;
+
+/// The outputs of the held orphans that a block with parent `prev_hash` builds on: the parent if it is a held orphan,
+/// its parent if that is one too, and so on, at most [MAX_ORPHAN_ANCESTORS] of them. Orphans are stored with their
+/// outputs bound to their headers by the arrival check, so these are the outputs those blocks were mined with.
+fn held_orphan_ancestor_outputs<B: BlockchainBackend>(
+    db: &B,
+    mut prev_hash: HashOutput,
+) -> Result<HashMap<HashOutput, TransactionOutput>, ChainStorageError> {
+    let mut outputs = HashMap::new();
+    for _ in 0..MAX_ORPHAN_ANCESTORS {
+        let Some(DbValue::OrphanBlock(orphan)) = db.fetch(&DbKey::OrphanBlock(prev_hash))? else {
+            break;
+        };
+        let (header, _, orphan_outputs, _) = orphan.dissolve();
+        prev_hash = header.prev_hash;
+        for output in orphan_outputs {
+            outputs.entry(output.hash()).or_insert(output);
+        }
+    }
+    Ok(outputs)
+}
+
 /// Room left in the messaging frame for the DHT envelope around a base node service response
 const DHT_ENVELOPE_ALLOWANCE: usize = 64 * 1024;
 
@@ -1260,6 +1286,8 @@ where B: BlockchainBackend + 'static
         let db = self.blockchain_db.inner().db_read_access()?;
         // The hashes of the block's own outputs, computed on the first input that is not in the database
         let mut block_outputs: Option<HashMap<HashOutput, &TransactionOutput>> = None;
+        // The outputs of the held orphans this block builds on, fetched on the first input found in neither
+        let mut orphan_outputs: Option<HashMap<HashOutput, TransactionOutput>> = None;
         for input in &mut inputs {
             if !input.is_compact() {
                 continue;
@@ -1278,6 +1306,15 @@ where B: BlockchainBackend + 'static
                 input.add_output_data((*output).clone());
                 continue;
             }
+            // An output created in a held orphan this block builds on, e.g. a fork block we hold whose child is relayed
+            // to us by peers that have reorged to the fork
+            if orphan_outputs.is_none() {
+                orphan_outputs = Some(held_orphan_ancestor_outputs(&*db, header.prev_hash)?);
+            }
+            if let Some(output) = orphan_outputs.as_ref().and_then(|outputs| outputs.get(&output_hash)) {
+                input.add_output_data(output.clone());
+                continue;
+            }
 
             let details = format!("Output {output_hash} to be spent does not exist in db");
             // A block whose parent is on our main chain can only spend outputs from our main chain or from itself, so
@@ -1286,8 +1323,8 @@ where B: BlockchainBackend + 'static
             // pruned height (a pruned node deletes outputs spent at or below it, and an output spent on our chain
             // after the parent may still be spent by a block on the parent).
             //
-            // A block on another chain can spend outputs from that chain that we have never seen, which says nothing
-            // about the peer that sent it, so it is dropped without blaming the peer.
+            // A block on another chain can spend outputs from that chain that we have never seen (or hold only deeper
+            // than we look), which says nothing about the peer that sent it, so it is dropped without a ban.
             let metadata = db.fetch_chain_metadata()?;
             let parent_height = match db.fetch(&DbKey::HeaderHash(header.prev_hash))? {
                 Some(DbValue::HeaderHash(parent)) => Some(parent.height),

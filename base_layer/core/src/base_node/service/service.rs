@@ -418,7 +418,7 @@ where B: BlockchainBackend + 'static
                         )
                     );
                     if expected {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Dropped incoming block message from peer {}: {e}",
                             source_peer.node_id

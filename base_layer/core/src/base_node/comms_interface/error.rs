@@ -94,9 +94,7 @@ impl CommsInterfaceError {
         match self {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
-            err @ CommsInterfaceError::TransportChannelError(_) |
-            // An honest peer can relay such a block, but not for free: otherwise the race could be repeated at will
-            err @ CommsInterfaceError::UnknownSpentOutputs { .. } => Some(BanReason {
+            err @ CommsInterfaceError::TransportChannelError(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Short,
             }),
@@ -122,6 +120,9 @@ impl CommsInterfaceError {
             CommsInterfaceError::BlockError(_) |
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
+            // A block on a chain we do not hold enough of to hydrate it: honest peers relay such blocks across forks, so
+            // it says nothing about the peer
+            CommsInterfaceError::UnknownSpentOutputs { .. } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }

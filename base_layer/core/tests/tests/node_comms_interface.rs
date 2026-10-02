@@ -43,6 +43,8 @@ use tari_core::{
         ChainStorageError,
         DbTransaction,
         Validators,
+        body_matches_header,
+        inputs_and_outputs_match_header,
     },
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig},
@@ -54,7 +56,7 @@ use tari_core::{
     validation::{ValidationError, mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock, NewBlock};
-use tari_script::script;
+use tari_script::{ExecutionStack, script};
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
     BanPeriod,
@@ -69,6 +71,7 @@ use tari_transaction_components::{
         SpentOutput,
         Transaction,
         TransactionInput,
+        TransactionKernel,
         TransactionOutput,
         WalletOutput,
         covenants::Covenant,
@@ -702,7 +705,7 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
 
 /// A compact input is hydrated from the database, or from an output created in the same block. An input that can be
 /// resolved from neither makes a block on our main chain invalid, but a block on another chain may spend outputs from
-/// that chain that we have never seen, so the peer that sent it only gets a short ban.
+/// that chain that we have never seen, so the peer that sent it is not banned.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn compact_inputs_that_cannot_be_hydrated() {
@@ -776,7 +779,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
     assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
 
-    // On an unknown parent: dropped with only a short ban for the peer
+    // On an unknown parent: dropped without banning the peer
     let err = handlers
         .handle_block(unknown_spend(FixedHash::from([9u8; 32])), None)
         .await
@@ -785,9 +788,9 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+    assert!(err.get_ban_reason().is_none());
 
-    // On a parent that is in the orphan pool: dropped with only a short ban for the peer
+    // On a parent that is in the orphan pool: dropped without banning the peer
     let orphan = prepare_block(&store, &block1, vec![], &rules, &key_manager);
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
@@ -802,7 +805,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+    assert!(err.get_ban_reason().is_none());
 
     // A pruned node deletes outputs spent at or below its pruned height
     let (block2, _) = append_block(
@@ -826,7 +829,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
     assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
 
-    // Parent below the pruned height: the output may have been pruned, so dropped with only a short ban for the peer
+    // Parent below the pruned height: the output may have been pruned, so dropped without banning the peer
     let err = handlers
         .handle_block(unknown_spend(*blocks[0].hash()), None)
         .await
@@ -835,10 +838,10 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+    assert!(err.get_ban_reason().is_none());
 
     // Parent header stored ahead of our best block, as header sync leaves it: its body's outputs are not held yet, so
-    // dropped with only a short ban for the peer
+    // dropped without banning the peer
     let mut header3 = BlockHeader::from_previous(block2.header());
     // As if its body added one kernel, the coinbase; headers are indexed by their kernel MMR size
     header3.kernel_mmr_size = block2.header().kernel_mmr_size + 1;
@@ -853,7 +856,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
+    assert!(err.get_ban_reason().is_none());
 }
 
 /// Inputs that are not in the database are looked up among the block's own outputs. That lookup must not cost a pass
@@ -1147,4 +1150,135 @@ async fn an_announcement_of_a_non_empty_block_without_its_transactions_fetches_t
         .await
         .unwrap();
     assert!(store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+}
+
+/// Our tip T1, and a competing fork F1 <- F2 where F2 spends an output created in F1. We hold F1 as an orphan; F2 is
+/// relayed to us (compact, as peers serve their main chain) by peers that have reorged to the fork. Its input is
+/// hydrated from F1 and the block is accepted.
+#[tokio::test]
+async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it() {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+
+    // The fork: F1 spends the genesis output, F2 spends one of F1's outputs
+    let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T]);
+    let (txs, f1_outputs) = schema_to_transaction(&[schema], &key_manager);
+    let f1 = prepare_block(&store, &blocks[0], vec![(*txs[0]).clone()], &rules, &key_manager);
+    let BlockAddResult::Ok(f1_chain_block) = store.add_block(Arc::new(f1.clone())).unwrap() else {
+        panic!("F1 was not added");
+    };
+    let schema = txn_schema!(from: vec![f1_outputs[0].clone()], to: vec![MicroMinotari::from(5_000)]);
+    let (txs, _) = schema_to_transaction(&[schema], &key_manager);
+    let f2 = prepare_block(&store, &f1_chain_block, vec![(*txs[0]).clone()], &rules, &key_manager);
+    store.rewind_to_height(0).unwrap();
+
+    // Our chain: a stronger T1, with F1 held as an orphan
+    append_block(
+        &store,
+        &blocks[0],
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+    if !store.chain_block_or_orphan_block_exists(f1.hash()).unwrap() {
+        let result = store.add_block(Arc::new(f1.clone())).unwrap();
+        assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    }
+
+    // F2's input spends an output that is neither in our database nor in F2
+    let f2_compact = f2.to_compact();
+    let spent = f2_compact.body.inputs()[0].output_hash();
+    assert!(store.fetch_outputs(spent).unwrap().is_empty());
+    assert!(f2_compact.body.outputs().iter().all(|o| o.hash() != spent));
+
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    handlers
+        .handle_block(f2_compact, Some(NodeId::default()))
+        .await
+        .unwrap();
+    // Stored as an orphan, or reorged to (the chain strength is not decided by the test's difficulties alone)
+    assert!(store.chain_block_or_orphan_block_exists(f2.hash()).unwrap());
+}
+
+/// `body_matches_header` and `inputs_and_outputs_match_header` recompute part of what `calculate_mmr_roots` computes.
+/// For real blocks they must agree with it: true for the block as mined, false for any single changed kernel, input or
+/// output, for which the full MMR roots do not match the header either.
+#[tokio::test]
+async fn body_matches_header_agrees_with_the_mmr_roots() {
+    fn full_roots_match(store: &BlockchainDatabase<TempDatabase>, block: &Block) -> bool {
+        let (_, roots) = store.calculate_mmr_roots(block.clone()).unwrap();
+        let header = &block.header;
+        header.kernel_mr == roots.kernel_mr &&
+            header.kernel_mmr_size == roots.kernel_mmr_size &&
+            header.input_mr == roots.input_mr &&
+            header.output_mr == roots.output_mr &&
+            header.output_smt_size == roots.output_smt_size &&
+            header.block_output_mr == roots.block_output_mr &&
+            header.validator_node_mr == roots.validator_node_mr &&
+            header.validator_node_size == roots.validator_node_size
+    }
+    fn body_matches(store: &BlockchainDatabase<TempDatabase>, block: &Block) -> bool {
+        let db = store.db_read_access().unwrap();
+        body_matches_header(&*db, block).unwrap()
+    }
+    fn with_body(
+        block: &Block,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        kernels: Vec<TransactionKernel>,
+    ) -> Block {
+        let mut body = AggregateBody::new_unsorted(inputs, outputs, kernels);
+        body.sort();
+        Block::new(block.header.clone(), body)
+    }
+
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+
+    // Two transactions (so several kernels), the second spending an output of the first in the same block
+    let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T]);
+    let (txs1, tx1_outputs) = schema_to_transaction(&[schema], &key_manager);
+    let schema = txn_schema!(from: vec![tx1_outputs[0].clone()], to: vec![MicroMinotari::from(5_000)]);
+    let (txs2, _) = schema_to_transaction(&[schema], &key_manager);
+    let with_txs = prepare_block(
+        &store,
+        &blocks[0],
+        vec![(*txs1[0]).clone(), (*txs2[0]).clone()],
+        &rules,
+        &key_manager,
+    );
+    assert!(with_txs.body.kernels().len() >= 3);
+    let coinbase_only = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+
+    for block in [&coinbase_only, &with_txs] {
+        assert!(full_roots_match(&store, block));
+        assert!(body_matches(&store, block));
+        assert!(inputs_and_outputs_match_header(block).unwrap());
+    }
+
+    let (_, inputs, outputs, kernels) = with_txs.clone().dissolve();
+    // A changed kernel
+    let mut changed_kernels = kernels.clone();
+    changed_kernels[0].fee += MicroMinotari::from(1);
+    // A changed input
+    let mut changed_inputs = inputs.clone();
+    changed_inputs[0].input_data = ExecutionStack::default();
+    // A changed output
+    let mut changed_outputs = outputs.clone();
+    changed_outputs[0].minimum_value_promise += MicroMinotari::from(1);
+    let tampered = [
+        with_body(&with_txs, inputs.clone(), outputs.clone(), changed_kernels),
+        with_body(&with_txs, changed_inputs, outputs.clone(), kernels.clone()),
+        with_body(&with_txs, inputs, changed_outputs, kernels),
+    ];
+    for (i, block) in tampered.iter().enumerate() {
+        assert!(!full_roots_match(&store, block), "tamper {i}");
+        assert!(!body_matches(&store, block), "tamper {i}");
+    }
+    // Inputs and outputs, but not kernels, are covered without state
+    assert!(inputs_and_outputs_match_header(&tampered[0]).unwrap());
+    assert!(!inputs_and_outputs_match_header(&tampered[1]).unwrap());
+    assert!(!inputs_and_outputs_match_header(&tampered[2]).unwrap());
 }
