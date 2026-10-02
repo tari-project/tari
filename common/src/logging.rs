@@ -347,6 +347,16 @@ fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String
     let mirror: AppendersMirror = serde_yaml::from_str(contents).map_err(|e| e.to_string())?;
     let mut escapes = Vec::new();
     for (name, appender) in mirror.appenders {
+        // serde-derive matches non-string keys (e.g. a YAML `3:`) to fields by position, and log4rs's structs have a
+        // different field order than the mirror, so any such key could hide a path from the check. Refuse them.
+        let as_yaml: serde_yaml::Value = appender
+            .config
+            .clone()
+            .deserialize_into()
+            .map_err(|e| format!("appender {name}: {e}"))?;
+        if !has_only_string_keys(&as_yaml) {
+            return Err(format!("appender {name}: a config key is not a plain string"));
+        }
         let paths: AppenderPaths = appender
             .config
             .deserialize_into()
@@ -365,6 +375,19 @@ fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String
         }
     }
     Ok(escapes)
+}
+
+/// Returns true if every map key in `value`, at any depth, is a plain string. Keys that were wrapped (option or
+/// newtype) in the original value are unwrapped by the conversion and then fail the mirror's own deserialization.
+fn has_only_string_keys(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Mapping(map) => map
+            .iter()
+            .all(|(key, value)| key.is_string() && has_only_string_keys(value)),
+        serde_yaml::Value::Sequence(items) => items.iter().all(has_only_string_keys),
+        serde_yaml::Value::Tagged(tagged) => has_only_string_keys(&tagged.value),
+        _ => true,
+    }
 }
 
 /// See [`check_appender_paths`].
@@ -832,6 +855,34 @@ mod test {
             );
         }
         let choice = choose_for("appenders:\n  a:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\n");
+        assert!(!choice.refused, "{:?}", choice.findings);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn numeric_keys_cannot_hide_a_rolling_pattern() {
+        // `3:` is `policy` to log4rs (field position), `1:` is `roller`
+        let policy_by_number =
+            "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    3:\n      kind: \
+             compound\n      trigger:\n        kind: size\n        limit: 1kb\n      roller:\n        kind: \
+             fixed_window\n        pattern: \"/tmp/evil.{}\"\n        count: 2\n";
+        let choice = choose_for(policy_by_number);
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(choice.findings.iter().any(|(_, r)| r.contains("not a plain string")));
+
+        let roller_by_number = "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    \
+                                policy:\n      kind: compound\n      trigger:\n        kind: size\n        limit: \
+                                1kb\n      1:\n        kind: fixed_window\n        pattern: \"/tmp/evil.{}\"\n        \
+                                count: 2\n";
+        let choice = choose_for(roller_by_number);
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(choice.findings.iter().any(|(_, r)| r.contains("not a plain string")));
+
+        let normal =
+            "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    policy:\n      kind: \
+             compound\n      trigger:\n        kind: size\n        limit: 1kb\n      roller:\n        kind: \
+             fixed_window\n        pattern: \"{{log_dir}}/log/a.{}.log\"\n        count: 2\n";
+        let choice = choose_for(normal);
         assert!(!choice.refused, "{:?}", choice.findings);
     }
 
