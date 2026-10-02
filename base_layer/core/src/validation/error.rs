@@ -174,7 +174,6 @@ impl ValidationError {
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
-            err @ ValidationError::BadBlockFound { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
             err @ ValidationError::CovenantError(_) |
@@ -195,6 +194,9 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
+            // A hash we already hold as bad says nothing about the peer that relayed it: the peer did not send us
+            // invalid data, and it may not have been able to tell. Drop it without banning.
+            ValidationError::BadBlockFound { .. } |
             ValidationError::FatalStorageError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MissingKernelError(_) |
@@ -203,5 +205,34 @@ impl ValidationError {
             ValidationError::HeaderHashMismatch(_) |
             ValidationError::HeaderHeightMismatch(_) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::base_node::sync::{BlockHeaderSyncError, BlockSyncError};
+
+    /// A hash in our bad block list does not get the peer that relayed it banned, on any path
+    #[test]
+    fn a_bad_block_memo_hit_is_not_a_ban() {
+        let memo_hit = || ValidationError::BadBlockFound {
+            hash: "hash".to_string(),
+            reason: "reason".to_string(),
+        };
+        assert!(memo_hit().get_ban_reason().is_none());
+        // Header sync
+        assert!(
+            BlockHeaderSyncError::ValidationFailed(memo_hit())
+                .get_ban_reason()
+                .is_none()
+        );
+        // Block sync
+        assert!(BlockSyncError::ValidationError(memo_hit()).get_ban_reason().is_none());
+        // Block propagation
+        let propagation = crate::base_node::comms_interface::CommsInterfaceError::ChainStorageError(
+            ChainStorageError::ValidationError { source: memo_hit() },
+        );
+        assert!(propagation.get_ban_reason().is_none());
     }
 }

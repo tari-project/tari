@@ -56,6 +56,7 @@ use tari_node_components::blocks::{Block, BlockHeader, ChainBlock, NewBlock};
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
+    BanPeriod,
     MicroMinotari,
     aggregated_body::AggregateBody,
     consensus::emission::Emission,
@@ -505,8 +506,6 @@ async fn inbound_get_new_block_template_refetches_advanced_tip() {
 }
 
 /// A block on `prev` with the given transactions and a coinbase, ready to be added but not added
-// Overflow in test code panics, which is the desired failure mode for a test.
-#[allow(clippy::arithmetic_side_effects)]
 fn prepare_block(
     store: &BlockchainDatabase<TempDatabase>,
     prev: &ChainBlock,
@@ -514,8 +513,22 @@ fn prepare_block(
     rules: &BaseNodeConsensusManager,
     key_manager: &KeyManager,
 ) -> Block {
+    prepare_block_with_extra_coinbase(store, prev, txs, rules, key_manager, MicroMinotari::zero())
+}
+
+/// As [prepare_block], with `extra` more in the coinbase than the block may claim
+// Overflow in test code panics, which is the desired failure mode for a test.
+#[allow(clippy::arithmetic_side_effects)]
+fn prepare_block_with_extra_coinbase(
+    store: &BlockchainDatabase<TempDatabase>,
+    prev: &ChainBlock,
+    txs: Vec<Transaction>,
+    rules: &BaseNodeConsensusManager,
+    key_manager: &KeyManager,
+    extra: MicroMinotari,
+) -> Block {
     let height = prev.height() + 1;
-    let mut coinbase_value = rules.emission_schedule().block_reward(height);
+    let mut coinbase_value = rules.emission_schedule().block_reward(height) + extra;
     for tx in &txs {
         coinbase_value += tx.body.get_total_fee().unwrap();
     }
@@ -643,7 +656,7 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
         ),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_some());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
     assert_eq!(store.get_height().unwrap(), 0);
 
     // At the limit: rebuilt and added
@@ -659,7 +672,7 @@ async fn a_compact_block_rebuilt_over_the_byte_limit_is_rejected() {
 
 /// A compact input is hydrated from the database, or from an output created in the same block. An input that can be
 /// resolved from neither makes a block on our main chain invalid, but a block on another chain may spend outputs from
-/// that chain that we have never seen, so the peer that sent it is not banned.
+/// that chain that we have never seen, so the peer that sent it only gets a short ban.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn compact_inputs_that_cannot_be_hydrated() {
@@ -713,7 +726,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         .await
         .unwrap_err();
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
-    assert!(err.get_ban_reason().is_some());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
 
     // On a main chain block that is not the tip: still invalid, and the peer is banned
     let (block1, _) = append_block(
@@ -731,9 +744,9 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         .await
         .unwrap_err();
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
-    assert!(err.get_ban_reason().is_some());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
 
-    // On an unknown parent: dropped without banning the peer
+    // On an unknown parent: dropped with only a short ban for the peer
     let err = handlers
         .handle_block(unknown_spend(FixedHash::from([9u8; 32])), None)
         .await
@@ -742,9 +755,9 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
 
-    // On a parent that is in the orphan pool: dropped without banning the peer
+    // On a parent that is in the orphan pool: dropped with only a short ban for the peer
     let orphan = prepare_block(&store, &block1, vec![], &rules, &key_manager);
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
@@ -759,7 +772,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
 
     // A pruned node deletes outputs spent at or below its pruned height
     let (block2, _) = append_block(
@@ -781,9 +794,9 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         .await
         .unwrap_err();
     assert!(matches!(err, CommsInterfaceError::InvalidFullBlock { .. }), "{err:?}");
-    assert!(err.get_ban_reason().is_some());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
 
-    // Parent below the pruned height: the output may have been pruned, so dropped without banning the peer
+    // Parent below the pruned height: the output may have been pruned, so dropped with only a short ban for the peer
     let err = handlers
         .handle_block(unknown_spend(*blocks[0].hash()), None)
         .await
@@ -792,10 +805,10 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
 
     // Parent header stored ahead of our best block, as header sync leaves it: its body's outputs are not held yet, so
-    // dropped without banning the peer
+    // dropped with only a short ban for the peer
     let mut header3 = BlockHeader::from_previous(block2.header());
     // As if its body added one kernel, the coinbase; headers are indexed by their kernel MMR size
     header3.kernel_mmr_size = block2.header().kernel_mmr_size + 1;
@@ -810,7 +823,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
+    assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Short));
 }
 
 /// Inputs that are not in the database are looked up among the block's own outputs. That lookup must not cost a pass
@@ -854,4 +867,57 @@ async fn hydrating_many_in_block_spends_completes() {
         matches!(err, CommsInterfaceError::UnknownSpentOutputs { .. }),
         "{err:?}"
     );
+}
+
+/// A peer can relay an honest header with a body of its own. A body that is not the one the header commits to fails
+/// validation, but must not get the honest block marked as bad: only a block whose body matches its header is.
+#[tokio::test]
+async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let tx = spend_genesis_output(&outputs, &key_manager);
+    let honest = prepare_block(&store, &blocks[0], vec![tx], &rules, &key_manager);
+
+    // The honest header with only the coinbase as its body
+    let (header, _, block_outputs, block_kernels) = honest.clone().dissolve();
+    let fake = Block::new(
+        header,
+        AggregateBody::new_unsorted(
+            vec![],
+            block_outputs.into_iter().filter(|o| o.is_coinbase()).collect(),
+            block_kernels.into_iter().filter(|k| k.is_coinbase()).collect(),
+        ),
+    );
+    let err = store.add_block(Arc::new(fake)).unwrap_err();
+    assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+    assert!(!store.bad_block_exists(honest.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(honest.hash()).unwrap());
+
+    // The honest block is still accepted
+    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(honest)).unwrap() else {
+        panic!("the honest block was not added");
+    };
+
+    // A block whose body matches its header but is invalid (it claims too much in its coinbase) is marked bad
+    let invalid = prepare_block_with_extra_coinbase(&store, &tip, vec![], &rules, &key_manager, T);
+    let err = store.add_block(Arc::new(invalid.clone())).unwrap_err();
+    assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+    assert!(store.bad_block_exists(invalid.hash()).unwrap().0);
+
+    // A peer announcing it is not banned for it: we hold it as bad, the peer sent us nothing invalid
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    let err = handlers
+        .handle_new_block_message(NewBlock::from(&invalid), NodeId::default())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError {
+                source: ValidationError::BadBlockFound { .. }
+            })
+        ),
+        "{err:?}"
+    );
+    assert!(err.get_ban_reason().is_none());
 }

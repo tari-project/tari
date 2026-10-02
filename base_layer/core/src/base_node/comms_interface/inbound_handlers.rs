@@ -30,7 +30,6 @@ use std::{
 };
 
 use log::*;
-use prost::Message;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PrivateKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::messaging::MAX_FRAME_LENGTH};
@@ -46,6 +45,7 @@ use tari_node_components::blocks::{
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
+    helpers::borsh::SerializedSize,
     tari_proof_of_work::{PowAlgorithm, PowError},
     transaction_components::{Transaction, TransactionOutput},
 };
@@ -83,7 +83,6 @@ use crate::{
         sha3x_difficulty,
         tari_randomx_difficulty,
     },
-    proto::{self, base_node::base_node_service_response::Response as ProtoNodeCommsResponse},
     validation::{ValidationError, header::check_randomxt_pow_data, helpers, tari_rx_vm_key_height},
 };
 
@@ -98,22 +97,31 @@ const DIFF_INDICATOR_LAG: u64 = 25;
 /// Room left in the messaging frame for the DHT envelope around a base node service response
 const DHT_ENVELOPE_ALLOWANCE: usize = 64 * 1024;
 
+/// An upper bound on how much larger the protobuf encoding of one block component (the header, an input, an output or a
+/// kernel) is than its borsh encoding: field tags, length prefixes and wider varints, over a few dozen fields at most.
+const PROTO_OVERHEAD_PER_ITEM: usize = 1024;
+
+/// An upper bound on the size of the base node service response that carries `block`, computed without encoding (or
+/// cloning) the block.
+fn block_response_size_bound(block: &Block) -> Option<usize> {
+    let items = block
+        .body
+        .inputs()
+        .len()
+        .saturating_add(block.body.outputs().len())
+        .saturating_add(block.body.kernels().len())
+        .saturating_add(1);
+    let borsh_bytes = block.get_serialized_size().ok()?;
+    Some(borsh_bytes.saturating_add(items.saturating_mul(PROTO_OVERHEAD_PER_ITEM)))
+}
+
 /// The form in which to serve an orphan block. Orphans are stored with hydrated inputs, which lets a peer on another
 /// chain accept the block even when it spends outputs that peer has never seen, so an orphan is served hydrated
 /// whenever it fits in the messaging frame. The hydrated form of a block within the consensus byte limit can exceed the
 /// frame, and then the orphan is served in the compact form that main chain blocks are served in.
 fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
-    // Measured as the base node service response that goes on the wire
-    let response_bytes = proto::base_node::BlockResponse::try_from(Some(block.clone())).map(|response| {
-        proto::base_node::BaseNodeServiceResponse {
-            request_key: u64::MAX,
-            response: Some(ProtoNodeCommsResponse::BlockResponse(response)),
-            is_synced: true,
-        }
-        .encoded_len()
-    });
-    match response_bytes {
-        Ok(bytes) if bytes.saturating_add(DHT_ENVELOPE_ALLOWANCE) <= max_frame_length => block,
+    match block_response_size_bound(&block) {
+        Some(bytes) if bytes.saturating_add(DHT_ENVELOPE_ALLOWANCE) <= max_frame_length => block,
         _ => block.to_compact(),
     }
 }
@@ -1475,14 +1483,30 @@ mod test {
 
     #[test]
     fn orphans_are_served_hydrated_unless_that_does_not_fit_the_messaging_frame() {
-        use tari_transaction_components::transaction_components::TransactionInput;
+        use prost::Message;
+        use tari_transaction_components::aggregated_body::AggregateBody;
 
-        // A block with a hydrated input
+        use crate::proto::{self, base_node::base_node_service_response::Response as ProtoNodeCommsResponse};
+
+        // A block of real transactions, with hydrated inputs
+        let key_manager = KeyManager::new_random().unwrap();
+        let (mut inputs, mut outputs, mut kernels) = (vec![], vec![], vec![]);
+        for _ in 0..3 {
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 2, outputs: 3, &key_manager)
+                .unwrap()
+                .0;
+            inputs.extend(tx.body.inputs().iter().cloned());
+            outputs.extend(tx.body.outputs().iter().cloned());
+            kernels.extend(tx.body.kernels().iter().cloned());
+        }
         let block = Block::new(
             BlockHeader::new(0),
-            AggregateBody::new_unsorted(vec![TransactionInput::default()], vec![], vec![]),
+            AggregateBody::new_unsorted(inputs, outputs, kernels),
         );
-        assert!(!block.body.inputs()[0].is_compact());
+        assert!(block.body.inputs().iter().all(|input| !input.is_compact()));
+
+        // The bound really bounds the response that goes on the wire
+        let bound = block_response_size_bound(&block).unwrap();
         let response_bytes = proto::base_node::BaseNodeServiceResponse {
             request_key: u64::MAX,
             response: Some(ProtoNodeCommsResponse::BlockResponse(
@@ -1491,15 +1515,16 @@ mod test {
             is_synced: true,
         }
         .encoded_len();
+        assert!(response_bytes <= bound, "{response_bytes} > {bound}");
 
         // Fits, with room for the DHT envelope: served as stored
-        let frame = response_bytes + DHT_ENVELOPE_ALLOWANCE;
-        assert_eq!(orphan_block_to_serve(block.clone(), frame), block);
-        assert!(!orphan_block_to_serve(block.clone(), frame).body.inputs()[0].is_compact());
+        let frame = bound + DHT_ENVELOPE_ALLOWANCE;
+        let served = orphan_block_to_serve(block.clone(), frame);
+        assert!(served.body.inputs().iter().all(|input| !input.is_compact()));
 
         // One byte short: served compact
         let served = orphan_block_to_serve(block.clone(), frame - 1);
-        assert!(served.body.inputs()[0].is_compact());
+        assert!(served.body.inputs().iter().all(|input| input.is_compact()));
         assert_eq!(served, block.to_compact());
     }
 

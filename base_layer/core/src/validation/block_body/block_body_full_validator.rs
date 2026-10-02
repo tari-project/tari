@@ -162,6 +162,8 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
     /// so that it can be stored. The block is consumed and mutated in place, so nothing is cloned into the returned
     /// block.
     fn validate_body(&self, backend: &B, mut block: Block) -> Result<Block, ValidationError> {
+        // Reject an oversized body before any per-input database work
+        check_block_body_size(&block, self.consensus_manager.consensus_constants(block.header.height))?;
         hydrate_compact_inputs(&mut block.body, backend)?;
 
         self.validate(backend, &block, None)?;

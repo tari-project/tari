@@ -92,7 +92,9 @@ impl CommsInterfaceError {
         match self {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
-            err @ CommsInterfaceError::TransportChannelError(_) => Some(BanReason {
+            err @ CommsInterfaceError::TransportChannelError(_) |
+            // An honest peer can relay such a block, but not for free: otherwise the race could be repeated at will
+            err @ CommsInterfaceError::UnknownSpentOutputs { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Short,
             }),
@@ -116,7 +118,6 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
-            CommsInterfaceError::UnknownSpentOutputs { .. } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
