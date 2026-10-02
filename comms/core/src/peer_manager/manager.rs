@@ -869,10 +869,9 @@ pub fn create_peer_address_source_with_claim(
         let public_key = CommsPublicKey::from_secret_key(&secret);
         let updated_at = Utc::now();
         let identity = IdentitySignature::sign_new(&secret, peer_features, addresses, updated_at);
-        assert!(
-            identity.is_valid(&public_key, peer_features, addresses).unwrap(),
-            "Signature is not valid"
-        );
+        identity
+            .verify(&public_key, peer_features, addresses)
+            .expect("Signature is not valid");
         identity
     }
 

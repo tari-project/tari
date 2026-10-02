@@ -80,7 +80,7 @@ use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, wallet_types::WalletType},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,
@@ -1527,8 +1527,8 @@ pub async fn command_runner(
                         commitment_mask_key_id,
                         committed_value.as_u64(),
                     ) {
-                        Ok(true) => {},
-                        Ok(false) => {
+                        Ok(()) => {},
+                        Err(KeyManagerError::InvalidMask) => {
                             eprintln!("\nError: Could not verify mask! Commitment does not match value and mask\n");
                             error = true;
                             break;

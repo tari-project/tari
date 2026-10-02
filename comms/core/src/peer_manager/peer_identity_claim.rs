@@ -24,7 +24,6 @@ use std::convert::{TryFrom, TryInto};
 
 use multiaddr::Multiaddr;
 use serde_derive::{Deserialize, Serialize};
-use tari_utilities::ByteArrayError;
 
 use crate::{
     peer_manager::{IdentitySignature, PeerFeatures, PeerManagerError},
@@ -48,8 +47,10 @@ impl PeerIdentityClaim {
         }
     }
 
-    pub fn is_valid(&self, public_key: &CommsPublicKey) -> Result<bool, ByteArrayError> {
-        self.signature.is_valid(public_key, self.features, &self.addresses)
+    /// Verify the claim's identity signature for the given public key. Returns
+    /// `Err(PeerManagerError::InvalidIdentitySignature)` if it is not valid.
+    pub fn verify(&self, public_key: &CommsPublicKey) -> Result<(), PeerManagerError> {
+        self.signature.verify(public_key, self.features, &self.addresses)
     }
 }
 
