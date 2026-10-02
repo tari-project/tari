@@ -219,12 +219,18 @@ jobs:
       - name: Install Linux dependencies - Ubuntu
         if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) }}
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
       - name: Install Linux dependencies - Ubuntu - cross-compiling ${{ env.TARI_BUILD_ISA_CPU }} on ${{ env.TARI_HOST_ISA_CPU }}
         if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && ( env.TARI_BUILD_ISA_CPU != env.TARI_HOST_ISA_CPU ) }}
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies-cross_compile.sh ${{ env.TARI_BUILD_ISA_CPU }}
           rustup target add ${{ matrix.builds.target }}
@@ -943,6 +949,9 @@ jobs:
         working-directory: ${{ env.TS_FILENAME }}
         run: |
           # set -xo pipefail
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo apt-get --no-install-recommends --assume-yes install dos2unix
           ls -alhtR
