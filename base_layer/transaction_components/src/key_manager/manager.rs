@@ -1765,7 +1765,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 #[cfg(test)]
 mod tests {
     use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
-    use tari_common_types::types::PrivateKey;
+    use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey};
 
     use super::{MAX_SOFTWARE_EPHEMERAL_NONCES, sender_offset_key_takes_a_reserved_nonce};
     use crate::{
@@ -1777,7 +1777,7 @@ mod tests {
             error::KeyManagerError,
             key_id::TariKeyId,
         },
-        transaction_components::{RangeProofType, TransactionOutputVersion},
+        transaction_components::{EncryptedData, MemoField, RangeProofType, TransactionOutputVersion},
     };
 
     /// The plain sum of the input script private keys is `H("script key", b) + alpha` summed over blinding factors
@@ -2295,5 +2295,68 @@ mod tests {
                 .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved.key_id, &challenge(1))
                 .is_ok()
         );
+    }
+
+    /// A commitment to `value` under a fresh mask, with encrypted data that the view key decrypts. The first encrypted
+    /// data carries the true value and mask; the second carries `value + 1`, so it decrypts but its mask does not open
+    /// the commitment.
+    fn output_with_matching_and_mismatched_encrypted_data(
+        key_manager: &KeyManager,
+    ) -> (CompressedCommitment, EncryptedData, EncryptedData) {
+        let value = 100u64;
+        let mask = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
+        let commitment = key_manager
+            .get_commitment(&mask.key_id, &PrivateKey::from(value))
+            .unwrap();
+        let mask_key = key_manager.get_private_key(&mask.key_id).unwrap();
+        let view_key = key_manager.get_private_view_key();
+        let matching = EncryptedData::encrypt_data(
+            &view_key,
+            &commitment,
+            MicroMinotari::from(value),
+            &mask_key,
+            MemoField::new_empty(),
+        )
+        .unwrap();
+        let mismatched = EncryptedData::encrypt_data(
+            &view_key,
+            &commitment,
+            MicroMinotari::from(value + 1),
+            &mask_key,
+            MemoField::new_empty(),
+        )
+        .unwrap();
+        (commitment, matching, mismatched)
+    }
+
+    /// Encrypted data that decrypts but whose mask does not open the commitment must not be recovered as ours.
+    #[test]
+    fn try_output_key_recovery_rejects_a_mask_that_does_not_open_the_commitment() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (commitment, matching, mismatched) = output_with_matching_and_mismatched_encrypted_data(&key_manager);
+        let sender_offset_public_key = CompressedPublicKey::default();
+
+        let (_, value, _) = key_manager
+            .try_output_key_recovery(&commitment, &matching, &sender_offset_public_key)
+            .unwrap()
+            .expect("the matching output should be recovered");
+        assert_eq!(value, MicroMinotari::from(100));
+
+        assert!(
+            key_manager
+                .try_output_key_recovery(&commitment, &mismatched, &sender_offset_public_key)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// Encrypted data that decrypts but whose mask does not open the commitment must not be claimed as ours.
+    #[test]
+    fn is_this_output_ours_rejects_a_mask_that_does_not_open_the_commitment() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (commitment, matching, mismatched) = output_with_matching_and_mismatched_encrypted_data(&key_manager);
+
+        assert!(key_manager.is_this_output_ours(&commitment, &matching, None).unwrap());
+        assert!(!key_manager.is_this_output_ours(&commitment, &mismatched, None).unwrap());
     }
 }
