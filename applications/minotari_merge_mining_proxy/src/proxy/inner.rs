@@ -912,7 +912,8 @@ impl InnerService {
             } else {
                 // Send the request to the current monerod server
                 match timeout(self.config.monerod_connection_timeout, builder.body(body).send()).await {
-                    Ok(response) => match response.map_err(MmProxyError::MonerodRequestFailed) {
+                    // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the error
+                    Ok(response) => match response.map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url())) {
                         Ok(val) => convert_reqwest_response_to_hyper_json_response(val).await?,
                         Err(e) => {
                             warn!(

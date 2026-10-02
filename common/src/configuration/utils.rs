@@ -52,7 +52,7 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         debug!(
             target: LOG_TARGET,
             "Using existing configuration file  {}",
-            config_path.as_ref().display()
+            display_path(config_path.as_ref())
         );
     } else if create_if_not_exists {
         let sources = if non_interactive {
@@ -146,7 +146,12 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
         check_override_key(key)?;
     }
     for (key, value) in &overrides {
-        trace!(target: LOG_TARGET, "Config property override: {key}={}", mask_value(key, value));
+        trace!(
+            target: LOG_TARGET,
+            "Config property override: {}={}",
+            sanitize_for_display(key),
+            sanitize_for_display(&mask_value(key, value))
+        );
     }
     warn_about_network_overrides(&overrides, network);
 
@@ -173,7 +178,12 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     let mut builder = Config::builder().add_source(cfg);
     for (key, value) in overrides {
-        trace!(target: LOG_TARGET, "Set override: ({key}, {})", mask_value(&key, &value));
+        trace!(
+            target: LOG_TARGET,
+            "Set override: ({}, {})",
+            sanitize_for_display(&key),
+            sanitize_for_display(&mask_value(&key, &value))
+        );
         builder = builder
             .set_override(key.as_str(), value.as_str())
             .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
@@ -544,18 +554,57 @@ fn secrets_readable_messages(_path: &Path, _file_cfg: &Config) -> Vec<String> {
     Vec::new()
 }
 
-/// Returns `s` with every control character (including ESC, CR, LF, DEL and C1 controls) replaced by its `\u{..}`
-/// escape, so text from config files, paths or env vars cannot inject terminal escape sequences or fake log lines.
-pub fn sanitize_for_display(s: &str) -> String {
+/// Maximum number of characters of one fragment that [`sanitize_for_display`] keeps.
+const MAX_DISPLAY_CHARS: usize = 512;
+
+/// Returns true for characters that must not reach a terminal or log as-is: control characters (including ESC, CR,
+/// LF, DEL and C1 controls), invisible/bidi format characters that can reorder or hide text, and the Unicode line and
+/// paragraph separators.
+fn is_unsafe_display_char(c: char) -> bool {
+    c.is_control() ||
+        matches!(
+            c,
+            '\u{061C}' |
+                '\u{180E}' |
+                '\u{200B}'..='\u{200F}' |
+                '\u{2028}' |
+                '\u{2029}' |
+                '\u{202A}'..='\u{202E}' |
+                '\u{2060}'..='\u{2064}' |
+                '\u{2066}'..='\u{2069}' |
+                '\u{FEFF}'
+        )
+}
+
+/// Returns `s` with every unsafe character (see [`is_unsafe_display_char`]) replaced by its `\u{..}` escape. Not
+/// length limited; used as a backstop on whole warning messages.
+pub(crate) fn escape_display_chars(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
-        if c.is_control() {
+        if is_unsafe_display_char(c) {
             result.extend(c.escape_unicode());
         } else {
             result.push(c);
         }
     }
     result
+}
+
+/// Makes text from config files, paths or env vars safe to show: control characters, invisible/bidi format
+/// characters and line/paragraph separators are replaced by their `\u{..}` escapes, so the text cannot inject
+/// terminal escape sequences, reorder a line or fake log lines. Only the first 512 characters are kept; the rest is
+/// replaced by `…(N more)`.
+pub fn sanitize_for_display(s: &str) -> String {
+    let total = s.chars().count();
+    if total <= MAX_DISPLAY_CHARS {
+        return escape_display_chars(s);
+    }
+    let kept: String = s.chars().take(MAX_DISPLAY_CHARS).collect();
+    format!(
+        "{}…({} more)",
+        escape_display_chars(&kept),
+        total.saturating_sub(MAX_DISPLAY_CHARS)
+    )
 }
 
 /// [`sanitize_for_display`] for a path.
@@ -571,7 +620,7 @@ static SECURITY_WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Returns how many security warnings this process has recorded: trust findings that mean another (non-root) user can
 /// control a config or log file (see [`untrusted_severe_reasons`]) and secrets in a config file others can read.
-/// Routine findings (group-writable files under a umask of 002, root-owned files) are printed but not counted.
+/// Routine findings (files writable only by the user's private group, root-owned files) are printed but not counted.
 /// Applications can use this to make sure an interactive user sees them, e.g. before a full-screen UI hides the
 /// terminal.
 pub fn warnings_emitted() -> usize {
@@ -585,7 +634,7 @@ pub fn security_warnings() -> Vec<String> {
 
 /// Writes a warning as `WARNING: <message>` to `writer`. The message is sanitized for display.
 pub(crate) fn write_warning<W: Write>(writer: &mut W, message: &str) {
-    if writeln!(writer, "WARNING: {}", sanitize_for_display(message)).is_err() {
+    if writeln!(writer, "WARNING: {}", escape_display_chars(message)).is_err() {
         // Nowhere else to report a failed write to stderr
     }
 }
@@ -597,7 +646,7 @@ pub(crate) fn print_warning(message: &str) {
 
 /// Prints a security warning to stderr and records it (see [`warnings_emitted`] and [`security_warnings`]).
 pub(crate) fn print_security_warning(message: &str) {
-    let message = sanitize_for_display(message);
+    let message = escape_display_chars(message);
     WARNINGS_EMITTED.fetch_add(1, Ordering::Relaxed);
     SECURITY_WARNINGS
         .lock()
@@ -610,14 +659,14 @@ pub(crate) fn print_security_warning(message: &str) {
 /// when no logger is set up yet or a (possibly planted) log config silences it. The message is sanitized for display
 /// once and the same text goes to both. It is not recorded as a security warning; see [`emit_security_warning`].
 pub(crate) fn emit_warning(message: &str) {
-    let message = sanitize_for_display(message);
+    let message = escape_display_chars(message);
     print_warning(&message);
     warn!(target: LOG_TARGET, "⚠️  {message}");
 }
 
 /// Like [`emit_warning`], but also records the message as a security warning (see [`warnings_emitted`]).
 pub(crate) fn emit_security_warning(message: &str) {
-    let message = sanitize_for_display(message);
+    let message = escape_display_chars(message);
     print_security_warning(&message);
     warn!(target: LOG_TARGET, "⚠️  {message}");
 }
@@ -641,16 +690,18 @@ pub fn warn_if_untrusted(path: &Path) {
 /// every hop in the symlink chain (up to 32 hops) is checked too, and a symlink whose target does not exist is
 /// reported. Paths in the messages are sanitized for display. On other platforms this returns nothing.
 ///
-/// This includes findings that are common and harmless on many systems (group-writable files under a umask of 002,
-/// root-owned read-only files); see [`untrusted_severe_reasons`] for the subset that means another user can control
-/// the file.
+/// This includes findings that are common and harmless on many systems (files writable by the user's private group
+/// under a umask of 002, root-owned read-only files); see [`untrusted_severe_reasons`] for the subset that means
+/// another user can control the file.
 pub fn untrusted_reasons(path: &Path) -> Vec<String> {
     untrusted_findings(path).into_iter().map(|(_, reason)| reason).collect()
 }
 
 /// Returns the subset of [`untrusted_reasons`] that means another (non-root) user can control the file: the file or
-/// a checked directory is owned by someone other than the effective user and root, or is world-writable, or the file
-/// is a symlink whose target does not exist. Group-writable and root-owned files are not included.
+/// a checked directory is owned by someone other than the effective user and root, is world-writable, or is
+/// group-writable by a group that is not the user's private group (see [`is_private_group`]), or the file is a
+/// symlink whose target does not exist. Root-owned files and files writable only by the user's private group are not
+/// included.
 pub fn untrusted_severe_reasons(path: &Path) -> Vec<String> {
     untrusted_findings(path)
         .into_iter()
@@ -663,15 +714,80 @@ pub fn untrusted_severe_reasons(path: &Path) -> Vec<String> {
 /// what [`untrusted_reasons`] and [`untrusted_severe_reasons`] are built from; use it directly to decide from one pass.
 #[cfg(unix)]
 pub fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
+    let mut findings = Vec::new();
+    if let Ok(metadata) = fs::metadata(path) {
+        findings.extend(file_findings(path, &metadata));
+    }
+    findings.extend(untrusted_path_findings(path));
+    findings
+}
+
+/// Classifies the owner and mode of one file or directory (`kind` is used in the message): owned by someone other
+/// than the effective user (severe unless root), world-writable (severe), or group-writable (severe unless the group
+/// is the user's private group).
+#[cfg(unix)]
+fn classify_metadata(kind: &str, path: &Path, metadata: &fs::Metadata) -> Vec<(bool, String)> {
+    use std::os::unix::fs::MetadataExt;
+
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    let mut findings = Vec::new();
+    let mode = metadata.mode() & 0o7777;
+    let shown = display_path(path);
+    let owner = metadata.uid();
+    if owner != euid {
+        // Root can write anything anyway, so a root-owned file is only worth a warning
+        findings.push((
+            owner != 0,
+            format!(
+                "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
+                 control its contents. Fix with `chown {} {}` or use a base path you own.",
+                kind, shown, owner, mode, euid, euid, shown
+            ),
+        ));
+    }
+    if mode & 0o002 != 0 {
+        findings.push((
+            true,
+            format!(
+                "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
+                 contents. Fix with `chmod o-w {}`.",
+                kind, shown, owner, mode, shown
+            ),
+        ));
+    } else if mode & 0o020 != 0 {
+        let gid = metadata.gid();
+        findings.push((
+            !is_private_group(gid),
+            format!(
+                "The {} {} (owner uid {}) is writable by its group (gid {}, mode {:o}). Members of that group could \
+                 control its contents. Fix with `chmod g-w {}` if the group is shared.",
+                kind, shown, owner, gid, mode, shown
+            ),
+        ));
+    } else {
+        // Not writable by anyone else
+    }
+    findings
+}
+
+/// Classifies the file itself from already obtained metadata, e.g. from an open file descriptor.
+#[cfg(unix)]
+pub(crate) fn file_findings(path: &Path, metadata: &fs::Metadata) -> Vec<(bool, String)> {
+    classify_metadata("file", path, metadata)
+}
+
+/// The path-based part of [`untrusted_findings`]: the file's directory, the directory of every symlink hop (up to 32)
+/// and a dangling symlink. The file itself is not checked here.
+#[cfg(unix)]
+pub(crate) fn untrusted_path_findings(path: &Path) -> Vec<(bool, String)> {
     use std::os::unix::fs::MetadataExt;
 
     const MAX_SYMLINK_HOPS: usize = 32;
 
-    // SAFETY: geteuid has no preconditions and cannot fail.
-    let euid = unsafe { libc::geteuid() };
     let parent = parent_or_current(path);
-    let mut reasons = Vec::new();
-    let mut to_check = vec![("file", path.to_path_buf()), ("directory", parent.clone())];
+    let mut findings = Vec::new();
+    let mut to_check = vec![("directory", parent.clone())];
     let mut seen_dirs = vec![fs::canonicalize(&parent).unwrap_or(parent)];
 
     // Walk the symlink chain one hop at a time and check the directory each hop lives in
@@ -704,7 +820,7 @@ pub fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
         let Ok(link_metadata) = fs::symlink_metadata(path) &&
         link_metadata.file_type().is_symlink()
     {
-        reasons.push((
+        findings.push((
             true,
             format!(
                 "{} is a symlink whose target does not exist (owner uid {}); remove it or point it at a real file.",
@@ -715,46 +831,92 @@ pub fn untrusted_findings(path: &Path) -> Vec<(bool, String)> {
     }
 
     for (kind, p) in to_check {
-        let Ok(metadata) = fs::metadata(&p) else {
-            continue;
-        };
-        let mode = metadata.mode() & 0o7777;
-        let shown = display_path(&p);
-        let owner = metadata.uid();
-        if owner != euid {
-            // Root can write anything anyway, so a root-owned file is only worth a warning
-            reasons.push((
-                owner != 0,
-                format!(
-                    "The {} {} is owned by uid {} (mode {:o}), not by the current user (uid {}). Another user could \
-                     control its contents. Fix with `chown {} {}` or use a base path you own.",
-                    kind, shown, owner, mode, euid, euid, shown
-                ),
-            ));
-        }
-        if mode & 0o002 != 0 {
-            reasons.push((
-                true,
-                format!(
-                    "The {} {} (owner uid {}) is writable by other users (mode {:o}). Another user could control its \
-                     contents. Fix with `chmod o-w {}`.",
-                    kind, shown, owner, mode, shown
-                ),
-            ));
-        } else if mode & 0o020 != 0 {
-            reasons.push((
-                false,
-                format!(
-                    "The {} {} (owner uid {}) is writable by its group (mode {:o}). Members of that group could \
-                     control its contents. Fix with `chmod g-w {}` if the group is shared.",
-                    kind, shown, owner, mode, shown
-                ),
-            ));
-        } else {
-            // Not writable by anyone else
+        if let Ok(metadata) = fs::metadata(&p) {
+            findings.extend(classify_metadata(kind, &p, &metadata));
         }
     }
-    reasons
+    findings
+}
+
+/// Returns true if `gid` is the current user's private group: it is the effective gid, it is not one of macOS's
+/// shared `staff` (20) or `admin` (80) groups, and no user other than the current one is listed as a member. If the
+/// group or user cannot be looked up, the group is treated as shared.
+#[cfg(unix)]
+pub(crate) fn is_private_group(gid: u32) -> bool {
+    // SAFETY: getegid has no preconditions and cannot fail.
+    let egid = unsafe { libc::getegid() };
+    if gid != egid {
+        return false;
+    }
+    if cfg!(target_os = "macos") && (gid == 20 || gid == 80) {
+        return false;
+    }
+    let (Some(user), Some(members)) = (current_user_name(), group_members(gid)) else {
+        return false;
+    };
+    members.iter().all(|member| *member == user)
+}
+
+/// Returns the member names of group `gid` (from `getgrgid_r`), or `None` if it cannot be looked up.
+#[cfg(unix)]
+pub(crate) fn group_members(gid: u32) -> Option<Vec<String>> {
+    use std::ffi::CStr;
+
+    let mut buffer: Vec<libc::c_char> = vec![0; 4096];
+    loop {
+        // SAFETY: `group` is plain old data that getgrgid_r fills in; all-zero is a valid initial value.
+        let mut group: libc::group = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::group = std::ptr::null_mut();
+        // SAFETY: all pointers are valid for the duration of the call and `buffer.len()` is the buffer's real size.
+        let rc = unsafe { libc::getgrgid_r(gid, &mut group, buffer.as_mut_ptr(), buffer.len(), &mut result) };
+        if rc == libc::ERANGE && buffer.len() < 1 << 20 {
+            buffer.resize(buffer.len().saturating_mul(2), 0);
+            continue;
+        }
+        if rc != 0 || result.is_null() {
+            return None;
+        }
+        let mut members = Vec::new();
+        let mut entry = group.gr_mem;
+        while !entry.is_null() {
+            // SAFETY: gr_mem is a null-terminated array of C strings that live in `buffer`.
+            let name = unsafe { *entry };
+            if name.is_null() {
+                break;
+            }
+            // SAFETY: `name` is a valid, null-terminated C string in `buffer`.
+            members.push(unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned());
+            // SAFETY: the array is null-terminated and we stopped at the terminator above.
+            entry = unsafe { entry.add(1) };
+        }
+        return Some(members);
+    }
+}
+
+/// Returns the effective user's name (from `getpwuid_r`), or `None` if it cannot be looked up.
+#[cfg(unix)]
+fn current_user_name() -> Option<String> {
+    use std::ffi::CStr;
+
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    let mut buffer: Vec<libc::c_char> = vec![0; 4096];
+    loop {
+        // SAFETY: `passwd` is plain old data that getpwuid_r fills in; all-zero is a valid initial value.
+        let mut passwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        // SAFETY: all pointers are valid for the duration of the call and `buffer.len()` is the buffer's real size.
+        let rc = unsafe { libc::getpwuid_r(euid, &mut passwd, buffer.as_mut_ptr(), buffer.len(), &mut result) };
+        if rc == libc::ERANGE && buffer.len() < 1 << 20 {
+            buffer.resize(buffer.len().saturating_mul(2), 0);
+            continue;
+        }
+        if rc != 0 || result.is_null() || passwd.pw_name.is_null() {
+            return None;
+        }
+        // SAFETY: pw_name is a valid, null-terminated C string in `buffer`.
+        return Some(unsafe { CStr::from_ptr(passwd.pw_name) }.to_string_lossy().into_owned());
+    }
 }
 
 /// Returns the parent directory of `path`, or `.` if it has none.
@@ -771,10 +933,21 @@ pub fn untrusted_findings(_path: &Path) -> Vec<(bool, String)> {
     Vec::new()
 }
 
+#[cfg(not(unix))]
+pub(crate) fn file_findings(_path: &Path, _metadata: &fs::Metadata) -> Vec<(bool, String)> {
+    Vec::new()
+}
+
+#[cfg(not(unix))]
+pub(crate) fn untrusted_path_findings(_path: &Path) -> Vec<(bool, String)> {
+    Vec::new()
+}
+
 /// Returns the value to display for a config key or environment variable. Values are masked as `***` unless the last
 /// key segment (split on `.` and `__`, case-insensitive, with any `tari_`/`minotari_` prefix removed) is known to be
 /// safe to show: `*_address` and `*_url` (masked entirely if the value contains `@`, `?` or `#` anywhere, since
-/// credentials, query strings and fragments may contain list separators; otherwise shown unchanged), `*_port`,
+/// credentials, query strings and fragments may contain list separators; otherwise shown with each URL path replaced
+/// by `/***`, see [`mask_url_paths`]), `*_port`,
 /// `*_enabled`, `*_interval`, `*_timeout`, `*_path`, `*_dir`, `network`, `base_path` or `override_from`. Otherwise
 /// boolean and numeric values are shown. Keys that name a secret (see [`SECRET_WORDS`]) are always masked, whatever the
 /// value.
@@ -801,7 +974,7 @@ pub fn mask_value(key: &str, value: &str) -> String {
         if value.contains(['@', '?', '#']) {
             return "***".to_string();
         }
-        return value.to_string();
+        return mask_url_paths(value);
     }
     let safe_suffixes = ["_port", "_enabled", "_interval", "_timeout", "_path", "_dir"];
     let safe_names = ["network", "base_path", "override_from"];
@@ -809,6 +982,36 @@ pub fn mask_value(key: &str, value: &str) -> String {
         return value.to_string();
     }
     "***".to_string()
+}
+
+/// Replaces the path of every URL (an element containing `://`) in a list separated by `,`, `;` or whitespace with
+/// `/***`, keeping `scheme://host[:port]` and the separators. URLs with no path or a bare `/`, and elements that are
+/// not URLs (e.g. multiaddrs such as `/ip4/1.2.3.4/tcp/18189`), are kept as they are.
+fn mask_url_paths(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    let mut element = String::new();
+    for c in value.chars() {
+        if c == ',' || c == ';' || c.is_whitespace() {
+            result.push_str(&mask_url_path(&element));
+            element.clear();
+            result.push(c);
+        } else {
+            element.push(c);
+        }
+    }
+    result.push_str(&mask_url_path(&element));
+    result
+}
+
+/// See [`mask_url_paths`]; handles one element.
+fn mask_url_path(element: &str) -> String {
+    let Some((scheme, rest)) = element.split_once("://") else {
+        return element.to_string();
+    };
+    match rest.split_once('/') {
+        Some((authority, path)) if !path.is_empty() => format!("{scheme}://{authority}/***"),
+        _ => element.to_string(),
+    }
 }
 
 /// Checks for environment variables that look like they are intended to configure Tari applications but use an
@@ -849,8 +1052,8 @@ pub fn print_env_vars(config_overrides: &[(String, String)]) {
     let mut env_vars: Vec<(String, String)> = std::env::vars()
         .filter(|(k, _)| k.starts_with("TARI_") || k.starts_with("MINOTARI_"))
         .map(|(k, v)| {
-            let display_value = mask_value(&k, &v);
-            (k, display_value)
+            let display_value = sanitize_for_display(&mask_value(&k, &v));
+            (sanitize_for_display(&k), display_value)
         })
         .collect();
     env_vars.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -869,8 +1072,8 @@ pub fn print_env_vars(config_overrides: &[(String, String)]) {
     } else {
         println!("\nConfig property overrides (-p args):");
         for (key, value) in config_overrides {
-            let display_value = mask_value(key, value);
-            println!("  {key}={display_value}");
+            let display_value = sanitize_for_display(&mask_value(key, value));
+            println!("  {}={display_value}", sanitize_for_display(key));
         }
     }
 }
@@ -1052,6 +1255,7 @@ mod test {
         // Without '@', '?' or '#', values print unchanged, separators included
         for value in [
             "https://node.example",
+            "https://node.example/",
             "/ip4/1.2.3.4/tcp/18189",
             "http://127.0.0.1:18081, http://node.example:18081",
             "http://one:1; http://two:2",
@@ -1059,6 +1263,19 @@ mod test {
             assert_eq!(mask_value("x.monerod_url", value), value);
             assert_eq!(mask_value("x.listener_address", value), value);
         }
+        // URL paths are masked, host and port kept
+        assert_eq!(
+            mask_value("x.monerod_url", "http://node:18081/json_rpc"),
+            "http://node:18081/***"
+        );
+        assert_eq!(
+            mask_value("x.base_node_grpc_address", "https://node.example/secret-path/x"),
+            "https://node.example/***"
+        );
+        assert_eq!(
+            mask_value("x.monerod_url", "http://a:1/x, http://b:2;http://c:3/y"),
+            "http://a:1/***, http://b:2;http://c:3/***"
+        );
         // A bare `auth` segment is a secret
         assert_eq!(mask_value("p2p.transport.socks.auth", "username_password=u:p"), "***");
     }
@@ -1235,6 +1452,54 @@ mod test {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn group_writable_severity_follows_group_membership() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let file = dir.path().join("config.toml");
+        fs::write(&file, "").unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o664)).unwrap();
+        let gid = fs::metadata(&file).unwrap().gid();
+
+        // Work out the expected answer from the same lookups, so the test is deterministic on any host
+        // SAFETY: getegid has no preconditions and cannot fail.
+        let egid = unsafe { libc::getegid() };
+        let shared_on_macos = cfg!(target_os = "macos") && (gid == 20 || gid == 80);
+        let only_us = match (current_user_name(), group_members(gid)) {
+            (Some(user), Some(members)) => members.iter().all(|m| *m == user),
+            _ => false,
+        };
+        let expected_private = gid == egid && !shared_on_macos && only_us;
+        assert_eq!(is_private_group(gid), expected_private);
+
+        let group_finding = untrusted_findings(&file)
+            .into_iter()
+            .find(|(_, reason)| reason.contains("writable by its group"))
+            .expect("a group-writable finding");
+        assert_eq!(group_finding.0, !expected_private);
+
+        // World-writable is always severe
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o666)).unwrap();
+        assert!(!untrusted_severe_reasons(&file).is_empty());
+    }
+
+    #[test]
+    fn invisible_and_bidi_characters_are_escaped() {
+        assert_eq!(sanitize_for_display("a\u{202E}b"), "a\\u{202e}b");
+        assert_eq!(sanitize_for_display("a\u{200B}b"), "a\\u{200b}b");
+        assert_eq!(sanitize_for_display("a\u{2028}b"), "a\\u{2028}b");
+        assert_eq!(sanitize_for_display("\u{FEFF}x\u{2066}"), "\\u{feff}x\\u{2066}");
+        // Ordinary non-ASCII text is kept
+        assert_eq!(sanitize_for_display("café ✓"), "café ✓");
+
+        let long = "x".repeat(1000);
+        let shown = sanitize_for_display(&long);
+        assert_eq!(shown, format!("{}…(488 more)", "x".repeat(512)));
+    }
+
     #[test]
     fn control_characters_are_escaped() {
         assert_eq!(
@@ -1328,19 +1593,23 @@ p2pool_node_grpc_address = "http://127.0.0.1:18145"
     #[cfg(unix)]
     #[test]
     fn only_severe_findings_are_recorded() {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
         let dir = tempfile::tempdir().unwrap();
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
 
-        // Group-writable, owned by us (umask 002): printed, not recorded
+        // Group-writable, owned by us: always printed; recorded only if the group is shared
         let group = dir.path().join("group_writable.toml");
         fs::write(&group, "").unwrap();
         fs::set_permissions(&group, fs::Permissions::from_mode(0o664)).unwrap();
+        let private = is_private_group(fs::metadata(&group).unwrap().gid());
         assert!(!untrusted_reasons(&group).is_empty());
-        assert!(untrusted_severe_reasons(&group).is_empty());
+        assert_eq!(untrusted_severe_reasons(&group).is_empty(), private);
         warn_if_untrusted(&group);
-        assert!(!recorded_security_warning_mentions(&group.display().to_string()));
+        assert_eq!(
+            recorded_security_warning_mentions(&group.display().to_string()),
+            !private
+        );
 
         // World-writable: recorded
         let world = dir.path().join("world_writable.toml");
