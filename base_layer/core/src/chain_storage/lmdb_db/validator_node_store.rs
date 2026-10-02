@@ -315,10 +315,22 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     /// The number of validator nodes in the registered set (pending activation or active) for `sidechain_id`. Entries
     /// for other sidechains are not counted, so each sidechain has its own uncapped initial-validator phase.
+    #[cfg(test)]
     pub fn count_registered(&self, sidechain_id: Option<&CompressedPublicKey>) -> Result<usize, ChainStorageError> {
+        self.count_registered_up_to(sidechain_id, usize::MAX)
+    }
+
+    /// As [`Self::count_registered`], but stops counting at `limit`: the result is `min(count, limit)`. Callers that
+    /// only need to know whether a threshold has been reached pass it as the limit so the scan stays O(limit) however
+    /// large the registered set grows.
+    pub fn count_registered_up_to(
+        &self,
+        sidechain_id: Option<&CompressedPublicKey>,
+        limit: usize,
+    ) -> Result<usize, ChainStorageError> {
         let sidechain_bytes = sid_as_slice(sidechain_id);
         let mut cursor = self.registered_read_cursor()?;
-        if !cursor.seek_range(sidechain_bytes)? {
+        if limit == 0 || !cursor.seek_range(sidechain_bytes)? {
             return Ok(0);
         }
         let mut count = 0usize;
@@ -333,6 +345,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 break;
             }
             count = count.saturating_add(1);
+            if count >= limit {
+                break;
+            }
         }
         Ok(count)
     }
@@ -500,7 +515,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let mut activation_epoch = current_epoch.saturating_add(VnEpoch(1));
         // If this sidechain has fewer than the initial validators, we activate all new validators in the next epoch.
         // The count is per sidechain: registrations on one sidechain must not end the initial phase of another.
-        let len = self.count_registered(sidechain_id)?;
+        let len = self.count_registered_up_to(sidechain_id, initial_validators)?;
         if len < initial_validators {
             return Ok(activation_epoch);
         }
@@ -1013,6 +1028,8 @@ mod tests {
             // Three validator nodes on `sidechain`, all queued to activate in epoch 6
             insert_n_vns(&store, 6, 0, 3, Some(&sidechain));
             assert_eq!(store.count_registered(Some(&sidechain)).unwrap(), 3);
+            assert_eq!(store.count_registered_up_to(Some(&sidechain), 2).unwrap(), 2);
+            assert_eq!(store.count_registered_up_to(Some(&sidechain), 0).unwrap(), 0);
             assert_eq!(store.count_registered(None).unwrap(), 0);
             assert_eq!(store.count_registered(Some(&new_public_key())).unwrap(), 0);
 

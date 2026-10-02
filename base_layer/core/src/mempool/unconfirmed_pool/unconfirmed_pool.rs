@@ -245,17 +245,6 @@ type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
 /// on validator node state that changes with each block. The exception (reclaiming an exited registration's stake and
 /// re-registering the same validator node in one block) is only delayed, since the wallet retries a taken slot.
 fn validator_node_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
-    let outputs = body.outputs().iter().filter_map(|output| {
-        let features = output.features.sidechain_feature.as_ref()?;
-        let public_key = features
-            .validator_node_registration()
-            .map(|reg| reg.public_key())
-            .or_else(|| features.validator_node_exit().map(|exit| exit.public_key()))?;
-        Some((
-            features.sidechain_public_key().map(|pk| pk.as_bytes().to_vec()),
-            public_key.as_bytes().to_vec(),
-        ))
-    });
     let inputs = body.inputs().iter().filter_map(|input| {
         let features = input.features().ok()?.sidechain_feature.as_ref()?;
         let reg = features.validator_node_registration()?;
@@ -264,7 +253,33 @@ fn validator_node_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
             reg.public_key().as_bytes().to_vec(),
         ))
     });
-    outputs.chain(inputs).collect()
+    // A single transaction may legitimately touch the same validator node twice (e.g. reclaim an exited registration's
+    // stake and register the node again), so the keys are deduplicated per body.
+    let mut keys = validator_node_output_keys(body);
+    keys.extend(inputs);
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
+
+/// The validator nodes `body` registers or exits, i.e. the ones whose state is changed by mining it. Spends of a
+/// registration output are not included: they do not invalidate other transactions for the same validator node (a
+/// newer registration's exit stays valid when an older, exited registration's stake is reclaimed).
+fn validator_node_output_keys(body: &AggregateBody) -> Vec<ValidatorNodeKey> {
+    body.outputs()
+        .iter()
+        .filter_map(|output| {
+            let features = output.features.sidechain_feature.as_ref()?;
+            let public_key = features
+                .validator_node_registration()
+                .map(|reg| reg.public_key())
+                .or_else(|| features.validator_node_exit().map(|exit| exit.public_key()))?;
+            Some((
+                features.sidechain_public_key().map(|pk| pk.as_bytes().to_vec()),
+                public_key.as_bytes().to_vec(),
+            ))
+        })
+        .collect()
 }
 
 /// The earliest `max_epoch` of the validator node registrations and exits in `body`, if it has any
@@ -2030,7 +2045,7 @@ impl UnconfirmedPool {
         &mut self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
-        let vn_keys = validator_node_keys(&published_block.body);
+        let vn_keys = validator_node_output_keys(&published_block.body);
         if vn_keys.is_empty() {
             return Ok(Vec::new());
         }
