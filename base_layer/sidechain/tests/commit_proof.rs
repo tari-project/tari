@@ -8,6 +8,7 @@ use tari_sidechain::{
     ProposalVoteMessage,
     QuorumDecision,
     SidechainBlockCommitProof,
+    SidechainBlockHeader,
 };
 
 mod support;
@@ -96,6 +97,63 @@ fn it_rejects_a_qc_that_claims_another_protocol_version() {
         err.to_string().contains("Invalid signature for QC"),
         "Expected the signature error, got: {err}"
     );
+}
+
+#[test]
+fn a_header_that_omits_the_transaction_merkle_root_carries_none() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    assert_eq!(proof.header().transaction_merkle_root(), None);
+}
+
+#[test]
+fn from_version_1_the_block_id_commits_to_the_transaction_merkle_root() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    let mut header = proof.header().clone();
+    header.protocol_version = 1;
+    let without_root = header.calculate_block_id();
+
+    header.transaction_merkle_root = Some(FixedHash::zero());
+    let zero_root = header.calculate_block_id();
+    header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+    let other_root = header.calculate_block_id();
+
+    assert_ne!(without_root, zero_root, "carrying a root must change the block ID");
+    assert_ne!(zero_root, other_root, "the root must be part of the block ID");
+}
+
+#[test]
+fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
+    let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    proof.header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+    // The version 0 preimage does not cover the root, so the block ID still matches.
+    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("commits to no transaction merkle root"),
+        "Expected the transaction merkle root error, got: {err}"
+    );
+}
+
+#[test]
+fn the_transaction_merkle_root_round_trips() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    let mut header = proof.header().clone();
+    header.protocol_version = 1;
+    header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+
+    let json = serde_json::to_value(&header).unwrap();
+    assert_eq!(
+        json.get("transaction_merkle_root").and_then(|v| v.as_str()),
+        Some("01".repeat(32).as_str())
+    );
+    assert_eq!(serde_json::from_value::<SidechainBlockHeader>(json).unwrap(), header);
+
+    let bytes = borsh::to_vec(&header).unwrap();
+    assert_eq!(borsh::from_slice::<SidechainBlockHeader>(&bytes).unwrap(), header);
+
+    header.transaction_merkle_root = None;
+    let json = serde_json::to_value(&header).unwrap();
+    assert!(json.get("transaction_merkle_root").is_none());
+    assert_eq!(serde_json::from_value::<SidechainBlockHeader>(json).unwrap(), header);
 }
 
 #[test]

@@ -17,7 +17,7 @@ use tari_utilities::ByteArray;
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
-    serde::hex_or_bytes,
+    serde::{hex_or_bytes, option_hex_or_bytes},
     shard_group::ShardGroup,
     validations::check_proof_elements,
 };
@@ -212,6 +212,11 @@ pub struct SidechainBlockHeader {
     pub state_merkle_root: FixedHash,
     #[serde(with = "hex_or_bytes")]
     pub command_merkle_root: FixedHash,
+    /// A Merkle root over the outcome of each transaction this block finalizes, which lets a client prove that a
+    /// transaction committed or aborted in this block. Committed to from protocol version 1. A version 0 header
+    /// carries none, and a proof whose version 0 header carries one is invalid.
+    #[serde(default, with = "option_hex_or_bytes", skip_serializing_if = "Option::is_none")]
+    pub transaction_merkle_root: Option<FixedHash>,
     /// Signature of block by the proposer.
     pub signature: ValidatorBlockSignature,
     pub accumulated_data: ShardGroupAccumulatedData,
@@ -250,6 +255,7 @@ impl SidechainBlockHeader {
                 proposed_by: self.proposed_by.as_bytes(),
                 state_merkle_root: &self.state_merkle_root,
                 command_merkle_root: &self.command_merkle_root,
+                transaction_merkle_root: self.transaction_merkle_root.as_ref(),
                 accumulated_data: &self.accumulated_data,
                 metadata_hash: &self.metadata_hash,
             }),
@@ -275,6 +281,10 @@ impl SidechainBlockHeader {
 
     pub fn signature(&self) -> &ValidatorBlockSignature {
         &self.signature
+    }
+
+    pub fn transaction_merkle_root(&self) -> Option<&FixedHash> {
+        self.transaction_merkle_root.as_ref()
     }
 
     pub fn accumulated_data(&self) -> &ShardGroupAccumulatedData {
@@ -524,5 +534,7 @@ pub struct BlockHeaderHashFieldsV2<'a> {
     pub proposed_by: &'a [u8],
     pub state_merkle_root: &'a FixedHash,
     pub command_merkle_root: &'a FixedHash,
+    /// Borsh encodes the `Option` tag, so a header that carries no root and one that carries any root hash apart.
+    pub transaction_merkle_root: Option<&'a FixedHash>,
     pub metadata_hash: &'a FixedHash,
 }
