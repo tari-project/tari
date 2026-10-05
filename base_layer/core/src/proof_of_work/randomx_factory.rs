@@ -4,7 +4,7 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, Condvar, Mutex, RwLock},
+    sync::{Arc, Condvar, Mutex, RwLock, Weak},
     time::Instant,
 };
 
@@ -128,7 +128,7 @@ impl RandomXFactory {
         self.inner.create(key, cache, dataset)
     }
 
-    /// Get the number of VMs currently allocated
+    /// Get the number of built VMs currently cached. Builds still in flight are not counted.
     pub fn get_count(&self) -> Result<usize, RandomXVMFactoryError> {
         Ok(self.inner.get_count())
     }
@@ -142,11 +142,18 @@ impl RandomXFactory {
 // The cell holds the outcome of the one build for a key, so a failure is shared by all waiters too
 type VmCell = Arc<OnceCell<Result<RandomXVMInstance, RandomXVMFactoryError>>>;
 
+#[derive(Default)]
+struct VmMaps {
+    // The LRU cache. Entries whose cell is still empty are builds in flight; they count towards `max_vms`.
+    lru: HashMap<Vec<u8>, (Instant, VmCell)>,
+    // Cells that are being built or waited on, so a caller can still join a build whose LRU entry was evicted
+    in_flight: HashMap<Vec<u8>, Weak<OnceCell<Result<RandomXVMInstance, RandomXVMFactoryError>>>>,
+}
+
 struct RandomXFactoryInner {
     flags: RandomXFlag,
     // Each key has its own cell, so the map lock is only held for lookups and inserts, never while a VM is built.
-    // Entries whose cell is still empty are builds in flight; they count towards `max_vms`.
-    vms: Mutex<HashMap<Vec<u8>, (Instant, VmCell)>>,
+    vms: Mutex<VmMaps>,
     max_vms: usize,
     // Counting semaphore limiting concurrent builds to `MAX_CONCURRENT_BUILDS`
     builds_in_flight: Mutex<usize>,
@@ -195,22 +202,26 @@ impl RandomXFactoryInner {
             // The cache and VM are not Send, so they are built on this thread and only shared once wrapped.
             RandomXVMInstance::create(key, self.flags, cache, dataset)
         });
+
+        let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
+        // The build is done, so later callers find the cell in the LRU (or start afresh) rather than via `in_flight`
+        if vms.in_flight.get(key).is_some_and(|w| w.as_ptr() == Arc::as_ptr(&cell)) {
+            vms.in_flight.remove(key);
+        }
         match result.clone() {
             Ok(vm) => {
                 // If this key was evicted while it was building, cache the finished VM again as the newest entry. A
                 // different cell for the key belongs to a newer caller and is left alone.
-                let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
-                if !vms.contains_key(key) {
-                    self.insert_newest(&mut vms, key, cell);
+                if !vms.lru.contains_key(key) {
+                    self.insert_newest(&mut vms.lru, key, cell);
                 }
                 Ok(vm)
             },
             Err(err) => {
                 // Remove the failed entry (unless it was already replaced or evicted) so the next request retries.
                 // Every caller holding this cell does this; only the first one still finds it in the map.
-                let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
-                if vms.get(key).is_some_and(|(_, c)| Arc::ptr_eq(c, &cell)) {
-                    vms.remove(key);
+                if vms.lru.get(key).is_some_and(|(_, c)| Arc::ptr_eq(c, &cell)) {
+                    vms.lru.remove(key);
                 }
                 Err(err)
             },
@@ -219,19 +230,30 @@ impl RandomXFactoryInner {
 
     fn get_or_insert_cell(&self, key: &[u8]) -> VmCell {
         let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(entry) = vms.get_mut(key) {
+        if let Some(entry) = vms.lru.get_mut(key) {
             entry.0 = Instant::now();
             return entry.1.clone();
         }
 
+        // A build for this key may still be running after its LRU entry was evicted; join it instead of building the
+        // same key twice. A cell left empty by a panicked build is joined too, and its next caller retries the build.
+        if let Some(cell) = vms.in_flight.get(key).and_then(Weak::upgrade) {
+            self.insert_newest(&mut vms.lru, key, cell.clone());
+            return cell;
+        }
+
+        // Only keys that are being built or waited on are kept; drop entries nobody holds any more (for example
+        // after a panicked build) so the map cannot grow without bound.
+        vms.in_flight.retain(|_, w| w.strong_count() > 0);
         let cell = VmCell::default();
-        self.insert_newest(&mut vms, key, cell.clone());
+        vms.in_flight.insert(Vec::from(key), Arc::downgrade(&cell));
+        self.insert_newest(&mut vms.lru, key, cell.clone());
         cell
     }
 
-    /// Insert `cell` for `key` as the newest entry, evicting the oldest entry first if the map is full. Evicting only
-    /// drops the map's reference; callers already holding the cell still get their VM, and a successful build puts
-    /// its cell back in the map.
+    /// Insert `cell` for `key` as the newest LRU entry, evicting the oldest entry first if the map is full. Evicting
+    /// only drops the map's reference: callers already holding the cell still get their VM, a later caller can join
+    /// the build through `in_flight`, and a successful build puts its cell back in the map.
     fn insert_newest(&self, vms: &mut HashMap<Vec<u8>, (Instant, VmCell)>, key: &[u8], cell: VmCell) {
         if vms.len() >= self.max_vms &&
             let Some(oldest_key) = vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone())
@@ -252,9 +274,13 @@ impl RandomXFactoryInner {
         BuildPermit { factory: self }
     }
 
-    /// Get the number of VMs currently allocated
+    /// Get the number of built VMs currently cached. Builds still in flight are not counted.
     pub(crate) fn get_count(&self) -> usize {
-        self.vms.lock().unwrap_or_else(|e| e.into_inner()).len()
+        let vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
+        vms.lru
+            .values()
+            .filter(|(_, cell)| matches!(cell.get(), Some(Ok(_))))
+            .count()
     }
 
     /// Get the flags used to create the VMs
@@ -467,6 +493,7 @@ mod test {
             .vms
             .lock()
             .unwrap()
+            .lru
             .get(b"failing-key".as_slice())
             .unwrap()
             .1
@@ -513,7 +540,9 @@ mod test {
             entered_rx.recv().unwrap();
         }
         assert!(entered_rx.recv_timeout(Duration::from_millis(500)).is_err());
-        assert_eq!(factory.get_count().unwrap(), KEYS);
+        // All four builds are in the map, but none has a VM yet
+        assert_eq!(factory.inner.vms.lock().unwrap().lru.len(), KEYS);
+        assert_eq!(factory.get_count().unwrap(), 0);
 
         for _ in 0..KEYS {
             release_tx.send(()).unwrap();
@@ -537,9 +566,9 @@ mod test {
 
         assert_eq!(factory.get_count().unwrap(), 2);
         let vms = factory.inner.vms.lock().unwrap();
-        assert!(!vms.contains_key(b"key-1".as_slice()));
-        assert!(vms.contains_key(b"key-2".as_slice()));
-        assert!(vms.contains_key(b"key-3".as_slice()));
+        assert!(!vms.lru.contains_key(b"key-1".as_slice()));
+        assert!(vms.lru.contains_key(b"key-2".as_slice()));
+        assert!(vms.lru.contains_key(b"key-3".as_slice()));
     }
 
     #[test]
@@ -572,10 +601,10 @@ mod test {
         let builder_1 = spawn_create(b"key-1");
         assert_eq!(entered_rx.recv().unwrap(), b"key-1");
         let builder_2 = spawn_create(b"key-2");
-        while !factory.inner.vms.lock().unwrap().contains_key(b"key-2".as_slice()) {
+        while !factory.inner.vms.lock().unwrap().lru.contains_key(b"key-2".as_slice()) {
             thread::sleep(Duration::from_millis(10));
         }
-        assert!(!factory.inner.vms.lock().unwrap().contains_key(b"key-k".as_slice()));
+        assert!(!factory.inner.vms.lock().unwrap().lru.contains_key(b"key-k".as_slice()));
 
         // K finishes and is cached again as the newest entry, evicting the oldest (key-1)
         release_k_tx.send(()).unwrap();
@@ -583,9 +612,9 @@ mod test {
         vm.calculate_hash(b"hashme").unwrap();
         {
             let vms = factory.inner.vms.lock().unwrap();
-            assert!(vms.contains_key(b"key-k".as_slice()));
-            assert!(!vms.contains_key(b"key-1".as_slice()));
-            assert!(vms.len() <= 2);
+            assert!(vms.lru.contains_key(b"key-k".as_slice()));
+            assert!(!vms.lru.contains_key(b"key-1".as_slice()));
+            assert!(vms.lru.len() <= 2);
         }
 
         // A later caller for K gets the cached VM without another build
@@ -597,6 +626,101 @@ mod test {
         assert!(builder_1.join().unwrap().is_err());
         assert!(builder_2.join().unwrap().is_err());
         assert!(factory.get_count().unwrap() <= 2);
-        assert!(factory.inner.vms.lock().unwrap().contains_key(b"key-k".as_slice()));
+        assert!(factory.inner.vms.lock().unwrap().lru.contains_key(b"key-k".as_slice()));
+    }
+
+    #[test]
+    fn evicted_build_is_joined_not_restarted() {
+        let factory = RandomXFactory::new(2);
+        let k_builds = Arc::new(AtomicUsize::new(0));
+        let k_builds_hook = k_builds.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_k_tx, release_k_rx) = mpsc::channel::<()>();
+        let (release_others_tx, release_others_rx) = mpsc::channel::<()>();
+        let release_k_rx = Mutex::new(release_k_rx);
+        let release_others_rx = Mutex::new(release_others_rx);
+        set_hook(&factory, move |key| {
+            entered_tx.send(key.to_vec()).unwrap();
+            if key == b"key-k" {
+                // Only the first build of K blocks, so a second build would show up in the counter, not hang
+                if k_builds_hook.fetch_add(1, Ordering::SeqCst) == 0 {
+                    release_k_rx.lock().unwrap().recv().unwrap();
+                }
+                Ok(())
+            } else {
+                release_others_rx.lock().unwrap().recv().unwrap();
+                Err(injected_error())
+            }
+        });
+
+        let spawn_create = |key: &'static [u8]| {
+            let factory = factory.clone();
+            thread::spawn(move || factory.create(key, None, None))
+        };
+        // K blocks in the hook holding one build permit; key-1 holds the other and key-2 waits, evicting K
+        let first_k = spawn_create(b"key-k");
+        assert_eq!(entered_rx.recv().unwrap(), b"key-k");
+        let k_cell = factory
+            .inner
+            .vms
+            .lock()
+            .unwrap()
+            .lru
+            .get(b"key-k".as_slice())
+            .unwrap()
+            .1
+            .clone();
+        let builder_1 = spawn_create(b"key-1");
+        assert_eq!(entered_rx.recv().unwrap(), b"key-1");
+        let builder_2 = spawn_create(b"key-2");
+        while !factory.inner.vms.lock().unwrap().lru.contains_key(b"key-2".as_slice()) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!factory.inner.vms.lock().unwrap().lru.contains_key(b"key-k".as_slice()));
+
+        // A second caller for K joins the running build: K's own cell goes back into the LRU
+        let second_k = spawn_create(b"key-k");
+        loop {
+            let cell = factory
+                .inner
+                .vms
+                .lock()
+                .unwrap()
+                .lru
+                .get(b"key-k".as_slice())
+                .map(|(_, c)| c.clone());
+            if let Some(cell) = cell {
+                assert!(
+                    Arc::ptr_eq(&cell, &k_cell),
+                    "the second caller started a new build of K"
+                );
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        release_k_tx.send(()).unwrap();
+        let vm_1 = first_k.join().unwrap().unwrap();
+        let vm_2 = second_k.join().unwrap().unwrap();
+        assert!(Arc::ptr_eq(&vm_1.instance, &vm_2.instance));
+        assert_eq!(k_builds.load(Ordering::SeqCst), 1);
+        assert!(factory.inner.vms.lock().unwrap().lru.contains_key(b"key-k".as_slice()));
+        assert!(
+            factory
+                .inner
+                .vms
+                .lock()
+                .unwrap()
+                .in_flight
+                .get(b"key-k".as_slice())
+                .is_none()
+        );
+
+        release_others_tx.send(()).unwrap();
+        release_others_tx.send(()).unwrap();
+        assert!(builder_1.join().unwrap().is_err());
+        assert!(builder_2.join().unwrap().is_err());
+        assert_eq!(factory.get_count().unwrap(), 1);
+        assert!(factory.inner.vms.lock().unwrap().in_flight.is_empty());
     }
 }
