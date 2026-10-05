@@ -359,11 +359,17 @@ fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Res
 /// The heights a `GetTokensInCirculation` request asks for, in request order. An empty request asks for the tip, a
 /// request longer than `GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS` is truncated, and any height above the tip rejects the
 /// whole request so that the cost of a request is bounded by the chain rather than chosen by the caller.
-fn tokens_in_circulation_heights(mut heights: Vec<u64>, tip: u64, report_error_flag: bool) -> Result<Vec<u64>, Status> {
+fn tokens_in_circulation_heights(heights: Vec<u64>, tip: u64, report_error_flag: bool) -> Result<Vec<u64>, Status> {
     if heights.is_empty() {
-        heights.push(tip);
+        return Ok(vec![tip]);
     }
-    heights.truncate(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+    // Copy into a new vector so the (possibly much larger) decoded request buffer is freed on return. Collecting from
+    // `into_iter()` would reuse the request's allocation in place.
+    let heights: Vec<u64> = heights
+        .iter()
+        .take(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS)
+        .copied()
+        .collect();
     if let Some(height) = heights.iter().find(|h| **h > tip) {
         return Err(obscure_error_if_true(
             report_error_flag,
@@ -2605,37 +2611,41 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .best_block_height();
         let heights = tokens_in_circulation_heights(request.heights, tip, report_error_flag)?;
         let mut unique_heights = heights.clone();
-        unique_heights.sort_unstable();
-        unique_heights.dedup();
         let consensus_rules = self.consensus_rules.clone();
 
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE);
         task::spawn(async move {
-            // Walking the emission schedule is CPU bound, so keep it off the async runtime workers
-            let values =
-                match task::spawn_blocking(move || consensus_rules.token_values_at_heights(&unique_heights)).await {
-                    Ok(Ok(values)) => values,
-                    Ok(Err(e)) => {
-                        warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Could not calculate token values: {e}");
-                        let _ignore = tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Could not calculate token values: {e}")),
-                            )))
-                            .await;
-                        return;
-                    },
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Token value task failed: {e}");
-                        let _ignore = tx
-                            .send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Token value task failed: {e}")),
-                            )))
-                            .await;
-                        return;
-                    },
-                };
+            // Sorting the heights and walking the emission schedule is CPU bound, so keep it off the async runtime
+            // workers
+            let values = match task::spawn_blocking(move || {
+                unique_heights.sort_unstable();
+                unique_heights.dedup();
+                consensus_rules.token_values_at_heights(&unique_heights)
+            })
+            .await
+            {
+                Ok(Ok(values)) => values,
+                Ok(Err(e)) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Could not calculate token values: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Could not calculate token values: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Token value task failed: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Token value task failed: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+            };
 
             // Stream in request order, repeating duplicates, as the values were computed once per unique height
             for height in heights {
@@ -3725,6 +3735,7 @@ mod test {
         let heights =
             tokens_in_circulation_heights(vec![1; GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS + 1], 10, true).unwrap();
         assert_eq!(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+        assert!(heights.capacity() <= GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
     }
 
     #[test]
