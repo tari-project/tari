@@ -50,7 +50,10 @@ use tari_transaction_components::{
     transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
-use tokio::sync::{RwLock, watch};
+use tokio::{
+    sync::{RwLock, watch},
+    task,
+};
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
@@ -854,13 +857,23 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomXM => monero_randomx_difficulty_at_rules_height(
-                &new_block.header,
-                &self.randomx_factory,
-                &gen_hash,
-                &self.consensus_manager,
-                rules_height,
-            )?,
+            PowAlgorithm::RandomXM => {
+                // A RandomX VM build can take most of a second, so keep it off the tokio worker threads
+                let header = new_block.header.clone();
+                let randomx_factory = self.randomx_factory.clone();
+                let consensus_manager = self.consensus_manager.clone();
+                task::spawn_blocking(move || {
+                    monero_randomx_difficulty_at_rules_height(
+                        &header,
+                        &randomx_factory,
+                        &gen_hash,
+                        &consensus_manager,
+                        rules_height,
+                    )
+                })
+                .await
+                .map_err(|e| CommsInterfaceError::InternalError(format!("RandomX difficulty task failed: {e}")))??
+            },
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
             PowAlgorithm::RandomXT => {
                 // GHSA-3qmx-q9pv-f3m4, belt and braces. `handle_new_block_message` already applied this before any
@@ -881,7 +894,11 @@ where B: BlockchainBackend + 'static
                     .fetch_chain_header(tari_rx_vm_key_height(new_block.header.height))
                     .await?
                     .hash();
-                tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
+                let header = new_block.header.clone();
+                let randomx_factory = self.randomx_factory.clone();
+                task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))
+                    .await
+                    .map_err(|e| CommsInterfaceError::InternalError(format!("RandomX difficulty task failed: {e}")))??
             },
             PowAlgorithm::Cuckaroo => {
                 // Same corroborated height as above, not the claimed one: `bipartite_cuckaroo_verification` is the

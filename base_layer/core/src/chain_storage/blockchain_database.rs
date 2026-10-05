@@ -139,6 +139,7 @@ use crate::{
         MAX_BACKOFF_RUN_LOOKBACK,
         PowBackoffTracker,
         TargetDifficultyWindow,
+        monero_rx::MergeMineError,
         randomx_factory::RandomXFactory,
     },
     validation::{
@@ -4025,9 +4026,12 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         // the peer, but never memo it as bad. `BlockHeaderSyncValidator::blacklist_unless_verdict_can_change` does
         // the same for the other caller of this validator.
         Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash)) |
-        // We dont want to mark a block as bad for internal failures
+        // We dont want to mark a block as bad for internal failures, including a local RandomX VM build failure (for
+        // example a failed cache allocation), which says nothing about the block
         Err(
-            e @ ValidationError::FatalStorageError(_) | e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. },
+            e @ ValidationError::FatalStorageError(_) |
+            e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            e @ ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_)),
         ) |
         // We dont have to mark the block twice
         Err(e @ ValidationError::BadBlockFound { .. }) => {
@@ -5048,7 +5052,8 @@ impl ChainTips {
 /// Everything else defers to `ValidationError::get_ban_reason`, whose `None` arm is precisely the set of verdicts
 /// that are not the block's fault: `FatalStorageError` (which is what *any* `ChainStorageError` becomes when it
 /// crosses into validation, so a transient LMDB read failure lands here), `IncorrectNumberOfTimestampsProvided`,
-/// the missing-row errors, and the hash/height mismatches that describe the query rather than the block.
+/// the missing-row errors, the hash/height mismatches that describe the query rather than the block, and a local
+/// RandomX VM build failure (`MergeMineError::RandomXVMFactoryError`).
 fn verdict_can_change(err: &ValidationError) -> bool {
     match err {
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) |
@@ -5461,7 +5466,12 @@ mod test {
     use crate::{
         block_specs,
         consensus::chain_strength_comparer::strongest_chain,
-        proof_of_work::{AchievedTargetDifficulty, AdjustedTarget, sha3x_difficulty},
+        proof_of_work::{
+            AchievedTargetDifficulty,
+            AdjustedTarget,
+            randomx_factory::RandomXVMFactoryError,
+            sha3x_difficulty,
+        },
         test_helpers::{
             BlockSpecs,
             blockchain::{
@@ -5734,8 +5744,8 @@ mod test {
 
         /// A validator that fails every header, so that a test can see what the orphan path does with the verdict.
         struct AlwaysFails {
-            /// `true` for the chain dependent seed age verdict, `false` for a verdict about the header alone.
-            seed_age: bool,
+            /// Builds the verdict every header fails with.
+            error: fn() -> ValidationError,
         }
 
         impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for AlwaysFails {
@@ -5748,15 +5758,7 @@ mod test {
                 _: Option<AdjustedTarget>,
                 _: HeaderChainContext<'_>,
             ) -> Result<ValidatedHeader, ValidationError> {
-                if self.seed_age {
-                    Err(ValidationError::BlockHeaderError(
-                        BlockHeaderValidationError::OldSeedHash,
-                    ))
-                } else {
-                    Err(ValidationError::BlockHeaderError(
-                        BlockHeaderValidationError::InvalidNonce,
-                    ))
-                }
+                Err((self.error)())
             }
         }
 
@@ -5784,7 +5786,9 @@ mod test {
             let err = insert_orphan_and_find_new_tips(
                 &mut *access,
                 block.to_arc_block(),
-                &AlwaysFails { seed_age: true },
+                &AlwaysFails {
+                    error: || ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
+                },
                 &db.consensus_manager,
             )
             .unwrap_err();
@@ -5810,7 +5814,9 @@ mod test {
             insert_orphan_and_find_new_tips(
                 &mut *access,
                 block.to_arc_block(),
-                &AlwaysFails { seed_age: false },
+                &AlwaysFails {
+                    error: || ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
+                },
                 &db.consensus_manager,
             )
             .unwrap_err();
@@ -5819,6 +5825,41 @@ mod test {
             assert!(
                 is_bad_block,
                 "an invalid nonce is the header's own fault and must be blacklisted"
+            );
+        }
+
+        /// A RandomX VM that could not be built (for example a failed cache allocation) is a local failure, so the
+        /// header must not be recorded as bad.
+        #[tokio::test]
+        async fn it_does_not_blacklist_a_randomx_vm_build_failure() {
+            let db = create_new_blockchain();
+            let block = orphan_of_genesis(&db);
+            let mut access = db.db_write_access().unwrap();
+
+            let err = insert_orphan_and_find_new_tips(
+                &mut *access,
+                block.to_arc_block(),
+                &AlwaysFails {
+                    error: || {
+                        ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(
+                            RandomXVMFactoryError::PoisonedLockError,
+                        ))
+                    },
+                },
+                &db.consensus_manager,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_))
+                }),
+                "expected the RandomX VM build failure to be returned, got {err:?}"
+            );
+
+            let (is_bad_block, reason) = access.bad_block_exists(*block.hash()).unwrap();
+            assert!(
+                !is_bad_block,
+                "a RandomX VM build failure must not be blacklisted: {reason}"
             );
         }
 
@@ -8305,6 +8346,10 @@ mod test {
             )));
             assert!(verdict_can_change(&ValidationError::HeaderHeightMismatch(
                 "7 != 8".to_string()
+            )));
+            // A local RandomX VM build failure, such as a failed cache allocation.
+            assert!(verdict_can_change(&ValidationError::MergeMineError(
+                MergeMineError::RandomXVMFactoryError(RandomXVMFactoryError::PoisonedLockError)
             )));
 
             // ...and the ones that really are about this block and cannot come out differently later.
