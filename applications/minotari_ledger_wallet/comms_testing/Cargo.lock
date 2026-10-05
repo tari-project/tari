@@ -1296,7 +1296,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "bs58",
  "serde",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "borsh",
  "ledger-transport",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms_testing"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "blake2 0.10.6",
  "dialoguer",
@@ -2055,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "anyhow",
  "config",
@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -2132,11 +2132,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 
 [[package]]
 name = "tari_hashing"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -2148,7 +2148,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "borsh",
  "integer-encoding",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "6.0.1-pre.2"
+version = "6.1.0-pre.0"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
