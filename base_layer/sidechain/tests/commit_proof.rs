@@ -134,6 +134,99 @@ fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
 }
 
 #[test]
+fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root() {
+    let root = FixedHash::from([1u8; 32]);
+    let proof = signed_version_1_proof(Some(root));
+    proof.validate_committed(4, &|_| Ok(true)).unwrap();
+
+    let mut tampered = proof.clone();
+    tampered.header.transaction_merkle_root = Some(FixedHash::from([2u8; 32]));
+    let err = tampered.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("does not match the block ID in the header"),
+        "Expected the block ID mismatch error, got: {err}"
+    );
+
+    let mut stripped = proof;
+    stripped.header.transaction_merkle_root = None;
+    stripped.validate_committed(4, &|_| Ok(true)).unwrap_err();
+}
+
+/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that four test validators
+/// sign.
+fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> SidechainBlockCommitProof {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey;
+    use tari_sidechain::{
+        ChainLink,
+        DecodedValidatorBlockSignature,
+        QuorumCertificate,
+        ValidatorBlockSignature,
+        ValidatorQcSignature,
+    };
+    use tari_utilities::ByteArray;
+
+    const PROTOCOL_VERSION: u32 = 1;
+
+    let mut header = load_fixture::<SidechainBlockCommitProof>("commit_proof.json").header;
+    header.protocol_version = PROTOCOL_VERSION;
+    header.transaction_merkle_root = transaction_merkle_root;
+
+    let validators = (1..=4u8)
+        .map(|i| PrivateKey::from_uniform_bytes(&[i; 64]).unwrap())
+        .collect::<Vec<_>>();
+    let certify = |header_hash: FixedHash, parent_id: FixedHash, height: u64| {
+        let block_id = ChainLink { header_hash, parent_id }.calc_block_id();
+        let message = ProposalVoteMessage::new(
+            PROTOCOL_VERSION,
+            &block_id,
+            QuorumDecision::Accept,
+            header.epoch,
+            height,
+        )
+        .calculate_hash();
+        let signatures = validators
+            .iter()
+            .map(|secret| {
+                let nonce_seed = [secret.as_bytes(), message.as_slice()].concat();
+                let nonce = PrivateKey::from_uniform_bytes(&nonce_seed).unwrap();
+                let signature =
+                    DecodedValidatorBlockSignature::sign_with_nonce_and_message(secret, nonce, message).unwrap();
+                ValidatorQcSignature {
+                    public_key: CompressedPublicKey::from_secret_key(secret),
+                    signature: ValidatorBlockSignature::new_from_schnorr(signature),
+                }
+            })
+            .collect();
+        QuorumCertificate {
+            header_hash,
+            parent_id,
+            protocol_version: PROTOCOL_VERSION,
+            epoch: header.epoch,
+            height,
+            signatures,
+            decision: QuorumDecision::Accept,
+        }
+    };
+
+    let block_id = header.calculate_block_id();
+    let child_hash = FixedHash::from([0xc1; 32]);
+    let child_id = ChainLink {
+        header_hash: child_hash,
+        parent_id: block_id,
+    }
+    .calc_block_id();
+    let grandchild_hash = FixedHash::from([0xc2; 32]);
+
+    let proof_elements = vec![
+        CommitProofElement::QuorumCertificate(certify(grandchild_hash, child_id, header.height.saturating_add(2))),
+        CommitProofElement::QuorumCertificate(certify(child_hash, block_id, header.height.saturating_add(1))),
+        CommitProofElement::QuorumCertificate(certify(header.calculate_hash(), header.parent_id, header.height)),
+    ];
+    SidechainBlockCommitProof { header, proof_elements }
+}
+
+#[test]
 fn the_transaction_merkle_root_round_trips() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     let mut header = proof.header().clone();
