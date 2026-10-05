@@ -1302,6 +1302,7 @@ fn side_chain_samples() -> Vec<Sample> {
         data: SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::new(
             ValidatorNodeSignature::new(random_public_key(), signature()),
             VnEpoch(10),
+            VnEpoch(20),
         )),
         sidechain_id: None,
     };
