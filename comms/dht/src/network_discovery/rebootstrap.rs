@@ -321,15 +321,15 @@ async fn sync_from_seeds(context: &NetworkDiscoveryContext) -> (usize, Vec<Sourc
     seeds.truncate(max_seeds);
 
     // The remaining slots go to the seeds of the current resolution, so that seeds no longer published (or injected
-    // into an earlier resolution) do not linger in the selection. If that leaves nothing to sync from, the stored
-    // seeds are better than none.
+    // into an earlier resolution) do not linger in the selection. If nothing usable resolved, the other stored seeds
+    // fill them instead: they are better than none.
     let mut candidates = match resolved {
         Some(node_ids) if !node_ids.is_empty() => {
             load_seeds(context, context.peer_manager.get_peers_by_node_ids(&node_ids).await)
         },
         _ => Vec::new(),
     };
-    if candidates.is_empty() && seeds.is_empty() {
+    if candidates.is_empty() {
         candidates = stored_seeds;
     }
     candidates.shuffle(&mut rand::rng());

@@ -522,6 +522,30 @@ mod rebootstrap {
         assert_eq!(times_synced(&mock, &connected_id, counter).await, 1);
     }
 
+    /// When nothing resolves, a connected stored seed goes first and the other stored seeds fill the remaining slots.
+    #[tokio::test]
+    async fn stored_seeds_fill_the_slots_left_by_a_connected_seed() {
+        let (mut context, mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_seed_peer_sync_count = 3;
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+        let (connected_id, counter) = connected_stored_seed(&context, &mock).await;
+        let mut others = Vec::new();
+        for _ in 0..2 {
+            let mut seed = make_node_identity().to_peer();
+            seed.add_flags(PeerFlags::SEED);
+            others.push(seed.node_id.clone());
+            context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        }
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        for node_id in &others {
+            assert!(mock.is_peer_dialed(node_id).await, "a stored seed was left out");
+        }
+        assert_eq!(times_synced(&mock, &connected_id, counter).await, 1);
+    }
+
     /// With more resolved seeds than slots, the connected seed always gets one of them.
     #[tokio::test]
     async fn a_connected_seed_always_gets_a_slot() {
