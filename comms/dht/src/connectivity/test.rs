@@ -32,7 +32,7 @@ use tari_comms::{
     PeerManager,
     connection_manager::{ConnectionDirection, PeerConnectionRequest},
     connectivity::ConnectivityEvent,
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     test_utils::{
         mocks::{
             ConnectivityManagerMockState,
@@ -50,13 +50,14 @@ use tokio::sync::{broadcast, mpsc};
 use crate::{
     DhtConfig,
     DhtConnectivityConfig,
-    connectivity::{DhtConnectivity, MetricsCollector, RebootstrapTrigger, is_pool_starved},
+    connectivity::{DhtConnectivity, MAX_REBOOTSTRAP_PEERS, MetricsCollector, RebootstrapTrigger, is_pool_starved},
     event::DhtEvent,
     test_utils::{
         DhtMockState,
         build_peer_manager,
         create_dht_actor_mock,
         create_good_standing_peer,
+        make_client_identity,
         make_node_identity,
     },
 };
@@ -567,11 +568,67 @@ mod rebootstrap_trigger {
         let (mut dht_connectivity, _, _, _, _, _shutdown) =
             setup(DhtConfig::default(), make_node_identity(), stored).await;
 
-        dht_connectivity.rebootstrap_peers = learned_ids.clone();
-        let taken = dht_connectivity.take_rebootstrap_peers(3, &[]).await.unwrap();
-        assert_eq!(taken, learned_ids[..3].to_vec());
-        let taken = dht_connectivity.take_rebootstrap_peers(3, &[]).await.unwrap();
-        assert_eq!(taken, learned_ids[3..].to_vec());
+        dht_connectivity.set_rebootstrap_peers(&learned_ids).await.unwrap();
+        assert_eq!(
+            dht_connectivity.take_rebootstrap_peers(3, &[]),
+            learned_ids[..3].to_vec()
+        );
+        assert_eq!(
+            dht_connectivity.take_rebootstrap_peers(3, &[]),
+            learned_ids[3..].to_vec()
+        );
+    }
+
+    /// Learned peers are checked against the peer database once, when the rebootstrap completes: peers that can never
+    /// be pool peers are dropped and the list is capped.
+    #[tokio::test]
+    async fn learned_peers_are_filtered_and_capped() {
+        let mut banned = make_node_identity().to_peer();
+        banned.ban_for(Duration::from_secs(60 * 60), "test".to_string());
+        let mut seed = make_node_identity().to_peer();
+        seed.add_flags(PeerFlags::SEED);
+        let client = make_client_identity().to_peer();
+        let unknown = NodeId::from_public_key(make_node_identity().public_key());
+        let good = repeat_with(|| make_node_identity().to_peer())
+            .take(MAX_REBOOTSTRAP_PEERS + 10)
+            .collect::<Vec<_>>();
+
+        let mut learned = vec![
+            banned.node_id.clone(),
+            seed.node_id.clone(),
+            client.node_id.clone(),
+            unknown,
+        ];
+        learned.extend(good.iter().map(|p| p.node_id.clone()));
+        let mut stored = vec![banned, seed, client];
+        stored.extend(good.iter().cloned());
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), stored).await;
+
+        dht_connectivity.set_rebootstrap_peers(&learned).await.unwrap();
+        // The cap applies to the learned list, so the 4 ineligible peers take up 4 of its places
+        let expected = good
+            .iter()
+            .take(MAX_REBOOTSTRAP_PEERS - 4)
+            .map(|p| p.node_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(dht_connectivity.rebootstrap_peers, expected);
+    }
+
+    /// Peers that are already in the pool, or excluded for another reason, are dropped rather than kept for later.
+    #[tokio::test]
+    async fn learned_peers_already_in_the_pool_are_dropped() {
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let in_pool = NodeId::from_public_key(make_node_identity().public_key());
+        let excluded = NodeId::from_public_key(make_node_identity().public_key());
+        let backed_off = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.random_pool.push(in_pool.clone());
+        dht_connectivity.record_dial_failure(&backed_off);
+        dht_connectivity.rebootstrap_peers = vec![in_pool, excluded.clone(), backed_off.clone()];
+
+        assert!(dht_connectivity.take_rebootstrap_peers(3, &[excluded]).is_empty());
+        assert_eq!(dht_connectivity.rebootstrap_peers, vec![backed_off]);
     }
 
     /// After a rebootstrap the pool is topped up straight away, starting with the peers just learned.

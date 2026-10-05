@@ -105,6 +105,10 @@ const DIAL_BACKOFF_MAX: Duration = Duration::from_secs(10 * 60);
 /// soonest are dropped, which at worst lets those peers become eligible again early.
 const MAX_DIAL_BACKOFF_ENTRIES: usize = 500;
 
+/// The most peers learned in a rebootstrap that are kept for the pool to prefer. Far more than a pool refill can use
+/// (a pool of 12 dials at most 36 learned peers at once), but small enough that taking from the list is cheap.
+const MAX_REBOOTSTRAP_PEERS: usize = 200;
+
 /// How long to wait before retrying when the initial pool refresh fails at start-up.
 const INITIAL_REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
 
@@ -462,7 +466,7 @@ impl DhtConnectivity {
             DhtEvent::RebootstrapComplete(info) => {
                 // Refill straight away rather than on the next tick, starting with the peers just learned.
                 let (outbound_before, inbound_before) = self.pool_connection_counts();
-                self.rebootstrap_peers = info.learned_peers.clone();
+                self.set_rebootstrap_peers(&info.learned_peers).await?;
                 self.refresh_random_pool().await?;
                 info!(
                     target: REBOOTSTRAP_LOG_TARGET,
@@ -795,9 +799,7 @@ impl DhtConnectivity {
         // get their own budget, sized by the shortfall rather than by what is still in flight: on a starved node the
         // in-flight budget is taken up by dials to stale peers that will fail, and learned peers would never get a
         // turn. Each learned peer is offered only once, so this is a one-off burst.
-        let mut new_peers = self
-            .take_rebootstrap_peers(shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR), &exclude)
-            .await?;
+        let mut new_peers = self.take_rebootstrap_peers(shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR), &exclude);
         exclude.extend(new_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
         let mut db_peers = if needed == 0 {
@@ -1161,7 +1163,7 @@ impl DhtConnectivity {
             // Reactive backfill after a peer dropped: prefer peers learned in the last rebootstrap, then
             // known-good peers so we don't refill the pool with never-seen/dead peers. Exploration of new
             // peers happens in the periodic `refresh_random_pool` churn instead.
-            let mut replacement = self.take_rebootstrap_peers(1, &exclude).await?.pop();
+            let mut replacement = self.take_rebootstrap_peers(1, &exclude).pop();
             if replacement.is_none() {
                 replacement = self.fetch_random_peers(1, &exclude, true).await?.pop();
             }
@@ -1275,45 +1277,57 @@ impl DhtConnectivity {
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 
-    /// Takes up to `n` dialable peers from those learned in the last rebootstrap. Each learned peer is offered once.
-    async fn take_rebootstrap_peers(
-        &mut self,
-        n: usize,
-        excluded: &[NodeId],
-    ) -> Result<Vec<NodeId>, DhtConnectivityError> {
-        if n == 0 || self.rebootstrap_peers.is_empty() {
-            return Ok(Vec::new());
-        }
-        self.prune_dial_backoff();
-        let allow_list = self.peer_allow_list().await?;
-        let candidates = self
-            .rebootstrap_peers
-            .iter()
-            .filter(|node_id| {
-                !excluded.contains(node_id) && !self.dial_backoff.contains_key(node_id) && !allow_list.contains(node_id)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
+    /// Stores the peers learned in a rebootstrap for the pool to prefer. They are checked against the peer database
+    /// once, here, so that taking them later is cheap: that happens on every failed or dropped pool peer. Peers banned
+    /// after this point are still refused by the connectivity manager when dialled.
+    async fn set_rebootstrap_peers(&mut self, learned: &[NodeId]) -> Result<(), DhtConnectivityError> {
+        // Only the first `MAX_REBOOTSTRAP_PEERS` are considered, which also bounds the size of the lookup
+        let learned = learned.iter().take(MAX_REBOOTSTRAP_PEERS).cloned().collect::<Vec<_>>();
+        let allow_list = self.peer_allow_list().await?.into_iter().collect::<HashSet<_>>();
         let eligible = self
             .peer_manager
-            .get_peers_by_node_ids(&candidates)
+            .get_peers_by_node_ids(&learned)
             .await?
             .into_iter()
-            .filter(|peer| !peer.is_banned() && !peer.is_seed() && !peer.features.is_client())
+            .filter(|peer| {
+                !peer.is_banned() &&
+                    !peer.is_seed() &&
+                    !peer.features.is_client() &&
+                    !allow_list.contains(&peer.node_id)
+            })
             .map(|peer| peer.node_id)
             .collect::<HashSet<_>>();
         // Keep the learned order (peers from seeds first), not the order the database returned them in
-        let selected = candidates
-            .iter()
-            .filter(|node_id| eligible.contains(*node_id))
-            .take(n)
-            .cloned()
-            .collect::<Vec<_>>();
-        // Drop what was selected, and what can never be selected. Keep peers that were only excluded for now.
-        self.rebootstrap_peers.retain(|node_id| {
-            !selected.contains(node_id) && (!candidates.contains(node_id) || eligible.contains(node_id))
-        });
-        Ok(selected)
+        self.rebootstrap_peers = learned
+            .into_iter()
+            .filter(|node_id| eligible.contains(node_id))
+            .collect();
+        Ok(())
+    }
+
+    /// Takes up to `n` peers from those learned in the last rebootstrap, in learned order. Each is offered once:
+    /// peers that are excluded (already in the pool, being dialled or just released) are dropped. Only peers in dial
+    /// backoff are kept for later.
+    fn take_rebootstrap_peers(&mut self, n: usize, excluded: &[NodeId]) -> Vec<NodeId> {
+        if n == 0 || self.rebootstrap_peers.is_empty() {
+            return Vec::new();
+        }
+        self.prune_dial_backoff();
+        let excluded = excluded.iter().collect::<HashSet<_>>();
+        let mut selected = Vec::new();
+        let mut kept = Vec::new();
+        for node_id in std::mem::take(&mut self.rebootstrap_peers) {
+            if excluded.contains(&node_id) || self.random_pool.contains(&node_id) {
+                continue;
+            }
+            if selected.len() < n && !self.dial_backoff.contains_key(&node_id) {
+                selected.push(node_id);
+            } else {
+                kept.push(node_id);
+            }
+        }
+        self.rebootstrap_peers = kept;
+        selected
     }
 
     fn should_send_join(&self) -> bool {
