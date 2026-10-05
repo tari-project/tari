@@ -744,6 +744,111 @@ mod rebootstrap_trigger {
         assert_eq!(dialed.len(), 24);
     }
 
+    /// A pool at target dials no learned peers, and drops the ones still queued.
+    #[tokio::test]
+    async fn a_full_pool_dials_no_learned_peers() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 1,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let _outbound = fill_pool(&mut dht_connectivity, 2, ConnectionDirection::Outbound);
+        // Not churning this time
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.rebootstrap_peers = (0..3)
+            .map(|_| NodeId::from_public_key(make_node_identity().public_key()))
+            .collect();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(connectivity.get_dialed_peers().await.is_empty());
+        assert!(dht_connectivity.rebootstrap_peers.is_empty());
+    }
+
+    /// Pool replacements alternate between learned peers and the database, and fall back to the other when one has
+    /// nothing.
+    #[tokio::test]
+    async fn replacements_alternate_between_learned_and_database_peers() {
+        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(2)
+            .collect::<Vec<_>>();
+        let known_good_ids = known_good.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), known_good).await;
+        let learned = vec![new_id(), new_id()];
+        dht_connectivity.rebootstrap_peers = learned.clone();
+        let failing = vec![new_id(), new_id()];
+        dht_connectivity.random_pool.extend(failing.iter().cloned());
+
+        for node_id in &failing {
+            dht_connectivity
+                .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(node_id.clone()))
+                .await
+                .unwrap();
+        }
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 2,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        assert_eq!(dialed.len(), 2);
+        assert_eq!(dialed[0], learned[0], "the first replacement should be a learned peer");
+        assert!(
+            known_good_ids.contains(&dialed[1]),
+            "the second replacement should come from the database"
+        );
+    }
+
+    /// With no database candidates, the database's turn falls back to a learned peer.
+    #[tokio::test]
+    async fn replacements_fall_back_to_learned_peers() {
+        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let learned = vec![new_id(), new_id()];
+        dht_connectivity.rebootstrap_peers = learned.clone();
+        let failing = vec![new_id(), new_id()];
+        dht_connectivity.random_pool.extend(failing.iter().cloned());
+
+        for node_id in &failing {
+            dht_connectivity
+                .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(node_id.clone()))
+                .await
+                .unwrap();
+        }
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 2,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert_eq!(connectivity.get_dialed_peers().await, learned);
+    }
+
+    /// With no learned peers queued, the learned peers' turn falls back to the database.
+    #[tokio::test]
+    async fn replacements_fall_back_to_database_peers() {
+        let known_good = create_good_standing_peer(&make_node_identity());
+        let known_good_id = known_good.node_id.clone();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![known_good]).await;
+        let failing = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.random_pool.push(failing.clone());
+
+        dht_connectivity
+            .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(failing))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&known_good_id).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+    }
+
     /// Peers that are already in the pool, or excluded for another reason, are dropped rather than kept for later.
     #[tokio::test]
     async fn learned_peers_already_in_the_pool_are_dropped() {

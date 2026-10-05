@@ -226,6 +226,7 @@ mod rebootstrap {
     use std::time::Instant;
 
     use tari_comms::{
+        PeerConnection,
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
         peer_manager::{NodeId, PeerFlags},
         protocol::rpc::RpcError,
@@ -387,6 +388,94 @@ mod rebootstrap {
         assert!(mock.is_peer_dialed(&new_seed_id).await);
         assert!(mock.is_peer_dialed(&known_id).await);
         assert!(!mock.is_peer_dialed(&old_seed_id).await);
+    }
+
+    /// A dummy connection to a new peer that counts how often it is asked to open a substream (i.e. synced from).
+    fn counting_connection(direction: ConnectionDirection) -> (PeerConnection, tokio::task::JoinHandle<usize>) {
+        let node_id = NodeId::from_public_key(make_node_identity().public_key());
+        let (conn, mut requests) = create_dummy_peer_connection_with_direction(node_id, direction);
+        let counter = tokio::spawn(async move {
+            let mut count = 0usize;
+            while let Some(request) = requests.recv().await {
+                if matches!(request, PeerConnectionRequest::OpenSubstream { .. }) {
+                    count = count.saturating_add(1);
+                }
+            }
+            count
+        });
+        (conn, counter)
+    }
+
+    /// Outbound connections fill the connected-peer slots before any inbound one, and a connected seed is left to
+    /// the seed path.
+    #[tokio::test]
+    async fn connected_peer_sync_prefers_outbound_and_skips_seeds() {
+        let (mut context, mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.rebootstrap_connected_peers = 3;
+        // Keep the seed path out of it, so that any sync from the seed would be the connected-peer path's
+        config.network_discovery.max_seed_peer_sync_count = 0;
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+
+        let mut outbound = Vec::new();
+        let mut inbound = Vec::new();
+        for _ in 0..2 {
+            let (conn, counter) = counting_connection(ConnectionDirection::Outbound);
+            mock.add_active_connection(conn.clone()).await;
+            outbound.push((conn.peer_node_id().clone(), counter));
+        }
+        for _ in 0..3 {
+            let (conn, counter) = counting_connection(ConnectionDirection::Inbound);
+            mock.add_active_connection(conn.clone()).await;
+            inbound.push((conn.peer_node_id().clone(), counter));
+        }
+        let (seed_conn, seed_counter) = counting_connection(ConnectionDirection::Outbound);
+        let mut seed = make_node_identity().to_peer();
+        seed.node_id = seed_conn.peer_node_id().clone();
+        seed.add_flags(PeerFlags::SEED);
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        let seed_id = seed_conn.peer_node_id().clone();
+        mock.add_active_connection(seed_conn).await;
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+
+        // Drop every handle so the counters finish
+        let all = outbound
+            .iter()
+            .chain(inbound.iter())
+            .map(|(node_id, _)| node_id.clone());
+        for node_id in all.chain(Some(seed_id)) {
+            mock.remove_active_connection(&node_id).await;
+        }
+        let mut synced_outbound = 0usize;
+        for (_, counter) in outbound {
+            synced_outbound = synced_outbound.saturating_add(
+                tokio::time::timeout(Duration::from_secs(5), counter)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        let mut synced_inbound = 0usize;
+        for (_, counter) in inbound {
+            synced_inbound = synced_inbound.saturating_add(
+                tokio::time::timeout(Duration::from_secs(5), counter)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        let synced_seed = tokio::time::timeout(Duration::from_secs(5), seed_counter)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(synced_outbound, 2, "both outbound peers should be synced from");
+        assert_eq!(
+            synced_inbound, 1,
+            "only the remaining slot should go to an inbound peer"
+        );
+        assert_eq!(synced_seed, 0, "the seed was synced from by the connected-peer path");
     }
 
     /// If the current resolution leaves nothing to sync from, the stored seeds are used.

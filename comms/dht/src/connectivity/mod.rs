@@ -853,7 +853,16 @@ impl DhtConnectivity {
                 .get(node_id)
                 .is_some_and(|dialed_at| dialed_at.elapsed() < PENDING_DIAL_GRACE)
         });
-        let learned_budget = (target_in_flight / 2).max(1).saturating_sub(self.learned_dials.len());
+        if shortfall == 0 {
+            // The pool is at target (and not outbound-starved), so the learned peers are no longer needed
+            self.rebootstrap_peers.clear();
+            self.learned_dials.clear();
+        }
+        let learned_budget = if target_in_flight == 0 {
+            0
+        } else {
+            (target_in_flight / 2).max(1).saturating_sub(self.learned_dials.len())
+        };
         let mut new_peers = self.take_rebootstrap_peers(learned_budget, &exclude);
         exclude.extend(new_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
