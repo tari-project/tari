@@ -356,20 +356,24 @@ fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Res
     Ok(())
 }
 
-/// The heights a `GetTokensInCirculation` request asks for, in request order. An empty request asks for the tip, a
-/// request longer than `GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS` is truncated, and any height above the tip rejects the
-/// whole request so that the cost of a request is bounded by the chain rather than chosen by the caller.
+/// Caps the heights of a `GetTokensInCirculation` request at `GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS`, silently
+/// dropping the rest. The heights are copied into a new vector so the (possibly much larger) decoded request buffer is
+/// freed as soon as this returns; collecting from `into_iter()` would reuse the request's allocation in place.
+fn cap_tokens_in_circulation_heights(heights: Vec<u64>) -> Vec<u64> {
+    heights
+        .iter()
+        .take(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS)
+        .copied()
+        .collect()
+}
+
+/// The heights a `GetTokensInCirculation` request asks for, in request order, given the capped request heights. An
+/// empty request asks for the tip, and any height above the tip rejects the whole request so that the cost of a
+/// request is bounded by the chain rather than chosen by the caller.
 fn tokens_in_circulation_heights(heights: Vec<u64>, tip: u64, report_error_flag: bool) -> Result<Vec<u64>, Status> {
     if heights.is_empty() {
         return Ok(vec![tip]);
     }
-    // Copy into a new vector so the (possibly much larger) decoded request buffer is freed on return. Collecting from
-    // `into_iter()` would reuse the request's allocation in place.
-    let heights: Vec<u64> = heights
-        .iter()
-        .take(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS)
-        .copied()
-        .collect();
     if let Some(height) = heights.iter().find(|h| **h > tip) {
         return Err(obscure_error_if_true(
             report_error_flag,
@@ -2601,7 +2605,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
-        let request = request.into_inner();
+        // Cap the heights before awaiting anything, so the decoded request buffer is not held across the await
+        let heights = cap_tokens_in_circulation_heights(request.into_inner().heights);
         let tip = self
             .node_service
             .clone()
@@ -2609,7 +2614,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
             .best_block_height();
-        let heights = tokens_in_circulation_heights(request.heights, tip, report_error_flag)?;
+        let heights = tokens_in_circulation_heights(heights, tip, report_error_flag)?;
         let mut unique_heights = heights.clone();
         let consensus_rules = self.consensus_rules.clone();
 
@@ -3731,11 +3736,16 @@ mod test {
         assert_eq!(tokens_in_circulation_heights(vec![10, 0, 10], 10, true).unwrap(), vec![
             10, 0, 10
         ]);
+    }
 
-        let heights =
-            tokens_in_circulation_heights(vec![1; GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS + 1], 10, true).unwrap();
+    #[test]
+    fn tokens_in_circulation_heights_are_capped_in_a_fresh_vector() {
+        let heights = cap_tokens_in_circulation_heights(vec![1; GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS + 1]);
         assert_eq!(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
         assert!(heights.capacity() <= GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+
+        assert_eq!(cap_tokens_in_circulation_heights(vec![3, 1, 3]), vec![3, 1, 3]);
+        assert!(cap_tokens_in_circulation_heights(vec![]).is_empty());
     }
 
     #[test]
