@@ -4,11 +4,12 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, RwLock},
+    sync::{Arc, Condvar, Mutex, RwLock},
     time::Instant,
 };
 
 use log::*;
+use once_cell::sync::OnceCell;
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
@@ -86,11 +87,15 @@ impl RandomXVMInstance {
 unsafe impl Send for RandomXVMInstance {}
 unsafe impl Sync for RandomXVMInstance {}
 
+/// The maximum number of RandomX caches that may be built at the same time. Each build allocates ~256MB, so this
+/// bounds the transient memory used when many unknown keys arrive at once.
+const MAX_CONCURRENT_BUILDS: usize = 2;
+
 /// The RandomX factory that manages the creation of RandomX VMs.
 #[derive(Clone, Debug)]
 pub struct RandomXFactory {
     // Thread safe impl of the inner impl
-    inner: Arc<RwLock<RandomXFactoryInner>>,
+    inner: Arc<RandomXFactoryInner>,
 }
 
 impl Default for RandomXFactory {
@@ -103,13 +108,13 @@ impl RandomXFactory {
     /// Create a new RandomX factory with the specified maximum number of VMs
     pub fn new(max_vms: usize) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(RandomXFactoryInner::new(max_vms))),
+            inner: Arc::new(RandomXFactoryInner::new(max_vms)),
         }
     }
 
     pub fn new_with_flags(max_vms: usize, flags: RandomXFlag) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(RandomXFactoryInner::new_with_flags(max_vms, flags))),
+            inner: Arc::new(RandomXFactoryInner::new_with_flags(max_vms, flags)),
         }
     }
 
@@ -120,54 +125,40 @@ impl RandomXFactory {
         cache: Option<RandomXCache>,
         dataset: Option<RandomXDataset>,
     ) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
-        let res;
-        {
-            let mut inner = self
-                .inner
-                .write()
-                .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
-            res = inner.create(key, cache, dataset)?;
-        }
-        Ok(res)
+        self.inner.create(key, cache, dataset)
     }
 
     /// Get the number of VMs currently allocated
     pub fn get_count(&self) -> Result<usize, RandomXVMFactoryError> {
-        let inner = self
-            .inner
-            .read()
-            .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
-        Ok(inner.get_count())
+        Ok(self.inner.get_count())
     }
 
     /// Get the flags used to create the VMs
     pub fn get_flags(&self) -> Result<RandomXFlag, RandomXVMFactoryError> {
-        let inner = self
-            .inner
-            .read()
-            .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
-        Ok(inner.get_flags())
+        Ok(self.inner.get_flags())
     }
 }
+
+type VmCell = Arc<OnceCell<RandomXVMInstance>>;
+
 struct RandomXFactoryInner {
     flags: RandomXFlag,
-    vms: HashMap<Vec<u8>, (Instant, RandomXVMInstance)>,
+    // Each key has its own cell, so the map lock is only held for lookups and inserts, never while a VM is built.
+    // Entries whose cell is still empty are builds in flight; they count towards `max_vms`.
+    vms: Mutex<HashMap<Vec<u8>, (Instant, VmCell)>>,
     max_vms: usize,
+    // Counting semaphore limiting concurrent builds to `MAX_CONCURRENT_BUILDS`
+    builds_in_flight: Mutex<usize>,
+    build_finished: Condvar,
+    #[cfg(test)]
+    test_hooks: test::TestHooks,
 }
 
 impl RandomXFactoryInner {
     /// Create a new RandomXFactoryInner
     pub(crate) fn new(max_vms: usize) -> Self {
         let flags = RandomXFlag::get_recommended_flags();
-        debug!(
-            target: LOG_TARGET,
-            "RandomX factory started with {max_vms} max VMs and recommended flags = {flags:?}"
-        );
-        Self {
-            flags,
-            vms: Default::default(),
-            max_vms,
-        }
+        Self::new_with_flags(max_vms, flags)
     }
 
     pub(crate) fn new_with_flags(max_vms: usize, flags: RandomXFlag) -> Self {
@@ -179,43 +170,95 @@ impl RandomXFactoryInner {
             flags,
             vms: Default::default(),
             max_vms,
+            builds_in_flight: Mutex::new(0),
+            build_finished: Condvar::new(),
+            #[cfg(test)]
+            test_hooks: Default::default(),
         }
     }
 
-    /// Create a new RandomXVMInstance
+    /// Get or create the RandomXVMInstance for `key`. Cache hits never wait on a build, and builds for different keys
+    /// never wait on each other (other than for the build cap).
     pub(crate) fn create(
-        &mut self,
+        &self,
         key: &[u8],
         cache: Option<RandomXCache>,
         dataset: Option<RandomXDataset>,
     ) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
-        if let Some(entry) = self.vms.get_mut(key) {
-            let vm = entry.1.clone();
+        let cell = self.get_or_insert_cell(key);
+        // Concurrent callers for the same key wait here for the one build. If that build fails, the cell stays empty
+        // and the next waiter runs its own build attempt.
+        let result = cell.get_or_try_init(|| {
+            let _permit = self.acquire_build_permit();
+            #[cfg(test)]
+            self.test_hooks.before_build(key)?;
+            // The cache and VM are not Send, so they are built on this thread and only shared once wrapped.
+            RandomXVMInstance::create(key, self.flags, cache, dataset)
+        });
+        match result {
+            Ok(vm) => Ok(vm.clone()),
+            Err(err) => {
+                // Remove the failed entry (unless it was already replaced or evicted) so the next request retries
+                let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
+                if vms.get(key).is_some_and(|(_, c)| Arc::ptr_eq(c, &cell)) {
+                    vms.remove(key);
+                }
+                Err(err)
+            },
+        }
+    }
+
+    fn get_or_insert_cell(&self, key: &[u8]) -> VmCell {
+        let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = vms.get_mut(key) {
             entry.0 = Instant::now();
-            return Ok(vm);
+            return entry.1.clone();
         }
 
-        if self.vms.len() >= self.max_vms &&
-            let Some(oldest_key) = self.vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone())
+        // Evicting only drops the map's reference; callers already holding the cell still get their VM.
+        if vms.len() >= self.max_vms &&
+            let Some(oldest_key) = vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone())
         {
-            self.vms.remove(&oldest_key);
+            vms.remove(&oldest_key);
         }
 
-        let vm = RandomXVMInstance::create(key, self.flags, cache, dataset)?;
+        let cell = VmCell::default();
+        vms.insert(Vec::from(key), (Instant::now(), cell.clone()));
+        cell
+    }
 
-        self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
-
-        Ok(vm)
+    fn acquire_build_permit(&self) -> BuildPermit<'_> {
+        let mut in_flight = self.builds_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        while *in_flight >= MAX_CONCURRENT_BUILDS {
+            in_flight = self.build_finished.wait(in_flight).unwrap_or_else(|e| e.into_inner());
+        }
+        *in_flight = in_flight.saturating_add(1);
+        #[cfg(test)]
+        self.test_hooks.record_builds_in_flight(*in_flight);
+        BuildPermit { factory: self }
     }
 
     /// Get the number of VMs currently allocated
     pub(crate) fn get_count(&self) -> usize {
-        self.vms.len()
+        self.vms.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Get the flags used to create the VMs
     pub(crate) fn get_flags(&self) -> RandomXFlag {
         self.flags
+    }
+}
+
+/// Releases a build slot when dropped, including when the build errors or panics
+struct BuildPermit<'a> {
+    factory: &'a RandomXFactoryInner,
+}
+
+impl Drop for BuildPermit<'_> {
+    fn drop(&mut self) {
+        let mut in_flight = self.factory.builds_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        *in_flight = in_flight.saturating_sub(1);
+        self.factory.build_finished.notify_one();
     }
 }
 
@@ -230,7 +273,54 @@ impl fmt::Debug for RandomXFactoryInner {
 
 #[cfg(test)]
 mod test {
+    use std::{
+        sync::{
+            Barrier,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+        thread,
+        time::Duration,
+    };
+
     use super::*;
+
+    type BuildHook = Arc<dyn Fn(&[u8]) -> Result<(), RandomXVMFactoryError> + Send + Sync>;
+
+    /// Test-only hooks into the build path of the factory
+    #[derive(Default)]
+    pub(super) struct TestHooks {
+        // Called inside the build, after a build permit was acquired. Returning an error fails the build.
+        hook: Mutex<Option<BuildHook>>,
+        max_builds_in_flight: AtomicUsize,
+    }
+
+    impl TestHooks {
+        pub(super) fn before_build(&self, key: &[u8]) -> Result<(), RandomXVMFactoryError> {
+            let hook = self.hook.lock().unwrap().clone();
+            match hook {
+                Some(hook) => hook(key),
+                None => Ok(()),
+            }
+        }
+
+        pub(super) fn record_builds_in_flight(&self, in_flight: usize) {
+            self.max_builds_in_flight.fetch_max(in_flight, Ordering::SeqCst);
+        }
+    }
+
+    fn set_hook<F>(factory: &RandomXFactory, hook: F)
+    where F: Fn(&[u8]) -> Result<(), RandomXVMFactoryError> + Send + Sync + 'static {
+        *factory.inner.test_hooks.hook.lock().unwrap() = Some(Arc::new(hook));
+    }
+
+    fn clear_hook(factory: &RandomXFactory) {
+        *factory.inner.test_hooks.hook.lock().unwrap() = None;
+    }
+
+    fn injected_error() -> RandomXVMFactoryError {
+        RandomXVMFactoryError::RandomXError(RandomXError::Other("injected build failure".to_string()))
+    }
 
     #[test]
     fn basic_initialization_and_hash() {
@@ -265,5 +355,153 @@ mod test {
         for t in threads {
             t.await.unwrap();
         }
+    }
+
+    #[test]
+    fn cache_hit_is_not_blocked_by_builds() {
+        let factory = RandomXFactory::new(5);
+        factory.create(b"key-a", None, None).unwrap();
+
+        // Builds for B and C block in the hook, holding both build permits, until released
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = Mutex::new(release_rx);
+        set_hook(&factory, move |_key| {
+            entered_tx.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            Err(injected_error())
+        });
+        let builders = [b"key-b", b"key-c"]
+            .into_iter()
+            .map(|key| {
+                let factory = factory.clone();
+                thread::spawn(move || factory.create(key, None, None))
+            })
+            .collect::<Vec<_>>();
+        entered_rx.recv().unwrap();
+        entered_rx.recv().unwrap();
+
+        // Both builds are in flight and the build cap is reached, yet the hit still returns
+        let vm = factory.create(b"key-a", None, None).unwrap();
+        vm.calculate_hash(b"hashme").unwrap();
+        assert!(builders.iter().all(|b| !b.is_finished()));
+
+        release_tx.send(()).unwrap();
+        release_tx.send(()).unwrap();
+        for builder in builders {
+            assert!(builder.join().unwrap().is_err());
+        }
+    }
+
+    #[test]
+    fn one_build_per_key() {
+        const CALLERS: usize = 8;
+        let factory = RandomXFactory::new(5);
+        let builds = Arc::new(AtomicUsize::new(0));
+        let builds_hook = builds.clone();
+        set_hook(&factory, move |_key| {
+            builds_hook.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        });
+
+        let barrier = Arc::new(Barrier::new(CALLERS));
+        let callers = (0..CALLERS)
+            .map(|_| {
+                let factory = factory.clone();
+                let barrier = barrier.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    factory.create(b"shared-key", None, None).unwrap()
+                })
+            })
+            .collect::<Vec<_>>();
+        let vms = callers.into_iter().map(|c| c.join().unwrap()).collect::<Vec<_>>();
+
+        assert_eq!(builds.load(Ordering::SeqCst), 1);
+        let first = vms.first().unwrap();
+        assert!(vms.iter().all(|vm| Arc::ptr_eq(&vm.instance, &first.instance)));
+        assert_eq!(factory.get_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn failed_build_does_not_poison_key() {
+        const CALLERS: usize = 8;
+        let factory = RandomXFactory::new(5);
+        set_hook(&factory, |_key| Err(injected_error()));
+
+        let barrier = Arc::new(Barrier::new(CALLERS));
+        let callers = (0..CALLERS)
+            .map(|_| {
+                let factory = factory.clone();
+                let barrier = barrier.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    factory.create(b"failing-key", None, None)
+                })
+            })
+            .collect::<Vec<_>>();
+        for caller in callers {
+            assert!(caller.join().unwrap().is_err());
+        }
+        assert_eq!(factory.get_count().unwrap(), 0);
+
+        clear_hook(&factory);
+        let vm = factory.create(b"failing-key", None, None).unwrap();
+        vm.calculate_hash(b"hashme").unwrap();
+        assert_eq!(factory.get_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn concurrent_builds_are_capped() {
+        const KEYS: usize = 4;
+        let factory = RandomXFactory::new(KEYS);
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = Mutex::new(release_rx);
+        set_hook(&factory, move |_key| {
+            entered_tx.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            Err(injected_error())
+        });
+
+        let builders = (0..KEYS)
+            .map(|i| {
+                let factory = factory.clone();
+                thread::spawn(move || factory.create(format!("key-{i}").as_bytes(), None, None))
+            })
+            .collect::<Vec<_>>();
+
+        // Exactly MAX_CONCURRENT_BUILDS builds get in; the rest wait for a permit
+        for _ in 0..MAX_CONCURRENT_BUILDS {
+            entered_rx.recv().unwrap();
+        }
+        assert!(entered_rx.recv_timeout(Duration::from_millis(500)).is_err());
+        assert_eq!(factory.get_count().unwrap(), KEYS);
+
+        for _ in 0..KEYS {
+            release_tx.send(()).unwrap();
+        }
+        for builder in builders {
+            assert!(builder.join().unwrap().is_err());
+        }
+        assert_eq!(
+            factory.inner.test_hooks.max_builds_in_flight.load(Ordering::SeqCst),
+            MAX_CONCURRENT_BUILDS
+        );
+        assert_eq!(factory.get_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn lru_bounds_vm_count() {
+        let factory = RandomXFactory::new(2);
+        factory.create(b"key-1", None, None).unwrap();
+        factory.create(b"key-2", None, None).unwrap();
+        factory.create(b"key-3", None, None).unwrap();
+
+        assert_eq!(factory.get_count().unwrap(), 2);
+        let vms = factory.inner.vms.lock().unwrap();
+        assert!(!vms.contains_key(b"key-1".as_slice()));
+        assert!(vms.contains_key(b"key-2".as_slice()));
+        assert!(vms.contains_key(b"key-3".as_slice()));
     }
 }
