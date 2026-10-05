@@ -232,11 +232,14 @@ pub(super) fn validate_peer_identity_message(
 ///
 /// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
 /// for p2p comms will be accepted.
+///
+/// This is used for inbound connections. The claimed addresses are recorded but not marked as seen: the peer dialled
+/// us, so none of them was shown to be reachable, and marking them would let any peer that dials in pass as a
+/// known-good dial candidate. Outbound dials mark the address that actually connected.
 pub(super) fn create_or_update_peer_from_validated_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
     peer_identity: &ValidatedPeerIdentityExchange,
-    latency: Duration,
 ) -> Peer {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
 
@@ -255,10 +258,6 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 },
             );
 
-            // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
-            peer.addresses
-                .mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.permitted_addresses, latency);
-
             peer.features = peer_identity.claim.features;
             peer.supported_protocols = peer_identity.metadata.supported_protocols.clone();
             peer.user_agent = peer_identity.metadata.user_agent.clone();
@@ -271,14 +270,12 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                 "Peer '{}' does not exist in peer list. Adding.",
                 peer_node_id.short_str()
             );
-            let mut addresses = MultiaddressesWithStats::from_addresses_with_source(
+            let addresses = MultiaddressesWithStats::from_addresses_with_source(
                 peer_identity.permitted_addresses.clone(),
                 &PeerAddressSource::FromPeerConnection {
                     peer_identity_claim: peer_identity.claim.clone(),
                 },
             );
-            // For inbound connections we cannot distinguish between the peer's addresses, so we mark all as seen
-            addresses.mark_all_addresses_as_last_seen_now_with_latency(&peer_identity.permitted_addresses, latency);
             Peer::new(
                 authenticated_public_key,
                 peer_node_id,
@@ -378,12 +375,8 @@ mod test {
         validated.claim.verify(node_identity.public_key()).unwrap();
         assert_eq!(validated.permitted_addresses, vec![public_address.clone()]);
 
-        let peer = create_or_update_peer_from_validated_peer_identity(
-            None,
-            node_identity.public_key().clone(),
-            &validated,
-            Duration::from_millis(1),
-        );
+        let peer =
+            create_or_update_peer_from_validated_peer_identity(None, node_identity.public_key().clone(), &validated);
         assert!(peer.addresses.contains(&public_address));
         assert!(!peer.addresses.contains(&private_address));
     }
@@ -419,10 +412,35 @@ mod test {
             Some(known_peer),
             node_identity.public_key().clone(),
             &validated,
-            Duration::from_millis(1),
         );
 
         assert_eq!(peer.addresses.len(), 1);
         assert!(peer.addresses.contains(&known_address));
+    }
+
+    /// A peer that dials in claims addresses we have not reached it on, so they are stored but not marked as seen.
+    #[test]
+    fn an_inbound_connection_does_not_mark_claimed_addresses_as_seen() {
+        let address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), address.clone(), PeerFeatures::COMMUNICATION_NODE);
+        let validated = validate_peer_identity_message(
+            &PeerValidatorConfig::default(),
+            node_identity.public_key(),
+            identity_message(&node_identity),
+        )
+        .unwrap();
+
+        let new_peer =
+            create_or_update_peer_from_validated_peer_identity(None, node_identity.public_key().clone(), &validated);
+        assert!(new_peer.addresses.contains(&address));
+        assert!(new_peer.last_seen().is_none());
+
+        let known_peer = node_identity.to_peer();
+        let updated = create_or_update_peer_from_validated_peer_identity(
+            Some(known_peer),
+            node_identity.public_key().clone(),
+            &validated,
+        );
+        assert!(updated.last_seen().is_none());
     }
 }
