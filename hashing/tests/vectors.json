@@ -1,0 +1,212 @@
+{
+  "domains": [
+    {
+      "name": "ConfidentialOutputHashDomain",
+      "domain": "com.tari.ootle.output",
+      "version": 0,
+      "tag_hex": "1800000000000000636f6d2e746172692e6f6f746c652e6f75747075742e7630"
+    },
+    {
+      "name": "TransactionSecureNonceKdfDomain",
+      "domain": "com.tari.base_layer.core.transactions.secure_nonce_kdf",
+      "version": 0,
+      "tag_hex": "3900000000000000636f6d2e746172692e626173655f6c617965722e636f72652e7472616e73616374696f6e732e7365637572655f6e6f6e63655f6b64662e7630"
+    },
+    {
+      "name": "ValidatorNodeMerkleHashDomain",
+      "domain": "com.tari.base_layer.core.validator_node_mmr",
+      "version": 1,
+      "tag_hex": "2e00000000000000636f6d2e746172692e626173655f6c617965722e636f72652e76616c696461746f725f6e6f64655f6d6d722e7631"
+    },
+    {
+      "name": "WalletOutputEncryptionKeysDomain",
+      "domain": "com.tari.base_layer.wallet.output_encryption_keys",
+      "version": 1,
+      "tag_hex": "3400000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e6f75747075745f656e6372797074696f6e5f6b6579732e7631"
+    },
+    {
+      "name": "TransactionHashDomain",
+      "domain": "com.tari.base_layer.core.transactions",
+      "version": 0,
+      "tag_hex": "2800000000000000636f6d2e746172692e626173655f6c617965722e636f72652e7472616e73616374696f6e732e7630"
+    },
+    {
+      "name": "LedgerHashDomain",
+      "domain": "com.tari.minotari_ledger_wallet",
+      "version": 0,
+      "tag_hex": "2200000000000000636f6d2e746172692e6d696e6f746172695f6c65646765725f77616c6c65742e7630"
+    },
+    {
+      "name": "KeyManagerTransactionsHashDomain",
+      "domain": "com.tari.base_layer.core.transactions.key_manager",
+      "version": 1,
+      "tag_hex": "3400000000000000636f6d2e746172692e626173655f6c617965722e636f72652e7472616e73616374696f6e732e6b65795f6d616e616765722e7631"
+    },
+    {
+      "name": "PaymentReferenceHashDomain",
+      "domain": "com.tari.base_layer.wallet.payment_reference",
+      "version": 1,
+      "tag_hex": "2f00000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e7061796d656e745f7265666572656e63652e7631"
+    },
+    {
+      "name": "ValidatorNodeHashDomain",
+      "domain": "com.tari.base_layer.core.transactions.side_chain.validator_node",
+      "version": 0,
+      "tag_hex": "4200000000000000636f6d2e746172692e626173655f6c617965722e636f72652e7472616e73616374696f6e732e736964655f636861696e2e76616c696461746f725f6e6f64652e7630"
+    },
+    {
+      "name": "KeyManagerDomain",
+      "domain": "com.tari.base_layer.key_manager",
+      "version": 1,
+      "tag_hex": "2200000000000000636f6d2e746172692e626173655f6c617965722e6b65795f6d616e616765722e7631"
+    },
+    {
+      "name": "WalletOutputRewindKeysDomain",
+      "domain": "com.tari.base_layer.wallet.output_rewind_keys",
+      "version": 1,
+      "tag_hex": "3000000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e6f75747075745f726577696e645f6b6579732e7631"
+    },
+    {
+      "name": "WalletOutputSpendingKeysDomain",
+      "domain": "com.tari.base_layer.wallet.output_spending_keys",
+      "version": 1,
+      "tag_hex": "3200000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e6f75747075745f7370656e64696e675f6b6579732e7631"
+    },
+    {
+      "name": "WalletMessageSigningDomain",
+      "domain": "com.tari.base_layer.wallet.message_signing",
+      "version": 1,
+      "tag_hex": "2d00000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e6d6573736167655f7369676e696e672e7631"
+    },
+    {
+      "name": "WalletHasher",
+      "domain": "com.tari.base_layer.wallet",
+      "version": 1,
+      "tag_hex": "1d00000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e7631"
+    },
+    {
+      "name": "BulletRangeProofHashDomain",
+      "domain": "com.tari.base_layer.common_types.bullet_rangeproofs",
+      "version": 1,
+      "tag_hex": "3600000000000000636f6d2e746172692e626173655f6c617965722e636f6d6d6f6e5f74797065732e62756c6c65745f72616e676570726f6f66732e7631"
+    },
+    {
+      "name": "KernelMmrHashDomain",
+      "domain": "com.tari.base_layer.core.kernel_mmr",
+      "version": 1,
+      "tag_hex": "2600000000000000636f6d2e746172692e626173655f6c617965722e636f72652e6b65726e656c5f6d6d722e7631"
+    },
+    {
+      "name": "InputMmrHashDomain",
+      "domain": "com.tari.base_layer.core.input_mmr",
+      "version": 1,
+      "tag_hex": "2500000000000000636f6d2e746172692e626173655f6c617965722e636f72652e696e7075745f6d6d722e7631"
+    },
+    {
+      "name": "BlocksHashDomain",
+      "domain": "com.tari.base_layer.core.blocks",
+      "version": 0,
+      "tag_hex": "2200000000000000636f6d2e746172692e626173655f6c617965722e636f72652e626c6f636b732e7630"
+    },
+    {
+      "name": "OfflineSigningPayloadHashDomain",
+      "domain": "com.tari.base_layer.wallet.offline_signing.payload_integrity",
+      "version": 1,
+      "tag_hex": "3f00000000000000636f6d2e746172692e626173655f6c617965722e77616c6c65742e6f66666c696e655f7369676e696e672e7061796c6f61645f696e746567726974792e7631"
+    },
+    {
+      "name": "TariDanConsensusHashDomain",
+      "domain": "com.tari.consensus",
+      "version": 0,
+      "tag_hex": "1500000000000000636f6d2e746172692e636f6e73656e7375732e7630"
+    }
+  ],
+  "hashers": [
+    {
+      "name": "layer2::validator_registration_hasher",
+      "label": "vn_registration",
+      "absorb": "borsh",
+      "network": 0,
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "8e5201404d7e9cca791278cb0c622d53da9fb222dfadc09edd5341045f150c0c0c28a3f503cb6c8e493bdb1eb29a432c56076d9436ab11ff1bef3a0b10221604"
+    },
+    {
+      "name": "layer2::validator_exit_hasher",
+      "label": "vn_exit",
+      "absorb": "borsh",
+      "network": 0,
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "f4d5fd1e428354d5fa80488bd1b8f8774e7cb6feddc6da1a4310b71ba6a34119f290f50f5920e1d97e4ffb48177d04676f377bf62ac2f73fcc7810e91598f08e"
+    },
+    {
+      "name": "layer2::block_hasher",
+      "label": "Block",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "f05946eebffad9c503cd20dccdd138d98235293b981ba4b17b7ca356da993509"
+    },
+    {
+      "name": "layer2::block_metadata_hasher",
+      "label": "BlockMetadata",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "a37f79b8f3a1ec653b3aae1c71cc319f0e024f7164071300b6ffccfa86e7d156"
+    },
+    {
+      "name": "layer2::command_hasher",
+      "label": "Command",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "272f1329b678e6373ba77b65c5d585a770cc958b7f954dbbafc5cfdf8391cb3b"
+    },
+    {
+      "name": "layer2::proposal_vote_signature_hasher",
+      "label": "VoteSignature",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "87478974a6118e9d011e69bcb16c0af856f0f90150db8df467c8c4abea20fbb9"
+    },
+    {
+      "name": "layer2::timeout_vote_signature_hasher",
+      "label": "TimeoutVoteSignature",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "50896752a994b3e290869e6726efe582cfa3094486839d5e55f94b0441a20571"
+    },
+    {
+      "name": "DomainSeparatedBorshHasher<TransactionHashDomain, Blake2b<U32>>",
+      "label": "test_vector",
+      "absorb": "borsh",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "91957c217f1ef91784e64c65cdd39cf3d49141e70a0a4ab69f70156c32cd057c"
+    },
+    {
+      "name": "layer2::ValidatorNodeBmtHasherBlake2b",
+      "label": "",
+      "absorb": "length_prefixed",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "56765abf1872fdcdb373591dcfd01ef8a431a61afc359e34522e18faa6992fc7"
+    },
+    {
+      "name": "hashers::KernelMmrHasherBlake256",
+      "label": "",
+      "absorb": "length_prefixed",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "c89db1db0e3107abc33e338f1e324edbc43261a5653a0255a63699dda95bedba"
+    },
+    {
+      "name": "hashers::InputMmrHasherBlake256",
+      "label": "",
+      "absorb": "length_prefixed",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "a90f6c6c12a287e43b0a606762d87f23d404edd84c2700acba1809f42749b5e3"
+    },
+    {
+      "name": "WalletHasher",
+      "label": "stealth_address",
+      "absorb": "length_prefixed",
+      "input_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "digest_hex": "92fa2df5efab8ae889434d5ac3ad0958afc501673795d88aa5c969834a2c7b5b29a67f1e1cbcdc31d16f9839846b548cf95b7bcacd5bb969478c7c37699bc9fe"
+    }
+  ]
+}

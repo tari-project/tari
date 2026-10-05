@@ -28,7 +28,7 @@ use digest::consts::U64;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::ByteArray;
 
 use super::hashing::{CommsCorePeerManagerDomain, IDENTITY_SIGNATURE, comms_core_peer_manager_domain};
 use crate::{
@@ -99,22 +99,24 @@ impl IdentitySignature {
         self.version
     }
 
-    pub fn is_valid<'a, I: IntoIterator<Item = &'a Multiaddr>>(
+    /// Verify this identity signature for the given public key, features and addresses. Returns
+    /// `Err(PeerManagerError::InvalidIdentitySignature)` if it is not valid.
+    pub fn verify<'a, I: IntoIterator<Item = &'a Multiaddr>>(
         &self,
         public_key: &CommsPublicKey,
         features: PeerFeatures,
         addresses: I,
-    ) -> Result<bool, ByteArrayError> {
+    ) -> Result<(), PeerManagerError> {
         // A negative timestamp is considered invalid
         if self.updated_at.timestamp() < 0 {
-            return Ok(false);
+            return Err(PeerManagerError::InvalidIdentitySignature);
         }
         // Do not accept timestamp more than 1 day in the future
         let max_updated_at = Utc::now()
             .checked_add_signed(chrono::Duration::days(1))
             .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
         if self.updated_at > max_updated_at {
-            return Ok(false);
+            return Err(PeerManagerError::InvalidIdentitySignature);
         }
 
         let challenge = Self::construct_challenge(
@@ -126,9 +128,18 @@ impl IdentitySignature {
             self.updated_at,
         )
         .finalize();
-        let ristretto_key = public_key.to_public_key()?;
-        let ristretto_signature = self.signature.to_schnorr_signature()?;
-        Ok(ristretto_signature.verify_raw_uniform(&ristretto_key, challenge.as_ref()))
+        let ristretto_key = public_key
+            .to_public_key()
+            .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
+        let ristretto_signature = self
+            .signature
+            .to_schnorr_signature()
+            .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
+        if ristretto_signature.verify_raw_uniform(&ristretto_key, challenge.as_ref()) {
+            Ok(())
+        } else {
+            Err(PeerManagerError::InvalidIdentitySignature)
+        }
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -215,12 +226,9 @@ mod test {
             let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
-            assert!(
-                identity
-                    .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address])
-                    .unwrap(),
-                "Signature is not valid"
-            );
+            identity
+                .verify(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address])
+                .expect("Signature is not valid");
         }
 
         #[test]
@@ -234,10 +242,11 @@ mod test {
 
             let tampered = Multiaddr::from_str("/ip4/127.0.0.1/tcp/4321").unwrap();
             assert!(
-                !identity
-                    .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered])
-                    .unwrap(),
-                "Signature is not valid"
+                matches!(
+                    identity.verify(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered]),
+                    Err(PeerManagerError::InvalidIdentitySignature)
+                ),
+                "Tampered signature must not verify"
             );
         }
 
@@ -253,8 +262,11 @@ mod test {
             let tampered = PeerFeatures::COMMUNICATION_CLIENT;
 
             assert!(
-                !identity.is_valid(&public_key, tampered, [&address]).unwrap(),
-                "Signature is not valid"
+                matches!(
+                    identity.verify(&public_key, tampered, [&address]),
+                    Err(PeerManagerError::InvalidIdentitySignature)
+                ),
+                "Tampered signature must not verify"
             );
         }
     }

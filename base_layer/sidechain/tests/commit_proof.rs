@@ -8,6 +8,7 @@ use tari_sidechain::{
     ProposalVoteMessage,
     QuorumDecision,
     SidechainBlockCommitProof,
+    SidechainBlockHeader,
 };
 
 mod support;
@@ -96,6 +97,160 @@ fn it_rejects_a_qc_that_claims_another_protocol_version() {
         err.to_string().contains("Invalid signature for QC"),
         "Expected the signature error, got: {err}"
     );
+}
+
+#[test]
+fn a_header_that_omits_the_transaction_merkle_root_carries_none() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    assert_eq!(proof.header().transaction_merkle_root(), None);
+}
+
+#[test]
+fn from_version_1_the_block_id_commits_to_the_transaction_merkle_root() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    let mut header = proof.header().clone();
+    header.protocol_version = 1;
+    let without_root = header.calculate_block_id();
+
+    header.transaction_merkle_root = Some(FixedHash::zero());
+    let zero_root = header.calculate_block_id();
+    header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+    let other_root = header.calculate_block_id();
+
+    assert_ne!(without_root, zero_root, "carrying a root must change the block ID");
+    assert_ne!(zero_root, other_root, "the root must be part of the block ID");
+}
+
+#[test]
+fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
+    let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    proof.header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+    // The version 0 preimage does not cover the root, so the block ID still matches.
+    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("commits to no transaction merkle root"),
+        "Expected the transaction merkle root error, got: {err}"
+    );
+}
+
+#[test]
+fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root() {
+    let root = FixedHash::from([1u8; 32]);
+    let proof = signed_version_1_proof(Some(root));
+    proof.validate_committed(4, &|_| Ok(true)).unwrap();
+
+    let mut tampered = proof.clone();
+    tampered.header.transaction_merkle_root = Some(FixedHash::from([2u8; 32]));
+    let err = tampered.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("does not match the block ID in the header"),
+        "Expected the block ID mismatch error, got: {err}"
+    );
+
+    let mut stripped = proof;
+    stripped.header.transaction_merkle_root = None;
+    let err = stripped.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("does not match the block ID in the header"),
+        "Expected the block ID mismatch error, got: {err}"
+    );
+}
+
+/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that four test validators
+/// sign.
+fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> SidechainBlockCommitProof {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey;
+    use tari_sidechain::{
+        ChainLink,
+        DecodedValidatorBlockSignature,
+        QuorumCertificate,
+        ValidatorBlockSignature,
+        ValidatorQcSignature,
+    };
+    use tari_utilities::ByteArray;
+
+    const PROTOCOL_VERSION: u32 = 1;
+
+    let mut header = load_fixture::<SidechainBlockCommitProof>("commit_proof.json").header;
+    header.protocol_version = PROTOCOL_VERSION;
+    header.transaction_merkle_root = transaction_merkle_root;
+
+    let validators = (1..=4u8)
+        .map(|i| PrivateKey::from_uniform_bytes(&[i; 64]).unwrap())
+        .collect::<Vec<_>>();
+    let certify = |header_hash: FixedHash, parent_id: FixedHash, height: u64| {
+        let block_id = ChainLink { header_hash, parent_id }.calc_block_id();
+        let message = ProposalVoteMessage::new(
+            PROTOCOL_VERSION,
+            &block_id,
+            QuorumDecision::Accept,
+            header.epoch,
+            height,
+        )
+        .calculate_hash();
+        let signatures = validators
+            .iter()
+            .map(|secret| {
+                let nonce_seed = [secret.as_bytes(), message.as_slice()].concat();
+                let nonce = PrivateKey::from_uniform_bytes(&nonce_seed).unwrap();
+                let signature =
+                    DecodedValidatorBlockSignature::sign_with_nonce_and_message(secret, nonce, message).unwrap();
+                ValidatorQcSignature {
+                    public_key: CompressedPublicKey::from_secret_key(secret),
+                    signature: ValidatorBlockSignature::new_from_schnorr(signature),
+                }
+            })
+            .collect();
+        QuorumCertificate {
+            header_hash,
+            parent_id,
+            protocol_version: PROTOCOL_VERSION,
+            epoch: header.epoch,
+            height,
+            signatures,
+            decision: QuorumDecision::Accept,
+        }
+    };
+
+    let block_id = header.calculate_block_id();
+    let child_hash = FixedHash::from([0xc1; 32]);
+    let child_id = ChainLink {
+        header_hash: child_hash,
+        parent_id: block_id,
+    }
+    .calc_block_id();
+    let grandchild_hash = FixedHash::from([0xc2; 32]);
+
+    let proof_elements = vec![
+        CommitProofElement::QuorumCertificate(certify(grandchild_hash, child_id, header.height.saturating_add(2))),
+        CommitProofElement::QuorumCertificate(certify(child_hash, block_id, header.height.saturating_add(1))),
+        CommitProofElement::QuorumCertificate(certify(header.calculate_hash(), header.parent_id, header.height)),
+    ];
+    SidechainBlockCommitProof { header, proof_elements }
+}
+
+#[test]
+fn the_transaction_merkle_root_round_trips() {
+    let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+    let mut header = proof.header().clone();
+    header.protocol_version = 1;
+    header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
+
+    let json = serde_json::to_value(&header).unwrap();
+    assert_eq!(
+        json.get("transaction_merkle_root").and_then(|v| v.as_str()),
+        Some("01".repeat(32).as_str())
+    );
+    assert_eq!(serde_json::from_value::<SidechainBlockHeader>(json).unwrap(), header);
+
+    let bytes = borsh::to_vec(&header).unwrap();
+    assert_eq!(borsh::from_slice::<SidechainBlockHeader>(&bytes).unwrap(), header);
+
+    header.transaction_merkle_root = None;
+    let json = serde_json::to_value(&header).unwrap();
+    assert!(json.get("transaction_merkle_root").is_none());
+    assert_eq!(serde_json::from_value::<SidechainBlockHeader>(json).unwrap(), header);
 }
 
 #[test]

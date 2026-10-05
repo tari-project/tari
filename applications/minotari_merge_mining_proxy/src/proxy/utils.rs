@@ -60,7 +60,11 @@ pub async fn convert_reqwest_response_to_hyper_json_response(
             .map_err(|e| MmProxyError::ConversionError(format!("Invalid status code: {}", e)))?,
     );
 
-    let body_json = resp.json().await.map_err(MmProxyError::MonerodRequestFailed)?;
+    // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the error
+    let body_json = resp
+        .json()
+        .await
+        .map_err(|e| MmProxyError::MonerodRequestFailed(e.without_url()))?;
     let resp = builder.body(body_json)?;
     Ok(resp)
 }

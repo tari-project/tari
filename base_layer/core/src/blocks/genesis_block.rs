@@ -439,6 +439,7 @@ mod test {
     #![allow(clippy::arithmetic_side_effects)]
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
+    use tari_common::network_check::is_network_choice_valid;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
     use tari_transaction_components::{
@@ -466,13 +467,20 @@ mod test {
     #[serial]
     fn esmeralda_genesis_sanity_check() {
         let network = Network::Esmeralda;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('esmeralda_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "3c3681ad318eb54ca3f3e8aed79d3d207d94a5291aec84ba1a0b628633db3621"
+        );
         check_block(network, &block, 313, 794, 314);
         remove_network_env_var();
     }
@@ -481,13 +489,20 @@ mod test {
     #[serial]
     fn nextnet_genesis_sanity_check() {
         let network = Network::NextNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('nextnet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "15fdb3fe7ad08615ff5342113349558a047ee372cb297bec84bdaf4c52cf189e"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -496,13 +511,20 @@ mod test {
     #[serial]
     fn mainnet_genesis_sanity_check() {
         let network = Network::MainNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('mainnet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "01f0cf665bd4cd31cbb2b2470236389c483522b350335e10a4a5dca34cb85990"
+        );
         check_block(network, &block, 253, 674, 254);
         remove_network_env_var();
     }
@@ -511,13 +533,20 @@ mod test {
     #[serial]
     fn stagenet_genesis_sanity_check() {
         let network = Network::StageNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('stagenet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "a100a8fb378d4a1367b769680dc1b7b1d53b274c55aa679b7eedea4e703272c2"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -526,12 +555,19 @@ mod test {
     #[serial]
     fn igor_genesis_sanity_check() {
         let network = Network::Igor;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('igor_genesis_sanity_check()')");
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "486f0f75a50acadd7e57c5dfcfbf9daece94784d6f35db855012942700216e00"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -540,12 +576,19 @@ mod test {
     #[serial]
     fn localnet_genesis_sanity_check() {
         let network = Network::LocalNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('localnet_genesis_sanity_check()')");
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "bd2126f3f5220653d93dc6eade3d062c26845de9859ec9d0b5c758a5a0b6ef3f"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -740,11 +783,19 @@ mod test {
         .unwrap();
     }
 
-    fn set_network_by_env_var_or_force_set(network: Network) {
+    /// Selects `network` for the test via `TARI_NETWORK`, falling back to setting it process-wide. Returns false (and
+    /// sets nothing) if this binary is not built for `network`, in which case the test should be skipped: forcing an
+    /// invalid network would pin it for every later test in the same process.
+    fn set_network_by_env_var_or_force_set(network: Network) -> bool {
+        if is_network_choice_valid(network).is_err() {
+            println!("\nSkipping: this binary is not built for {network:?}.\n");
+            return false;
+        }
         set_network_by_env_var(network);
         if Network::get_current_or_user_setting_or_default() != network {
             let _ = Network::set_current(network);
         }
+        true
     }
 
     // Targeted network compilations will override inferred network hashes; this has effect only if

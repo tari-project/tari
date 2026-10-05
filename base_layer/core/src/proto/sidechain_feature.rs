@@ -156,6 +156,7 @@ impl TryFrom<proto::types::ValidatorNodeExit> for ValidatorNodeExit {
                     .map(CompressedSignature::try_from)
                     .ok_or("signature not provided")??,
             ),
+            value.activation_epoch.into(),
             value.max_epoch.into(),
         ))
     }
@@ -167,6 +168,7 @@ impl From<&ValidatorNodeExit> for proto::types::ValidatorNodeExit {
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
             max_epoch: value.max_epoch().as_u64(),
+            activation_epoch: value.activation_epoch().as_u64(),
         }
     }
 }

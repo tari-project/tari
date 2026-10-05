@@ -571,15 +571,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn delete_validator_node(
-        &mut self,
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    ) -> &mut Self {
-        self.transaction.delete_validator_node(sidechain_public_key, public_key);
-        self
-    }
-
     pub fn delete_all_kernerls_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
         self.transaction.delete_all_kernerls_in_block(block_hash);
         self

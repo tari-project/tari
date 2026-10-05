@@ -32,6 +32,7 @@ pub fn check_proof_elements(
     expected_decision: QuorumDecision,
     quorum_threshold: usize,
 ) -> Result<(), SidechainProofValidationError> {
+    check_header_commits_to_its_fields(header)?;
     check_proof_elements_num_qcs(proof_elements, 3)?;
 
     let mut last_parent = None::<&FixedHash>;
@@ -141,6 +142,19 @@ pub fn check_proof_elements(
 
     Ok(())
 }
+
+/// Rejects a header that carries a field its protocol version's hash preimage does not cover, since nothing
+/// authenticates such a field.
+fn check_header_commits_to_its_fields(header: &SidechainBlockHeader) -> Result<(), SidechainProofValidationError> {
+    if header.protocol_version == 0 && header.transaction_merkle_root.is_some() {
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: "Header claims protocol version 0, which commits to no transaction merkle root, but carries one"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
 pub fn check_proof_elements_num_qcs(
     proof_elems: &[CommitProofElement],
     expected_len: usize,

@@ -22,11 +22,19 @@ This setup is usually used for applications.
 `log-4rs` is a really handy crate that allows you to specify _exactly_ how and where log messages are put. The sample
 configuration files in this directory provide a good start for setting up a useful logging solution.
 
-The `log4rs_sample_base_node.yml` file defines a configuration where only error messages are written to the console, typically low
-signal-to-noise comms messages are stored in one file, and general log messages are stored in another.
+Each application ships the configuration it uses by default, for example
+`applications/minotari_node/log4rs_sample.yml`, `applications/minotari_console_wallet/log4rs_sample.yml`,
+`applications/minotari_merge_mining_proxy/log4rs_sample.yml`, `applications/minotari_miner/log4rs_sample.yml` and
+`applications/minotari_peer_sync/log4rs_sample.yml`. They write only error messages to the console, typically low
+signal-to-noise comms messages to one file, and general log messages to another.
 
-The `log4rs-debug-sample.rs` file has a similar setup, but logs more information useful for debugging, such as the
-source code line number, and the thread that caused the log message to be emitted.
+The `log4rs_debug_sample.yml` file in this directory has a similar setup, but logs more information useful for
+debugging, such as the source code line number, and the thread that caused the log message to be emitted.
+
+Tari applications only load a log config whose file appenders write inside `{{log_dir}}/log/...` (the log directory
+is `--log-path` if given, otherwise the base path), and only if no other user can change the file. Otherwise the
+built-in default is used. The samples here follow that rule; see "Log configuration trust and containment" in
+`docs/guide/applications_overview.md`.
 
 You can use these files as a starting point, or create your own.
 

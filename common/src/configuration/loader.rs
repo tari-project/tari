@@ -61,6 +61,61 @@ use std::{
 };
 
 use config::{Config, ValueKind};
+use log::warn;
+
+use crate::LOG_TARGET;
+
+/// Reserved top-level config key holding the env and `-p`/application overrides, as an array of `key=value` strings.
+/// [`load_configuration_with_overrides`](crate::configuration::utils::load_configuration_with_overrides) stores them
+/// in the `Config` it returns and [`ConfigPath::merge_subconfig`] re-applies them after the network-scoped table, so
+/// they win over it. No application section uses this key, so section loaders ignore it.
+pub const CONFIG_OVERRIDES_KEY: &str = "__tari_overrides";
+
+/// Returns true if `key` is a plain dotted config key (non-empty segments of letters, digits, `_` and `-`) that the
+/// config crate accepts in `set_override`. Keys like `base_node..x` or `base_node.x.` (e.g. from a malformed
+/// `TARI_BASE_NODE____X` env var) are rejected.
+pub fn is_valid_config_key(key: &str) -> bool {
+    let segments_ok = key.split('.').all(|segment| {
+        !segment.is_empty() &&
+            segment
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    });
+    segments_ok && Config::builder().set_override(key, "").is_ok()
+}
+
+/// Returns the overrides stored under [`CONFIG_OVERRIDES_KEY`] in `config` whose key is inside the `section` table
+/// (i.e. starts with `<section>.`), in the order they were stored. Entries with an invalid key are skipped with a
+/// warning, so a bad stored entry can never stop a section from loading.
+fn config_overrides_for(config: &Config, section: &str) -> Vec<(String, String)> {
+    let prefix = format!("{}.", section.to_lowercase());
+    let Ok(entries) = config.get_array(CONFIG_OVERRIDES_KEY) else {
+        return Vec::new();
+    };
+    let mut result = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry.into_string() else {
+            continue;
+        };
+        let Some((key, value)) = entry.split_once('=') else {
+            continue;
+        };
+        let key = key.to_lowercase();
+        if !key.starts_with(&prefix) {
+            continue;
+        }
+        if !is_valid_config_key(&key) {
+            warn!(
+                target: LOG_TARGET,
+                "Ignoring config override with an invalid key '{}'",
+                crate::configuration::utils::sanitize_for_display(&key)
+            );
+            continue;
+        }
+        result.push((key, value.to_string()));
+    }
+    result
+}
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
@@ -79,6 +134,10 @@ pub trait ConfigPath {
     /// Merge and produce sub-config from overload_key_prefix to main_key_prefix,
     /// which can be used to deserialize Self struct
     /// If overload key is not present in config it won't make effect
+    ///
+    /// Order, lowest to highest: struct defaults, `config` (file keys, env and overrides), the overload table, then
+    /// the env and `-p`/application overrides stored in `config` under [`CONFIG_OVERRIDES_KEY`] for this section
+    /// again, so an explicit override beats the network-scoped table.
     fn merge_subconfig(config: &Config, defaults: config::Value) -> Result<Config, ConfigurationError> {
         match Self::overload_key_prefix(config)? {
             Some(key) => {
@@ -90,7 +149,18 @@ pub trait ConfigPath {
                 if !matches!(overload.kind, ValueKind::Nil) {
                     config = config.set_override(Self::main_key_prefix(), overload)?;
                 }
+                let config = config.build()?;
 
+                // Re-apply in a second step: overrides in one builder are applied in no particular order, so the
+                // section table above could otherwise land on top of them.
+                let overrides = config_overrides_for(&config, Self::main_key_prefix());
+                if overrides.is_empty() {
+                    return Ok(config);
+                }
+                let mut config = Config::builder().add_source(config);
+                for (key, value) in overrides {
+                    config = config.set_override(key.as_str(), value)?;
+                }
                 let config = config.build()?;
                 Ok(config)
             },
@@ -432,6 +502,76 @@ mod test {
         fn overload_key_prefix(_: &Config) -> Result<Option<String>, ConfigurationError> {
             Ok(None)
         }
+    }
+
+    #[derive(Default, Serialize, Deserialize)]
+    struct ReapplyConfig {
+        overridden: String,
+        scoped_only: String,
+    }
+    impl SubConfigPath for ReapplyConfig {
+        fn main_key_prefix() -> &'static str {
+            "reapply_test"
+        }
+    }
+
+    #[test]
+    fn overrides_win_over_scoped_table() -> anyhow::Result<()> {
+        let config = Config::builder()
+            .set_override(CONFIG_OVERRIDES_KEY, vec![
+                "other_section.overridden=not for us",
+                "reapply_test.overridden=from -p",
+            ])?
+            .set_override("reapply_test.override_from", "mainnet")?
+            .set_override("reapply_test.overridden", "from -p")?
+            .set_override("reapply_test.scoped_only", "unscoped file value")?
+            .set_override("mainnet.reapply_test.overridden", "scoped file value")?
+            .set_override("mainnet.reapply_test.scoped_only", "scoped file value")?
+            .build()?;
+        let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
+        // The -p override beats the scoped table
+        assert_eq!(loaded.overridden, "from -p");
+        // With no override, the scoped table still beats the unscoped file key
+        assert_eq!(loaded.scoped_only, "scoped file value");
+
+        // Without the stored overrides the scoped table wins, i.e. nothing leaks in from elsewhere
+        let config = Config::builder()
+            .set_override("reapply_test.override_from", "mainnet")?
+            .set_override("reapply_test.overridden", "from -p")?
+            .set_override("mainnet.reapply_test.overridden", "scoped file value")?
+            .build()?;
+        let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
+        assert_eq!(loaded.overridden, "scoped file value");
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_config_keys() {
+        assert!(is_valid_config_key("base_node.grpc_address"));
+        assert!(is_valid_config_key("p2p.seeds.peer_seeds"));
+        assert!(is_valid_config_key("stratum-transcoder.x"));
+        assert!(!is_valid_config_key("base_node..x"));
+        assert!(!is_valid_config_key("base_node.x."));
+        assert!(!is_valid_config_key(".x"));
+        assert!(!is_valid_config_key(""));
+    }
+
+    #[test]
+    fn invalid_stored_override_does_not_block_loading() -> anyhow::Result<()> {
+        let config = Config::builder()
+            .set_override(CONFIG_OVERRIDES_KEY, vec![
+                "reapply_test..overridden=bad",
+                "reapply_test.overridden.=bad",
+                "reapply_test.overridden=good",
+            ])?
+            .set_override("reapply_test.override_from", "mainnet")?
+            .set_override("reapply_test.overridden", "file")?
+            .set_override("mainnet.reapply_test.scoped_only", "scoped")?
+            .build()?;
+        let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
+        assert_eq!(loaded.overridden, "good");
+        assert_eq!(loaded.scoped_only, "scoped");
+        Ok(())
     }
 
     #[test]

@@ -25,7 +25,7 @@ use std::{fs, io, path::Path, sync::Arc};
 use log::*;
 use serde::{Serialize, de::DeserializeOwned};
 use tari_common::{
-    configuration::bootstrap::prompt,
+    configuration::bootstrap::prompt_default_yes_on_eof,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{
@@ -85,7 +85,8 @@ pub fn setup_node_identity<P: AsRef<Path>>(
         Err(e) => {
             warn!(target: LOG_TARGET, "Failed to load node identity: {e}");
             if !create_id {
-                let prompt = prompt("Node identity does not exist.\nWould you like to create one (Y/n)?");
+                let prompt =
+                    prompt_default_yes_on_eof("Node identity does not exist.\nWould you like to create one (Y/n)?");
                 if !prompt {
                     error!(
                         target: LOG_TARGET,

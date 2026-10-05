@@ -53,6 +53,7 @@ impl ValidatorNodeRegistration {
 
     pub fn signed(
         secret_key: &PrivateKey,
+        network: u8,
         sidechain_pk: Option<&CompressedPublicKey>,
         claim_public_key: CompressedPublicKey,
         max_epoch: VnEpoch,
@@ -60,6 +61,7 @@ impl ValidatorNodeRegistration {
         Self {
             signature: ValidatorNodeSignature::sign_for_registration(
                 secret_key,
+                network,
                 sidechain_pk,
                 &claim_public_key,
                 max_epoch,
@@ -69,9 +71,14 @@ impl ValidatorNodeRegistration {
         }
     }
 
-    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
-        self.signature
-            .is_valid_registration_signature_for(sidechain_pk, &self.claim_public_key, self.max_epoch)
+    /// Returns true if the signature is valid for the given network byte and sidechain public key.
+    pub fn is_valid_signature_for(&self, network: u8, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
+        self.signature.is_valid_registration_signature_for(
+            network,
+            sidechain_pk,
+            &self.claim_public_key,
+            self.max_epoch,
+        )
     }
 
     pub fn derive_shard_key(
@@ -140,12 +147,14 @@ mod test {
     use super::*;
     use crate::test_helpers::new_public_key;
 
+    const NETWORK: u8 = 0x10;
+
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut rand::rng());
         let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
         let epoch = VnEpoch(1);
 
-        ValidatorNodeRegistration::signed(&sk, None, claim_public_key, epoch)
+        ValidatorNodeRegistration::signed(&sk, NETWORK, None, claim_public_key, epoch)
     }
 
     mod is_valid_signature_for {
@@ -154,7 +163,7 @@ mod test {
         #[test]
         fn it_returns_true_for_valid_signature() {
             let reg = create_instance();
-            assert!(reg.is_valid_signature_for(None));
+            assert!(reg.is_valid_signature_for(NETWORK, None));
         }
 
         #[test]
@@ -163,11 +172,11 @@ mod test {
             let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
 
             let reg = ValidatorNodeRegistration::new(
-                ValidatorNodeSignature::sign_for_registration(&sk, None, &claim_public_key, VnEpoch(2)),
+                ValidatorNodeSignature::sign_for_registration(&sk, NETWORK, None, &claim_public_key, VnEpoch(2)),
                 claim_public_key,
                 VnEpoch(1),
             );
-            assert!(!reg.is_valid_signature_for(None));
+            assert!(!reg.is_valid_signature_for(NETWORK, None));
         }
 
         #[test]
@@ -178,7 +187,7 @@ mod test {
                 Default::default(),
                 reg.max_epoch,
             );
-            assert!(!reg.is_valid_signature_for(None));
+            assert!(!reg.is_valid_signature_for(NETWORK, None));
         }
     }
 

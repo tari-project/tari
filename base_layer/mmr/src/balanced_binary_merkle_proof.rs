@@ -117,6 +117,8 @@ pub enum BalancedBinaryMerkleProofError {
     TreeDoesNotContainLeafIndex { leaf_index: usize },
     #[error("Index {index} is out of range. The len is {len}")]
     IndexOutOfRange { index: usize, len: usize },
+    #[error("The computed root does not match the expected root")]
+    RootMismatch,
 }
 
 /// Flag to indicate if proof data represents an index or a node hash
@@ -196,11 +198,9 @@ where D: Digest
         })
     }
 
-    pub fn verify_consume(
-        mut self,
-        root: &Hash,
-        leaf_hashes: Vec<Hash>,
-    ) -> Result<bool, BalancedBinaryMerkleProofError> {
+    /// Verify the merged proof for the given leaf hashes against the root, consuming the proof. Returns
+    /// `Err(BalancedBinaryMerkleProofError::RootMismatch)` if the computed root does not match `root`.
+    pub fn verify_consume(mut self, root: &Hash, leaf_hashes: Vec<Hash>) -> Result<(), BalancedBinaryMerkleProofError> {
         // Check that the proof and verifier data match
         let n = self.node_indices.len(); // number of merged proofs
         if self.paths.len() != n || self.heights.len() != n || leaf_hashes.len() != n {
@@ -276,10 +276,14 @@ where D: Digest
             // If the proof is valid then all but one paths will be consumed by other paths.
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
-        Ok(computed_hashes
+        let computed_root = computed_hashes
             .first()
-            .ok_or(BalancedBinaryMerkleProofError::BadProofSemantics)? ==
-            root)
+            .ok_or(BalancedBinaryMerkleProofError::BadProofSemantics)?;
+        if computed_root == root {
+            Ok(())
+        } else {
+            Err(BalancedBinaryMerkleProofError::RootMismatch)
+        }
     }
 }
 
@@ -316,11 +320,9 @@ mod test {
         let proof1 = BalancedBinaryMerkleProof::generate_proof(&bmt, 1).unwrap();
 
         let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof, proof1]).unwrap();
-        assert!(
-            merged
-                .verify_consume(&root, vec![leaves[0].clone(), leaves[1].clone()])
-                .unwrap()
-        );
+        merged
+            .verify_consume(&root, vec![leaves[0].clone(), leaves[1].clone()])
+            .unwrap();
     }
 
     #[test]
@@ -359,7 +361,10 @@ mod test {
             heights: vec![0],
             _phantom: PhantomData,
         };
-        assert!(!proof.verify_consume(&vec![0u8; 32], vec![vec![]]).unwrap());
+        assert!(matches!(
+            proof.verify_consume(&vec![0u8; 32], vec![vec![]]).unwrap_err(),
+            BalancedBinaryMerkleProofError::RootMismatch
+        ));
 
         let proof = MergedBalancedBinaryMerkleProof::<TestHasher> {
             paths: vec![vec![]],
@@ -403,11 +408,9 @@ mod test {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
-        assert!(
-            merged_proof
-                .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
-                .unwrap()
-        );
+        merged_proof
+            .verify_consume(&root, indices.iter().map(|i| leaves[*i].clone()).collect::<Vec<_>>())
+            .unwrap();
     }
 
     #[test]
@@ -420,7 +423,7 @@ mod test {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let merged_proof = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
-        assert!(merged_proof.verify_consume(&root, leaves).unwrap());
+        merged_proof.verify_consume(&root, leaves).unwrap();
     }
 
     #[test]
@@ -503,6 +506,6 @@ mod test {
         assert!(proof.path.is_empty());
 
         let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof]).unwrap();
-        assert!(merged.verify_consume(&root, vec![leaves[0].clone()]).unwrap());
+        merged.verify_consume(&root, vec![leaves[0].clone()]).unwrap();
     }
 }

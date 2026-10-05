@@ -82,6 +82,9 @@ jobs:
       - name: Install ubuntu dependencies
         shell: bash
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
@@ -188,6 +191,9 @@ jobs:
         if: ${{ env.CI_FFI == 'true' }}
         shell: bash
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 

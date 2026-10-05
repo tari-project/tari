@@ -22,17 +22,36 @@
 //
 
 use std::{
+    collections::HashMap,
     fs,
-    fs::File,
-    io::{Read, Write},
-    path::Path,
+    fs::{File, OpenOptions},
+    io::{ErrorKind, Read, Write},
+    path::{Component, Path, PathBuf},
 };
 
-use log4rs::config::RawConfig;
+use log::warn;
+use log4rs::{append::AppenderConfig, config::RawConfig};
+use serde::Deserialize;
 
-use crate::ConfigError;
+use crate::{
+    ConfigError,
+    LOG_TARGET,
+    configuration::utils::{
+        file_findings,
+        print_security_warning,
+        print_warning,
+        sanitize_for_display,
+        untrusted_path_findings,
+    },
+};
 
-/// Set up application-level logging using the Log4rs configuration file specified in
+/// Set up application-level logging using the Log4rs configuration file specified in `config_file`. If the file does
+/// not exist it is created from `default`. `{{log_dir}}` in the file is replaced with `base_path`.
+///
+/// Every trust finding for the file (see [`untrusted_reasons`](crate::configuration::utils::untrusted_reasons)) is
+/// printed to stderr and logged once logging is up. If another (non-root) user can control the file (see
+/// [`untrusted_severe_reasons`](crate::configuration::utils::untrusted_severe_reasons)), or one of its appenders
+/// writes outside `base_path`, it is not loaded and `default` is used instead.
 pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
@@ -44,32 +63,421 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
             fs::create_dir_all(d)
                 .map_err(|e| ConfigError::new("Could not create parent directory for log file", Some(e.to_string())))?
         };
-        let mut file = File::create(config_file)
-            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
-        file.write_all(default.as_ref())
-            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
+        // `create_new` never follows or truncates a file (or symlink) that appeared after the `exists` check. If one
+        // did appear, it is treated as an existing file below.
+        match OpenOptions::new().write(true).create_new(true).open(config_file) {
+            Ok(mut file) => file
+                .write_all(default.as_ref())
+                .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {},
+            Err(e) => {
+                return Err(ConfigError::new(
+                    "Could not create default log file",
+                    Some(e.to_string()),
+                ));
+            },
+        }
     }
 
-    let mut file =
+    // Always print the findings to stderr first: no logger exists yet, and the log config being checked could itself
+    // silence them. Once logging is up they are also logged.
+    let choice = choose_log_config(config_file, base_path, default)?;
+    for (severe, reason) in &choice.findings {
+        if *severe {
+            print_security_warning(reason);
+        } else {
+            print_warning(reason);
+        }
+    }
+    let ignored_message = format!(
+        "Untrusted log config {} ignored and its custom settings dropped; using the built-in default logging \
+         configuration",
+        sanitize_for_display(&config_file.display().to_string())
+    );
+    if choice.untrusted {
+        print_security_warning(&ignored_message);
+    }
+    init_logging_from_yaml(&choice.contents)?;
+    for (_, reason) in &choice.findings {
+        warn!(target: LOG_TARGET, "⚠️  {reason}");
+    }
+    if choice.untrusted {
+        warn!(target: LOG_TARGET, "⚠️  {ignored_message}");
+    }
+    Ok(())
+}
+
+/// The log4rs config to use (with `{{log_dir}}` already substituted), every finding about the file as
+/// `(severe, reason)`, whether the file was refused in favour of the built-in default, and whether that was because
+/// of its owner or mode (as opposed to where it writes).
+struct LogConfigChoice {
+    contents: String,
+    findings: Vec<(bool, String)>,
+    // Only read by tests; `untrusted` decides what is printed
+    #[cfg_attr(not(test), allow(dead_code))]
+    refused: bool,
+    untrusted: bool,
+}
+
+/// Chooses the log4rs config to use. The file is refused, and `default` used instead, if:
+/// - another (non-root) user can control it or a directory on its path (severe findings, see
+///   [`untrusted_severe_reasons`]); the file's own owner and mode are taken from the open descriptor, so the file that
+///   is checked is the file that is read, or
+/// - any appender writes outside `<log dir>/log`, or the appenders cannot be read for checking (see
+///   [`check_appender_paths`]).
+///
+/// Other findings (e.g. a file writable only by the user's private group, or a root-owned read-only file) are only
+/// reported. The built-in default is never refused. The log dir (`base_path`) is made absolute and resolved before it
+/// is substituted for `{{log_dir}}`.
+///
+/// [`untrusted_severe_reasons`]: crate::configuration::utils::untrusted_severe_reasons
+fn choose_log_config(config_file: &Path, base_path: &Path, default: &str) -> Result<LogConfigChoice, ConfigError> {
+    let base = LogDirBase::new(base_path)?;
+    let path_findings = untrusted_path_findings(config_file);
+    let mut findings = Vec::new();
+    let mut file_contents = None;
+    if path_findings.iter().any(|(severe, _)| *severe) {
+        findings = path_findings;
+    } else {
+        let (mut file, metadata) = open_log_config(config_file)?;
+        findings.extend(file_findings(config_file, &metadata));
+        findings.extend(path_findings);
+        if !findings.iter().any(|(severe, _)| *severe) {
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
+            file_contents = Some(contents);
+        }
+    }
+    let untrusted = file_contents.is_none();
+
+    if let Some(contents) = file_contents {
+        let contents = substitute_log_dir(&contents, &base.log_dir)?;
+        let shown_file = sanitize_for_display(&config_file.display().to_string());
+        match check_appender_paths(&contents, &base) {
+            Ok(escapes) if escapes.is_empty() => {
+                return Ok(LogConfigChoice {
+                    contents,
+                    findings,
+                    refused: false,
+                    untrusted: false,
+                });
+            },
+            Ok(escapes) => {
+                for (name, path) in escapes {
+                    findings.push((
+                        true,
+                        format!(
+                            "Log config {shown_file} writes outside the log directory (appender {}: {}); use \
+                             `{{{{log_dir}}}}/log/...` or --log-path <dir>. Using the built-in default logging \
+                             configuration.",
+                            sanitize_for_display(&name),
+                            sanitize_for_display(&path)
+                        ),
+                    ));
+                }
+            },
+            Err(e) => findings.push((
+                true,
+                format!(
+                    "Log config {shown_file} could not be checked for where it writes ({}). Using the built-in \
+                     default logging configuration.",
+                    sanitize_for_display(&e)
+                ),
+            )),
+        }
+    }
+
+    // The built-in default is compiled in and only uses `{{log_dir}}/log`-relative paths, so it is not checked:
+    // refusing it would leave nothing to start with
+    let contents = substitute_log_dir(default, &base.log_dir)?;
+    Ok(LogConfigChoice {
+        contents,
+        findings,
+        refused: true,
+        untrusted,
+    })
+}
+
+/// Opens the log config for reading. On Unix the symlink chain is resolved first and the resolved target is opened
+/// with `O_NOFOLLOW`, so the descriptor (and its metadata) belongs to a regular file, not a link swapped in later.
+#[cfg(unix)]
+fn open_log_config(config_file: &Path) -> Result<(File, fs::Metadata), ConfigError> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let target = fs::canonicalize(config_file)
+        .map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&target)
+        .map_err(|e| ConfigError::new("Could not open file: {}", Some(e.to_string())))?;
+    let metadata = file
+        .metadata()
+        .map_err(|e| ConfigError::new("Could not read file metadata: {}", Some(e.to_string())))?;
+    Ok((file, metadata))
+}
+
+#[cfg(not(unix))]
+fn open_log_config(config_file: &Path) -> Result<(File, fs::Metadata), ConfigError> {
+    let file =
         File::open(config_file).map_err(|e| ConfigError::new("Could not locate file: {}", Some(e.to_string())))?;
-    let mut contents = String::new();
+    let metadata = file
+        .metadata()
+        .map_err(|e| ConfigError::new("Could not read file metadata: {}", Some(e.to_string())))?;
+    Ok((file, metadata))
+}
 
-    file.read_to_string(&mut contents)
-        .map_err(|e| ConfigError::new("Could not read file: {}", Some(e.to_string())))?;
+/// The log directory and the boundary appenders must stay inside.
+struct LogDirBase {
+    /// Absolute: on Unix the canonical path if it exists (so `..` after a symlink resolves the way the OS does),
+    /// otherwise lexically normalized (see [`lexical_normalize`]). This is what `{{log_dir}}` is replaced with.
+    log_dir: PathBuf,
+    /// `<log_dir>/log`: appender paths must be inside this directory.
+    boundary: PathBuf,
+    /// The boundary fully resolved (see [`resolve_for_containment`]), if possible.
+    canonical: Option<PathBuf>,
+}
 
-    let replace_str = base_path
-        .to_str()
-        .expect("Could not replace {{log_dir}} variable from the log4rs config")
-        // log4rs requires the path to be in a unix format regardless of the system it's running on
-        .replace('\\', "/");
+impl LogDirBase {
+    fn new(base_path: &Path) -> Result<Self, ConfigError> {
+        if base_path.to_str().is_none() {
+            return Err(ConfigError::new(
+                "Could not replace {{log_dir}} variable from the log4rs config",
+                Some(format!("base path {} is not valid UTF-8", base_path.display())),
+            ));
+        }
+        let absolute = if base_path.is_absolute() {
+            base_path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|dir| dir.join(base_path))
+                .unwrap_or_else(|_| base_path.to_path_buf())
+        };
+        // On Windows `canonicalize` returns a `\\?\` verbatim path, which log4rs cannot use, so only resolve on Unix
+        let canonical_base = if cfg!(unix) {
+            fs::canonicalize(&absolute).ok()
+        } else {
+            None
+        };
+        let log_dir = canonical_base.unwrap_or_else(|| lexical_normalize(&absolute));
+        let boundary = log_dir.join("log");
+        let canonical = resolve_for_containment(&boundary);
+        Ok(Self {
+            log_dir,
+            boundary,
+            canonical,
+        })
+    }
+}
 
-    let contents = contents.replace("{{log_dir}}", &replace_str);
+/// Normalizes a path without touching the file system, using the platform's own path rules (`Path::components`):
+/// `.` is dropped and `..` removes the previous normal segment. A prefix (drive, UNC share or verbatim prefix) and the
+/// root are kept and never popped past; a `..` at the start of a relative path is kept. So `\\` is a separator only
+/// on Windows, and `\\server\share\..` stays at the share root.
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    let mut rooted = false;
+    let mut normal_segments = 0usize;
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                result.push(component.as_os_str());
+                rooted = true;
+            },
+            Component::CurDir => {},
+            Component::ParentDir => {
+                if normal_segments > 0 {
+                    result.pop();
+                    normal_segments = normal_segments.saturating_sub(1);
+                } else if !rooted {
+                    result.push("..");
+                } else {
+                    // `..` at the root (or share root) stays there
+                }
+            },
+            Component::Normal(segment) => {
+                result.push(segment);
+                normal_segments = normal_segments.saturating_add(1);
+            },
+        }
+    }
+    result
+}
 
-    let config: RawConfig =
-        serde_yaml::from_str(&contents).expect("Could not parse the contents of the log file as yaml");
-    log4rs::init_raw_config(config).expect("Could not initialize logging");
+/// Mirrors the part of log4rs's own config that holds the appenders. It is read with the same derive-based
+/// deserialization log4rs uses (field names via identifiers, so YAML tags on keys are ignored the same way, and maps
+/// where a repeated key keeps the last value), so the appenders checked are the appenders log4rs builds.
+#[derive(Deserialize)]
+struct AppendersMirror {
+    #[serde(default)]
+    appenders: HashMap<String, AppenderConfig>,
+}
+
+/// The fields of an appender's config that name a file.
+#[derive(Deserialize)]
+struct AppenderPaths {
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    policy: Option<PolicyPaths>,
+}
+
+#[derive(Deserialize)]
+struct PolicyPaths {
+    #[serde(default)]
+    roller: Option<RollerPaths>,
+}
+
+#[derive(Deserialize)]
+struct RollerPaths {
+    #[serde(default)]
+    pattern: Option<String>,
+}
+
+/// Returns `(appender, path)` for every appender path that is outside `<log dir>/log`: each appender's `path` and its
+/// rolling policy's `policy.roller.pattern`. Returns an error if the appenders cannot be read for checking, which the
+/// caller treats as a refusal. A path is outside if it contains `$ENV{` or `${` (log4rs expands environment variables
+/// at build time, so the raw string says nothing about where it writes), or has a `..` segment. Otherwise it is inside
+/// if its parent directory, made absolute against the current directory (as log4rs does), canonicalized (or its
+/// nearest existing ancestor canonicalized), starts with the canonical form of `<log dir>/log`. Canonical comparison
+/// means a symlink inside the log directory that points elsewhere is refused, while `log` itself may be the operator's
+/// symlink to another disk. Only when canonicalization is impossible is the normalized lexical form compared instead.
+/// `contents` must already have `{{log_dir}}` substituted.
+fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String, String)>, String> {
+    let mirror: AppendersMirror = serde_yaml::from_str(contents).map_err(|e| e.to_string())?;
+    let mut escapes = Vec::new();
+    for (name, appender) in mirror.appenders {
+        // serde-derive matches non-string keys (e.g. a YAML `3:`) to fields by position, and log4rs's structs have a
+        // different field order than the mirror, so any such key could hide a path from the check. Refuse them.
+        let as_yaml: serde_yaml::Value = appender
+            .config
+            .clone()
+            .deserialize_into()
+            .map_err(|e| format!("appender {name}: {e}"))?;
+        if !has_only_string_keys(&as_yaml) {
+            return Err(format!("appender {name}: a config key is not a plain string"));
+        }
+        let paths: AppenderPaths = appender
+            .config
+            .deserialize_into()
+            .map_err(|e| format!("appender {name}: {e}"))?;
+        let mut candidates = Vec::new();
+        if let Some(path) = paths.path {
+            candidates.push(path);
+        }
+        if let Some(pattern) = paths.policy.and_then(|p| p.roller).and_then(|r| r.pattern) {
+            candidates.push(pattern);
+        }
+        for path in candidates {
+            if !is_inside_log_dir(&path, base) {
+                escapes.push((name.clone(), path));
+            }
+        }
+    }
+    Ok(escapes)
+}
+
+/// Returns true if every map key in `value`, at any depth, is a plain string. Keys that were wrapped (option or
+/// newtype) in the original value are unwrapped by the conversion and then fail the mirror's own deserialization.
+fn has_only_string_keys(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Mapping(map) => map
+            .iter()
+            .all(|(key, value)| key.is_string() && has_only_string_keys(value)),
+        serde_yaml::Value::Sequence(items) => items.iter().all(has_only_string_keys),
+        serde_yaml::Value::Tagged(tagged) => has_only_string_keys(&tagged.value),
+        _ => true,
+    }
+}
+
+/// See [`check_appender_paths`].
+fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
+    if path.contains("$ENV{") || path.contains("${") {
+        return false;
+    }
+    // Reject `..` whichever separator it hides behind, so no platform difference in what counts as a separator can
+    // be used to climb out
+    if path.split(['/', '\\']).any(|segment| segment == "..") {
+        return false;
+    }
+    let path = Path::new(path);
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return false;
+    }
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    let absolute = if parent.is_absolute() {
+        parent.to_path_buf()
+    } else {
+        match std::env::current_dir() {
+            Ok(dir) => dir.join(parent),
+            Err(_) => return false,
+        }
+    };
+    // Compare canonical forms first: a lexical match alone would accept a path through a symlink planted inside
+    // `<log dir>/log` that points elsewhere. `log` itself may still be a symlink to another disk, because the
+    // boundary is canonicalized the same way. Only when canonicalization is impossible does the lexical form decide.
+    match (&base.canonical, resolve_for_containment(&absolute)) {
+        (Some(base_canonical), Some(resolved)) => resolved.starts_with(base_canonical),
+        _ => lexical_normalize(&absolute).starts_with(&base.boundary),
+    }
+}
+
+/// Returns an absolute, canonical form of `path` for containment checks: relative paths are joined to the current
+/// directory, the nearest existing ancestor is canonicalized and the not-yet-existing rest is appended. Returns `None`
+/// if the path has a `..` component or cannot be resolved.
+fn resolve_for_containment(path: &Path) -> Option<PathBuf> {
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return None;
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    for ancestor in absolute.ancestors() {
+        if let Ok(canonical) = fs::canonicalize(ancestor) {
+            let rest = absolute.strip_prefix(ancestor).ok()?;
+            return Some(canonical.join(rest));
+        }
+    }
+    None
+}
+
+/// Starts log4rs with a YAML config that already has `{{log_dir}}` substituted.
+fn init_logging_from_yaml(contents: &str) -> Result<(), ConfigError> {
+    let config: RawConfig = serde_yaml::from_str(contents).map_err(|e| {
+        ConfigError::new(
+            "Could not parse the contents of the log file as yaml",
+            Some(e.to_string()),
+        )
+    })?;
+    log4rs::init_raw_config(config)
+        .map_err(|e| ConfigError::new("Could not initialize logging", Some(e.to_string())))?;
 
     Ok(())
+}
+
+/// Replaces `{{log_dir}}` in the log4rs config with `base_path`. The placeholder sits inside double-quoted YAML
+/// scalars, so the path must not be able to end the scalar early: backslashes are turned into `/` (log4rs wants unix
+/// paths anyway) and `"` is escaped as `\"`.
+fn substitute_log_dir(contents: &str, base_path: &Path) -> Result<String, ConfigError> {
+    let replace_str = base_path
+        .to_str()
+        .ok_or_else(|| {
+            ConfigError::new(
+                "Could not replace {{log_dir}} variable from the log4rs config",
+                Some(format!("base path {} is not valid UTF-8", base_path.display())),
+            )
+        })?
+        // log4rs requires the path to be in a unix format regardless of the system it's running on
+        .replace('\\', "/")
+        .replace('"', "\\\"");
+
+    Ok(contents.replace("{{log_dir}}", &replace_str))
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
@@ -127,6 +535,417 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
+    use std::path::{Path, PathBuf};
+
+    use super::substitute_log_dir;
+
+    #[cfg(unix)]
+    #[test]
+    fn untrusted_log_config_is_ignored() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        use super::choose_log_config;
+        use crate::configuration::utils::is_private_group;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = dir.path().join("log4rs.yml");
+        std::fs::write(&path, "appenders: {} # from file\n").unwrap();
+
+        // Trusted: the file is loaded (read through the checked descriptor)
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, dir.path(), "default").unwrap();
+        assert_eq!(choice.contents, "appenders: {} # from file\n");
+        assert!(choice.findings.is_empty(), "{:?}", choice.findings);
+        assert!(!choice.refused);
+
+        // Group-writable: loaded (and warned about) only if the group is the user's private group
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o664)).unwrap();
+        let private = is_private_group(std::fs::metadata(&path).unwrap().gid());
+        let choice = choose_log_config(&path, dir.path(), "default").unwrap();
+        assert!(!choice.findings.is_empty());
+        assert_eq!(choice.refused, !private, "{:?}", choice.findings);
+
+        // World-writable: the file is not read and the default is used
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let choice = choose_log_config(&path, dir.path(), "default").unwrap();
+        assert_eq!(choice.contents, "default");
+        assert!(!choice.findings.is_empty());
+        assert!(choice.refused);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn log_config_writing_outside_the_log_dir_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+
+        use super::choose_log_config;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = dir.path().join("log4rs.yml");
+        let default = "appenders:\n  stdout:\n    kind: console\n";
+
+        std::fs::write(
+            &path,
+            "appenders:\n  evil:\n    kind: file\n    path: /tmp/evil\nroot:\n  appenders: [evil]\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+        assert_eq!(choice.contents, default);
+        assert!(choice.findings.iter().any(|(severe, r)| *severe && r.contains("evil")));
+
+        std::fs::write(
+            &path,
+            "appenders:\n  good:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/app.log\"\n    policy:\n      \
+             kind: compound\n      roller:\n        kind: fixed_window\n        pattern: \
+             \"{{log_dir}}/log/app.{}.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+
+        // Environment variables are expanded by log4rs, so they are never trusted
+        std::fs::write(
+            &path,
+            "appenders:\n  env:\n    kind: file\n    path: \"$ENV{HOME}/.bashrc\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+        std::fs::write(
+            &path,
+            "appenders:\n  env:\n    kind: file\n    path: \"${HOME}/x.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+
+        // {{log_dir}}/../x is refused
+        std::fs::write(
+            &path,
+            "appenders:\n  up:\n    kind: file\n    path: \"{{log_dir}}/../x.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+
+        // A rolling pattern that escapes is refused too
+        std::fs::write(
+            &path,
+            "appenders:\n  sneaky:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/app.log\"\n    policy:\n      \
+             roller:\n        pattern: \"{{log_dir}}/../../elsewhere/app.{}.log\"\n",
+        )
+        .unwrap();
+        let choice = choose_log_config(&path, dir.path(), default).unwrap();
+        assert!(choice.refused);
+    }
+
+    #[test]
+    fn lexical_normalize_uses_platform_path_rules() {
+        use super::lexical_normalize;
+
+        let norm = |p: &str| lexical_normalize(Path::new(p));
+        assert_eq!(norm("/a/./b/../c"), PathBuf::from("/a/c"));
+        assert_eq!(norm("/../a"), PathBuf::from("/a"));
+        assert_eq!(norm("a/../../b"), PathBuf::from("../b"));
+        // On Unix `\` is an ordinary character, not a separator
+        #[cfg(unix)]
+        assert_eq!(norm("/tmp/q\\..\\x"), PathBuf::from("/tmp/q\\..\\x"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn lexical_normalize_keeps_windows_prefixes() {
+        use super::lexical_normalize;
+
+        let norm = |p: &str| lexical_normalize(Path::new(p));
+        assert_eq!(norm(r"C:\cwd\..\data"), PathBuf::from(r"C:\data"));
+        assert_eq!(norm(r"C:\cwd\.\data\logs"), PathBuf::from(r"C:\cwd\data\logs"));
+        assert_eq!(norm(r"\\server\share\a\..\b"), PathBuf::from(r"\\server\share\b"));
+        assert_eq!(norm(r"\\server\share\.."), PathBuf::from(r"\\server\share\"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslash_dotdot_cannot_climb_out_of_the_log_dir() {
+        use super::{LogDirBase, is_inside_log_dir};
+
+        let base = LogDirBase::new(Path::new("/home/u/.tari/mainnet")).unwrap();
+        assert!(!is_inside_log_dir(
+            "/tmp/q\\..\\..\\home\\u\\.tari\\mainnet/evil",
+            &base
+        ));
+        assert!(is_inside_log_dir("/home/u/.tari/mainnet/log/app.log", &base));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn base_path_resolves_dotdot_after_a_symlink_physically() {
+        use std::os::unix::fs::symlink;
+
+        use super::LogDirBase;
+
+        // `<dir>/a/link/../b` with `link -> <dir>/x/y` is `<dir>/x/b` to the OS, not `<dir>/a/b`
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        std::fs::create_dir_all(dir.path().join("x/y")).unwrap();
+        std::fs::create_dir_all(dir.path().join("x/b")).unwrap();
+        symlink(dir.path().join("x/y"), dir.path().join("a/link")).unwrap();
+        let base = LogDirBase::new(&dir.path().join("a/link/../b")).unwrap();
+        assert_eq!(base.log_dir, std::fs::canonicalize(dir.path().join("x/b")).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_base_path_is_an_error() {
+        use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+        use super::{LogDirBase, choose_log_config};
+
+        let bad = Path::new(OsStr::from_bytes(b"/tmp/log\xff"));
+        let err = LogDirBase::new(bad).err().expect("an error");
+        assert!(err.to_string().contains("not valid UTF-8"), "{err}");
+        assert!(choose_log_config(Path::new("/nonexistent/log4rs.yml"), bad, "default").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_log_dir_and_dotdot_base_path_are_accepted() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        use super::choose_log_config;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let base = dir.path().join("base");
+        let other_disk = dir.path().join("other_disk");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::create_dir_all(&other_disk).unwrap();
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // `<base>/log` is the operator's own symlink to another disk
+        symlink(&other_disk, base.join("log")).unwrap();
+
+        let path = base.join("log4rs.yml");
+        let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\n";
+        std::fs::write(&path, yaml).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, &base, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+
+        // A base path with `..` in it
+        let dotted = base.join("..").join("base");
+        let choice = choose_log_config(&path, &dotted, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+
+        // The default is used, not refused, even when the user's file is
+        std::fs::write(&path, "appenders:\n  evil:\n    kind: file\n    path: /tmp/evil\n").unwrap();
+        let choice = choose_log_config(&path, &dotted, yaml).unwrap();
+        assert!(choice.refused);
+        assert!(choice.contents.contains("/log/app.log"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_inside_the_log_dir_cannot_escape_it() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        use super::choose_log_config;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let base = dir.path().join("base");
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir_all(base.join("log")).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // A directory inside `<base>/log` that is really a symlink to somewhere else
+        symlink(&elsewhere, base.join("log").join("sub")).unwrap();
+
+        let path = base.join("log4rs.yml");
+        let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/sub/app.log\"\n";
+        std::fs::write(&path, yaml).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, &base, "appenders: {}\nroot:\n  level: warn\n").unwrap();
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(
+            choice
+                .findings
+                .iter()
+                .any(|(severe, msg)| *severe && msg.contains("outside the log directory")),
+            "{:?}",
+            choice.findings
+        );
+
+        // A real subdirectory at the same place is fine
+        std::fs::remove_file(base.join("log").join("sub")).unwrap();
+        std::fs::create_dir_all(base.join("log").join("sub")).unwrap();
+        let choice = choose_log_config(&path, &base, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
+    }
+
+    #[test]
+    fn embedded_default_log_configs_stay_in_the_log_dir() {
+        use super::{LogDirBase, check_appender_paths, substitute_log_dir};
+
+        let dir = tempfile::tempdir().unwrap();
+        let base = LogDirBase::new(dir.path()).unwrap();
+        for (name, yaml) in [
+            (
+                "node",
+                include_str!("../../applications/minotari_node/log4rs_sample.yml"),
+            ),
+            (
+                "wallet",
+                include_str!("../../applications/minotari_console_wallet/log4rs_sample.yml"),
+            ),
+            (
+                "mm proxy",
+                include_str!("../../applications/minotari_merge_mining_proxy/log4rs_sample.yml"),
+            ),
+            (
+                "miner",
+                include_str!("../../applications/minotari_miner/log4rs_sample.yml"),
+            ),
+            (
+                "peer sync",
+                include_str!("../../applications/minotari_peer_sync/log4rs_sample.yml"),
+            ),
+            ("cucumber", include_str!("../../integration_tests/log4rs/cucumber.yml")),
+            ("common sample", include_str!("../logging/log4rs_sample.yml")),
+            ("common debug", include_str!("../logging/log4rs_debug_sample.yml")),
+            (
+                "common collectibles",
+                include_str!("../logging/log4rs_collectibles.yml"),
+            ),
+            (
+                "common seed node",
+                include_str!("../logging/log4rs_sample_seed_node.yml"),
+            ),
+            (
+                "common transcoder",
+                include_str!("../logging/log4rs_sample_transcoder.yml"),
+            ),
+            (
+                "common validator",
+                include_str!("../logging/log4rs_sample_validator_node.yml"),
+            ),
+        ] {
+            let contents = substitute_log_dir(yaml, &base.log_dir).unwrap();
+            let escapes = check_appender_paths(&contents, &base).unwrap();
+            assert!(escapes.is_empty(), "{name}: {escapes:?}");
+        }
+    }
+
+    /// Writes `yaml` as a trusted (0o600) log config in a private temp dir and returns the choice made for it.
+    #[cfg(unix)]
+    fn choose_for(yaml: &str) -> super::LogConfigChoice {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = dir.path().join("log4rs.yml");
+        std::fs::write(&path, yaml).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        super::choose_log_config(&path, dir.path(), "appenders: {}\n").unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tagged_appenders_key_is_still_checked() {
+        for key in ["! appenders", "!x appenders"] {
+            let yaml = format!("{key}:\n  evil:\n    kind: file\n    path: /tmp/evil\nroot:\n  appenders: [evil]\n");
+            // log4rs itself would build this appender
+            assert!(
+                serde_yaml::from_str::<log4rs::config::RawConfig>(&yaml).is_ok(),
+                "{key}"
+            );
+            let choice = choose_for(&yaml);
+            assert!(choice.refused, "{key}: {:?}", choice.findings);
+            assert!(!choice.untrusted);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repeated_logger_key_still_loads() {
+        let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\nroot:\n  appenders: \
+                    [app]\nloggers:\n  a:\n    level: info\n  a:\n    level: debug\n";
+        assert!(serde_yaml::from_str::<log4rs::config::RawConfig>(yaml).is_ok());
+        let choice = choose_for(yaml);
+        assert!(!choice.refused, "{:?}", choice.findings);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn appenders_must_stay_under_log_dir_log() {
+        for path in ["{{log_dir}}/data/wallet/x", "{{log_dir}}/config/x", "{{log_dir}}/x.log"] {
+            let yaml = format!("appenders:\n  a:\n    kind: file\n    path: \"{path}\"\n");
+            let choice = choose_for(&yaml);
+            assert!(choice.refused, "{path}");
+            assert!(
+                choice
+                    .findings
+                    .iter()
+                    .any(|(severe, r)| *severe && r.contains("writes outside the log directory")),
+                "{:?}",
+                choice.findings
+            );
+        }
+        let choice = choose_for("appenders:\n  a:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\n");
+        assert!(!choice.refused, "{:?}", choice.findings);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn numeric_keys_cannot_hide_a_rolling_pattern() {
+        // `3:` is `policy` to log4rs (field position), `1:` is `roller`
+        let policy_by_number =
+            "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    3:\n      kind: \
+             compound\n      trigger:\n        kind: size\n        limit: 1kb\n      roller:\n        kind: \
+             fixed_window\n        pattern: \"/tmp/evil.{}\"\n        count: 2\n";
+        let choice = choose_for(policy_by_number);
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(choice.findings.iter().any(|(_, r)| r.contains("not a plain string")));
+
+        let roller_by_number = "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    \
+                                policy:\n      kind: compound\n      trigger:\n        kind: size\n        limit: \
+                                1kb\n      1:\n        kind: fixed_window\n        pattern: \"/tmp/evil.{}\"\n        \
+                                count: 2\n";
+        let choice = choose_for(roller_by_number);
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(choice.findings.iter().any(|(_, r)| r.contains("not a plain string")));
+
+        let normal =
+            "appenders:\n  a:\n    kind: rolling_file\n    path: \"{{log_dir}}/log/a.log\"\n    policy:\n      kind: \
+             compound\n      trigger:\n        kind: size\n        limit: 1kb\n      roller:\n        kind: \
+             fixed_window\n        pattern: \"{{log_dir}}/log/a.{}.log\"\n        count: 2\n";
+        let choice = choose_for(normal);
+        assert!(!choice.refused, "{:?}", choice.findings);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_appenders_are_refused() {
+        // A path that is not a string cannot be checked
+        let choice = choose_for("appenders:\n  a:\n    kind: file\n    path: [1, 2]\n");
+        assert!(choice.refused);
+        assert!(choice.findings.iter().any(|(_, r)| r.contains("could not be checked")));
+    }
+
+    #[test]
+    fn log_dir_is_escaped_for_yaml() {
+        let yaml = "path: \"{{log_dir}}/log/base_node.log\"\n";
+        let contents = substitute_log_dir(yaml, Path::new("/tmp/we\"ird\\dir")).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_str(&contents).unwrap();
+        assert_eq!(
+            value.get("path").and_then(|v| v.as_str()).unwrap(),
+            "/tmp/we\"ird/dir/log/base_node.log"
+        );
+    }
+
     #[test]
     fn log_if_error() {
         let err = Result::<(), _>::Err("What a shame");

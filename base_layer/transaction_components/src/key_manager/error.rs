@@ -88,11 +88,16 @@ pub enum KeyManagerError {
     RangeProofError(String),
     #[error("EncryptedData error: `{0}`")]
     EncryptedDataError(#[from] EncryptedDataError),
+    #[error("The commitment does not open to the value and mask")]
+    InvalidMask,
 }
 
 impl From<RangeProofError> for KeyManagerError {
     fn from(e: RangeProofError) -> Self {
-        KeyManagerError::RangeProofError(e.to_string())
+        match e {
+            RangeProofError::InvalidMask {} => KeyManagerError::InvalidMask,
+            e => KeyManagerError::RangeProofError(e.to_string()),
+        }
     }
 }
 
