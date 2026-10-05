@@ -250,6 +250,9 @@ pub(crate) struct DhtConnectivity {
     rebootstrap_trigger: RebootstrapTrigger,
     /// Peers learned in the last rebootstrap. These are preferred over the peer database when topping up the pool.
     rebootstrap_peers: Vec<NodeId>,
+    /// When the initial pool refresh was attempted. The pool is not judged starved until it has had a full
+    /// `update_interval` to fill from then.
+    pool_fill_started: Option<Instant>,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -281,6 +284,7 @@ impl DhtConnectivity {
             cooldown_in_effect: None,
             rebootstrap_trigger: RebootstrapTrigger::default(),
             rebootstrap_peers: Vec::new(),
+            pool_fill_started: None,
             shutdown_signal,
         }
     }
@@ -326,6 +330,7 @@ impl DhtConnectivity {
             },
         };
 
+        self.pool_fill_started = Some(Instant::now());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
@@ -511,6 +516,14 @@ impl DhtConnectivity {
     /// candidates are all in backoff, or that has none left, dials nothing - and that is exactly the node that most
     /// needs a rebootstrap. A tick on which the top-up failed neither counts nor resets the streak.
     fn check_pool_starved(&mut self) {
+        // The first tick comes straight after the initial refresh issued its dials, so it would always look starved.
+        // Give the pool a full interval to fill before judging it.
+        if self
+            .pool_fill_started
+            .is_some_and(|started| started.elapsed() < self.config.connectivity.update_interval)
+        {
+            return;
+        }
         let target = self
             .config
             .num_neighbouring_nodes

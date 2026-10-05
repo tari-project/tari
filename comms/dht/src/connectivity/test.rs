@@ -631,6 +631,35 @@ mod rebootstrap_trigger {
         assert_eq!(dht_connectivity.rebootstrap_peers, vec![backed_off]);
     }
 
+    /// The first tick comes straight after start-up, before any dial could have landed. It must not count, so after
+    /// start-up the trigger needs `pool_starved_ticks` full intervals, not `pool_starved_ticks - 1`.
+    #[tokio::test]
+    async fn the_tick_right_after_start_up_does_not_count() {
+        let mut config = DhtConfig::default();
+        config.connectivity.update_interval = Duration::from_secs(120);
+        let (mut dht_connectivity, _, _connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let mut events = dht_connectivity.dht_event_publisher.subscribe();
+        let start = Instant::now();
+        dht_connectivity.pool_fill_started = Some(start);
+
+        // The immediate first tick, then ticks at 2m and 4m: only two of them count
+        dht_connectivity.check_pool_starved();
+        for elapsed in [2, 4] {
+            dht_connectivity.pool_fill_started = start.checked_sub(Duration::from_secs(elapsed.saturating_mul(60)));
+            dht_connectivity.check_pool_starved();
+        }
+        assert!(
+            events.try_recv().is_err(),
+            "PoolStarved published before 3 full intervals"
+        );
+
+        // The tick at 6m is the third that counts
+        dht_connectivity.pool_fill_started = start.checked_sub(Duration::from_secs(6 * 60));
+        dht_connectivity.check_pool_starved();
+        assert!(matches!(*events.try_recv().unwrap(), DhtEvent::PoolStarved));
+    }
+
     /// After a rebootstrap the pool is topped up straight away, starting with the peers just learned.
     #[tokio::test]
     async fn it_prefers_rebootstrap_peers_when_refilling() {
