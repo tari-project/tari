@@ -103,6 +103,9 @@ pub enum TxStorageResponse {
     NotStored(Option<String>),
     NotStoredAlreadyMined,
     NotStoredFeeTooLow,
+    /// Another pool transaction already registers or exits the same validator node, with an equal or higher fee per
+    /// gram. Not a validation failure: the transaction may be stored once the other one is mined or removed.
+    NotStoredValidatorNodeSlotTaken,
 }
 
 impl TxStorageResponse {
@@ -135,6 +138,10 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredFeeTooLow => {
                 "Not stored tx fee is below the minimum accepted by this mempool".to_string()
             },
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken => "Not stored another mempool transaction already \
+                                                                   registers or exits this validator node with an \
+                                                                   equal or higher fee"
+                .to_string(),
         };
         fmt.write_str(&storage)
     }

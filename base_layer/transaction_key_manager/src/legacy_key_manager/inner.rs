@@ -354,13 +354,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.key_manager.get_commitment(private_key, value)
     }
 
-    /// Verify that the commitment matches the value and the spending key/mask
+    /// Verify that the commitment matches the value and the spending key/mask. Returns
+    /// `Err(KeyManagerError::InvalidMask)` if it does not.
     pub fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError> {
+    ) -> Result<(), KeyManagerError> {
         self.key_manager.verify_mask(commitment, commitment_mask_key_id, value)
     }
 

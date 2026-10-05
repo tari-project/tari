@@ -176,6 +176,9 @@ pub struct ChainLink {
 
 impl ChainLink {
     pub fn calc_block_id(&self) -> FixedHash {
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
@@ -252,11 +255,17 @@ impl SidechainBlockHeader {
             }),
         };
 
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher().chain(&fields).finalize().into()
     }
 
     pub fn calculate_block_id(&self) -> FixedHash {
         let header_hash = self.calculate_hash();
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&header_hash)
@@ -303,6 +312,9 @@ pub struct QuorumCertificate {
 
 impl QuorumCertificate {
     pub fn calculate_justified_block(&self) -> FixedHash {
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
@@ -437,6 +449,9 @@ impl<'a> ProposalVoteMessage<'a> {
     }
 
     pub fn calculate_hash(&self) -> FixedHash {
+        // NOTE: the L2 "VoteSignature" label (`layer2::proposal_vote_signature_hasher`) is shared across the vote
+        // message shapes of different protocol versions, separated only by length/layout today. Give each shape a
+        // distinct label at the next hard fork.
         layer2::proposal_vote_signature_hasher().chain(self).finalize().into()
     }
 }

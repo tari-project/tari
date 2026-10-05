@@ -28,6 +28,7 @@ use core::marker::PhantomData;
 use borsh::{BorshSerialize, io, io::Write};
 use digest::{Digest, Output};
 use tari_crypto::hashing::DomainSeparation;
+use zeroize::Zeroizing;
 
 /// A domain-separated hasher that uses Borsh internally to ensure hashing is canonical.
 ///
@@ -58,8 +59,19 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
         self.writer.0.finalize().into()
     }
 
+    /// Finalizes into a caller-supplied buffer, e.g. a `SafeArray` or other zeroizing target.
     pub fn finalize_into(self, out: &mut Output<D>) {
         self.writer.0.finalize_into(out);
+    }
+
+    /// Finalizes into a buffer that is zeroized on drop. Use this when the digest is key material (KDF use).
+    ///
+    /// Residual: only the output is zeroized. The internal state of the underlying digest (e.g. blake2 0.10) is not
+    /// zeroized when the hasher is consumed, so the absorbed input may remain in freed memory.
+    pub fn finalize_zeroizing(self) -> Zeroizing<Output<D>> {
+        let mut out = Zeroizing::new(Output::<D>::default());
+        self.writer.0.finalize_into(&mut out);
+        out
     }
 
     /// Update the hasher using the Borsh encoding of the input, which is assumed to be canonical.
@@ -190,6 +202,18 @@ mod tests {
             .chain(data)
             .finalize();
 
+        assert_eq!(out.as_slice(), expected_hash.as_slice());
+    }
+
+    #[test]
+    fn it_finalizes_zeroizing() {
+        let data = b"Some test data";
+        let out = DomainSeparatedBorshHasher::<TestHashDomain, Blake2bU64>::new_with_label("test")
+            .chain(data)
+            .finalize_zeroizing();
+        let expected_hash = DomainSeparatedBorshHasher::<TestHashDomain, Blake2bU64>::new_with_label("test")
+            .chain(data)
+            .finalize();
         assert_eq!(out.as_slice(), expected_hash.as_slice());
     }
 }

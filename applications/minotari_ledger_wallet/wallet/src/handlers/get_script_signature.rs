@@ -98,13 +98,14 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
 /// Turn the framed common prefix into the values the signature needs.
 ///
 /// The canonical checks run in the order they always have - value, commitment private key, commitment - because the
-/// first one to fail decides which status word the host sees.
+/// first one to fail decides which status word the host sees. The network, which is a `u64` on the wire but a single
+/// byte in the hash label, is checked last.
 fn extract_common_values<'a>(
     common: &ScriptSignatureCommon<'a>,
 ) -> Result<
     (
         u64,
-        u64,
+        u8,
         u64,
         RistrettoSecretKey,
         RistrettoSecretKey,
@@ -118,10 +119,11 @@ fn extract_common_values<'a>(
         get_key_from_canonical_bytes::<RistrettoSecretKey>(common.commitment_private_key)?.into();
 
     let commitment: PedersenCommitment = get_key_from_canonical_bytes(common.commitment)?;
+    let network = u8::try_from(common.network).map_err(|_| AppSW::WrongApduLength)?;
 
     Ok((
         common.account,
-        common.network,
+        network,
         common.txi_version,
         value,
         commitment_private_key,
@@ -132,7 +134,7 @@ fn extract_common_values<'a>(
 
 fn get_script_signature(
     txi_version: u64,
-    network: u64,
+    network: u8,
     value: RistrettoSecretKey,
     commitment_private_key: RistrettoSecretKey,
     script_private_key: RistrettoSecretKey,
@@ -202,7 +204,7 @@ fn get_script_signature(
 
 fn finalize_script_signature_challenge(
     _version: u64,
-    network: u64,
+    network: u8,
     ephemeral_commitment: &PedersenCommitment,
     ephemeral_pubkey: &RistrettoPublicKey,
     script_public_key: &RistrettoPublicKey,

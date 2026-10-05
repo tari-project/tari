@@ -82,6 +82,81 @@ mod tests {
 
     hash_domain!(TestHashDomain, "com.tari.test.test_hash", 0);
 
+    /// Known-answer vectors for the consensus hasher on every network. The network byte is folded into the label as
+    /// `{label}.n{network byte in decimal}`, so the tag is `u64_le(len) || "{domain}.v{version}.{label}.n{byte}"`,
+    /// followed by the borsh encoding of the input (`[u8; 32]`, raw bytes). Label `test_vector`, input `00 01 .. 1f`.
+    #[test]
+    fn known_answer_vectors_per_network() {
+        use tari_hashing::{BlocksHashDomain, TransactionHashDomain};
+
+        // Exhaustive so that adding a network forces a new vector.
+        fn expected(network: Network) -> (&'static str, &'static str) {
+            match network {
+                Network::MainNet => (
+                    "feae1c469e93f306372f0a7ce64e074b5135abf6223a9bbe5637690159155eda",
+                    "daea038d26a7d8123210e8237e9b9bb4215f9bbcd3b64a3d22fb9a997a88202e",
+                ),
+                Network::StageNet => (
+                    "60473350c5314495006ac489597613d530b3da7ec4030f049984349ac42edc24",
+                    "46e63e6f0113f8e3bbcade8a0c65bcb379279d04e06fae1686170c7ca171391b",
+                ),
+                Network::NextNet => (
+                    "980cec3254a49287e65d2eb97f7e844f8293d5b68792e9bf92d4923dbc6c8706",
+                    "11abf431922746eafa93d92420dd0e0261829859a3a302dc72b67bb0a78e6940",
+                ),
+                Network::LocalNet => (
+                    "26ef18c7a8834b053f4a06eb29ca7b655a7b813e1c509b342d55002f326a29c3",
+                    "1b6c832ede284d5035cd1e9fc0b4eed2dd8035fd9cc974ff8ce064c5837bf26d",
+                ),
+                Network::Igor => (
+                    "fbaeb8c9bed844e38e5c4be7930600461d330e58536425ff651227a4298b1469",
+                    "71fc587eae55cb35c4b8d0808204bc7aedb811b4c0a1932dbc1d20a54570a2bf",
+                ),
+                Network::Esmeralda => (
+                    "a44652234bde3b3337e0ccefb1f7457d75c929e853d76789e0ea21fc1ac3be5e",
+                    "0385d48b58895e74257b7ce6dab8cb85cd468db50ae475e291d5ccc6d18a772a",
+                ),
+            }
+        }
+
+        let mut input = [0u8; 32];
+        for (i, b) in input.iter_mut().enumerate() {
+            *b = u8::try_from(i).unwrap();
+        }
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            let (expected_tx, expected_blocks) = expected(network);
+            let tx = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new_with_network(
+                "test_vector",
+                network,
+            )
+            .chain(&input)
+            .finalize();
+            let blocks = DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new_with_network(
+                "test_vector",
+                network,
+            )
+            .chain(&input)
+            .finalize();
+            assert_eq!(
+                tari_utilities::hex::to_hex(&tx),
+                expected_tx,
+                "{network} TransactionHashDomain"
+            );
+            assert_eq!(
+                tari_utilities::hex::to_hex(&blocks),
+                expected_blocks,
+                "{network} BlocksHashDomain"
+            );
+        }
+    }
+
     #[test]
     fn network_yields_distinct_hash() {
         let label = "test";

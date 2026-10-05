@@ -26,6 +26,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::HashOutput;
+use tari_node_components::blocks::HistoricalBlock;
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
@@ -76,6 +77,7 @@ impl CommandContext {
                 let block_data = self.blockchain_db.fetch_block_accumulated_data(*block.hash()).await?;
 
                 println!("{block}");
+                self.print_target_difficulties(&block).await?;
                 println!("-- Accumulated data --");
                 println!("{block_data}");
             },
@@ -88,7 +90,10 @@ impl CommandContext {
         let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
         match block {
             Some(block) => match format {
-                Format::Text => println!("{block}"),
+                Format::Text => {
+                    println!("{block}");
+                    self.print_target_difficulties(&block).await?;
+                },
                 Format::Json => eprintln!("JSON format not supported for blocks in this command"),
             },
             None => {
@@ -101,6 +106,18 @@ impl CommandContext {
             },
         };
 
+        Ok(())
+    }
+
+    /// Prints the block's target difficulty and the target its proof of work had to clear once the TIP-004
+    /// same-algorithm backoff is applied.
+    async fn print_target_difficulties(&self, block: &HistoricalBlock) -> Result<(), Error> {
+        let adjusted = self
+            .blockchain_db
+            .fetch_adjusted_target_difficulty(*block.hash())
+            .await?;
+        println!("Target difficulty: {}", block.accumulated_data().target_difficulty);
+        println!("Adjusted target difficulty (TIP-004 backoff): {adjusted}");
         Ok(())
     }
 }

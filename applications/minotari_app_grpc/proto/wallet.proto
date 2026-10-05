@@ -2429,6 +2429,8 @@ message SubmitValidatorNodeExitRequest {
   uint64 fee_per_gram = 4;
   bytes message = 5;
   bytes sidechain_deployment_key = 6;
+  // The activation epoch of the validator node registration being exited. It is part of the signed exit message.
+  uint64 activation_epoch = 7;
 }
 
 message SubmitValidatorNodeExitResponse {

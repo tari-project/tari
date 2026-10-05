@@ -381,10 +381,7 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        matches!(
-            sig.is_valid(&comms_public_key, node_features, &node_addresses),
-            Ok(true)
-        )
+        sig.verify(&comms_public_key, node_features, &node_addresses).is_ok()
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)

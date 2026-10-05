@@ -23,6 +23,7 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::*;
+use tari_common::configuration::Network;
 use tari_common_types::types::{
     CommitmentFactory,
     CompressedCommitment,
@@ -124,8 +125,9 @@ impl AggregateBodyInternalConsistencyValidator {
 
         validate_versions(body, constants)?;
 
+        let network = self.consensus_manager.network().as_network();
         for output in body.outputs() {
-            validate_individual_output(output, constants)?;
+            validate_individual_output(output, constants, network)?;
         }
         // Every spent output had its script size checked when it was created, so this only rejects inputs that can
         // never be valid. It runs before any input script is executed, to bound the cost of executing them.
@@ -173,9 +175,12 @@ fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Res
     Ok(())
 }
 
+/// Validates a single output in isolation. `network` is the network the output is being validated for; validator node
+/// registration and exit signatures are bound to it.
 pub fn validate_individual_output(
     output: &TransactionOutput,
     consensus_constants: &ConsensusConstants,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
@@ -184,7 +189,7 @@ pub fn validate_individual_output(
     check_permitted_range_proof_types(consensus_constants, output)?;
     check_sidechain_data_rules(output)?;
     output.verify_metadata_signature()?;
-    check_sidechain_features(consensus_constants, output)?;
+    check_sidechain_features(consensus_constants, output, network)?;
 
     Ok(())
 }
@@ -464,14 +469,15 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
 fn check_sidechain_features(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() else {
         return Ok(());
     };
     check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
-    check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
+    check_validator_node_registration_utxo(constants, output, sidechain_feature, network)?;
     check_template_registration_utxo(sidechain_feature)?;
-    check_validator_node_exit_utxo(sidechain_feature)?;
+    check_validator_node_exit_utxo(sidechain_feature, network)?;
 
     Ok(())
 }
@@ -489,6 +495,7 @@ fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
     sidechain_feature: &SideChainFeature,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     let Some(reg) = sidechain_feature.validator_node_registration() else {
         return Ok(());
@@ -509,19 +516,28 @@ fn check_validator_node_registration_utxo(
         });
     }
 
-    if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+    if !reg.is_valid_signature_for(
+        network.as_byte(),
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+    ) {
         return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 
     Ok(())
 }
 
-fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
+fn check_validator_node_exit_utxo(
+    sidechain_feature: &SideChainFeature,
+    network: Network,
+) -> Result<(), AggregatedBodyValidationError> {
     let Some(exit) = sidechain_feature.validator_node_exit() else {
         return Ok(());
     };
 
-    if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+    if !exit.is_valid_signature_for(
+        network.as_byte(),
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+    ) {
         return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 

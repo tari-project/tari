@@ -73,6 +73,13 @@ allow = [
     'clippy::bool-assert-comparison',
     'clippy::blocks_in_conditions',
     'clippy::result_large_err',
+    # Rust 1.99 clippy fires this inside async-trait's expansion for every trait method that returns a `Result`
+    # (the macro adds `#[must_use]` to a method whose return type is already `#[must_use]`); hand-written code never
+    # triggers it here, so it is allowed rather than annotated at over a hundred trait declarations.
+    'clippy::double_must_use',
+    # Rust 1.99 clippy also fires this inside derive expansions (diesel's `QueryableByName`, thiserror's `#[from]`
+    # before 2.0.20), on field definitions that cannot be rewritten; allowed for the same reason.
+    'clippy::redundant_field_names',
 ]
 
 warn = [

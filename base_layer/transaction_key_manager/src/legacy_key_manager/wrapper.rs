@@ -206,7 +206,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError> {
+    ) -> Result<(), KeyManagerError> {
         self.transaction_key_manager_inner
             .verify_mask(commitment, commitment_mask_key_id, value)
     }

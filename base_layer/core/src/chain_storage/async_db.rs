@@ -48,7 +48,7 @@ use tari_node_components::blocks::{
     NewBlockTemplate,
 };
 use tari_transaction_components::{
-    tari_proof_of_work::PowAlgorithm,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::epoch_time::EpochTime;
@@ -395,6 +395,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
+        fetch_adjusted_target_difficulty(block_hash: HashOutput) -> Difficulty,
+        "fetch_adjusted_target_difficulty"
+    );
+
+    make_async_fn!(
         fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>,
         "fetch_block_hashes_from_header_tip"
     );
@@ -563,15 +568,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     ) -> &mut Self {
         self.transaction
             .prune_output_from_all_dbs(output_hash, commitment, output_type);
-        self
-    }
-
-    pub fn delete_validator_node(
-        &mut self,
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    ) -> &mut Self {
-        self.transaction.delete_validator_node(sidechain_public_key, public_key);
         self
     }
 

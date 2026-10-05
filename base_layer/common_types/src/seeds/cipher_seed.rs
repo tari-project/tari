@@ -35,7 +35,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_hashing::KeyManagerDomain;
+use tari_hashing::{KeyManagerDomain, ZeroizingFinalize};
 use tari_utilities::{SafePassword, hidden::Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -375,19 +375,16 @@ impl CipherSeed {
             return Err(CipherError::InvalidData);
         }
 
-        Ok(
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
-                .chain([version])
-                .chain(birthday)
-                .chain(entropy)
-                .chain(salt)
-                .chain(mac_key.reveal())
-                .finalize()
-                .as_ref()
-                .get(..CIPHER_SEED_MAC_BYTES)
-                .expect("Index should exist")
-                .to_vec(),
-        )
+        // The hasher absorbs the entropy and MAC key; finalize into a zeroizing buffer so that no unzeroized copy of
+        // the full digest is left behind.
+        let mac = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
+            .chain([version])
+            .chain(birthday)
+            .chain(entropy)
+            .chain(salt)
+            .chain(mac_key.reveal())
+            .finalize_zeroizing();
+        Ok(mac.get(..CIPHER_SEED_MAC_BYTES).expect("Index should exist").to_vec())
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt

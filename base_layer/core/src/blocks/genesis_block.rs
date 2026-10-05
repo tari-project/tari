@@ -476,6 +476,11 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "3c3681ad318eb54ca3f3e8aed79d3d207d94a5291aec84ba1a0b628633db3621"
+        );
         check_block(network, &block, 313, 794, 314);
         remove_network_env_var();
     }
@@ -493,6 +498,11 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "15fdb3fe7ad08615ff5342113349558a047ee372cb297bec84bdaf4c52cf189e"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -510,6 +520,11 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "01f0cf665bd4cd31cbb2b2470236389c483522b350335e10a4a5dca34cb85990"
+        );
         check_block(network, &block, 253, 674, 254);
         remove_network_env_var();
     }
@@ -527,6 +542,11 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "a100a8fb378d4a1367b769680dc1b7b1d53b274c55aa679b7eedea4e703272c2"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -543,6 +563,11 @@ mod test {
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "486f0f75a50acadd7e57c5dfcfbf9daece94784d6f35db855012942700216e00"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -559,6 +584,11 @@ mod test {
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "bd2126f3f5220653d93dc6eade3d062c26845de9859ec9d0b5c758a5a0b6ef3f"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }

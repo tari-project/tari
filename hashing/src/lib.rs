@@ -20,7 +20,10 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// This library is no_std because it's used everywhere including ledger devices.
+// This library is no_std so that it can be used in constrained environments. Note that the Ledger app does NOT link
+// it: tari_crypto (a dependency of this crate) is not no_std. The Ledger app instead carries a byte-for-byte copy of
+// the domains and hashers it needs, which is checked against `tests/vectors.json` by the host-side
+// `minotari_ledger_wallet_comms_testing` crate.
 #![no_std]
 
 mod domains;
@@ -29,6 +32,9 @@ pub use domains::*;
 mod borsh_hasher;
 
 pub use borsh_hasher::*;
+
+mod zeroizing;
+pub use zeroizing::ZeroizingFinalize;
 
 pub mod hashers;
 pub mod layer2;

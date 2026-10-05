@@ -325,10 +325,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-        match message_signature.verify(&binding_hash) {
-            Ok(true) => {},
-            _ => return Err(DecryptionError::InvalidSignature),
-        }
+        message_signature
+            .verify(&binding_hash)
+            .map_err(|_| DecryptionError::InvalidSignature)?;
 
         // The message is valid at this point
         Ok(ValidatedDhtInboundMessage::new(

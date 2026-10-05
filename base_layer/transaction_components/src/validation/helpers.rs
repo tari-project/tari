@@ -415,6 +415,7 @@ mod test {
                 }),
                 SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::new(
                     ValidatorNodeSignature::new(CompressedPublicKey::default(), Default::default()),
+                    VnEpoch(0),
                     VnEpoch(1),
                 )),
             ]

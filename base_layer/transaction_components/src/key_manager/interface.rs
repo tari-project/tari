@@ -94,12 +94,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerError>;
 
+    /// Verify that the commitment opens to the value under the commitment mask. Returns
+    /// `Err(KeyManagerError::InvalidMask)` if it does not.
     fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError>;
+    ) -> Result<(), KeyManagerError>;
 
     fn get_view_key(&self) -> TariKeyAndId;
 

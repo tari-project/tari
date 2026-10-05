@@ -186,6 +186,7 @@ impl TryFrom<grpc::ValidatorNodeExit> for ValidatorNodeExit {
                     .map(TryInto::try_into)
                     .ok_or("signature not provided")??,
             ),
+            value.activation_epoch.into(),
             value.max_epoch.into(),
         ))
     }
@@ -199,6 +200,7 @@ impl From<&ValidatorNodeExit> for crate::tari_rpc::ValidatorNodeExit {
                 signature: exit.signature().get_signature().to_vec(),
             }),
             max_epoch: exit.max_epoch().as_u64(),
+            activation_epoch: exit.activation_epoch().as_u64(),
         }
     }
 }

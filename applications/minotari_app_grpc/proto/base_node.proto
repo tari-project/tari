@@ -265,6 +265,7 @@ message NewBlockCoinbase{
 
 // Network difficulty response
 message NetworkDifficultyResponse {
+  // The block's unadjusted target difficulty. This is the value that accumulates into the chain's total difficulty.
   uint64 difficulty = 1;
   uint64 estimated_hash_rate = 2;
   uint64 height = 3;
@@ -276,6 +277,12 @@ message NetworkDifficultyResponse {
   UDecimalValue cuckaroo_estimated_hash_rate = 11;
   uint64 num_coinbases = 8;
   repeated bytes coinbase_extras = 9;
+  // The historical target difficulty this block's proof of work had to clear: `difficulty` with the TIP-RFC-MT-0004
+  // same-algorithm backoff applied (up to 32x for a run of consecutive blocks of the same PoW algorithm). It is
+  // recomputed under this node's consensus rules and equals `difficulty` where no backoff applies. It is not the
+  // requirement for the next block; use `GetNewBlockTemplate`'s `miner_data.target_difficulty` for that. Absent on
+  // nodes that predate this field.
+  optional uint64 adjusted_difficulty = 12;
 }
 
 // A generic single value response for a specific height
@@ -472,6 +479,8 @@ message GetNewBlockBlobResult{
 // This is mining data for the miner asking for a new block
 message MinerData{
   PowAlgo algo = 1;
+  // The target difficulty the new block must clear. This already includes the TIP-RFC-MT-0004 same-algorithm
+  // backoff, i.e. it is the adjusted target, not the unadjusted one reported as `NetworkDifficultyResponse.difficulty`.
   uint64 target_difficulty = 2;
   uint64 reward = 3;
   //    bytes merge_mining_hash =4;

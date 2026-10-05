@@ -657,12 +657,9 @@ mod test {
         let public_key = CommsPublicKey::from_secret_key(&secret);
         let updated_at = Utc::now();
         let identity = IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, addresses, updated_at);
-        assert!(
-            identity
-                .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, addresses)
-                .unwrap(),
-            "Signature is not valid"
-        );
+        identity
+            .verify(&public_key, PeerFeatures::COMMUNICATION_NODE, addresses)
+            .expect("Signature is not valid");
         identity
     }
 
