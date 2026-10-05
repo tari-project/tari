@@ -507,6 +507,11 @@ impl DhtNetworkDiscovery {
                 self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                 bootstrap_completed = true;
             }
+            // PoolStarved is not listened for while rebootstrapping, so one published meanwhile is still queued. It was
+            // answered by the rebootstrap that just finished, so drop it rather than start another straight away.
+            if matches!(next_event, StateEvent::RebootstrapComplete(_)) {
+                dht_events = dht_events.resubscribe();
+            }
 
             state = self.transition(state, next_event).await;
             if state.is_shutdown() {

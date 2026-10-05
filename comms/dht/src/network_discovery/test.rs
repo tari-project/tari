@@ -223,7 +223,11 @@ mod discovery_ready {
 }
 
 mod rebootstrap {
-    use std::{iter::repeat_with, time::Instant};
+    use std::{
+        iter::repeat_with,
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Instant,
+    };
 
     use tari_comms::{
         PeerConnection,
@@ -663,7 +667,7 @@ mod rebootstrap {
             context.peer_manager.clone(),
             context.connectivity.clone(),
             context.event_tx.clone(),
-            None,
+            context.seed_peer_provider.clone(),
             shutdown.to_signal(),
         )
     }
@@ -750,6 +754,65 @@ mod rebootstrap {
         .await
         .expect("the rebootstrap did not complete");
         assert!(mock.is_peer_dialed(&seed_node_id).await);
+
+        shutdown.trigger();
+        handle.await.unwrap();
+    }
+
+    /// Counts how often the seeds are resolved, i.e. how many rebootstraps ran.
+    struct CountingSeedPeerProvider {
+        seeds: Vec<Peer>,
+        resolutions: Arc<AtomicUsize>,
+    }
+
+    #[tari_comms::async_trait]
+    impl SeedPeerProvider for CountingSeedPeerProvider {
+        async fn resolve_seed_peers(&self) -> Vec<Peer> {
+            self.resolutions.fetch_add(1, Ordering::SeqCst);
+            self.seeds.clone()
+        }
+    }
+
+    /// A PoolStarved published while a rebootstrap is running is answered by that rebootstrap; it must not start
+    /// another one once the first finishes.
+    #[tokio::test]
+    async fn pool_starved_during_a_rebootstrap_does_not_queue_another() {
+        let seed = make_node_identity().to_peer();
+        let seed_node_id = seed.node_id.clone();
+        let resolutions = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(CountingSeedPeerProvider {
+            seeds: vec![seed],
+            resolutions: resolutions.clone(),
+        });
+        let (mut context, mock, mut events) = context(Some(provider));
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.enabled = true;
+        // The seed dial never resolves, so each rebootstrap runs for its per-source deadline (250ms)
+        config.network_discovery.bootstrap_timeout = Duration::from_millis(500);
+        context.config = Arc::new(config);
+        mock.set_pending_connection(&seed_node_id).await;
+
+        let shutdown = Shutdown::new();
+        let discovery = discovery(&context, &shutdown);
+        let handle = tokio::spawn(discovery.run());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        context.event_tx.send(Arc::new(DhtEvent::PoolStarved)).unwrap();
+        // Mid-rebootstrap
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        context.event_tx.send(Arc::new(DhtEvent::PoolStarved)).unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if matches!(&*events.recv().await.unwrap(), DhtEvent::RebootstrapComplete(_)) {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the rebootstrap did not complete");
+        // Give a queued second rebootstrap time to start and run
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(resolutions.load(Ordering::SeqCst), 1, "a second rebootstrap ran");
 
         shutdown.trigger();
         handle.await.unwrap();

@@ -842,11 +842,11 @@ impl DhtConnectivity {
         // connected to before) instead of wasting dials on never-seen/dead peers.
         // Peers learned in the last rebootstrap are fresh, so they go before anything from the peer database. They
         // get their own budget, independent of what is still in flight: on a starved node the in-flight budget is
-        // taken up by dials to stale peers that will fail, and learned peers would never get a turn. That budget is
-        // at most half of the dial target, so learned peers - which other nodes chose for us - never make up the
-        // whole pool; known-good peers from the database fill the rest. The half counts learned dials still in flight
-        // from earlier refreshes, so back-to-back refreshes cannot hand learned peers the whole budget. Each learned
-        // peer is offered only once.
+        // taken up by dials to stale peers that will fail, and learned peers would never get a turn. Learned peers -
+        // which other nodes chose for us - get at most half of each round's dial target, counting their dials still in
+        // flight from earlier refreshes, so known-good peers from the database always get dials alongside them. This
+        // bounds dials, not connections: if the database peers are dead, learned peers may end up filling the pool,
+        // which is the intended recovery. Each learned peer is offered only once.
         let pending_dials = &self.pending_dials;
         self.learned_dials.retain(|node_id| {
             pending_dials
