@@ -1031,21 +1031,9 @@ impl DhtConnectivity {
             .config
             .num_neighbouring_nodes
             .saturating_add(self.config.num_random_nodes);
-        // While too few pool peers are outbound, an outbound peer the pool dialled itself is always taken, even into a
-        // pool filled by inbound peers. The next refresh releases the surplus, inbound peers first. Outbound
-        // connections made by others (e.g. network discovery) only get in while there is room, so that they cannot
-        // bypass the pool's choice of peers.
-        let (num_outbound, _) = self.pool_connection_counts();
-        let is_pool_dial =
-            self.pending_dials.contains_key(conn.peer_node_id()) || self.learned_dials.contains(conn.peer_node_id());
-        let take_outbound = conn.direction().is_outbound() &&
-            is_pool_dial &&
-            is_pool_starved(
-                num_outbound,
-                pool_size,
-                self.config.connectivity.pool_starved_threshold_ratio,
-            );
-        if self.connected_random_pool_peers() < pool_size || take_outbound {
+        // Peers the pool dialled itself were handled above. Anyone else's connection (e.g. network discovery's) only
+        // joins the pool while there is room, so that it cannot bypass the pool's choice of peers.
+        if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
                 "Peer '{}' connected. Adding to peer pool.",

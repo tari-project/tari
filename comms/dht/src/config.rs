@@ -36,8 +36,6 @@ const LOG_TARGET: &str = "comms::dht::config";
 const MIN_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(60);
 /// Upper bound for `rebootstrap_cooldown_min` and `rebootstrap_cooldown_max`.
 const MAX_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
-/// Lower bound for `bootstrap_timeout`, which also bounds a rebootstrap (half of it per source).
-const MIN_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Upper bound for `max_seed_peer_sync_count`.
 const MAX_SEED_PEER_SYNC_COUNT: usize = 20;
 /// Upper bound for `rebootstrap_connected_peers`.
@@ -225,13 +223,6 @@ impl DhtConfig {
             );
             discovery.rebootstrap_connected_peers = MAX_REBOOTSTRAP_CONNECTED_PEERS;
         }
-        if discovery.bootstrap_timeout < MIN_BOOTSTRAP_TIMEOUT {
-            warn!(
-                target: LOG_TARGET,
-                "bootstrap_timeout must be at least {MIN_BOOTSTRAP_TIMEOUT:.0?}. Using that"
-            );
-            discovery.bootstrap_timeout = MIN_BOOTSTRAP_TIMEOUT;
-        }
         if discovery.max_seed_peer_sync_count > MAX_SEED_PEER_SYNC_COUNT {
             warn!(
                 target: LOG_TARGET,
@@ -377,12 +368,10 @@ mod test {
         let mut config = DhtConfig::default();
         config.connectivity.rebootstrap_cooldown_min = Duration::MAX;
         config.connectivity.rebootstrap_cooldown_max = Duration::MAX;
-        config.network_discovery.bootstrap_timeout = Duration::from_secs(1);
         config.network_discovery.max_seed_peer_sync_count = 1000;
         config.clamp_rebootstrap_settings();
         assert_eq!(config.connectivity.rebootstrap_cooldown_min, MAX_REBOOTSTRAP_COOLDOWN);
         assert_eq!(config.connectivity.rebootstrap_cooldown_max, MAX_REBOOTSTRAP_COOLDOWN);
-        assert_eq!(config.network_discovery.bootstrap_timeout, MIN_BOOTSTRAP_TIMEOUT);
         assert_eq!(
             config.network_discovery.max_seed_peer_sync_count,
             MAX_SEED_PEER_SYNC_COUNT

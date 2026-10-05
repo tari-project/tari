@@ -236,7 +236,10 @@ mod rebootstrap {
         PeerConnection,
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
         peer_manager::{NodeId, PeerFlags},
-        protocol::rpc::RpcError,
+        protocol::{
+            ProtocolId,
+            rpc::{RpcError, mock::MockRpcServer},
+        },
         test_utils::{
             mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
             node_identity::build_many_node_identities,
@@ -269,7 +272,8 @@ mod rebootstrap {
             state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
         proto::rpc::PeerInfo,
-        rpc::UnvalidatedPeerInfo,
+        rpc::{DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
+        test_utils::create_good_standing_peer,
     };
 
     fn node_ids(n: usize) -> Vec<NodeId> {
@@ -679,6 +683,62 @@ mod rebootstrap {
             .await;
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(mock.take_banned_peers().await.len(), 1);
+    }
+
+    /// A seed whose dial never resolves loses only its own results: the rebootstrap finishes at the per-source
+    /// deadline, well before its overall bound, with what the other seed returned.
+    #[tokio::test]
+    async fn a_slow_seed_loses_only_its_own_results() {
+        let (mut context, mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        // Floored to 30s for a rebootstrap: 15s per source
+        config.network_discovery.bootstrap_timeout = Duration::from_secs(1);
+        context.config = Arc::new(config.clone());
+
+        // The fast seed serves get_peers over a mock RPC connection
+        let fast_identity = make_node_identity();
+        let mut fast_seed = fast_identity.to_peer();
+        fast_seed.add_flags(PeerFlags::SEED);
+        let server_peers = build_peer_manager();
+        let mut served = Vec::new();
+        for _ in 0..3 {
+            let peer = create_good_standing_peer(&make_node_identity());
+            served.push(peer.node_id.clone());
+            server_peers.add_or_update_peer(peer).await.unwrap();
+        }
+        let mut server = MockRpcServer::new(
+            DhtService::new(DhtRpcServiceImpl::new(server_peers, Arc::new(config))),
+            fast_identity,
+        );
+        server.serve();
+        let conn = server
+            .create_connection(fast_seed.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        mock.add_active_connection(conn).await;
+        context.peer_manager.add_or_update_peer(fast_seed).await.unwrap();
+
+        // The slow seed's dial never resolves
+        let mut slow_seed = make_node_identity().to_peer();
+        slow_seed.add_flags(PeerFlags::SEED);
+        mock.set_pending_connection(&slow_seed.node_id).await;
+        context.peer_manager.add_or_update_peer(slow_seed).await.unwrap();
+
+        let started = Instant::now();
+        let event = Rebootstrap::new(context.clone()).next_event().await;
+        let StateEvent::RebootstrapComplete(info) = event else {
+            panic!("unexpected event {event}");
+        };
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "the rebootstrap hit its overall bound"
+        );
+        assert_eq!(info.seeds_synced, 1);
+        for node_id in &served {
+            assert!(
+                info.learned_peers.contains(node_id),
+                "the fast seed's results were lost: {info}"
+            );
+        }
     }
 
     /// If the current resolution leaves nothing to sync from, the stored seeds are used.

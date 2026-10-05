@@ -116,6 +116,9 @@ impl Display for RebootstrapInfo {
 /// dials at most 36 at once), but small enough that DhtConnectivity can take from the list cheaply.
 pub const MAX_LEARNED_PEERS: usize = 200;
 
+/// The least time a rebootstrap gets, whatever `bootstrap_timeout` is.
+const MIN_REBOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// At most this many peers from one source are written to the peer database. No source can contribute more than a
 /// quarter of the learned list once there are a few sources, so storing more only adds peer DB writes.
 const MAX_STORED_PER_SOURCE: usize = 50;
@@ -192,13 +195,14 @@ impl Rebootstrap {
             .await;
             (seeds_resolved, seed_results, connected)
         };
-        let (seeds_resolved, mut sources, connected) = match time::timeout(config.bootstrap_timeout, work).await {
+        let timeout = rebootstrap_timeout(context);
+        let (seeds_resolved, mut sources, connected) = match time::timeout(timeout, work).await {
             Ok(results) => results,
             Err(_) => {
                 // Whatever was learned before the timeout is already in the peer DB
                 warn!(
                     target: REBOOTSTRAP_LOG_TARGET,
-                    "Rebootstrap timed out after {:.0?}", config.bootstrap_timeout
+                    "Rebootstrap timed out after {timeout:.0?}"
                 );
                 (0, Vec::new(), Vec::new())
             },
@@ -252,12 +256,18 @@ impl Rebootstrap {
 
 /// The deadline for syncing from any one source, dial included.
 fn source_timeout(context: &NetworkDiscoveryContext) -> Duration {
+    rebootstrap_timeout(context).checked_div(2).unwrap_or_default()
+}
+
+/// The bound on a whole rebootstrap: `bootstrap_timeout`, but at least `MIN_REBOOTSTRAP_TIMEOUT`. The floor applies
+/// here only, so that a short `bootstrap_timeout` (e.g. for local test networks) still shortens the initial
+/// bootstrap without leaving a rebootstrap too little time to dial seeds over Tor.
+fn rebootstrap_timeout(context: &NetworkDiscoveryContext) -> Duration {
     context
         .config
         .network_discovery
         .bootstrap_timeout
-        .checked_div(2)
-        .unwrap_or_default()
+        .max(MIN_REBOOTSTRAP_TIMEOUT)
 }
 
 /// Builds the learned list from all sources, taking one peer from each source in turn (seeds, then outbound, then

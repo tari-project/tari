@@ -156,9 +156,9 @@ async fn a_slow_seed_does_not_discard_a_fast_seeds_results() {
     config.network_discovery.enabled = true;
     config.connectivity.update_interval = Duration::from_millis(500);
     config.connectivity.pool_starved_ticks = 1;
-    // The slow seed's dial gives up when the handshake times out (6s). Since `bootstrap_timeout` is clamped to at least
-    // 30s, that is within the per-source deadline (15s) here, so this checks that the slow seed costs nothing but its
-    // own results; it no longer forces the deadline itself to fire.
+    // The slow seed's dial gives up when the handshake times out (6s). A rebootstrap gets at least 30s (15s per
+    // source) whatever `bootstrap_timeout` is, so this checks that the slow seed costs nothing but its own results;
+    // the per-source deadline itself is covered by `a_slow_seed_loses_only_its_own_results` in the unit tests.
     config.network_discovery.bootstrap_dial_peer_timeout = Duration::from_secs(60);
     let node_a = make_node_with_seed_peer_provider(
         "node_A",

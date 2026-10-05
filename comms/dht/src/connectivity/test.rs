@@ -894,10 +894,10 @@ mod rebootstrap_trigger {
         assert_eq!(inbound, 1);
     }
 
-    /// While the pool is starved, an outbound connection it did not dial (e.g. network discovery's) is not taken into
-    /// a full pool; one it dialled is.
+    /// An outbound connection the pool did not dial (e.g. network discovery's) is not taken into a full pool, even
+    /// one that is starved of outbound peers.
     #[tokio::test]
-    async fn only_pool_dials_are_taken_into_a_full_starved_pool() {
+    async fn a_non_pool_outbound_connection_is_not_taken_into_a_full_pool() {
         let config = DhtConfig {
             num_neighbouring_nodes: 2,
             num_random_nodes: 2,
@@ -911,12 +911,7 @@ mod rebootstrap_trigger {
         serve_disconnects(rx);
         dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
         assert!(!dht_connectivity.is_pool_peer(&other));
-
-        let dialled = NodeId::from_public_key(make_node_identity().public_key());
-        dht_connectivity.pending_dials.insert(dialled.clone(), Instant::now());
-        let (conn, _rx) = create_dummy_peer_connection_with_direction(dialled.clone(), ConnectionDirection::Outbound);
-        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
-        assert!(dht_connectivity.is_pool_peer(&dialled));
+        assert_eq!(dht_connectivity.pool_connection_counts(), (0, 4));
     }
 
     /// A replacement only takes a learned peer while learned dials in flight are within budget.
