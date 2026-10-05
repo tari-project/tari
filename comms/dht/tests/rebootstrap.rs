@@ -81,9 +81,11 @@ async fn an_isolated_node_recovers_through_a_reachable_seed() {
 
     let node_b_id = node_b.node_identity().node_id().clone();
     let mut dht_events = node_a.dht.subscribe_dht_events();
+    // Generous budgets: each phase can take ~45s locally, mostly DhtConnectivity's 15s pauses on going offline, and
+    // more on a loaded CI machine.
 
     // node_A rebootstraps and learns about node_B from the seed
-    time::timeout(Duration::from_secs(60), async {
+    time::timeout(Duration::from_secs(180), async {
         loop {
             if let DhtEvent::RebootstrapComplete(info) = &*dht_events.recv().await.unwrap() &&
                 info.learned_peers.contains(&node_b_id)
@@ -100,7 +102,7 @@ async fn an_isolated_node_recovers_through_a_reachable_seed() {
     // several pool refreshes is a pool peer.
     let mut connectivity = node_a.comms.connectivity();
     let mut connected_since = None;
-    time::timeout(Duration::from_secs(60), async {
+    time::timeout(Duration::from_secs(180), async {
         loop {
             let is_connected =
                 connectivity.get_active_connections().await.unwrap().iter().any(|conn| {

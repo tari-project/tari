@@ -318,19 +318,21 @@ impl DhtConnectivity {
         }
         // Without this actor there is no pool, and nothing to notice that the pool is starved, so a failed first
         // refresh (e.g. the connectivity manager not answering in time) must not stop it. Retry from the main loop.
-        let first_tick = match self.refresh_random_pool().await {
-            Ok(()) => time::Instant::now(),
+        let refresh_result = self.refresh_random_pool().await;
+        // One instant for both, so that the tick one interval later is not judged a hair too early and skipped
+        let now = time::Instant::now();
+        let first_tick = match refresh_result {
+            Ok(()) => now,
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
                     "Initial peer pool refresh failed: {err}. Retrying in {INITIAL_REFRESH_RETRY_DELAY:.0?}"
                 );
-                let now = time::Instant::now();
                 now.checked_add(INITIAL_REFRESH_RETRY_DELAY).unwrap_or(now)
             },
         };
 
-        self.pool_fill_started = Some(Instant::now());
+        self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
