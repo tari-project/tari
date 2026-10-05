@@ -21,9 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use tari_core::{base_node::state_machine_service::states::StateEvent, chain_storage::BlockchainDatabaseConfig};
+use std::sync::Arc;
+
+use tari_core::{
+    base_node::state_machine_service::states::StateEvent,
+    chain_storage::{BlockchainDatabaseConfig, DbTransaction},
+};
+use tari_node_components::blocks::{Block, ChainBlock};
+use tari_transaction_components::aggregated_body::AggregateBody;
 
 use crate::helpers::{
+    block_builders::create_coinbase,
     sync,
     sync::{WhatToDelete, state_event},
 };
@@ -379,4 +387,70 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
     );
     // Bob will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A peer serving a body that is not the one the header commits to is banned, and the honest header is not marked as
+/// a bad block.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_peer_supplies_a_body_that_does_not_match_the_header() {
+    // Create the network with Alice node and Bob node
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+
+    // Alice syncs the honest headers
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+
+    // Bob replaces the kernel of his tip with another one, keeping the header and the outputs
+    let tip = &blocks[5];
+    sync::delete_some_blocks_and_headers(&blocks[4..=5], WhatToDelete::Blocks, &bob_node);
+    let (_, other_kernel, _) = create_coinbase(
+        consensus_manager.get_block_reward_at(tip.height()),
+        tip.height() + consensus_manager.consensus_constants(0).coinbase_min_maturity(),
+        None,
+        &key_manager,
+    );
+    let fake = Block::new(
+        tip.header().clone(),
+        AggregateBody::new_sorted_unchecked(vec![], tip.block().body.outputs().clone(), vec![other_kernel]),
+    );
+    let fake = ChainBlock::try_construct(Arc::new(fake), tip.accumulated_data().clone()).unwrap();
+    let mut txn = DbTransaction::new();
+    txn.insert_tip_block_body(Arc::new(fake));
+    txn.set_best_block(
+        tip.height(),
+        *tip.hash(),
+        tip.accumulated_data().total_accumulated_difficulty,
+        *blocks[4].hash(),
+        tip.to_chain_header().timestamp(),
+    );
+    bob_node.blockchain_db.write(txn).unwrap();
+    assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 5);
+
+    // Alice syncs the honest bodies, then rejects the fake one
+    let mut block_sync = sync::initialize_sync_blocks(&bob_node);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
+    assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
+    assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }

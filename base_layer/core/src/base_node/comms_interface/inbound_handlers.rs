@@ -24,7 +24,7 @@
 use std::convert::{TryFrom, TryInto};
 use std::{
     cmp::max,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -32,7 +32,7 @@ use std::{
 use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PrivateKey};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::messaging::MAX_FRAME_LENGTH};
 use tari_node_components::blocks::{
     Block,
     BlockBuilder,
@@ -44,9 +44,10 @@ use tari_node_components::blocks::{
 };
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
+    helpers::borsh::SerializedSize,
     tari_proof_of_work::{PowAlgorithm, PowError},
-    transaction_components::Transaction,
+    transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{RwLock, watch};
@@ -63,7 +64,17 @@ use crate::{
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
     },
-    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
+    chain_storage::{
+        BlockAddResult,
+        BlockchainBackend,
+        ChainStorageError,
+        DbKey,
+        DbValue,
+        MinedInfo,
+        async_db::AsyncBlockchainDb,
+        body_matches_header,
+        inputs_and_outputs_match_header,
+    },
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
@@ -84,6 +95,94 @@ const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 #[cfg(feature = "metrics")]
 const DIFF_INDICATOR_LAG: u64 = 25;
+
+/// How many held orphans `hydrate_block` walks back through, from a block's parent towards the main chain, to find the
+/// outputs the block spends. A relayed fork block is normally a short way ahead of what we hold; a deeper fork is
+/// resolved through sync, and the walk reads whole blocks, so it is kept short.
+const MAX_ORPHAN_ANCESTORS: usize = 16;
+/// The walk also stops once it has read this much orphan data (measured as the borsh size of each orphan), because
+/// orphans can be up to the block body byte limit each.
+const MAX_ORPHAN_ANCESTOR_BYTES: usize = 2 * MAX_BLOCK_BODY_BYTES;
+
+/// The outputs of the held orphans that a block with parent `prev_hash` builds on: the parent if it is a held orphan,
+/// its parent if that is one too, and so on, within [MAX_ORPHAN_ANCESTORS] and [MAX_ORPHAN_ANCESTOR_BYTES]. Orphans
+/// are stored with their outputs bound to their headers by the arrival check, so these are the outputs those blocks
+/// were mined with.
+///
+/// Also returns whether the walk ended at a block whose outputs we hold completely (see
+/// [main_chain_outputs_are_complete]), i.e. whether every output an honest block on this chain could spend was found.
+fn held_orphan_ancestor_outputs<B: BlockchainBackend>(
+    db: &B,
+    mut prev_hash: HashOutput,
+) -> Result<(HashMap<HashOutput, TransactionOutput>, bool), ChainStorageError> {
+    let mut outputs = HashMap::new();
+    let mut orphans_read = 0usize;
+    let mut bytes_read = 0usize;
+    loop {
+        if !db.contains(&DbKey::OrphanBlock(prev_hash))? {
+            let complete = main_chain_outputs_are_complete(db, prev_hash)?;
+            return Ok((outputs, complete));
+        }
+        if orphans_read >= MAX_ORPHAN_ANCESTORS || bytes_read >= MAX_ORPHAN_ANCESTOR_BYTES {
+            return Ok((outputs, false));
+        }
+        let Some(DbValue::OrphanBlock(orphan)) = db.fetch(&DbKey::OrphanBlock(prev_hash))? else {
+            return Ok((outputs, false));
+        };
+        orphans_read = orphans_read.saturating_add(1);
+        bytes_read = bytes_read.saturating_add(orphan.get_serialized_size().unwrap_or(MAX_ORPHAN_ANCESTOR_BYTES));
+        let (header, _, orphan_outputs, _) = orphan.dissolve();
+        prev_hash = header.prev_hash;
+        for output in orphan_outputs {
+            outputs.entry(output.hash()).or_insert(output);
+        }
+    }
+}
+
+/// Whether `hash` is a block on our main chain for which we hold every output a child block could spend: at or below
+/// our best block (header sync stores headers ahead of their bodies), and at or above our pruned height (a pruned node
+/// deletes outputs spent at or below it, and an output spent on our chain after the block may still be spent by a
+/// child of it).
+fn main_chain_outputs_are_complete<B: BlockchainBackend>(db: &B, hash: HashOutput) -> Result<bool, ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let height = match db.fetch(&DbKey::HeaderHash(hash))? {
+        Some(DbValue::HeaderHash(header)) => header.height,
+        _ => return Ok(false),
+    };
+    Ok(height >= metadata.pruned_height() && height <= metadata.best_block_height())
+}
+
+/// Room left in the messaging frame for the DHT envelope around a base node service response
+const DHT_ENVELOPE_ALLOWANCE: usize = 64 * 1024;
+
+/// An upper bound on how much larger the protobuf encoding of one block component (the header, an input, an output or a
+/// kernel) is than its borsh encoding: field tags, length prefixes and wider varints, over a few dozen fields at most.
+const PROTO_OVERHEAD_PER_ITEM: usize = 1024;
+
+/// An upper bound on the size of the base node service response that carries `block`, computed without encoding (or
+/// cloning) the block.
+fn block_response_size_bound(block: &Block) -> Option<usize> {
+    let items = block
+        .body
+        .inputs()
+        .len()
+        .saturating_add(block.body.outputs().len())
+        .saturating_add(block.body.kernels().len())
+        .saturating_add(1);
+    let borsh_bytes = block.get_serialized_size().ok()?;
+    Some(borsh_bytes.saturating_add(items.saturating_mul(PROTO_OVERHEAD_PER_ITEM)))
+}
+
+/// The form in which to serve an orphan block. Orphans are stored with hydrated inputs, which lets a peer on another
+/// chain accept the block even when it spends outputs that peer has never seen, so an orphan is served hydrated
+/// whenever it fits in the messaging frame. The hydrated form of a block within the consensus byte limit can exceed the
+/// frame, and then the orphan is served in the compact form that main chain blocks are served in.
+fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
+    match block_response_size_bound(&block) {
+        Some(bytes) if bytes.saturating_add(DHT_ENVELOPE_ALLOWANCE) <= max_frame_length => block,
+        _ => block.to_compact(),
+    }
+}
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
@@ -477,7 +576,7 @@ where B: BlockchainBackend + 'static
 
                             None
                         },
-                        Some,
+                        |block| Some(orphan_block_to_serve(block, MAX_FRAME_LENGTH)),
                     ),
                     Some(block) => Some(block.into_block()),
                 };
@@ -829,14 +928,10 @@ where B: BlockchainBackend + 'static
                 "Block with hash `{}` already validated as a bad block due to `{}`",
                 block.to_hex(), reason
             );
-            return Err(CommsInterfaceError::ChainStorageError(
-                ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound {
-                        hash: block.to_hex(),
-                        reason,
-                    },
-                },
-            ));
+            return Err(CommsInterfaceError::KnownBadBlock {
+                hash: block.to_hex(),
+                reason,
+            });
         }
         Ok(false)
     }
@@ -847,8 +942,29 @@ where B: BlockchainBackend + 'static
         new_block: NewBlock,
     ) -> Result<(), CommsInterfaceError> {
         let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+        self.check_body_matches_header(&block)?;
         self.handle_block(block, Some(source_peer)).await?;
         Ok(())
+    }
+
+    /// A block from a peer may be stored as an orphan without being validated, so check that its body is the one its
+    /// header commits to before it is handed on: completely if we hold its parent, otherwise as far as no chain state
+    /// is needed (its inputs and outputs, but not its kernels, which are then checked when it is validated).
+    fn check_body_matches_header(&self, block: &Block) -> Result<(), CommsInterfaceError> {
+        let db = self.blockchain_db.inner().db_read_access()?;
+        let matches = if db.fetch_block_accumulated_data(&block.header.prev_hash)?.is_some() {
+            body_matches_header(&*db, block)?
+        } else {
+            inputs_and_outputs_match_header(block)?
+        };
+        if matches {
+            Ok(())
+        } else {
+            Err(CommsInterfaceError::InvalidFullBlock {
+                hash: block.hash(),
+                details: "The block body is not the one its header commits to".to_string(),
+            })
+        }
     }
 
     #[allow(clippy::too_many_lines)]
@@ -866,11 +982,24 @@ where B: BlockchainBackend + 'static
         // If the block is empty, we dont have to ask for the block, as we already have the full block available
         // to us.
         if excess_sigs.is_empty() {
+            let block_hash = header.hash();
             let block = BlockBuilder::new(header.version)
                 .add_outputs(coinbase_outputs)
                 .add_kernels(coinbase_kernels)
                 .with_header(header)
                 .build();
+            // A block can have inputs and outputs without a kernel of its own (the excess is absorbed into the total
+            // offset), and is then announced without excess signatures too. Its inputs and outputs are not in the
+            // announcement, so fetch the full block.
+            if !inputs_and_outputs_match_header(&block)? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block {} has more than its coinbase. Requesting the full block from peer '{}'.",
+                    block_hash.to_hex(),
+                    source_peer
+                );
+                return self.request_full_block_from_peer(source_peer, block_hash).await;
+            }
             return Ok(block);
         }
 
@@ -1009,6 +1138,15 @@ where B: BlockchainBackend + 'static
             return Ok(block);
         }
 
+        // The block rebuilt from our mempool matches the header, so it is the block the peer announced. Reject it here
+        // if its body is over the consensus byte limit, before it is handed on to be hydrated and added.
+        let constants = self.consensus_manager.consensus_constants(header.height);
+        if let Err(source) = helpers::check_block_body_size(&block, constants) {
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError { source },
+            ));
+        }
+
         Ok(block)
     }
 
@@ -1022,6 +1160,10 @@ where B: BlockchainBackend + 'static
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
             .await
         {
+            Ok(Some(block)) if block.hash() != block_hash => Err(CommsInterfaceError::InvalidFullBlock {
+                hash: block_hash,
+                details: format!("Peer sent block {} instead", block.hash()),
+            }),
             Ok(Some(block)) => Ok(block),
             Ok(None) => {
                 debug!(
@@ -1115,6 +1257,11 @@ where B: BlockchainBackend + 'static
                 Ok(block_hash)
             },
 
+            // Marked bad since we checked in `check_exists_and_not_bad_block`
+            Err(ChainStorageError::ValidationError {
+                source: ValidationError::BadBlockFound { hash, reason },
+            }) => Err(CommsInterfaceError::KnownBadBlock { hash, reason }),
+
             Err(e @ ChainStorageError::ValidationError { .. }) => {
                 #[cfg(feature = "metrics")]
                 {
@@ -1160,6 +1307,15 @@ where B: BlockchainBackend + 'static
     async fn hydrate_block(&mut self, block: Block) -> Result<Arc<Block>, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
+        // Reject an oversized body before doing any work per input. The limit is measured on the compact form, so this
+        // is the same check whether the inputs arrived compact or hydrated.
+        if let Err(source) =
+            helpers::check_block_body_size(&block, self.consensus_manager.consensus_constants(block_height))
+        {
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError { source },
+            ));
+        }
         if block.body.inputs().is_empty() {
             debug!(
                 target: LOG_TARGET,
@@ -1174,6 +1330,11 @@ where B: BlockchainBackend + 'static
         let (header, mut inputs, outputs, kernels) = block.dissolve();
 
         let db = self.blockchain_db.inner().db_read_access()?;
+        // The hashes of the block's own outputs, computed on the first input that is not in the database
+        let mut block_outputs: Option<HashMap<HashOutput, &TransactionOutput>> = None;
+        // The outputs of the held orphans this block builds on, fetched on the first input found in neither
+        let mut orphan_outputs: Option<HashMap<HashOutput, TransactionOutput>> = None;
+        let mut orphan_search_complete = false;
         for input in &mut inputs {
             if !input.is_compact() {
                 continue;
@@ -1181,16 +1342,47 @@ where B: BlockchainBackend + 'static
 
             // Only the output's contents are used to hydrate the input, and those are identical for
             // every index entry of the same output hash, so taking any entry is equivalent.
-            let output_mined_info = db
-                .fetch_outputs(&input.output_hash())?
-                .into_iter()
-                .next()
-                .ok_or_else(|| CommsInterfaceError::InvalidFullBlock {
-                    hash: block_hash,
-                    details: format!("Output {} to be spent does not exist in db", input.output_hash()),
-                })?;
+            let output_hash = input.output_hash();
+            if let Some(output_mined_info) = db.fetch_outputs(&output_hash)?.into_iter().next() {
+                input.add_output_data(output_mined_info.output);
+                continue;
+            }
+            // An output created and spent in the same block
+            let block_outputs = block_outputs.get_or_insert_with(|| outputs.iter().map(|o| (o.hash(), o)).collect());
+            if let Some(output) = block_outputs.get(&output_hash) {
+                input.add_output_data((*output).clone());
+                continue;
+            }
+            // An output created in a held orphan this block builds on, e.g. a fork block we hold whose child is relayed
+            // to us by peers that have reorged to the fork
+            if orphan_outputs.is_none() {
+                let (outputs, complete) = held_orphan_ancestor_outputs(&*db, header.prev_hash)?;
+                orphan_outputs = Some(outputs);
+                orphan_search_complete = complete;
+            }
+            if let Some(output) = orphan_outputs.as_ref().and_then(|outputs| outputs.get(&output_hash)) {
+                input.add_output_data(output.clone());
+                continue;
+            }
 
-            input.add_output_data(output_mined_info.output);
+            let details = format!("Output {output_hash} to be spent does not exist in db");
+            // A block whose parent is on our main chain, with its outputs complete, can only spend outputs from our
+            // main chain or from itself, so it is invalid.
+            if main_chain_outputs_are_complete(&*db, header.prev_hash)? {
+                return Err(CommsInterfaceError::InvalidFullBlock {
+                    hash: block_hash,
+                    details,
+                });
+            }
+            // A block on another chain can spend outputs from that chain that we have never seen, which says nothing
+            // about the peer that sent it, so it is dropped without a ban. Unless we hold that chain all the way back
+            // to complete main chain state: then an honest block would have resolved, and the search was not free,
+            // so it is a short ban.
+            return Err(CommsInterfaceError::UnknownSpentOutputs {
+                hash: block_hash,
+                details,
+                fork_searched_to_main_chain: orphan_search_complete,
+            });
         }
         debug!(
             target: LOG_TARGET,
@@ -1406,6 +1598,53 @@ mod test {
 
     fn excess_sig(tx: &Transaction) -> PrivateKey {
         tx.body.kernels()[0].excess_sig.get_signature().clone()
+    }
+
+    #[test]
+    fn orphans_are_served_hydrated_unless_that_does_not_fit_the_messaging_frame() {
+        use prost::Message;
+        use tari_transaction_components::aggregated_body::AggregateBody;
+
+        use crate::proto::{self, base_node::base_node_service_response::Response as ProtoNodeCommsResponse};
+
+        // A block of real transactions, with hydrated inputs
+        let key_manager = KeyManager::new_random().unwrap();
+        let (mut inputs, mut outputs, mut kernels) = (vec![], vec![], vec![]);
+        for _ in 0..3 {
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 2, outputs: 3, &key_manager)
+                .unwrap()
+                .0;
+            inputs.extend(tx.body.inputs().iter().cloned());
+            outputs.extend(tx.body.outputs().iter().cloned());
+            kernels.extend(tx.body.kernels().iter().cloned());
+        }
+        let block = Block::new(
+            BlockHeader::new(0),
+            AggregateBody::new_unsorted(inputs, outputs, kernels),
+        );
+        assert!(block.body.inputs().iter().all(|input| !input.is_compact()));
+
+        // The bound really bounds the response that goes on the wire
+        let bound = block_response_size_bound(&block).unwrap();
+        let response_bytes = proto::base_node::BaseNodeServiceResponse {
+            request_key: u64::MAX,
+            response: Some(ProtoNodeCommsResponse::BlockResponse(
+                Some(block.clone()).try_into().unwrap(),
+            )),
+            is_synced: true,
+        }
+        .encoded_len();
+        assert!(response_bytes <= bound, "{response_bytes} > {bound}");
+
+        // Fits, with room for the DHT envelope: served as stored
+        let frame = bound + DHT_ENVELOPE_ALLOWANCE;
+        let served = orphan_block_to_serve(block.clone(), frame);
+        assert!(served.body.inputs().iter().all(|input| !input.is_compact()));
+
+        // One byte short: served compact
+        let served = orphan_block_to_serve(block.clone(), frame - 1);
+        assert!(served.body.inputs().iter().all(|input| input.is_compact()));
+        assert_eq!(served, block.to_compact());
     }
 
     #[test]

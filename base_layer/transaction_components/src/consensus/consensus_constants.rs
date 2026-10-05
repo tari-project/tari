@@ -237,6 +237,12 @@ pub struct ConsensusConstants {
     /// release and therefore the binary most nodes will be upgrading from.
     #[serde(default = "pow_backoff_disabled")]
     pow_backoff_cap: u64,
+    /// The maximum size, in bytes, of a block body serialised in its compact form. See [MAX_BLOCK_BODY_BYTES].
+    ///
+    /// Defaulted for the same reason as `pow_backoff_cap`: the JSON written before this field existed does not carry
+    /// it. The binaries that wrote that file had no limit, so a missing field reads as `usize::MAX`.
+    #[serde(default = "unlimited_block_body_bytes")]
+    max_block_body_bytes: usize,
 }
 
 /// The pre-TIP-RFC-MT-0004 value of `pow_backoff_cap`, used as its serde default so that a
@@ -244,6 +250,12 @@ pub struct ConsensusConstants {
 /// running rather than as `0`.
 fn pow_backoff_disabled() -> u64 {
     POW_BACKOFF_DISABLED
+}
+
+/// The serde default of `max_block_body_bytes`: a `consensus_constants.json` written before the field existed reads
+/// back as the rules that binary was really running, which had no block body byte limit.
+fn unlimited_block_body_bytes() -> usize {
+    usize::MAX
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -288,6 +300,16 @@ pub const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 
 pub const POW_BACKOFF_CAP: u64 = 32;
 /// A `pow_backoff_cap` of 1 disables the same-algorithm backoff, which is the pre-TIP-RFC-MT-0004 behaviour.
 pub const POW_BACKOFF_DISABLED: u64 = 1;
+
+/// The maximum size, in bytes, of a block body serialised (borsh) in its compact form, i.e. with every input reduced to
+/// the hash of the output it spends. This is the form in which blocks are stored and synced, and a block is synced in a
+/// single RPC response, so a block body larger than that response cannot be synced by anyone.
+///
+/// This is a fixed consensus value rather than a reference to the networking frame sizes, so that a networking change
+/// cannot silently change which blocks are valid. It is the 8 MiB messaging frame minus 1 MiB of headroom for the
+/// header, the protobuf envelope and the response overhead; `tari_core` asserts at compile time that it stays below
+/// both the messaging and the RPC frame. Every network uses this value, from genesis.
+pub const MAX_BLOCK_BODY_BYTES: usize = 7 * 1024 * 1024;
 /// The LWMA difficulty block window after TIP-RFC-MT-0004 activates (shortened from 90 for faster response to hash
 /// rate swings).
 pub const TIP004_DIFFICULTY_BLOCK_WINDOW: u64 = 45;
@@ -704,6 +726,11 @@ impl ConsensusConstants {
         self.max_script_byte_size
     }
 
+    /// The maximum size, in bytes, of a block body serialised in its compact form
+    pub fn max_block_body_bytes(&self) -> usize {
+        self.max_block_body_bytes
+    }
+
     /// The maximum serialized byte size of TariScript
     pub fn max_extra_encrypted_data_byte_size(&self) -> usize {
         self.max_extra_encrypted_data_byte_size
@@ -985,6 +1012,7 @@ impl ConsensusConstants {
             // Same reasoning: LocalNet never uses the legacy Monero coinbase wire format at all.
             derive_monero_coinbase_hasher: true,
             pow_backoff_cap: POW_BACKOFF_CAP,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         }];
         consensus_constants
     }
@@ -1067,6 +1095,7 @@ impl ConsensusConstants {
             strict_merkle_tree_parameter_decoding: false,
             derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         };
 
         // All five GHSA-3qmx-q9pv-f3m4 rules share one flag day, so they share one entry: their activation
@@ -1149,6 +1178,7 @@ impl ConsensusConstants {
             strict_merkle_tree_parameter_decoding: false,
             derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -1295,6 +1325,7 @@ impl ConsensusConstants {
             strict_merkle_tree_parameter_decoding: false,
             derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         };
 
         // All five GHSA-3qmx-q9pv-f3m4 rules share one flag day, so they share one entry: their activation
@@ -1370,6 +1401,7 @@ impl ConsensusConstants {
             strict_merkle_tree_parameter_decoding: false,
             derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -1506,6 +1538,7 @@ impl ConsensusConstants {
             strict_merkle_tree_parameter_decoding: false,
             derive_monero_coinbase_hasher: false,
             pow_backoff_cap: POW_BACKOFF_DISABLED,
+            max_block_body_bytes: MAX_BLOCK_BODY_BYTES,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -1696,6 +1729,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_max_script_byte_size(mut self, byte_size: usize) -> Self {
         self.consensus.max_script_byte_size = byte_size;
+        self
+    }
+
+    pub fn with_max_block_body_bytes(mut self, byte_size: usize) -> Self {
+        self.consensus.max_block_body_bytes = byte_size;
         self
     }
 
@@ -2241,11 +2279,12 @@ mod activation_test {
     fn the_previous_releases_json_shape_still_deserializes_with_pre_fork_defaults() {
         // v5.6.0 is the last public release, and therefore the binary most nodes upgrade from; `pow_backoff_cap`
         // arrived after it, on the 5.7.0 pre-release line.
-        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 4] = [
+        const FIELDS_ABSENT_FROM_THE_LAST_RELEASE: [&str; 5] = [
             "bipartite_cuckaroo_verification",
             "aux_chain_merkle_proof_depth_binding",
             "derive_monero_coinbase_hasher",
             "pow_backoff_cap",
+            "max_block_body_bytes",
         ];
 
         for network in ALL_NETWORKS {
@@ -2284,13 +2323,36 @@ mod activation_test {
                     POW_BACKOFF_DISABLED,
                     "{network} entry {index}: must default to the backoff being disabled, never to 0"
                 );
+                assert_eq!(
+                    constants.max_block_body_bytes(),
+                    usize::MAX,
+                    "{network} entry {index}: must default to no block body byte limit"
+                );
                 // Everything else must survive the round trip untouched, or the defaults are masking a real change.
                 let mut expected = current.get(index).expect("same length").clone();
                 expected.bipartite_cuckaroo_verification = false;
                 expected.aux_chain_merkle_proof_depth_binding = false;
                 expected.derive_monero_coinbase_hasher = false;
                 expected.pow_backoff_cap = POW_BACKOFF_DISABLED;
+                expected.max_block_body_bytes = usize::MAX;
                 assert_eq!(constants, &expected, "{network} entry {index}");
+            }
+        }
+    }
+
+    /// The block body byte limit is a consensus value: pin it as a literal, and check that every network applies it
+    /// from genesis (it has no activation height).
+    #[test]
+    fn every_network_limits_the_block_body_bytes_from_genesis() {
+        assert_eq!(MAX_BLOCK_BODY_BYTES, 7_340_032);
+        for network in ALL_NETWORKS {
+            for constants in ConsensusConstants::for_network(network) {
+                assert_eq!(
+                    constants.max_block_body_bytes(),
+                    MAX_BLOCK_BODY_BYTES,
+                    "{network} entry at height {}",
+                    constants.effective_from_height()
+                );
             }
         }
     }

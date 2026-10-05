@@ -64,7 +64,7 @@ const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 
 /// Maximum frame size of a messaging protocol frame. The RPC frame size is derived from this so that anything that can
 /// be propagated over messaging (e.g. a block) can also be fetched over RPC (e.g. during sync).
-pub(crate) const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
+pub const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
 
 /// A freshly negotiated inbound substream can outrace the ConnectivityManager's own processing of the
 /// `PeerConnected` event for the same connection - most visibly during simultaneous-dial tie-breaking, where

@@ -35,7 +35,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::RpcClient,
 };
-use tari_node_components::blocks::{Block, ChainBlock};
+use tari_node_components::blocks::{Block, BlockValidationError, ChainBlock};
 use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody};
 use tari_utilities::hex::Hex;
 
@@ -45,7 +45,7 @@ use crate::{
         BlockchainSyncConfig,
         sync::{SyncPeer, ban::PeerBanManager, hooks::Hooks, rpc},
     },
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb, body_matches_header},
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
     validation::{BlockBodyValidator, ValidationError},
@@ -415,12 +415,24 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let validator = self.block_validator.clone();
             let res = {
                 let txn = db.db_read_access()?;
+                // The peer chooses the body it sends for our header. Check first that it is the body the header
+                // commits to: if it is not, only the peer is at fault, and the header must not be marked as bad.
+                if !body_matches_header(&*txn, &block)? {
+                    return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+                        kind: "block body",
+                    })
+                    .into());
+                }
                 validator.validate_body(&*txn, block)
             };
 
             let block = match res {
                 Ok(block) => block,
-                Err(err @ ValidationError::BadBlockFound { .. }) | Err(err @ ValidationError::FatalStorageError(_)) => {
+                // A hydration failure depends on our database as well as the block, so it is not memoised either
+                Err(err @ ValidationError::BadBlockFound { .. }) |
+                Err(err @ ValidationError::FatalStorageError(_)) |
+                Err(err @ ValidationError::UnknownInput) |
+                Err(err @ ValidationError::UnknownInputs(_)) => {
                     return Err(err.into());
                 },
                 Err(err) => {
