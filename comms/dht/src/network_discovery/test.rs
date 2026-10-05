@@ -225,8 +225,9 @@ mod rebootstrap {
     use std::time::Instant;
 
     use tari_comms::{
+        connection_manager::{ConnectionDirection, PeerConnectionRequest},
         peer_manager::{NodeId, PeerFlags},
-        test_utils::mocks::ConnectivityManagerMockState,
+        test_utils::mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
     };
     use tokio::sync::RwLock;
 
@@ -378,6 +379,57 @@ mod rebootstrap {
             .unwrap();
         assert!(stored.flags.contains(PeerFlags::SEED));
         assert!(mock.is_peer_dialed(&seed_node_id).await);
+    }
+
+    /// A connection to a seed that already existed (e.g. the proactive dialer's, possibly this node's only one) is
+    /// used for the sync and then left up.
+    #[tokio::test]
+    async fn it_leaves_an_existing_seed_connection_up() {
+        let mut seed = make_node_identity().to_peer();
+        seed.add_flags(PeerFlags::SEED);
+        let seed_node_id = seed.node_id.clone();
+        let (mut context, mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+
+        let (conn, mut requests) =
+            create_dummy_peer_connection_with_direction(seed_node_id.clone(), ConnectionDirection::Outbound);
+        mock.add_active_connection(conn).await;
+        // Record what is asked of the connection. RPC substreams are never answered, so the sync times out.
+        let recorder = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            while let Some(request) = requests.recv().await {
+                match request {
+                    PeerConnectionRequest::OpenSubstream { .. } => seen.push("open_substream"),
+                    PeerConnectionRequest::Disconnect(_, reply_tx, _, _) => {
+                        seen.push("disconnect");
+                        let _ignore = reply_tx.send(Ok(()));
+                    },
+                }
+            }
+            seen
+        });
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        assert!(mock.is_peer_dialed(&seed_node_id).await);
+        // Drop every handle so the recorder finishes
+        mock.remove_active_connection(&seed_node_id).await;
+        let seen = tokio::time::timeout(Duration::from_secs(5), recorder)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // The rebootstrap tried to sync over the connection, but did not hang up on it
+        assert!(
+            seen.contains(&"open_substream"),
+            "the seed connection was not used: {seen:?}"
+        );
+        assert!(
+            !seen.contains(&"disconnect"),
+            "an existing seed connection was disconnected"
+        );
     }
 
     #[tokio::test]

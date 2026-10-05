@@ -28,7 +28,7 @@ use tari_comms::{
     Minimized,
     PeerConnection,
     RefKind,
-    connectivity::ConnectivityError,
+    connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer, PeerId},
     protocol::rpc::{ClientStreaming, RpcStatus},
     types::CommsPublicKey,
@@ -124,12 +124,12 @@ impl Discovering {
         let mut dial_stream = self.dial_all_candidates();
         while let Some(result) = dial_stream.next().await {
             match result {
-                Ok(conn) => {
+                Ok((conn, was_connected)) => {
                     let peer_node_id = conn.peer_node_id().clone();
                     self.stats.sync_peers.push(peer_node_id.clone());
                     debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{peer_node_id}`" );
 
-                    if self.request_from_peers(conn).await.is_ok() {
+                    if self.request_from_peers(conn, was_connected).await.is_ok() {
                         self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
                     }
                 },
@@ -157,7 +157,14 @@ impl Discovering {
         StateEvent::DiscoveryComplete(self.stats.clone())
     }
 
-    async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
+    /// `was_connected` is true if the connection existed before this round dialled it. Only a connection this round
+    /// created is hung up on failure; anything else belongs to someone else (e.g. the DHT pool or a sync).
+    async fn request_from_peers(
+        &mut self,
+        mut conn: PeerConnection,
+        was_connected: bool,
+    ) -> Result<(), NetworkDiscoveryError> {
+        let hang_up_on_failure = !was_connected && !conn.is_strongly_held();
         if !conn.is_connected() {
             debug!(
                 target: LOG_TARGET,
@@ -180,7 +187,9 @@ impl Discovering {
                     conn.peer_node_id(),
                     e
                 );
-                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
+                if hang_up_on_failure {
+                    let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
+                }
                 return Err(e.into());
             },
             Err(_) => {
@@ -191,7 +200,9 @@ impl Discovering {
                     conn.peer_node_id(),
                     rpc_connect_timeout,
                 );
-                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
+                if hang_up_on_failure {
+                    let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
+                }
                 return Err(NetworkDiscoveryError::Timeout {
                     operation: "connect_rpc".to_string(),
                     peer: conn.peer_node_id().to_hex(),
@@ -488,15 +499,20 @@ impl Discovering {
         &self.context.config
     }
 
-    fn dial_all_candidates(&self) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + 'static {
+    /// Dials every candidate. Each connection comes with whether it already existed before the dial.
+    fn dial_all_candidates(&self) -> impl Stream<Item = Result<(PeerConnection, bool), ConnectivityError>> + 'static {
         let pending_dials = self
             .params
             .peers
             .iter()
             .map(|peer| {
-                let connectivity = self.context.connectivity.clone();
+                let mut connectivity = self.context.connectivity.clone();
                 let peer = peer.clone();
-                async move { connectivity.dial_peer(peer, RefKind::Weak).await }
+                async move {
+                    let was_connected = is_connected(&mut connectivity, &peer).await;
+                    let conn = connectivity.dial_peer(peer, RefKind::Weak).await?;
+                    Ok((conn, was_connected))
+                }
             })
             .collect::<FuturesUnordered<_>>();
 
@@ -507,6 +523,14 @@ impl Discovering {
         );
         pending_dials
     }
+}
+
+/// Returns true if there is already a live connection to `node_id`.
+pub(super) async fn is_connected(connectivity: &mut ConnectivityRequester, node_id: &NodeId) -> bool {
+    matches!(
+        connectivity.get_connection(node_id.clone(), RefKind::Weak).await,
+        Ok(Some(conn)) if conn.is_connected()
+    )
 }
 
 #[cfg(test)]

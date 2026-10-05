@@ -490,6 +490,11 @@ impl DhtConnectivity {
     /// Called on each tick after the pool has been topped up. Publishes `DhtEvent::PoolStarved` when too few pool
     /// peers are outbound connections for long enough. Inbound peers do not count: a node that only survives on
     /// peers dialling in cannot reach the network by itself.
+    ///
+    /// Every tick on which the top-up ran without error counts, whether or not it issued any dials. This deliberately
+    /// departs from the rule "ticks in which pool dials were actually attempted": an isolated node whose dial
+    /// candidates are all in backoff, or that has none left, dials nothing - and that is exactly the node that most
+    /// needs a rebootstrap. A tick on which the top-up failed neither counts nor resets the streak.
     fn check_pool_starved(&mut self) {
         let target = self
             .config

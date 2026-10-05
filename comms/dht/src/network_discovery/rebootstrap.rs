@@ -47,6 +47,7 @@ use tokio::time;
 use crate::{
     network_discovery::{
         NetworkDiscoveryError,
+        discovering::is_connected,
         seed_strap::fetch_peers_from_connection,
         state_machine::{NetworkDiscoveryContext, StateEvent},
     },
@@ -221,6 +222,9 @@ async fn refresh_seed_peers(context: &NetworkDiscoveryContext) -> usize {
 /// regardless of past address failures, and the DHT pool's per-peer dial backoff only gates pool dials. Bans are
 /// still enforced by the connectivity manager.
 async fn sync_from_seed(context: &NetworkDiscoveryContext, seed: Peer) -> Option<Vec<NodeId>> {
+    // An existing connection to the seed may be this node's only lifeline (e.g. the proactive dialer's), so only a
+    // connection this rebootstrap created is hung up afterwards.
+    let was_connected = is_connected(&mut context.connectivity.clone(), &seed.node_id).await;
     let dial_timeout = context.config.network_discovery.bootstrap_dial_peer_timeout;
     let dial = time::timeout(
         dial_timeout,
@@ -249,7 +253,10 @@ async fn sync_from_seed(context: &NetworkDiscoveryContext, seed: Peer) -> Option
 
     let result = sync_from_connection(context, &mut conn).await;
     // Seeds are for bootstrapping, not for holding a pool slot.
-    if let Err(err) = conn.disconnect(Minimized::Yes, "Rebootstrap seed sync complete").await {
+    if !was_connected &&
+        !conn.is_strongly_held() &&
+        let Err(err) = conn.disconnect(Minimized::Yes, "Rebootstrap seed sync complete").await
+    {
         debug!(
             target: REBOOTSTRAP_LOG_TARGET,
             "Failed to disconnect seed '{}': {err}",
