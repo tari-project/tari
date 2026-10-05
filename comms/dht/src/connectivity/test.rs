@@ -21,25 +21,37 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{iter::repeat_with, sync::Arc, time::Duration};
+use std::{
+    iter::repeat_with,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use tari_comms::{
     NodeIdentity,
     PeerManager,
+    connection_manager::{ConnectionDirection, PeerConnectionRequest},
     connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures},
     test_utils::{
-        mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
+        mocks::{
+            ConnectivityManagerMockState,
+            create_connectivity_mock,
+            create_dummy_peer_connection,
+            create_dummy_peer_connection_with_direction,
+        },
         node_identity::build_many_node_identities,
     },
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     DhtConfig,
-    connectivity::{DhtConnectivity, MetricsCollector},
+    DhtConnectivityConfig,
+    connectivity::{DhtConnectivity, MetricsCollector, RebootstrapTrigger, is_pool_starved},
+    event::DhtEvent,
     test_utils::{
         DhtMockState,
         build_peer_manager,
@@ -80,7 +92,7 @@ async fn setup(
         peer_manager.clone(),
         connectivity,
         dht_requester,
-        event_publisher.subscribe(),
+        event_publisher,
         MetricsCollector::spawn(),
         shutdown.to_signal(),
     );
@@ -229,6 +241,206 @@ async fn failed_dials_are_backed_off_instead_of_reissued() {
     assert!(!dht_connectivity.dial_backoff.contains_key(&node_ids[0]));
     let selected = dht_connectivity.fetch_random_peers(4, &[], false).await.unwrap();
     assert_eq!(selected, vec![node_ids[0].clone()]);
+}
+
+/// The actor must survive a failed first pool refresh: without it there is no pool and nothing to notice that the
+/// pool is starved.
+#[tokio::test]
+async fn it_survives_a_failed_initial_refresh() {
+    let shutdown = Shutdown::new();
+    // Dropping the mock makes every connectivity request fail, including the initial refresh
+    let (connectivity, mock) = create_connectivity_mock();
+    drop(mock);
+    let (dht_requester, mock) = create_dht_actor_mock();
+    mock.spawn();
+    let (event_publisher, _) = broadcast::channel(1);
+    let dht_connectivity = DhtConnectivity::new(
+        Arc::new(DhtConfig::default()),
+        build_peer_manager(),
+        connectivity,
+        dht_requester,
+        event_publisher,
+        MetricsCollector::spawn(),
+        shutdown.to_signal(),
+    );
+
+    let handle = dht_connectivity.spawn();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        !handle.is_finished(),
+        "DhtConnectivity exited after a failed initial refresh"
+    );
+
+    shutdown.trigger();
+    tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+mod rebootstrap_trigger {
+    use super::*;
+
+    fn config() -> DhtConnectivityConfig {
+        DhtConnectivityConfig {
+            pool_starved_ticks: 3,
+            rebootstrap_cooldown_min: Duration::from_secs(10 * 60),
+            rebootstrap_cooldown_max: Duration::from_secs(2 * 60 * 60),
+            ..Default::default()
+        }
+    }
+
+    fn mins(n: u64) -> Duration {
+        Duration::from_secs(n.saturating_mul(60))
+    }
+
+    #[test]
+    fn it_needs_consecutive_starved_ticks() {
+        let config = config();
+        let now = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+
+        assert!(!trigger.on_tick(true, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        // A healthy tick resets the count
+        assert!(!trigger.on_tick(false, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        // The third consecutive starved tick fires immediately
+        assert!(trigger.on_tick(true, now, &config));
+    }
+
+    #[test]
+    fn its_cooldown_doubles_caps_and_resets() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        assert!(trigger.on_tick(true, start, &config));
+
+        // Each gap between rebootstraps is double the last, up to the 2h cap
+        let mut at = start;
+        for gap in [10, 20, 40, 80, 120, 120] {
+            let just_before = at + mins(gap) - Duration::from_secs(1);
+            assert!(
+                !trigger.on_tick(true, just_before, &config),
+                "fired before the {gap}m cooldown was up"
+            );
+            at += mins(gap);
+            assert!(
+                trigger.on_tick(true, at, &config),
+                "did not fire after the {gap}m cooldown"
+            );
+        }
+
+        // Recovering resets everything: the next starvation needs 3 ticks again and then fires straight away
+        assert!(!trigger.on_tick(false, at, &config));
+        assert!(!trigger.on_tick(true, at, &config));
+        assert!(!trigger.on_tick(true, at, &config));
+        assert!(trigger.on_tick(true, at, &config));
+        assert!(!trigger.on_tick(true, at + mins(9), &config));
+        assert!(trigger.on_tick(true, at + mins(10), &config));
+    }
+
+    #[test]
+    fn it_is_starved_below_the_threshold() {
+        assert!(is_pool_starved(0, 12, 0.5));
+        assert!(is_pool_starved(5, 12, 0.5));
+        assert!(!is_pool_starved(6, 12, 0.5));
+        assert!(!is_pool_starved(0, 0, 0.5));
+    }
+
+    /// Fills the pool with peers connected in the given direction and holds their connection handles.
+    fn fill_pool(
+        dht_connectivity: &mut DhtConnectivity,
+        n: usize,
+        direction: ConnectionDirection,
+    ) -> Vec<mpsc::Receiver<PeerConnectionRequest>> {
+        let mut receivers = Vec::new();
+        for _ in 0..n {
+            let node_id = NodeId::from_public_key(make_node_identity().public_key());
+            let (conn, rx) = create_dummy_peer_connection_with_direction(node_id.clone(), direction);
+            dht_connectivity.random_pool.push(node_id);
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+        receivers
+    }
+
+    /// A node that survives only on peers dialling in is still starved: inbound pool peers do not count.
+    #[tokio::test]
+    async fn it_counts_outbound_pool_peers_only() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, _connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let mut events = dht_connectivity.dht_event_publisher.subscribe();
+
+        let _inbound = fill_pool(&mut dht_connectivity, 12, ConnectionDirection::Inbound);
+        assert_eq!(dht_connectivity.pool_connection_counts(), (0, 12));
+
+        for _ in 0..2 {
+            dht_connectivity.check_pool_starved();
+            assert!(
+                events.try_recv().is_err(),
+                "PoolStarved published before 3 starved ticks"
+            );
+        }
+        dht_connectivity.check_pool_starved();
+        let event = events.try_recv().unwrap();
+        assert!(matches!(*event, DhtEvent::PoolStarved));
+
+        // Half the pool target in outbound peers is enough to no longer be starved
+        let _outbound = fill_pool(&mut dht_connectivity, 6, ConnectionDirection::Outbound);
+        assert_eq!(dht_connectivity.pool_connection_counts(), (6, 12));
+        dht_connectivity.check_pool_starved();
+        assert_eq!(dht_connectivity.rebootstrap_trigger.starved_ticks, 0);
+    }
+
+    /// After a rebootstrap the pool is topped up straight away, starting with the peers just learned.
+    #[tokio::test]
+    async fn it_prefers_rebootstrap_peers_when_refilling() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 0,
+            ..Default::default()
+        };
+        // Plenty of known-good peers in the database compete with the one learned peer
+        let mut peers = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(10)
+            .collect::<Vec<_>>();
+        let learned = make_node_identity().to_peer();
+        let learned_node_id = learned.node_id.clone();
+        peers.push(learned);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, make_node_identity(), peers).await;
+
+        let info = crate::RebootstrapInfo {
+            learned_peers: vec![learned_node_id.clone()],
+            ..Default::default()
+        };
+        dht_connectivity
+            .handle_dht_event(&DhtEvent::RebootstrapComplete(info))
+            .await
+            .unwrap();
+
+        async_assert!(
+            !connectivity.get_dialed_peers().await.is_empty(),
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        assert_eq!(
+            dialed[0], learned_node_id,
+            "the learned peer was not dialled first: {dialed:?}"
+        );
+        assert!(dht_connectivity.rebootstrap_peers.is_empty());
+    }
 }
 
 mod metrics {

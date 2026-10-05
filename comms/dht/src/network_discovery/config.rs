@@ -101,6 +101,15 @@ pub struct NetworkDiscoveryConfig {
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_timeout: Duration,
+    /// How long OnConnect remembers that it synced peers from a connected peer. Once this has passed the peer is
+    /// synced from again the next time it connects.
+    /// Default: 1 hour
+    #[serde(with = "serializers::seconds")]
+    pub on_connect_resync_ttl: Duration,
+    /// The maximum number of connected (inbound or outbound) non-client peers to request peers from during a
+    /// rebootstrap.
+    /// Default: 5
+    pub rebootstrap_connected_peers: usize,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -122,6 +131,8 @@ impl Default for NetworkDiscoveryConfig {
             bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(5),
             bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
+            on_connect_resync_ttl: Duration::from_secs(60 * 60),
+            rebootstrap_connected_peers: 5,
         }
     }
 }

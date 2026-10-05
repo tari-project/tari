@@ -217,6 +217,23 @@ pub struct DhtConnectivityConfig {
     /// This is the percentage of nodes that we want to churn per refresh cycle
     /// This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes,
     pub churn_rate: usize,
+    /// The pool counts as starved while the number of connected, outbound-dialled pool peers is below this fraction
+    /// of the pool target (`num_neighbouring_nodes + num_random_nodes`). Inbound peers do not count.
+    /// Default: 0.5
+    pub pool_starved_threshold_ratio: f32,
+    /// The number of consecutive `update_interval` ticks the pool must be starved before a peer rebootstrap is
+    /// requested.
+    /// Default: 3
+    pub pool_starved_ticks: usize,
+    /// The minimum time between peer rebootstraps while the pool stays starved. The first rebootstrap fires
+    /// immediately; after that the cooldown starts here and doubles each time, up to `rebootstrap_cooldown_max`.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rebootstrap_cooldown_min: Duration,
+    /// The ceiling for the doubling rebootstrap cooldown.
+    /// Default: 2 hours
+    #[serde(with = "serializers::seconds")]
+    pub rebootstrap_cooldown_max: Duration,
 }
 
 impl Default for DhtConnectivityConfig {
@@ -227,6 +244,10 @@ impl Default for DhtConnectivityConfig {
             high_failure_rate_cooldown: Duration::from_secs(45),
             minimum_desired_tcpv4_node_ratio: 0.1,
             churn_rate: 10,
+            pool_starved_threshold_ratio: 0.5,
+            pool_starved_ticks: 3,
+            rebootstrap_cooldown_min: Duration::from_secs(10 * 60),
+            rebootstrap_cooldown_max: Duration::from_secs(2 * 60 * 60),
         }
     }
 }

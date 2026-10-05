@@ -53,6 +53,13 @@ use crate::{
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
+    create_dummy_peer_connection_with_direction(node_id, ConnectionDirection::Inbound)
+}
+
+pub fn create_dummy_peer_connection_with_direction(
+    node_id: NodeId,
+    direction: ConnectionDirection,
+) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
     let (tx, rx) = mpsc::channel(1);
     let addr = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
     (
@@ -62,7 +69,7 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
             node_id,
             PeerFeatures::COMMUNICATION_NODE,
             addr,
-            ConnectionDirection::Inbound,
+            direction,
             AtomicRefCounter::new(),
         ),
         rx,

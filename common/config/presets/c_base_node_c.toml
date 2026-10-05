@@ -329,6 +329,16 @@ database_url = "data/base_node/dht.db"
 # making sybil attacks costly. This setting does not guarantee this ratio is maintained.
 # Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
 #connectivity.minimum_desired_tcpv4_node_ratio = 0.1
+# The peer pool counts as starved while connected outbound-dialled pool peers are below this fraction of the pool
+# target (num_neighbouring_nodes + num_random_nodes). Inbound peers do not count. Default: 0.5
+#connectivity.pool_starved_threshold_ratio = 0.5
+# The number of consecutive update_interval ticks the pool must be starved before a peer rebootstrap (re-resolve
+# seeds, sync peers from seeds and connected peers) is requested. Default: 3
+#connectivity.pool_starved_ticks = 3
+# The first rebootstrap fires immediately. While the pool stays starved, the cooldown between rebootstraps starts
+# at rebootstrap_cooldown_min and doubles each time up to rebootstrap_cooldown_max. Default: 10 mins and 2 hours
+#connectivity.rebootstrap_cooldown_min = 600 # 10 * 60
+#connectivity.rebootstrap_cooldown_max = 7_200 # 2 * 60 * 60
 
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
@@ -373,6 +383,11 @@ database_url = "data/base_node/dht.db"
 #network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
+# How long to remember that peers were synced from a connected peer before syncing from it again when it
+# reconnects. (Default: 1 hour)
+#network_discovery.on_connect_resync_ttl = 3_600 # 60 * 60
+# The maximum number of connected (inbound or outbound) peers to request peers from during a rebootstrap. (Default: 5)
+#network_discovery.rebootstrap_connected_peers = 5
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60

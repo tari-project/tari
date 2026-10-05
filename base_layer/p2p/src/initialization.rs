@@ -66,7 +66,7 @@ use tari_comms::{
     transports::{HiddenServiceTransport, MemoryTransport, SocksTransport, TcpWithTorTransport},
     utils::cidr::parse_cidrs,
 };
-use tari_comms_dht::{Dht, DhtInitializationError};
+use tari_comms_dht::{Dht, DhtInitializationError, SeedPeerProvider};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext, async_trait};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -300,6 +300,7 @@ async fn configure_comms_and_dht(
     builder: CommsBuilder,
     config: &P2pConfig,
     connector: InboundDomainConnector,
+    seed_peer_provider: Arc<dyn SeedPeerProvider>,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
     let database_url = DbConnectionUrl::File(
         PathBuf::from(&config.datastore_path)
@@ -345,7 +346,9 @@ async fn configure_comms_and_dht(
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut dht = Dht::builder();
-    dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
+    dht.with_config(config.dht.clone())
+        .with_outbound_sender(outbound_tx)
+        .with_seed_peer_provider(seed_peer_provider);
     let dht = dht
         .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
         .await?;
@@ -553,6 +556,30 @@ impl P2pInitializer {
     }
 }
 
+/// Resolves the configured `peer_seeds` and `dns_seeds` again whenever the DHT rebootstraps, so that a long-running
+/// node picks up seed changes made since it started.
+struct ConfigSeedPeerProvider {
+    seed_config: PeerSeedsConfig,
+}
+
+#[async_trait]
+impl SeedPeerProvider for ConfigSeedPeerProvider {
+    async fn resolve_seed_peers(&self) -> Vec<Peer> {
+        let mut peers = match P2pInitializer::try_resolve_dns_seeds(&self.seed_config).await {
+            Ok(peers) => peers,
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
+                Vec::new()
+            },
+        };
+        match P2pInitializer::try_parse_seed_peers(&self.seed_config.peer_seeds) {
+            Ok(config_peers) => peers.extend(config_peers),
+            Err(err) => warn!(target: LOG_TARGET, "Failed to parse configured seed peers: {err}"),
+        }
+        peers
+    }
+}
+
 /// Reconciles the comms proactive dialer's floor with the DHT peer pool size, returning the floor to actually
 /// configure.
 ///
@@ -626,7 +653,10 @@ impl ServiceInitializer for P2pInitializer {
             config.dht.peer_validator_config = builder.peer_validator_config().clone();
         }
 
-        let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
+        let seed_peer_provider = Arc::new(ConfigSeedPeerProvider {
+            seed_config: self.seed_config.clone(),
+        });
+        let (comms, dht) = configure_comms_and_dht(builder, &config, connector, seed_peer_provider).await?;
 
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
