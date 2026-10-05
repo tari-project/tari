@@ -42,6 +42,23 @@ provides network services.
 - `--network <NETWORK>` - Network to use (env: `TARI_NETWORK`)
 - `-p <KEY=VALUE>` - Configuration property overrides (multiple allowed)
 
+#### Log configuration trust and containment
+
+These rules apply to every application that uses a log4rs YAML file (`--log-config`, or the default
+`<base path>/config/<app>/log4rs.yml`):
+
+- **Trusted file.** On Unix the log config file, its directory and the directory of every symlink in its chain are
+  checked before the file is read. A file is refused when another non-root user can change it: it (or one of those
+  directories) is owned by a user other than you and root, is world-writable, or is group-writable by a group that is
+  not your private group (a group named after you, with no other members). A dangling symlink is refused too.
+  Root-owned files and files writable only by your private group are loaded with a warning.
+- **Containment.** Every file appender `path` and rolling `pattern` must be inside `<log dir>/log`, where the log dir is
+  `--log-path` if given, otherwise the base path. Write paths as `{{log_dir}}/log/...`. Paths with `..`, `$ENV{...}` or
+  `${...}` are refused.
+- **Logging elsewhere.** To keep logs somewhere else, pass `--log-path <dir>`; logs then go to `<dir>/log/...`.
+- **Fallback.** A refused file is not loaded. The built-in default logging configuration is used instead, and the
+  reasons are printed to stderr and written to the log. The application still starts.
+
 **Node-Specific Options**:
 
 - `--init` - Create default configuration file if it doesn't exist
@@ -59,7 +76,7 @@ provides network services.
 
 **Core Node Configuration**:
 
-- `base_node.network=<network>` - Network type (mainnet, esmeralda, nextnet, stagenet, igor)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. Any `-p <section>.network=...` that contradicts the selected network is rejected at startup, and so is a contradicting `TARI_BASE_NODE__NETWORK`, because it is this application's own section. A contradicting environment variable for another application's section (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `base_node.identity_file=<path>` - Node identity file path
 - `base_node.use_libtor=<bool>` - Use built-in Tor instance
 - `base_node.tor_identity_file=<path>` - Tor identity file path
@@ -544,7 +561,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Mining Configuration**:
 
-- `miner.network=<network>` - Mining network (mainnet, esmeralda, nextnet, stagenet)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. Any `-p <section>.network=...` that contradicts the selected network is rejected at startup, and so is a contradicting `TARI_MINER__NETWORK`, because it is this application's own section. A contradicting environment variable for another application's section (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `miner.base_node_grpc_address=<address>` - Base node gRPC address (default: "http://127.0.0.1:18142")
 - `miner.base_node_grpc_authentication=<auth>` - Base node gRPC authentication (username/password)
 - `miner.base_node_grpc_tls_domain_name=<domain>` - gRPC TLS domain name
@@ -605,7 +622,7 @@ The wallet supports extensive subcommands for various operations:
 
 **Core Proxy Configuration**:
 
-- `merge_mining_proxy.network=<network>` - Proxy network (mainnet, esmeralda, nextnet, stagenet)
+- Network: use `--network <network>` (or `TARI_NETWORK`), not `-p`. Any `-p <section>.network=...` that contradicts the selected network is rejected at startup, and so is a contradicting `TARI_MERGE_MINING_PROXY__NETWORK`, because it is this application's own section. A contradicting environment variable for another application's section (e.g. a stale `TARI_WALLET__NETWORK`) and contradictory `network` keys that only come from the config file are warned about and ignored.
 - `merge_mining_proxy.listener_address=<address>` - Proxy listener address (default: "/ip4/127.0.0.1/tcp/18081")
 - `merge_mining_proxy.submit_to_origin=<bool>` - Submit to Monero blockchain (default: true)
 - `merge_mining_proxy.wait_for_initial_sync_at_startup=<bool>` - Wait for base node sync (default: true)
@@ -621,6 +638,9 @@ The wallet supports extensive subcommands for various operations:
 - `merge_mining_proxy.use_dynamic_fail_data=<bool>` - Use dynamic monerod URLs from monero.fail (default: true)
 - `merge_mining_proxy.monero_fail_url=<url>` - Monero fail URL for dynamic URLs
 - `merge_mining_proxy.monerod_url=<urls>` - Static monerod URLs list (when dynamic disabled)
+  - **Security:** the proxy builds Monero block templates from the monerod it talks to. A public or untrusted monerod
+    can return a template that pays the Monero block reward to someone else; run your own monerod if you can.
+    `monerod_username`/`monerod_password` sent to an `http://` URL travel in cleartext; use `https://` for remote nodes.
 - `merge_mining_proxy.monerod_username=<user>` - Monerod username
 - `merge_mining_proxy.monerod_password=<pass>` - Monerod password
 - `merge_mining_proxy.monerod_use_auth=<bool>` - Enable monerod authentication (default: false)
@@ -738,8 +758,8 @@ All applications support configuration overrides using the `-p` parameter:
 **Examples**:
 
 ```bash
-# Set network
--p "base_node.network=esmeralda"
+# Set network (use --network, not -p)
+--network esmeralda
 
 # Configure gRPC
 -p "base_node.grpc_enabled=true"

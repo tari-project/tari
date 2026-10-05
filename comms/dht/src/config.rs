@@ -57,7 +57,7 @@ pub struct DhtConfig {
     pub dedup_cache_capacity: usize,
     /// The periodic trim interval for items in the message hash cache
     /// Default: 12 x 60 x 60s (12 hours)
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub dedup_cache_trim_interval: Duration,
     /// The number of occurrences of a message is allowed to pass through the DHT pipeline before being
     /// deduped/discarded
@@ -200,7 +200,7 @@ impl Default for DhtConfig {
 pub struct DhtConnectivityConfig {
     /// The interval to update the peer pool, if necessary.
     /// Default: 2 minutes
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub update_interval: Duration,
     /// The interval to change the random pool peers.
     /// Default: 2 hours

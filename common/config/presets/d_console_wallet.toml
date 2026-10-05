@@ -24,6 +24,8 @@
 # 1. Start the console wallet with the --password=secret argument, or
 # 2. Set the environment variable MINOTARI_WALLET_PASSWORD=secret before starting the console wallet, or
 # 3. Set the "password" key in this [wallet] section of the config
+# WARNING: option 3 stores the password in plain text in this file, and this file is often shared by several Tari
+# applications. Prefer option 1 or 2. If you do use option 3, make the file readable only by you (chmod 600).
 # (default = )
 #password = "secret"
 

@@ -39,7 +39,6 @@ use tari_common::{
         StringList,
         bootstrap::wallet_http_service_default_port,
         serializers,
-        serializers::optional_seconds,
     },
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
@@ -151,7 +150,7 @@ pub struct BaseNodeConfig {
     /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
     /// Liveness metadata auto ping interval between peers
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub metadata_auto_ping_interval: Duration,
     /// The state_machine config settings
     pub state_machine: BaseNodeStateMachineConfig,
@@ -161,11 +160,11 @@ pub struct BaseNodeConfig {
     /// sync with the network and optionally probes seed-peer liveness. Set to `false` to disable the service entirely.
     pub tari_pulse_enabled: bool,
     /// Interval to check if the base node is still in sync with the network
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub tari_pulse_interval: Duration,
     /// Interval to check if the seed nodes comms responses are healthy. (Recommended '60 * 10 = 600 s' if you need
     /// this)
-    #[serde(with = "optional_seconds")]
+    #[serde(with = "serializers::optional_seconds_nonzero")]
     pub tari_pulse_health_check: Option<Duration>,
     /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
