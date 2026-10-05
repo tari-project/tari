@@ -337,11 +337,15 @@ mod rebootstrap_trigger {
             );
         }
 
-        // Staying recovered for the minimum cooldown resets everything: the next starvation needs 3 ticks again, then
-        // fires straight away and the cooldown starts from the minimum again
+        // Staying recovered long enough resets everything: the 120m cooldown halves every 10m of health (60, 30, 15,
+        // 10) and is then cleared. The next starvation needs 3 ticks again, then fires straight away and the cooldown
+        // starts from the minimum again
         assert!(!trigger.on_tick(false, at, &config));
-        at += mins(10);
-        assert!(!trigger.on_tick(false, at, &config));
+        for _ in 0..5 {
+            at += mins(10);
+            assert!(!trigger.on_tick(false, at, &config));
+        }
+        assert!(trigger.last_fired.is_none());
         assert!(!trigger.on_tick(true, at, &config));
         assert!(!trigger.on_tick(true, at, &config));
         assert!(trigger.on_tick(true, at, &config));
@@ -385,6 +389,60 @@ mod rebootstrap_trigger {
             assert!(!trigger.on_tick(true, start + mins(t), &config));
         }
         assert!(trigger.on_tick(true, start + mins(70), &config));
+    }
+
+    /// Sustained health halves the cooldown rather than clearing it outright, so a node that drops and re-starves
+    /// does not get an immediate rebootstrap each time.
+    #[test]
+    fn sustained_health_halves_the_cooldown() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        // Rebootstraps at 0, 10 and 30 leave a 40m cooldown
+        assert!(trigger.on_tick(true, start, &config));
+        assert!(trigger.on_tick(true, start + mins(10), &config));
+        assert!(trigger.on_tick(true, start + mins(30), &config));
+
+        // 10m of health halves it to 20m
+        assert!(!trigger.on_tick(false, start + mins(31), &config));
+        assert!(!trigger.on_tick(false, start + mins(41), &config));
+        // Starved again: no rebootstrap until 20m after the last one...
+        for t in [43, 45, 47, 49] {
+            assert!(!trigger.on_tick(true, start + mins(t), &config));
+        }
+        assert!(trigger.on_tick(true, start + mins(50), &config));
+        // ...and the cooldown doubles from 20m to 40m
+        assert!(!trigger.on_tick(true, start + mins(89), &config));
+        assert!(trigger.on_tick(true, start + mins(90), &config));
+    }
+
+    /// Waits after the first rebootstrap are jittered by +/-25%.
+    #[test]
+    fn cooldowns_are_jittered_within_bounds() {
+        let config = config();
+        for _ in 0..50 {
+            let start = Instant::now();
+            let mut trigger = RebootstrapTrigger {
+                jitter: true,
+                ..Default::default()
+            };
+            for _ in 0..2 {
+                assert!(!trigger.on_tick(true, start, &config));
+            }
+            // The first rebootstrap is still immediate
+            assert!(trigger.on_tick(true, start, &config));
+            let (_, cooldown, wait) = trigger.last_fired.unwrap();
+            assert_eq!(cooldown, mins(10));
+            assert!(
+                wait >= mins(10).mul_f64(0.75) && wait <= mins(10).mul_f64(1.25),
+                "{wait:?}"
+            );
+            assert!(!trigger.on_tick(true, start + mins(7), &config));
+            assert!(trigger.on_tick(true, start + mins(13), &config));
+        }
     }
 
     #[test]
@@ -613,6 +671,40 @@ mod rebootstrap_trigger {
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert_eq!(dht_connectivity.rebootstrap_peers, expected);
+    }
+
+    /// Learned peers get at most half of the dial target; known-good peers from the database fill the rest.
+    #[tokio::test]
+    async fn learned_peers_get_at_most_half_the_dial_budget() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(30)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(30)
+            .collect::<Vec<_>>();
+        let mut stored = learned;
+        stored.extend(known_good);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), stored).await;
+        dht_connectivity.set_rebootstrap_peers(&learned_ids).await.unwrap();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        // Nothing connected: 24 dials (the cap for a pool of 12), at most 12 of them learned peers
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 24,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        let num_learned = dialed.iter().filter(|node_id| learned_ids.contains(node_id)).count();
+        assert_eq!(num_learned, 12);
+        assert_eq!(dialed.len().saturating_sub(num_learned), 12);
     }
 
     /// Peers that are already in the pool, or excluded for another reason, are dropped rather than kept for later.

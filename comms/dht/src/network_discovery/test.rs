@@ -19,6 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(clippy::indexing_slicing)]
 use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
@@ -235,16 +236,153 @@ mod rebootstrap {
     use crate::{
         BootstrapMethod,
         network_discovery::{
+            MAX_LEARNED_PEERS,
+            NetworkDiscoveryError,
             RebootstrapInfo,
             SeedPeerProvider,
             discovering::Discovering,
             on_connect::OnConnect,
             ready::DiscoveryReady,
-            rebootstrap::Rebootstrap,
+            rebootstrap::{
+                Rebootstrap,
+                SourceKind,
+                SourceResult,
+                ban_on_offence,
+                interleave_sources,
+                refresh_seed_peers,
+                store_peers,
+            },
             seed_strap::SeedStrap,
             state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
+        proto::rpc::PeerInfo,
     };
+
+    fn node_ids(n: usize) -> Vec<NodeId> {
+        (0..n)
+            .map(|_| NodeId::from_public_key(make_node_identity().public_key()))
+            .collect()
+    }
+
+    fn source(kind: SourceKind, stored: Vec<NodeId>) -> SourceResult {
+        SourceResult {
+            node_id: NodeId::from_public_key(make_node_identity().public_key()),
+            kind,
+            stored,
+        }
+    }
+
+    /// One source returning far more peers than the others cannot fill the learned list.
+    #[test]
+    fn one_source_cannot_fill_the_learned_list() {
+        let flood = node_ids(250);
+        let sources = vec![
+            source(SourceKind::Outbound, flood.clone()),
+            source(SourceKind::Seed, node_ids(20)),
+            source(SourceKind::Outbound, node_ids(20)),
+            source(SourceKind::Seed, node_ids(20)),
+        ];
+        let (learned, kept) = interleave_sources(&sources);
+        assert!(learned.len() <= MAX_LEARNED_PEERS);
+        // 4 sources: at most 50 each
+        assert_eq!(kept, vec![50, 20, 20, 20]);
+        assert_eq!(learned.iter().filter(|node_id| flood.contains(node_id)).count(), 50);
+    }
+
+    /// Sources take turns in the order seeds, outbound, inbound.
+    #[test]
+    fn sources_are_interleaved_seeds_then_outbound_then_inbound() {
+        let inbound = node_ids(2);
+        let outbound = node_ids(2);
+        let seed = node_ids(2);
+        let sources = vec![
+            source(SourceKind::Inbound, inbound.clone()),
+            source(SourceKind::Outbound, outbound.clone()),
+            source(SourceKind::Seed, seed.clone()),
+        ];
+        let (learned, _) = interleave_sources(&sources);
+        assert_eq!(learned, vec![
+            seed[0].clone(),
+            outbound[0].clone(),
+            inbound[0].clone(),
+            seed[1].clone(),
+            outbound[1].clone(),
+            inbound[1].clone(),
+        ]);
+    }
+
+    /// Inbound sources together make up at most a quarter of the learned list, and duplicates are kept once.
+    #[test]
+    fn the_inbound_share_is_capped() {
+        let shared = node_ids(1);
+        let mut first = shared.clone();
+        first.extend(node_ids(149));
+        let sources = vec![
+            source(SourceKind::Inbound, first),
+            source(SourceKind::Inbound, node_ids(150)),
+            source(SourceKind::Outbound, shared),
+        ];
+        let (learned, kept) = interleave_sources(&sources);
+        assert_eq!(kept.iter().take(2).sum::<usize>(), MAX_LEARNED_PEERS / 4);
+        assert_eq!(kept.get(2), Some(&1));
+        assert_eq!(learned.len(), MAX_LEARNED_PEERS / 4 + 1);
+    }
+
+    /// A connected peer that relays a stream of invalid peer records is banned, the same way Discovering does it.
+    #[tokio::test]
+    async fn a_connected_peer_relaying_invalid_records_is_banned() {
+        let (context, mock, _events) = context(None);
+        let source = NodeId::from_public_key(make_node_identity().public_key());
+        let invalid = (0..10)
+            .map(|_| PeerInfo {
+                public_key: vec![1u8; 3],
+                claims: vec![],
+            })
+            .collect();
+        let err = store_peers(&context, &source, invalid).await.unwrap_err();
+        assert!(matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived));
+
+        ban_on_offence(&context, source.clone(), &err).await;
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned = mock.take_banned_peers().await;
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned.len(), 1);
+        assert_eq!(banned[0].0, source);
+    }
+
+    /// A resolved seed whose key is already stored as an ordinary peer is not promoted to a seed, and only seeds of
+    /// the current resolution are synced from.
+    #[tokio::test]
+    async fn seed_resolution_skips_known_peers_and_replaces_old_seeds() {
+        let known = make_node_identity().to_peer();
+        let known_id = known.node_id.clone();
+        let mut old_seed = make_node_identity().to_peer();
+        old_seed.add_flags(PeerFlags::SEED);
+        let old_seed_id = old_seed.node_id.clone();
+        let new_seed = make_node_identity().to_peer();
+        let new_seed_id = new_seed.node_id.clone();
+        let provider = Arc::new(TestSeedPeerProvider {
+            seeds: vec![known.clone(), new_seed],
+        });
+        let (context, mock, _events) = context(Some(provider));
+        context.peer_manager.add_or_update_peer(known).await.unwrap();
+        context.peer_manager.add_or_update_peer(old_seed).await.unwrap();
+
+        let accepted = refresh_seed_peers(&context).await.unwrap();
+        assert_eq!(accepted, vec![new_seed_id.clone()]);
+        let stored = context.peer_manager.find_by_node_id(&known_id).await.unwrap().unwrap();
+        assert!(!stored.is_seed());
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        assert!(mock.is_peer_dialed(&new_seed_id).await);
+        assert!(!mock.is_peer_dialed(&old_seed_id).await);
+        assert!(!mock.is_peer_dialed(&known_id).await);
+    }
 
     struct TestSeedPeerProvider {
         seeds: Vec<Peer>,

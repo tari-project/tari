@@ -106,8 +106,8 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 1 hour
     #[serde(with = "serializers::seconds")]
     pub on_connect_resync_ttl: Duration,
-    /// The maximum number of connected (inbound or outbound) non-client peers to request peers from during a
-    /// rebootstrap.
+    /// The maximum number of connected non-client peers to request peers from during a rebootstrap. Outbound
+    /// connections are used first, inbound ones only for the remaining slots. At most 20.
     /// Default: 5
     pub rebootstrap_connected_peers: usize,
 }

@@ -71,7 +71,7 @@ use crate::{
     DhtRequester,
     connectivity::metrics::MetricsError,
     event::{DhtEvent, DhtEventSender},
-    network_discovery::REBOOTSTRAP_LOG_TARGET,
+    network_discovery::{MAX_LEARNED_PEERS, REBOOTSTRAP_LOG_TARGET},
 };
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
@@ -105,9 +105,9 @@ const DIAL_BACKOFF_MAX: Duration = Duration::from_secs(10 * 60);
 /// soonest are dropped, which at worst lets those peers become eligible again early.
 const MAX_DIAL_BACKOFF_ENTRIES: usize = 500;
 
-/// The most peers learned in a rebootstrap that are kept for the pool to prefer. Far more than a pool refill can use
-/// (a pool of 12 dials at most 36 learned peers at once), but small enough that taking from the list is cheap.
-const MAX_REBOOTSTRAP_PEERS: usize = 200;
+/// The most peers learned in a rebootstrap that are kept for the pool to prefer. Network discovery already caps its
+/// list at this; it is applied again here so that this list stays bounded whatever the event carries.
+const MAX_REBOOTSTRAP_PEERS: usize = MAX_LEARNED_PEERS;
 
 /// How long to wait before retrying when the initial pool refresh fails at start-up.
 const INITIAL_REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
@@ -152,30 +152,44 @@ fn is_pool_starved(outbound: usize, target: usize, ratio: f32) -> bool {
 ///
 /// The pool must be starved for `pool_starved_ticks` consecutive ticks. The first request then fires immediately.
 /// While the pool stays starved, further requests are spaced by a cooldown that starts at `rebootstrap_cooldown_min`
-/// and doubles each time up to `rebootstrap_cooldown_max`.
+/// and doubles each time up to `rebootstrap_cooldown_max`. Each wait is jittered by +/-25% so that nodes starved by the
+/// same event do not all hit the seeds in step.
 ///
-/// A tick on which the pool is not starved restarts the count of consecutive starved ticks, but the cooldown is only
-/// reset once the pool has stayed recovered for `rebootstrap_cooldown_min`. Otherwise a pool that recovers for a tick
-/// after each refill, then decays again, would rebootstrap every few ticks forever, and the cooldown - the only bound
-/// on how often this node hits the seeds - would never grow.
+/// A tick on which the pool is not starved restarts the count of consecutive starved ticks, but the cooldown only
+/// decays while the pool stays recovered: it halves for every `rebootstrap_cooldown_min` of continuous health, and is
+/// cleared once it is back at the minimum. Otherwise a pool that recovers briefly after each refill, then decays
+/// again, would rebootstrap every few ticks forever, and the cooldown - the only bound on how often this node hits the
+/// seeds - would never grow.
 #[derive(Debug, Default)]
 struct RebootstrapTrigger {
     /// Consecutive ticks on which the pool was starved.
     starved_ticks: usize,
-    /// When `PoolStarved` was last published, and the cooldown that applies from then.
-    last_fired: Option<(Instant, Duration)>,
-    /// Since when the pool has been continuously not starved.
+    /// When `PoolStarved` was last published, the (unjittered) cooldown in force, and the jittered wait from then.
+    last_fired: Option<(Instant, Duration, Duration)>,
+    /// Since when the pool has been continuously not starved, or since the cooldown last decayed.
     healthy_since: Option<Instant>,
+    /// Whether to jitter waits. Off in tests that need exact timings.
+    jitter: bool,
 }
 
 impl RebootstrapTrigger {
     /// Record a tick. Returns true if `PoolStarved` should be published now.
     fn on_tick(&mut self, is_starved: bool, now: Instant, config: &DhtConnectivityConfig) -> bool {
+        let max = config.rebootstrap_cooldown_max;
+        let min = config.rebootstrap_cooldown_min.min(max);
         if !is_starved {
             self.starved_ticks = 0;
             let healthy_since = *self.healthy_since.get_or_insert(now);
-            if now.saturating_duration_since(healthy_since) >= config.rebootstrap_cooldown_min {
-                self.last_fired = None;
+            if now.saturating_duration_since(healthy_since) >= min {
+                // One decay step per sustained-healthy period
+                self.healthy_since = Some(now);
+                self.last_fired = match self.last_fired {
+                    Some((fired_at, cooldown, _)) if cooldown > min => {
+                        let cooldown = cooldown.checked_div(2).unwrap_or(min).max(min);
+                        Some((fired_at, cooldown, self.jittered(cooldown)))
+                    },
+                    _ => None,
+                };
             }
             return false;
         }
@@ -185,11 +199,10 @@ impl RebootstrapTrigger {
             return false;
         }
 
-        let max = config.rebootstrap_cooldown_max;
         let cooldown = match self.last_fired {
-            None => config.rebootstrap_cooldown_min.min(max),
-            Some((fired_at, cooldown)) => {
-                if now.saturating_duration_since(fired_at) < cooldown {
+            None => min,
+            Some((fired_at, cooldown, wait)) => {
+                if now.saturating_duration_since(fired_at) < wait {
                     return false;
                 }
                 let next = cooldown.saturating_mul(2).min(max);
@@ -203,8 +216,16 @@ impl RebootstrapTrigger {
                 next
             },
         };
-        self.last_fired = Some((now, cooldown));
+        self.last_fired = Some((now, cooldown, self.jittered(cooldown)));
         true
+    }
+
+    /// `cooldown` scaled by a random factor in [0.75, 1.25] when jitter is on.
+    fn jittered(&self, cooldown: Duration) -> Duration {
+        if !self.jitter {
+            return cooldown;
+        }
+        cooldown.mul_f64(rand::rng().random_range(0.75..=1.25))
     }
 }
 
@@ -250,6 +271,8 @@ pub(crate) struct DhtConnectivity {
     rebootstrap_trigger: RebootstrapTrigger,
     /// Peers learned in the last rebootstrap. These are preferred over the peer database when topping up the pool.
     rebootstrap_peers: Vec<NodeId>,
+    /// Whether the next pool peer replacement is taken from `rebootstrap_peers` (they alternate with the database)
+    replace_from_learned: bool,
     /// When the initial pool refresh was attempted. The pool is not judged starved until it has had a full
     /// `update_interval` to fill from then.
     pool_fill_started: Option<Instant>,
@@ -282,8 +305,12 @@ impl DhtConnectivity {
             dht_events: dht_event_publisher.subscribe(),
             dht_event_publisher,
             cooldown_in_effect: None,
-            rebootstrap_trigger: RebootstrapTrigger::default(),
+            rebootstrap_trigger: RebootstrapTrigger {
+                jitter: true,
+                ..Default::default()
+            },
             rebootstrap_peers: Vec::new(),
+            replace_from_learned: false,
             pool_fill_started: None,
             shutdown_signal,
         }
@@ -811,10 +838,11 @@ impl DhtConnectivity {
         // peers. When we are short on peers we prefer known-good peers (ones we have successfully
         // connected to before) instead of wasting dials on never-seen/dead peers.
         // Peers learned in the last rebootstrap are fresh, so they go before anything from the peer database. They
-        // get their own budget, sized by the shortfall rather than by what is still in flight: on a starved node the
-        // in-flight budget is taken up by dials to stale peers that will fail, and learned peers would never get a
-        // turn. Each learned peer is offered only once, so this is a one-off burst.
-        let mut new_peers = self.take_rebootstrap_peers(shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR), &exclude);
+        // get their own budget, independent of what is still in flight: on a starved node the in-flight budget is
+        // taken up by dials to stale peers that will fail, and learned peers would never get a turn. That budget is
+        // at most half of the dial target, so learned peers - which other nodes chose for us - never make up the
+        // whole pool; known-good peers from the database fill the rest. Each learned peer is offered only once.
+        let mut new_peers = self.take_rebootstrap_peers((target_in_flight / 2).max(1), &exclude);
         exclude.extend(new_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
         let mut db_peers = if needed == 0 {
@@ -1175,12 +1203,20 @@ impl DhtConnectivity {
                 target: LOG_TARGET,
                 "Peer '{current_peer}' in peer pool is unavailable. Adding a new peer if possible"
             );
-            // Reactive backfill after a peer dropped: prefer peers learned in the last rebootstrap, then
-            // known-good peers so we don't refill the pool with never-seen/dead peers. Exploration of new
-            // peers happens in the periodic `refresh_random_pool` churn instead.
-            let mut replacement = self.take_rebootstrap_peers(1, &exclude).pop();
+            // Reactive backfill after a peer dropped: alternate between peers learned in the last rebootstrap
+            // and known-good peers, so that learned peers cannot take over every replacement, falling back to
+            // the other when one has nothing. Known-good rather than any peers so we don't refill the pool with
+            // never-seen/dead peers; exploration happens in the periodic `refresh_random_pool` churn instead.
+            self.replace_from_learned = !self.replace_from_learned;
+            let mut replacement = None;
+            if self.replace_from_learned {
+                replacement = self.take_rebootstrap_peers(1, &exclude).pop();
+            }
             if replacement.is_none() {
                 replacement = self.fetch_random_peers(1, &exclude, true).await?.pop();
+            }
+            if replacement.is_none() {
+                replacement = self.take_rebootstrap_peers(1, &exclude).pop();
             }
             match replacement {
                 Some(new_peer) => {

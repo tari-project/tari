@@ -24,7 +24,11 @@ mod harness;
 use std::{sync::Arc, time::Duration};
 
 use harness::*;
-use tari_comms::peer_manager::{Peer, PeerFeatures};
+use tari_comms::{
+    memsocket::MemoryListener,
+    multiaddr::Protocol,
+    peer_manager::{Peer, PeerFeatures},
+};
 use tari_comms_dht::{SeedPeerProvider, event::DhtEvent};
 use tokio::time;
 
@@ -124,5 +128,65 @@ async fn an_isolated_node_recovers_through_a_reachable_seed() {
 
     node_a.shutdown().await;
     seed.shutdown().await;
+    node_b.shutdown().await;
+}
+
+/// A seed that accepts connections but never completes a handshake must only lose its own results: the peers a
+/// fast seed returned in the same rebootstrap are still learned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_slow_seed_does_not_discard_a_fast_seeds_results() {
+    let node_b = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
+    let fast_seed = make_node(
+        "fast_seed",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_b.to_peer()),
+    )
+    .await;
+
+    // Something listens on the slow seed's address, but never says a word
+    let slow_seed = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let port = match slow_seed.first_public_address().unwrap().iter().next() {
+        Some(Protocol::Memory(port)) => port,
+        _ => panic!("expected a memory address"),
+    };
+    let _listener = MemoryListener::bind(u16::try_from(port).unwrap()).unwrap();
+
+    let mut config = dht_config();
+    config.network_discovery.enabled = true;
+    config.connectivity.update_interval = Duration::from_millis(500);
+    config.connectivity.pool_starved_ticks = 1;
+    // Each source gets 2s and the whole rebootstrap 4s. The slow seed's dial only gives up when the handshake times
+    // out (6s), so without a per-source deadline the whole rebootstrap would time out and lose the fast seed's peers.
+    config.network_discovery.bootstrap_timeout = Duration::from_secs(4);
+    config.network_discovery.bootstrap_dial_peer_timeout = Duration::from_secs(60);
+    let node_a = make_node_with_seed_peer_provider(
+        "node_A",
+        make_node_identity(PeerFeatures::COMMUNICATION_NODE),
+        config,
+        Vec::<Peer>::new(),
+        Some(Arc::new(StaticSeeds(vec![fast_seed.to_peer(), slow_seed.to_peer()]))),
+    )
+    .await;
+
+    let node_b_id = node_b.node_identity().node_id().clone();
+    let mut dht_events = node_a.dht.subscribe_dht_events();
+    let info = time::timeout(Duration::from_secs(180), async {
+        loop {
+            if let DhtEvent::RebootstrapComplete(info) = &*dht_events.recv().await.unwrap() {
+                break info.clone();
+            }
+        }
+    })
+    .await
+    .expect("node_A did not rebootstrap");
+    assert_eq!(info.seeds_resolved, 2);
+    assert!(
+        info.learned_peers.contains(&node_b_id),
+        "the fast seed's results were lost: {info}"
+    );
+
+    node_a.shutdown().await;
+    fast_seed.shutdown().await;
     node_b.shutdown().await;
 }

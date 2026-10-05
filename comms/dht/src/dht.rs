@@ -111,6 +111,8 @@ impl Dht {
         seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, DhtInitializationError> {
+        let mut config = config;
+        config.clamp_rebootstrap_settings();
         let (dht_sender, dht_receiver) = mpsc::unbounded_channel();
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);

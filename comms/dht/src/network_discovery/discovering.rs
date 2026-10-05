@@ -62,7 +62,7 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 /// A peer that is behind NAT or misconfigured is common and costs nothing to skip, so those claims
 /// are not counted here. A forged signature or a malformed multiaddress is not something an honest
 /// relay produces, and without a bound a sync peer could burn the whole per-round budget on them.
-const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
+pub(super) const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
 
 /// Classifies a failure to add a single peer that a sync peer relayed to us.
 ///
@@ -435,64 +435,12 @@ impl Discovering {
         peer: NodeId,
         result: Result<T, NetworkDiscoveryError>,
     ) -> Result<T, NetworkDiscoveryError> {
-        match result {
-            Ok(t) => Ok(t),
-            Err(err) => {
-                match &err {
-                    NetworkDiscoveryError::EmptyPeerMessageReceived |
-                    NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::DuplicatePeerReceived |
-                    NetworkDiscoveryError::TooManyPeersReceived |
-                    NetworkDiscoveryError::TooManyInvalidPeersReceived => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
-                        self.ban_peer(peer, OffenceSeverity::Low, &err).await;
-                    },
-                    // Other errors - no banning needed
-                    NetworkDiscoveryError::RpcStatus(_) |
-                    NetworkDiscoveryError::NoSyncPeers |
-                    NetworkDiscoveryError::PeerManagerError(_) |
-                    NetworkDiscoveryError::RpcError(_) |
-                    NetworkDiscoveryError::ConnectivityError(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) |
-                    NetworkDiscoveryError::JoinError(_) |
-                    NetworkDiscoveryError::Timeout { .. } |
-                    NetworkDiscoveryError::PeerConnectionClosed { .. } => {},
-                }
-                Err(err)
-            },
-        }
-    }
-
-    async fn ban_peer<T: ToString>(&mut self, peer: NodeId, severity: OffenceSeverity, err: T) {
-        match self
-            .context
-            .connectivity
-            .ban_peer_until(
-                peer.clone(),
-                self.config().ban_duration_from_severity(severity),
-                err.to_string(),
-            )
-            .await
+        if let Err(err) = &result &&
+            let Some(severity) = offence_severity(err)
         {
-            Ok(_) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Discovering: Banned peer `{}` for {:.2?} due to '{}'",
-                    peer, self.config().ban_duration_from_severity(severity), err.to_string()
-                );
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Discovering: Failed to ban peer `{peer}`: {e}"
-                );
-            },
+            ban_peer(&self.context, peer, severity, err).await;
         }
+        result
     }
 
     fn config(&self) -> &DhtConfig {
@@ -522,6 +470,56 @@ impl Discovering {
             pending_dials.len()
         );
         pending_dials
+    }
+}
+
+/// Returns how severely to ban a sync peer for this error, or `None` if it is not the sync peer's fault.
+pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
+    match err {
+        NetworkDiscoveryError::EmptyPeerMessageReceived |
+        NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+        NetworkDiscoveryError::DuplicatePeerReceived |
+        NetworkDiscoveryError::TooManyPeersReceived |
+        NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
+        // Other errors - no banning needed
+        NetworkDiscoveryError::RpcStatus(_) |
+        NetworkDiscoveryError::NoSyncPeers |
+        NetworkDiscoveryError::PeerManagerError(_) |
+        NetworkDiscoveryError::RpcError(_) |
+        NetworkDiscoveryError::ConnectivityError(_) |
+        NetworkDiscoveryError::PeerValidationError(_) |
+        NetworkDiscoveryError::JoinError(_) |
+        NetworkDiscoveryError::Timeout { .. } |
+        NetworkDiscoveryError::PeerConnectionClosed { .. } => None,
+    }
+}
+
+/// Bans a sync peer for `err` for the duration that goes with `severity`.
+pub(super) async fn ban_peer<T: ToString>(
+    context: &NetworkDiscoveryContext,
+    peer: NodeId,
+    severity: OffenceSeverity,
+    err: T,
+) {
+    let duration = context.config.ban_duration_from_severity(severity);
+    match context
+        .connectivity
+        .clone()
+        .ban_peer_until(peer.clone(), duration, err.to_string())
+        .await
+    {
+        Ok(_) => {
+            warn!(
+                target: LOG_TARGET,
+                "Banned sync peer `{}` for {:.2?} due to '{}'",
+                peer, duration, err.to_string()
+            );
+        },
+        Err(e) => {
+            warn!(target: LOG_TARGET, "Failed to ban sync peer `{peer}`: {e}");
+        },
     }
 }
 

@@ -22,12 +22,22 @@
 
 use std::{path::Path, time::Duration};
 
+use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, version::DhtProtocolVersion};
+
+const LOG_TARGET: &str = "comms::dht::config";
+
+/// Lower bound for `rebootstrap_cooldown_min`, so that a misconfiguration cannot turn rebootstrapping into seed spam.
+const MIN_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(60);
+/// Upper bound for `rebootstrap_connected_peers`.
+const MAX_REBOOTSTRAP_CONNECTED_PEERS: usize = 20;
+/// Lower bound for `on_connect_resync_ttl`.
+const MIN_ON_CONNECT_RESYNC_TTL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -154,6 +164,56 @@ impl DhtConfig {
         self.database_url.set_base_path(base_path);
     }
 
+    /// Brings the rebootstrap settings into a sane range, logging a warning for each one that was out of it. Applied
+    /// when the DHT is initialized.
+    pub fn clamp_rebootstrap_settings(&mut self) {
+        let defaults = DhtConnectivityConfig::default();
+        let connectivity = &mut self.connectivity;
+        let ratio = connectivity.pool_starved_threshold_ratio;
+        if !ratio.is_finite() || ratio <= 0.0 || ratio > 1.0 {
+            warn!(
+                target: LOG_TARGET,
+                "pool_starved_threshold_ratio {ratio} must be in (0, 1]. Using {}",
+                defaults.pool_starved_threshold_ratio
+            );
+            connectivity.pool_starved_threshold_ratio = defaults.pool_starved_threshold_ratio;
+        }
+        if connectivity.pool_starved_ticks < 1 {
+            warn!(target: LOG_TARGET, "pool_starved_ticks must be at least 1. Using 1");
+            connectivity.pool_starved_ticks = 1;
+        }
+        if connectivity.rebootstrap_cooldown_min < MIN_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_min must be at least {MIN_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_min = MIN_REBOOTSTRAP_COOLDOWN;
+        }
+        if connectivity.rebootstrap_cooldown_max < connectivity.rebootstrap_cooldown_min {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_max must be at least rebootstrap_cooldown_min. Using {:.0?}",
+                connectivity.rebootstrap_cooldown_min
+            );
+            connectivity.rebootstrap_cooldown_max = connectivity.rebootstrap_cooldown_min;
+        }
+        let discovery = &mut self.network_discovery;
+        if discovery.rebootstrap_connected_peers > MAX_REBOOTSTRAP_CONNECTED_PEERS {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_connected_peers must be at most {MAX_REBOOTSTRAP_CONNECTED_PEERS}. Using that"
+            );
+            discovery.rebootstrap_connected_peers = MAX_REBOOTSTRAP_CONNECTED_PEERS;
+        }
+        if discovery.on_connect_resync_ttl < MIN_ON_CONNECT_RESYNC_TTL {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_resync_ttl must be at least {MIN_ON_CONNECT_RESYNC_TTL:.0?}. Using that"
+            );
+            discovery.on_connect_resync_ttl = MIN_ON_CONNECT_RESYNC_TTL;
+        }
+    }
+
     /// Returns a ban duration from the given severity
     pub fn ban_duration_from_severity(&self, severity: OffenceSeverity) -> Duration {
         match severity {
@@ -249,5 +309,51 @@ impl Default for DhtConnectivityConfig {
             rebootstrap_cooldown_min: Duration::from_secs(10 * 60),
             rebootstrap_cooldown_max: Duration::from_secs(2 * 60 * 60),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn rebootstrap_settings_are_clamped() {
+        let mut config = DhtConfig::default();
+        config.connectivity.pool_starved_threshold_ratio = f32::NAN;
+        config.connectivity.pool_starved_ticks = 0;
+        config.connectivity.rebootstrap_cooldown_min = Duration::from_secs(1);
+        config.connectivity.rebootstrap_cooldown_max = Duration::from_secs(2);
+        config.network_discovery.rebootstrap_connected_peers = 1000;
+        config.network_discovery.on_connect_resync_ttl = Duration::ZERO;
+        config.clamp_rebootstrap_settings();
+
+        assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(config.connectivity.pool_starved_ticks, 1);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_min, MIN_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_max, MIN_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(
+            config.network_discovery.rebootstrap_connected_peers,
+            MAX_REBOOTSTRAP_CONNECTED_PEERS
+        );
+        assert_eq!(
+            config.network_discovery.on_connect_resync_ttl,
+            MIN_ON_CONNECT_RESYNC_TTL
+        );
+
+        for ratio in [0.0, -1.0, 1.5, f32::INFINITY] {
+            config.connectivity.pool_starved_threshold_ratio = ratio;
+            config.clamp_rebootstrap_settings();
+            assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
+        }
+
+        // Sane settings are left alone
+        let mut config = DhtConfig::default();
+        config.connectivity.pool_starved_threshold_ratio = 1.0;
+        config.clamp_rebootstrap_settings();
+        assert!((config.connectivity.pool_starved_threshold_ratio - 1.0).abs() < f32::EPSILON);
+        assert_eq!(
+            config.connectivity.rebootstrap_cooldown_min,
+            Duration::from_secs(10 * 60)
+        );
     }
 }
