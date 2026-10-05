@@ -24,11 +24,8 @@ mod harness;
 use std::{sync::Arc, time::Duration};
 
 use harness::*;
-use tari_comms::{
-    connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures},
-};
-use tari_comms_dht::SeedPeerProvider;
+use tari_comms::peer_manager::{Peer, PeerFeatures};
+use tari_comms_dht::{SeedPeerProvider, event::DhtEvent};
 use tokio::time;
 
 /// Stands in for DNS: the seed is only known through the provider, not through the peer database.
@@ -82,22 +79,46 @@ async fn an_isolated_node_recovers_through_a_reachable_seed() {
     )
     .await;
 
-    // The connection itself may not last: a discovery round that syncs from node_B afterwards hangs up on it. What is
-    // being tested is that node_A gets there, so watch for the connection being made rather than polling for it.
     let node_b_id = node_b.node_identity().node_id().clone();
-    let mut events = node_a.comms.connectivity().get_event_subscription();
+    let mut dht_events = node_a.dht.subscribe_dht_events();
+
+    // node_A rebootstraps and learns about node_B from the seed
     time::timeout(Duration::from_secs(60), async {
         loop {
-            if let ConnectivityEvent::PeerConnected(conn) = events.recv().await.unwrap() &&
-                conn.peer_node_id() == &node_b_id &&
-                conn.direction().is_outbound()
+            if let DhtEvent::RebootstrapComplete(info) = &*dht_events.recv().await.unwrap() &&
+                info.learned_peers.contains(&node_b_id)
             {
                 break;
             }
         }
     })
     .await
-    .expect("node_A did not dial node_B");
+    .expect("node_A did not learn about node_B through a rebootstrap");
+
+    // ...and ends up with a live outbound connection to it. The DHT pool takes every outbound peer while it is short of
+    // outbound peers, and nothing else in node_A hangs up on a pool peer, so a connection that is still up after
+    // several pool refreshes is a pool peer.
+    let mut connectivity = node_a.comms.connectivity();
+    let mut connected_since = None;
+    time::timeout(Duration::from_secs(60), async {
+        loop {
+            let is_connected =
+                connectivity.get_active_connections().await.unwrap().iter().any(|conn| {
+                    conn.peer_node_id() == &node_b_id && conn.direction().is_outbound() && conn.is_connected()
+                });
+            connected_since = if is_connected {
+                connected_since.or_else(|| Some(time::Instant::now()))
+            } else {
+                None
+            };
+            if connected_since.is_some_and(|since| since.elapsed() >= Duration::from_secs(5)) {
+                break;
+            }
+            time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("node_A did not keep an outbound connection to node_B");
 
     node_a.shutdown().await;
     seed.shutdown().await;

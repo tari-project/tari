@@ -214,7 +214,10 @@ impl Discovering {
         );
         let result = self.request_peers(peer_node_id, client).await;
         self.ban_on_offence(peer_node_id.clone(), result).await?;
-        let _unused = conn.disconnect(Minimized::Yes, "Discovering sync complete").await;
+        // The connection is not hung up here. It may be (or may just have become) a DHT pool peer - the pool takes
+        // any peer that connects while it has room - and hanging up would tear that down for everyone. Whether to
+        // keep the connection is left to DhtConnectivity, which drops outbound peers it has no room for, and to the
+        // connectivity manager's reaper, which closes idle ones.
 
         Ok(())
     }

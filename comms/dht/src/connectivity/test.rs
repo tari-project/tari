@@ -403,6 +403,62 @@ mod rebootstrap_trigger {
         assert_eq!(dht_connectivity.rebootstrap_trigger.starved_ticks, 0);
     }
 
+    /// Answers disconnect requests for a dummy connection, then closes it.
+    fn serve_disconnects(mut rx: mpsc::Receiver<PeerConnectionRequest>) {
+        tokio::spawn(async move {
+            while let Some(request) = rx.recv().await {
+                if let PeerConnectionRequest::Disconnect(_, reply_tx, _, _) = request {
+                    let _ignore = reply_tx.send(Ok(()));
+                    break;
+                }
+            }
+        });
+    }
+
+    /// The degraded case: the pool is full, but only of peers that dialled in. A rebootstrap must still dial the
+    /// peers it learned, and the outbound connections must replace inbound peers rather than be turned away.
+    #[tokio::test]
+    async fn it_dials_learned_peers_into_a_pool_full_of_inbound_peers() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = make_node_identity().to_peer();
+        let learned_node_id = learned.node_id.clone();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![learned]).await;
+        for rx in fill_pool(&mut dht_connectivity, 12, ConnectionDirection::Inbound) {
+            serve_disconnects(rx);
+        }
+
+        let info = crate::RebootstrapInfo {
+            learned_peers: vec![learned_node_id.clone()],
+            ..Default::default()
+        };
+        dht_connectivity
+            .handle_dht_event(&DhtEvent::RebootstrapComplete(info))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&learned_node_id).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+
+        // The dial lands. The pool is full of inbound peers, but the outbound peer is kept...
+        let (conn, rx) =
+            create_dummy_peer_connection_with_direction(learned_node_id.clone(), ConnectionDirection::Outbound);
+        let _outbound = rx;
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert_eq!(dht_connectivity.pool_connection_counts(), (1, 12));
+
+        // ...and the next refresh releases an inbound peer, not the outbound one
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        assert!(dht_connectivity.is_pool_peer(&learned_node_id));
+        assert_eq!(dht_connectivity.pool_connection_counts(), (1, 11));
+    }
+
     /// After a rebootstrap the pool is topped up straight away, starting with the peers just learned.
     #[tokio::test]
     async fn it_prefers_rebootstrap_peers_when_refilling() {
