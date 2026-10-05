@@ -1256,6 +1256,15 @@ where
                         },
                         Completed(completed_tx) => {
                             let tx_id = completed_tx.tx_id;
+                            // The imported record is decoded from client JSON, which bypasses
+                            // `CompletedTransaction::new`; reject the status `new` rejects. The other fields
+                            // `new` derives (e.g. `transaction_signature`) are kept as supplied, a known
+                            // import trust gap tracked separately.
+                            if completed_tx.status == LegacyTransactionStatus::Coinbase {
+                                return Err(TransactionServiceError::TransactionStorageError(
+                                    TransactionStorageError::CoinbaseNotSupported,
+                                ));
+                            }
                             check_transaction_size(&completed_tx.transaction, tx_id)?;
                             self.db.insert_completed_transaction(tx_id, completed_tx)?;
                             tx_id

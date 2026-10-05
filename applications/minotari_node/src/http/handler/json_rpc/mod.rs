@@ -134,15 +134,18 @@ pub struct JsonRpcResponse {
 mod tests {
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_common_types::types::PrivateKey;
+    use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
     use tari_core::{
         base_node::{StateMachineHandle, state_machine_service::states::StatusInfo},
         chain_storage::async_db::AsyncBlockchainDb,
         mempool::{TxStorageResponse, test_utils::mock::create_mempool_service_mock},
         test_helpers::blockchain::{TempDatabase, create_new_blockchain_with_network},
     };
+    use tari_script::ExecutionStack;
     use tari_shutdown::Shutdown;
     use tari_transaction_components::transaction_components::{
+        TransactionInput,
+        TransactionInputVersion,
         TransactionOutput,
         encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     };
@@ -230,5 +233,45 @@ mod tests {
         };
         assert!(response.error.is_none(), "{:?}", response.error);
         assert_eq!(mempool_state.get_call_count(), 1);
+    }
+
+    /// Serde carries the version of a compact input but neither protobuf family does, so the P2P round-trip turns a
+    /// V1 compact input into V0. The mempool must only ever see the round-tripped transaction, i.e. one a peer could
+    /// have sent; this fails if the handler hands it a transaction decoded by serde alone.
+    #[tokio::test]
+    async fn submit_transaction_hands_the_mempool_the_p2p_round_tripped_transaction() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+
+        let mut input = TransactionInput::new_with_output_hash(
+            FixedHash::zero(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+        );
+        input.version = TransactionInputVersion::V1;
+        let tx = Transaction::new(
+            vec![input],
+            vec![TransactionOutput::default()],
+            vec![],
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+        let json = serde_json::to_value(&tx).unwrap();
+        // Serde alone keeps V1
+        let serde_only = serde_json::from_value::<Transaction>(json.clone()).unwrap();
+        assert_eq!(serde_only.body.inputs()[0].version, TransactionInputVersion::V1);
+
+        let response = match handle(Extension(query_service), Extension(mempool), Json(request(json))).await {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        assert!(response.error.is_none(), "{:?}", response.error);
+        let submitted = mempool_state.submitted_transactions().await;
+        assert_eq!(submitted.len(), 1);
+        assert_eq!(submitted[0].body.inputs()[0].version, TransactionInputVersion::V0);
     }
 }

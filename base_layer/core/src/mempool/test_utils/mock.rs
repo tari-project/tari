@@ -27,6 +27,7 @@ use std::sync::{
 
 use futures::StreamExt;
 use tari_service_framework::reply_channel;
+use tari_transaction_components::transaction_components::Transaction;
 use tokio::{sync::Mutex, task};
 
 use crate::mempool::{
@@ -51,6 +52,7 @@ pub struct MempoolMockState {
     get_state: Arc<Mutex<StateResponse>>,
     get_tx_state_by_excess_sig: Arc<Mutex<TxStorageResponse>>,
     submit_transaction: Arc<Mutex<TxStorageResponse>>,
+    submitted_transactions: Arc<Mutex<Vec<Transaction>>>,
     calls: Arc<AtomicUsize>,
 }
 
@@ -68,6 +70,7 @@ impl Default for MempoolMockState {
             })),
             get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
             submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
+            submitted_transactions: Arc::new(Mutex::new(Vec::new())),
             calls: Arc::new(Default::default()),
         }
     }
@@ -88,6 +91,11 @@ impl MempoolMockState {
 
     pub async fn set_submit_transaction_response(&self, resp: TxStorageResponse) {
         *self.submit_transaction.lock().await = resp;
+    }
+
+    /// Every transaction submitted to the mock, in order
+    pub async fn submitted_transactions(&self) -> Vec<Transaction> {
+        self.submitted_transactions.lock().await.clone()
     }
 
     fn inc_call_count(&self) {
@@ -140,9 +148,12 @@ impl MempoolServiceMock {
             GetTxStateByExcessSig(_) => Ok(MempoolResponse::TxStorage(
                 self.state.get_tx_state_by_excess_sig.lock().await.clone(),
             )),
-            SubmitTransaction(_) => Ok(MempoolResponse::TxStorage(
-                self.state.submit_transaction.lock().await.clone(),
-            )),
+            SubmitTransaction(tx) => {
+                self.state.submitted_transactions.lock().await.push(tx);
+                Ok(MempoolResponse::TxStorage(
+                    self.state.submit_transaction.lock().await.clone(),
+                ))
+            },
             GetFeePerGramStats { .. } => {
                 unimplemented!()
             },

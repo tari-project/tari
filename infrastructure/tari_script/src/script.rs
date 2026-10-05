@@ -19,9 +19,9 @@
 use std::{cmp::Ordering, collections::HashSet, fmt, io, ops::Deref};
 
 use blake2::Blake2b;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use digest::{Digest, consts::U32};
-use integer_encoding::{VarIntReader, VarIntWriter};
+use integer_encoding::VarIntWriter;
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
@@ -97,26 +97,6 @@ impl BorshSerialize for TariScript {
             b.serialize(writer)?;
         }
         Ok(())
-    }
-}
-
-impl BorshDeserialize for TariScript {
-    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
-    where R: io::Read {
-        let len = reader.read_varint()?;
-        if len > MAX_SCRIPT_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Larger than max script bytes".to_string(),
-            ));
-        }
-        let mut data = Vec::with_capacity(len);
-        for _ in 0..len {
-            data.push(u8::deserialize_reader(reader)?);
-        }
-        let script = TariScript::from_bytes(data.as_slice())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        Ok(script)
     }
 }
 

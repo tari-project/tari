@@ -26,6 +26,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use num_format::{Locale, ToFormattedString};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
+use tari_max_size::{ValidatedDecode, impl_validated_decode};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::tari_proof_of_work::error::DifficultyError;
@@ -35,10 +36,28 @@ use crate::tari_proof_of_work::error::DifficultyError;
 pub const MIN_DIFFICULTY: u64 = 1;
 
 /// The difficulty is defined as the maximum target divided by the block hash.
-#[derive(
-    Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize, BorshSerialize, BorshDeserialize,
-)]
+///
+/// It is at least [`MIN_DIFFICULTY`]: every constructor enforces this, and so do the serde and borsh decoders, which
+/// are generated from the [`ValidatedDecode`] implementation below and must not be derived.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Serialize, BorshSerialize)]
 pub struct Difficulty(u64);
+
+/// The raw form of [`Difficulty`]: the derived serde shape (a newtype struct around a `u64`) and the borsh shape (a
+/// `u64`), decoded before the minimum is checked.
+#[derive(Deserialize, BorshDeserialize)]
+#[serde(rename = "Difficulty")]
+pub struct DifficultyRaw(u64);
+
+impl ValidatedDecode for Difficulty {
+    type Error = DifficultyError;
+    type Raw = DifficultyRaw;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        Difficulty::from_u64(raw.0)
+    }
+}
+
+impl_validated_decode!(Difficulty);
 
 impl Difficulty {
     /// A const constructor for Difficulty
@@ -143,6 +162,23 @@ mod test {
     use primitive_types::U256;
 
     use crate::tari_proof_of_work::{Difficulty, difficulty::MIN_DIFFICULTY};
+
+    #[test]
+    fn every_decoder_rejects_a_difficulty_below_the_minimum() {
+        for d in [0, MIN_DIFFICULTY, 1_000_000, u64::MAX] {
+            let expected = Difficulty::from_u64(d).ok();
+            // The encodings are those of a plain `u64` (newtype struct)
+            assert_eq!(serde_json::from_str::<Difficulty>(&d.to_string()).ok(), expected);
+            assert_eq!(bincode::deserialize::<Difficulty>(&d.to_le_bytes()).ok(), expected);
+            assert_eq!(borsh::from_slice::<Difficulty>(&d.to_le_bytes()).ok(), expected);
+            if let Some(difficulty) = expected {
+                assert_eq!(serde_json::to_string(&difficulty).unwrap(), d.to_string());
+                assert_eq!(bincode::serialize(&difficulty).unwrap(), d.to_le_bytes());
+                assert_eq!(borsh::to_vec(&difficulty).unwrap(), d.to_le_bytes());
+            }
+        }
+        assert!(Difficulty::from_u64(0).is_err());
+    }
 
     #[test]
     fn test_format() {

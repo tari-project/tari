@@ -712,7 +712,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let payment_id = if !message.raw_payment_id.is_empty() {
-            MemoField::from_bytes(&message.raw_payment_id)
+            memo_from_raw_bytes(&message.raw_payment_id)?
         } else if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -939,7 +939,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
 
         let payment_id = if !recipient.raw_payment_id.is_empty() {
-            MemoField::from_bytes(&recipient.raw_payment_id)
+            memo_from_raw_bytes(&recipient.raw_payment_id)?
         } else if let Some(user_pay_id) = recipient.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -1212,7 +1212,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ));
             }
             let payment_id = if !raw_payment_id.is_empty() {
-                MemoField::from_bytes(&raw_payment_id)
+                memo_from_raw_bytes(&raw_payment_id)?
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -1549,7 +1549,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                MemoField::from_bytes(&message.payment_id),
+                memo_from_raw_bytes(&message.payment_id)?,
                 Some(message.claim_public_key.as_slice())
                     .filter(|v| !v.is_empty())
                     .map(CompressedPublicKey::from_canonical_bytes)
@@ -2397,7 +2397,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        MemoField::from_bytes(&message.payment_id),
+                        memo_from_raw_bytes(&message.payment_id)?,
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{e:?}")))?
@@ -2573,7 +2573,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                MemoField::from_bytes(&request.payment_id),
+                memo_from_raw_bytes(&request.payment_id)?,
             )
             .await
         {
@@ -4439,6 +4439,12 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
     }
 }
 
+/// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
+/// once stored (see [`MemoField::from_bytes_checked`]).
+fn memo_from_raw_bytes(bytes: &[u8]) -> Result<MemoField, Status> {
+    MemoField::from_bytes_checked(bytes).map_err(|e| Status::invalid_argument(format!("Invalid payment id: {e}")))
+}
+
 fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<CompressedCommitment>, Status> {
     if commitments.len() > MAX_ALLOWED_QUERY_SIZE {
         return Err(Status::invalid_argument(format!(
@@ -4473,7 +4479,20 @@ mod tests {
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
 
-    use super::parse_excluded_commitments;
+    use super::{memo_from_raw_bytes, parse_excluded_commitments};
+
+    #[test]
+    fn memo_from_raw_bytes_rejects_oversized_payment_ids() {
+        use tari_common_types::tari_address::MAX_PAYMENT_ID_SIZE;
+
+        // An empty payment id is an empty memo; an unknown tag keeps all of its (at most MAX_PAYMENT_ID_SIZE) bytes
+        assert!(memo_from_raw_bytes(&[]).unwrap().is_empty());
+        assert!(memo_from_raw_bytes(&[0x09; MAX_PAYMENT_ID_SIZE]).is_ok());
+
+        let status = memo_from_raw_bytes(&[0x09; MAX_PAYMENT_ID_SIZE + 1]).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("Invalid payment id"), "{}", status.message());
+    }
 
     #[test]
     fn parse_excluded_commitments_rejects_invalid_lengths_with_their_index() {
