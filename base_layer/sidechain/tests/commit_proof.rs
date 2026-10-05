@@ -149,7 +149,11 @@ fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root(
 
     let mut stripped = proof;
     stripped.header.transaction_merkle_root = None;
-    stripped.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = stripped.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    assert!(
+        err.to_string().contains("does not match the block ID in the header"),
+        "Expected the block ID mismatch error, got: {err}"
+    );
 }
 
 /// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that four test validators
