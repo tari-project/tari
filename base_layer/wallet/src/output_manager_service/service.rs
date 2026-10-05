@@ -1330,54 +1330,49 @@ where
         let (input, payment_id) = if let Ok((amount, commitment_mask, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
-            if output.verify_mask(&self.resources.factories.range_proof, &commitment_mask, amount.as_u64())? {
-                let script_key = self
-                    .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
-                    .await?;
-                let mut script_signatures = Vec::new();
-                // lets add our own signature to the list
-                let self_signature = self
-                    .resources
-                    .key_manager
-                    .sign_script_message(&script_key.key_id, output.commitment.as_bytes())?;
-                script_input_shares.insert(script_key.pub_key.clone(), self_signature);
+            output.verify_mask(&self.resources.factories.range_proof, &commitment_mask, amount.as_u64())?;
+            let script_key = self
+                .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
+                .await?;
+            let mut script_signatures = Vec::new();
+            // lets add our own signature to the list
+            let self_signature = self
+                .resources
+                .key_manager
+                .sign_script_message(&script_key.key_id, output.commitment.as_bytes())?;
+            script_input_shares.insert(script_key.pub_key.clone(), self_signature);
 
-                // the order here is important, we need to add the signatures in the same order as public keys were
-                // added to the script originally
-                for key in &multi_sig_public_keys {
-                    if let Some(signature) = script_input_shares.get(key) {
-                        script_signatures.push(StackItem::Signature(signature.clone()));
-                        // our own key should not be aggregated yet, it will be added with the script signing
-                        if key != &script_key.pub_key {
-                            aggregated_script_public_key_shares =
-                                aggregated_script_public_key_shares + key.to_public_key()?;
-                        }
+            // the order here is important, we need to add the signatures in the same order as public keys were
+            // added to the script originally
+            for key in &multi_sig_public_keys {
+                if let Some(signature) = script_input_shares.get(key) {
+                    script_signatures.push(StackItem::Signature(signature.clone()));
+                    // our own key should not be aggregated yet, it will be added with the script signing
+                    if key != &script_key.pub_key {
+                        aggregated_script_public_key_shares =
+                            aggregated_script_public_key_shares + key.to_public_key()?;
                     }
                 }
-                if script_signatures.len() != usize::from(threshold) {
-                    return Err(OutputManagerError::ServiceError(format!(
-                        "Invalid number of signatures (TxId: 0), expected {}, received {}",
-                        threshold,
-                        script_signatures.len()
-                    )));
-                }
-                let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(commitment_mask, None)?;
-                (
-                    WalletOutput::new_from_transaction_output(
-                        amount,
-                        commitment_mask_key_id,
-                        payment_id.clone(),
-                        output,
-                        ExecutionStack::new(script_signatures),
-                        script_key.key_id,
-                    ),
-                    payment_id,
-                )
-            } else {
-                return Err(OutputManagerError::ServiceError(
-                    "Could not verify mask (TxId: 0)".to_string(),
-                ));
             }
+            if script_signatures.len() != usize::from(threshold) {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid number of signatures (TxId: 0), expected {}, received {}",
+                    threshold,
+                    script_signatures.len()
+                )));
+            }
+            let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(commitment_mask, None)?;
+            (
+                WalletOutput::new_from_transaction_output(
+                    amount,
+                    commitment_mask_key_id,
+                    payment_id.clone(),
+                    output,
+                    ExecutionStack::new(script_signatures),
+                    script_key.key_id,
+                ),
+                payment_id,
+            )
         } else {
             return Err(OutputManagerError::ServiceError(
                 "Could not decrypt output (TxId: 0)".to_string(),
@@ -1644,25 +1639,20 @@ where
         let input = if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
-            if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let spending_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
-                let script_key = self
-                    .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
-                    .await?;
+            output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())?;
+            let spending_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
+            let script_key = self
+                .pre_mine_script_key_from_payment_id(payment_id.clone(), TxId::from(0u64))
+                .await?;
 
-                WalletOutput::new_from_transaction_output(
-                    amount,
-                    spending_key_id,
-                    payment_id,
-                    output,
-                    Default::default(),
-                    script_key.key_id,
-                )
-            } else {
-                return Err(OutputManagerError::ServiceError(
-                    "Could not verify mask (TxId: 0)".to_string(),
-                ));
-            }
+            WalletOutput::new_from_transaction_output(
+                amount,
+                spending_key_id,
+                payment_id,
+                output,
+                Default::default(),
+                script_key.key_id,
+            )
         } else {
             return Err(OutputManagerError::ServiceError(
                 "Could not decrypt output (TxId: 0)".to_string(),
@@ -3065,67 +3055,62 @@ where
         if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
-            if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
-                let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
+            output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())?;
+            let commitment_mask_key_id = self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
-                let recovered_output = WalletOutput::new_from_transaction_output(
-                    amount,
-                    commitment_mask_key_id,
-                    payment_id,
-                    output,
-                    inputs!(pre_image),
-                    self.resources.key_manager.get_spend_key().key_id,
+            let recovered_output = WalletOutput::new_from_transaction_output(
+                amount,
+                commitment_mask_key_id,
+                payment_id,
+                output,
+                inputs!(pre_image),
+                self.resources.key_manager.get_spend_key().key_id,
+            );
+
+            // Create builder with no recipients (other than ourselves)
+            let mut builder = TransactionBuilder::new(
+                self.resources.consensus_constants.clone(),
+                self.resources.key_manager.clone(),
+                self.resources.network,
+            )?;
+            builder
+                .with_lock_height(0)
+                .with_fee_per_gram(fee_per_gram)
+                .with_memo(
+                    MemoField::new_open_from_string("SHA-XTR atomic swap", TxType::ClaimAtomicSwap)
+                        .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+                )
+                .with_tx_type(TxType::ClaimAtomicSwap)
+                .with_kernel_features(KernelFeatures::empty())
+                .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+                .with_input(recovered_output)?;
+            // Everything left after the fee goes to a change output, and its sender offset key comes from the
+            // one reservation this transaction makes.
+            builder.reserve_sender_offset_keys(&[])?;
+
+            let mut outputs = Vec::new();
+
+            let finalized = builder.build()?;
+
+            let fee = finalized.fee;
+            if let Some(wallet_output) = finalized.change {
+                let change_output = DbWalletOutput::from_wallet_output(
+                    wallet_output,
+                    None,
+                    OutputSource::AtomicSwap,
+                    Some(finalized.tx_id),
+                    None,
                 );
+                outputs.push(change_output);
+            };
+            trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", finalized.tx_id);
 
-                // Create builder with no recipients (other than ourselves)
-                let mut builder = TransactionBuilder::new(
-                    self.resources.consensus_constants.clone(),
-                    self.resources.key_manager.clone(),
-                    self.resources.network,
-                )?;
-                builder
-                    .with_lock_height(0)
-                    .with_fee_per_gram(fee_per_gram)
-                    .with_memo(
-                        MemoField::new_open_from_string("SHA-XTR atomic swap", TxType::ClaimAtomicSwap)
-                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
-                    )
-                    .with_tx_type(TxType::ClaimAtomicSwap)
-                    .with_kernel_features(KernelFeatures::empty())
-                    .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-                    .with_input(recovered_output)?;
-                // Everything left after the fee goes to a change output, and its sender offset key comes from the
-                // one reservation this transaction makes.
-                builder.reserve_sender_offset_keys(&[])?;
+            self.resources
+                .db
+                .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+            self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
 
-                let mut outputs = Vec::new();
-
-                let finalized = builder.build()?;
-
-                let fee = finalized.fee;
-                if let Some(wallet_output) = finalized.change {
-                    let change_output = DbWalletOutput::from_wallet_output(
-                        wallet_output,
-                        None,
-                        OutputSource::AtomicSwap,
-                        Some(finalized.tx_id),
-                        None,
-                    );
-                    outputs.push(change_output);
-                };
-                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", finalized.tx_id);
-
-                self.resources
-                    .db
-                    .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
-                self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
-
-                Ok((finalized.tx_id, fee, amount.saturating_sub(fee), finalized.transaction))
-            } else {
-                Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                    "Atomic swap: Blinding factor could not open the commitment!".to_string(),
-                )))
-            }
+            Ok((finalized.tx_id, fee, amount.saturating_sub(fee), finalized.transaction))
         } else {
             Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
                 "Atomic swap: Encrypted value could not be decrypted!".to_string(),
@@ -3251,13 +3236,18 @@ where
                     let script_private_key = matched_key.clone().1;
 
                     if let Ok((committed_value, spending_key, payment_id)) =
-                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data) &&
-                        output.verify_mask(
+                        EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+                    {
+                        // A mask that does not open the commitment means the output is not ours
+                        match output.verify_mask(
                             &self.resources.factories.range_proof,
                             &spending_key,
                             committed_value.into(),
-                        )?
-                    {
+                        ) {
+                            Ok(()) => {},
+                            Err(TransactionError::InvalidMask) => continue,
+                            Err(e) => return Err(e.into()),
+                        }
                         let commitment_mask_key_id =
                             self.resources.key_manager.create_encrypted_key(spending_key, None)?;
 
@@ -3289,35 +3279,39 @@ where
                             .key_manager
                             .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
 
-                        if output.verify_mask(
+                        // A mask that does not open the commitment means the output is not ours
+                        match output.verify_mask(
                             &self.resources.factories.range_proof,
                             &commitment_mask_private_key,
                             committed_value.into(),
-                        )? {
-                            let script_spending_key = self.resources.key_manager.stealth_address_script_spending_key(
-                                commitment_mask_key_id,
-                                &self.resources.key_manager.get_spend_key().pub_key,
-                            )?;
-
-                            if script_spending_key != **scanned_pk {
-                                continue;
-                            }
-
-                            let script_key = TariKeyId::Derived {
-                                key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
-                            };
-
-                            let recovered_output = WalletOutput::new_from_transaction_output(
-                                committed_value,
-                                commitment_mask_key_id.clone(),
-                                payment_id,
-                                output,
-                                ExecutionStack::new(vec![]),
-                                script_key,
-                            );
-
-                            scanned_outputs.push((recovered_output, OutputSource::StealthOneSided));
+                        ) {
+                            Ok(()) => {},
+                            Err(TransactionError::InvalidMask) => continue,
+                            Err(e) => return Err(e.into()),
                         }
+                        let script_spending_key = self.resources.key_manager.stealth_address_script_spending_key(
+                            commitment_mask_key_id,
+                            &self.resources.key_manager.get_spend_key().pub_key,
+                        )?;
+
+                        if script_spending_key != **scanned_pk {
+                            continue;
+                        }
+
+                        let script_key = TariKeyId::Derived {
+                            key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
+                        };
+
+                        let recovered_output = WalletOutput::new_from_transaction_output(
+                            committed_value,
+                            commitment_mask_key_id.clone(),
+                            payment_id,
+                            output,
+                            ExecutionStack::new(vec![]),
+                            script_key,
+                        );
+
+                        scanned_outputs.push((recovered_output, OutputSource::StealthOneSided));
                     }
                 }
             }

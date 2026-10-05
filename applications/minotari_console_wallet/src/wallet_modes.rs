@@ -348,12 +348,33 @@ pub fn recovery_mode(
 
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
-        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, wallet),
+        WalletMode::RecoveryTui => {
+            // The recovery output above may have pushed security warnings off screen; the TUI would hide them
+            pause_if_security_warnings();
+            tui_mode(handle, wallet_config, wallet)
+        },
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
         )),
     }
+}
+
+/// If any security warnings (config or log files another user can control, readable secrets, ...) were recorded, shows
+/// them again and waits for the user to press Enter before a full-screen UI hides them. End of input counts as
+/// continue.
+pub(crate) fn pause_if_security_warnings() {
+    if tari_common::configuration::utils::warnings_emitted() == 0 {
+        return;
+    }
+    // Earlier output may have been cleared or scrolled away, so show the warnings again
+    for warning in tari_common::configuration::utils::security_warnings() {
+        println!("WARNING: {warning}");
+    }
+    println!("Security warnings were printed above; press Enter to continue");
+    let mut line = String::new();
+    // EOF or a read error also continues
+    let _unused = std::io::stdin().read_line(&mut line);
 }
 
 pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {

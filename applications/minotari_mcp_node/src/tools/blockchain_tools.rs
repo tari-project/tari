@@ -526,6 +526,7 @@ impl McpTool for GetNetworkDifficultyTool {
             difficulties.push(json!({
                 "height": difficulty_response.height,
                 "difficulty": difficulty_response.difficulty,
+                "adjusted_difficulty": difficulty_response.adjusted_difficulty,
                 "estimated_hash_rate": difficulty_response.estimated_hash_rate,
                 "timestamp": difficulty_response.timestamp,
                 "pow_algo": difficulty_response.pow_algo,

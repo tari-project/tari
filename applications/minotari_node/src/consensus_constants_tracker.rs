@@ -75,7 +75,7 @@ impl ConsensusConstantsTracker {
             },
         };
 
-        match serde_json::from_str(&content) {
+        match serde_json::from_str::<Vec<ConsensusConstants>>(&content) {
             Ok(constants) => {
                 debug!(
                     target: LOG_TARGET,

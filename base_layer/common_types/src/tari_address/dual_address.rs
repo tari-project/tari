@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_max_size::MaxSizeBytes;
@@ -42,7 +42,12 @@ use crate::{
     types::CompressedPublicKey,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// A dual (view and spend key) Tari address.
+///
+/// `Deserialize` is not derived, as a derived decoder would skip the feature flag checks of
+/// [`DualAddress::from_bytes`]. It reads the same fields the derived `Serialize` writes (see [`LegacyDualAddress`])
+/// and then builds the address through `from_bytes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct DualAddress {
     network: Network,
     features: TariAddressFeatures,
@@ -50,6 +55,41 @@ pub struct DualAddress {
     public_spend_key: CompressedPublicKey,
     #[serde(alias = "payment_id_user_data")]
     memo_field_payment_id: MaxSizeBytes<MAX_PAYMENT_ID_SIZE>,
+}
+
+/// The fields of the legacy `{"Dual": {...}}` JSON form of a `TariAddress`, as the derived `Serialize` of
+/// [`DualAddress`] writes them. They are not checked here: [`LegacyDualAddress::into_unchecked_bytes`] encodes them,
+/// and the caller must decode the result with `TariAddress::from_bytes`.
+#[derive(Deserialize)]
+#[serde(rename = "DualAddress")]
+pub(super) struct LegacyDualAddress {
+    network: Network,
+    features: TariAddressFeatures,
+    public_view_key: CompressedPublicKey,
+    public_spend_key: CompressedPublicKey,
+    #[serde(alias = "payment_id_user_data")]
+    memo_field_payment_id: MaxSizeBytes<MAX_PAYMENT_ID_SIZE>,
+}
+
+impl LegacyDualAddress {
+    /// The byte encoding of these fields, with a freshly computed checksum.
+    pub(super) fn into_unchecked_bytes(self) -> Vec<u8> {
+        DualAddress {
+            network: self.network,
+            features: self.features,
+            public_view_key: self.public_view_key,
+            public_spend_key: self.public_spend_key,
+            memo_field_payment_id: self.memo_field_payment_id,
+        }
+        .to_vec()
+    }
+}
+
+impl<'de> Deserialize<'de> for DualAddress {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let fields = LegacyDualAddress::deserialize(deserializer)?;
+        DualAddress::from_bytes(&fields.into_unchecked_bytes()).map_err(D::Error::custom)
+    }
 }
 
 impl DualAddress {
@@ -63,6 +103,11 @@ impl DualAddress {
     ) -> Result<DualAddress, TariAddressError> {
         let mut features = features;
         let memo_field_payment_id = match memo_field_payment_id {
+            // An empty payment id is treated as no payment id, so the flag is cleared
+            Some(data) if data.is_empty() => {
+                features.set(TariAddressFeatures::PAYMENT_ID, false);
+                MaxSizeBytes::empty()
+            },
             Some(data) => {
                 if data.len() > MAX_PAYMENT_ID_SIZE {
                     return Err(TariAddressError::PaymentIdTooLarge);
@@ -95,7 +140,9 @@ impl DualAddress {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
         let memo_field_payment_id = MaxSizeBytes::try_from(data).map_err(|_| TariAddressError::PaymentIdTooLarge)?;
-        self.features.set(TariAddressFeatures::PAYMENT_ID, true);
+        // An empty payment id is treated as no payment id, so the flag is cleared
+        self.features
+            .set(TariAddressFeatures::PAYMENT_ID, !memo_field_payment_id.is_empty());
         self.memo_field_payment_id = memo_field_payment_id;
         Ok(())
     }
@@ -162,8 +209,19 @@ impl DualAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes
+    /// Construct Tari Address from bytes. A payment id without the `PAYMENT_ID` feature flag is rejected.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
+    where Self: Sized {
+        let address = Self::from_bytes_lenient(bytes)?;
+        if !address.memo_field_payment_id.is_empty() && !address.features.contains(TariAddressFeatures::PAYMENT_ID) {
+            return Err(TariAddressError::InvalidFeatures);
+        }
+        Ok(address)
+    }
+
+    /// Construct Tari Address from bytes, accepting a payment id without the `PAYMENT_ID` feature flag. This is only
+    /// meant for loading already stored addresses; use [`DualAddress::from_bytes`] for everything else.
+    pub fn from_bytes_lenient(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
         if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE.saturating_add(MAX_PAYMENT_ID_SIZE))
@@ -271,7 +329,44 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
-    use crate::types::PrivateKey;
+    use crate::{dammsum::compute_checksum, types::PrivateKey};
+
+    #[test]
+    fn deserialize_reads_the_derived_shape_and_applies_the_byte_checks() {
+        let mut rng = rand::rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let address = DualAddress::new(
+            view_key,
+            spend_key,
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+
+        // The derived `Serialize` shape round-trips through JSON and bincode
+        let json = serde_json::to_string(&address).unwrap();
+        assert!(json.contains(r#""memo_field_payment_id""#), "{json}");
+        assert_eq!(serde_json::from_str::<DualAddress>(&json).unwrap(), address);
+        let encoded = bincode::serialize(&address).unwrap();
+        assert_eq!(bincode::deserialize::<DualAddress>(&encoded).unwrap(), address);
+        // The old field name is still accepted
+        let legacy_json = json.replace("memo_field_payment_id", "payment_id_user_data");
+        assert_eq!(serde_json::from_str::<DualAddress>(&legacy_json).unwrap(), address);
+
+        // A payment id without the `PAYMENT_ID` flag is rejected, as `from_bytes` rejects it
+        let mut bytes = address.to_vec();
+        let last = bytes.len() - 1;
+        bytes[1] = TariAddressFeatures::default().as_u8();
+        bytes[last] = compute_checksum(&bytes[..last]);
+        let inconsistent = DualAddress::from_bytes_lenient(&bytes).unwrap();
+        assert_eq!(DualAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
+        let json = serde_json::to_string(&inconsistent).unwrap();
+        assert!(serde_json::from_str::<DualAddress>(&json).is_err());
+        let encoded = bincode::serialize(&inconsistent).unwrap();
+        assert!(bincode::deserialize::<DualAddress>(&encoded).is_err());
+    }
 
     #[test]
     /// Test valid dual tari address

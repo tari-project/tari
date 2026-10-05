@@ -40,11 +40,38 @@ use crate::{
     types::CompressedPublicKey,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// A single (spend key only) Tari address.
+///
+/// This type has no `Deserialize` implementation of its own, as a derived one would skip the checksum and feature flag
+/// checks of [`SingleAddress::from_bytes`]. A `TariAddress` decodes the legacy `{"Single": {...}}` JSON form through
+/// [`LegacySingleAddress`] and then through `from_bytes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct SingleAddress {
     network: Network,
     features: TariAddressFeatures,
     public_spend_key: CompressedPublicKey,
+}
+
+/// The fields of the legacy `{"Single": {...}}` JSON form of a `TariAddress`, as the derived `Serialize` of
+/// [`SingleAddress`] writes them. They are not checked here: [`LegacySingleAddress::into_unchecked_bytes`] encodes
+/// them, and the caller must decode the result with `TariAddress::from_bytes`.
+#[derive(Deserialize)]
+pub(super) struct LegacySingleAddress {
+    network: Network,
+    features: TariAddressFeatures,
+    public_spend_key: CompressedPublicKey,
+}
+
+impl LegacySingleAddress {
+    /// The byte encoding of these fields, with a freshly computed checksum.
+    pub(super) fn into_unchecked_bytes(self) -> Vec<u8> {
+        SingleAddress {
+            network: self.network,
+            features: self.features,
+            public_spend_key: self.public_spend_key,
+        }
+        .to_vec()
+    }
 }
 
 impl SingleAddress {
@@ -54,6 +81,9 @@ impl SingleAddress {
         network: Network,
         features: TariAddressFeatures,
     ) -> Result<SingleAddress, TariAddressError> {
+        // A single address cannot carry a payment id, so the flag is dropped
+        let mut features = features;
+        features.set(TariAddressFeatures::PAYMENT_ID, false);
         Ok(Self {
             network,
             features,
@@ -120,8 +150,20 @@ impl SingleAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes
+    /// Construct Tari Address from bytes. The `PAYMENT_ID` feature flag is rejected, as a single address cannot carry
+    /// a payment id.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
+    where Self: Sized {
+        let address = Self::from_bytes_lenient(bytes)?;
+        if address.features.contains(TariAddressFeatures::PAYMENT_ID) {
+            return Err(TariAddressError::InvalidFeatures);
+        }
+        Ok(address)
+    }
+
+    /// Construct Tari Address from bytes, accepting the `PAYMENT_ID` feature flag. This is only meant for loading
+    /// already stored addresses; use [`SingleAddress::from_bytes`] for everything else.
+    pub fn from_bytes_lenient(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
         if length != TARI_ADDRESS_INTERNAL_SINGLE_SIZE {

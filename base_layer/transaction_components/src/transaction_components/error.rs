@@ -88,6 +88,8 @@ pub enum TransactionError {
     OutputNotFound(String),
     #[error("Unsupported TariKeyId: `{0}`")]
     UnsupportedTariKeyId(String),
+    #[error("The commitment does not open to the value and mask")]
+    InvalidMask,
 }
 
 impl From<KeyManagerError> for TransactionError {
@@ -104,7 +106,10 @@ impl From<EncryptedDataError> for TransactionError {
 
 impl From<RangeProofError> for TransactionError {
     fn from(e: RangeProofError) -> Self {
-        TransactionError::RangeProofError(e.to_string())
+        match e {
+            RangeProofError::InvalidMask {} => TransactionError::InvalidMask,
+            e => TransactionError::RangeProofError(e.to_string()),
+        }
     }
 }
 

@@ -959,7 +959,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                             let constants = self.rules.consensus_constants(current_header.height).clone();
                             validate_output_version(&constants, &output)?;
-                            validate_individual_output(&output, &constants)?;
+                            validate_individual_output(&output, &constants, self.rules.network().as_network())?;
                             batch_verify_range_proofs(&self.prover, &[&output])?;
 
                             txn.insert_output_via_horizon_sync(
@@ -1067,16 +1067,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .collect::<Vec<_>>();
 
             txn.apply_horizon_state_tree_updates(tranche_updates);
-            for output in &inputs_to_delete {
-                if let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() &&
-                    let Some(vn_reg) = sidechain_feature.validator_node_registration()
-                {
-                    txn.delete_validator_node(
-                        sidechain_feature.sidechain_public_key().cloned(),
-                        vn_reg.public_key().clone(),
-                    );
-                }
-            }
+            // Spent validator node registrations need no validator node set update: a registration spend never changes
+            // the set in full block processing either (it is only allowed once the exit has taken effect). Note that
+            // horizon sync does not reconstruct the validator node set at all (pre-existing gap): a pruned node that
+            // horizon synced has an empty validator node set.
             for output in inputs_to_delete {
                 txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
             }

@@ -19,11 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::io;
-
 use bitflags::bitflags;
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Serialize};
+use tari_max_size::{ValidatedDecode, impl_validated_decode};
 
 /// Options for a kernel's structure or use.
 ///
@@ -73,26 +72,22 @@ fn unknown_kernel_features_error(bits: u8) -> String {
     format!("Invalid or unrecognised kernel feature flags: {bits:#04x}")
 }
 
-impl<'de> Deserialize<'de> for KernelFeatures {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        // Mirrors the derived `Serialize` (a newtype struct around a `u8`) so the encoding is unchanged.
-        #[derive(Deserialize)]
-        #[serde(rename = "KernelFeatures")]
-        struct Raw(u8);
+/// The raw form of [`KernelFeatures`]: the derived serde shape (a newtype struct around a `u8`) and the borsh shape (a
+/// single `u8`), decoded before the bits are checked.
+#[derive(Deserialize, BorshDeserialize)]
+#[serde(rename = "KernelFeatures")]
+pub struct KernelFeaturesRaw(u8);
 
-        let Raw(bits) = Raw::deserialize(deserializer)?;
-        KernelFeatures::from_bits(bits).ok_or_else(|| D::Error::custom(unknown_kernel_features_error(bits)))
+impl ValidatedDecode for KernelFeatures {
+    type Error = String;
+    type Raw = KernelFeaturesRaw;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        KernelFeatures::from_bits(raw.0).ok_or_else(|| unknown_kernel_features_error(raw.0))
     }
 }
 
-impl BorshDeserialize for KernelFeatures {
-    fn deserialize_reader<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        let bits = u8::deserialize_reader(reader)?;
-        KernelFeatures::from_bits(bits)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, unknown_kernel_features_error(bits)))
-    }
-}
+impl_validated_decode!(KernelFeatures);
 
 #[cfg(test)]
 mod test {

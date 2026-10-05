@@ -60,7 +60,8 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
     let account = head.account;
-    let network = head.network;
+    // A `u64` on the wire but a single byte in the hash label: reject rather than truncate.
+    let network = u8::try_from(head.network).map_err(|_| AppSW::WrongApduLength)?;
     let txo_version = head.txo_version;
     let sender_offset_key_index = head.sender_offset_key_index;
     let value_u64 = head.value;
@@ -260,7 +261,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
 fn finalize_metadata_signature_challenge(
     _version: u64,
-    network: u64,
+    network: u8,
     sender_offset_public_key: &RistrettoPublicKey,
     ephemeral_commitment: &PedersenCommitment,
     ephemeral_pubkey: &RistrettoPublicKey,
@@ -279,7 +280,7 @@ fn finalize_metadata_signature_challenge(
     challenge.into()
 }
 
-fn metadata_signature_message_from_script_and_common(network: u64, script: &Script, common: &[u8; 32]) -> [u8; 32] {
+fn metadata_signature_message_from_script_and_common(network: u8, script: &Script, common: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
         .chain(script)
         .chain(common)

@@ -206,6 +206,53 @@ where
             return Ok(false);
         }
 
+        if !response.accepted && response.rejection_reason == TxSubmissionRejectionReason::ValidatorNodeSlotTaken {
+            // Another mempool transaction registers or exits the same validator node. That is not a reason to cancel
+            // this one straight away: it may be accepted once the other is mined or removed, so retry later. The
+            // retries share the submission attempt budget, so a slot that stays taken does not keep the
+            // protocol alive forever.
+            if self.resubmission_attempts < MAX_MEMPOOL_SUBMISSION_ATTEMPTS - 1 {
+                self.resubmission_attempts = self.resubmission_attempts.saturating_add(1);
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) not accepted yet: another mempool transaction holds the validator node \
+                     slot, submission will be retried (submission attempt {} of {}).",
+                    self.tx_id,
+                    self.resubmission_attempts.saturating_add(1),
+                    MAX_MEMPOOL_SUBMISSION_ATTEMPTS
+                );
+                return Ok(false);
+            }
+            let reason = format!(
+                "another mempool transaction held the validator node slot for all {MAX_MEMPOOL_SUBMISSION_ATTEMPTS} \
+                 submission attempts"
+            );
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) has been rejected: {}, cancelling transaction", self.tx_id, reason
+            );
+            self.cancel_pending_transaction(TxCancellationReason::InvalidTransaction, Some(reason.clone()))
+                .await;
+            let _size = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCancelled(
+                    self.tx_id,
+                    TxCancellationReason::InvalidTransaction,
+                    reason,
+                )))
+                .inspect_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {e:?}",
+                    );
+                });
+            return Err(TransactionServiceProtocolError::new(
+                self.tx_id,
+                TransactionServiceError::MempoolRejectionInvalidTransaction,
+            ));
+        }
+
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
             if let Some(ref details) = response.details {
                 error!(
@@ -247,6 +294,8 @@ where
                     TransactionServiceError::MempoolRejectionAlreadyMined,
                     TxCancellationReason::AlreadyMined,
                 ),
+                // Handled above (retried within the attempt budget, then cancelled)
+                TxSubmissionRejectionReason::ValidatorNodeSlotTaken => return Ok(false),
             };
 
             self.cancel_pending_transaction(reason, response.details.clone()).await;

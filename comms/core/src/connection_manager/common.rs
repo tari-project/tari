@@ -375,7 +375,7 @@ mod test {
                 .unwrap();
 
         assert_eq!(validated.claim.addresses, claimed_addresses);
-        assert!(validated.claim.is_valid(node_identity.public_key()).unwrap());
+        validated.claim.verify(node_identity.public_key()).unwrap();
         assert_eq!(validated.permitted_addresses, vec![public_address.clone()]);
 
         let peer = create_or_update_peer_from_validated_peer_identity(

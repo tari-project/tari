@@ -193,8 +193,11 @@ pub enum BlockEvent {
         block: Arc<Block>,
         source_peer: Option<NodeId>,
     },
+    /// Adding the block failed for a reason other than a validation error (e.g. a storage error at commit time).
+    /// `source_peer` is `None` for a locally submitted block (e.g. a mined block template).
     AddBlockErrored {
         block: Arc<Block>,
+        source_peer: Option<NodeId>,
     },
     BlockSyncComplete(Arc<ChainBlock>, u64),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
@@ -1278,11 +1281,24 @@ where B: BlockchainBackend + 'static
                 Err(e.into())
             },
 
+            Err(e @ ChainStorageError::AddBlockOperationLocked) => {
+                // Nothing was attempted (the node is syncing), so this says nothing about the block or its
+                // transactions. Publishing `AddBlockErrored` would make the mempool evict and re-validate a local
+                // block's transactions under its write lock, which a miner client could trigger repeatedly.
+                debug!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) not added: adding blocks is disabled while syncing",
+                    block.header.height,
+                    block.hash().to_hex()
+                );
+                Err(e.into())
+            },
+
             Err(e) => {
                 #[cfg(feature = "metrics")]
                 metrics::rejected_blocks(block.header.height, &block.hash()).inc();
 
-                self.publish_block_event(BlockEvent::AddBlockErrored { block });
+                self.publish_block_event(BlockEvent::AddBlockErrored { block, source_peer });
                 Err(e.into())
             },
         }
@@ -1677,5 +1693,53 @@ mod test {
         let (retained, dropped) = retain_requested_transactions(vec![create_tx(&key_manager)], &HashSet::new());
         assert!(retained.is_empty());
         assert_eq!(dropped, 1);
+    }
+
+    #[tokio::test]
+    async fn a_block_refused_while_syncing_publishes_no_add_block_errored() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        let db = create_new_blockchain();
+        let block = db.fetch_block(0, false).unwrap().into_block();
+        db.set_disable_add_block_flag();
+        let rules = create_consensus_rules();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, mut block_events) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+
+        let result = handlers.handle_block(block, None).await;
+        assert!(matches!(
+            result,
+            Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::AddBlockOperationLocked
+            ))
+        ));
+        // No event, so the mempool is left untouched (no eviction and re-validation)
+        assert!(block_events.try_recv().is_err());
     }
 }

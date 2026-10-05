@@ -24,7 +24,7 @@ use std::{ffi::OsString, fs, io::IsTerminal, path::PathBuf, str::FromStr};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::{
     seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords},
     types::PrivateKey,
@@ -298,6 +298,8 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
             args.network
         )
     })?;
+    // Make the process-wide network (used for signature domains) follow --network
+    set_network_if_choice_valid(network).map_err(|e| anyhow!("Invalid network '{}': {}", args.network, e))?;
 
     // Validate input file
     let metadata =

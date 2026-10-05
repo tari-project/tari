@@ -43,6 +43,7 @@ pub use blockchain_database::{
     BlockchainDatabaseConfig,
     MmrRoots,
     Validators,
+    adjusted_target_difficulties_in_range,
     body_matches_header,
     calculate_mmr_roots,
     calculate_validator_node_mr,

@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter};
 
 use log::*;
 use tari_common_types::types::CompressedCommitment;
-use tari_transaction_components::key_manager::{TariKeyId, TransactionKeyManagerInterface};
+use tari_transaction_components::key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError};
 use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::storage::{OutputStatus, models::DbWalletOutput};
@@ -21,7 +21,8 @@ const LOG_TARGET: &str = "wallet::output_manager_service::commitment_mask";
 pub enum MaskCheck {
     /// The commitment opens to the value under the mask
     Valid,
-    /// The check ran and the commitment does not open to the value under the mask (`verify_mask` returned `false`)
+    /// The check ran and the commitment does not open to the value under the mask (`verify_mask` returned
+    /// `KeyManagerError::InvalidMask`)
     Mismatch,
     /// The check could not be performed (bad key id, bad commitment, key derivation failure, ...)
     Unverifiable(String),
@@ -51,8 +52,8 @@ pub fn check_commitment_mask<KM: TransactionKeyManagerInterface>(
     value: u64,
 ) -> MaskCheck {
     match key_manager.verify_mask(commitment, commitment_mask_key_id, value) {
-        Ok(true) => MaskCheck::Valid,
-        Ok(false) => MaskCheck::Mismatch,
+        Ok(()) => MaskCheck::Valid,
+        Err(KeyManagerError::InvalidMask) => MaskCheck::Mismatch,
         // Only the error kind: the full error can embed the (possibly encrypted) key id
         Err(e) => MaskCheck::Unverifiable(format!("verify_mask failed ({})", error_kind(&e))),
     }

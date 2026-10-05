@@ -339,13 +339,14 @@ impl TransactionOutput {
         Ok(())
     }
 
-    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    /// Verify a recovered mask (blinding factor) for a proof against the commitment. Returns
+    /// `Err(TransactionError::InvalidMask)` if the commitment does not open to the value under the mask.
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
         commitment_mask_key: &PrivateKey,
         value: u64,
-    ) -> Result<bool, TransactionError> {
+    ) -> Result<(), TransactionError> {
         prover
             .verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)
             .map_err(Into::into)
@@ -447,6 +448,9 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&version)
             .chain(features)
@@ -473,6 +477,9 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(version)
             .chain(features)
@@ -485,6 +492,9 @@ impl TransactionOutput {
     }
 
     pub fn metadata_signature_message_from_script_and_common(script: &TariScript, common: &[u8; 32]) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&script)
             .chain(common)

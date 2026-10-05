@@ -48,6 +48,9 @@ jobs:
           components: clippy
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: Cache cargo files and outputs
@@ -168,6 +171,9 @@ jobs:
 
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
@@ -280,6 +286,9 @@ jobs:
 
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
@@ -318,6 +327,61 @@ jobs:
       - name: run the license check
         run: ./scripts/file_license_check.sh
 
+  # Unlike the `test` job, this one must pass: it fails when a type's serde, borsh and protobuf decoders stop
+  # accepting the same values (see scripts/decoder_parity_check.py and
+  # applications/minotari_app_grpc/tests/decoder_parity.rs).
+  decoder-parity:
+    name: decoder parity
+    # GitHub-hosted, with the same dependency setup as the `ci` job
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: check that no type with a validating constructor derives its serde or borsh decoder, and the node ingress rules
+        run: |
+          python3 ./scripts/decoder_parity_check.py --self-test
+          python3 ./scripts/decoder_parity_check.py
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v2
+      - name: cross-family decoder parity (serde_json, bincode, borsh, P2P proto, gRPC proto)
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
+      - name: ValidatedDecode tests
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_max_size --lib -- validated_decode
+      - name: TariScript and ExecutionStack decoder tests
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
+      - name: TariAddress decoder tests
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
+      - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody, Difficulty and TariKeyId decoder tests
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
+          memo_field encrypted_data kernel_features covenants aggregated_body tari_proof_of_work::difficulty
+          key_manager::key_id
+      - name: Legacy wallet records with oversized memos still load
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
+          legacy_transaction_protocol
+      - name: Imported wallet transactions get the same status check as new ones; legacy key ids still load
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
+          --exact transaction_service_tests::service::import_transaction_rejects_the_coinbase_status
+          output_manager_service_tests::storage::test_legacy_derived_spend_key_reads_migrates_and_reads_again
+      - name: Node submit paths decode through the P2P proto
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
+          grpc::base_node_grpc_server::test http::handler::json_rpc
+
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]
@@ -347,6 +411,9 @@ jobs:
           toolchain: ${{ env.toolchain }}
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: Cache cargo files and outputs

@@ -114,13 +114,7 @@ impl TargetDifficulties {
         target_difficulty: Difficulty,
         constants: &ConsensusConstants,
     ) -> Result<(), String> {
-        let modifier = self.tracker.modifier_for(algo, constants.pow_backoff_cap());
-        let adjusted_target = crate::proof_of_work::adjust_target(
-            target_difficulty,
-            modifier,
-            constants.min_pow_difficulty(algo),
-            constants.max_pow_difficulty(algo),
-        );
+        let adjusted_target = self.tracker.adjusted_target(algo, target_difficulty, constants);
         self.get_mut(algo)?
             .add_back(timestamp, target_difficulty, adjusted_target);
         self.tracker.push(algo);
@@ -200,6 +194,8 @@ mod test {
             ChainStorageError,
             blockchain_database::{
                 ChainHeaderSource,
+                adjusted_target_difficulties_in_range,
+                adjusted_target_difficulty,
                 target_difficulties_for_next_block,
                 target_difficulty_for_next_block,
             },
@@ -434,6 +430,104 @@ mod test {
                 }
             }
         }
+    }
+
+    /// The adjusted target shown for a historical block is its stored target times the backoff modifier its own
+    /// predecessors put on it.
+    #[test]
+    #[allow(clippy::arithmetic_side_effects)]
+    fn the_adjusted_target_of_a_stored_block_applies_its_backoff() {
+        use PowAlgorithm::{RandomXM, Sha3x};
+        let base_difficulty = 1_000u64;
+        let algos = [
+            Sha3x, Sha3x, Sha3x, Sha3x, Sha3x, Sha3x, Sha3x, Sha3x, RandomXM, Sha3x, RandomXM, RandomXM,
+        ];
+        let expected_modifiers = [1u64, 2, 4, 8, 16, 32, 32, 32, 1, 1, 1, 2];
+        let chain = MemoryChain::build(&algos, base_difficulty);
+        let consensus_rules = rules(45, POW_BACKOFF_CAP);
+        for (i, (chain_header, modifier)) in chain.ordered.iter().zip(expected_modifiers).enumerate() {
+            let target = chain_header.accumulated_data().target_difficulty.as_u64();
+            assert_eq!(target, base_difficulty + i as u64 * 13);
+            let adjusted = adjusted_target_difficulty(&chain, &consensus_rules, chain_header.hash()).unwrap();
+            assert_eq!(adjusted.as_u64(), target * modifier, "adjusted target at height {i}");
+        }
+
+        // With the backoff disabled, the adjusted target is the stored target
+        let consensus_rules = rules(45, POW_BACKOFF_DISABLED);
+        for chain_header in &chain.ordered {
+            let adjusted = adjusted_target_difficulty(&chain, &consensus_rules, chain_header.hash()).unwrap();
+            assert_eq!(adjusted, chain_header.accumulated_data().target_difficulty);
+        }
+    }
+
+    /// Genesis shows its stored target unchanged, even though that is below the minimum difficulty.
+    #[test]
+    fn the_adjusted_target_of_genesis_is_its_stored_target() {
+        let chain = MemoryChain::build(&[PowAlgorithm::Sha3x; 3], 1);
+        let consensus_rules = rules(45, POW_BACKOFF_CAP);
+        let genesis = chain.ordered.first().unwrap();
+        assert!(genesis.accumulated_data().target_difficulty.as_u64() < MIN_DIFFICULTY);
+        let adjusted = adjusted_target_difficulty(&chain, &consensus_rules, genesis.hash()).unwrap();
+        assert_eq!(adjusted, genesis.accumulated_data().target_difficulty);
+    }
+
+    /// Paging through a chain the way GetNetworkDifficulty does - each page read together with up to
+    /// `MAX_BACKOFF_RUN_LOOKBACK` headers below it - must give every block the same adjusted target as a direct
+    /// lookup. This covers the genesis page, pages whose lookback is cut short by genesis, and same-algorithm runs
+    /// that cross a page boundary.
+    #[test]
+    #[allow(clippy::arithmetic_side_effects)]
+    fn paged_adjusted_targets_agree_with_the_direct_lookup() {
+        use PowAlgorithm::{RandomXM, Sha3x};
+        let mut algos = vec![Sha3x; 9];
+        algos.extend([RandomXM, Sha3x, RandomXM, RandomXM, RandomXM]);
+        algos.extend(vec![Sha3x; 10]);
+        // A low base difficulty puts genesis (and the first few blocks) below the minimum difficulty
+        let chain = MemoryChain::build(&algos, 1);
+        let consensus_rules = rules(45, POW_BACKOFF_CAP);
+        let expected: Vec<Difficulty> = chain
+            .ordered
+            .iter()
+            .map(|header| adjusted_target_difficulty(&chain, &consensus_rules, header.hash()).unwrap())
+            .collect();
+        let last_height = chain.ordered.len() as u64 - 1;
+
+        for first_page_start in 0..=7u64 {
+            for page_size in [1u64, 3, 4, 7, 100] {
+                let mut start = first_page_start;
+                while start <= last_height {
+                    let end = (start + page_size - 1).min(last_height);
+                    let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
+                    let page = chain
+                        .ordered
+                        .iter()
+                        .filter(|header| header.height() >= lookback_start && header.height() <= end)
+                        .cloned()
+                        .collect();
+                    let result = adjusted_target_difficulties_in_range(page, start, &consensus_rules);
+                    let heights: Vec<u64> = result.iter().map(|(header, _)| header.height()).collect();
+                    assert_eq!(heights, (start..=end).collect::<Vec<_>>());
+                    for (header, adjusted) in &result {
+                        assert_eq!(
+                            Some(adjusted),
+                            expected.get(usize::try_from(header.height()).unwrap()),
+                            "height {} (page {start}..={end})",
+                            header.height()
+                        );
+                    }
+                    start = end + 1;
+                }
+            }
+        }
+    }
+
+    /// The adjusted target is clamped to the maximum difficulty, like the target the miner had to clear.
+    #[test]
+    fn the_adjusted_target_of_a_stored_block_is_clamped() {
+        let chain = MemoryChain::build(&[PowAlgorithm::Sha3x; 8], MAX_DIFFICULTY - 100);
+        let consensus_rules = rules(45, POW_BACKOFF_CAP);
+        let adjusted = adjusted_target_difficulty(&chain, &consensus_rules, &chain.tip_hash()).unwrap();
+        assert_eq!(adjusted.as_u64(), MAX_DIFFICULTY);
     }
 
     /// A run that reaches back past the lookback is capped, which is precisely why a bounded lookback is exact.

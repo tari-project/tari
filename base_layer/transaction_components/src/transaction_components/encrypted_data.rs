@@ -38,11 +38,11 @@ use chacha20poly1305::{
 };
 use digest::{FixedOutput, consts::U32, generic_array::GenericArray};
 use primitive_types::U256;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, PrivateKey};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
-use tari_max_size::MaxSizeBytes;
+use tari_max_size::{MaxSizeBytes, ValidatedDecode, impl_validated_decode};
 use tari_utilities::{
     ByteArray,
     ByteArrayError,
@@ -81,38 +81,36 @@ const DISPLAY_CUTOFF: usize = 16;
 /// Encrypted value, mask and payment id of a transaction output.
 ///
 /// `STATIC_ENCRYPTED_DATA_SIZE_TOTAL <= len() <= MAX_ENCRYPTED_DATA_SIZE` is an invariant of this type: every
-/// constructor, and every decoder (serde and borsh, see the hand written `Deserialize` and `BorshDeserialize`
-/// implementations below), routes through [`EncryptedData::from_bytes`]. Decoders must not be derived, as a derived
-/// decoder would only enforce the upper bound of the inner `MaxSizeBytes` and accept values that are too short.
+/// constructor, and every decoder (serde and borsh, generated from the [`ValidatedDecode`] implementation below),
+/// routes through [`EncryptedData::from_bytes`]. Decoders must not be derived, as a derived decoder would only enforce
+/// the upper bound of the inner `MaxSizeBytes` and accept values that are too short.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash, BorshSerialize, Zeroize)]
 pub struct EncryptedData {
     #[serde(with = "tari_utilities::serde::hex")]
     data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
-/// Mirror of the serde shape of [`EncryptedData`] (a struct named `EncryptedData` with a single hex/bytes field
-/// `data`), used only to decode the wire format before the length invariants are checked.
-#[derive(Deserialize)]
+/// The raw form of [`EncryptedData`]: the serde shape (a struct named `EncryptedData` with a single hex/bytes field
+/// `data`) and the borsh shape (the bytes behind a `u32` length prefix) of the derived encoders, decoded before the
+/// length invariants are checked.
+#[derive(Deserialize, BorshDeserialize)]
 #[serde(rename = "EncryptedData")]
-struct EncryptedDataSerde {
+pub struct EncryptedDataRaw {
     #[serde(with = "tari_utilities::serde::hex")]
     data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
-impl<'de> Deserialize<'de> for EncryptedData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let decoded = EncryptedDataSerde::deserialize(deserializer)?;
-        EncryptedData::from_bytes(decoded.data.as_bytes()).map_err(serde::de::Error::custom)
+impl ValidatedDecode for EncryptedData {
+    type Error = EncryptedDataError;
+    type Raw = EncryptedDataRaw;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        EncryptedData::from_bytes(raw.data.as_bytes())
     }
 }
 
-impl BorshDeserialize for EncryptedData {
-    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
-        let data = MaxSizeBytes::<MAX_ENCRYPTED_DATA_SIZE>::deserialize_reader(reader)?;
-        EncryptedData::from_bytes(data.as_bytes())
-            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, e.to_string()))
-    }
-}
+impl_validated_decode!(EncryptedData);
+
 /// AEAD associated data
 const ENCRYPTED_DATA_AAD: &[u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
@@ -129,8 +127,25 @@ impl EncryptedData {
         mask: &PrivateKey,
         memo: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
+        // The memo size drives the buffer sizes below. It is checked before encoding, as an oversized memo is the
+        // only one that could fail to encode, and then it must match the encoded memo.
+        let data_size = STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo.get_size());
+        if data_size > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(EncryptedDataError::InvalidMemoSize(format!(
+                "Encrypted data would be {data_size} bytes, the maximum is {MAX_ENCRYPTED_DATA_SIZE}"
+            )));
+        }
+        let memo_bytes = memo.to_bytes();
+        if memo_bytes.len() != memo.get_size() {
+            return Err(EncryptedDataError::InvalidMemoSize(format!(
+                "Encoded memo is {} bytes, expected {}",
+                memo_bytes.len(),
+                memo.get_size()
+            )));
+        }
+
         // Encode the value and mask
-        let plaintext_size = SIZE_VALUE.saturating_add(SIZE_MASK).saturating_add(memo.get_size());
+        let plaintext_size = SIZE_VALUE.saturating_add(SIZE_MASK).saturating_add(memo_bytes.len());
         let mut bytes = Zeroizing::new(vec![0; plaintext_size]);
         bytes
             .get_mut(..SIZE_VALUE)
@@ -143,7 +158,7 @@ impl EncryptedData {
         bytes
             .get_mut(SIZE_VALUE + SIZE_MASK..)
             .expect("Already checked")
-            .copy_from_slice(&memo.to_bytes());
+            .copy_from_slice(&memo_bytes);
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -156,7 +171,7 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL.saturating_add(memo.get_size())];
+        let mut data = vec![0; data_size];
         data.get_mut(..SIZE_TAG).expect("Already checked").copy_from_slice(&tag);
         data.get_mut(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
             .expect("Already checked")
@@ -318,6 +333,8 @@ pub enum EncryptedDataError {
     ByteArrayError(String),
     #[error("Incorrect length: {0}")]
     IncorrectLength(String),
+    #[error("Invalid memo size: {0}")]
+    InvalidMemoSize(String),
 }
 
 impl From<ByteArrayError> for EncryptedDataError {
@@ -483,6 +500,31 @@ mod test {
 
         let too_long = borsh::to_vec(&vec![7u8; MAX_ENCRYPTED_DATA_SIZE + 1]).unwrap();
         assert!(EncryptedData::try_from_slice(&too_long).is_err());
+    }
+
+    #[test]
+    fn encrypt_data_rejects_oversized_memos() {
+        let mask = PrivateKey::random(&mut rand::rng());
+        let commitment =
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+        // One byte over the limit, and far over it
+        for len in [
+            MAX_ENCRYPTED_DATA_SIZE - STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+            MAX_ENCRYPTED_DATA_SIZE,
+        ] {
+            let memo = MemoField::raw_unchecked(vec![1u8; len]);
+            let result = EncryptedData::encrypt_data(&PrivateKey::default(), &commitment, 1.into(), &mask, memo);
+            assert!(
+                matches!(result, Err(EncryptedDataError::InvalidMemoSize(_))),
+                "{result:?}"
+            );
+        }
+        // The largest memo that fits
+        let memo = MemoField::raw_unchecked(vec![
+            1u8;
+            MAX_ENCRYPTED_DATA_SIZE - STATIC_ENCRYPTED_DATA_SIZE_TOTAL - 1
+        ]);
+        assert!(EncryptedData::encrypt_data(&PrivateKey::default(), &commitment, 1.into(), &mask, memo).is_ok());
     }
 
     #[test]

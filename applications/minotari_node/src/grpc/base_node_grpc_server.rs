@@ -64,11 +64,11 @@ use tari_core::{
         state_machine_service::states::StateInfo,
         tari_pulse_service::TariPulseHandle,
     },
-    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo, adjusted_target_difficulties_in_range},
     consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
-    proof_of_work::AdjustedTarget,
+    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK},
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -240,12 +240,14 @@ pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
 ///
 /// The P2P conversion is the canonical decode-time validator for every submission entry point (gRPC `submit_block`,
 /// gRPC `submit_block_blob`): it enforces the invariants of every block component that a peer's block is held to, so
-/// no entry point can hand the node a block that a peer could not have sent. The gRPC conversions
-/// (`minotari_app_grpc::conversions`) are more lenient, e.g. they do not check the side-chain header `Network` byte
-/// or cap the number of quorum certificate signatures, so a block decoded through them must still pass through here.
+/// no entry point can hand the node a block that a peer could not have sent. On every value that
+/// `minotari_app_grpc/tests/decoder_parity.rs` samples, the gRPC conversions (`minotari_app_grpc::conversions`), serde
+/// and borsh make the same accept or reject decision as the P2P conversion; the round-trip keeps that true for fields
+/// those tests do not sample, and it resets the compact input version, which serde and borsh carry but neither
+/// protobuf family does.
 ///
 /// The round-trip does not alter a valid block. Every header field survives (`block_output_mr` is always a 32-byte
-/// hash on the domain side, so the P2P decoder's `unwrap_or_default` never applies), as does every kernel field,
+/// hash on the domain side, which the P2P decoder requires), as does every kernel field,
 /// every output field and every field of a full input, plus the `input_data` of compact inputs (an empty
 /// `ExecutionStack` encodes to, and decodes from, empty bytes). The proto form carries no version for a compact
 /// input, nor for the spent output behind a full input, so both come back as V0 (`get_current_version`). Only V0 is
@@ -288,6 +290,36 @@ fn normalise_transaction_via_p2p_proto(
     };
     let proto = tari_core::proto::types::Transaction::try_from(transaction).map_err(malformed)?;
     Transaction::try_from(proto).map_err(malformed)
+}
+
+/// Decodes the block of a gRPC `submit_block` request: the gRPC conversion, then [`normalise_block_via_p2p_proto`].
+fn decode_submit_block_request(request: tari_rpc::Block, report_error_flag: bool) -> Result<Block, Status> {
+    let block = Block::try_from(request).map_err(|e| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Invalid block provided: {e}")),
+        )
+    })?;
+    normalise_block_via_p2p_proto(block, report_error_flag)
+}
+
+/// Decodes the transaction of a gRPC `submit_transaction` request: the gRPC conversion, then
+/// [`normalise_transaction_via_p2p_proto`].
+fn decode_submit_transaction_request(
+    request: tari_rpc::SubmitTransactionRequest,
+    report_error_flag: bool,
+) -> Result<Transaction, Status> {
+    let txn: Transaction = request
+        .transaction
+        .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?
+        .try_into()
+        .map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Invalid transaction provided: {e}")),
+            )
+        })?;
+    normalise_transaction_via_p2p_proto(txn, report_error_flag)
 }
 
 /// Decodes the header and body blobs of a `submit_block_blob` request into a [`Block`].
@@ -406,11 +438,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
 
+        let consensus_rules = self.consensus_rules.clone();
+
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
             for (start, end) in page_iter {
+                // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so every
+                // page also reads the headers just before it to seed the backoff run.
+                let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
                 // headers are returned by height
-                let headers = match handler.get_headers(start..=end).await {
+                let headers = match handler.get_headers(lookback_start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {err:?}");
@@ -424,6 +461,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
+                let headers = adjusted_target_difficulties_in_range(headers, start, &consensus_rules);
+
                 if headers.is_empty() {
                     let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
                         report_error_flag,
@@ -432,7 +471,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                for chain_header in &headers {
+                for (chain_header, adjusted_difficulty) in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
@@ -500,6 +539,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
                         coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
+                        adjusted_difficulty: Some(adjusted_difficulty.as_u64()),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
@@ -1917,14 +1957,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        let block = Block::try_from(request).map_err(|e| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!("Invalid block provided: {e}")),
-            )
-        })?;
-        let block = normalise_block_via_p2p_proto(block, report_error_flag)?;
+        let block = decode_submit_block_request(request.into_inner(), report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -1983,18 +2016,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        let txn: Transaction = request
-            .transaction
-            .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?
-            .try_into()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Invalid transaction provided: {e}")),
-                )
-            })?;
-        let txn = normalise_transaction_via_p2p_proto(txn, report_error_flag)?;
+        let txn = decode_submit_transaction_request(request.into_inner(), report_error_flag)?;
         trace!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
@@ -2021,6 +2043,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
             },
@@ -2104,6 +2127,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredTimeLocked |
             TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
@@ -3416,6 +3440,7 @@ mod test {
             SideChainFeature,
             SideChainFeatureData,
             TransactionInput,
+            TransactionInputVersion,
             ValidatorNodeExit,
         },
     };
@@ -3427,7 +3452,9 @@ mod test {
         SideChainFeature {
             data: SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::signed(
                 &PrivateKey::default(),
+                Network::MainNet.as_byte(),
                 None,
+                VnEpoch(0),
                 VnEpoch(1),
             )),
             sidechain_id: None,
@@ -3547,10 +3574,9 @@ mod test {
     // - `KernelFeatures::from_bits`, the `PowData` / `CoinBaseExtra` / `MaxSizeString` / covenant length bounds,
     //   `EncryptedData::from_bytes` minimum length, and `TariScript::from_bytes` / `ExecutionStack::from_bytes` (the
     //   borsh decoders of those types apply the same checks, including the `MAX_SCRIPT_BYTES` cap on scripts).
-    // The side-chain feature types are the exception: their borsh impls are derived, so borsh accepts a side-chain
-    // block header with an unknown `Network` byte and a quorum certificate with more than `MAX_QC_SIGNATURES`
-    // signatures, both of which the round-trip rejects (see
-    // `a_block_with_an_unknown_sidechain_network_byte_is_rejected_as_invalid_argument`).
+    // `minotari_app_grpc/tests/decoder_parity.rs` checks, for a fixed set of sample values of the fields it lists, that
+    // serde_json and both protobuf families (and borsh and bincode, where a sample can be expressed in them) make the
+    // same accept or reject decision on a block or transaction. Fields and values it does not sample are not checked.
     #[test]
     fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
         let block = mainnet_genesis();
@@ -3578,6 +3604,92 @@ mod test {
         let err = decode_block_blob(truncated_header, &body_blob, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
         let err = decode_block_blob(&header_blob, truncated_body, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    /// A transaction like [`genesis_transaction`] whose compact input has version V1. Serde and borsh carry the version
+    /// of a compact input but neither protobuf family does, so the P2P round-trip turns it into V0: a block or
+    /// transaction that skipped the round-trip would keep V1, which no peer could have sent.
+    fn transaction_with_a_v1_compact_input() -> Transaction {
+        let tx = genesis_transaction();
+        let (mut inputs, outputs, kernels) = tx.body.dissolve();
+        inputs.first_mut().unwrap().version = TransactionInputVersion::V1;
+        Transaction::new(inputs, outputs, kernels, tx.offset, tx.script_offset)
+    }
+
+    fn first_input_version(body: &AggregateBody) -> TransactionInputVersion {
+        body.inputs().first().unwrap().version
+    }
+
+    /// A block whose first kernel has an unknown feature bit, which the P2P conversion rejects
+    fn block_with_an_unknown_kernel_feature_bit() -> Block {
+        let block = mainnet_genesis();
+        let (inputs, outputs, mut kernels) = block.body.dissolve();
+        kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
+        Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels))
+    }
+
+    #[test]
+    fn submit_block_blob_normalises_a_v1_compact_input_to_v0() {
+        let block = mainnet_genesis();
+        let tx = transaction_with_a_v1_compact_input();
+        let block = Block::new(block.header, tx.body);
+        assert_eq!(first_input_version(&block.body), TransactionInputVersion::V1);
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        // Fails if `decode_block_blob` stops round-tripping through the P2P proto
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+    }
+
+    /// The gRPC conversion currently makes the same accept or reject decision as the P2P one on every value
+    /// `minotari_app_grpc/tests/decoder_parity.rs` samples, and neither carries the compact input version, so these
+    /// tests pass with or without the P2P round-trip in `decode_submit_block_request`. They pin the handler's decode
+    /// step as a whole; the round-trip is there for fields the parity tests do not sample.
+    #[test]
+    fn submit_block_decodes_through_the_p2p_proto() {
+        let block = mainnet_genesis();
+        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block.clone()).unwrap(), true).unwrap();
+        assert_eq!(decoded, block);
+
+        let tx = transaction_with_a_v1_compact_input();
+        let block = Block::new(mainnet_genesis().header, tx.body);
+        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block).unwrap(), true).unwrap();
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+
+        let request = tari_rpc::Block::try_from(block_with_an_unknown_kernel_feature_bit()).unwrap();
+        let err = decode_submit_block_request(request, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn submit_transaction_decodes_through_the_p2p_proto() {
+        let request = |tx: Transaction| tari_rpc::SubmitTransactionRequest {
+            transaction: Some(tari_rpc::Transaction::try_from(tx).unwrap()),
+        };
+        let tx = genesis_transaction();
+        assert_eq!(
+            decode_submit_transaction_request(request(tx.clone()), true).unwrap(),
+            tx
+        );
+
+        let decoded = decode_submit_transaction_request(request(transaction_with_a_v1_compact_input()), true).unwrap();
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+
+        let block = block_with_an_unknown_kernel_feature_bit();
+        let tx = Transaction::new(
+            vec![],
+            block.body.outputs().clone(),
+            block.body.kernels().clone(),
+            block.header.total_kernel_offset,
+            block.header.total_script_offset,
+        );
+        let err = decode_submit_transaction_request(request(tx), true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        let err = decode_submit_transaction_request(tari_rpc::SubmitTransactionRequest { transaction: None }, true)
+            .unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 }

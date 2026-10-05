@@ -23,7 +23,10 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedCommitment, HashOutput},
+};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
@@ -95,6 +98,12 @@ impl AggregateBodyChainLinkedValidator {
     /// [`ValidationError::UnknownInputs`] returned, listing the hashes of the outputs that could not be found. A caller
     /// can then look for those outputs elsewhere (i.e. in the mempool), knowing that nothing else about the body is
     /// invalid with respect to the chain.
+    ///
+    /// `header` is the chain tip. The transaction can be mined at the earliest in the next block, so the validator node
+    /// epoch rules - registration/exit `max_epoch`, exit activation, and the registration spend lock - are evaluated
+    /// at `header.height + 1`: otherwise e.g. a registration or exit whose `max_epoch` is the tip's epoch, or a spend
+    /// of a registration that activates in the next epoch, would be accepted here while the tip is the last block of
+    /// its epoch, and then fail every block template it is selected into.
     pub fn validate_transaction_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
@@ -102,9 +111,14 @@ impl AggregateBodyChainLinkedValidator {
         db: &B,
     ) -> Result<(), ValidationError> {
         let constants = self.consensus_manager.consensus_constants(header.height);
+        let next_height = header.height.saturating_add(1);
+        let vn_epoch = self
+            .consensus_manager
+            .consensus_constants(next_height)
+            .block_height_to_epoch(next_height);
 
         self.validate_consensus(body, db)?;
-        self.check_body(body, db, constants, header, true)
+        self.check_body(body, db, constants, header, vn_epoch, true)
     }
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
@@ -121,25 +135,28 @@ impl AggregateBodyChainLinkedValidator {
         constants: &ConsensusConstants,
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
-        self.check_body(body, db, constants, header, false)
+        let vn_epoch = constants.block_height_to_epoch(header.height);
+        self.check_body(body, db, constants, header, vn_epoch, false)
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
-    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed.
+    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `vn_epoch` is the epoch the
+    /// validator node registration/exit rules are evaluated in.
     fn check_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
         header: &BlockHeader,
+        vn_epoch: VnEpoch,
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
         validate_input_maturity(body, header.height)?;
-        let unknown_inputs = find_unknown_inputs(db, constants, header.height, body)?;
+        let unknown_inputs = find_unknown_inputs(db, vn_epoch, body)?;
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
-        check_outputs(db, constants, body, header.height)?;
+        check_outputs(db, constants, body, vn_epoch)?;
         verify_no_duplicated_inputs_outputs(body)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
@@ -268,18 +285,18 @@ fn validate_burn_commitment_not_in_db<B: BlockchainBackend>(
 }
 
 /// Checks that every input is spendable, returning the output hashes of the inputs that spend outputs which are
-/// neither in the database nor created by this body. Any other failure is returned as an error.
+/// neither in the database nor created by this body. Any other failure is returned as an error. `vn_epoch` is the
+/// epoch the validator node registration spend lock is evaluated in.
 fn find_unknown_inputs<B: BlockchainBackend>(
     db: &B,
-    constants: &ConsensusConstants,
-    current_height: u64,
+    vn_epoch: VnEpoch,
     body: &AggregateBody,
 ) -> Result<Vec<HashOutput>, ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
 
     for input in body.inputs() {
-        check_output_feature_rules_for_input(db, constants, current_height, input)?;
+        check_output_feature_rules_for_input(db, vn_epoch, input)?;
         // If spending a unique_id, a new output must contain the unique id
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
@@ -314,21 +331,21 @@ fn find_unknown_inputs<B: BlockchainBackend>(
 /// 1. that the output type is permitted
 /// 2. the byte size of TariScript does not exceed the maximum
 /// 3. that the outputs do not already exist in the UTxO set.
+/// 4. the validator node registration and exit rules, in `epoch`.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
-    height: u64,
+    epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
     for output in body.outputs() {
-        let epoch = constants.block_height_to_epoch(height);
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
         check_validator_node_registration(db, output, epoch)?;
-        check_validator_node_exit(db, output, epoch)?;
+        check_validator_node_exit(db, constants, output, epoch)?;
     }
     Ok(())
 }
@@ -364,27 +381,31 @@ pub fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), V
     Ok(())
 }
 
-/// Ensures the body does not contain more than one validator node registration for the same validator node (scoped by
-/// sidechain id).
+/// Ensures the body does not contain more than one validator node registration, or more than one validator node exit,
+/// for the same validator node (scoped by sidechain id).
 ///
 /// `check_validator_node_registration` only rejects a registration that duplicates one already in the validator node
 /// set as of the *parent* block. It cannot see other registrations in the same body. Without this check, a single block
 /// carrying two registrations for the same validator node would pass validation and then fail when the second
 /// registration is applied to the validator node set (the set is keyed by sidechain id + public key and inserted with
 /// `NO_OVERWRITE`), aborting the block at commit time rather than rejecting it cleanly during validation.
+///
+/// Exits have the same problem: `check_validator_node_exit` checks each exit against the parent state only, and the
+/// first exit applied moves the validator out of the registered set, so a second exit for the same validator in the
+/// same body would fail at commit time (`ValidatorNodeStore::exit` returns `ValueNotFound`).
 // The `mutable_key_type` lint fires because `CompressedPublicKey` caches its decompressed form in a `OnceLock`. That
 // interior mutability does not affect the `Hash`/`Eq` used here, so the set behaves correctly.
 #[allow(clippy::mutable_key_type)]
 pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut seen = HashSet::new();
+    let mut seen_registrations = HashSet::new();
+    let mut seen_exits = HashSet::new();
     for output in body.outputs() {
         let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
             continue;
         };
-        let Some(vn_reg) = sidechain_features.validator_node_registration() else {
-            continue;
-        };
-        if !seen.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key())) {
+        if let Some(vn_reg) = sidechain_features.validator_node_registration() &&
+            !seen_registrations.insert((sidechain_features.sidechain_public_key(), vn_reg.public_key()))
+        {
             warn!(
                 target: LOG_TARGET,
                 "AggregateBody validation failed due to duplicate validator node registration for {}",
@@ -392,6 +413,18 @@ pub fn verify_no_duplicate_validator_node_registrations(body: &AggregateBody) ->
             );
             return Err(ValidationError::DuplicateValidatorNodeRegistration {
                 public_key: vn_reg.public_key().to_string(),
+            });
+        }
+        if let Some(exit) = sidechain_features.validator_node_exit() &&
+            !seen_exits.insert((sidechain_features.sidechain_public_key(), exit.public_key()))
+        {
+            warn!(
+                target: LOG_TARGET,
+                "AggregateBody validation failed due to duplicate validator node exit for {}",
+                exit.public_key()
+            );
+            return Err(ValidationError::DuplicateValidatorNodeExit {
+                public_key: exit.public_key().to_string(),
             });
         }
     }
@@ -438,24 +471,27 @@ pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(),
     Ok(())
 }
 
-/// If applicable, check any spend rules for output features including sidechain features
+/// If applicable, check any spend rules for output features including sidechain features. `vn_epoch` is the epoch the
+/// spend is evaluated in: the block's epoch, or for the mempool the epoch of the next block (see
+/// `validate_transaction_body`).
 fn check_output_feature_rules_for_input<B: BlockchainBackend>(
     db: &B,
-    constants: &ConsensusConstants,
-    current_height: u64,
+    vn_epoch: VnEpoch,
     input: &TransactionInput,
 ) -> Result<(), ValidationError> {
     match &input.spent_output {
         SpentOutput::OutputHash(_) => unreachable!("check_output_feature_rules_for_input: SpentOutput not hydrated"),
-        SpentOutput::OutputData { features, .. } => {
+        SpentOutput::OutputData {
+            features, commitment, ..
+        } => {
             match features.output_type {
                 OutputType::Standard | OutputType::Coinbase => {
                     // no special spend rules
                 },
 
                 OutputType::ValidatorNodeRegistration => {
-                    // Prevents validator node registration output from being spent if the validator is still active.
-                    // Effectively locking the funds in the UTXO until the validator exits.
+                    // Locks the registration funds from registration until the validator node's exit has taken
+                    // effect (see `check_validator_node_registration_spend`).
                     let reg = features.validator_node_registration().ok_or_else(|| {
                         ValidationError::OutputTypeNotMatchSidechainData {
                             output_type: features.output_type,
@@ -464,8 +500,7 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
                                 .to_string(),
                         }
                     })?;
-                    let epoch = constants.block_height_to_epoch(current_height);
-                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), epoch)?
+                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), commitment, vn_epoch)?
                 },
                 OutputType::ValidatorNodeExit => {
                     // should we disallow this? Since this UTXO has been processed w.r.t the active validator set, there
@@ -501,20 +536,48 @@ fn check_output_feature_rules_for_input<B: BlockchainBackend>(
     Ok(())
 }
 
+/// A validator node registration output (`commitment`) cannot be spent while the validator node it registered is
+/// active or has an exit pending; it is spendable while the registration is still pending activation (which cancels
+/// the registration) and again once the validator node's exit epoch is reached. Specifically, the spend is rejected if:
+/// - the registration output is not (yet) in the chain's unspent set: it is created in the same body or is still in the
+///   mempool, so it is about to create an entry;
+/// - a registered validator node entry created by this output exists and is active in `epoch` (`activation_epoch <=
+///   epoch`);
+/// - an exit of the entry created by this output is queued for an epoch after `epoch` (not yet taken effect).
+///
+/// Both entry checks match on the commitment, so only this registration instance locks the output: a later
+/// registration of the same validator node (possibly by a third party replaying the registration) does not.
+///
+/// Spending a pending registration cancels it: committing the spend removes the entry (recording it so a rewind can
+/// restore it). Spending a registration whose exit has taken effect does not touch the validator node set.
 fn check_validator_node_registration_spend<B: BlockchainBackend>(
     db: &B,
     reg: &ValidatorNodeRegistration,
     sidechain_id: Option<&SideChainId>,
+    commitment: &CompressedCommitment,
     epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
-    if db.validator_node_is_active(sidechain_id.map(|id| id.public_key()), epoch, reg.public_key())? {
-        return Err(ValidationError::OutputSpendRuleDisallow {
+    let sidechain_pk = sidechain_id.map(|id| id.public_key());
+    let reject = |reason: &str| {
+        Err(ValidationError::OutputSpendRuleDisallow {
             output_type: OutputType::ValidatorNodeRegistration,
             details: format!(
-                "Validator node registration {} is active and cannot be spent",
+                "Validator node registration {} cannot be spent: {reason}",
                 reg.public_key()
             ),
-        });
+        })
+    };
+    if db.fetch_unspent_output_hash_by_commitment(commitment)?.is_none() {
+        return reject("the registration output is not mined yet");
+    }
+    if db
+        .fetch_validator_node_entry(sidechain_pk, reg.public_key())?
+        .is_some_and(|entry| entry.commitment == *commitment && entry.activation_epoch <= epoch)
+    {
+        return reject("the validator node is active");
+    }
+    if db.validator_node_has_pending_exit(sidechain_pk, reg.public_key(), commitment, epoch)? {
+        return reject("the validator node's exit has not taken effect yet");
     }
     Ok(())
 }
@@ -534,11 +597,13 @@ mod test {
     use super::*;
     use crate::test_helpers::blockchain::TempDatabase;
 
+    const NETWORK: u8 = 0x10;
+
     fn registration_output(vn_secret_key: &PrivateKey) -> TransactionOutput {
         let claim_public_key = CompressedPublicKey::from_secret_key(vn_secret_key);
         let max_epoch = VnEpoch(10);
         let signature =
-            ValidatorNodeSignature::sign_for_registration(vn_secret_key, None, &claim_public_key, max_epoch);
+            ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim_public_key, max_epoch);
         TransactionOutput {
             features: OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch),
             ..Default::default()
@@ -569,6 +634,52 @@ mod test {
             err,
             ValidationError::DuplicateValidatorNodeRegistration { .. }
         ));
+    }
+
+    fn exit_output(vn_secret_key: &PrivateKey, max_epoch: VnEpoch) -> TransactionOutput {
+        let signature = ValidatorNodeSignature::sign_for_exit(vn_secret_key, NETWORK, None, VnEpoch(0), max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), max_epoch),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn it_allows_distinct_validator_node_exits() {
+        let outputs = vec![
+            exit_output(&PrivateKey::random(&mut rand::rng()), VnEpoch(10)),
+            exit_output(&PrivateKey::random(&mut rand::rng()), VnEpoch(10)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        assert!(verify_no_duplicate_validator_node_registrations(&body).is_ok());
+    }
+
+    #[test]
+    fn it_rejects_two_exits_for_the_same_validator_node() {
+        // Two distinct exit outputs for the same validator node. Each passes the chain-state check individually (the
+        // validator is in the registered set as of the parent block), but the second fails when applied at commit
+        // time because the first has already moved the validator into the exit queue.
+        let vn_secret_key = PrivateKey::random(&mut rand::rng());
+        let outputs = vec![
+            exit_output(&vn_secret_key, VnEpoch(10)),
+            exit_output(&vn_secret_key, VnEpoch(11)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        let err = verify_no_duplicate_validator_node_registrations(&body).unwrap_err();
+        assert!(matches!(err, ValidationError::DuplicateValidatorNodeExit { .. }));
+    }
+
+    #[test]
+    fn it_allows_a_registration_and_an_exit_for_the_same_validator_node() {
+        // Registrations and exits are deduplicated separately; whether the pair is valid is decided against the chain
+        // state by `check_validator_node_registration` / `check_validator_node_exit`.
+        let vn_secret_key = PrivateKey::random(&mut rand::rng());
+        let outputs = vec![
+            registration_output(&vn_secret_key),
+            exit_output(&vn_secret_key, VnEpoch(10)),
+        ];
+        let body = AggregateBody::new_unsorted(vec![], outputs, vec![]);
+        assert!(verify_no_duplicate_validator_node_registrations(&body).is_ok());
     }
 
     fn random_commitment() -> CompressedCommitment {

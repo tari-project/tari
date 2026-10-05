@@ -537,14 +537,29 @@ impl ConsensusConstants {
 
     /// All consensus constants entries for a network, in the order they become effective.
     pub fn for_network(network: Network) -> Vec<Self> {
-        match network {
+        let constants = match network {
             Network::LocalNet => ConsensusConstants::localnet(),
             Network::Igor => ConsensusConstants::igor(),
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Esmeralda => ConsensusConstants::esmeralda(),
             Network::StageNet => ConsensusConstants::stagenet(),
             Network::NextNet => ConsensusConstants::nextnet(),
+        };
+        for c in &constants {
+            c.debug_assert_validator_node_exit_rules();
         }
+        constants
+    }
+
+    /// A network that permits `ValidatorNodeExit` outputs must allow at least one exit per epoch. With zero, every exit
+    /// is rejected at validation (`ValidatorNodeExitNotPermitted`), and before that check existed it aborted the block
+    /// at commit time instead. Networks that do not permit the output type keep zero.
+    fn debug_assert_validator_node_exit_rules(&self) {
+        debug_assert!(
+            !self.permitted_output_types.contains(&OutputType::ValidatorNodeExit) ||
+                self.vn_registration_max_exits_per_epoch > 0,
+            "ValidatorNodeExit is a permitted output type but vn_registration_max_exits_per_epoch is 0"
+        );
     }
 
     /// The single authoritative answer to "which constants are in force at `height`".
@@ -1841,6 +1856,7 @@ impl ConsensusConstantsBuilder {
     }
 
     pub fn build(self) -> ConsensusConstants {
+        self.consensus.debug_assert_validator_node_exit_rules();
         self.consensus
     }
 }
@@ -2721,6 +2737,30 @@ mod test {
         tari_amount::{MicroMinotari, uT},
         transaction_components::{OutputType, RangeProofType},
     };
+
+    /// Every network that permits `ValidatorNodeExit` outputs must allow at least one exit per epoch; with zero,
+    /// every exit is rejected. Public networks keep zero and do not permit the output type.
+    #[test]
+    fn validator_node_exit_networks_allow_at_least_one_exit_per_epoch() {
+        use tari_common::configuration::Network;
+
+        for network in [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            for c in ConsensusConstants::for_network(network) {
+                if c.permitted_output_types().contains(&OutputType::ValidatorNodeExit) {
+                    assert!(c.vn_registration_max_exits_per_epoch() > 0, "{network}");
+                } else {
+                    assert_eq!(c.vn_registration_max_exits_per_epoch(), 0, "{network}");
+                }
+            }
+        }
+    }
 
     /// The decode-time size bounds in this crate and `tari_script` are applied when a value is decoded, before any
     /// consensus rule runs. Where a bound backs a consensus limit (CoinBaseExtra, EncryptedData, `MAX_SCRIPT_BYTES`,

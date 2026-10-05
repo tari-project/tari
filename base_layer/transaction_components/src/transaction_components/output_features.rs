@@ -173,9 +173,10 @@ impl OutputFeatures {
     pub fn for_validator_node_exit(
         signature: ValidatorNodeSignature,
         sidechain_deployment_key: Option<&PrivateKey>,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
     ) -> OutputFeatures {
-        let exit = ValidatorNodeExit::new(signature, max_epoch);
+        let exit = ValidatorNodeExit::new(signature, activation_epoch, max_epoch);
         let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
 
         OutputFeatures {

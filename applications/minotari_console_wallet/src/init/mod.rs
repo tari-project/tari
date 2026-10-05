@@ -52,7 +52,7 @@ use minotari_wallet::{
 use rpassword::prompt_password as rpassword_prompt;
 use rustyline::Editor;
 use tari_common::{
-    configuration::{MultiaddrList, bootstrap::prompt},
+    configuration::MultiaddrList,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
@@ -381,10 +381,7 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        matches!(
-            sig.is_valid(&comms_public_key, node_features, &node_addresses),
-            Ok(true)
-        )
+        sig.verify(&comms_public_key, node_features, &node_addresses).is_ok()
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
@@ -681,9 +678,9 @@ pub fn prompt_wallet_type(
     non_interactive: bool,
     view_private_key: Option<String>,
     spend_key: Option<String>,
-) -> Option<LegacyWalletType> {
+) -> Result<Option<LegacyWalletType>, ExitError> {
     if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
-        return Some(LegacyWalletType::default());
+        return Ok(Some(LegacyWalletType::default()));
     }
 
     match boot_mode {
@@ -711,17 +708,17 @@ pub fn prompt_wallet_type(
                 prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
             };
 
-            Some(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
+            Ok(Some(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
                 view_key,
                 public_spend_key: spend_key,
                 private_spend_key: None,
                 private_comms_key: None,
                 birthday,
-            }))
+            })))
         },
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
-            return Some(WalletType::default());
+            return Ok(Some(WalletType::default()));
 
             #[cfg(feature = "ledger")]
             {
@@ -731,25 +728,35 @@ pub fn prompt_wallet_type(
                     },
                     _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
                 };
-                if prompt(connected_hardware_msg) {
+                // Closed stdin must not silently pick a software wallet for someone who meant to use a Ledger
+                let use_hardware = tari_common::configuration::bootstrap::prompt_required(connected_hardware_msg)
+                    .map_err(|e| {
+                        ExitError::new(
+                            ExitCode::IOError,
+                            format!(
+                                "{e}; stdin closed: pass --non-interactive-mode or answer the hardware wallet prompt"
+                            ),
+                        )
+                    })?;
+                if use_hardware {
                     print!("Scanning for connected Ledger hardware device... ");
                     let account = prompt_ledger_account(boot_mode).expect("An account value");
                     match ledger_get_public_spend_key(account) {
                         Ok(public_alpha) => match ledger_get_view_key(account) {
                             Ok(view_key) => {
                                 let ledger = LedgerWallet::new(account, wallet_config.network, public_alpha, view_key);
-                                Some(LegacyWalletType::Ledger(ledger))
+                                Ok(Some(LegacyWalletType::Ledger(ledger)))
                             },
                             Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
                     }
                 } else {
-                    Some(LegacyWalletType::default())
+                    Ok(Some(LegacyWalletType::default()))
                 }
             }
         },
-        _ => None,
+        _ => Ok(None),
     }
 }
 

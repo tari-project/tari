@@ -295,6 +295,7 @@ const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_queue";
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
+const LMDB_DB_VALIDATOR_NODES_CANCELLED: &str = "validator_nodes_cancelled";
 /// Retired: code template registrations are no longer indexed. Only opened by the v9 migration, which drops it.
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
@@ -339,6 +340,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_VALIDATOR_NODES,
         LMDB_DB_VALIDATOR_NODES_ACTIVATION,
         LMDB_DB_VALIDATOR_NODES_EXIT,
+        LMDB_DB_VALIDATOR_NODES_CANCELLED,
         LMDB_DB_UTXO_SMT,
         LMDB_DB_JMT_VALUE_DATA_V2,
         LMDB_DB_JMT_NODE_DATA_V2,
@@ -404,6 +406,7 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_ACTIVATION, flags | db::DUPSORT | db::DUPFIXED)
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_CANCELLED, flags)
         .add_database(LMDB_DB_UTXO_SMT, flags)
         .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags)
         .add_database(LMDB_DB_JMT_NODE_DATA_V2, flags)
@@ -870,6 +873,9 @@ pub struct LMDBDatabase {
     validator_nodes_activation_queue: DatabaseRef,
     /// Maps <VN Public Key, Height, Commitment> -> ValidatorNodeEntry
     validator_nodes_exit_queue: DatabaseRef,
+    /// Maps <spent registration output hash> -> ValidatorNodeEntry removed when a pending registration was cancelled
+    /// by spending its output, so that rewinding the spend can restore it
+    validator_nodes_cancelled: DatabaseRef,
     /// Stores a cache of the sparse merkle tree on the latest mod 1000 height
     utxo_smt: DatabaseRef,
     jmt_value_data: DatabaseRef,
@@ -932,6 +938,7 @@ impl LMDBDatabase {
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_activation_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_ACTIVATION)?,
             validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
+            validator_nodes_cancelled: get_database(store, LMDB_DB_VALIDATOR_NODES_CANCELLED)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA_V2)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA_V2)?,
@@ -1102,13 +1109,6 @@ impl LMDBDatabase {
                 } => {
                     self.prune_output_from_all_dbs(&write_txn, output_hash, commitment, *output_type)?;
                 },
-                DeleteValidatorNode {
-                    sidechain_public_key,
-                    public_key,
-                } => {
-                    self.validator_node_store(&write_txn)
-                        .delete(sidechain_public_key.as_ref(), public_key)?;
-                },
                 DeleteAllKernelsInBlock { block_hash } => {
                     self.delete_all_kernels_in_block(&write_txn, block_hash)?;
                 },
@@ -1220,7 +1220,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 33] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 34] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -1267,6 +1267,7 @@ impl LMDBDatabase {
                 &self.validator_nodes_activation_queue,
             ),
             (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
+            (LMDB_DB_VALIDATOR_NODES_CANCELLED, &self.validator_nodes_cancelled),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
             (LMDB_DB_JMT_VALUE_DATA_V2, &self.jmt_value_data),
             (LMDB_DB_JMT_NODE_DATA_V2, &self.jmt_node_data),
@@ -1829,18 +1830,27 @@ impl LMDBDatabase {
                 },
             }
 
-            // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
-            // does not exist here
-            if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
-                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - immediate spend");
-                continue;
-            }
-
+            // The sidechain effects are undone for every output, including one spent in this same block: applying the
+            // block ran `handle_sidechain_utxo` for every output, whether or not it was also spent here.
             if let Some(sidechain_features) = utxo.output.features.sidechain_feature.as_ref() {
                 match &sidechain_features.data {
                     SideChainFeatureData::ValidatorNodeRegistration(vn_reg) => {
-                        self.validator_node_store(txn)
-                            .delete(sidechain_features.sidechain_public_key(), vn_reg.public_key())?;
+                        // Every later block has been rewound already, so the entry this output created should be back
+                        // in the registered set (an exit is undone with `undo_exit`, and a spend never removes it).
+                        // Checked by commitment, and tolerant so that an unexpected state cannot abort the reorg.
+                        if !self.validator_node_store(txn).delete_registration(
+                            sidechain_features.sidechain_public_key(),
+                            vn_reg.public_key(),
+                            &utxo.output.commitment,
+                        )? {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Rewinding validator node registration {} in block {}: no matching validator node \
+                                 entry to remove",
+                                vn_reg.public_key(),
+                                block_hash.to_hex()
+                            );
+                        }
                     },
                     SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
                         // Nothing to do
@@ -1855,6 +1865,13 @@ impl LMDBDatabase {
                         )?;
                     },
                 }
+            }
+
+            // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
+            // does not exist here
+            if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - immediate spend");
+                continue;
             }
 
             // If an output was burned, it was never created as an unspent utxo
@@ -1881,7 +1898,8 @@ impl LMDBDatabase {
             )?;
         }
         // Move inputs in this block back into the unspent set, any outputs spent within this block they will be removed
-        // by deleting all the block's outputs below
+        // by deleting all the block's outputs below. A spend that cancelled a pending validator node registration is
+        // undone by restoring the recorded entry.
         for (_, row) in inputs {
             // If input spends an output in this block, don't add it to the utxo set
             let output_hash = row.input.output_hash();
@@ -1908,6 +1926,22 @@ impl LMDBDatabase {
                     field: "hash",
                     value: output_hash.to_hex(),
                 })?;
+
+            if utxo_mined_info
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .is_some_and(|f| f.validator_node_registration().is_some()) &&
+                self.validator_node_store(txn)
+                    .undo_cancel_registration(block_hash.as_slice(), output_hash.as_slice())?
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Restored validator node registration {} whose cancelling spend was rewound",
+                    output_hash.to_hex()
+                );
+            }
 
             let smt_key = KeyHash(
                 utxo_mined_info
@@ -2225,12 +2259,31 @@ impl LMDBDatabase {
             );
             batch.push((smt_key, None));
 
+            // Spending a registration output that is still pending activation cancels the registration: its entry is
+            // removed from the registered set and recorded against the spent output so that rewinding the spend
+            // restores it. Validation rejects spending an active registration (see
+            // `check_validator_node_registration_spend`), and a registration whose exit has taken effect is no longer
+            // in the registered set, so for those this is a no-op.
             let features = input_with_output_data.features()?;
             if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
                 let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
-                self.validator_node_store(txn)
-                    .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
+                let output_hash = input_with_output_data.output_hash();
+                if self.validator_node_store(txn).cancel_registration(
+                    sidechain_feature.sidechain_public_key(),
+                    vn_reg.public_key(),
+                    input_with_output_data.commitment()?,
+                    block_hash.as_slice(),
+                    output_hash.as_slice(),
+                )? {
+                    info!(
+                        target: LOG_TARGET,
+                        "Validator node registration {} cancelled by spending output {} in block {}",
+                        vn_reg.public_key(),
+                        output_hash.to_hex(),
+                        current_header_at_height.height,
+                    );
+                }
             }
             trace!(
                 target: LOG_TARGET,
@@ -2307,6 +2360,7 @@ impl LMDBDatabase {
             self.validator_nodes.clone(),
             self.validator_nodes_activation_queue.clone(),
             self.validator_nodes_exit_queue.clone(),
+            self.validator_nodes_cancelled.clone(),
         )
     }
 
@@ -4388,6 +4442,28 @@ impl BlockchainBackend for LMDBDatabase {
         // Get the current epoch for the height
         let is_active = vn_store.is_vn_active(sidechain_pk, validator_node_pk, end_epoch)?;
         Ok(is_active)
+    }
+
+    fn fetch_validator_node_entry(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let store = self.validator_node_store(&txn);
+        store.get(sidechain_pk, public_key)
+    }
+
+    fn validator_node_has_pending_exit(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        epoch: VnEpoch,
+    ) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let store = self.validator_node_store(&txn);
+        store.has_pending_exit(sidechain_pk, public_key, commitment, epoch)
     }
 
     fn get_validator_node(

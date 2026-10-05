@@ -15,18 +15,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use serde::{Serialize, Serializer};
+use tari_max_size::{EncodedBytes, ValidatedDecode, impl_validated_decode};
+use tari_utilities::hex::Hex;
 
-use serde::{
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-    de::{Error, Visitor},
-};
-use tari_utilities::hex::{Hex, from_hex};
-
-use crate::{ExecutionStack, TariScript};
+use crate::{ExecutionStack, MAX_SCRIPT_BYTES, ScriptError, TariScript, stack::MAX_STACK_BYTES};
 
 impl Serialize for TariScript {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
@@ -40,47 +33,18 @@ impl Serialize for TariScript {
     }
 }
 
-impl<'de> Deserialize<'de> for TariScript {
-    fn deserialize<D>(de: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        struct ScriptVisitor;
+/// serde: a hex string or a byte array; borsh: the bytes behind a varint length prefix of at most
+/// [`MAX_SCRIPT_BYTES`]. Both decoders then apply [`TariScript::from_bytes`].
+impl ValidatedDecode for TariScript {
+    type Error = ScriptError;
+    type Raw = EncodedBytes<MAX_SCRIPT_BYTES>;
 
-        impl<'de> Visitor<'de> for ScriptVisitor {
-            type Value = TariScript;
-
-            fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-                fmt.write_str("Expecting a binary array or hex string")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where E: Error {
-                let bytes = from_hex(v).map_err(|e| E::custom(e.to_string()))?;
-                self.visit_bytes(&bytes)
-            }
-
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where E: Error {
-                self.visit_str(&v)
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where E: Error {
-                TariScript::from_bytes(v).map_err(|e| E::custom(e.to_string()))
-            }
-
-            fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-            where E: Error {
-                self.visit_bytes(v)
-            }
-        }
-
-        if de.is_human_readable() {
-            de.deserialize_string(ScriptVisitor)
-        } else {
-            de.deserialize_bytes(ScriptVisitor)
-        }
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        TariScript::from_bytes(raw.as_bytes())
     }
 }
+
+impl_validated_decode!(TariScript);
 
 // -------------------------------- ExecutionStack -------------------------------- //
 impl Serialize for ExecutionStack {
@@ -95,44 +59,16 @@ impl Serialize for ExecutionStack {
     }
 }
 
-impl<'de> Deserialize<'de> for ExecutionStack {
-    fn deserialize<D>(de: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        struct ExecutionStackVisitor;
+/// serde: a hex string or a byte array; borsh: the bytes behind a varint length prefix of at most
+/// [`MAX_STACK_BYTES`], the largest encoding of a valid stack. Both decoders then apply [`ExecutionStack::from_bytes`],
+/// which applies the item limit and validates every item.
+impl ValidatedDecode for ExecutionStack {
+    type Error = ScriptError;
+    type Raw = EncodedBytes<MAX_STACK_BYTES>;
 
-        impl<'de> Visitor<'de> for ExecutionStackVisitor {
-            type Value = ExecutionStack;
-
-            fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-                fmt.write_str("Expecting a binary array or hex string")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where E: Error {
-                let bytes = from_hex(v).map_err(|e| E::custom(e.to_string()))?;
-                self.visit_bytes(&bytes)
-            }
-
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where E: Error {
-                self.visit_str(&v)
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where E: Error {
-                ExecutionStack::from_bytes(v).map_err(|e| E::custom(e.to_string()))
-            }
-
-            fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-            where E: Error {
-                self.visit_bytes(v)
-            }
-        }
-
-        if de.is_human_readable() {
-            de.deserialize_string(ExecutionStackVisitor)
-        } else {
-            de.deserialize_bytes(ExecutionStackVisitor)
-        }
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        ExecutionStack::from_bytes(raw.as_bytes())
     }
 }
+
+impl_validated_decode!(ExecutionStack);
