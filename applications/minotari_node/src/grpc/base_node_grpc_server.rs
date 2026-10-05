@@ -2621,15 +2621,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE);
         task::spawn(async move {
             // Sorting the heights and walking the emission schedule is CPU bound, so keep it off the async runtime
-            // workers
+            // workers. The calculation stops early if the client goes away.
+            let cancel_tx = tx.clone();
             let values = match task::spawn_blocking(move || {
                 unique_heights.sort_unstable();
                 unique_heights.dedup();
-                consensus_rules.token_values_at_heights(&unique_heights)
+                consensus_rules.token_values_at_heights(&unique_heights, || cancel_tx.is_closed())
             })
             .await
             {
                 Ok(Ok(values)) => values,
+                Ok(Err(_)) if tx.is_closed() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[get_tokens_in_circulation] Request was cancelled while calculating token values"
+                    );
+                    return;
+                },
                 Ok(Err(e)) => {
                     warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Could not calculate token values: {e}");
                     let _ignore = tx
@@ -3755,7 +3763,9 @@ mod test {
         let mut unique_heights = heights.clone();
         unique_heights.sort_unstable();
         unique_heights.dedup();
-        let values = consensus_manager.token_values_at_heights(&unique_heights).unwrap();
+        let values = consensus_manager
+            .token_values_at_heights(&unique_heights, || false)
+            .unwrap();
 
         let responses = heights
             .iter()

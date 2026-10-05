@@ -270,7 +270,14 @@ impl BaseNodeConsensusManager {
     /// walked once for all heights and the pre-mine schedule is built once, so the cost is bounded by the highest
     /// height plus the number of heights. `heights` must be sorted ascending and contain no duplicates; the results
     /// are returned in the same order.
-    pub fn token_values_at_heights(&self, heights: &[u64]) -> Result<Vec<TokenValuesAtHeight>, String> {
+    ///
+    /// `is_cancelled` is polled periodically, and the calculation stops with an error once it returns `true`, so a
+    /// caller whose client has gone away does not keep walking the schedule.
+    pub fn token_values_at_heights<F: Fn() -> bool>(
+        &self,
+        heights: &[u64],
+        is_cancelled: F,
+    ) -> Result<Vec<TokenValuesAtHeight>, String> {
         if heights.iter().zip(heights.iter().skip(1)).any(|(a, b)| a >= b) {
             return Err("Heights must be sorted ascending and unique".to_string());
         }
@@ -293,6 +300,13 @@ impl BaseNodeConsensusManager {
         let mut emission = self.emission_schedule().iter();
         for &target in &targets {
             while emission.block_height() < target {
+                if emission
+                    .block_height()
+                    .is_multiple_of(TOKEN_VALUES_CANCEL_CHECK_INTERVAL) &&
+                    is_cancelled()
+                {
+                    return Err(TOKEN_VALUES_CANCELLED.to_string());
+                }
                 let _ignore = emission.next();
             }
             supplies.push(emission.supply());
@@ -306,6 +320,10 @@ impl BaseNodeConsensusManager {
                 .copied()
                 .ok_or_else(|| format!("Emission supply at height {height} not found"))
         };
+
+        if is_cancelled() {
+            return Err(TOKEN_VALUES_CANCELLED.to_string());
+        }
 
         // Build the pre-mine schedule once, ordered by the height at which each item becomes spendable
         let mut pre_mine_items = get_pre_mine_items(self.network().as_network())?;
@@ -351,6 +369,11 @@ impl BaseNodeConsensusManager {
         Ok(results)
     }
 }
+
+/// How many emission blocks `token_values_at_heights` walks between checks for cancellation
+const TOKEN_VALUES_CANCEL_CHECK_INTERVAL: u64 = 10_000;
+/// The error returned by `token_values_at_heights` when it is cancelled
+const TOKEN_VALUES_CANCELLED: &str = "Token value calculation cancelled";
 
 /// The token values at a single height, as reported by the `GetTokensInCirculation` gRPC method
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -578,7 +601,7 @@ mod test {
             heights.sort_unstable();
             heights.dedup();
 
-            let values = consensus_manager.token_values_at_heights(&heights).unwrap();
+            let values = consensus_manager.token_values_at_heights(&heights, || false).unwrap();
             assert_eq!(values.len(), heights.len());
             for (value, &height) in values.iter().zip(heights.iter()) {
                 assert_eq!(value.height, height);
@@ -624,8 +647,32 @@ mod test {
     #[test]
     fn token_values_at_heights_rejects_unsorted_or_duplicate_heights() {
         let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
-        assert!(consensus_manager.token_values_at_heights(&[]).unwrap().is_empty());
-        assert!(consensus_manager.token_values_at_heights(&[2, 1]).is_err());
-        assert!(consensus_manager.token_values_at_heights(&[1, 1]).is_err());
+        assert!(
+            consensus_manager
+                .token_values_at_heights(&[], || false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(consensus_manager.token_values_at_heights(&[2, 1], || false).is_err());
+        assert!(consensus_manager.token_values_at_heights(&[1, 1], || false).is_err());
+    }
+
+    #[test]
+    fn token_values_at_heights_stops_when_cancelled() {
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
+        let err = consensus_manager.token_values_at_heights(&[0], || true).unwrap_err();
+        assert_eq!(err, TOKEN_VALUES_CANCELLED);
+
+        // Cancelled part way through the emission walk: the walk stops at the next check rather than running on to
+        // the highest height
+        let polls = std::cell::Cell::new(0u64);
+        let err = consensus_manager
+            .token_values_at_heights(&[1, 400_000], || {
+                polls.set(polls.get() + 1);
+                polls.get() > 2
+            })
+            .unwrap_err();
+        assert_eq!(err, TOKEN_VALUES_CANCELLED);
+        assert_eq!(polls.get(), 3);
     }
 }
