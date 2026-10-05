@@ -645,7 +645,7 @@ mod rebootstrap_trigger {
 
         // The immediate first tick, then ticks at 2m and 4m: only two of them count
         dht_connectivity.check_pool_starved();
-        for elapsed in [2, 4] {
+        for elapsed in [2u64, 4] {
             dht_connectivity.pool_fill_started = start.checked_sub(Duration::from_secs(elapsed.saturating_mul(60)));
             dht_connectivity.check_pool_starved();
         }
