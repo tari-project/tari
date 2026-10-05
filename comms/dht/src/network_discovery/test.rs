@@ -147,6 +147,8 @@ mod discovery_ready {
             bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
             bootstrap_started_at: Arc::new(RwLock::new(None)),
             seed_peer_provider: None,
+            inbound_learned: Default::default(),
+            pool_peers: Default::default(),
         };
 
         let ready = DiscoveryReady::new(context.clone());
@@ -224,6 +226,7 @@ mod discovery_ready {
 
 mod rebootstrap {
     use std::{
+        collections::HashSet,
         iter::repeat_with,
         sync::atomic::{AtomicUsize, Ordering},
         time::Instant,
@@ -234,7 +237,10 @@ mod rebootstrap {
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
         peer_manager::{NodeId, PeerFlags},
         protocol::rpc::RpcError,
-        test_utils::mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
+        test_utils::{
+            mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
+            node_identity::build_many_node_identities,
+        },
     };
     use tokio::sync::RwLock;
 
@@ -256,12 +262,14 @@ mod rebootstrap {
                 ban_on_offence,
                 interleave_sources,
                 refresh_seed_peers,
+                source_kind,
                 store_peers,
             },
             seed_strap::SeedStrap,
             state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
         proto::rpc::PeerInfo,
+        rpc::UnvalidatedPeerInfo,
     };
 
     fn node_ids(n: usize) -> Vec<NodeId> {
@@ -288,7 +296,7 @@ mod rebootstrap {
             source(SourceKind::Outbound, node_ids(20)),
             source(SourceKind::Seed, node_ids(20)),
         ];
-        let (learned, kept) = interleave_sources(&sources);
+        let (learned, _, kept) = interleave_sources(&sources);
         assert!(learned.len() <= MAX_LEARNED_PEERS);
         // 4 sources: at most 50 each
         assert_eq!(kept, vec![50, 20, 20, 20]);
@@ -306,7 +314,7 @@ mod rebootstrap {
             source(SourceKind::Outbound, outbound.clone()),
             source(SourceKind::Seed, seed.clone()),
         ];
-        let (learned, _) = interleave_sources(&sources);
+        let (learned, _, _) = interleave_sources(&sources);
         assert_eq!(learned, vec![
             seed[0].clone(),
             outbound[0].clone(),
@@ -328,7 +336,7 @@ mod rebootstrap {
             source(SourceKind::Inbound, node_ids(150)),
             source(SourceKind::Outbound, shared),
         ];
-        let (learned, kept) = interleave_sources(&sources);
+        let (learned, _, kept) = interleave_sources(&sources);
         assert_eq!(kept.iter().take(2).sum::<usize>(), MAX_LEARNED_PEERS / 4);
         assert_eq!(kept.get(2), Some(&1));
         assert_eq!(learned.len(), MAX_LEARNED_PEERS / 4 + 1);
@@ -417,8 +425,8 @@ mod rebootstrap {
         let (mut context, mock, _events) = context(None);
         let mut config = DhtConfig::default_local_test();
         config.network_discovery.rebootstrap_connected_peers = 3;
-        // Keep the seed path out of it, so that any sync from the seed would be the connected-peer path's
-        config.network_discovery.max_seed_peer_sync_count = 0;
+        // The seed path takes the connected seed, so the connected-peer path must leave it out
+        config.network_discovery.max_seed_peer_sync_count = 1;
         config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
         context.config = Arc::new(config);
 
@@ -479,7 +487,10 @@ mod rebootstrap {
             synced_inbound, 1,
             "only the remaining slot should go to an inbound peer"
         );
-        assert_eq!(synced_seed, 0, "the seed was synced from by the connected-peer path");
+        assert_eq!(
+            synced_seed, 1,
+            "the seed should be synced from once, by the seed path only"
+        );
     }
 
     /// A stored seed this node is connected to, and that is not in the current resolution.
@@ -575,6 +586,101 @@ mod rebootstrap {
         assert_eq!(times_synced(&mock, &connected_id, counter).await, 1);
     }
 
+    /// An outbound connection to a peer that an inbound source told us about still counts as inbound.
+    #[test]
+    fn a_laundered_peer_counts_as_inbound() {
+        let laundered = NodeId::from_public_key(make_node_identity().public_key());
+        let (outbound_to_laundered, _rx1) =
+            create_dummy_peer_connection_with_direction(laundered.clone(), ConnectionDirection::Outbound);
+        let (outbound, _rx2) = create_dummy_peer_connection_with_direction(
+            NodeId::from_public_key(make_node_identity().public_key()),
+            ConnectionDirection::Outbound,
+        );
+        let (inbound, _rx3) = create_dummy_peer_connection_with_direction(
+            NodeId::from_public_key(make_node_identity().public_key()),
+            ConnectionDirection::Inbound,
+        );
+        let inbound_learned = [laundered].into_iter().collect::<HashSet<_>>();
+        assert_eq!(
+            source_kind(&outbound_to_laundered, &inbound_learned),
+            SourceKind::Inbound
+        );
+        assert_eq!(source_kind(&outbound, &inbound_learned), SourceKind::Outbound);
+        assert_eq!(source_kind(&inbound, &inbound_learned), SourceKind::Inbound);
+    }
+
+    /// A stored seed that only dialled in, and is not in the current resolution, gets no seed slot: it is synced from
+    /// as an ordinary inbound peer instead.
+    #[tokio::test]
+    async fn an_inbound_only_seed_outside_the_resolution_is_not_prioritised() {
+        let resolved = make_node_identity().to_peer();
+        let resolved_id = resolved.node_id.clone();
+        let provider = Arc::new(TestSeedPeerProvider { seeds: vec![resolved] });
+        let (mut context, mock, _events) = context(Some(provider));
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_seed_peer_sync_count = 1;
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+
+        let (conn, counter) = counting_connection(ConnectionDirection::Inbound);
+        let mut seed = make_node_identity().to_peer();
+        seed.node_id = conn.peer_node_id().clone();
+        seed.add_flags(PeerFlags::SEED);
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        let seed_id = conn.peer_node_id().clone();
+        mock.add_active_connection(conn).await;
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        // The seed slot went to the resolved seed...
+        assert!(mock.is_peer_dialed(&resolved_id).await);
+        assert!(!mock.is_peer_dialed(&seed_id).await);
+        // ...and the inbound seed was synced from by the connected-peer path
+        assert_eq!(times_synced(&mock, &seed_id, counter).await, 1);
+    }
+
+    /// Only the first `MAX_STORED_PER_SOURCE` valid peers from one source are written to the peer database.
+    #[tokio::test]
+    async fn a_source_can_store_only_so_many_peers() {
+        let (context, _mock, _events) = context(None);
+        let source = NodeId::from_public_key(make_node_identity().public_key());
+        let peers = build_many_node_identities(60, PeerFeatures::COMMUNICATION_NODE)
+            .into_iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        let stored = store_peers(&context, &source, peers).await.unwrap();
+        assert_eq!(stored.len(), 50);
+        assert_eq!(context.peer_manager.count().await, 50);
+    }
+
+    /// Discovering bans a peer it dialled for an RPC failure, but not a peer it was already connected to.
+    #[tokio::test]
+    async fn discovering_does_not_ban_an_existing_connection_for_an_rpc_failure() {
+        let (context, mock, _events) = context(None);
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![],
+                num_peers_to_request: 10,
+            },
+            context,
+        );
+        let peer = NodeId::from_public_key(make_node_identity().public_key());
+        let err = || Err::<(), _>(NetworkDiscoveryError::RpcError(RpcError::ReplyTimeout));
+        let _ignore = discovering.ban_on_offence(peer.clone(), err(), true).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+
+        // Bad peer data is banned for either way
+        let _ignore = discovering
+            .ban_on_offence(
+                peer.clone(),
+                Err::<(), _>(NetworkDiscoveryError::TooManyInvalidPeersReceived),
+                true,
+            )
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(mock.take_banned_peers().await.len(), 1);
+    }
+
     /// If the current resolution leaves nothing to sync from, the stored seeds are used.
     #[tokio::test]
     async fn stored_seeds_are_used_when_the_resolution_leaves_nothing() {
@@ -595,9 +701,9 @@ mod rebootstrap {
     }
 
     /// RPC failures are routine over Tor and a starved node's connections may be its last ones, so only bad peer
-    /// data is banned for - and never by a seed.
+    /// data is banned for.
     #[tokio::test]
-    async fn only_bad_data_from_non_seeds_is_banned() {
+    async fn rpc_failures_from_connected_peers_are_not_banned_for() {
         let (context, mock, _events) = context(None);
         let peer = NodeId::from_public_key(make_node_identity().public_key());
         ban_on_offence(
@@ -612,12 +718,6 @@ mod rebootstrap {
             duration: "1s".to_string(),
         })
         .await;
-
-        let mut seed = make_node_identity().to_peer();
-        seed.add_flags(PeerFlags::SEED);
-        let seed_id = seed.node_id.clone();
-        context.peer_manager.add_or_update_peer(seed).await.unwrap();
-        ban_on_offence(&context, seed_id, &NetworkDiscoveryError::TooManyInvalidPeersReceived).await;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(mock.take_banned_peers().await.is_empty());
@@ -656,6 +756,8 @@ mod rebootstrap {
             bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
             bootstrap_started_at: Arc::new(RwLock::new(None)),
             seed_peer_provider,
+            inbound_learned: Default::default(),
+            pool_peers: Default::default(),
         };
         (context, mock_state, event_rx)
     }

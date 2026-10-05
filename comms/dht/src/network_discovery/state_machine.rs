@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashSet,
     fmt,
     fmt::{Display, Write},
     future::Future,
@@ -56,6 +57,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
+
+/// A shared, cheaply readable snapshot of the DHT pool's members.
+pub(crate) type PoolPeers = Arc<std::sync::RwLock<HashSet<NodeId>>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BootstrapMethod {
@@ -197,6 +201,10 @@ pub(super) struct NetworkDiscoveryContext {
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
     /// Re-resolves the configured seeds during a rebootstrap. `None` means only stored seeds are used.
     pub seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+    /// Peers that inbound sources told us about in the last rebootstrap (at most `MAX_LEARNED_PEERS`).
+    pub inbound_learned: Arc<std::sync::Mutex<HashSet<NodeId>>>,
+    /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
+    pub pool_peers: PoolPeers,
 }
 
 impl NetworkDiscoveryContext {
@@ -317,9 +325,17 @@ impl DhtNetworkDiscovery {
                 bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
                 bootstrap_started_at: Arc::new(RwLock::new(None)),
                 seed_peer_provider,
+                inbound_learned: Default::default(),
+                pool_peers: Default::default(),
             },
             shutdown_signal,
         }
+    }
+
+    /// Shares DhtConnectivity's view of its pool, so that discovery does not hang up on pool peers.
+    pub(crate) fn with_pool_peers(mut self, pool_peers: PoolPeers) -> Self {
+        self.context.pool_peers = pool_peers;
+        self
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {

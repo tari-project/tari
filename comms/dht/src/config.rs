@@ -34,6 +34,12 @@ const LOG_TARGET: &str = "comms::dht::config";
 
 /// Lower bound for `rebootstrap_cooldown_min`, so that a misconfiguration cannot turn rebootstrapping into seed spam.
 const MIN_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(60);
+/// Upper bound for `rebootstrap_cooldown_min` and `rebootstrap_cooldown_max`.
+const MAX_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+/// Lower bound for `bootstrap_timeout`, which also bounds a rebootstrap (half of it per source).
+const MIN_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Upper bound for `max_seed_peer_sync_count`.
+const MAX_SEED_PEER_SYNC_COUNT: usize = 20;
 /// Upper bound for `rebootstrap_connected_peers`.
 const MAX_REBOOTSTRAP_CONNECTED_PEERS: usize = 20;
 /// Lower bound for `on_connect_resync_ttl`.
@@ -189,6 +195,20 @@ impl DhtConfig {
             );
             connectivity.rebootstrap_cooldown_min = MIN_REBOOTSTRAP_COOLDOWN;
         }
+        if connectivity.rebootstrap_cooldown_min > MAX_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_min must be at most {MAX_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_min = MAX_REBOOTSTRAP_COOLDOWN;
+        }
+        if connectivity.rebootstrap_cooldown_max > MAX_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_max must be at most {MAX_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_max = MAX_REBOOTSTRAP_COOLDOWN;
+        }
         if connectivity.rebootstrap_cooldown_max < connectivity.rebootstrap_cooldown_min {
             warn!(
                 target: LOG_TARGET,
@@ -204,6 +224,20 @@ impl DhtConfig {
                 "rebootstrap_connected_peers must be at most {MAX_REBOOTSTRAP_CONNECTED_PEERS}. Using that"
             );
             discovery.rebootstrap_connected_peers = MAX_REBOOTSTRAP_CONNECTED_PEERS;
+        }
+        if discovery.bootstrap_timeout < MIN_BOOTSTRAP_TIMEOUT {
+            warn!(
+                target: LOG_TARGET,
+                "bootstrap_timeout must be at least {MIN_BOOTSTRAP_TIMEOUT:.0?}. Using that"
+            );
+            discovery.bootstrap_timeout = MIN_BOOTSTRAP_TIMEOUT;
+        }
+        if discovery.max_seed_peer_sync_count > MAX_SEED_PEER_SYNC_COUNT {
+            warn!(
+                target: LOG_TARGET,
+                "max_seed_peer_sync_count must be at most {MAX_SEED_PEER_SYNC_COUNT}. Using that"
+            );
+            discovery.max_seed_peer_sync_count = MAX_SEED_PEER_SYNC_COUNT;
         }
         if discovery.on_connect_resync_ttl < MIN_ON_CONNECT_RESYNC_TTL {
             warn!(
@@ -338,6 +372,20 @@ mod test {
         assert_eq!(
             config.network_discovery.on_connect_resync_ttl,
             MIN_ON_CONNECT_RESYNC_TTL
+        );
+
+        let mut config = DhtConfig::default();
+        config.connectivity.rebootstrap_cooldown_min = Duration::MAX;
+        config.connectivity.rebootstrap_cooldown_max = Duration::MAX;
+        config.network_discovery.bootstrap_timeout = Duration::from_secs(1);
+        config.network_discovery.max_seed_peer_sync_count = 1000;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(config.connectivity.rebootstrap_cooldown_min, MAX_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_max, MAX_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(config.network_discovery.bootstrap_timeout, MIN_BOOTSTRAP_TIMEOUT);
+        assert_eq!(
+            config.network_discovery.max_seed_peer_sync_count,
+            MAX_SEED_PEER_SYNC_COUNT
         );
 
         for ratio in [0.0, -1.0, 1.5, f32::INFINITY] {

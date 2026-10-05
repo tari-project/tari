@@ -135,8 +135,11 @@ impl Dht {
         let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS, Some(16))
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
-        dht.network_discovery_service(shutdown_signal.clone()).spawn();
-        dht.connectivity_service(shutdown_signal.clone()).spawn();
+        let connectivity = dht.connectivity_service(shutdown_signal.clone());
+        dht.network_discovery_service(shutdown_signal.clone())
+            .with_pool_peers(connectivity.pool_peers())
+            .spawn();
+        connectivity.spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
         dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
