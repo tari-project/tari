@@ -38,7 +38,7 @@ use tari_transaction_components::{
 };
 
 use crate::{
-    blocks::pre_mine::pre_mine_spendable_at_height,
+    blocks::pre_mine::{get_pre_mine_items, pre_mine_spendable_at_height},
     consensus::chain_strength_comparer::{ChainStrengthComparer, strongest_chain},
     proof_of_work::TargetDifficultyWindow,
 };
@@ -216,6 +216,17 @@ impl BaseNodeConsensusManager {
 
     /// Get the total spendable block rewards circulation at the specified height (excluding pre-mine)
     pub fn block_rewards_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        let maturity_tranches = self.get_maturity_tranches();
+        let spendable_height = self.spendable_emission_height(&maturity_tranches, height)?;
+        Ok(self
+            .emission_schedule()
+            .supply_at_block(spendable_height)
+            .saturating_sub(self.consensus_constants(height).pre_mine_value()))
+    }
+
+    /// The emission height whose supply is spendable at `height`, i.e. `height` less the coinbase maturity that
+    /// applies to it.
+    fn spendable_emission_height(&self, maturity_tranches: &[MaturityTranche], height: u64) -> Result<u64, String> {
         // Example initial maturity schedule up to 3 weeks ( | height | (maturity) |):
         // | 0 -> 5040 - 1 | (720) |
         //                 | 5040 -> 10080 - 1 | (540) |
@@ -227,7 +238,6 @@ impl BaseNodeConsensusManager {
         // `ConsensusConstants::active_index_at_height` keeps this on the single authoritative definition of "active"
         // rather than adding another lookup that has to be kept in step, and it is exact where searching the tranche
         // vector by value was not: two constants entries can produce identical `MaturityTranche` values.
-        let maturity_tranches = self.get_maturity_tranches();
         let last_effective_index =
             ConsensusConstants::active_index_at_height(self.consensus_constants_vec(), height)
                 .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
@@ -236,29 +246,146 @@ impl BaseNodeConsensusManager {
             .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
         let previous_effective_tranch = maturity_tranches
             .get(last_effective_index.saturating_sub(1))
-            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?
-            .clone();
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?;
 
         // We have to adjust the matured rewards at height to account for the effective from height of the last
         // effective tranche
-        let emission_schedule = self.emission_schedule();
-        let matured_rewards_at_height = if last_effective_tranche.maturity < previous_effective_tranch.maturity &&
+        let spendable_height = if last_effective_tranche.maturity < previous_effective_tranch.maturity &&
             height <
                 last_effective_tranche
                     .effective_from_height
                     .saturating_add(previous_effective_tranch.maturity)
         {
-            emission_schedule
-                .supply_at_block(height.saturating_sub(previous_effective_tranch.maturity))
-                .saturating_sub(self.consensus_constants(height).pre_mine_value())
+            height.saturating_sub(previous_effective_tranch.maturity)
         } else {
-            emission_schedule
-                .supply_at_block(height.saturating_sub(last_effective_tranche.maturity))
-                .saturating_sub(self.consensus_constants(height).pre_mine_value())
+            height.saturating_sub(last_effective_tranche.maturity)
         };
 
-        Ok(matured_rewards_at_height)
+        Ok(spendable_height)
     }
+
+    /// Get the token values reported by the `GetTokensInCirculation` gRPC method for each of the given heights.
+    ///
+    /// The values are the same as those returned by the per-height functions above, but the emission schedule is
+    /// walked once for all heights and the pre-mine schedule is built once, so the cost is bounded by the highest
+    /// height plus the number of heights. `heights` must be sorted ascending and contain no duplicates; the results
+    /// are returned in the same order.
+    ///
+    /// `is_cancelled` is polled periodically, and the calculation stops with an error once it returns `true`, so a
+    /// caller whose client has gone away does not keep walking the schedule.
+    pub fn token_values_at_heights<F: Fn() -> bool>(
+        &self,
+        heights: &[u64],
+        is_cancelled: F,
+    ) -> Result<Vec<TokenValuesAtHeight>, String> {
+        if heights.iter().zip(heights.iter().skip(1)).any(|(a, b)| a >= b) {
+            return Err("Heights must be sorted ascending and unique".to_string());
+        }
+
+        // The emission heights we need the supply at: each height and its spendable emission height
+        let maturity_tranches = self.get_maturity_tranches();
+        let mut spendable_heights = Vec::with_capacity(heights.len());
+        for &height in heights {
+            spendable_heights.push(self.spendable_emission_height(&maturity_tranches, height)?);
+        }
+        let mut targets = heights.to_vec();
+        targets.extend_from_slice(&spendable_heights);
+        targets.sort_unstable();
+        targets.dedup();
+
+        // Walk the emission schedule once, recording the supply at every target height. A `None` from the iterator
+        // (supply overflow, reachable on LocalNet) is ignored exactly as `EmissionSchedule::supply_at_block` does, so
+        // the values stay identical to the per-height functions.
+        let mut supplies = Vec::with_capacity(targets.len());
+        let mut emission = self.emission_schedule().iter();
+        for &target in &targets {
+            while emission.block_height() < target {
+                if emission
+                    .block_height()
+                    .is_multiple_of(TOKEN_VALUES_CANCEL_CHECK_INTERVAL) &&
+                    is_cancelled()
+                {
+                    return Err(TOKEN_VALUES_CANCELLED.to_string());
+                }
+                let _ignore = emission.next();
+            }
+            supplies.push(emission.supply());
+        }
+        let supply_at = |height: u64| -> Result<MicroMinotari, String> {
+            let index = targets
+                .binary_search(&height)
+                .map_err(|_| format!("Emission supply at height {height} not found"))?;
+            supplies
+                .get(index)
+                .copied()
+                .ok_or_else(|| format!("Emission supply at height {height} not found"))
+        };
+
+        if is_cancelled() {
+            return Err(TOKEN_VALUES_CANCELLED.to_string());
+        }
+
+        // Build the pre-mine schedule once, ordered by the height at which each item becomes spendable
+        let mut pre_mine_items = get_pre_mine_items(self.network().as_network())?;
+        pre_mine_items.sort_by_key(|item| item.original_maturity);
+        let total_pre_mine = self.total_pre_mine_in_genesis_block();
+
+        let mut results = Vec::with_capacity(heights.len());
+        let mut pre_mine_index = 0;
+        let mut spendable_pre_mine = MicroMinotari::zero();
+        for (&height, &spendable_height) in heights.iter().zip(spendable_heights.iter()) {
+            while let Some(item) = pre_mine_items.get(pre_mine_index) {
+                if item.original_maturity > height {
+                    break;
+                }
+                spendable_pre_mine = spendable_pre_mine
+                    .checked_add(item.value)
+                    .ok_or_else(|| "pre_mine_spendable_at_height overflowed u128".to_string())?;
+                pre_mine_index = pre_mine_index.saturating_add(1);
+            }
+
+            let pre_mine_value = self.consensus_constants(height).pre_mine_value();
+            let mined_rewards = supply_at(height)?.saturating_sub(pre_mine_value);
+            let spendable_rewards = supply_at(spendable_height)?.saturating_sub(pre_mine_value);
+            let circulating_supply = mined_rewards
+                .checked_add(spendable_pre_mine)
+                .ok_or_else(|| "total_circulating_tokens_at_height overflowed u128".to_string())?;
+            let total_spendable = spendable_rewards
+                .checked_add(spendable_pre_mine)
+                .ok_or_else(|| "total_tokens_spendable_at_height overflowed u128".to_string())?;
+
+            results.push(TokenValuesAtHeight {
+                height,
+                circulating_supply,
+                mined_rewards,
+                spendable_rewards,
+                spendable_pre_mine,
+                total_spendable,
+                total_pre_mine,
+                time_locked_pre_mine: total_pre_mine.saturating_sub(spendable_pre_mine),
+            });
+        }
+
+        Ok(results)
+    }
+}
+
+/// How many emission blocks `token_values_at_heights` walks between checks for cancellation
+const TOKEN_VALUES_CANCEL_CHECK_INTERVAL: u64 = 10_000;
+/// The error returned by `token_values_at_heights` when it is cancelled
+const TOKEN_VALUES_CANCELLED: &str = "Token value calculation cancelled";
+
+/// The token values at a single height, as reported by the `GetTokensInCirculation` gRPC method
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TokenValuesAtHeight {
+    pub height: u64,
+    pub circulating_supply: MicroMinotari,
+    pub mined_rewards: MicroMinotari,
+    pub spendable_rewards: MicroMinotari,
+    pub spendable_pre_mine: MicroMinotari,
+    pub total_spendable: MicroMinotari,
+    pub total_pre_mine: MicroMinotari,
+    pub time_locked_pre_mine: MicroMinotari,
 }
 
 /// This is the used to control all consensus values.
@@ -440,5 +567,112 @@ mod test {
             assert_eq!(total_pre_mine, MAINNET_PRE_MINE_VALUE);
             assert_eq!(time_locked_pre_mine, MAINNET_PRE_MINE_VALUE - pre_mine);
         }
+    }
+
+    #[test]
+    fn token_values_at_heights_matches_per_height_functions() {
+        for network in [Network::MainNet, Network::NextNet, Network::LocalNet] {
+            let consensus_manager = BaseNodeConsensusManager::builder(network).build().unwrap();
+
+            let mut heights = vec![
+                0,
+                1,
+                2,
+                1000,
+                10000,
+                180 * BLOCKS_PER_DAY,
+                (180 + 20) * BLOCKS_PER_DAY,
+                365 * BLOCKS_PER_DAY,
+                (365 + 20) * BLOCKS_PER_DAY,
+                399_999,
+                400_000,
+            ];
+            // Either side of every maturity tranche boundary
+            let tranches = consensus_manager.get_maturity_tranches();
+            for (previous, tranche) in tranches.iter().zip(tranches.iter().skip(1)) {
+                for boundary in [
+                    tranche.effective_from_height,
+                    tranche.effective_from_height.saturating_add(previous.maturity),
+                ] {
+                    heights.extend([boundary.saturating_sub(1), boundary, boundary.saturating_add(1)]);
+                }
+            }
+            heights.retain(|h| *h <= 400_000);
+            heights.sort_unstable();
+            heights.dedup();
+
+            let values = consensus_manager.token_values_at_heights(&heights, || false).unwrap();
+            assert_eq!(values.len(), heights.len());
+            for (value, &height) in values.iter().zip(heights.iter()) {
+                assert_eq!(value.height, height);
+                assert_eq!(
+                    value.circulating_supply,
+                    consensus_manager.total_tokens_circulating_at_height(height).unwrap(),
+                    "{network} circulating_supply at {height}"
+                );
+                assert_eq!(
+                    value.mined_rewards,
+                    consensus_manager.block_rewards_mined_at_height(height).unwrap(),
+                    "{network} mined_rewards at {height}"
+                );
+                assert_eq!(
+                    value.spendable_rewards,
+                    consensus_manager.block_rewards_spendable_at_height(height).unwrap(),
+                    "{network} spendable_rewards at {height}"
+                );
+                assert_eq!(
+                    value.spendable_pre_mine,
+                    consensus_manager.pre_mine_spendable_at_height(height).unwrap(),
+                    "{network} spendable_pre_mine at {height}"
+                );
+                assert_eq!(
+                    value.total_spendable,
+                    consensus_manager.total_tokens_spendable_at_height(height).unwrap(),
+                    "{network} total_spendable at {height}"
+                );
+                assert_eq!(
+                    value.total_pre_mine,
+                    consensus_manager.total_pre_mine_in_genesis_block(),
+                    "{network} total_pre_mine at {height}"
+                );
+                assert_eq!(
+                    value.time_locked_pre_mine,
+                    consensus_manager.time_locked_pre_mine(height).unwrap(),
+                    "{network} time_locked_pre_mine at {height}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn token_values_at_heights_rejects_unsorted_or_duplicate_heights() {
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        assert!(
+            consensus_manager
+                .token_values_at_heights(&[], || false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(consensus_manager.token_values_at_heights(&[2, 1], || false).is_err());
+        assert!(consensus_manager.token_values_at_heights(&[1, 1], || false).is_err());
+    }
+
+    #[test]
+    fn token_values_at_heights_stops_when_cancelled() {
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
+        let err = consensus_manager.token_values_at_heights(&[0], || true).unwrap_err();
+        assert_eq!(err, TOKEN_VALUES_CANCELLED);
+
+        // Cancelled part way through the emission walk: the walk stops at the next check rather than running on to
+        // the highest height
+        let polls = std::cell::Cell::new(0u64);
+        let err = consensus_manager
+            .token_values_at_heights(&[1, 400_000], || {
+                polls.set(polls.get() + 1);
+                polls.get() > 2
+            })
+            .unwrap_err();
+        assert_eq!(err, TOKEN_VALUES_CANCELLED);
+        assert_eq!(polls.get(), 3);
     }
 }

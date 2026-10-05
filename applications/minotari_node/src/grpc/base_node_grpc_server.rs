@@ -65,7 +65,7 @@ use tari_core::{
         tari_pulse_service::TariPulseHandle,
     },
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo, adjusted_target_difficulties_in_range},
-    consensus::BaseNodeConsensusManager,
+    consensus::{BaseNodeConsensusManager, TokenValuesAtHeight},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
     proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK},
@@ -115,7 +115,7 @@ use crate::{
 
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
-const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
+const GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
 // client, so memory is not really a concern here, but a malicious client could request a large
 // number here to keep the node busy
@@ -354,6 +354,49 @@ fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Res
         ));
     }
     Ok(())
+}
+
+/// Caps the heights of a `GetTokensInCirculation` request at `GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS`, silently
+/// dropping the rest. The heights are copied into a new vector so the (possibly much larger) decoded request buffer is
+/// freed as soon as this returns; collecting from `into_iter()` would reuse the request's allocation in place.
+fn cap_tokens_in_circulation_heights(heights: Vec<u64>) -> Vec<u64> {
+    heights
+        .iter()
+        .take(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS)
+        .copied()
+        .collect()
+}
+
+/// The heights a `GetTokensInCirculation` request asks for, in request order, given the capped request heights. An
+/// empty request asks for the tip, and any height above the tip rejects the whole request so that the cost of a
+/// request is bounded by the chain rather than chosen by the caller.
+fn tokens_in_circulation_heights(heights: Vec<u64>, tip: u64, report_error_flag: bool) -> Result<Vec<u64>, Status> {
+    if heights.is_empty() {
+        return Ok(vec![tip]);
+    }
+    if let Some(height) = heights.iter().find(|h| **h > tip) {
+        return Err(obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Height {height} is above the chain tip {tip}")),
+        ));
+    }
+    Ok(heights)
+}
+
+/// Looks up the token values for `height` in `values`, which must be sorted by height with no duplicates.
+fn value_at_height_response(values: &[TokenValuesAtHeight], height: u64) -> Option<tari_rpc::ValueAtHeightResponse> {
+    let index = values.binary_search_by_key(&height, |v| v.height).ok()?;
+    let value = values.get(index)?;
+    Some(tari_rpc::ValueAtHeightResponse {
+        circulating_supply: value.circulating_supply.into(),
+        height: value.height,
+        mined_rewards: value.mined_rewards.into(),
+        spendable_rewards: value.spendable_rewards.into(),
+        spendable_pre_mine: value.spendable_pre_mine.into(),
+        total_spendable: value.total_spendable.into(),
+        total_pre_mine: value.total_pre_mine.into(),
+        time_locked_pre_mine: value.time_locked_pre_mine.into(),
+    })
 }
 
 pub async fn get_heights(
@@ -2562,88 +2605,82 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
-        let request = request.into_inner();
-        let mut heights = request.heights;
-        if heights.is_empty() {
-            let mut handler = self.node_service.clone();
-            if let Ok(tip) = handler.get_metadata().await {
-                heights.push(tip.best_block_height());
-            }
-        }
-        heights = heights
-            .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
-            .collect();
-        let consensus_manager = BaseNodeConsensusManager::builder(self.network.as_network())
-            .build()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::unknown(format!("Could not retrieve consensus manager '{e}'")),
-                )
-            })?;
+        // Cap the heights before awaiting anything, so the decoded request buffer is not held across the await
+        let heights = cap_tokens_in_circulation_heights(request.into_inner().heights);
+        let tip = self
+            .node_service
+            .clone()
+            .get_metadata()
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+            .best_block_height();
+        let heights = tokens_in_circulation_heights(heights, tip, report_error_flag)?;
+        let mut unique_heights = heights.clone();
+        let consensus_rules = self.consensus_rules.clone();
 
-        let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
+        let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE);
         task::spawn(async move {
-            let mut page: Vec<u64> = heights
-                .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
-                .collect();
-            while !page.is_empty() {
-                let values = page
-                    .clone()
-                    .into_iter()
-                    .map(|height| {
-                        let circulating_supply = consensus_manager.total_tokens_circulating_at_height(height)?.into();
-                        let mined_rewards = consensus_manager.block_rewards_mined_at_height(height)?.into();
-                        let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height)?.into();
-                        let spendable_pre_mine = consensus_manager.pre_mine_spendable_at_height(height)?.into();
-                        let total_spendable = consensus_manager.total_tokens_spendable_at_height(height)?.into();
-                        let total_pre_mine = consensus_manager.total_pre_mine_in_genesis_block().into();
-                        let time_locked_pre_mine = consensus_manager.time_locked_pre_mine(height)?.into();
-
-                        Ok(tari_rpc::ValueAtHeightResponse {
-                            circulating_supply,
-                            height,
-                            mined_rewards,
-                            spendable_rewards,
-                            spendable_pre_mine,
-                            total_spendable,
-                            total_pre_mine,
-                            time_locked_pre_mine,
-                        })
-                    })
-                    .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();
-                let result_size = match values {
-                    Ok(values) => {
-                        let values_len = values.len();
-                        for value in values {
-                            if tx.send(Ok(value)).await.is_err() {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "[get_tokens_in_circulation] Request was cancelled while sending a response"
-                                );
-                                return;
-                            }
-                        }
-                        values_len
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {e:?}"
-                        );
-                        let _ignore = tx.send(Err(obscure_error_if_true(
+            // Sorting the heights and walking the emission schedule is CPU bound, so keep it off the async runtime
+            // workers. The calculation stops early if the client goes away.
+            let cancel_tx = tx.clone();
+            let values = match task::spawn_blocking(move || {
+                unique_heights.sort_unstable();
+                unique_heights.dedup();
+                consensus_rules.token_values_at_heights(&unique_heights, || cancel_tx.is_closed())
+            })
+            .await
+            {
+                Ok(Ok(values)) => values,
+                Ok(Err(_)) if tx.is_closed() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[get_tokens_in_circulation] Request was cancelled while calculating token values"
+                    );
+                    return;
+                },
+                Ok(Err(e)) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Could not calculate token values: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
                             report_error_flag,
-                            Status::internal(format!("Error communicating with local base node: {e}")),
-                        )));
+                            Status::internal(format!("Could not calculate token values: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Token value task failed: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Token value task failed: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+            };
+
+            // Stream in request order, repeating duplicates, as the values were computed once per unique height
+            for height in heights {
+                let response = match value_at_height_response(&values, height) {
+                    Some(response) => response,
+                    None => {
+                        let _ignore = tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Token values for height {height} not found")),
+                            )))
+                            .await;
                         return;
                     },
                 };
-                if result_size < GET_TOKENS_IN_CIRCULATION_PAGE_SIZE {
-                    break;
+                if tx.send(Ok(response)).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[get_tokens_in_circulation] Request was cancelled while sending a response"
+                    );
+                    return;
                 }
-                page = heights
-                    .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
-                    .collect();
             }
         });
 
@@ -3691,5 +3728,75 @@ mod test {
         let err = decode_submit_transaction_request(tari_rpc::SubmitTransactionRequest { transaction: None }, true)
             .unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn tokens_in_circulation_heights_are_bounded_by_the_tip() {
+        let err = tokens_in_circulation_heights(vec![5, 11, 3], 10, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(err.message().contains("11"));
+        assert!(err.message().contains("10"));
+
+        let err = tokens_in_circulation_heights(vec![u64::MAX], 10, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        assert_eq!(tokens_in_circulation_heights(vec![], 10, true).unwrap(), vec![10]);
+        assert_eq!(tokens_in_circulation_heights(vec![10, 0, 10], 10, true).unwrap(), vec![
+            10, 0, 10
+        ]);
+    }
+
+    #[test]
+    fn tokens_in_circulation_heights_are_capped_in_a_fresh_vector() {
+        let heights = cap_tokens_in_circulation_heights(vec![1; GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS + 1]);
+        assert_eq!(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+        assert!(heights.capacity() <= GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+
+        assert_eq!(cap_tokens_in_circulation_heights(vec![3, 1, 3]), vec![3, 1, 3]);
+        assert!(cap_tokens_in_circulation_heights(vec![]).is_empty());
+    }
+
+    #[test]
+    fn tokens_in_circulation_streams_in_request_order() {
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
+        let heights = tokens_in_circulation_heights(vec![1000, 5, 20_000, 5, 0, 1000], 20_000, true).unwrap();
+        let mut unique_heights = heights.clone();
+        unique_heights.sort_unstable();
+        unique_heights.dedup();
+        let values = consensus_manager
+            .token_values_at_heights(&unique_heights, || false)
+            .unwrap();
+
+        let responses = heights
+            .iter()
+            .map(|height| value_at_height_response(&values, *height).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(responses.iter().map(|r| r.height).collect::<Vec<_>>(), vec![
+            1000, 5, 20_000, 5, 0, 1000
+        ]);
+        for response in responses {
+            let height = response.height;
+            assert_eq!(response, tari_rpc::ValueAtHeightResponse {
+                circulating_supply: consensus_manager
+                    .total_tokens_circulating_at_height(height)
+                    .unwrap()
+                    .into(),
+                height,
+                mined_rewards: consensus_manager.block_rewards_mined_at_height(height).unwrap().into(),
+                spendable_rewards: consensus_manager
+                    .block_rewards_spendable_at_height(height)
+                    .unwrap()
+                    .into(),
+                spendable_pre_mine: consensus_manager.pre_mine_spendable_at_height(height).unwrap().into(),
+                total_spendable: consensus_manager
+                    .total_tokens_spendable_at_height(height)
+                    .unwrap()
+                    .into(),
+                total_pre_mine: consensus_manager.total_pre_mine_in_genesis_block().into(),
+                time_locked_pre_mine: consensus_manager.time_locked_pre_mine(height).unwrap().into(),
+            });
+        }
+
+        assert!(value_at_height_response(&values, 6).is_none());
     }
 }
