@@ -228,6 +228,7 @@ mod rebootstrap {
     use tari_comms::{
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
         peer_manager::{NodeId, PeerFlags},
+        protocol::rpc::RpcError,
         test_utils::mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
     };
     use tokio::sync::RwLock;
@@ -355,33 +356,85 @@ mod rebootstrap {
         assert_eq!(banned[0].0, source);
     }
 
-    /// A resolved seed whose key is already stored as an ordinary peer is not promoted to a seed, and only seeds of
-    /// the current resolution are synced from.
+    /// A resolved seed whose key is already stored as an ordinary peer is synced from this round but not stored as a
+    /// seed (nor overwritten), and only seeds of the current resolution are synced from.
     #[tokio::test]
-    async fn seed_resolution_skips_known_peers_and_replaces_old_seeds() {
-        let known = make_node_identity().to_peer();
+    async fn seed_resolution_syncs_known_peers_and_replaces_old_seeds() {
+        let known_identity = make_node_identity();
+        let known = known_identity.to_peer();
         let known_id = known.node_id.clone();
+        let mut known_resolved = known_identity.to_peer();
+        known_resolved.features = PeerFeatures::COMMUNICATION_CLIENT;
         let mut old_seed = make_node_identity().to_peer();
         old_seed.add_flags(PeerFlags::SEED);
         let old_seed_id = old_seed.node_id.clone();
         let new_seed = make_node_identity().to_peer();
         let new_seed_id = new_seed.node_id.clone();
         let provider = Arc::new(TestSeedPeerProvider {
-            seeds: vec![known.clone(), new_seed],
+            seeds: vec![known_resolved, new_seed],
         });
         let (context, mock, _events) = context(Some(provider));
         context.peer_manager.add_or_update_peer(known).await.unwrap();
         context.peer_manager.add_or_update_peer(old_seed).await.unwrap();
 
         let accepted = refresh_seed_peers(&context).await.unwrap();
-        assert_eq!(accepted, vec![new_seed_id.clone()]);
+        assert_eq!(accepted, vec![known_id.clone(), new_seed_id.clone()]);
         let stored = context.peer_manager.find_by_node_id(&known_id).await.unwrap().unwrap();
         assert!(!stored.is_seed());
+        assert_eq!(stored.features, PeerFeatures::COMMUNICATION_NODE);
 
         let _event = Rebootstrap::new(context.clone()).next_event().await;
         assert!(mock.is_peer_dialed(&new_seed_id).await);
+        assert!(mock.is_peer_dialed(&known_id).await);
         assert!(!mock.is_peer_dialed(&old_seed_id).await);
-        assert!(!mock.is_peer_dialed(&known_id).await);
+    }
+
+    /// If the current resolution leaves nothing to sync from, the stored seeds are used.
+    #[tokio::test]
+    async fn stored_seeds_are_used_when_the_resolution_leaves_nothing() {
+        let mut banned_seed = make_node_identity().to_peer();
+        banned_seed.ban_for(Duration::from_secs(60 * 60), "test".to_string());
+        let mut old_seed = make_node_identity().to_peer();
+        old_seed.add_flags(PeerFlags::SEED);
+        let old_seed_id = old_seed.node_id.clone();
+        let provider = Arc::new(TestSeedPeerProvider {
+            seeds: vec![banned_seed.clone()],
+        });
+        let (context, mock, _events) = context(Some(provider));
+        context.peer_manager.add_or_update_peer(banned_seed).await.unwrap();
+        context.peer_manager.add_or_update_peer(old_seed).await.unwrap();
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        assert!(mock.is_peer_dialed(&old_seed_id).await);
+    }
+
+    /// RPC failures are routine over Tor and a starved node's connections may be its last ones, so only bad peer
+    /// data is banned for - and never by a seed.
+    #[tokio::test]
+    async fn only_bad_data_from_non_seeds_is_banned() {
+        let (context, mock, _events) = context(None);
+        let peer = NodeId::from_public_key(make_node_identity().public_key());
+        ban_on_offence(
+            &context,
+            peer.clone(),
+            &NetworkDiscoveryError::RpcError(RpcError::ReplyTimeout),
+        )
+        .await;
+        ban_on_offence(&context, peer.clone(), &NetworkDiscoveryError::Timeout {
+            operation: "connect_rpc".to_string(),
+            peer: peer.to_string(),
+            duration: "1s".to_string(),
+        })
+        .await;
+
+        let mut seed = make_node_identity().to_peer();
+        seed.add_flags(PeerFlags::SEED);
+        let seed_id = seed.node_id.clone();
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        ban_on_offence(&context, seed_id, &NetworkDiscoveryError::TooManyInvalidPeersReceived).await;
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
     }
 
     struct TestSeedPeerProvider {
@@ -602,9 +655,11 @@ mod rebootstrap {
             .unwrap();
 
         // The rebootstrap tried to sync over the connection, but did not hang up on it
-        assert!(
-            seen.contains(&"open_substream"),
-            "the seed connection was not used: {seen:?}"
+        // Only by the seed path: connected seeds are left out of the connected-peer sync
+        assert_eq!(
+            seen.iter().filter(|r| **r == "open_substream").count(),
+            1,
+            "the seed connection was not used exactly once: {seen:?}"
         );
         assert!(
             !seen.contains(&"disconnect"),

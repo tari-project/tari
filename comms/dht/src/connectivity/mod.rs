@@ -273,6 +273,8 @@ pub(crate) struct DhtConnectivity {
     rebootstrap_peers: Vec<NodeId>,
     /// Whether the next pool peer replacement is taken from `rebootstrap_peers` (they alternate with the database)
     replace_from_learned: bool,
+    /// Learned peers that have been dialled. Those still in `pending_dials` count against the learned-peer budget.
+    learned_dials: HashSet<NodeId>,
     /// When the initial pool refresh was attempted. The pool is not judged starved until it has had a full
     /// `update_interval` to fill from then.
     pool_fill_started: Option<Instant>,
@@ -311,6 +313,7 @@ impl DhtConnectivity {
             },
             rebootstrap_peers: Vec::new(),
             replace_from_learned: false,
+            learned_dials: HashSet::new(),
             pool_fill_started: None,
             shutdown_signal,
         }
@@ -841,8 +844,17 @@ impl DhtConnectivity {
         // get their own budget, independent of what is still in flight: on a starved node the in-flight budget is
         // taken up by dials to stale peers that will fail, and learned peers would never get a turn. That budget is
         // at most half of the dial target, so learned peers - which other nodes chose for us - never make up the
-        // whole pool; known-good peers from the database fill the rest. Each learned peer is offered only once.
-        let mut new_peers = self.take_rebootstrap_peers((target_in_flight / 2).max(1), &exclude);
+        // whole pool; known-good peers from the database fill the rest. The half counts learned dials still in flight
+        // from earlier refreshes, so back-to-back refreshes cannot hand learned peers the whole budget. Each learned
+        // peer is offered only once.
+        let pending_dials = &self.pending_dials;
+        self.learned_dials.retain(|node_id| {
+            pending_dials
+                .get(node_id)
+                .is_some_and(|dialed_at| dialed_at.elapsed() < PENDING_DIAL_GRACE)
+        });
+        let learned_budget = (target_in_flight / 2).max(1).saturating_sub(self.learned_dials.len());
+        let mut new_peers = self.take_rebootstrap_peers(learned_budget, &exclude);
         exclude.extend(new_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
         let mut db_peers = if needed == 0 {
@@ -1378,6 +1390,8 @@ impl DhtConnectivity {
             }
         }
         self.rebootstrap_peers = kept;
+        // The callers dial what is taken
+        self.learned_dials.extend(selected.iter().cloned());
         selected
     }
 

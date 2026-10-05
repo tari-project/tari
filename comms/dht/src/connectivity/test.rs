@@ -707,6 +707,43 @@ mod rebootstrap_trigger {
         assert_eq!(dialed.len().saturating_sub(num_learned), 12);
     }
 
+    /// Learned dials still in flight count against the learned half of the budget, so back-to-back refreshes cannot
+    /// hand learned peers the whole budget.
+    #[tokio::test]
+    async fn learned_dials_in_flight_count_against_the_learned_budget() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(30)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(30)
+            .collect::<Vec<_>>();
+        let mut stored = learned;
+        stored.extend(known_good);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), stored).await;
+        dht_connectivity.set_rebootstrap_peers(&learned_ids).await.unwrap();
+
+        // Two refreshes well within the pending-dial grace period
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 24,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let dialed = connectivity.get_dialed_peers().await;
+        let num_learned = dialed.iter().filter(|node_id| learned_ids.contains(node_id)).count();
+        assert_eq!(num_learned, 12, "learned peers took more than half the budget");
+        assert_eq!(dialed.len(), 24);
+    }
+
     /// Peers that are already in the pool, or excluded for another reason, are dropped rather than kept for later.
     #[tokio::test]
     async fn learned_peers_already_in_the_pool_are_dropped() {

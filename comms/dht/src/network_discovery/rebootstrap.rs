@@ -40,14 +40,15 @@ use tari_comms::{
     Minimized,
     PeerConnection,
     RefKind,
-    peer_manager::{NodeId, Peer, PeerFlags},
+    peer_manager::{NodeId, Peer, PeerFlags, PeerManagerError},
 };
 use tokio::time;
 
 use crate::{
+    actor::OffenceSeverity,
     network_discovery::{
         NetworkDiscoveryError,
-        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, ban_peer, is_connected, offence_severity},
+        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, ban_peer, is_connected},
         seed_strap::fetch_peers_from_connection,
         state_machine::{NetworkDiscoveryContext, StateEvent},
     },
@@ -294,22 +295,17 @@ async fn sync_from_seeds(context: &NetworkDiscoveryContext) -> (usize, Vec<Sourc
     let seeds_resolved = resolved.as_ref().map_or(0, Vec::len);
 
     // With a provider, only the seeds of the current resolution are used, so that seeds no longer published (or
-    // injected into an earlier resolution) do not linger in the selection. If nothing resolved at all, the stored
-    // seeds are better than none.
-    let seeds = match resolved {
-        Some(node_ids) if !node_ids.is_empty() => context.peer_manager.get_peers_by_node_ids(&node_ids).await,
-        _ => context.peer_manager.get_seed_peers().await,
-    };
-    let mut seeds = match seeds {
-        Ok(seeds) => seeds,
-        Err(err) => {
-            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to load seed peers: {err}");
-            Vec::new()
+    // injected into an earlier resolution) do not linger in the selection. If that leaves nothing to sync from, the
+    // stored seeds are better than none.
+    let mut seeds = match resolved {
+        Some(node_ids) if !node_ids.is_empty() => {
+            load_seeds(context, context.peer_manager.get_peers_by_node_ids(&node_ids).await)
         },
+        _ => Vec::new(),
     };
-    // Real bans are honoured. The connectivity manager would refuse the dial anyway; this just avoids spending one of
-    // the seed slots on it.
-    seeds.retain(|seed| seed.is_seed() && !seed.is_banned() && seed.node_id != *context.node_identity.node_id());
+    if seeds.is_empty() {
+        seeds = load_seeds(context, context.peer_manager.get_seed_peers().await);
+    }
     seeds.shuffle(&mut rand::rng());
     seeds.truncate(context.config.network_discovery.max_seed_peer_sync_count);
 
@@ -336,11 +332,27 @@ async fn sync_from_seeds(context: &NetworkDiscoveryContext) -> (usize, Vec<Sourc
     (seeds_resolved, results.into_iter().flatten().collect())
 }
 
+/// Keeps the seeds that can be dialled. Real bans are honoured: the connectivity manager would refuse the dial anyway,
+/// this just avoids spending one of the seed slots on it.
+fn load_seeds(context: &NetworkDiscoveryContext, seeds: Result<Vec<Peer>, PeerManagerError>) -> Vec<Peer> {
+    let mut seeds = match seeds {
+        Ok(seeds) => seeds,
+        Err(err) => {
+            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to load seed peers: {err}");
+            return Vec::new();
+        },
+    };
+    seeds.retain(|seed| !seed.is_banned() && seed.node_id != *context.node_identity.node_id());
+    seeds
+}
+
 /// Asks the `SeedPeerProvider` for the current seeds and upserts them as seed peers. Returns the node ids of the
-/// seeds accepted from this resolution, or `None` if there is no provider.
+/// seeds to sync from in this rebootstrap, or `None` if there is no provider.
 ///
-/// A resolved record whose public key is already stored as an ordinary (non-seed) peer is skipped: a DNS answer must
-/// not be able to promote a known peer to a seed or overwrite what is stored for it.
+/// A resolved record whose public key is already stored as an ordinary (non-seed) peer is synced from, but not
+/// stored: a DNS answer must not be able to promote a known peer to a seed or overwrite what is stored for it. Seed
+/// nodes are ordinary network members too, so most of them reach the peer DB through gossip long before (or
+/// instead of) a successful DNS resolution.
 pub(super) async fn refresh_seed_peers(context: &NetworkDiscoveryContext) -> Option<Vec<NodeId>> {
     let Some(provider) = context.seed_peer_provider.as_ref() else {
         debug!(target: REBOOTSTRAP_LOG_TARGET, "No seed peer provider configured, using stored seeds only");
@@ -353,11 +365,13 @@ pub(super) async fn refresh_seed_peers(context: &NetworkDiscoveryContext) -> Opt
         }
         match context.peer_manager.find_by_public_key(&peer.public_key).await {
             Ok(Some(existing)) if !existing.is_seed() => {
-                warn!(
+                debug!(
                     target: REBOOTSTRAP_LOG_TARGET,
-                    "Resolved seed '{}' is already known as an ordinary peer. Skipping it.",
+                    "Resolved seed '{}' is already known as an ordinary peer. Syncing from it without storing it as a \
+                     seed.",
                     existing.node_id.short_str()
                 );
+                accepted.push(existing.node_id);
                 continue;
             },
             Ok(_) => {},
@@ -455,9 +469,17 @@ async fn sync_from_connected_peers(context: &NetworkDiscoveryContext) -> Vec<Sou
             return Vec::new();
         },
     };
+    // Seeds are synced from by the seed path, so they are left out here
+    let seeds = match context.peer_manager.get_seed_peers().await {
+        Ok(seeds) => seeds.into_iter().map(|seed| seed.node_id).collect::<HashSet<_>>(),
+        Err(err) => {
+            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to load seed peers: {err}");
+            HashSet::new()
+        },
+    };
     let (mut outbound, mut inbound) = conns
         .into_iter()
-        .filter(|conn| conn.is_connected() && !conn.peer_features().is_client())
+        .filter(|conn| conn.is_connected() && !conn.peer_features().is_client() && !seeds.contains(conn.peer_node_id()))
         .partition::<Vec<_>, _>(|conn| conn.direction().is_outbound());
     outbound.shuffle(&mut rand::rng());
     inbound.shuffle(&mut rand::rng());
@@ -501,12 +523,27 @@ async fn sync_from_connected_peers(context: &NetworkDiscoveryContext) -> Vec<Sou
     results.into_iter().flatten().collect()
 }
 
-/// Bans a connected peer whose sync failed in a way that is its fault, using the same classification as
-/// Discovering. Not used for seeds.
+/// Bans a connected peer that sent bad peer data. Unlike Discovering, RPC failures (no free sessions, timeouts) are
+/// not banned for: they are routine over Tor, and on a starved node these connections may be its last ones. Seeds are
+/// never banned here.
 pub(super) async fn ban_on_offence(context: &NetworkDiscoveryContext, node_id: NodeId, err: &NetworkDiscoveryError) {
-    if let Some(severity) = offence_severity(err) {
-        ban_peer(context, node_id, severity, err).await;
+    let is_bad_data = matches!(
+        err,
+        NetworkDiscoveryError::EmptyPeerMessageReceived |
+            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+            NetworkDiscoveryError::DuplicatePeerReceived |
+            NetworkDiscoveryError::TooManyPeersReceived |
+            NetworkDiscoveryError::TooManyInvalidPeersReceived
+    );
+    if !is_bad_data {
+        return;
     }
+    if let Ok(Some(peer)) = context.peer_manager.find_by_node_id(&node_id).await &&
+        peer.is_seed()
+    {
+        return;
+    }
+    ban_peer(context, node_id, OffenceSeverity::High, err).await;
 }
 
 /// Requests peers over an existing connection and stores the valid ones. Returns the node ids of the peers stored.
