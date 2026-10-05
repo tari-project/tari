@@ -339,10 +339,11 @@ struct RollerPaths {
 /// rolling policy's `policy.roller.pattern`. Returns an error if the appenders cannot be read for checking, which the
 /// caller treats as a refusal. A path is outside if it contains `$ENV{` or `${` (log4rs expands environment variables
 /// at build time, so the raw string says nothing about where it writes), or has a `..` segment. Otherwise it is inside
-/// if its parent directory, made absolute against the current directory (as log4rs does) and normalized, starts with
-/// `<log dir>/log`, or if the parent's canonical form (or that of its nearest existing ancestor) starts with the
-/// boundary's canonical form. The lexical check keeps `{{log_dir}}/log/...` valid when the operator made `log` a
-/// symlink to another disk. `contents` must already have `{{log_dir}}` substituted.
+/// if its parent directory, made absolute against the current directory (as log4rs does), canonicalized (or its
+/// nearest existing ancestor canonicalized), starts with the canonical form of `<log dir>/log`. Canonical comparison
+/// means a symlink inside the log directory that points elsewhere is refused, while `log` itself may be the operator's
+/// symlink to another disk. Only when canonicalization is impossible is the normalized lexical form compared instead.
+/// `contents` must already have `{{log_dir}}` substituted.
 fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String, String)>, String> {
     let mirror: AppendersMirror = serde_yaml::from_str(contents).map_err(|e| e.to_string())?;
     let mut escapes = Vec::new();
@@ -416,12 +417,12 @@ fn is_inside_log_dir(path: &str, base: &LogDirBase) -> bool {
             Err(_) => return false,
         }
     };
-    if lexical_normalize(&absolute).starts_with(&base.boundary) {
-        return true;
-    }
+    // Compare canonical forms first: a lexical match alone would accept a path through a symlink planted inside
+    // `<log dir>/log` that points elsewhere. `log` itself may still be a symlink to another disk, because the
+    // boundary is canonicalized the same way. Only when canonicalization is impossible does the lexical form decide.
     match (&base.canonical, resolve_for_containment(&absolute)) {
-        (Some(base), Some(resolved)) => resolved.starts_with(base),
-        _ => false,
+        (Some(base_canonical), Some(resolved)) => resolved.starts_with(base_canonical),
+        _ => lexical_normalize(&absolute).starts_with(&base.boundary),
     }
 }
 
@@ -744,6 +745,45 @@ mod test {
         let choice = choose_log_config(&path, &dotted, yaml).unwrap();
         assert!(choice.refused);
         assert!(choice.contents.contains("/log/app.log"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_inside_the_log_dir_cannot_escape_it() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        use super::choose_log_config;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let base = dir.path().join("base");
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir_all(base.join("log")).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // A directory inside `<base>/log` that is really a symlink to somewhere else
+        symlink(&elsewhere, base.join("log").join("sub")).unwrap();
+
+        let path = base.join("log4rs.yml");
+        let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/sub/app.log\"\n";
+        std::fs::write(&path, yaml).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let choice = choose_log_config(&path, &base, "appenders: {}\nroot:\n  level: warn\n").unwrap();
+        assert!(choice.refused, "{:?}", choice.findings);
+        assert!(
+            choice
+                .findings
+                .iter()
+                .any(|(severe, msg)| *severe && msg.contains("outside the log directory")),
+            "{:?}",
+            choice.findings
+        );
+
+        // A real subdirectory at the same place is fine
+        std::fs::remove_file(base.join("log").join("sub")).unwrap();
+        std::fs::create_dir_all(base.join("log").join("sub")).unwrap();
+        let choice = choose_log_config(&path, &base, yaml).unwrap();
+        assert!(!choice.refused, "{:?}", choice.findings);
     }
 
     #[test]
