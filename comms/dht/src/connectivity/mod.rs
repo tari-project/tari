@@ -894,9 +894,10 @@ impl DhtConnectivity {
         // which is the intended recovery. Each learned peer is offered only once.
         let learned_in_flight = self.learned_dials_in_flight();
         if shortfall == 0 {
-            // The pool is at target (and not outbound-starved), so the learned peers are no longer needed
+            // The pool is at target (and not outbound-starved), so the queued learned peers are no longer needed.
+            // Learned dials still in flight are kept: when they land they are pool peers, and must keep counting
+            // against the inbound share.
             self.rebootstrap_peers.clear();
-            self.learned_dials.clear();
             self.prune_learned_taken();
         }
         let learned_budget = if target_in_flight == 0 {

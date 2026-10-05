@@ -1021,6 +1021,45 @@ mod rebootstrap_trigger {
         assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
     }
 
+    /// Learned dials still in flight when the pool reaches target keep counting once they land: a later
+    /// rebootstrap does not get a fresh inbound allowance.
+    #[tokio::test]
+    async fn learned_dials_in_flight_at_target_keep_counting() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 1,
+            ..Default::default()
+        };
+        let first = make_node_identity().to_peer();
+        let first_id = first.node_id.clone();
+        let later = make_node_identity().to_peer();
+        let later_id = later.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![first, later]).await;
+
+        // An inbound-suggested learned peer is taken and dialled
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&first_id), std::slice::from_ref(&first_id))
+            .await
+            .unwrap();
+        assert_eq!(dht_connectivity.take_rebootstrap_peers(1, &[]), vec![first_id.clone()]);
+        dht_connectivity.random_pool.push(first_id.clone());
+        dht_connectivity.pending_dials.insert(first_id.clone(), Instant::now());
+
+        // The pool reaches target through other peers while that dial is still pending
+        let _others = fill_pool(&mut dht_connectivity, 2, ConnectionDirection::Outbound);
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.refresh_random_pool().await.unwrap();
+
+        // The dial lands, and a new rebootstrap brings another inbound-suggested peer: it would make 2 of 2
+        let _first = connect(&mut dht_connectivity, std::slice::from_ref(&first_id));
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&later_id), std::slice::from_ref(&later_id))
+            .await
+            .unwrap();
+        assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
+    }
+
     /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
     /// Returns the inbound-sourced ones.
     fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {
