@@ -294,20 +294,53 @@ async fn sync_from_seeds(context: &NetworkDiscoveryContext) -> (usize, Vec<Sourc
     let resolved = refresh_seed_peers(context).await;
     let seeds_resolved = resolved.as_ref().map_or(0, Vec::len);
 
-    // With a provider, only the seeds of the current resolution are used, so that seeds no longer published (or
-    // injected into an earlier resolution) do not linger in the selection. If that leaves nothing to sync from, the
-    // stored seeds are better than none.
-    let mut seeds = match resolved {
+    let max_seeds = context.config.network_discovery.max_seed_peer_sync_count;
+    let stored_seeds = load_seeds(context, context.peer_manager.get_seed_peers().await);
+
+    // Stored seeds this node is already connected to come first, whether or not they are in the current resolution:
+    // on an isolated node such a connection (e.g. the proactive dialer's) may be the only live one, and syncing over
+    // it needs no dial. The connected-peer sync leaves seeds out, so this is the only path that would use it.
+    let mut connectivity = context.connectivity.clone();
+    let active = match connectivity.get_active_connections().await {
+        Ok(conns) => conns
+            .into_iter()
+            .filter(|conn| conn.is_connected())
+            .map(|conn| conn.peer_node_id().clone())
+            .collect::<HashSet<_>>(),
+        Err(err) => {
+            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to get active connections: {err}");
+            HashSet::new()
+        },
+    };
+    let mut seeds = stored_seeds
+        .iter()
+        .filter(|seed| active.contains(&seed.node_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    seeds.shuffle(&mut rand::rng());
+    seeds.truncate(max_seeds);
+
+    // The remaining slots go to the seeds of the current resolution, so that seeds no longer published (or injected
+    // into an earlier resolution) do not linger in the selection. If that leaves nothing to sync from, the stored
+    // seeds are better than none.
+    let mut candidates = match resolved {
         Some(node_ids) if !node_ids.is_empty() => {
             load_seeds(context, context.peer_manager.get_peers_by_node_ids(&node_ids).await)
         },
         _ => Vec::new(),
     };
-    if seeds.is_empty() {
-        seeds = load_seeds(context, context.peer_manager.get_seed_peers().await);
+    if candidates.is_empty() && seeds.is_empty() {
+        candidates = stored_seeds;
     }
-    seeds.shuffle(&mut rand::rng());
-    seeds.truncate(context.config.network_discovery.max_seed_peer_sync_count);
+    candidates.shuffle(&mut rand::rng());
+    for candidate in candidates {
+        if seeds.len() >= max_seeds {
+            break;
+        }
+        if !seeds.iter().any(|seed| seed.node_id == candidate.node_id) {
+            seeds.push(candidate);
+        }
+    }
 
     let timeout = source_timeout(context);
     let results = future::join_all(seeds.into_iter().map(|seed| async move {

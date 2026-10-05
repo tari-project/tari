@@ -223,7 +223,7 @@ mod discovery_ready {
 }
 
 mod rebootstrap {
-    use std::time::Instant;
+    use std::{iter::repeat_with, time::Instant};
 
     use tari_comms::{
         PeerConnection,
@@ -476,6 +476,75 @@ mod rebootstrap {
             "only the remaining slot should go to an inbound peer"
         );
         assert_eq!(synced_seed, 0, "the seed was synced from by the connected-peer path");
+    }
+
+    /// A stored seed this node is connected to, and that is not in the current resolution.
+    async fn connected_stored_seed(
+        context: &NetworkDiscoveryContext,
+        mock: &ConnectivityManagerMockState,
+    ) -> (NodeId, tokio::task::JoinHandle<usize>) {
+        let (conn, counter) = counting_connection(ConnectionDirection::Outbound);
+        let mut seed = make_node_identity().to_peer();
+        seed.node_id = conn.peer_node_id().clone();
+        seed.add_flags(PeerFlags::SEED);
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        let node_id = conn.peer_node_id().clone();
+        mock.add_active_connection(conn).await;
+        (node_id, counter)
+    }
+
+    async fn times_synced(
+        mock: &ConnectivityManagerMockState,
+        node_id: &NodeId,
+        counter: tokio::task::JoinHandle<usize>,
+    ) -> usize {
+        mock.remove_active_connection(node_id).await;
+        tokio::time::timeout(Duration::from_secs(5), counter)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    /// A connected stored seed is synced from even when the current resolution does not include it.
+    #[tokio::test]
+    async fn a_connected_seed_outside_the_resolution_is_synced_from() {
+        let resolved = make_node_identity().to_peer();
+        let resolved_id = resolved.node_id.clone();
+        let provider = Arc::new(TestSeedPeerProvider { seeds: vec![resolved] });
+        let (mut context, mock, _events) = context(Some(provider));
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+        let (connected_id, counter) = connected_stored_seed(&context, &mock).await;
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        assert!(mock.is_peer_dialed(&resolved_id).await);
+        assert_eq!(times_synced(&mock, &connected_id, counter).await, 1);
+    }
+
+    /// With more resolved seeds than slots, the connected seed always gets one of them.
+    #[tokio::test]
+    async fn a_connected_seed_always_gets_a_slot() {
+        let resolved = repeat_with(|| make_node_identity().to_peer())
+            .take(3)
+            .collect::<Vec<_>>();
+        let resolved_ids = resolved.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let provider = Arc::new(TestSeedPeerProvider { seeds: resolved });
+        let (mut context, mock, _events) = context(Some(provider));
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_seed_peer_sync_count = 1;
+        config.network_discovery.bootstrap_rpc_connect_timeout = Duration::from_millis(100);
+        context.config = Arc::new(config);
+        let (connected_id, counter) = connected_stored_seed(&context, &mock).await;
+
+        let _event = Rebootstrap::new(context.clone()).next_event().await;
+        for node_id in &resolved_ids {
+            assert!(
+                !mock.is_peer_dialed(node_id).await,
+                "a resolved seed took the only slot"
+            );
+        }
+        assert_eq!(times_synced(&mock, &connected_id, counter).await, 1);
     }
 
     /// If the current resolution leaves nothing to sync from, the stored seeds are used.
