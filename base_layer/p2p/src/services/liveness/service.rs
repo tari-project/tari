@@ -29,7 +29,8 @@ use tari_comms::{
     PeerManager,
     RefKind,
     connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
@@ -235,7 +236,7 @@ where
                 );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
-                if let Some(address) = source_peer.last_address_used() {
+                if let Some(address) = last_dialled_address(&source_peer) {
                     let mut peer_to_update = source_peer.clone();
                     if let Some(val) = maybe_latency {
                         peer_to_update.addresses.update_latency(&address, val);
@@ -458,6 +459,18 @@ where
     }
 }
 
+/// The address we last dialled `peer` on, or `None` if we never dialled it. A pong only shows that address to be
+/// reachable: a peer that only ever connected to us has merely claimed its addresses, and marking one of those as seen
+/// would make it a known-good dial candidate.
+fn last_dialled_address(peer: &Peer) -> Option<Multiaddr> {
+    peer.addresses
+        .addresses()
+        .iter()
+        .filter(|address| address.last_attempted().is_some())
+        .max_by_key(|address| address.last_attempted())
+        .map(|address| address.address().clone())
+}
+
 #[cfg(test)]
 mod test {
     use std::time::Duration;
@@ -659,6 +672,20 @@ mod test {
 
         // Test oms got request to send message
         unwrap_oms_send_msg!(outbound_rx.recv().await.unwrap());
+    }
+
+    /// Only an address we dialled is marked as seen on a pong; a peer that only dialled in has none.
+    #[test]
+    fn a_pong_only_vouches_for_a_dialled_address() {
+        let mut peer =
+            tari_comms::test_utils::node_identity::build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        assert!(last_dialled_address(&peer).is_none());
+
+        let address = peer.addresses.address_iter().next().unwrap().clone();
+        peer.addresses.update_address_stats(&address, |stats| {
+            stats.mark_last_attempted_now();
+        });
+        assert_eq!(last_dialled_address(&peer), Some(address));
     }
 
     #[tokio::test]
