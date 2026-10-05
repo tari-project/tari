@@ -889,7 +889,8 @@ mod rebootstrap {
         let (mut context, mock, mut events) = context(None);
         let mut config = DhtConfig::default_local_test();
         config.network_discovery.enabled = true;
-        // The seed dial never resolves, so the rebootstrap runs into the bootstrap timeout
+        // The seed dial never resolves, so the rebootstrap runs to its per-source deadline (15s: a rebootstrap gets at
+        // least 30s), long after the 300ms primary bootstrap timeout
         config.network_discovery.bootstrap_timeout = Duration::from_millis(300);
         context.config = Arc::new(config);
         context.peer_manager.add_or_update_peer(seed).await.unwrap();
@@ -904,7 +905,7 @@ mod rebootstrap {
 
         let mut rebootstraps = 0;
         let mut bootstrap_completed = false;
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             while rebootstraps == 0 || !bootstrap_completed {
                 match &*events.recv().await.unwrap() {
                     DhtEvent::RebootstrapComplete(_) => rebootstraps += 1,
@@ -949,7 +950,8 @@ mod rebootstrap {
         let (mut context, mock, mut events) = context(Some(provider));
         let mut config = DhtConfig::default_local_test();
         config.network_discovery.enabled = true;
-        // The seed dial never resolves, so each rebootstrap runs for its per-source deadline (250ms)
+        // The seed dial never resolves, so each rebootstrap runs for its per-source deadline (15s: a rebootstrap gets
+        // at least 30s)
         config.network_discovery.bootstrap_timeout = Duration::from_millis(500);
         context.config = Arc::new(config);
         mock.set_pending_connection(&seed_node_id).await;
@@ -963,7 +965,7 @@ mod rebootstrap {
         tokio::time::sleep(Duration::from_millis(100)).await;
         context.event_tx.send(Arc::new(DhtEvent::PoolStarved)).unwrap();
 
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 if matches!(&*events.recv().await.unwrap(), DhtEvent::RebootstrapComplete(_)) {
                     break;
