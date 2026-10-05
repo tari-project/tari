@@ -298,7 +298,8 @@ pub(crate) struct DhtConnectivity {
     learned_dials: HashSet<NodeId>,
     /// Peers that inbound sources told us about in recent rebootstraps. Their share of learned peers is limited.
     inbound_learned: InboundSuggested,
-    /// Every learned peer taken from `rebootstrap_peers` since the last rebootstrap, connected or not.
+    /// Learned peers taken from `rebootstrap_peers`, in this or earlier rebootstraps, that are still being dialled or
+    /// connected. Bounded by the pool's connections plus dials in flight. See `prune_learned_taken`.
     learned_taken: HashSet<NodeId>,
     /// The pool's members, shared with network discovery so that it leaves their connections up.
     pool_peers: PoolPeers,
@@ -896,7 +897,7 @@ impl DhtConnectivity {
             // The pool is at target (and not outbound-starved), so the learned peers are no longer needed
             self.rebootstrap_peers.clear();
             self.learned_dials.clear();
-            self.learned_taken.clear();
+            self.prune_learned_taken();
         }
         let learned_budget = if target_in_flight == 0 {
             0
@@ -905,6 +906,9 @@ impl DhtConnectivity {
         };
         let mut new_peers = self.take_rebootstrap_peers(learned_budget, &exclude);
         exclude.extend(new_peers.iter().cloned());
+        // Learned peers are stored in the peer database too. Those still queued are only offered through the learned
+        // budget above, so that the database fill cannot bypass the inbound share.
+        exclude.extend(self.rebootstrap_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
         let mut db_peers = if needed == 0 {
             Vec::new()
@@ -1277,6 +1281,9 @@ impl DhtConnectivity {
                 replacement = self.take_rebootstrap_peers(1, &exclude).pop();
             }
             if replacement.is_none() {
+                // Queued learned peers are only offered through the learned budget (see `refresh_random_pool`)
+                let mut exclude = exclude.clone();
+                exclude.extend(self.rebootstrap_peers.iter().cloned());
                 replacement = self.fetch_random_peers(1, &exclude, true).await?.pop();
             }
             if replacement.is_none() && learned_allowed {
@@ -1428,8 +1435,24 @@ impl DhtConnectivity {
                 .filter(|node_id| eligible.contains(*node_id)),
             Instant::now(),
         );
-        self.learned_taken.clear();
+        // Learned peers from earlier rebootstraps that are still connected keep counting against the inbound share
+        self.prune_learned_taken();
         Ok(())
+    }
+
+    /// Forgets learned peers that are neither connected nor being dialled. Pool connections are the only ones held in
+    /// `connection_handles`, so this checks those rather than `random_pool`, which a refresh empties while it runs.
+    fn prune_learned_taken(&mut self) {
+        self.learned_dials_in_flight();
+        let live = self
+            .connection_handles
+            .iter()
+            .filter(|conn| conn.is_connected())
+            .map(|conn| conn.peer_node_id().clone())
+            .collect::<HashSet<_>>();
+        let learned_dials = &self.learned_dials;
+        self.learned_taken
+            .retain(|node_id| live.contains(node_id) || learned_dials.contains(node_id));
     }
 
     /// The number of learned peers dialled whose dial is still in flight. Forgets the others.
@@ -1447,33 +1470,21 @@ impl DhtConnectivity {
     /// peers that are excluded (already in the pool, being dialled or just released) are dropped. Only peers in dial
     /// backoff are kept for later.
     ///
-    /// Of the learned peers in the pool or being dialled, at most a quarter (rounded up) may be peers that inbound
-    /// sources suggested. Peers that have connected count as well as dials in flight, so inbound-suggested peers that
-    /// connect quickly do not hand the budget back. The learned list is only interleaved by source, and only its head
+    /// Of the learned peers connected or being dialled - from this or earlier rebootstraps - at most a quarter
+    /// (rounded up) may be peers that inbound sources suggested. Peers that have connected count as well as dials in
+    /// flight, so inbound-suggested peers that connect quickly do not hand the budget back, and a new rebootstrap does
+    /// not grant a fresh allowance. The learned list is only interleaved by source, and only its head
     /// is ever dialled, so without this a few inbound sources could supply most of the learned peers.
     fn take_rebootstrap_peers(&mut self, n: usize, excluded: &[NodeId]) -> Vec<NodeId> {
         if n == 0 || self.rebootstrap_peers.is_empty() {
             return Vec::new();
         }
         self.prune_dial_backoff();
-        self.learned_dials_in_flight();
         let now = Instant::now();
-        let live = self
-            .connection_handles
-            .iter()
-            .filter(|conn| conn.is_connected())
-            .map(|conn| conn.peer_node_id().clone())
-            .collect::<HashSet<_>>();
-        let counted = self
+        self.prune_learned_taken();
+        let mut total = self.learned_taken.len();
+        let mut inbound = self
             .learned_taken
-            .iter()
-            .filter(|node_id| {
-                (self.random_pool.contains(*node_id) && live.contains(*node_id)) ||
-                    self.learned_dials.contains(*node_id)
-            })
-            .collect::<Vec<_>>();
-        let mut total = counted.len();
-        let mut inbound = counted
             .iter()
             .filter(|node_id| self.inbound_learned.contains(node_id, now))
             .count();

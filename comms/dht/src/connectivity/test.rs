@@ -915,6 +915,112 @@ mod rebootstrap_trigger {
         assert!(in_pool * 4 <= dht_connectivity.random_pool.len() + 3);
     }
 
+    /// Simulates the dials to `node_ids` connecting: no longer pending, with live outbound pool connections.
+    fn connect(
+        dht_connectivity: &mut DhtConnectivity,
+        node_ids: &[NodeId],
+    ) -> Vec<mpsc::Receiver<PeerConnectionRequest>> {
+        let mut receivers = Vec::new();
+        for node_id in node_ids {
+            dht_connectivity.pending_dials.remove(node_id);
+            if !dht_connectivity.random_pool.contains(node_id) {
+                dht_connectivity.random_pool.push(node_id.clone());
+            }
+            let (conn, rx) =
+                create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Outbound);
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+        receivers
+    }
+
+    /// The inbound share holds across pool refreshes, the main fill path, after the first learned peers connect.
+    #[tokio::test]
+    async fn the_inbound_share_holds_across_refreshes() {
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(20)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        // As from 1 outbound and 4 inbound sources, interleaved
+        let from_inbound = learned_ids
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| i % 5 != 0)
+            .map(|(_, node_id)| node_id.clone())
+            .collect::<Vec<_>>();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), learned).await;
+        dht_connectivity
+            .set_rebootstrap_peers(&learned_ids, &from_inbound)
+            .await
+            .unwrap();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        async_assert!(
+            !connectivity.get_dialed_peers().await.is_empty(),
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let first = connectivity
+            .take_dialed_peers()
+            .await
+            .into_iter()
+            .filter(|node_id| learned_ids.contains(node_id))
+            .collect::<Vec<_>>();
+        let first_inbound = first.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
+        assert!(
+            first_inbound * 4 <= first.len() + 3,
+            "{first_inbound} of {}",
+            first.len()
+        );
+
+        // They all connect, then the pool is refreshed again
+        let _receivers = connect(&mut dht_connectivity, &first);
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let second = connectivity
+            .take_dialed_peers()
+            .await
+            .into_iter()
+            .filter(|node_id| learned_ids.contains(node_id))
+            .collect::<Vec<_>>();
+        let second_inbound = second.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
+        let total = first.len() + second.len();
+        let inbound = first_inbound + second_inbound;
+        assert!(
+            inbound * 4 <= total + 3,
+            "{inbound} of {total} learned peers are inbound-suggested"
+        );
+    }
+
+    /// Inbound-suggested peers still connected from an earlier rebootstrap keep counting when a new learned list
+    /// arrives: a new rebootstrap does not grant a fresh allowance.
+    #[tokio::test]
+    async fn the_inbound_share_carries_over_to_the_next_rebootstrap() {
+        let first = make_node_identity().to_peer();
+        let first_id = first.node_id.clone();
+        let second = make_node_identity().to_peer();
+        let second_id = second.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![first, second]).await;
+
+        // Rebootstrap N: one inbound-suggested peer, which is taken and connects
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&first_id), std::slice::from_ref(&first_id))
+            .await
+            .unwrap();
+        assert_eq!(dht_connectivity.take_rebootstrap_peers(1, &[]), vec![first_id.clone()]);
+        let _receivers = connect(&mut dht_connectivity, std::slice::from_ref(&first_id));
+
+        // Rebootstrap N+1: another inbound-suggested peer would make it 2 of 2
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&second_id), std::slice::from_ref(&second_id))
+            .await
+            .unwrap();
+        assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
+    }
+
     /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
     /// Returns the inbound-sourced ones.
     fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {
