@@ -36,7 +36,7 @@ mod test;
 mod metrics;
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -791,8 +791,13 @@ impl DhtConnectivity {
         // When the pool is healthy we can afford to probe/revive arbitrary (possibly never-seen)
         // peers. When we are short on peers we prefer known-good peers (ones we have successfully
         // connected to before) instead of wasting dials on never-seen/dead peers.
-        // Peers learned in the last rebootstrap are fresh, so they go before anything from the peer database.
-        let mut new_peers = self.take_rebootstrap_peers(needed, &exclude).await?;
+        // Peers learned in the last rebootstrap are fresh, so they go before anything from the peer database. They
+        // get their own budget, sized by the shortfall rather than by what is still in flight: on a starved node the
+        // in-flight budget is taken up by dials to stale peers that will fail, and learned peers would never get a
+        // turn. Each learned peer is offered only once, so this is a one-off burst.
+        let mut new_peers = self
+            .take_rebootstrap_peers(shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR), &exclude)
+            .await?;
         exclude.extend(new_peers.iter().cloned());
         let needed = needed.saturating_sub(new_peers.len());
         let mut db_peers = if needed == 0 {
@@ -1153,10 +1158,14 @@ impl DhtConnectivity {
                 target: LOG_TARGET,
                 "Peer '{current_peer}' in peer pool is unavailable. Adding a new peer if possible"
             );
-            // Reactive backfill after a peer dropped: prefer known-good peers so we don't refill
-            // the pool with never-seen/dead peers. Exploration of new peers happens in the periodic
-            // `refresh_random_pool` churn instead.
-            match self.fetch_random_peers(1, &exclude, true).await?.pop() {
+            // Reactive backfill after a peer dropped: prefer peers learned in the last rebootstrap, then
+            // known-good peers so we don't refill the pool with never-seen/dead peers. Exploration of new
+            // peers happens in the periodic `refresh_random_pool` churn instead.
+            let mut replacement = self.take_rebootstrap_peers(1, &exclude).await?.pop();
+            if replacement.is_none() {
+                replacement = self.fetch_random_peers(1, &exclude, true).await?.pop();
+            }
+            match replacement {
                 Some(new_peer) => {
                     self.insert_random_peer(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
@@ -1292,8 +1301,14 @@ impl DhtConnectivity {
             .into_iter()
             .filter(|peer| !peer.is_banned() && !peer.is_seed() && !peer.features.is_client())
             .map(|peer| peer.node_id)
+            .collect::<HashSet<_>>();
+        // Keep the learned order (peers from seeds first), not the order the database returned them in
+        let selected = candidates
+            .iter()
+            .filter(|node_id| eligible.contains(*node_id))
+            .take(n)
+            .cloned()
             .collect::<Vec<_>>();
-        let selected = eligible.iter().take(n).cloned().collect::<Vec<_>>();
         // Drop what was selected, and what can never be selected. Keep peers that were only excluded for now.
         self.rebootstrap_peers.retain(|node_id| {
             !selected.contains(node_id) && (!candidates.contains(node_id) || eligible.contains(node_id))
