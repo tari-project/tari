@@ -196,7 +196,15 @@ impl RandomXFactoryInner {
             RandomXVMInstance::create(key, self.flags, cache, dataset)
         });
         match result.clone() {
-            Ok(vm) => Ok(vm),
+            Ok(vm) => {
+                // If this key was evicted while it was building, cache the finished VM again as the newest entry. A
+                // different cell for the key belongs to a newer caller and is left alone.
+                let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
+                if !vms.contains_key(key) {
+                    self.insert_newest(&mut vms, key, cell);
+                }
+                Ok(vm)
+            },
             Err(err) => {
                 // Remove the failed entry (unless it was already replaced or evicted) so the next request retries.
                 // Every caller holding this cell does this; only the first one still finds it in the map.
@@ -216,16 +224,21 @@ impl RandomXFactoryInner {
             return entry.1.clone();
         }
 
-        // Evicting only drops the map's reference; callers already holding the cell still get their VM.
+        let cell = VmCell::default();
+        self.insert_newest(&mut vms, key, cell.clone());
+        cell
+    }
+
+    /// Insert `cell` for `key` as the newest entry, evicting the oldest entry first if the map is full. Evicting only
+    /// drops the map's reference; callers already holding the cell still get their VM, and a successful build puts
+    /// its cell back in the map.
+    fn insert_newest(&self, vms: &mut HashMap<Vec<u8>, (Instant, VmCell)>, key: &[u8], cell: VmCell) {
         if vms.len() >= self.max_vms &&
             let Some(oldest_key) = vms.iter().min_by_key(|(_, (i, _))| *i).map(|(k, _)| k.clone())
         {
             vms.remove(&oldest_key);
         }
-
-        let cell = VmCell::default();
-        vms.insert(Vec::from(key), (Instant::now(), cell.clone()));
-        cell
+        vms.insert(Vec::from(key), (Instant::now(), cell));
     }
 
     fn acquire_build_permit(&self) -> BuildPermit<'_> {
@@ -527,5 +540,63 @@ mod test {
         assert!(!vms.contains_key(b"key-1".as_slice()));
         assert!(vms.contains_key(b"key-2".as_slice()));
         assert!(vms.contains_key(b"key-3".as_slice()));
+    }
+
+    #[test]
+    fn vm_evicted_while_building_is_cached_again() {
+        let factory = RandomXFactory::new(2);
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_k_tx, release_k_rx) = mpsc::channel::<()>();
+        let (release_others_tx, release_others_rx) = mpsc::channel::<()>();
+        let release_k_rx = Mutex::new(release_k_rx);
+        let release_others_rx = Mutex::new(release_others_rx);
+        set_hook(&factory, move |key| {
+            entered_tx.send(key.to_vec()).unwrap();
+            if key == b"key-k" {
+                release_k_rx.lock().unwrap().recv().unwrap();
+                Ok(())
+            } else {
+                release_others_rx.lock().unwrap().recv().unwrap();
+                Err(injected_error())
+            }
+        });
+
+        let spawn_create = |key: &'static [u8]| {
+            let factory = factory.clone();
+            thread::spawn(move || factory.create(key, None, None))
+        };
+        // K holds one build permit and blocks in the hook
+        let builder_k = spawn_create(b"key-k");
+        assert_eq!(entered_rx.recv().unwrap(), b"key-k");
+        // Two more keys fill the map and evict K: one holds the other permit, the other waits for a permit
+        let builder_1 = spawn_create(b"key-1");
+        assert_eq!(entered_rx.recv().unwrap(), b"key-1");
+        let builder_2 = spawn_create(b"key-2");
+        while !factory.inner.vms.lock().unwrap().contains_key(b"key-2".as_slice()) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!factory.inner.vms.lock().unwrap().contains_key(b"key-k".as_slice()));
+
+        // K finishes and is cached again as the newest entry, evicting the oldest (key-1)
+        release_k_tx.send(()).unwrap();
+        let vm = builder_k.join().unwrap().unwrap();
+        vm.calculate_hash(b"hashme").unwrap();
+        {
+            let vms = factory.inner.vms.lock().unwrap();
+            assert!(vms.contains_key(b"key-k".as_slice()));
+            assert!(!vms.contains_key(b"key-1".as_slice()));
+            assert!(vms.len() <= 2);
+        }
+
+        // A later caller for K gets the cached VM without another build
+        let vm_again = factory.create(b"key-k", None, None).unwrap();
+        assert!(Arc::ptr_eq(&vm.instance, &vm_again.instance));
+
+        release_others_tx.send(()).unwrap();
+        release_others_tx.send(()).unwrap();
+        assert!(builder_1.join().unwrap().is_err());
+        assert!(builder_2.join().unwrap().is_err());
+        assert!(factory.get_count().unwrap() <= 2);
+        assert!(factory.inner.vms.lock().unwrap().contains_key(b"key-k".as_slice()));
     }
 }
