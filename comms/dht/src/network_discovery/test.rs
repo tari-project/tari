@@ -226,7 +226,6 @@ mod discovery_ready {
 
 mod rebootstrap {
     use std::{
-        collections::HashSet,
         iter::repeat_with,
         sync::atomic::{AtomicUsize, Ordering},
         time::Instant,
@@ -259,6 +258,7 @@ mod rebootstrap {
             on_connect::OnConnect,
             ready::DiscoveryReady,
             rebootstrap::{
+                InboundSuggested,
                 Rebootstrap,
                 SourceKind,
                 SourceResult,
@@ -604,13 +604,45 @@ mod rebootstrap {
             NodeId::from_public_key(make_node_identity().public_key()),
             ConnectionDirection::Inbound,
         );
-        let inbound_learned = [laundered].into_iter().collect::<HashSet<_>>();
+        let mut inbound_learned = InboundSuggested::default();
+        let now = Instant::now();
+        inbound_learned.add([&laundered], now);
+        let suggested = |conn: &PeerConnection| inbound_learned.contains(conn.peer_node_id(), now);
         assert_eq!(
-            source_kind(&outbound_to_laundered, &inbound_learned),
+            source_kind(&outbound_to_laundered, suggested(&outbound_to_laundered)),
             SourceKind::Inbound
         );
-        assert_eq!(source_kind(&outbound, &inbound_learned), SourceKind::Outbound);
-        assert_eq!(source_kind(&inbound, &inbound_learned), SourceKind::Inbound);
+        assert_eq!(source_kind(&outbound, suggested(&outbound)), SourceKind::Outbound);
+        assert_eq!(source_kind(&inbound, suggested(&inbound)), SourceKind::Inbound);
+    }
+
+    /// Inbound provenance accumulates across rebootstraps, expires after its TTL, and is capped.
+    #[test]
+    fn inbound_provenance_accumulates_expires_and_is_capped() {
+        let start = Instant::now();
+        let first = NodeId::from_public_key(make_node_identity().public_key());
+        let second = NodeId::from_public_key(make_node_identity().public_key());
+        let mut suggested = InboundSuggested::default();
+        // Rebootstrap N suggests `first`, N+1 only `second`: at N+2 `first` is still inbound-suggested
+        suggested.add([&first], start);
+        suggested.add([&second], start + Duration::from_secs(60 * 60));
+        assert!(suggested.contains(&first, start + Duration::from_secs(2 * 60 * 60)));
+        // ...until 6h after it was suggested
+        assert!(!suggested.contains(&first, start + Duration::from_secs(6 * 60 * 60)));
+
+        // At most 1000 entries; the oldest go first
+        let mut suggested = InboundSuggested::default();
+        let oldest = NodeId::from_public_key(make_node_identity().public_key());
+        suggested.add([&oldest], start);
+        let many = (0..1000)
+            .map(|_| NodeId::from_public_key(make_node_identity().public_key()))
+            .collect::<Vec<_>>();
+        suggested.add(&many, start + Duration::from_secs(1));
+        assert!(!suggested.contains(&oldest, start + Duration::from_secs(2)));
+        assert!(
+            many.iter()
+                .all(|node_id| suggested.contains(node_id, start + Duration::from_secs(2)))
+        );
     }
 
     /// A stored seed that only dialled in, and is not in the current resolution, gets no seed slot: it is synced from

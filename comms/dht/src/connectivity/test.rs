@@ -860,27 +860,14 @@ mod rebootstrap_trigger {
     async fn inbound_sourced_learned_peers_get_a_quarter_of_the_dials() {
         let (mut dht_connectivity, _, _, _, _, _shutdown) =
             setup(DhtConfig::default(), make_node_identity(), vec![]).await;
-        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
-        // As from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five
-        let mut learned = Vec::new();
-        let mut from_inbound = HashSet::new();
-        for i in 0..20 {
-            let node_id = new_id();
-            if i % 5 != 0 {
-                from_inbound.insert(node_id.clone());
-            }
-            learned.push(node_id);
-        }
-        dht_connectivity.rebootstrap_peers = learned;
-        dht_connectivity.inbound_learned = from_inbound.clone();
+        let from_inbound = learned_from_five_sources(&mut dht_connectivity);
 
         let first = dht_connectivity.take_rebootstrap_peers(8, &[]);
         let inbound = first.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
         assert_eq!(
             inbound,
             2,
-            "{} of {} learned dials are inbound-sourced",
-            inbound,
+            "{inbound} of {} learned dials are inbound-sourced",
             first.len()
         );
         assert_eq!(first.len(), 6);
@@ -888,10 +875,84 @@ mod rebootstrap_trigger {
             dht_connectivity.pending_dials.insert(node_id.clone(), Instant::now());
         }
 
-        // The share also holds across takes: with 6 in flight, a take of 4 may add only 1 more inbound-sourced peer
+        // The share also holds across takes: all 4 outbound-sourced peers are taken, so with 6 in flight no more
+        // inbound-sourced peers fit
         let second = dht_connectivity.take_rebootstrap_peers(4, &[]);
-        let inbound = second.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
-        assert_eq!(inbound, 1);
+        assert!(second.is_empty(), "{second:?}");
+    }
+
+    /// Inbound-suggested peers that connect straight away still count against the share: connecting must not hand
+    /// the budget back.
+    #[tokio::test]
+    async fn connected_inbound_suggested_peers_still_count_against_the_share() {
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let from_inbound = learned_from_five_sources(&mut dht_connectivity);
+
+        let first = dht_connectivity.take_rebootstrap_peers(8, &[]);
+        // Every dial connects at once: the peers are pool members with live connections, no longer pending
+        let mut receivers = Vec::new();
+        for node_id in &first {
+            let (conn, rx) =
+                create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Outbound);
+            dht_connectivity.random_pool.push(node_id.clone());
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+
+        // Neither further takes nor replacements add inbound-suggested peers past a quarter
+        for _ in 0..3 {
+            let more = dht_connectivity.take_rebootstrap_peers(4, &[]);
+            assert!(more.is_empty(), "{more:?}");
+            let one = dht_connectivity.take_rebootstrap_peers(1, &[]);
+            assert!(one.is_empty(), "{one:?}");
+        }
+        let in_pool = dht_connectivity
+            .random_pool
+            .iter()
+            .filter(|node_id| from_inbound.contains(*node_id))
+            .count();
+        assert!(in_pool * 4 <= dht_connectivity.random_pool.len() + 3);
+    }
+
+    /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
+    /// Returns the inbound-sourced ones.
+    fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {
+        let mut learned = Vec::new();
+        let mut from_inbound = HashSet::new();
+        for i in 0..20 {
+            let node_id = NodeId::from_public_key(make_node_identity().public_key());
+            if i % 5 != 0 {
+                from_inbound.insert(node_id.clone());
+            }
+            learned.push(node_id);
+        }
+        dht_connectivity.rebootstrap_peers = learned;
+        dht_connectivity.inbound_learned.add(&from_inbound, Instant::now());
+        from_inbound
+    }
+
+    /// A peer an inbound source suggested in one rebootstrap stays inbound-suggested after a rebootstrap that did not
+    /// mention it.
+    #[tokio::test]
+    async fn inbound_provenance_outlives_a_rebootstrap() {
+        let suggested = make_node_identity().to_peer();
+        let suggested_id = suggested.node_id.clone();
+        let other = make_node_identity().to_peer();
+        let other_id = other.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![suggested, other]).await;
+
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&suggested_id), std::slice::from_ref(&suggested_id))
+            .await
+            .unwrap();
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&other_id), &[])
+            .await
+            .unwrap();
+        assert!(dht_connectivity.inbound_learned.contains(&suggested_id, Instant::now()));
+        assert!(!dht_connectivity.inbound_learned.contains(&other_id, Instant::now()));
     }
 
     /// An outbound connection the pool did not dial (e.g. network discovery's) is not taken into a full pool, even

@@ -50,7 +50,7 @@ use crate::{
         initializing::Initializing,
         on_connect::OnConnect,
         ready::DiscoveryReady,
-        rebootstrap::{REBOOTSTRAP_LOG_TARGET, Rebootstrap, RebootstrapInfo, SeedPeerProvider},
+        rebootstrap::{InboundSuggested, REBOOTSTRAP_LOG_TARGET, Rebootstrap, RebootstrapInfo, SeedPeerProvider},
         seed_strap::SeedStrap,
         waiting::Waiting,
     },
@@ -201,8 +201,8 @@ pub(super) struct NetworkDiscoveryContext {
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
     /// Re-resolves the configured seeds during a rebootstrap. `None` means only stored seeds are used.
     pub seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
-    /// Peers that inbound sources told us about in the last rebootstrap (at most `MAX_LEARNED_PEERS`).
-    pub inbound_learned: Arc<std::sync::Mutex<HashSet<NodeId>>>,
+    /// Peers that inbound sources told us about in recent rebootstraps.
+    pub inbound_learned: Arc<std::sync::Mutex<InboundSuggested>>,
     /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
     pub pool_peers: PoolPeers,
 }

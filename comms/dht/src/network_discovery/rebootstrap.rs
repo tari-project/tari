@@ -27,7 +27,7 @@
 //! peers that are still connected (outbound first, then inbound) are asked for their peer lists.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     fmt::{Display, Formatter},
     time::{Duration, Instant},
@@ -130,6 +130,50 @@ const MIN_PEERS_PER_SOURCE: usize = 10;
 /// inbound peers are the source an attacker controls most easily.
 const INBOUND_SHARE_DIVISOR: usize = 4;
 
+/// How long a peer suggested by an inbound source is remembered as such.
+const INBOUND_SUGGESTED_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// The most peers remembered as suggested by inbound sources. The oldest are forgotten first.
+const MAX_INBOUND_SUGGESTED: usize = 1000;
+
+/// Peers that inbound sources told us about, and when. They stay inbound-sourced for `INBOUND_SUGGESTED_TTL`, across
+/// rebootstraps, so that an inbound peer cannot launder its suggestions by waiting for a rebootstrap in which it is
+/// not asked.
+#[derive(Debug, Default)]
+pub struct InboundSuggested {
+    suggested_at: HashMap<NodeId, Instant>,
+}
+
+impl InboundSuggested {
+    /// Records `node_ids` as suggested by an inbound source at `now`.
+    pub fn add<'a, I: IntoIterator<Item = &'a NodeId>>(&mut self, node_ids: I, now: Instant) {
+        for node_id in node_ids {
+            self.suggested_at.insert(node_id.clone(), now);
+        }
+        self.suggested_at
+            .retain(|_, at| now.saturating_duration_since(*at) < INBOUND_SUGGESTED_TTL);
+        if self.suggested_at.len() > MAX_INBOUND_SUGGESTED {
+            let mut entries = self
+                .suggested_at
+                .iter()
+                .map(|(node_id, at)| (node_id.clone(), *at))
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|(_, at)| *at);
+            let overflow = entries.len().saturating_sub(MAX_INBOUND_SUGGESTED);
+            for (node_id, _) in entries.into_iter().take(overflow) {
+                self.suggested_at.remove(&node_id);
+            }
+        }
+    }
+
+    /// Returns true if an inbound source suggested `node_id` within the last `INBOUND_SUGGESTED_TTL`.
+    pub fn contains(&self, node_id: &NodeId, now: Instant) -> bool {
+        self.suggested_at
+            .get(node_id)
+            .is_some_and(|at| now.saturating_duration_since(*at) < INBOUND_SUGGESTED_TTL)
+    }
+}
+
 /// Where a batch of learned peers came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SourceKind {
@@ -211,10 +255,10 @@ impl Rebootstrap {
         sources.extend(connected);
 
         let (learned_peers, learned_from_inbound, kept) = interleave_sources(&sources);
-        // Remembered until the next rebootstrap, so that a peer an inbound source told us about is still treated as
+        // Remembered across rebootstraps, so that a peer an inbound source told us about is still treated as
         // inbound-sourced if we have since dialled it (see `sync_from_connected_peers`)
         if let Ok(mut inbound_learned) = self.context.inbound_learned.lock() {
-            *inbound_learned = learned_from_inbound.iter().cloned().collect();
+            inbound_learned.add(&learned_from_inbound, Instant::now());
         }
         let count = |kind: SourceKind| -> usize {
             sources
@@ -520,8 +564,14 @@ async fn sync_from_seed(context: &NetworkDiscoveryContext, seed: Peer) -> Option
     };
 
     let result = sync_from_connection(context, &mut conn).await;
-    // Seeds are for bootstrapping, not for holding a pool slot.
+    // Seeds are for bootstrapping, not for holding a pool slot - unless the DHT pool has since taken this connection.
+    let is_pool_peer = context
+        .pool_peers
+        .read()
+        .map(|pool| pool.contains(&seed.node_id))
+        .unwrap_or(true);
     if !was_connected &&
+        !is_pool_peer &&
         !conn.is_strongly_held() &&
         let Err(err) = conn.disconnect(Minimized::Yes, "Rebootstrap seed sync complete").await
     {
@@ -559,18 +609,21 @@ async fn sync_from_connected_peers(
     if max_peers == 0 {
         return Vec::new();
     }
-    let inbound_learned = context
-        .inbound_learned
-        .lock()
-        .map(|set| set.clone())
-        .unwrap_or_default();
-    let (mut outbound, mut inbound) = conns
+    let now = Instant::now();
+    let classified = conns
         .into_iter()
         .filter(|conn| !conn.peer_features().is_client() && !seed_ids.contains(conn.peer_node_id()))
         .map(|conn| {
-            let kind = source_kind(&conn, &inbound_learned);
+            let suggested = context
+                .inbound_learned
+                .lock()
+                .is_ok_and(|inbound_learned| inbound_learned.contains(conn.peer_node_id(), now));
+            let kind = source_kind(&conn, suggested);
             (conn, kind)
         })
+        .collect::<Vec<_>>();
+    let (mut outbound, mut inbound) = classified
+        .into_iter()
         .partition::<Vec<_>, _>(|(_, kind)| *kind == SourceKind::Outbound);
     outbound.shuffle(&mut rand::rng());
     inbound.shuffle(&mut rand::rng());
@@ -609,9 +662,9 @@ async fn sync_from_connected_peers(
     results.into_iter().flatten().collect()
 }
 
-/// How a connected peer counts as a source: inbound if it dialled us, or if an inbound source told us about it.
-pub(super) fn source_kind(conn: &PeerConnection, inbound_learned: &HashSet<NodeId>) -> SourceKind {
-    if conn.direction().is_outbound() && !inbound_learned.contains(conn.peer_node_id()) {
+/// How a connected peer counts as a source: inbound if it dialled us, or if an inbound source suggested it.
+pub(super) fn source_kind(conn: &PeerConnection, suggested_by_inbound: bool) -> SourceKind {
+    if conn.direction().is_outbound() && !suggested_by_inbound {
         SourceKind::Outbound
     } else {
         SourceKind::Inbound
