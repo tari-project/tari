@@ -14,7 +14,7 @@ use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, Random
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum RandomXVMFactoryError {
     // The maximum number of VMs has been reached
     // MaxVMsReached,
@@ -139,7 +139,8 @@ impl RandomXFactory {
     }
 }
 
-type VmCell = Arc<OnceCell<RandomXVMInstance>>;
+// The cell holds the outcome of the one build for a key, so a failure is shared by all waiters too
+type VmCell = Arc<OnceCell<Result<RandomXVMInstance, RandomXVMFactoryError>>>;
 
 struct RandomXFactoryInner {
     flags: RandomXFlag,
@@ -186,19 +187,19 @@ impl RandomXFactoryInner {
         dataset: Option<RandomXDataset>,
     ) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         let cell = self.get_or_insert_cell(key);
-        // Concurrent callers for the same key wait here for the one build. If that build fails, the cell stays empty
-        // and the next waiter runs its own build attempt.
-        let result = cell.get_or_try_init(|| {
+        // Concurrent callers for the same key wait here for the one build and all get its result, success or error.
+        let result = cell.get_or_init(|| {
             let _permit = self.acquire_build_permit();
             #[cfg(test)]
             self.test_hooks.before_build(key)?;
             // The cache and VM are not Send, so they are built on this thread and only shared once wrapped.
             RandomXVMInstance::create(key, self.flags, cache, dataset)
         });
-        match result {
-            Ok(vm) => Ok(vm.clone()),
+        match result.clone() {
+            Ok(vm) => Ok(vm),
             Err(err) => {
-                // Remove the failed entry (unless it was already replaced or evicted) so the next request retries
+                // Remove the failed entry (unless it was already replaced or evicted) so the next request retries.
+                // Every caller holding this cell does this; only the first one still finds it in the map.
                 let mut vms = self.vms.lock().unwrap_or_else(|e| e.into_inner());
                 if vms.get(key).is_some_and(|(_, c)| Arc::ptr_eq(c, &cell)) {
                     vms.remove(key);
@@ -427,22 +428,45 @@ mod test {
     fn failed_build_does_not_poison_key() {
         const CALLERS: usize = 8;
         let factory = RandomXFactory::new(5);
-        set_hook(&factory, |_key| Err(injected_error()));
+        let builds = Arc::new(AtomicUsize::new(0));
+        let builds_hook = builds.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = Mutex::new(release_rx);
+        set_hook(&factory, move |_key| {
+            builds_hook.fetch_add(1, Ordering::SeqCst);
+            entered_tx.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            Err(injected_error())
+        });
 
-        let barrier = Arc::new(Barrier::new(CALLERS));
         let callers = (0..CALLERS)
             .map(|_| {
                 let factory = factory.clone();
-                let barrier = barrier.clone();
-                thread::spawn(move || {
-                    barrier.wait();
-                    factory.create(b"failing-key", None, None)
-                })
+                thread::spawn(move || factory.create(b"failing-key", None, None))
             })
             .collect::<Vec<_>>();
+        entered_rx.recv().unwrap();
+
+        // Fail the build only once every caller holds the cell: the map, the CALLERS and our own reference
+        let cell = factory
+            .inner
+            .vms
+            .lock()
+            .unwrap()
+            .get(b"failing-key".as_slice())
+            .unwrap()
+            .1
+            .clone();
+        while Arc::strong_count(&cell) < CALLERS + 2 {
+            thread::sleep(Duration::from_millis(10));
+        }
+        release_tx.send(()).unwrap();
+
         for caller in callers {
             assert!(caller.join().unwrap().is_err());
         }
+        assert_eq!(builds.load(Ordering::SeqCst), 1);
         assert_eq!(factory.get_count().unwrap(), 0);
 
         clear_hook(&factory);
