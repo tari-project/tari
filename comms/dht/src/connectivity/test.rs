@@ -1060,6 +1060,67 @@ mod rebootstrap_trigger {
         assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
     }
 
+    /// An inbound-suggested learned dial that outlives the pending-dial grace, and is dropped from the pool before it
+    /// lands, is still counted when it connects - and a second one is refused while the share is full.
+    #[tokio::test]
+    async fn late_inbound_suggested_dials_are_counted_at_admission() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 2,
+            num_random_nodes: 2,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, _, _, _, _shutdown) = setup(config, make_node_identity(), vec![]).await;
+        let slow = NodeId::from_public_key(make_node_identity().public_key());
+        let other = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.inbound_learned.add([&slow, &other], Instant::now());
+
+        // The dial to `slow` has been pending for longer than the grace, so a refresh drops it from the pool
+        dht_connectivity.random_pool.push(slow.clone());
+        dht_connectivity.learned_dials.insert(slow.clone());
+        dht_connectivity.learned_taken.insert(slow.clone());
+        let long_ago = Instant::now().checked_sub(Duration::from_secs(61)).unwrap();
+        dht_connectivity.pending_dials.insert(slow.clone(), long_ago);
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        assert!(!dht_connectivity.is_pool_peer(&slow));
+
+        // It lands anyway, joins the pool while there is room, and is counted
+        let (conn, _slow_rx) = create_dummy_peer_connection_with_direction(slow.clone(), ConnectionDirection::Outbound);
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert!(dht_connectivity.is_pool_peer(&slow));
+        assert!(dht_connectivity.learned_taken.contains(&slow));
+
+        // Another inbound-suggested peer would make it 2 of 2: refused, although there is room
+        let (conn, rx) = create_dummy_peer_connection_with_direction(other.clone(), ConnectionDirection::Outbound);
+        serve_disconnects(rx);
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert!(!dht_connectivity.is_pool_peer(&other));
+    }
+
+    /// A full pool refresh (at 0 connections) does not dial queued learned peers: they are only offered through the
+    /// learned budget.
+    #[tokio::test]
+    async fn a_full_pool_refresh_does_not_dial_queued_learned_peers() {
+        let queued = create_good_standing_peer(&make_node_identity());
+        let queued_id = queued.node_id.clone();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(3)
+            .collect::<Vec<_>>();
+        let mut stored = known_good;
+        stored.push(queued);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), stored).await;
+        dht_connectivity.rebootstrap_peers = vec![queued_id.clone()];
+
+        dht_connectivity.refresh_entire_pool().await.unwrap();
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 3,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert!(!connectivity.is_peer_dialed(&queued_id).await);
+    }
+
     /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
     /// Returns the inbound-sourced ones.
     fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {

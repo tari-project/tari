@@ -146,6 +146,34 @@ impl DialBackoff {
     }
 }
 
+/// Keeps an inbound-suggested peer out of the pool because their share is full. An outbound connection is ours to
+/// close; an inbound one is just not added.
+async fn refuse_inbound_suggested(mut conn: PeerConnection) {
+    debug!(
+        target: LOG_TARGET,
+        "Peer '{}' was suggested by inbound sources, whose share of the pool is full. Not adding it.",
+        conn.peer_node_id().short_str()
+    );
+    if conn.direction().is_outbound() &&
+        let Err(err) = conn
+            .disconnect(Minimized::Yes, "DhtConnectivity inbound share full")
+            .await
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Failed to disconnect peer '{}': {:?}",
+            conn.peer_node_id().short_str(),
+            err
+        );
+    }
+}
+
+/// Returns true if one more inbound-suggested peer keeps them within `1 / INBOUND_LEARNED_DIAL_DIVISOR` (rounded up) of
+/// the counted learned peers, given `total` counted so far of which `inbound` are inbound-suggested.
+fn fits_inbound_share(total: usize, inbound: usize) -> bool {
+    inbound < total.saturating_add(1).div_ceil(INBOUND_LEARNED_DIAL_DIVISOR)
+}
+
 /// Returns true if `outbound` connected pool peers is below `ratio` of the pool `target`.
 #[allow(clippy::cast_precision_loss)]
 fn is_pool_starved(outbound: usize, target: usize, ratio: f32) -> bool {
@@ -694,8 +722,10 @@ impl DhtConnectivity {
             "We have no connections asking for {} nodes",
             pool_size.saturating_mul(2),
         );
+        // Queued learned peers are only offered through the learned budget (see `refresh_random_pool`)
+        let exclude = self.rebootstrap_peers.clone();
         let new_peers = self
-            .fetch_random_peers(pool_size.saturating_mul(2), &Vec::new(), true)
+            .fetch_random_peers(pool_size.saturating_mul(2), &exclude, true)
             .await?;
         debug!(
             target: LOG_TARGET,
@@ -1032,7 +1062,17 @@ impl DhtConnectivity {
                 "Added pool peer '{}' to connection handles",
                 conn.peer_node_id()
             );
+            // Already a pool member, so admitted regardless, but counted against the inbound share
+            self.count_if_inbound_suggested(conn.peer_node_id());
             self.insert_connection_handle(conn).await?;
+            return Ok(());
+        }
+
+        // However it was dialled - or if it dialled in - a peer that inbound sources suggested only joins the pool
+        // within their share. This also catches learned dials that outlived `PENDING_DIAL_GRACE` and were dropped
+        // from the pool before they landed.
+        if !self.admit_inbound_suggested(conn.peer_node_id()) {
+            refuse_inbound_suggested(conn).await;
             return Ok(());
         }
 
@@ -1441,6 +1481,39 @@ impl DhtConnectivity {
         Ok(())
     }
 
+    /// The learned peers that count against the inbound share (connected or being dialled), and how many of them
+    /// inbound sources suggested.
+    fn inbound_share_counts(&mut self) -> (usize, usize) {
+        self.prune_learned_taken();
+        let now = Instant::now();
+        let inbound = self
+            .learned_taken
+            .iter()
+            .filter(|node_id| self.inbound_learned.contains(node_id, now))
+            .count();
+        (self.learned_taken.len(), inbound)
+    }
+
+    /// Counts `node_id` against the inbound share if inbound sources suggested it.
+    fn count_if_inbound_suggested(&mut self, node_id: &NodeId) {
+        if self.inbound_learned.contains(node_id, Instant::now()) {
+            self.learned_taken.insert(node_id.clone());
+        }
+    }
+
+    /// Returns true if `node_id` may join the pool as far as the inbound share is concerned, counting it if so.
+    fn admit_inbound_suggested(&mut self, node_id: &NodeId) -> bool {
+        if !self.inbound_learned.contains(node_id, Instant::now()) || self.learned_taken.contains(node_id) {
+            return true;
+        }
+        let (total, inbound) = self.inbound_share_counts();
+        if !fits_inbound_share(total, inbound) {
+            return false;
+        }
+        self.learned_taken.insert(node_id.clone());
+        true
+    }
+
     /// Forgets learned peers that are neither connected nor being dialled. Pool connections are the only ones held in
     /// `connection_handles`, so this checks those rather than `random_pool`, which a refresh empties while it runs.
     fn prune_learned_taken(&mut self) {
@@ -1482,13 +1555,7 @@ impl DhtConnectivity {
         }
         self.prune_dial_backoff();
         let now = Instant::now();
-        self.prune_learned_taken();
-        let mut total = self.learned_taken.len();
-        let mut inbound = self
-            .learned_taken
-            .iter()
-            .filter(|node_id| self.inbound_learned.contains(node_id, now))
-            .count();
+        let (mut total, mut inbound) = self.inbound_share_counts();
 
         let excluded = excluded.iter().collect::<HashSet<_>>();
         let mut selected = Vec::new();
@@ -1498,8 +1565,7 @@ impl DhtConnectivity {
                 continue;
             }
             let is_inbound = self.inbound_learned.contains(&node_id, now);
-            let within_inbound_share =
-                !is_inbound || inbound < total.saturating_add(1).div_ceil(INBOUND_LEARNED_DIAL_DIVISOR);
+            let within_inbound_share = !is_inbound || fits_inbound_share(total, inbound);
             if selected.len() < n && !self.dial_backoff.contains_key(&node_id) && within_inbound_share {
                 total = total.saturating_add(1);
                 if is_inbound {
