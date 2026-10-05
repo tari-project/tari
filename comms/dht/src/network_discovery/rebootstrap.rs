@@ -131,20 +131,31 @@ impl Rebootstrap {
         );
 
         // The seed sync has to dial (30-60s over Tor) while the connected-peer sync does not, so they run side by
-        // side rather than one after the other.
-        let both = future::join(sync_from_seeds(&self.context), sync_from_connected_peers(&self.context));
-        let ((seeds_resolved, seeds_synced, from_seeds), (connected_peers_synced, from_connected)) =
-            match time::timeout(config.bootstrap_timeout, both).await {
-                Ok(results) => results,
-                Err(_) => {
-                    // Whatever was learned before the timeout is already in the peer DB.
+        // side rather than one after the other. Each has its own timeout, so a slow seed sync cannot throw away what
+        // the connected peers returned.
+        let timeout = config.bootstrap_timeout;
+        let seeds = async {
+            time::timeout(timeout, sync_from_seeds(&self.context))
+                .await
+                .unwrap_or_else(|_| {
+                    // Whatever was learned before the timeout is already in the peer DB
+                    warn!(target: REBOOTSTRAP_LOG_TARGET, "Rebootstrap seed sync timed out after {timeout:.0?}");
+                    (0, 0, Vec::new())
+                })
+        };
+        let connected = async {
+            time::timeout(timeout, sync_from_connected_peers(&self.context))
+                .await
+                .unwrap_or_else(|_| {
                     warn!(
                         target: REBOOTSTRAP_LOG_TARGET,
-                        "Rebootstrap timed out after {:.0?}", config.bootstrap_timeout
+                        "Rebootstrap connected-peer sync timed out after {timeout:.0?}"
                     );
-                    ((0, 0, Vec::new()), (0, Vec::new()))
-                },
-            };
+                    (0, Vec::new())
+                })
+        };
+        let ((seeds_resolved, seeds_synced, from_seeds), (connected_peers_synced, from_connected)) =
+            future::join(seeds, connected).await;
 
         let mut seen = HashSet::new();
         let learned_peers = from_seeds

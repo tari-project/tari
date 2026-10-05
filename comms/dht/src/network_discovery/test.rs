@@ -340,6 +340,48 @@ mod rebootstrap {
         }
     }
 
+    /// A rebootstrap that pre-empts an unfinished primary bootstrap (here, the wait for a first connection) runs to
+    /// completion, publishes its result and completes the primary bootstrap.
+    #[tokio::test]
+    async fn a_rebootstrap_completes_an_unfinished_bootstrap() {
+        let mut seed = make_node_identity().to_peer();
+        seed.add_flags(PeerFlags::SEED);
+        let seed_node_id = seed.node_id.clone();
+        let (mut context, mock, mut events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.enabled = true;
+        // The seed dial never resolves, so the rebootstrap runs into the bootstrap timeout
+        config.network_discovery.bootstrap_timeout = Duration::from_millis(300);
+        context.config = Arc::new(config);
+        context.peer_manager.add_or_update_peer(seed).await.unwrap();
+        mock.set_pending_connection(&seed_node_id).await;
+
+        let shutdown = Shutdown::new();
+        let discovery = discovery(&context, &shutdown);
+        let handle = tokio::spawn(discovery.run());
+        // Let the state machine subscribe to DHT events before signalling
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        context.event_tx.send(Arc::new(DhtEvent::PoolStarved)).unwrap();
+
+        let mut rebootstraps = 0;
+        let mut bootstrap_completed = false;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while rebootstraps == 0 || !bootstrap_completed {
+                match &*events.recv().await.unwrap() {
+                    DhtEvent::RebootstrapComplete(_) => rebootstraps += 1,
+                    DhtEvent::PrimaryBootstrapComplete => bootstrap_completed = true,
+                    _ => {},
+                }
+            }
+        })
+        .await
+        .expect("the rebootstrap did not complete");
+        assert!(mock.is_peer_dialed(&seed_node_id).await);
+
+        shutdown.trigger();
+        handle.await.unwrap();
+    }
+
     #[tokio::test]
     async fn pool_starved_does_not_restart_a_rebootstrap() {
         let (context, _mock, _events) = context(None);

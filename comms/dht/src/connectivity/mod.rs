@@ -148,23 +148,34 @@ fn is_pool_starved(outbound: usize, target: usize, ratio: f32) -> bool {
 ///
 /// The pool must be starved for `pool_starved_ticks` consecutive ticks. The first request then fires immediately.
 /// While the pool stays starved, further requests are spaced by a cooldown that starts at `rebootstrap_cooldown_min`
-/// and doubles each time up to `rebootstrap_cooldown_max`. A single tick on which the pool is not starved resets all
-/// of it.
+/// and doubles each time up to `rebootstrap_cooldown_max`.
+///
+/// A tick on which the pool is not starved restarts the count of consecutive starved ticks, but the cooldown is only
+/// reset once the pool has stayed recovered for `rebootstrap_cooldown_min`. Otherwise a pool that recovers for a tick
+/// after each refill, then decays again, would rebootstrap every few ticks forever, and the cooldown - the only bound
+/// on how often this node hits the seeds - would never grow.
 #[derive(Debug, Default)]
 struct RebootstrapTrigger {
     /// Consecutive ticks on which the pool was starved.
     starved_ticks: usize,
-    /// When `PoolStarved` was last published during this starvation, and the cooldown that applies from then.
+    /// When `PoolStarved` was last published, and the cooldown that applies from then.
     last_fired: Option<(Instant, Duration)>,
+    /// Since when the pool has been continuously not starved.
+    healthy_since: Option<Instant>,
 }
 
 impl RebootstrapTrigger {
     /// Record a tick. Returns true if `PoolStarved` should be published now.
     fn on_tick(&mut self, is_starved: bool, now: Instant, config: &DhtConnectivityConfig) -> bool {
         if !is_starved {
-            *self = Self::default();
+            self.starved_ticks = 0;
+            let healthy_since = *self.healthy_since.get_or_insert(now);
+            if now.saturating_duration_since(healthy_since) >= config.rebootstrap_cooldown_min {
+                self.last_fired = None;
+            }
             return false;
         }
+        self.healthy_since = None;
         self.starved_ticks = self.starved_ticks.saturating_add(1);
         if self.starved_ticks < config.pool_starved_ticks {
             return false;

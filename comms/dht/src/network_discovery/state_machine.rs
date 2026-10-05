@@ -482,7 +482,8 @@ impl DhtNetworkDiscovery {
 
                 tokio::select! {
                     event = or_shutdown(shutdown_signal, fut) => event,
-                    _ = tokio::time::sleep(bootstrap_timeout_duration), if !bootstrap_completed => {
+                    // A rebootstrap has its own timeout and completes the bootstrap itself
+                    _ = tokio::time::sleep(bootstrap_timeout_duration), if !bootstrap_completed && !in_rebootstrap => {
                         warn!(target: LOG_TARGET, "Bootstrap timeout reached - forcing completion");
                         context_clone.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                         bootstrap_completed = true;

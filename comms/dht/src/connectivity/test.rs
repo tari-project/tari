@@ -336,13 +336,54 @@ mod rebootstrap_trigger {
             );
         }
 
-        // Recovering resets everything: the next starvation needs 3 ticks again and then fires straight away
+        // Staying recovered for the minimum cooldown resets everything: the next starvation needs 3 ticks again, then
+        // fires straight away and the cooldown starts from the minimum again
+        assert!(!trigger.on_tick(false, at, &config));
+        at += mins(10);
         assert!(!trigger.on_tick(false, at, &config));
         assert!(!trigger.on_tick(true, at, &config));
         assert!(!trigger.on_tick(true, at, &config));
         assert!(trigger.on_tick(true, at, &config));
         assert!(!trigger.on_tick(true, at + mins(9), &config));
         assert!(trigger.on_tick(true, at + mins(10), &config));
+    }
+
+    /// A pool that recovers for a tick after each rebootstrap and then decays again must not reset the backoff.
+    #[test]
+    fn a_brief_recovery_does_not_reset_the_cooldown() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        assert!(trigger.on_tick(true, start, &config));
+
+        // One healthy tick, then starved again: three starved ticks are needed again, and the 10m cooldown still holds
+        let mut at = start + mins(2);
+        assert!(!trigger.on_tick(false, at, &config));
+        for _ in 0..3 {
+            at += mins(2);
+            assert!(
+                !trigger.on_tick(true, at, &config),
+                "fired inside the cooldown after a brief recovery"
+            );
+        }
+        // 10m after the first rebootstrap it fires, and the cooldown has doubled to 20m
+        assert!(trigger.on_tick(true, start + mins(10), &config));
+        assert!(!trigger.on_tick(false, start + mins(12), &config));
+        assert!(!trigger.on_tick(true, start + mins(14), &config));
+        assert!(!trigger.on_tick(true, start + mins(16), &config));
+        assert!(!trigger.on_tick(true, start + mins(29), &config));
+        assert!(trigger.on_tick(true, start + mins(30), &config));
+
+        // Recovered, but for less than the minimum cooldown: the 40m cooldown still applies
+        assert!(!trigger.on_tick(false, start + mins(31), &config));
+        assert!(!trigger.on_tick(false, start + mins(40), &config));
+        for t in [41, 42, 43, 69] {
+            assert!(!trigger.on_tick(true, start + mins(t), &config));
+        }
+        assert!(trigger.on_tick(true, start + mins(70), &config));
     }
 
     #[test]
