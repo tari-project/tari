@@ -137,13 +137,24 @@ pub struct RejectedBlock {
     /// It is not for a descendant of the block being added (which a peer can hold back and send us first), nor for a
     /// body we already held, and never checked against its header, when the block was sent again.
     pub blame_sender: bool,
+    /// Whether the body that failed is the one its header commits to
+    pub body_verified: bool,
+    /// Whether the block being added was dropped with this block: it is this block, or built on it
+    pub dropped_candidate: bool,
 }
 
 impl RejectedBlock {
-    /// The error to report this rejection with, when `candidate_hash` is the block being added. The block being added
-    /// is reported with its own validation error, as it always was; an ancestor is reported by its own hash.
+    /// The error to report this rejection with, when `candidate_hash` is the block being added. If its sender is to
+    /// blame, the block being added is reported with its own validation error, as it always was, and an ancestor by its
+    /// own hash. If not, it is reported as `HeldBlockInvalid`, which is not a ban.
     pub fn into_error(self, candidate_hash: FixedHash) -> ChainStorageError {
-        if self.hash == candidate_hash {
+        if !self.blame_sender {
+            ChainStorageError::HeldBlockInvalid {
+                hash: self.hash,
+                body_verified: self.body_verified,
+                source: self.error,
+            }
+        } else if self.hash == candidate_hash {
             ChainStorageError::ValidationError { source: self.error }
         } else {
             ChainStorageError::AncestorBlockInvalid {

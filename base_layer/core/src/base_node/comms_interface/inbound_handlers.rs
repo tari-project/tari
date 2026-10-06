@@ -189,19 +189,24 @@ fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
     }
 }
 
-/// Log the blocks that failed while `block` was added that its sender is not to blame for, and return the one it is to
-/// blame for, if any. A held block that failed on its own account says nothing about who sent `block`, so it is only
-/// logged. It is already dropped, and recorded as bad if its body matches its header.
+/// Log the blocks that failed while `block` was added that its sender is not to blame for, and return the one that
+/// dropped `block` itself, if any (it is the one its sender is to blame for, if there is one). A held block that failed
+/// on its own account says nothing about who sent `block`, so it is only logged. It is already dropped, and recorded as
+/// bad if its body matches its header.
 fn log_unblamed_rejections(
     block: &Block,
     source_peer: Option<&NodeId>,
     rejected: Vec<RejectedBlock>,
 ) -> Option<RejectedBlock> {
-    let mut blamed = None;
+    let mut dropped_block = None;
     for rejection in rejected {
         if rejection.blame_sender {
-            blamed = Some(rejection);
+            dropped_block = Some(rejection);
         } else {
+            if rejection.dropped_candidate && dropped_block.is_none() {
+                dropped_block = Some(rejection);
+                continue;
+            }
             warn!(
                 target: LOG_TARGET,
                 "Block #{} ({}) from {} linked held block #{} ({}), which failed validation and was dropped. The sender \
@@ -217,7 +222,7 @@ fn log_unblamed_rejections(
             );
         }
     }
-    blamed
+    dropped_block
 }
 
 /// Events that can be published on the Validated Block Event Stream
@@ -1333,11 +1338,11 @@ where B: BlockchainBackend + 'static
                     }
                 }
 
-                let blamed = log_unblamed_rejections(&block, source_peer.as_ref(), rejected);
-                // The sender is to blame, but the chain changed as well (the blocks before the one that failed were
+                // The block was dropped, but the chain changed as well (the blocks before the one that failed were
                 // valid and stronger). The change is published above, and the failure is reported as if nothing had
-                // changed.
-                if let Some(rejection) = blamed {
+                // changed: as an invalid block if the sender is to blame, and otherwise as `HeldBlockInvalid`, without
+                // a ban or an event.
+                if let Some(rejection) = log_unblamed_rejections(&block, source_peer.as_ref(), rejected) {
                     let e = rejection.into_error(block_hash);
                     self.report_invalid_block(block, source_peer, &e);
                     return Err(e.into());
@@ -1350,7 +1355,11 @@ where B: BlockchainBackend + 'static
                 source: ValidationError::BadBlockFound { hash, reason },
             }) => Err(CommsInterfaceError::KnownBadBlock { hash, reason }),
 
-            Err(e @ (ChainStorageError::ValidationError { .. } | ChainStorageError::AncestorBlockInvalid { .. })) => {
+            Err(
+                e @ (ChainStorageError::ValidationError { .. } |
+                ChainStorageError::AncestorBlockInvalid { .. } |
+                ChainStorageError::HeldBlockInvalid { .. }),
+            ) => {
                 self.report_invalid_block(block, source_peer, &e);
                 Err(e.into())
             },
@@ -1378,10 +1387,28 @@ where B: BlockchainBackend + 'static
         }
     }
 
-    /// Record that `block`, from `source_peer`, was rejected for `error`, which the sender is to blame for. `error` is
-    /// a `ValidationError` for the block itself or an `AncestorBlockInvalid` for an ancestor, and the metric names
-    /// whichever block was invalid.
+    /// Record that `block`, from `source_peer`, was rejected for `error`. `error` is a `ValidationError` for the block
+    /// itself or an `AncestorBlockInvalid` for an ancestor, which the sender is to blame for, and the metric names
+    /// whichever block was invalid. Or it is `HeldBlockInvalid`: the block was dropped with a block that failed during
+    /// a reorg, but its sender is not to blame (the body that failed may not be the one it sent, or the verdict was
+    /// a fault of ours). That is only logged: no metric and no event, as `AddBlockValidationFailed` or
+    /// `AddBlockErrored` would make the mempool clear a local block's transactions for a failure that is not
+    /// theirs.
     fn report_invalid_block(&self, block: Arc<Block>, source_peer: Option<NodeId>, error: &ChainStorageError) {
+        if matches!(error, ChainStorageError::HeldBlockInvalid { .. }) {
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) from {} not added: {}",
+                block.header.height,
+                block.hash().to_hex(),
+                source_peer
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<local request>".to_string()),
+                error
+            );
+            return;
+        }
         #[cfg(feature = "metrics")]
         {
             let (height, hash) = match error {

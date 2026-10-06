@@ -1315,8 +1315,8 @@ impl CandidateBlockValidator<TempDatabase> for FaultyBodyValidator {
     }
 }
 
-/// A locally mined block that fails for a reason that is ours is not reported as invalid: the mempool is not told it
-/// failed (which would clear its transactions), and a peer sending it would not be banned
+/// A locally mined block that fails for a reason that is ours is reported as not added, but not as invalid: the error
+/// is not a ban, and the mempool is not told it failed (which would clear its transactions)
 #[tokio::test]
 async fn a_local_fault_does_not_report_the_block_as_invalid() {
     let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
@@ -1341,18 +1341,19 @@ async fn a_local_fault_does_not_report_the_block_as_invalid() {
         RandomXFactory::new(2),
     );
 
-    handlers.handle_block(block.clone(), None).await.unwrap();
+    let err = handlers.handle_block(block.clone(), None).await.unwrap_err();
 
-    let mut events = vec![];
-    while let Ok(event) = block_events.try_recv() {
-        events.push(event);
-    }
-    assert_eq!(events.len(), 1, "{events:?}");
     assert!(
-        matches!(&*events[0], BlockEvent::ValidBlockAdded(_, BlockAddResult::OrphanBlock)),
-        "{}",
-        events[0]
+        matches!(
+            &err,
+            CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { hash, .. })
+                if *hash == block.hash()
+        ),
+        "{err:?}"
     );
+    assert!(err.get_ban_reason().is_none());
+    // No event at all: not `AddBlockValidationFailed`, and not `AddBlockErrored` either
+    assert!(block_events.try_recv().is_err());
     assert!(propagated.try_recv().is_err());
     assert_eq!(store.get_height().unwrap(), 0);
     assert!(!store.bad_block_exists(block.hash()).unwrap().0);

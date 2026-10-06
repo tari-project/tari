@@ -2789,15 +2789,27 @@ fn add_block<T: BlockchainBackend>(
         candidate_block,
         // smt,
     )?;
-    // When the sender of the block is to blame and the main chain did not change, the failure is the whole story, so
-    // it is returned as an error, as it always was. After a chain change it is reported in the outcome instead,
-    // because the change has to reach the caller too. At most one rejection can be to blame: a block to blame is the
-    // candidate or one of its ancestors, and the first of those to fail takes the candidate down with it.
-    if !outcome.result.was_chain_modified() &&
-        let Some(index) = outcome.rejected.iter().position(|rejection| rejection.blame_sender)
-    {
-        let rejection = outcome.rejected.swap_remove(index);
-        return Err(rejection.into_error(candidate_hash));
+    // When the main chain did not change and the block being added was dropped, the failure is the whole story, so it
+    // is returned as an error: the block was not accepted. If its sender is to blame that is the error it always was
+    // (or `AncestorBlockInvalid`); if not, `HeldBlockInvalid`, which is not a ban. After a chain change the rejection
+    // is reported in the outcome instead, because the change has to reach the caller too. The blamed rejection
+    // comes first: at most one rejection can be to blame, as the first block to blame that fails takes the
+    // candidate down.
+    if !outcome.result.was_chain_modified() {
+        let index = outcome
+            .rejected
+            .iter()
+            .position(|rejection| rejection.blame_sender)
+            .or_else(|| {
+                outcome
+                    .rejected
+                    .iter()
+                    .position(|rejection| rejection.dropped_candidate)
+            });
+        if let Some(index) = index {
+            let rejection = outcome.rejected.swap_remove(index);
+            return Err(rejection.into_error(candidate_hash));
+        }
     }
     Ok(outcome)
 }
@@ -4050,6 +4062,8 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
                     height: failed_height,
                     error: source,
                     blame_sender,
+                    body_verified,
+                    dropped_candidate: candidate.is_some_and(|candidate| subtree.contains(&candidate.hash)),
                 },
             })
         },
@@ -7107,9 +7121,8 @@ mod test {
             let (h, b, y, c) = setup();
             h.fail(&y);
             h.db.add_block(without_body(&y)).unwrap().result.assert_orphaned();
-            let outcome = h.add(&c);
-            outcome.result.assert_orphaned();
-            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), false)]);
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+            assert_dropped_without_blame(&err, &y);
             assert_eq!(h.tip_hash(), *b.hash());
             assert!(!h.is_bad(&y));
             assert!(!h.is_orphan(&y));
@@ -7212,6 +7225,44 @@ mod test {
             h.db.write(txn).unwrap();
         }
 
+        /// As `a_blamed_rejection_is_reported_alongside_a_chain_change`, but Y fails for a fault of ours: the chain
+        /// still changes to V, and C is still dropped, but nobody is blamed. The outcome is not an error, as the change
+        /// has to reach the caller, and says that C was dropped.
+        #[tokio::test]
+        async fn a_dropped_block_is_reported_alongside_a_chain_change_without_blame() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let v = h.build_with_difficulty("V", 5);
+            h.add(&v);
+            let y = h.build("Y");
+            h.add(&y);
+            let c = h.build("C");
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            h.add(&v).result.assert_orphaned();
+            h.add(&y).result.assert_orphaned();
+            fall_back_to_height_3(&h, &ours[2..]);
+            h.fault_on(&y);
+
+            let outcome = h.add(&c);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), false)]);
+            assert!(outcome.rejected[0].dropped_candidate);
+            let BlockAddResult::ChainReorg { added, .. } = outcome.result else {
+                panic!("expected a reorg to V, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*v.hash()]);
+            assert_eq!(h.tip_hash(), *v.hash());
+            assert!(!h.is_bad(&y));
+            assert!(!h.is_orphan(&c));
+        }
+
         /// One call keeps the valid prefix of a failed reorg, then reorgs to another tip that forks below both that
         /// prefix and the tip we started at. The net result has neither the kept-then-rewound prefix block nor
         /// anything else twice: our blocks above the fork removed, the other tip's blocks added.
@@ -7311,8 +7362,8 @@ mod test {
         }
 
         /// Q sends H with a body of its own, which is held. When P later sends the real H, the reorg validates the
-        /// body that is held, not P's, so P is not to blame. The held H is not marked bad, and is dropped, so the
-        /// real H can be fetched again.
+        /// body that is held, not P's, so P is not to blame: H is reported as not added, but not as a ban. The held H
+        /// is not marked bad, and is dropped, so the real H can be fetched again.
         #[tokio::test]
         async fn a_held_fake_body_does_not_get_the_sender_of_the_real_block_blamed() {
             let h = Harness::new();
@@ -7327,10 +7378,9 @@ mod test {
             held_block_left_untried(&h, &without_body(&held), &b, &b2);
             h.fail(&held);
 
-            let outcome = h.add(&held);
+            let err = h.db.add_block(held.to_arc_block()).unwrap_err();
 
-            outcome.result.assert_orphaned();
-            assert_eq!(hashes_of_rejected(&outcome), vec![(*held.hash(), false)]);
+            assert_dropped_without_blame(&err, &held);
             assert!(!h.is_bad(&held));
             assert!(!h.is_orphan(&held));
             assert_eq!(h.tip_hash(), *a.hash());
@@ -7400,8 +7450,8 @@ mod test {
             assert_eq!(h.tip_hash(), *y.hash());
         }
 
-        /// A local fault on the block being added itself: no chain change, nobody to blame, so no error (an error
-        /// would be reported as the block being invalid)
+        /// A local fault on the block being added itself: no chain change, and nobody to blame, so the block is
+        /// reported as not added, with an error that is not a ban
         #[tokio::test]
         async fn a_local_fault_on_the_block_being_added_is_not_its_fault() {
             let h = Harness::new();
@@ -7410,13 +7460,21 @@ mod test {
             let y = h.build("Y");
             h.fault_on(&y);
 
-            let outcome = h.add(&y);
+            let err = h.db.add_block(y.to_arc_block()).unwrap_err();
 
-            outcome.result.assert_orphaned();
-            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), false)]);
+            assert_dropped_without_blame(&err, &y);
             assert!(!h.is_bad(&y));
             assert!(!h.is_orphan(&y));
             assert_eq!(h.tip_hash(), *a.hash());
+        }
+
+        /// The block was dropped with `failed`, its sender not to blame: a `HeldBlockInvalid` error, which is no ban
+        fn assert_dropped_without_blame(err: &ChainStorageError, failed: &Arc<ChainBlock>) {
+            let ChainStorageError::HeldBlockInvalid { hash, .. } = err else {
+                panic!("expected HeldBlockInvalid, got {err:?}");
+            };
+            assert_eq!(hash, failed.hash());
+            assert!(err.get_ban_reason().is_none());
         }
 
         fn hashes_of_rejected(outcome: &AddBlockOutcome) -> Vec<(HashOutput, bool)> {

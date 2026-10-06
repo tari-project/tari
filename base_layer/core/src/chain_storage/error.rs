@@ -106,10 +106,12 @@ pub enum ChainStorageError {
         source: ValidationError,
     },
     /// A block of a fork chain failed body validation during a reorg. `body_verified` says whether its body is the one
-    /// its header commits to; an orphan's body was supplied by a peer and is only checked then. This never leaves
-    /// `add_block`: who, if anyone, is to blame depends on how the block relates to the block being added, which is
-    /// decided there.
-    #[error("Held block {hash} failed validation during a reorg (body verified: {body_verified}): {source}")]
+    /// its header commits to; an orphan's body was supplied by a peer and is only checked then.
+    ///
+    /// `add_block` returns this when the block being added was dropped with the failed block (it is that block, or
+    /// built on it) but its sender is not to blame: the body that failed may not be the one the sender sent, or the
+    /// verdict was a fault of ours (a storage error, say) rather than the block's. So it is never a ban.
+    #[error("Block {hash} failed validation during a reorg and was dropped (body verified: {body_verified}): {source}")]
     HeldBlockInvalid {
         hash: FixedHash,
         body_verified: bool,

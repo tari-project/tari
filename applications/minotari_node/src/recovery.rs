@@ -191,8 +191,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             .add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {counter}, reason: {e}"))?;
-        // The block, or a block it builds on, failed even though the chain changed
-        if let Some(rejection) = outcome.rejected.into_iter().find(|rejection| rejection.blame_sender) {
+        // The block was dropped, with itself or a block it builds on failing, even though the chain changed
+        if let Some(rejection) = outcome
+            .rejected
+            .into_iter()
+            .find(|rejection| rejection.dropped_candidate)
+        {
             return Err(anyhow!(
                 "Stopped recovery at height {counter}, reason: {}",
                 rejection.into_error(block_hash)
