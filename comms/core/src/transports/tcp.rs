@@ -78,7 +78,10 @@ impl TcpTransport {
         }
         Self {
             ttl: None,
-            nodelay: None,
+            // Nagle's algorithm holds back the tail of each message until the peer ACKs, and delayed ACKs on the
+            // peer turn that into a 40-200ms stall per message. Every transport (TCP, SOCKS, Tor) is built on this
+            // one, so this applies to all dialed and accepted sockets.
+            nodelay: Some(true),
             dns_resolver: Arc::new(SystemDnsResolver),
             supported_protocols,
         }
@@ -200,6 +203,24 @@ impl Stream for TcpInbound {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn nodelay_is_on_by_default() {
+        let tcp = TcpTransport::new();
+        assert_eq!(tcp.nodelay, Some(true));
+        let tcp = TcpTransport::default();
+        assert_eq!(tcp.nodelay, Some(true));
+    }
+
+    #[tokio::test]
+    async fn dialed_and_accepted_sockets_have_nodelay() {
+        let tcp = TcpTransport::new();
+        let (mut listener, addr) = tcp.listen(&"/ip4/127.0.0.1/tcp/0".parse().unwrap()).await.unwrap();
+        let dialed = tcp.dial(&addr).await.unwrap();
+        let (accepted, _) = futures::StreamExt::next(&mut listener).await.unwrap().unwrap();
+        assert!(dialed.nodelay().unwrap());
+        assert!(accepted.nodelay().unwrap());
+    }
 
     #[test]
     fn configure() {
