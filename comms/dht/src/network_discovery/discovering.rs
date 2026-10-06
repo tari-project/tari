@@ -28,7 +28,7 @@ use tari_comms::{
     Minimized,
     PeerConnection,
     RefKind,
-    connectivity::ConnectivityError,
+    connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer, PeerId},
     protocol::rpc::{ClientStreaming, RpcStatus},
     types::CommsPublicKey,
@@ -62,7 +62,7 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 /// A peer that is behind NAT or misconfigured is common and costs nothing to skip, so those claims
 /// are not counted here. A forged signature or a malformed multiaddress is not something an honest
 /// relay produces, and without a bound a sync peer could burn the whole per-round budget on them.
-const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
+pub(super) const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
 
 /// Classifies a failure to add a single peer that a sync peer relayed to us.
 ///
@@ -124,12 +124,12 @@ impl Discovering {
         let mut dial_stream = self.dial_all_candidates();
         while let Some(result) = dial_stream.next().await {
             match result {
-                Ok(conn) => {
+                Ok((conn, was_connected)) => {
                     let peer_node_id = conn.peer_node_id().clone();
                     self.stats.sync_peers.push(peer_node_id.clone());
                     debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{peer_node_id}`" );
 
-                    if self.request_from_peers(conn).await.is_ok() {
+                    if self.request_from_peers(conn, was_connected).await.is_ok() {
                         self.stats.num_succeeded = self.stats.num_succeeded.saturating_add(1);
                     }
                 },
@@ -157,7 +157,15 @@ impl Discovering {
         StateEvent::DiscoveryComplete(self.stats.clone())
     }
 
-    async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
+    /// `was_connected` is true if the connection existed before this round dialled it. Only a connection this round
+    /// created is hung up, and not if it has since become a DHT pool peer (or is strongly held): anything else belongs
+    /// to someone else.
+    async fn request_from_peers(
+        &mut self,
+        mut conn: PeerConnection,
+        was_connected: bool,
+    ) -> Result<(), NetworkDiscoveryError> {
+        let created_here = !was_connected;
         if !conn.is_connected() {
             debug!(
                 target: LOG_TARGET,
@@ -180,7 +188,8 @@ impl Discovering {
                     conn.peer_node_id(),
                     e
                 );
-                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect failed").await;
+                self.hang_up_if_ours(&mut conn, created_here, "Discovering RPC connect failed")
+                    .await;
                 return Err(e.into());
             },
             Err(_) => {
@@ -191,7 +200,8 @@ impl Discovering {
                     conn.peer_node_id(),
                     rpc_connect_timeout,
                 );
-                let _unused = conn.disconnect(Minimized::Yes, "Discovering RPC connect timeout").await;
+                self.hang_up_if_ours(&mut conn, created_here, "Discovering RPC connect timeout")
+                    .await;
                 return Err(NetworkDiscoveryError::Timeout {
                     operation: "connect_rpc".to_string(),
                     peer: conn.peer_node_id().to_hex(),
@@ -213,10 +223,24 @@ impl Discovering {
             "Discovering: Established RPC connection to sync peer `{peer_node_id}`"
         );
         let result = self.request_peers(peer_node_id, client).await;
-        self.ban_on_offence(peer_node_id.clone(), result).await?;
-        let _unused = conn.disconnect(Minimized::Yes, "Discovering sync complete").await;
+        self.ban_on_offence(peer_node_id.clone(), result, was_connected).await?;
+        self.hang_up_if_ours(&mut conn, created_here, "Discovering sync complete")
+            .await;
 
         Ok(())
+    }
+
+    /// Hangs up a connection this round created, unless the DHT pool has taken it (or it is strongly held).
+    async fn hang_up_if_ours(&self, conn: &mut PeerConnection, created_here: bool, reason: &str) {
+        let is_pool_peer = self
+            .context
+            .pool_peers
+            .read()
+            .map(|pool| pool.contains(conn.peer_node_id()))
+            .unwrap_or(true);
+        if created_here && !is_pool_peer && !conn.is_strongly_held() {
+            let _unused = conn.disconnect(Minimized::Yes, reason).await;
+        }
     }
 
     async fn get_stream(
@@ -416,84 +440,45 @@ impl Discovering {
         }
     }
 
-    async fn ban_on_offence<T>(
+    /// Bans `peer` if `result` is its fault. A peer we were already connected to (`was_connected`) may be one of a
+    /// starved node's last connections, so it is only banned for bad peer data, not for RPC failures.
+    pub(super) async fn ban_on_offence<T>(
         &mut self,
         peer: NodeId,
         result: Result<T, NetworkDiscoveryError>,
+        was_connected: bool,
     ) -> Result<T, NetworkDiscoveryError> {
-        match result {
-            Ok(t) => Ok(t),
-            Err(err) => {
-                match &err {
-                    NetworkDiscoveryError::EmptyPeerMessageReceived |
-                    NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::DuplicatePeerReceived |
-                    NetworkDiscoveryError::TooManyPeersReceived |
-                    NetworkDiscoveryError::TooManyInvalidPeersReceived => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
-                        self.ban_peer(peer, OffenceSeverity::Low, &err).await;
-                    },
-                    // Other errors - no banning needed
-                    NetworkDiscoveryError::RpcStatus(_) |
-                    NetworkDiscoveryError::NoSyncPeers |
-                    NetworkDiscoveryError::PeerManagerError(_) |
-                    NetworkDiscoveryError::RpcError(_) |
-                    NetworkDiscoveryError::ConnectivityError(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) |
-                    NetworkDiscoveryError::JoinError(_) |
-                    NetworkDiscoveryError::Timeout { .. } |
-                    NetworkDiscoveryError::PeerConnectionClosed { .. } => {},
-                }
-                Err(err)
-            },
+        if let Err(err) = &result {
+            let severity = if was_connected {
+                is_bad_data_offence(err).then_some(OffenceSeverity::High)
+            } else {
+                offence_severity(err)
+            };
+            if let Some(severity) = severity {
+                ban_peer(&self.context, peer, severity, err).await;
+            }
         }
-    }
-
-    async fn ban_peer<T: ToString>(&mut self, peer: NodeId, severity: OffenceSeverity, err: T) {
-        match self
-            .context
-            .connectivity
-            .ban_peer_until(
-                peer.clone(),
-                self.config().ban_duration_from_severity(severity),
-                err.to_string(),
-            )
-            .await
-        {
-            Ok(_) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Discovering: Banned peer `{}` for {:.2?} due to '{}'",
-                    peer, self.config().ban_duration_from_severity(severity), err.to_string()
-                );
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Discovering: Failed to ban peer `{peer}`: {e}"
-                );
-            },
-        }
+        result
     }
 
     fn config(&self) -> &DhtConfig {
         &self.context.config
     }
 
-    fn dial_all_candidates(&self) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + 'static {
+    /// Dials every candidate. Each connection comes with whether it already existed before the dial.
+    fn dial_all_candidates(&self) -> impl Stream<Item = Result<(PeerConnection, bool), ConnectivityError>> + 'static {
         let pending_dials = self
             .params
             .peers
             .iter()
             .map(|peer| {
-                let connectivity = self.context.connectivity.clone();
+                let mut connectivity = self.context.connectivity.clone();
                 let peer = peer.clone();
-                async move { connectivity.dial_peer(peer, RefKind::Weak).await }
+                async move {
+                    let was_connected = is_connected(&mut connectivity, &peer).await;
+                    let conn = connectivity.dial_peer(peer, RefKind::Weak).await?;
+                    Ok((conn, was_connected))
+                }
             })
             .collect::<FuturesUnordered<_>>();
 
@@ -504,6 +489,77 @@ impl Discovering {
         );
         pending_dials
     }
+}
+
+/// Returns true if the sync peer sent bad peer data, as opposed to an RPC failure (no free sessions, timeouts) that
+/// can happen to any honest peer.
+pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
+    matches!(
+        err,
+        NetworkDiscoveryError::EmptyPeerMessageReceived |
+            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+            NetworkDiscoveryError::DuplicatePeerReceived |
+            NetworkDiscoveryError::TooManyPeersReceived |
+            NetworkDiscoveryError::TooManyInvalidPeersReceived
+    )
+}
+
+/// Returns how severely to ban a sync peer for this error, or `None` if it is not the sync peer's fault.
+pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
+    match err {
+        NetworkDiscoveryError::EmptyPeerMessageReceived |
+        NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+        NetworkDiscoveryError::DuplicatePeerReceived |
+        NetworkDiscoveryError::TooManyPeersReceived |
+        NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
+        // Other errors - no banning needed
+        NetworkDiscoveryError::RpcStatus(_) |
+        NetworkDiscoveryError::NoSyncPeers |
+        NetworkDiscoveryError::PeerManagerError(_) |
+        NetworkDiscoveryError::RpcError(_) |
+        NetworkDiscoveryError::ConnectivityError(_) |
+        NetworkDiscoveryError::PeerValidationError(_) |
+        NetworkDiscoveryError::JoinError(_) |
+        NetworkDiscoveryError::Timeout { .. } |
+        NetworkDiscoveryError::PeerConnectionClosed { .. } => None,
+    }
+}
+
+/// Bans a sync peer for `err` for the duration that goes with `severity`.
+pub(super) async fn ban_peer<T: ToString>(
+    context: &NetworkDiscoveryContext,
+    peer: NodeId,
+    severity: OffenceSeverity,
+    err: T,
+) {
+    let duration = context.config.ban_duration_from_severity(severity);
+    match context
+        .connectivity
+        .clone()
+        .ban_peer_until(peer.clone(), duration, err.to_string())
+        .await
+    {
+        Ok(_) => {
+            warn!(
+                target: LOG_TARGET,
+                "Banned sync peer `{}` for {:.2?} due to '{}'",
+                peer, duration, err.to_string()
+            );
+        },
+        Err(e) => {
+            warn!(target: LOG_TARGET, "Failed to ban sync peer `{peer}`: {e}");
+        },
+    }
+}
+
+/// Returns true if there is already a live connection to `node_id`.
+pub(super) async fn is_connected(connectivity: &mut ConnectivityRequester, node_id: &NodeId) -> bool {
+    matches!(
+        connectivity.get_connection(node_id.clone(), RefKind::Weak).await,
+        Ok(Some(conn)) if conn.is_connected()
+    )
 }
 
 #[cfg(test)]

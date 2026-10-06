@@ -38,6 +38,8 @@ pub use error::NetworkDiscoveryError;
 mod initializing;
 mod on_connect;
 mod ready;
+mod rebootstrap;
+pub use rebootstrap::{InboundSuggested, MAX_LEARNED_PEERS, REBOOTSTRAP_LOG_TARGET, RebootstrapInfo, SeedPeerProvider};
 pub mod seed_strap;
 
 pub mod state_machine;

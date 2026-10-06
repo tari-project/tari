@@ -410,7 +410,6 @@ where
             known_peer,
             authenticated_public_key.clone(),
             &valid_peer_identity,
-            latency,
         );
 
         let peer_connection_info = PeerConnectionInfo::new(

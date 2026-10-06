@@ -22,12 +22,26 @@
 
 use std::{path::Path, time::Duration};
 
+use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, version::DhtProtocolVersion};
+
+const LOG_TARGET: &str = "comms::dht::config";
+
+/// Lower bound for `rebootstrap_cooldown_min`, so that a misconfiguration cannot turn rebootstrapping into seed spam.
+const MIN_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(60);
+/// Upper bound for `rebootstrap_cooldown_min` and `rebootstrap_cooldown_max`.
+const MAX_REBOOTSTRAP_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+/// Upper bound for `max_seed_peer_sync_count`.
+const MAX_SEED_PEER_SYNC_COUNT: usize = 20;
+/// Upper bound for `rebootstrap_connected_peers`.
+const MAX_REBOOTSTRAP_CONNECTED_PEERS: usize = 20;
+/// Lower bound for `on_connect_resync_ttl`.
+const MIN_ON_CONNECT_RESYNC_TTL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -154,6 +168,77 @@ impl DhtConfig {
         self.database_url.set_base_path(base_path);
     }
 
+    /// Brings the rebootstrap settings into a sane range, logging a warning for each one that was out of it. Applied
+    /// when the DHT is initialized.
+    pub fn clamp_rebootstrap_settings(&mut self) {
+        let defaults = DhtConnectivityConfig::default();
+        let connectivity = &mut self.connectivity;
+        let ratio = connectivity.pool_starved_threshold_ratio;
+        if !ratio.is_finite() || ratio <= 0.0 || ratio > 1.0 {
+            warn!(
+                target: LOG_TARGET,
+                "pool_starved_threshold_ratio {ratio} must be in (0, 1]. Using {}",
+                defaults.pool_starved_threshold_ratio
+            );
+            connectivity.pool_starved_threshold_ratio = defaults.pool_starved_threshold_ratio;
+        }
+        if connectivity.pool_starved_ticks < 1 {
+            warn!(target: LOG_TARGET, "pool_starved_ticks must be at least 1. Using 1");
+            connectivity.pool_starved_ticks = 1;
+        }
+        if connectivity.rebootstrap_cooldown_min < MIN_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_min must be at least {MIN_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_min = MIN_REBOOTSTRAP_COOLDOWN;
+        }
+        if connectivity.rebootstrap_cooldown_min > MAX_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_min must be at most {MAX_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_min = MAX_REBOOTSTRAP_COOLDOWN;
+        }
+        if connectivity.rebootstrap_cooldown_max > MAX_REBOOTSTRAP_COOLDOWN {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_max must be at most {MAX_REBOOTSTRAP_COOLDOWN:.0?}. Using that"
+            );
+            connectivity.rebootstrap_cooldown_max = MAX_REBOOTSTRAP_COOLDOWN;
+        }
+        if connectivity.rebootstrap_cooldown_max < connectivity.rebootstrap_cooldown_min {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_cooldown_max must be at least rebootstrap_cooldown_min. Using {:.0?}",
+                connectivity.rebootstrap_cooldown_min
+            );
+            connectivity.rebootstrap_cooldown_max = connectivity.rebootstrap_cooldown_min;
+        }
+        let discovery = &mut self.network_discovery;
+        if discovery.rebootstrap_connected_peers > MAX_REBOOTSTRAP_CONNECTED_PEERS {
+            warn!(
+                target: LOG_TARGET,
+                "rebootstrap_connected_peers must be at most {MAX_REBOOTSTRAP_CONNECTED_PEERS}. Using that"
+            );
+            discovery.rebootstrap_connected_peers = MAX_REBOOTSTRAP_CONNECTED_PEERS;
+        }
+        if discovery.max_seed_peer_sync_count > MAX_SEED_PEER_SYNC_COUNT {
+            warn!(
+                target: LOG_TARGET,
+                "max_seed_peer_sync_count must be at most {MAX_SEED_PEER_SYNC_COUNT}. Using that"
+            );
+            discovery.max_seed_peer_sync_count = MAX_SEED_PEER_SYNC_COUNT;
+        }
+        if discovery.on_connect_resync_ttl < MIN_ON_CONNECT_RESYNC_TTL {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_resync_ttl must be at least {MIN_ON_CONNECT_RESYNC_TTL:.0?}. Using that"
+            );
+            discovery.on_connect_resync_ttl = MIN_ON_CONNECT_RESYNC_TTL;
+        }
+    }
+
     /// Returns a ban duration from the given severity
     pub fn ban_duration_from_severity(&self, severity: OffenceSeverity) -> Duration {
         match severity {
@@ -217,6 +302,23 @@ pub struct DhtConnectivityConfig {
     /// This is the percentage of nodes that we want to churn per refresh cycle
     /// This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes,
     pub churn_rate: usize,
+    /// The pool counts as starved while the number of connected, outbound-dialled pool peers is below this fraction
+    /// of the pool target (`num_neighbouring_nodes + num_random_nodes`). Inbound peers do not count.
+    /// Default: 0.5
+    pub pool_starved_threshold_ratio: f32,
+    /// The number of consecutive `update_interval` ticks the pool must be starved before a peer rebootstrap is
+    /// requested.
+    /// Default: 3
+    pub pool_starved_ticks: usize,
+    /// The minimum time between peer rebootstraps while the pool stays starved. The first rebootstrap fires
+    /// immediately; after that the cooldown starts here and doubles each time, up to `rebootstrap_cooldown_max`.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rebootstrap_cooldown_min: Duration,
+    /// The ceiling for the doubling rebootstrap cooldown.
+    /// Default: 2 hours
+    #[serde(with = "serializers::seconds")]
+    pub rebootstrap_cooldown_max: Duration,
 }
 
 impl Default for DhtConnectivityConfig {
@@ -227,6 +329,68 @@ impl Default for DhtConnectivityConfig {
             high_failure_rate_cooldown: Duration::from_secs(45),
             minimum_desired_tcpv4_node_ratio: 0.1,
             churn_rate: 10,
+            pool_starved_threshold_ratio: 0.5,
+            pool_starved_ticks: 3,
+            rebootstrap_cooldown_min: Duration::from_secs(10 * 60),
+            rebootstrap_cooldown_max: Duration::from_secs(2 * 60 * 60),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn rebootstrap_settings_are_clamped() {
+        let mut config = DhtConfig::default();
+        config.connectivity.pool_starved_threshold_ratio = f32::NAN;
+        config.connectivity.pool_starved_ticks = 0;
+        config.connectivity.rebootstrap_cooldown_min = Duration::from_secs(1);
+        config.connectivity.rebootstrap_cooldown_max = Duration::from_secs(2);
+        config.network_discovery.rebootstrap_connected_peers = 1000;
+        config.network_discovery.on_connect_resync_ttl = Duration::ZERO;
+        config.clamp_rebootstrap_settings();
+
+        assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(config.connectivity.pool_starved_ticks, 1);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_min, MIN_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_max, MIN_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(
+            config.network_discovery.rebootstrap_connected_peers,
+            MAX_REBOOTSTRAP_CONNECTED_PEERS
+        );
+        assert_eq!(
+            config.network_discovery.on_connect_resync_ttl,
+            MIN_ON_CONNECT_RESYNC_TTL
+        );
+
+        let mut config = DhtConfig::default();
+        config.connectivity.rebootstrap_cooldown_min = Duration::MAX;
+        config.connectivity.rebootstrap_cooldown_max = Duration::MAX;
+        config.network_discovery.max_seed_peer_sync_count = 1000;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(config.connectivity.rebootstrap_cooldown_min, MAX_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(config.connectivity.rebootstrap_cooldown_max, MAX_REBOOTSTRAP_COOLDOWN);
+        assert_eq!(
+            config.network_discovery.max_seed_peer_sync_count,
+            MAX_SEED_PEER_SYNC_COUNT
+        );
+
+        for ratio in [0.0, -1.0, 1.5, f32::INFINITY] {
+            config.connectivity.pool_starved_threshold_ratio = ratio;
+            config.clamp_rebootstrap_settings();
+            assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
+        }
+
+        // Sane settings are left alone
+        let mut config = DhtConfig::default();
+        config.connectivity.pool_starved_threshold_ratio = 1.0;
+        config.clamp_rebootstrap_settings();
+        assert!((config.connectivity.pool_starved_threshold_ratio - 1.0).abs() < f32::EPSILON);
+        assert_eq!(
+            config.connectivity.rebootstrap_cooldown_min,
+            Duration::from_secs(10 * 60)
+        );
     }
 }

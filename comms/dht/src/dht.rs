@@ -43,6 +43,7 @@ use crate::{
     DhtActorError,
     DhtBuilder,
     DhtConfig,
+    SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
@@ -96,6 +97,8 @@ pub struct Dht {
     event_publisher: DhtEventSender,
     /// Used by MetricsLayer to collect metrics and to inform heuristics for peer banning
     metrics_collector: MetricsCollectorHandle,
+    /// Re-resolves seed peers for a rebootstrap
+    seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
 }
 
 impl Dht {
@@ -105,8 +108,11 @@ impl Dht {
         peer_manager: Arc<PeerManager>,
         outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>,
         connectivity: ConnectivityRequester,
+        seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, DhtInitializationError> {
+        let mut config = config;
+        config.clamp_rebootstrap_settings();
         let (dht_sender, dht_receiver) = mpsc::unbounded_channel();
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
@@ -123,13 +129,17 @@ impl Dht {
             connectivity,
             discovery_sender,
             event_publisher,
+            seed_peer_provider,
         };
 
         let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS, Some(16))
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
-        dht.network_discovery_service(shutdown_signal.clone()).spawn();
-        dht.connectivity_service(shutdown_signal.clone()).spawn();
+        let connectivity = dht.connectivity_service(shutdown_signal.clone());
+        dht.network_discovery_service(shutdown_signal.clone())
+            .with_pool_peers(connectivity.pool_peers())
+            .spawn();
+        connectivity.spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
         dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
@@ -193,7 +203,7 @@ impl Dht {
             self.peer_manager.clone(),
             self.connectivity.clone(),
             self.dht_requester(),
-            self.event_publisher.subscribe(),
+            self.event_publisher.clone(),
             self.metrics_collector.clone(),
             shutdown_signal,
         )
@@ -207,6 +217,7 @@ impl Dht {
             Arc::clone(&self.peer_manager),
             self.connectivity.clone(),
             self.event_publisher.clone(),
+            self.seed_peer_provider.clone(),
             shutdown_signal,
         )
     }

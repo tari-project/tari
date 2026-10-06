@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::{collections::HashMap, convert::TryInto, time::Instant};
 
 use futures::StreamExt;
 use log::*;
@@ -46,15 +46,32 @@ const NUM_FETCH_PEERS: u32 = 100;
 #[derive(Debug)]
 pub(super) struct OnConnect {
     context: NetworkDiscoveryContext,
-    prev_synced: Vec<NodeId>,
+    /// Peers synced from, and when. A peer is synced from again once `on_connect_resync_ttl` has passed.
+    pub(super) prev_synced: HashMap<NodeId, Instant>,
 }
 
 impl OnConnect {
     pub fn new(context: NetworkDiscoveryContext) -> Self {
         Self {
             context,
-            prev_synced: Vec::new(),
+            prev_synced: HashMap::new(),
         }
+    }
+
+    /// Returns true if peers were synced from `node_id` within the last `on_connect_resync_ttl`.
+    pub(super) fn is_recently_synced(&self, node_id: &NodeId, now: Instant) -> bool {
+        let ttl = self.config().network_discovery.on_connect_resync_ttl;
+        self.prev_synced
+            .get(node_id)
+            .is_some_and(|synced_at| now.saturating_duration_since(*synced_at) < ttl)
+    }
+
+    /// Records a sync from `node_id`, forgetting entries that have expired so the map stays bounded.
+    pub(super) fn mark_synced(&mut self, node_id: NodeId, now: Instant) {
+        let ttl = self.config().network_discovery.on_connect_resync_ttl;
+        self.prev_synced
+            .retain(|_, synced_at| now.saturating_duration_since(*synced_at) < ttl);
+        self.prev_synced.insert(node_id, now);
     }
 
     pub async fn next_event(&mut self) -> StateEvent {
@@ -66,47 +83,17 @@ impl OnConnect {
                     if conn.peer_features().is_client() {
                         continue;
                     }
-                    if self.prev_synced.contains(conn.peer_node_id()) {
+                    if self.is_recently_synced(conn.peer_node_id(), Instant::now()) {
                         debug!(
                             target: LOG_TARGET,
-                            "Already synced from peer `{}`. Skipping",
+                            "Recently synced from peer `{}`. Skipping",
                             conn.peer_node_id()
                         );
                         continue;
                     }
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Node peer `{}` connected. Syncing peers...",
-                        conn.peer_node_id()
-                    );
-
-                    match self.sync_peers(*conn.clone()).await {
-                        Ok(_) => continue,
-                        Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
-                            warn!(target: LOG_TARGET, "{err}. Banning peer.");
-                            if let Err(err) = self
-                                .context
-                                .connectivity
-                                .ban_peer_until(
-                                    conn.peer_node_id().clone(),
-                                    self.config().ban_duration,
-                                    err.to_string(),
-                                )
-                                .await
-                            {
-                                return err.into();
-                            }
-                        },
-                        Err(err) => debug!(
-                            target: LOG_TARGET,
-                            "Failed to peer sync from `{}`: {}",
-                            conn.peer_node_id(),
-                            err
-                        ),
+                    if let Some(event) = self.sync_from(*conn).await {
+                        return event;
                     }
-
-                    self.prev_synced.push(conn.peer_node_id().clone());
                 },
                 Ok(_) => { /* Nothing to do */ },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -119,6 +106,46 @@ impl OnConnect {
         }
 
         StateEvent::Shutdown
+    }
+
+    /// Syncs peers from a newly connected peer. Returns an event if the state machine must stop.
+    ///
+    /// The peer is marked as synced before the sync, so that it is not synced from twice at once, and unmarked if the
+    /// sync fails, so that a transient failure does not block a retry for `on_connect_resync_ttl`. A peer that sent
+    /// invalid peer data is banned and stays marked.
+    pub(super) async fn sync_from(&mut self, conn: PeerConnection) -> Option<StateEvent> {
+        self.mark_synced(conn.peer_node_id().clone(), Instant::now());
+
+        debug!(
+            target: LOG_TARGET,
+            "Node peer `{}` connected. Syncing peers...",
+            conn.peer_node_id()
+        );
+
+        match self.sync_peers(conn.clone()).await {
+            Ok(_) => {},
+            Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
+                warn!(target: LOG_TARGET, "{err}. Banning peer.");
+                if let Err(err) = self
+                    .context
+                    .connectivity
+                    .ban_peer_until(conn.peer_node_id().clone(), self.config().ban_duration, err.to_string())
+                    .await
+                {
+                    return Some(err.into());
+                }
+            },
+            Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to peer sync from `{}`: {}",
+                    conn.peer_node_id(),
+                    err
+                );
+                self.prev_synced.remove(conn.peer_node_id());
+            },
+        }
+        None
     }
 
     async fn sync_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {

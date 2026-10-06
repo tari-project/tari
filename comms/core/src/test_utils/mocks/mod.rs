@@ -31,6 +31,7 @@ pub use peer_connection::{
     PeerConnectionMock,
     PeerConnectionMockState,
     create_dummy_peer_connection,
+    create_dummy_peer_connection_with_direction,
     create_peer_connection_mock_pair,
     new_peer_connection_mock_pair,
 };

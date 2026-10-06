@@ -235,7 +235,14 @@ where
                 );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
-                if let Some(address) = source_peer.last_address_used() {
+                // A pong only vouches for an address if we reached the peer on it, i.e. over an outbound connection.
+                // A peer that dialled in has merely claimed its addresses (and earlier dials to them may well have
+                // failed), so marking one of them as seen would make it a known-good dial candidate.
+                let conn = self.connectivity.get_connection(node_id.clone(), RefKind::Weak).await;
+                if let Ok(Some(conn)) = conn &&
+                    conn.direction().is_outbound()
+                {
+                    let address = conn.address().clone();
                     let mut peer_to_update = source_peer.clone();
                     if let Some(val) = maybe_latency {
                         peer_to_update.addresses.update_latency(&address, val);
@@ -465,16 +472,22 @@ mod test {
     use futures::stream;
     use tari_common_sqlite::connection::DbConnection;
     use tari_comms::{
-        connection_manager::PeerConnectionRequest,
+        connection_manager::{ConnectionDirection, PeerConnectionRequest},
         message::MessageTag,
-        net_address::MultiaddressesWithStats,
+        multiaddr::Multiaddr,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
             Peer,
             PeerFeatures,
             PeerFlags,
             database::{MIGRATIONS, PeerDatabaseSql},
         },
-        test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
+        test_utils::mocks::{
+            ConnectivityManagerMockState,
+            create_connectivity_mock,
+            create_dummy_peer_connection,
+            create_dummy_peer_connection_with_direction,
+        },
         types::TransportProtocol,
     };
     use tari_comms_dht::{
@@ -659,6 +672,93 @@ mod test {
 
         // Test oms got request to send message
         unwrap_oms_send_msg!(outbound_rx.recv().await.unwrap());
+    }
+
+    /// Sends `peer` a ping, has it pong back over a connection in `direction`, and returns whether its address was
+    /// marked as seen.
+    async fn pong_marks_address_as_seen(mut peer: Peer, direction: ConnectionDirection) -> bool {
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (conn, _requests) = create_dummy_peer_connection_with_direction(peer.node_id.clone(), direction);
+        mock_state.add_active_connection(conn).await;
+        // The dummy connection's address
+        let address: Multiaddr = "/ip4/23.23.23.23/tcp/80".parse().unwrap();
+        assert!(peer.addresses.contains(&address));
+
+        let peer_manager = build_peer_manager();
+        peer.addresses.update_address_stats(&address, |stats| {
+            stats.mark_last_attempted_now();
+        });
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+
+        let mut state = LivenessState::new();
+        let mut msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, Metadata::new()));
+        msg.source_peer = peer.clone();
+        state.add_inflight_ping(123, peer.node_id.clone(), MAX_INFLIGHT_TTL);
+        let (outbound_tx, _) = mpsc::unbounded_channel();
+        let (publisher, _) = broadcast::channel(200);
+        let mut subscriber = publisher.subscribe();
+        let shutdown = Shutdown::new();
+        let service = LivenessService::new(
+            Default::default(),
+            stream::empty(),
+            stream::iter(vec![msg]),
+            state,
+            connectivity,
+            OutboundMessageRequester::new(outbound_tx),
+            publisher,
+            shutdown.to_signal(),
+            peer_manager.clone(),
+        );
+        task::spawn(service.run());
+        time::timeout(Duration::from_secs(10), subscriber.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        // Give the write-back time to land
+        time::sleep(Duration::from_millis(200)).await;
+
+        let stored = peer_manager.find_by_node_id(&peer.node_id).await.unwrap().unwrap();
+        stored.last_seen().is_some()
+    }
+
+    fn peer_at_dummy_address() -> Peer {
+        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        Peer::new(
+            pk.clone(),
+            NodeId::from_key(&pk),
+            MultiaddressesWithStats::from_addresses_with_source(
+                vec!["/ip4/23.23.23.23/tcp/80".parse().unwrap()],
+                &PeerAddressSource::Config,
+            ),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    /// A dial to the address failed, then the peer pongs over an inbound connection: the address is not vouched for.
+    #[tokio::test]
+    async fn a_pong_over_inbound_after_a_failed_dial_marks_nothing() {
+        let mut peer = peer_at_dummy_address();
+        let address = peer.addresses.address_iter().next().unwrap().clone();
+        peer.addresses
+            .mark_failed_connection_attempt(&address, "unreachable".to_string());
+        assert!(!pong_marks_address_as_seen(peer, ConnectionDirection::Inbound).await);
+    }
+
+    /// A peer from an older database, whose claimed addresses were all marked as attempted, pongs over an inbound
+    /// connection: the address is not vouched for.
+    #[tokio::test]
+    async fn a_pong_over_inbound_from_a_legacy_peer_marks_nothing() {
+        assert!(!pong_marks_address_as_seen(peer_at_dummy_address(), ConnectionDirection::Inbound).await);
+    }
+
+    /// A pong over an outbound connection vouches for the address we connected on.
+    #[tokio::test]
+    async fn a_pong_over_outbound_marks_the_connected_address() {
+        assert!(pong_marks_address_as_seen(peer_at_dummy_address(), ConnectionDirection::Outbound).await);
     }
 
     #[tokio::test]

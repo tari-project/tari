@@ -23,7 +23,6 @@
 use std::{cmp, collections::HashSet, convert::TryInto, time::Duration};
 
 use futures::StreamExt;
-use futures_util::stream::FuturesUnordered;
 use log::*;
 use rand::prelude::SliceRandom;
 use tari_comms::{
@@ -33,6 +32,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer},
 };
 use tari_utilities::hex::Hex;
+use tokio::task::JoinSet;
 
 use crate::{
     DhtConfig,
@@ -186,8 +186,9 @@ impl SeedStrap {
             round_info.sync_peers,
         );
 
-        // Get peers from seeds concurrently
-        let mut task_stream = FuturesUnordered::new();
+        // Get peers from seeds concurrently. A `JoinSet` aborts its tasks when dropped, so a SeedStrap that is
+        // abandoned part way (e.g. a rebootstrap takes over) does not leave seed syncs running in the background.
+        let mut task_stream = JoinSet::new();
         for (idx, seed_peer_candidate) in candidates.into_iter().enumerate() {
             attempted_seed_contacts = attempted_seed_contacts.saturating_add(1);
             let seed_node_ids_set_clone = seed_node_ids_set.clone();
@@ -196,7 +197,7 @@ impl SeedStrap {
             let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
             let rpc_get_peers_stream_timeout = self.config().network_discovery.bootstrap_rpc_get_peers_stream_timeout;
             let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
-            let handle = tokio::task::spawn(async move {
+            task_stream.spawn(async move {
                 get_peers(
                     context_clone,
                     seed_peer_candidate,
@@ -213,11 +214,10 @@ impl SeedStrap {
                 )
                 .await
             });
-            task_stream.push(handle);
         }
 
         let mut seeds_communicated_with = 0usize;
-        while let Some(result) = task_stream.next().await {
+        while let Some(result) = task_stream.join_next().await {
             let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
                 Ok((peers, n_new, n_dup, communicated)) => {
                     if communicated {
@@ -242,7 +242,7 @@ impl SeedStrap {
                     let rpc_get_peers_stream_timeout =
                         self.config().network_discovery.bootstrap_rpc_get_peers_stream_timeout;
                     let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
-                    let handle = tokio::task::spawn(async move {
+                    task_stream.spawn(async move {
                         get_peers(
                             context_clone,
                             seed_peer_candidate,
@@ -259,7 +259,6 @@ impl SeedStrap {
                         )
                         .await
                     });
-                    task_stream.push(handle);
                 }
                 continue;
             } else {
@@ -673,7 +672,7 @@ async fn get_peers(
     )
 }
 
-async fn fetch_peers_from_connection(
+pub(super) async fn fetch_peers_from_connection(
     conn: &mut PeerConnection,
     max_peers_to_sync_per_round: u32,
     max_permitted_peer_claims: usize,

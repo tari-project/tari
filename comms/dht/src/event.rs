@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
-use crate::network_discovery::{DhtNetworkDiscoveryRoundInfo, state_machine::BootstrapMethod};
+use crate::network_discovery::{DhtNetworkDiscoveryRoundInfo, RebootstrapInfo, state_machine::BootstrapMethod};
 
 pub type DhtEventSender = broadcast::Sender<Arc<DhtEvent>>;
 pub type DhtEventReceiver = broadcast::Receiver<Arc<DhtEvent>>;
@@ -44,4 +44,12 @@ pub enum DhtEvent {
 
     /// Emitted by NetworkDiscovery when the bootstrap method has been determined.
     BootstrapMethodDetermined(BootstrapMethod),
+
+    /// Emitted by DhtConnectivity when too few of its pool peers are outbound connections for
+    /// `pool_starved_ticks` consecutive ticks. NetworkDiscovery responds with a rebootstrap.
+    PoolStarved,
+
+    /// Emitted by NetworkDiscovery when a rebootstrap has completed. DhtConnectivity responds by topping up its pool
+    /// straight away, preferring the peers learned in the rebootstrap.
+    RebootstrapComplete(RebootstrapInfo),
 }

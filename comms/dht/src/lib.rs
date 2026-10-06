@@ -94,6 +94,8 @@ pub use error::DhtEncryptError;
 mod network_discovery;
 pub use network_discovery::{
     NetworkDiscoveryConfig,
+    RebootstrapInfo,
+    SeedPeerProvider,
     state_machine::{BootstrapMethod, DiscoveryPhase},
 };
 

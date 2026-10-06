@@ -21,30 +21,44 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{iter::repeat_with, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    iter::repeat_with,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use tari_comms::{
     NodeIdentity,
     PeerManager,
+    connection_manager::{ConnectionDirection, PeerConnectionRequest},
     connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     test_utils::{
-        mocks::{ConnectivityManagerMockState, create_connectivity_mock, create_dummy_peer_connection},
+        mocks::{
+            ConnectivityManagerMockState,
+            create_connectivity_mock,
+            create_dummy_peer_connection,
+            create_dummy_peer_connection_with_direction,
+        },
         node_identity::build_many_node_identities,
     },
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     DhtConfig,
-    connectivity::{DhtConnectivity, MetricsCollector},
+    DhtConnectivityConfig,
+    connectivity::{DhtConnectivity, MAX_REBOOTSTRAP_PEERS, MetricsCollector, RebootstrapTrigger, is_pool_starved},
+    event::DhtEvent,
     test_utils::{
         DhtMockState,
         build_peer_manager,
         create_dht_actor_mock,
         create_good_standing_peer,
+        make_client_identity,
         make_node_identity,
     },
 };
@@ -80,7 +94,7 @@ async fn setup(
         peer_manager.clone(),
         connectivity,
         dht_requester,
-        event_publisher.subscribe(),
+        event_publisher,
         MetricsCollector::spawn(),
         shutdown.to_signal(),
     );
@@ -229,6 +243,1105 @@ async fn failed_dials_are_backed_off_instead_of_reissued() {
     assert!(!dht_connectivity.dial_backoff.contains_key(&node_ids[0]));
     let selected = dht_connectivity.fetch_random_peers(4, &[], false).await.unwrap();
     assert_eq!(selected, vec![node_ids[0].clone()]);
+}
+
+/// The actor must survive a failed first pool refresh: without it there is no pool and nothing to notice that the
+/// pool is starved.
+#[tokio::test]
+async fn it_survives_a_failed_initial_refresh() {
+    let shutdown = Shutdown::new();
+    // Dropping the mock makes every connectivity request fail, including the initial refresh
+    let (connectivity, mock) = create_connectivity_mock();
+    drop(mock);
+    let (dht_requester, mock) = create_dht_actor_mock();
+    mock.spawn();
+    let (event_publisher, _) = broadcast::channel(1);
+    let dht_connectivity = DhtConnectivity::new(
+        Arc::new(DhtConfig::default()),
+        build_peer_manager(),
+        connectivity,
+        dht_requester,
+        event_publisher,
+        MetricsCollector::spawn(),
+        shutdown.to_signal(),
+    );
+
+    let handle = dht_connectivity.spawn();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        !handle.is_finished(),
+        "DhtConnectivity exited after a failed initial refresh"
+    );
+
+    shutdown.trigger();
+    tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+mod rebootstrap_trigger {
+    use super::*;
+
+    fn config() -> DhtConnectivityConfig {
+        DhtConnectivityConfig {
+            pool_starved_ticks: 3,
+            rebootstrap_cooldown_min: Duration::from_secs(10 * 60),
+            rebootstrap_cooldown_max: Duration::from_secs(2 * 60 * 60),
+            ..Default::default()
+        }
+    }
+
+    fn mins(n: u64) -> Duration {
+        Duration::from_secs(n.saturating_mul(60))
+    }
+
+    #[test]
+    fn it_needs_consecutive_starved_ticks() {
+        let config = config();
+        let now = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+
+        assert!(!trigger.on_tick(true, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        // A healthy tick resets the count
+        assert!(!trigger.on_tick(false, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        assert!(!trigger.on_tick(true, now, &config));
+        // The third consecutive starved tick fires immediately
+        assert!(trigger.on_tick(true, now, &config));
+    }
+
+    #[test]
+    fn its_cooldown_doubles_caps_and_resets() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        assert!(trigger.on_tick(true, start, &config));
+
+        // Each gap between rebootstraps is double the last, up to the 2h cap
+        let mut at = start;
+        for gap in [10, 20, 40, 80, 120, 120] {
+            let just_before = at + mins(gap) - Duration::from_secs(1);
+            assert!(
+                !trigger.on_tick(true, just_before, &config),
+                "fired before the {gap}m cooldown was up"
+            );
+            at += mins(gap);
+            assert!(
+                trigger.on_tick(true, at, &config),
+                "did not fire after the {gap}m cooldown"
+            );
+        }
+
+        // Staying recovered long enough resets everything: the 120m cooldown halves every 10m of health (60, 30, 15,
+        // 10) and is then cleared. The next starvation needs 3 ticks again, then fires straight away and the cooldown
+        // starts from the minimum again
+        assert!(!trigger.on_tick(false, at, &config));
+        for _ in 0..5 {
+            at += mins(10);
+            assert!(!trigger.on_tick(false, at, &config));
+        }
+        assert!(trigger.last_fired.is_none());
+        assert!(!trigger.on_tick(true, at, &config));
+        assert!(!trigger.on_tick(true, at, &config));
+        assert!(trigger.on_tick(true, at, &config));
+        assert!(!trigger.on_tick(true, at + mins(9), &config));
+        assert!(trigger.on_tick(true, at + mins(10), &config));
+    }
+
+    /// A pool that recovers for a tick after each rebootstrap and then decays again must not reset the backoff.
+    #[test]
+    fn a_brief_recovery_does_not_reset_the_cooldown() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        assert!(trigger.on_tick(true, start, &config));
+
+        // One healthy tick, then starved again: three starved ticks are needed again, and the 10m cooldown still holds
+        let mut at = start + mins(2);
+        assert!(!trigger.on_tick(false, at, &config));
+        for _ in 0..3 {
+            at += mins(2);
+            assert!(
+                !trigger.on_tick(true, at, &config),
+                "fired inside the cooldown after a brief recovery"
+            );
+        }
+        // 10m after the first rebootstrap it fires, and the cooldown has doubled to 20m
+        assert!(trigger.on_tick(true, start + mins(10), &config));
+        assert!(!trigger.on_tick(false, start + mins(12), &config));
+        assert!(!trigger.on_tick(true, start + mins(14), &config));
+        assert!(!trigger.on_tick(true, start + mins(16), &config));
+        assert!(!trigger.on_tick(true, start + mins(29), &config));
+        assert!(trigger.on_tick(true, start + mins(30), &config));
+
+        // Recovered, but for less than the minimum cooldown: the 40m cooldown still applies
+        assert!(!trigger.on_tick(false, start + mins(31), &config));
+        assert!(!trigger.on_tick(false, start + mins(40), &config));
+        for t in [41, 42, 43, 69] {
+            assert!(!trigger.on_tick(true, start + mins(t), &config));
+        }
+        assert!(trigger.on_tick(true, start + mins(70), &config));
+    }
+
+    /// Sustained health halves the cooldown rather than clearing it outright, so a node that drops and re-starves
+    /// does not get an immediate rebootstrap each time.
+    #[test]
+    fn sustained_health_halves_the_cooldown() {
+        let config = config();
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger::default();
+        for _ in 0..2 {
+            assert!(!trigger.on_tick(true, start, &config));
+        }
+        // Rebootstraps at 0, 10 and 30 leave a 40m cooldown
+        assert!(trigger.on_tick(true, start, &config));
+        assert!(trigger.on_tick(true, start + mins(10), &config));
+        assert!(trigger.on_tick(true, start + mins(30), &config));
+
+        // 10m of health halves it to 20m
+        assert!(!trigger.on_tick(false, start + mins(31), &config));
+        assert!(!trigger.on_tick(false, start + mins(41), &config));
+        // Starved again: no rebootstrap until 20m after the last one...
+        for t in [43, 45, 47, 49] {
+            assert!(!trigger.on_tick(true, start + mins(t), &config));
+        }
+        assert!(trigger.on_tick(true, start + mins(50), &config));
+        // ...and the cooldown doubles from 20m to 40m
+        assert!(!trigger.on_tick(true, start + mins(89), &config));
+        assert!(trigger.on_tick(true, start + mins(90), &config));
+    }
+
+    /// Waits after the first rebootstrap are jittered by +/-25%.
+    #[test]
+    fn cooldowns_are_jittered_within_bounds() {
+        let config = config();
+        for _ in 0..50 {
+            let start = Instant::now();
+            let mut trigger = RebootstrapTrigger {
+                jitter: true,
+                ..Default::default()
+            };
+            for _ in 0..2 {
+                assert!(!trigger.on_tick(true, start, &config));
+            }
+            // The first rebootstrap comes on the third starved tick, or at most one tick later
+            if !trigger.on_tick(true, start, &config) {
+                assert!(trigger.on_tick(true, start, &config));
+            }
+            let (_, cooldown, wait) = trigger.last_fired.unwrap();
+            assert_eq!(cooldown, mins(10));
+            assert!(
+                wait >= mins(10).mul_f64(0.75) && wait <= mins(10).mul_f64(1.25),
+                "{wait:?}"
+            );
+            assert!(!trigger.on_tick(true, start + mins(7), &config));
+            assert!(trigger.on_tick(true, start + mins(13), &config));
+        }
+    }
+
+    #[test]
+    fn it_is_starved_below_the_threshold() {
+        assert!(is_pool_starved(0, 12, 0.5));
+        assert!(is_pool_starved(5, 12, 0.5));
+        assert!(!is_pool_starved(6, 12, 0.5));
+        assert!(!is_pool_starved(0, 0, 0.5));
+    }
+
+    /// Fills the pool with peers connected in the given direction and holds their connection handles.
+    fn fill_pool(
+        dht_connectivity: &mut DhtConnectivity,
+        n: usize,
+        direction: ConnectionDirection,
+    ) -> Vec<mpsc::Receiver<PeerConnectionRequest>> {
+        let mut receivers = Vec::new();
+        for _ in 0..n {
+            let node_id = NodeId::from_public_key(make_node_identity().public_key());
+            let (conn, rx) = create_dummy_peer_connection_with_direction(node_id.clone(), direction);
+            dht_connectivity.random_pool.push(node_id);
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+        receivers
+    }
+
+    /// A node that survives only on peers dialling in is still starved: inbound pool peers do not count.
+    #[tokio::test]
+    async fn it_counts_outbound_pool_peers_only() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, _connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let mut events = dht_connectivity.dht_event_publisher.subscribe();
+        // Exact tick counts: no first-fire jitter
+        dht_connectivity.rebootstrap_trigger.jitter = false;
+
+        let _inbound = fill_pool(&mut dht_connectivity, 12, ConnectionDirection::Inbound);
+        assert_eq!(dht_connectivity.pool_connection_counts(), (0, 12));
+
+        for _ in 0..2 {
+            dht_connectivity.check_pool_starved();
+            assert!(
+                events.try_recv().is_err(),
+                "PoolStarved published before 3 starved ticks"
+            );
+        }
+        dht_connectivity.check_pool_starved();
+        let event = events.try_recv().unwrap();
+        assert!(matches!(*event, DhtEvent::PoolStarved));
+
+        // Half the pool target in outbound peers is enough to no longer be starved
+        let _outbound = fill_pool(&mut dht_connectivity, 6, ConnectionDirection::Outbound);
+        assert_eq!(dht_connectivity.pool_connection_counts(), (6, 12));
+        dht_connectivity.check_pool_starved();
+        assert_eq!(dht_connectivity.rebootstrap_trigger.starved_ticks, 0);
+    }
+
+    /// Answers disconnect requests for a dummy connection, then closes it.
+    fn serve_disconnects(mut rx: mpsc::Receiver<PeerConnectionRequest>) {
+        tokio::spawn(async move {
+            while let Some(request) = rx.recv().await {
+                if let PeerConnectionRequest::Disconnect(_, reply_tx, _, _) = request {
+                    let _ignore = reply_tx.send(Ok(()));
+                    break;
+                }
+            }
+        });
+    }
+
+    /// The degraded case: the pool is full, but only of peers that dialled in. A rebootstrap must still dial the
+    /// peers it learned, and the outbound connections must replace inbound peers rather than be turned away.
+    #[tokio::test]
+    async fn it_dials_learned_peers_into_a_pool_full_of_inbound_peers() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = make_node_identity().to_peer();
+        let learned_node_id = learned.node_id.clone();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![learned]).await;
+        for rx in fill_pool(&mut dht_connectivity, 12, ConnectionDirection::Inbound) {
+            serve_disconnects(rx);
+        }
+
+        let info = crate::RebootstrapInfo {
+            learned_peers: vec![learned_node_id.clone()],
+            ..Default::default()
+        };
+        dht_connectivity
+            .handle_dht_event(&DhtEvent::RebootstrapComplete(info))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&learned_node_id).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+
+        // The dial lands. The pool is full of inbound peers, but the outbound peer is kept...
+        let (conn, rx) =
+            create_dummy_peer_connection_with_direction(learned_node_id.clone(), ConnectionDirection::Outbound);
+        let _outbound = rx;
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert_eq!(dht_connectivity.pool_connection_counts(), (1, 12));
+
+        // ...and the next refresh releases an inbound peer, not the outbound one
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        assert!(dht_connectivity.is_pool_peer(&learned_node_id));
+        assert_eq!(dht_connectivity.pool_connection_counts(), (1, 11));
+    }
+
+    /// On a starved node the in-flight dial budget is taken up by dials to stale peers. Learned peers must still be
+    /// dialled on the refill, and must be used to replace a failed pool dial.
+    #[tokio::test]
+    async fn learned_peers_are_dialled_while_the_dial_budget_is_used_up() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(3)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), learned).await;
+
+        // 24 dials in flight is the cap for a pool of 12 with nothing connected
+        let stale = repeat_with(|| NodeId::from_public_key(make_node_identity().public_key()))
+            .take(24)
+            .collect::<Vec<_>>();
+        for node_id in &stale {
+            dht_connectivity.random_pool.push(node_id.clone());
+            dht_connectivity.pending_dials.insert(node_id.clone(), Instant::now());
+        }
+
+        let info = crate::RebootstrapInfo {
+            learned_peers: learned_ids[..2].to_vec(),
+            ..Default::default()
+        };
+        dht_connectivity
+            .handle_dht_event(&DhtEvent::RebootstrapComplete(info))
+            .await
+            .unwrap();
+        for node_id in &learned_ids[..2] {
+            async_assert!(
+                connectivity.is_peer_dialed(node_id).await,
+                max_attempts = 20,
+                interval = Duration::from_millis(10),
+            );
+        }
+
+        // A stale dial fails and a learned peer is queued: the learned peer replaces it
+        dht_connectivity.rebootstrap_peers = vec![learned_ids[2].clone()];
+        dht_connectivity
+            .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(stale[0].clone()))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&learned_ids[2]).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert!(dht_connectivity.is_pool_peer(&learned_ids[2]));
+    }
+
+    /// Learned peers are taken in the order they were learned (seeds first), not in database order.
+    #[tokio::test]
+    async fn learned_peers_keep_their_order() {
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(5)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        // Stored in reverse, so database order differs from learned order
+        let stored = learned.into_iter().rev().collect();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), stored).await;
+
+        dht_connectivity.set_rebootstrap_peers(&learned_ids, &[]).await.unwrap();
+        assert_eq!(
+            dht_connectivity.take_rebootstrap_peers(3, &[]),
+            learned_ids[..3].to_vec()
+        );
+        assert_eq!(
+            dht_connectivity.take_rebootstrap_peers(3, &[]),
+            learned_ids[3..].to_vec()
+        );
+    }
+
+    /// Learned peers are checked against the peer database once, when the rebootstrap completes: peers that can never
+    /// be pool peers are dropped and the list is capped.
+    #[tokio::test]
+    async fn learned_peers_are_filtered_and_capped() {
+        let mut banned = make_node_identity().to_peer();
+        banned.ban_for(Duration::from_secs(60 * 60), "test".to_string());
+        let mut seed = make_node_identity().to_peer();
+        seed.add_flags(PeerFlags::SEED);
+        let client = make_client_identity().to_peer();
+        let unknown = NodeId::from_public_key(make_node_identity().public_key());
+        let good = repeat_with(|| make_node_identity().to_peer())
+            .take(MAX_REBOOTSTRAP_PEERS + 10)
+            .collect::<Vec<_>>();
+
+        let mut learned = vec![
+            banned.node_id.clone(),
+            seed.node_id.clone(),
+            client.node_id.clone(),
+            unknown,
+        ];
+        learned.extend(good.iter().map(|p| p.node_id.clone()));
+        let mut stored = vec![banned, seed, client];
+        stored.extend(good.iter().cloned());
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), stored).await;
+
+        dht_connectivity.set_rebootstrap_peers(&learned, &[]).await.unwrap();
+        // The cap applies to the learned list, so the 4 ineligible peers take up 4 of its places
+        let expected = good
+            .iter()
+            .take(MAX_REBOOTSTRAP_PEERS - 4)
+            .map(|p| p.node_id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(dht_connectivity.rebootstrap_peers, expected);
+    }
+
+    /// Learned peers get at most half of the dial target; known-good peers from the database fill the rest.
+    #[tokio::test]
+    async fn learned_peers_get_at_most_half_the_dial_budget() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(30)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(30)
+            .collect::<Vec<_>>();
+        let mut stored = learned;
+        stored.extend(known_good);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), stored).await;
+        dht_connectivity.set_rebootstrap_peers(&learned_ids, &[]).await.unwrap();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        // Nothing connected: 24 dials (the cap for a pool of 12), at most 12 of them learned peers
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 24,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        let num_learned = dialed.iter().filter(|node_id| learned_ids.contains(node_id)).count();
+        assert_eq!(num_learned, 12);
+        assert_eq!(dialed.len().saturating_sub(num_learned), 12);
+    }
+
+    /// Learned dials still in flight count against the learned half of the budget, so back-to-back refreshes cannot
+    /// hand learned peers the whole budget.
+    #[tokio::test]
+    async fn learned_dials_in_flight_count_against_the_learned_budget() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
+            ..Default::default()
+        };
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(30)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(30)
+            .collect::<Vec<_>>();
+        let mut stored = learned;
+        stored.extend(known_good);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), stored).await;
+        dht_connectivity.set_rebootstrap_peers(&learned_ids, &[]).await.unwrap();
+
+        // Two refreshes well within the pending-dial grace period
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 24,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let dialed = connectivity.get_dialed_peers().await;
+        let num_learned = dialed.iter().filter(|node_id| learned_ids.contains(node_id)).count();
+        assert_eq!(num_learned, 12, "learned peers took more than half the budget");
+        assert_eq!(dialed.len(), 24);
+    }
+
+    /// A pool at target dials no learned peers, and drops the ones still queued.
+    #[tokio::test]
+    async fn a_full_pool_dials_no_learned_peers() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 1,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let _outbound = fill_pool(&mut dht_connectivity, 2, ConnectionDirection::Outbound);
+        // Not churning this time
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.rebootstrap_peers = (0..3)
+            .map(|_| NodeId::from_public_key(make_node_identity().public_key()))
+            .collect();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(connectivity.get_dialed_peers().await.is_empty());
+        assert!(dht_connectivity.rebootstrap_peers.is_empty());
+    }
+
+    /// Pool replacements alternate between learned peers and the database, and fall back to the other when one has
+    /// nothing.
+    #[tokio::test]
+    async fn replacements_alternate_between_learned_and_database_peers() {
+        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(2)
+            .collect::<Vec<_>>();
+        let known_good_ids = known_good.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), known_good).await;
+        let learned = vec![new_id(), new_id()];
+        dht_connectivity.rebootstrap_peers = learned.clone();
+        let failing = vec![new_id(), new_id()];
+        dht_connectivity.random_pool.extend(failing.iter().cloned());
+
+        for node_id in &failing {
+            dht_connectivity
+                .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(node_id.clone()))
+                .await
+                .unwrap();
+        }
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 2,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        assert_eq!(dialed.len(), 2);
+        assert_eq!(dialed[0], learned[0], "the first replacement should be a learned peer");
+        assert!(
+            known_good_ids.contains(&dialed[1]),
+            "the second replacement should come from the database"
+        );
+    }
+
+    /// With no database candidates, the database's turn falls back to a learned peer.
+    #[tokio::test]
+    async fn replacements_fall_back_to_learned_peers() {
+        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let learned = vec![new_id(), new_id()];
+        dht_connectivity.rebootstrap_peers = learned.clone();
+        let failing = vec![new_id(), new_id()];
+        dht_connectivity.random_pool.extend(failing.iter().cloned());
+
+        for node_id in &failing {
+            dht_connectivity
+                .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(node_id.clone()))
+                .await
+                .unwrap();
+        }
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 2,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert_eq!(connectivity.get_dialed_peers().await, learned);
+    }
+
+    /// With no learned peers queued, the learned peers' turn falls back to the database.
+    #[tokio::test]
+    async fn replacements_fall_back_to_database_peers() {
+        let known_good = create_good_standing_peer(&make_node_identity());
+        let known_good_id = known_good.node_id.clone();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![known_good]).await;
+        let failing = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.random_pool.push(failing.clone());
+
+        dht_connectivity
+            .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(failing))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&known_good_id).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+    }
+
+    /// Peers learned from inbound sources make up at most a quarter of the learned dials in flight, per take and
+    /// across takes.
+    #[tokio::test]
+    async fn inbound_sourced_learned_peers_get_a_quarter_of_the_dials() {
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let from_inbound = learned_from_five_sources(&mut dht_connectivity);
+
+        let first = dht_connectivity.take_rebootstrap_peers(8, &[]);
+        let inbound = first.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
+        assert_eq!(
+            inbound,
+            2,
+            "{inbound} of {} learned dials are inbound-sourced",
+            first.len()
+        );
+        assert_eq!(first.len(), 6);
+        for node_id in &first {
+            dht_connectivity.pending_dials.insert(node_id.clone(), Instant::now());
+        }
+
+        // The share also holds across takes: all 4 outbound-sourced peers are taken, so with 6 in flight no more
+        // inbound-sourced peers fit
+        let second = dht_connectivity.take_rebootstrap_peers(4, &[]);
+        assert!(second.is_empty(), "{second:?}");
+    }
+
+    /// Inbound-suggested peers that connect straight away still count against the share: connecting must not hand
+    /// the budget back.
+    #[tokio::test]
+    async fn connected_inbound_suggested_peers_still_count_against_the_share() {
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let from_inbound = learned_from_five_sources(&mut dht_connectivity);
+
+        let first = dht_connectivity.take_rebootstrap_peers(8, &[]);
+        // Every dial connects at once: the peers are pool members with live connections, no longer pending
+        let mut receivers = Vec::new();
+        for node_id in &first {
+            let (conn, rx) =
+                create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Outbound);
+            dht_connectivity.random_pool.push(node_id.clone());
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+
+        // Neither further takes nor replacements add inbound-suggested peers past a quarter
+        for _ in 0..3 {
+            let more = dht_connectivity.take_rebootstrap_peers(4, &[]);
+            assert!(more.is_empty(), "{more:?}");
+            let one = dht_connectivity.take_rebootstrap_peers(1, &[]);
+            assert!(one.is_empty(), "{one:?}");
+        }
+        let in_pool = dht_connectivity
+            .random_pool
+            .iter()
+            .filter(|node_id| from_inbound.contains(*node_id))
+            .count();
+        assert!(in_pool * 4 <= dht_connectivity.random_pool.len() + 3);
+    }
+
+    /// Simulates the dials to `node_ids` connecting: no longer pending, with live outbound pool connections.
+    fn connect(
+        dht_connectivity: &mut DhtConnectivity,
+        node_ids: &[NodeId],
+    ) -> Vec<mpsc::Receiver<PeerConnectionRequest>> {
+        let mut receivers = Vec::new();
+        for node_id in node_ids {
+            dht_connectivity.pending_dials.remove(node_id);
+            if !dht_connectivity.random_pool.contains(node_id) {
+                dht_connectivity.random_pool.push(node_id.clone());
+            }
+            let (conn, rx) =
+                create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Outbound);
+            dht_connectivity.connection_handles.push(conn);
+            receivers.push(rx);
+        }
+        receivers
+    }
+
+    /// The inbound share holds across pool refreshes, the main fill path, after the first learned peers connect.
+    #[tokio::test]
+    async fn the_inbound_share_holds_across_refreshes() {
+        let learned = repeat_with(|| make_node_identity().to_peer())
+            .take(20)
+            .collect::<Vec<_>>();
+        let learned_ids = learned.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        // As from 1 outbound and 4 inbound sources, interleaved
+        let from_inbound = learned_ids
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| i % 5 != 0)
+            .map(|(_, node_id)| node_id.clone())
+            .collect::<Vec<_>>();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), learned).await;
+        dht_connectivity
+            .set_rebootstrap_peers(&learned_ids, &from_inbound)
+            .await
+            .unwrap();
+
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        async_assert!(
+            !connectivity.get_dialed_peers().await.is_empty(),
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let first = connectivity
+            .take_dialed_peers()
+            .await
+            .into_iter()
+            .filter(|node_id| learned_ids.contains(node_id))
+            .collect::<Vec<_>>();
+        let first_inbound = first.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
+        assert!(
+            first_inbound * 4 <= first.len() + 3,
+            "{first_inbound} of {}",
+            first.len()
+        );
+
+        // They all connect, then the pool is refreshed again
+        let _receivers = connect(&mut dht_connectivity, &first);
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let second = connectivity
+            .take_dialed_peers()
+            .await
+            .into_iter()
+            .filter(|node_id| learned_ids.contains(node_id))
+            .collect::<Vec<_>>();
+        let second_inbound = second.iter().filter(|node_id| from_inbound.contains(*node_id)).count();
+        let total = first.len() + second.len();
+        let inbound = first_inbound + second_inbound;
+        assert!(
+            inbound * 4 <= total + 3,
+            "{inbound} of {total} learned peers are inbound-suggested"
+        );
+    }
+
+    /// Inbound-suggested peers still connected from an earlier rebootstrap keep counting when a new learned list
+    /// arrives: a new rebootstrap does not grant a fresh allowance.
+    #[tokio::test]
+    async fn the_inbound_share_carries_over_to_the_next_rebootstrap() {
+        let first = make_node_identity().to_peer();
+        let first_id = first.node_id.clone();
+        let second = make_node_identity().to_peer();
+        let second_id = second.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![first, second]).await;
+
+        // Rebootstrap N: one inbound-suggested peer, which is taken and connects
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&first_id), std::slice::from_ref(&first_id))
+            .await
+            .unwrap();
+        assert_eq!(dht_connectivity.take_rebootstrap_peers(1, &[]), vec![first_id.clone()]);
+        let _receivers = connect(&mut dht_connectivity, std::slice::from_ref(&first_id));
+
+        // Rebootstrap N+1: another inbound-suggested peer would make it 2 of 2
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&second_id), std::slice::from_ref(&second_id))
+            .await
+            .unwrap();
+        assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
+    }
+
+    /// Learned dials still in flight when the pool reaches target keep counting once they land: a later
+    /// rebootstrap does not get a fresh inbound allowance.
+    #[tokio::test]
+    async fn learned_dials_in_flight_at_target_keep_counting() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 1,
+            ..Default::default()
+        };
+        let first = make_node_identity().to_peer();
+        let first_id = first.node_id.clone();
+        let later = make_node_identity().to_peer();
+        let later_id = later.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![first, later]).await;
+
+        // An inbound-suggested learned peer is taken and dialled
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&first_id), std::slice::from_ref(&first_id))
+            .await
+            .unwrap();
+        assert_eq!(dht_connectivity.take_rebootstrap_peers(1, &[]), vec![first_id.clone()]);
+        dht_connectivity.random_pool.push(first_id.clone());
+        dht_connectivity.pending_dials.insert(first_id.clone(), Instant::now());
+
+        // The pool reaches target through other peers while that dial is still pending
+        let _others = fill_pool(&mut dht_connectivity, 2, ConnectionDirection::Outbound);
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.refresh_random_pool().await.unwrap();
+
+        // The dial lands, and a new rebootstrap brings another inbound-suggested peer: it would make 2 of 2
+        let _first = connect(&mut dht_connectivity, std::slice::from_ref(&first_id));
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&later_id), std::slice::from_ref(&later_id))
+            .await
+            .unwrap();
+        assert!(dht_connectivity.take_rebootstrap_peers(1, &[]).is_empty());
+    }
+
+    /// An inbound-suggested learned dial that outlives the pending-dial grace, and is dropped from the pool before it
+    /// lands, is still counted when it connects - and a second one is refused while the share is full.
+    #[tokio::test]
+    async fn late_inbound_suggested_dials_are_counted_at_admission() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 2,
+            num_random_nodes: 2,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, _, _, _, _shutdown) = setup(config, make_node_identity(), vec![]).await;
+        let slow = NodeId::from_public_key(make_node_identity().public_key());
+        let other = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.inbound_learned.add([&slow, &other], Instant::now());
+
+        // The dial to `slow` has been pending for longer than the grace, so a refresh drops it from the pool
+        dht_connectivity.random_pool.push(slow.clone());
+        dht_connectivity.learned_dials.insert(slow.clone());
+        dht_connectivity.learned_taken.insert(slow.clone());
+        let long_ago = Instant::now().checked_sub(Duration::from_secs(61)).unwrap();
+        dht_connectivity.pending_dials.insert(slow.clone(), long_ago);
+        dht_connectivity.random_pool_last_refresh = Some(Instant::now());
+        dht_connectivity.refresh_random_pool().await.unwrap();
+        assert!(!dht_connectivity.is_pool_peer(&slow));
+
+        // It lands anyway, joins the pool while there is room, and is counted
+        let (conn, _slow_rx) = create_dummy_peer_connection_with_direction(slow.clone(), ConnectionDirection::Outbound);
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert!(dht_connectivity.is_pool_peer(&slow));
+        assert!(dht_connectivity.learned_taken.contains(&slow));
+
+        // Another inbound-suggested peer would make it 2 of 2: refused, although there is room
+        let (conn, rx) = create_dummy_peer_connection_with_direction(other.clone(), ConnectionDirection::Outbound);
+        serve_disconnects(rx);
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert!(!dht_connectivity.is_pool_peer(&other));
+    }
+
+    /// A full pool refresh (at 0 connections) does not dial queued learned peers: they are only offered through the
+    /// learned budget.
+    #[tokio::test]
+    async fn a_full_pool_refresh_does_not_dial_queued_learned_peers() {
+        let queued = create_good_standing_peer(&make_node_identity());
+        let queued_id = queued.node_id.clone();
+        let known_good = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(3)
+            .collect::<Vec<_>>();
+        let mut stored = known_good;
+        stored.push(queued);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), stored).await;
+        dht_connectivity.rebootstrap_peers = vec![queued_id.clone()];
+
+        dht_connectivity.refresh_entire_pool().await.unwrap();
+        async_assert!(
+            connectivity.get_dialed_peers().await.len() >= 3,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert!(!connectivity.is_peer_dialed(&queued_id).await);
+    }
+
+    /// Every peer an inbound source relayed is inbound-suggested, not only the ones kept in the learned list: the
+    /// others can still be dialled from the peer database.
+    #[tokio::test]
+    async fn peers_relayed_by_inbound_sources_are_all_inbound_suggested() {
+        let learned = make_node_identity().to_peer();
+        let learned_id = learned.node_id.clone();
+        let not_kept = NodeId::from_public_key(make_node_identity().public_key());
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![learned]).await;
+
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&learned_id), &[
+                learned_id.clone(),
+                not_kept.clone(),
+            ])
+            .await
+            .unwrap();
+        assert!(dht_connectivity.inbound_learned.contains(&learned_id, Instant::now()));
+        assert!(dht_connectivity.inbound_learned.contains(&not_kept, Instant::now()));
+    }
+
+    /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
+    /// Returns the inbound-sourced ones.
+    fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {
+        let mut learned = Vec::new();
+        let mut from_inbound = HashSet::new();
+        for i in 0..20 {
+            let node_id = NodeId::from_public_key(make_node_identity().public_key());
+            if i % 5 != 0 {
+                from_inbound.insert(node_id.clone());
+            }
+            learned.push(node_id);
+        }
+        dht_connectivity.rebootstrap_peers = learned;
+        dht_connectivity.inbound_learned.add(&from_inbound, Instant::now());
+        from_inbound
+    }
+
+    /// A peer an inbound source suggested in one rebootstrap stays inbound-suggested after a rebootstrap that did not
+    /// mention it.
+    #[tokio::test]
+    async fn inbound_provenance_outlives_a_rebootstrap() {
+        let suggested = make_node_identity().to_peer();
+        let suggested_id = suggested.node_id.clone();
+        let other = make_node_identity().to_peer();
+        let other_id = other.node_id.clone();
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![suggested, other]).await;
+
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&suggested_id), std::slice::from_ref(&suggested_id))
+            .await
+            .unwrap();
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&other_id), &[])
+            .await
+            .unwrap();
+        assert!(dht_connectivity.inbound_learned.contains(&suggested_id, Instant::now()));
+        assert!(!dht_connectivity.inbound_learned.contains(&other_id, Instant::now()));
+    }
+
+    /// An outbound connection the pool did not dial (e.g. network discovery's) is not taken into a full pool, even
+    /// one that is starved of outbound peers.
+    #[tokio::test]
+    async fn a_non_pool_outbound_connection_is_not_taken_into_a_full_pool() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 2,
+            num_random_nodes: 2,
+            ..Default::default()
+        };
+        let (mut dht_connectivity, _, _, _, _, _shutdown) = setup(config, make_node_identity(), vec![]).await;
+        let _inbound = fill_pool(&mut dht_connectivity, 4, ConnectionDirection::Inbound);
+
+        let other = NodeId::from_public_key(make_node_identity().public_key());
+        let (conn, rx) = create_dummy_peer_connection_with_direction(other.clone(), ConnectionDirection::Outbound);
+        serve_disconnects(rx);
+        dht_connectivity.handle_new_peer_connected(conn).await.unwrap();
+        assert!(!dht_connectivity.is_pool_peer(&other));
+        assert_eq!(dht_connectivity.pool_connection_counts(), (0, 4));
+    }
+
+    /// A replacement only takes a learned peer while learned dials in flight are within budget.
+    #[tokio::test]
+    async fn replacements_respect_the_learned_dial_budget() {
+        let known_good = create_good_standing_peer(&make_node_identity());
+        let known_good_id = known_good.node_id.clone();
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![known_good]).await;
+        let new_id = || NodeId::from_public_key(make_node_identity().public_key());
+        // A pool of 12 allows 12 learned dials in flight, and they are all taken
+        for _ in 0..12 {
+            let node_id = new_id();
+            dht_connectivity.pending_dials.insert(node_id.clone(), Instant::now());
+            dht_connectivity.learned_dials.insert(node_id);
+        }
+        let learned = new_id();
+        dht_connectivity.rebootstrap_peers = vec![learned.clone()];
+        let failing = new_id();
+        dht_connectivity.random_pool.push(failing.clone());
+
+        // Learned peers' turn, but over budget: the database is used
+        dht_connectivity
+            .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(failing))
+            .await
+            .unwrap();
+        async_assert!(
+            connectivity.is_peer_dialed(&known_good_id).await,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        assert!(!connectivity.is_peer_dialed(&learned).await);
+    }
+
+    /// A huge configured cooldown must not panic when it is jittered or doubled.
+    #[test]
+    fn a_huge_cooldown_does_not_panic() {
+        let config = DhtConnectivityConfig {
+            pool_starved_ticks: 1,
+            rebootstrap_cooldown_min: Duration::MAX,
+            rebootstrap_cooldown_max: Duration::MAX,
+            ..Default::default()
+        };
+        let start = Instant::now();
+        let mut trigger = RebootstrapTrigger {
+            jitter: true,
+            ..Default::default()
+        };
+        let mut fired = false;
+        for _ in 0..3 {
+            fired |= trigger.on_tick(true, start, &config);
+        }
+        assert!(fired);
+        assert!(!trigger.on_tick(true, start + mins(60 * 24 * 365), &config));
+        assert!(!trigger.on_tick(false, start, &config));
+    }
+
+    /// Peers that are already in the pool, or excluded for another reason, are dropped rather than kept for later.
+    #[tokio::test]
+    async fn learned_peers_already_in_the_pool_are_dropped() {
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![]).await;
+        let in_pool = NodeId::from_public_key(make_node_identity().public_key());
+        let excluded = NodeId::from_public_key(make_node_identity().public_key());
+        let backed_off = NodeId::from_public_key(make_node_identity().public_key());
+        dht_connectivity.random_pool.push(in_pool.clone());
+        dht_connectivity.record_dial_failure(&backed_off);
+        dht_connectivity.rebootstrap_peers = vec![in_pool, excluded.clone(), backed_off.clone()];
+
+        assert!(dht_connectivity.take_rebootstrap_peers(3, &[excluded]).is_empty());
+        assert_eq!(dht_connectivity.rebootstrap_peers, vec![backed_off]);
+    }
+
+    /// The first tick comes straight after start-up, before any dial could have landed. It must not count, so after
+    /// start-up the trigger needs `pool_starved_ticks` full intervals, not `pool_starved_ticks - 1`.
+    #[tokio::test]
+    async fn the_tick_right_after_start_up_does_not_count() {
+        let mut config = DhtConfig::default();
+        config.connectivity.update_interval = Duration::from_secs(120);
+        let (mut dht_connectivity, _, _connectivity, _, _, _shutdown) =
+            setup(config, make_node_identity(), vec![]).await;
+        let mut events = dht_connectivity.dht_event_publisher.subscribe();
+        // Exact tick counts: no first-fire jitter
+        dht_connectivity.rebootstrap_trigger.jitter = false;
+        let start = Instant::now();
+        dht_connectivity.pool_fill_started = Some(start);
+
+        // The immediate first tick, then ticks at 2m and 4m: only two of them count
+        dht_connectivity.check_pool_starved();
+        for elapsed in [2u64, 4] {
+            dht_connectivity.pool_fill_started = start.checked_sub(Duration::from_secs(elapsed.saturating_mul(60)));
+            dht_connectivity.check_pool_starved();
+        }
+        assert!(
+            events.try_recv().is_err(),
+            "PoolStarved published before 3 full intervals"
+        );
+
+        // The tick at 6m is the third that counts
+        dht_connectivity.pool_fill_started = start.checked_sub(Duration::from_secs(6 * 60));
+        dht_connectivity.check_pool_starved();
+        assert!(matches!(*events.try_recv().unwrap(), DhtEvent::PoolStarved));
+    }
+
+    /// After a rebootstrap the pool is topped up straight away, starting with the peers just learned.
+    #[tokio::test]
+    async fn it_prefers_rebootstrap_peers_when_refilling() {
+        let config = DhtConfig {
+            num_neighbouring_nodes: 1,
+            num_random_nodes: 0,
+            ..Default::default()
+        };
+        // Plenty of known-good peers in the database compete with the one learned peer
+        let mut peers = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+            .take(10)
+            .collect::<Vec<_>>();
+        let learned = make_node_identity().to_peer();
+        let learned_node_id = learned.node_id.clone();
+        peers.push(learned);
+        let (mut dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, make_node_identity(), peers).await;
+
+        let info = crate::RebootstrapInfo {
+            learned_peers: vec![learned_node_id.clone()],
+            ..Default::default()
+        };
+        dht_connectivity
+            .handle_dht_event(&DhtEvent::RebootstrapComplete(info))
+            .await
+            .unwrap();
+
+        async_assert!(
+            !connectivity.get_dialed_peers().await.is_empty(),
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let dialed = connectivity.get_dialed_peers().await;
+        assert_eq!(
+            dialed[0], learned_node_id,
+            "the learned peer was not dialled first: {dialed:?}"
+        );
+        assert!(dht_connectivity.rebootstrap_peers.is_empty());
+    }
 }
 
 mod metrics {

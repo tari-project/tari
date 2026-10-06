@@ -36,7 +36,7 @@ mod test;
 mod metrics;
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -64,7 +64,15 @@ use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
 
-use crate::{DhtActorError, DhtConfig, DhtRequester, connectivity::metrics::MetricsError, event::DhtEvent};
+use crate::{
+    DhtActorError,
+    DhtConfig,
+    DhtConnectivityConfig,
+    DhtRequester,
+    connectivity::metrics::MetricsError,
+    event::{DhtEvent, DhtEventSender},
+    network_discovery::{InboundSuggested, MAX_LEARNED_PEERS, REBOOTSTRAP_LOG_TARGET, state_machine::PoolPeers},
+};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -97,6 +105,17 @@ const DIAL_BACKOFF_MAX: Duration = Duration::from_secs(10 * 60);
 /// soonest are dropped, which at worst lets those peers become eligible again early.
 const MAX_DIAL_BACKOFF_ENTRIES: usize = 500;
 
+/// The most peers learned in a rebootstrap that are kept for the pool to prefer. Network discovery already caps its
+/// list at this; it is applied again here so that this list stays bounded whatever the event carries.
+const MAX_REBOOTSTRAP_PEERS: usize = MAX_LEARNED_PEERS;
+
+/// At most `1 / INBOUND_LEARNED_DIAL_DIVISOR` of the learned peers in the pool or being dialled may be peers that
+/// inbound sources suggested.
+const INBOUND_LEARNED_DIAL_DIVISOR: usize = 4;
+
+/// How long to wait before retrying when the initial pool refresh fails at start-up.
+const INITIAL_REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
+
 /// Per-peer dial backoff state.
 ///
 /// Without this, a node whose pool never becomes healthy re-dials the same set of unreachable peers
@@ -124,6 +143,138 @@ impl DialBackoff {
             failures,
             retry_after: Instant::now().checked_add(backoff).unwrap_or_else(Instant::now),
         }
+    }
+}
+
+/// Keeps an inbound-suggested peer out of the pool because their share is full. An outbound connection is ours to
+/// close; an inbound one is just not added.
+async fn refuse_inbound_suggested(mut conn: PeerConnection) {
+    debug!(
+        target: LOG_TARGET,
+        "Peer '{}' was suggested by inbound sources, whose share of the pool is full. Not adding it.",
+        conn.peer_node_id().short_str()
+    );
+    if conn.direction().is_outbound() &&
+        let Err(err) = conn
+            .disconnect(Minimized::Yes, "DhtConnectivity inbound share full")
+            .await
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Failed to disconnect peer '{}': {:?}",
+            conn.peer_node_id().short_str(),
+            err
+        );
+    }
+}
+
+/// Returns true if one more inbound-suggested peer keeps them within `1 / INBOUND_LEARNED_DIAL_DIVISOR` (rounded up) of
+/// the counted learned peers, given `total` counted so far of which `inbound` are inbound-suggested.
+fn fits_inbound_share(total: usize, inbound: usize) -> bool {
+    inbound < total.saturating_add(1).div_ceil(INBOUND_LEARNED_DIAL_DIVISOR)
+}
+
+/// Returns true if `outbound` connected pool peers is below `ratio` of the pool `target`.
+#[allow(clippy::cast_precision_loss)]
+fn is_pool_starved(outbound: usize, target: usize, ratio: f32) -> bool {
+    (outbound as f32) < ratio * target as f32
+}
+
+/// Decides when to publish `DhtEvent::PoolStarved`, which asks network discovery to rebootstrap.
+///
+/// The pool must be starved for `pool_starved_ticks` consecutive ticks. The first request then fires immediately.
+/// While the pool stays starved, further requests are spaced by a cooldown that starts at `rebootstrap_cooldown_min`
+/// and doubles each time up to `rebootstrap_cooldown_max`. Each wait is jittered by +/-25% so that nodes starved by the
+/// same event do not all hit the seeds in step.
+///
+/// A tick on which the pool is not starved restarts the count of consecutive starved ticks, but the cooldown only
+/// decays while the pool stays recovered: it halves for every `rebootstrap_cooldown_min` of continuous health, and is
+/// cleared once it is back at the minimum. Otherwise a pool that recovers briefly after each refill, then decays
+/// again, would rebootstrap every few ticks forever, and the cooldown - the only bound on how often this node hits the
+/// seeds - would never grow.
+#[derive(Debug, Default)]
+struct RebootstrapTrigger {
+    /// Consecutive ticks on which the pool was starved.
+    starved_ticks: usize,
+    /// When `PoolStarved` was last published, the (unjittered) cooldown in force, and the jittered wait from then.
+    last_fired: Option<(Instant, Duration, Duration)>,
+    /// Since when the pool has been continuously not starved, or since the cooldown last decayed.
+    healthy_since: Option<Instant>,
+    /// Whether to jitter waits. Off in tests that need exact timings.
+    jitter: bool,
+    /// Extra starved ticks the first rebootstrap of this starvation waits for (0 or 1, with jitter on).
+    extra_ticks: usize,
+}
+
+impl RebootstrapTrigger {
+    /// Record a tick. Returns true if `PoolStarved` should be published now.
+    fn on_tick(&mut self, is_starved: bool, now: Instant, config: &DhtConnectivityConfig) -> bool {
+        let max = config.rebootstrap_cooldown_max;
+        let min = config.rebootstrap_cooldown_min.min(max);
+        if !is_starved {
+            self.starved_ticks = 0;
+            let healthy_since = *self.healthy_since.get_or_insert(now);
+            if now.saturating_duration_since(healthy_since) >= min {
+                // One decay step per sustained-healthy period
+                self.healthy_since = Some(now);
+                self.last_fired = match self.last_fired {
+                    Some((fired_at, cooldown, _)) if cooldown > min => {
+                        let cooldown = cooldown.checked_div(2).unwrap_or(min).max(min);
+                        Some((fired_at, cooldown, self.jittered(cooldown)))
+                    },
+                    _ => None,
+                };
+            }
+            return false;
+        }
+        self.healthy_since = None;
+        self.starved_ticks = self.starved_ticks.saturating_add(1);
+        // With jitter on, the first rebootstrap of a starvation waits 0 or 1 extra ticks, so that nodes starved by the
+        // same event do not all hit the seeds on the same tick. This keeps "fires immediately" to within a tick.
+        if self.starved_ticks == 1 {
+            self.extra_ticks = if self.jitter {
+                rand::rng().random_range(0..=1)
+            } else {
+                0
+            };
+        }
+        let required = if self.last_fired.is_none() {
+            config.pool_starved_ticks.saturating_add(self.extra_ticks)
+        } else {
+            config.pool_starved_ticks
+        };
+        if self.starved_ticks < required {
+            return false;
+        }
+
+        let cooldown = match self.last_fired {
+            None => min,
+            Some((fired_at, cooldown, wait)) => {
+                if now.saturating_duration_since(fired_at) < wait {
+                    return false;
+                }
+                let next = cooldown.saturating_mul(2).min(max);
+                if next == max && cooldown < max {
+                    warn!(
+                        target: REBOOTSTRAP_LOG_TARGET,
+                        "Peer pool is still starved after repeated rebootstraps. The rebootstrap cooldown has reached \
+                         its {max:.0?} cap"
+                    );
+                }
+                next
+            },
+        };
+        self.last_fired = Some((now, cooldown, self.jittered(cooldown)));
+        true
+    }
+
+    /// `cooldown` scaled by a random factor in [0.75, 1.25] when jitter is on.
+    fn jittered(&self, cooldown: Duration) -> Duration {
+        if !self.jitter {
+            return cooldown;
+        }
+        // Checked, so that a huge configured cooldown cannot panic
+        Duration::try_from_secs_f64(cooldown.as_secs_f64() * rand::rng().random_range(0.75..=1.25)).unwrap_or(cooldown)
     }
 }
 
@@ -162,8 +313,27 @@ pub(crate) struct DhtConnectivity {
     connection_handles: Vec<PeerConnection>,
     stats: Stats,
     dht_events: broadcast::Receiver<Arc<DhtEvent>>,
+    dht_event_publisher: DhtEventSender,
     metrics_collector: MetricsCollectorHandle,
     cooldown_in_effect: Option<Instant>,
+    /// Decides when to ask network discovery for a rebootstrap
+    rebootstrap_trigger: RebootstrapTrigger,
+    /// Peers learned in the last rebootstrap. These are preferred over the peer database when topping up the pool.
+    rebootstrap_peers: Vec<NodeId>,
+    /// Whether the next pool peer replacement is taken from `rebootstrap_peers` (they alternate with the database)
+    replace_from_learned: bool,
+    /// Learned peers that have been dialled. Those still in `pending_dials` count against the learned-peer budget.
+    learned_dials: HashSet<NodeId>,
+    /// Peers that inbound sources told us about in recent rebootstraps. Their share of learned peers is limited.
+    inbound_learned: InboundSuggested,
+    /// Learned peers taken from `rebootstrap_peers`, in this or earlier rebootstraps, that are still being dialled or
+    /// connected. Bounded by the pool's connections plus dials in flight. See `prune_learned_taken`.
+    learned_taken: HashSet<NodeId>,
+    /// The pool's members, shared with network discovery so that it leaves their connections up.
+    pool_peers: PoolPeers,
+    /// When the initial pool refresh was attempted. The pool is not judged starved until it has had a full
+    /// `update_interval` to fill from then.
+    pool_fill_started: Option<Instant>,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -173,7 +343,7 @@ impl DhtConnectivity {
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
         dht_requester: DhtRequester,
-        dht_events: broadcast::Receiver<Arc<DhtEvent>>,
+        dht_event_publisher: DhtEventSender,
         metrics_collector: MetricsCollectorHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
@@ -190,8 +360,20 @@ impl DhtConnectivity {
             metrics_collector,
             random_pool_last_refresh: None,
             stats: Stats::new(),
-            dht_events,
+            dht_events: dht_event_publisher.subscribe(),
+            dht_event_publisher,
             cooldown_in_effect: None,
+            rebootstrap_trigger: RebootstrapTrigger {
+                jitter: true,
+                ..Default::default()
+            },
+            rebootstrap_peers: Vec::new(),
+            replace_from_learned: false,
+            learned_dials: HashSet::new(),
+            inbound_learned: InboundSuggested::default(),
+            learned_taken: HashSet::new(),
+            pool_peers: PoolPeers::default(),
+            pool_fill_started: None,
             shutdown_signal,
         }
     }
@@ -223,9 +405,24 @@ impl DhtConnectivity {
             tokio::time::sleep(delay).await;
             debug!(target: LOG_TARGET, "DHT connectivity starting after delayed for {delay:.0?}");
         }
-        self.refresh_random_pool().await?;
+        // Without this actor there is no pool, and nothing to notice that the pool is starved, so a failed first
+        // refresh (e.g. the connectivity manager not answering in time) must not stop it. Retry from the main loop.
+        let refresh_result = self.refresh_random_pool().await;
+        // One instant for both, so that the tick one interval later is not judged a hair too early and skipped
+        let now = time::Instant::now();
+        let first_tick = match refresh_result {
+            Ok(()) => now,
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Initial peer pool refresh failed: {err}. Retrying in {INITIAL_REFRESH_RETRY_DELAY:.0?}"
+                );
+                now.checked_add(INITIAL_REFRESH_RETRY_DELAY).unwrap_or(now)
+            },
+        };
 
-        let mut ticker = time::interval(self.config.connectivity.update_interval);
+        self.pool_fill_started = Some(now.into_std());
+        let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             tokio::select! {
@@ -251,8 +448,9 @@ impl DhtConnectivity {
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
                         error!(target: LOG_TARGET, "Error checking for peer flooding: {err:?}");
                     }
-                    if let Err(err) = self.refresh_random_pool_if_required().await {
-                        error!(target: LOG_TARGET, "Error refreshing random peer pool: {err:?}");
+                    match self.refresh_random_pool_if_required().await {
+                        Ok(()) => self.check_pool_starved(),
+                        Err(err) => error!(target: LOG_TARGET, "Error refreshing random peer pool: {err:?}"),
                     }
                     self.log_status();
                     if let Err(err) = self.check_minimum_required_tcp_nodes().await {
@@ -265,6 +463,7 @@ impl DhtConnectivity {
                     break;
                }
             }
+            self.publish_pool_peers();
         }
 
         Ok(())
@@ -357,15 +556,105 @@ impl DhtConnectivity {
     }
 
     async fn handle_dht_event(&mut self, event: &DhtEvent) -> Result<(), DhtConnectivityError> {
-        #[allow(clippy::single_match)]
         match event {
             DhtEvent::NetworkDiscoveryPeersAdded(info) if info.num_new_peers > 0 => {
                 self.refresh_peer_pools(false).await?;
+            },
+            DhtEvent::RebootstrapComplete(info) => {
+                // Refill straight away rather than on the next tick, starting with the peers just learned.
+                let (outbound_before, inbound_before) = self.pool_connection_counts();
+                self.set_rebootstrap_peers(&info.learned_peers, &info.learned_from_inbound)
+                    .await?;
+                self.refresh_random_pool().await?;
+                info!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Peer pool refilled after rebootstrap: before {outbound_before} outbound and {inbound_before} \
+                     inbound pool peer(s) connected; after {} pool peer(s) ({} connected, {} dial(s) in flight), {} \
+                     learned peer(s) still queued",
+                    self.random_pool.len(),
+                    self.connected_random_pool_peers(),
+                    self.pending_dials.len(),
+                    self.rebootstrap_peers.len(),
+                );
             },
             _ => {},
         }
 
         Ok(())
+    }
+
+    /// A handle to the pool's members, kept up to date as the actor runs.
+    pub fn pool_peers(&self) -> PoolPeers {
+        self.pool_peers.clone()
+    }
+
+    /// Publishes the pool's current members for network discovery.
+    fn publish_pool_peers(&self) {
+        if let Ok(mut pool_peers) = self.pool_peers.write() {
+            *pool_peers = self.random_pool.iter().cloned().collect();
+        }
+    }
+
+    /// Counts the connected pool peers by direction, returning `(outbound, inbound)`.
+    fn pool_connection_counts(&self) -> (usize, usize) {
+        let mut outbound = 0usize;
+        let mut inbound = 0usize;
+        for conn in &self.connection_handles {
+            if !conn.is_connected() || !self.random_pool.contains(conn.peer_node_id()) {
+                continue;
+            }
+            if conn.direction().is_outbound() {
+                outbound = outbound.saturating_add(1);
+            } else {
+                inbound = inbound.saturating_add(1);
+            }
+        }
+        (outbound, inbound)
+    }
+
+    /// Called on each tick after the pool has been topped up. Publishes `DhtEvent::PoolStarved` when too few pool
+    /// peers are outbound connections for long enough. Inbound peers do not count: a node that only survives on
+    /// peers dialling in cannot reach the network by itself.
+    ///
+    /// Every tick on which the top-up ran without error counts, whether or not it issued any dials. This deliberately
+    /// departs from the rule "ticks in which pool dials were actually attempted": an isolated node whose dial
+    /// candidates are all in backoff, or that has none left, dials nothing - and that is exactly the node that most
+    /// needs a rebootstrap. A tick on which the top-up failed neither counts nor resets the streak.
+    fn check_pool_starved(&mut self) {
+        // The first tick comes straight after the initial refresh issued its dials, so it would always look starved.
+        // Give the pool a full interval to fill before judging it.
+        if self
+            .pool_fill_started
+            .is_some_and(|started| started.elapsed() < self.config.connectivity.update_interval)
+        {
+            return;
+        }
+        let target = self
+            .config
+            .num_neighbouring_nodes
+            .saturating_add(self.config.num_random_nodes);
+        let (outbound, inbound) = self.pool_connection_counts();
+        let ratio = self.config.connectivity.pool_starved_threshold_ratio;
+        let is_starved = is_pool_starved(outbound, target, ratio);
+        if !self
+            .rebootstrap_trigger
+            .on_tick(is_starved, Instant::now(), &self.config.connectivity)
+        {
+            return;
+        }
+        info!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Peer pool starved: {outbound} outbound and {inbound} inbound pool peer(s) connected, target {target}, \
+             outbound threshold {:.0}%, starved for {} consecutive tick(s). Requesting a peer rebootstrap.",
+            ratio * 100.0,
+            self.rebootstrap_trigger.starved_ticks,
+        );
+        if self.dht_event_publisher.send(Arc::new(DhtEvent::PoolStarved)).is_err() {
+            warn!(
+                target: REBOOTSTRAP_LOG_TARGET,
+                "Nothing is listening for PoolStarved. Is network discovery disabled?"
+            );
+        }
     }
 
     async fn check_and_ban_flooding_peers(&mut self) -> Result<(), DhtConnectivityError> {
@@ -433,8 +722,10 @@ impl DhtConnectivity {
             "We have no connections asking for {} nodes",
             pool_size.saturating_mul(2),
         );
+        // Queued learned peers are only offered through the learned budget (see `refresh_random_pool`)
+        let exclude = self.rebootstrap_peers.clone();
         let new_peers = self
-            .fetch_random_peers(pool_size.saturating_mul(2), &Vec::new(), true)
+            .fetch_random_peers(pool_size.saturating_mul(2), &exclude, true)
             .await?;
         debug!(
             target: LOG_TARGET,
@@ -524,9 +815,25 @@ impl DhtConnectivity {
                 .is_some_and(|dialed_at| dialed_at.elapsed() < PENDING_DIAL_GRACE)
         });
 
+        // Inbound peers can fill the pool on their own, but only outbound peers show that this node can reach the
+        // network. While too few pool peers are outbound, dial for the outbound shortfall instead of the overall one.
+        let outbound_peers = self
+            .connection_handles
+            .iter()
+            .filter(|c| c.is_connected() && c.direction().is_outbound())
+            .map(|c| c.peer_node_id().clone())
+            .collect::<Vec<_>>();
+        let num_outbound = connected.iter().filter(|n| outbound_peers.contains(n)).count();
+        let outbound_starved = is_pool_starved(
+            num_outbound,
+            pool_size,
+            self.config.connectivity.pool_starved_threshold_ratio,
+        );
+
         // `pool_size` is a target for *connections*, not for slots, so more may land than we need
         // once dials are oversubscribed below. Release the surplus, keeping strongly held peers
-        // (e.g. an in-progress sync) in preference to idle ones.
+        // (e.g. an in-progress sync) in preference to idle ones, then outbound peers in preference to inbound
+        // ones, so that dialled peers replace inbound peers that filled the pool.
         if connected.len() > pool_size {
             let strongly_held = self
                 .connection_handles
@@ -534,7 +841,7 @@ impl DhtConnectivity {
                 .filter(|c| c.is_strongly_held())
                 .map(|c| c.peer_node_id().clone())
                 .collect::<Vec<_>>();
-            connected.sort_by_key(|node_id| !strongly_held.contains(node_id));
+            connected.sort_by_key(|node_id| (!strongly_held.contains(node_id), !outbound_peers.contains(node_id)));
             disconnected_peers.extend(connected.split_off(pool_size));
         }
 
@@ -544,7 +851,8 @@ impl DhtConnectivity {
         let keep_size = pool_size.saturating_sub(max_churn);
         // The pool is only healthy enough to churn/explore once we hold more than the churn floor
         // of connected peers. Below that we are short on peers.
-        let is_pool_healthy = connected.len() > keep_size;
+        // A pool held up by inbound peers is not healthy either.
+        let is_pool_healthy = connected.len() > keep_size && !outbound_starved;
         let should_churn = churn_due && is_pool_healthy;
 
         if should_churn {
@@ -583,7 +891,11 @@ impl DhtConnectivity {
         // only the shortfall means a shortfall of 24 yields perhaps a handful of connections and the
         // pool sits below target indefinitely. Overshooting is the cheaper mistake: surplus
         // connections are reaped above, a persistent shortfall is not self-correcting.
-        let shortfall = pool_size.saturating_sub(connected.len());
+        let shortfall = if outbound_starved {
+            pool_size.saturating_sub(num_outbound)
+        } else {
+            pool_size.saturating_sub(connected.len())
+        };
         let target_in_flight = cmp::min(
             shortfall.saturating_mul(DIAL_OVERSUBSCRIBE_FACTOR),
             pool_size.saturating_mul(MAX_IN_FLIGHT_POOL_MULTIPLE),
@@ -593,7 +905,8 @@ impl DhtConnectivity {
         info!(
             target: LOG_TARGET,
             "refreshing random peer list, target {pool_size} connections (is_pool_healthy = \
-             {is_pool_healthy}, churn_due = {churn_due}, #connected = {}, #pending = {}, #stale = {}, \
+             {is_pool_healthy}, churn_due = {churn_due}, #connected = {} ({num_outbound} outbound, \
+             outbound_starved = {outbound_starved}), #pending = {}, #stale = {}, \
              #shortfall = {shortfall}, #target_in_flight = {target_in_flight}, #dialing_now = {needed})",
             connected.len(),
             pending.len(),
@@ -602,7 +915,33 @@ impl DhtConnectivity {
         // When the pool is healthy we can afford to probe/revive arbitrary (possibly never-seen)
         // peers. When we are short on peers we prefer known-good peers (ones we have successfully
         // connected to before) instead of wasting dials on never-seen/dead peers.
-        let mut new_peers = if needed == 0 {
+        // Peers learned in the last rebootstrap are fresh, so they go before anything from the peer database. They
+        // get their own budget, independent of what is still in flight: on a starved node the in-flight budget is
+        // taken up by dials to stale peers that will fail, and learned peers would never get a turn. Learned peers -
+        // which other nodes chose for us - get at most half of each round's dial target, counting their dials still in
+        // flight from earlier refreshes, so known-good peers from the database always get dials alongside them. This
+        // bounds dials, not connections: if the database peers are dead, learned peers may end up filling the pool,
+        // which is the intended recovery. Each learned peer is offered only once.
+        let learned_in_flight = self.learned_dials_in_flight();
+        if shortfall == 0 {
+            // The pool is at target (and not outbound-starved), so the queued learned peers are no longer needed.
+            // Learned dials still in flight are kept: when they land they are pool peers, and must keep counting
+            // against the inbound share.
+            self.rebootstrap_peers.clear();
+            self.prune_learned_taken();
+        }
+        let learned_budget = if target_in_flight == 0 {
+            0
+        } else {
+            (target_in_flight / 2).max(1).saturating_sub(learned_in_flight)
+        };
+        let mut new_peers = self.take_rebootstrap_peers(learned_budget, &exclude);
+        exclude.extend(new_peers.iter().cloned());
+        // Learned peers are stored in the peer database too. Those still queued are only offered through the learned
+        // budget above, so that the database fill cannot bypass the inbound share.
+        exclude.extend(self.rebootstrap_peers.iter().cloned());
+        let needed = needed.saturating_sub(new_peers.len());
+        let mut db_peers = if needed == 0 {
             Vec::new()
         } else if should_churn {
             self.fetch_random_peers(needed, &exclude, false).await?
@@ -626,7 +965,8 @@ impl DhtConnectivity {
             }
             peers
         };
-        new_peers.truncate(needed);
+        db_peers.truncate(needed);
+        new_peers.extend(db_peers);
 
         // In-flight dials keep their slot; only connected and pending peers stay in the pool.
         self.random_pool = connected;
@@ -722,7 +1062,17 @@ impl DhtConnectivity {
                 "Added pool peer '{}' to connection handles",
                 conn.peer_node_id()
             );
+            // Already a pool member, so admitted regardless, but counted against the inbound share
+            self.count_if_inbound_suggested(conn.peer_node_id());
             self.insert_connection_handle(conn).await?;
+            return Ok(());
+        }
+
+        // However it was dialled - or if it dialled in - a peer that inbound sources suggested only joins the pool
+        // within their share. This also catches learned dials that outlived `PENDING_DIAL_GRACE` and were dropped
+        // from the pool before they landed.
+        if !self.admit_inbound_suggested(conn.peer_node_id()) {
+            refuse_inbound_suggested(conn).await;
             return Ok(());
         }
 
@@ -730,6 +1080,8 @@ impl DhtConnectivity {
             .config
             .num_neighbouring_nodes
             .saturating_add(self.config.num_random_nodes);
+        // Peers the pool dialled itself were handled above. Anyone else's connection (e.g. network discovery's) only
+        // joins the pool while there is room, so that it cannot bypass the pool's choice of peers.
         if self.connected_random_pool_peers() < pool_size {
             debug!(
                 target: LOG_TARGET,
@@ -950,10 +1302,35 @@ impl DhtConnectivity {
                 target: LOG_TARGET,
                 "Peer '{current_peer}' in peer pool is unavailable. Adding a new peer if possible"
             );
-            // Reactive backfill after a peer dropped: prefer known-good peers so we don't refill
-            // the pool with never-seen/dead peers. Exploration of new peers happens in the periodic
-            // `refresh_random_pool` churn instead.
-            match self.fetch_random_peers(1, &exclude, true).await?.pop() {
+            // Reactive backfill after a peer dropped: alternate between peers learned in the last rebootstrap
+            // and peers from the database, so that learned peers cannot take over every replacement, falling back
+            // to the other when one has nothing. The database is asked for known-good peers first, so we don't
+            // refill the pool with never-seen/dead peers when better ones are known, but `random_peers` falls back
+            // to any peers when it has too few of those. Exploration happens in the periodic `refresh_random_pool`
+            // churn instead.
+            // Learned peers are only used while their dials in flight are within budget: half of the most a refresh
+            // would have in flight.
+            self.replace_from_learned = !self.replace_from_learned;
+            let pool_size = self
+                .config
+                .num_neighbouring_nodes
+                .saturating_add(self.config.num_random_nodes);
+            let learned_allowed =
+                self.learned_dials_in_flight() < pool_size.saturating_mul(MAX_IN_FLIGHT_POOL_MULTIPLE) / 2;
+            let mut replacement = None;
+            if self.replace_from_learned && learned_allowed {
+                replacement = self.take_rebootstrap_peers(1, &exclude).pop();
+            }
+            if replacement.is_none() {
+                // Queued learned peers are only offered through the learned budget (see `refresh_random_pool`)
+                let mut exclude = exclude.clone();
+                exclude.extend(self.rebootstrap_peers.iter().cloned());
+                replacement = self.fetch_random_peers(1, &exclude, true).await?.pop();
+            }
+            if replacement.is_none() && learned_allowed {
+                replacement = self.take_rebootstrap_peers(1, &exclude).pop();
+            }
+            match replacement {
                 Some(new_peer) => {
                     self.insert_random_peer(new_peer.clone());
                     self.dial_multiple_peers(&[new_peer]).await?;
@@ -1061,6 +1438,145 @@ impl DhtConnectivity {
             );
         }
         Ok(peers.into_iter().map(|p| p.node_id).collect())
+    }
+
+    /// Stores the peers learned in a rebootstrap for the pool to prefer. They are checked against the peer database
+    /// once, here, so that taking them later is cheap: that happens on every failed or dropped pool peer. Peers banned
+    /// after this point are still refused by the connectivity manager when dialled.
+    async fn set_rebootstrap_peers(
+        &mut self,
+        learned: &[NodeId],
+        learned_from_inbound: &[NodeId],
+    ) -> Result<(), DhtConnectivityError> {
+        // Only the first `MAX_REBOOTSTRAP_PEERS` are considered, which also bounds the size of the lookup
+        let learned = learned.iter().take(MAX_REBOOTSTRAP_PEERS).cloned().collect::<Vec<_>>();
+        let allow_list = self.peer_allow_list().await?.into_iter().collect::<HashSet<_>>();
+        let eligible = self
+            .peer_manager
+            .get_peers_by_node_ids(&learned)
+            .await?
+            .into_iter()
+            .filter(|peer| {
+                !peer.is_banned() &&
+                    !peer.is_seed() &&
+                    !peer.features.is_client() &&
+                    !allow_list.contains(&peer.node_id)
+            })
+            .map(|peer| peer.node_id)
+            .collect::<HashSet<_>>();
+        // Keep the learned order (peers from seeds first), not the order the database returned them in
+        self.rebootstrap_peers = learned
+            .into_iter()
+            .filter(|node_id| eligible.contains(node_id))
+            .collect();
+        // Accumulated, not replaced: see `InboundSuggested`. All of them, not only the eligible learned ones: any of
+        // them may still be dialled from the peer database.
+        self.inbound_learned.add(learned_from_inbound, Instant::now());
+        // Learned peers from earlier rebootstraps that are still connected keep counting against the inbound share
+        self.prune_learned_taken();
+        Ok(())
+    }
+
+    /// The learned peers that count against the inbound share (connected or being dialled), and how many of them
+    /// inbound sources suggested.
+    fn inbound_share_counts(&mut self) -> (usize, usize) {
+        self.prune_learned_taken();
+        let now = Instant::now();
+        let inbound = self
+            .learned_taken
+            .iter()
+            .filter(|node_id| self.inbound_learned.contains(node_id, now))
+            .count();
+        (self.learned_taken.len(), inbound)
+    }
+
+    /// Counts `node_id` against the inbound share if inbound sources suggested it.
+    fn count_if_inbound_suggested(&mut self, node_id: &NodeId) {
+        if self.inbound_learned.contains(node_id, Instant::now()) {
+            self.learned_taken.insert(node_id.clone());
+        }
+    }
+
+    /// Returns true if `node_id` may join the pool as far as the inbound share is concerned, counting it if so.
+    fn admit_inbound_suggested(&mut self, node_id: &NodeId) -> bool {
+        if !self.inbound_learned.contains(node_id, Instant::now()) || self.learned_taken.contains(node_id) {
+            return true;
+        }
+        let (total, inbound) = self.inbound_share_counts();
+        if !fits_inbound_share(total, inbound) {
+            return false;
+        }
+        self.learned_taken.insert(node_id.clone());
+        true
+    }
+
+    /// Forgets learned peers that are neither connected nor being dialled. Pool connections are the only ones held in
+    /// `connection_handles`, so this checks those rather than `random_pool`, which a refresh empties while it runs.
+    fn prune_learned_taken(&mut self) {
+        self.learned_dials_in_flight();
+        let live = self
+            .connection_handles
+            .iter()
+            .filter(|conn| conn.is_connected())
+            .map(|conn| conn.peer_node_id().clone())
+            .collect::<HashSet<_>>();
+        let learned_dials = &self.learned_dials;
+        self.learned_taken
+            .retain(|node_id| live.contains(node_id) || learned_dials.contains(node_id));
+    }
+
+    /// The number of learned peers dialled whose dial is still in flight. Forgets the others.
+    fn learned_dials_in_flight(&mut self) -> usize {
+        let pending_dials = &self.pending_dials;
+        self.learned_dials.retain(|node_id| {
+            pending_dials
+                .get(node_id)
+                .is_some_and(|dialed_at| dialed_at.elapsed() < PENDING_DIAL_GRACE)
+        });
+        self.learned_dials.len()
+    }
+
+    /// Takes up to `n` peers from those learned in the last rebootstrap, in learned order. Each is offered once:
+    /// peers that are excluded (already in the pool, being dialled or just released) are dropped. Only peers in dial
+    /// backoff are kept for later.
+    ///
+    /// Of the learned peers connected or being dialled - from this or earlier rebootstraps - at most a quarter
+    /// (rounded up) may be peers that inbound sources suggested. Peers that have connected count as well as dials in
+    /// flight, so inbound-suggested peers that connect quickly do not hand the budget back, and a new rebootstrap does
+    /// not grant a fresh allowance. The learned list is only interleaved by source, and only its head
+    /// is ever dialled, so without this a few inbound sources could supply most of the learned peers.
+    fn take_rebootstrap_peers(&mut self, n: usize, excluded: &[NodeId]) -> Vec<NodeId> {
+        if n == 0 || self.rebootstrap_peers.is_empty() {
+            return Vec::new();
+        }
+        self.prune_dial_backoff();
+        let now = Instant::now();
+        let (mut total, mut inbound) = self.inbound_share_counts();
+
+        let excluded = excluded.iter().collect::<HashSet<_>>();
+        let mut selected = Vec::new();
+        let mut kept = Vec::new();
+        for node_id in std::mem::take(&mut self.rebootstrap_peers) {
+            if excluded.contains(&node_id) || self.random_pool.contains(&node_id) {
+                continue;
+            }
+            let is_inbound = self.inbound_learned.contains(&node_id, now);
+            let within_inbound_share = !is_inbound || fits_inbound_share(total, inbound);
+            if selected.len() < n && !self.dial_backoff.contains_key(&node_id) && within_inbound_share {
+                total = total.saturating_add(1);
+                if is_inbound {
+                    inbound = inbound.saturating_add(1);
+                }
+                selected.push(node_id);
+            } else {
+                kept.push(node_id);
+            }
+        }
+        self.rebootstrap_peers = kept;
+        // The callers dial what is taken
+        self.learned_dials.extend(selected.iter().cloned());
+        self.learned_taken.extend(selected.iter().cloned());
+        selected
     }
 
     fn should_send_join(&self) -> bool {
