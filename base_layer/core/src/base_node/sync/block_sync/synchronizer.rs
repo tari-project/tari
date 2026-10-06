@@ -235,8 +235,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             }
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
-            .with_deadline_grace_period(Duration::from_secs(5))
-                // Block bodies are large, so let the client buffer more of them while they are validated
+                .with_deadline_grace_period(Duration::from_secs(5))
+                // Block bodies are large, so let the client buffer more of them while they are validated. Each
+                // streamed block may legitimately be up to MAX_BLOCK_BODY_BYTES (7 MiB), so the per-item size is
+                // left at its default, the RPC frame size.
                 .with_stream_buffer_size(20);
             // Bound RPC negotiation: without this the negotiation itself (as opposed to
             // individual RPC requests) has no timeout and can wedge the sync loop indefinitely.

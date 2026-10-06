@@ -244,3 +244,107 @@ mod stream_buffer_size {
         assert!(items.iter().all(|r| r.is_ok()));
     }
 }
+
+mod max_response_size {
+    use super::*;
+    use crate::protocol::{
+        rpc,
+        rpc::{
+            RpcError,
+            RpcPoolClient,
+            RpcStatusCode,
+            client::{RpcClientBuilder, RpcClientConfig},
+            test::greeting_service::SayHelloRequest,
+        },
+    };
+
+    #[test]
+    fn it_defaults_to_the_frame_size() {
+        assert_eq!(RpcClientConfig::default().max_response_size, rpc::RPC_MAX_FRAME_SIZE);
+        let builder = RpcClientBuilder::<GreetingClient>::new();
+        assert_eq!(builder.config.max_response_size, rpc::RPC_MAX_FRAME_SIZE);
+    }
+
+    #[test]
+    fn it_is_set_by_the_builder() {
+        let builder = RpcClientBuilder::<GreetingClient>::new().with_max_response_size(1234);
+        assert_eq!(builder.config.max_response_size, 1234);
+    }
+
+    #[tokio::test]
+    async fn items_within_the_cap_are_received() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new().with_max_response_size(100))
+            .await
+            .unwrap();
+        // Each item is encoded as a protobuf `bytes` value: 2 bytes of overhead for 90 bytes
+        let items = client
+            .slow_stream(SlowStreamRequest {
+                num_items: 5,
+                item_size: 90,
+                delay_ms: 1,
+            })
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(items.len(), 5);
+        assert!(items.iter().all(|r| r.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn a_streamed_item_over_the_cap_ends_the_request_and_the_session() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new().with_max_response_size(100))
+            .await
+            .unwrap();
+
+        let items = client
+            .slow_stream(SlowStreamRequest {
+                num_items: 10,
+                item_size: 1000,
+                delay_ms: 1,
+            })
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        // The caller gets an error in place of the item, and nothing after it
+        assert_eq!(items.len(), 1);
+        let err = items.into_iter().next().unwrap().unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::ProtocolError);
+        assert!(err.details().contains("too large"), "{}", err.details());
+
+        // As on other protocol errors, the session is closed so that the rest of the stream is never read as the
+        // response to a later request
+        async_assert_eventually!(client.is_connected(), expect = false);
+        let err = client
+            .say_hello(SayHelloRequest {
+                name: "Ruby".to_string(),
+                language: 0,
+            })
+            .await
+            .unwrap_err();
+        unpack_enum!(RpcError::ClientClosed = err);
+    }
+
+    #[tokio::test]
+    async fn the_final_response_is_not_capped() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new().with_max_response_size(1))
+            .await
+            .unwrap();
+        // A unary response is a single FIN message, which is never queued behind others
+        let resp = client
+            .say_hello(SayHelloRequest {
+                name: "Ruby".to_string(),
+                language: 0,
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.greeting, "Sawubona Ruby");
+    }
+}

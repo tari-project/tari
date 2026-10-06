@@ -36,7 +36,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
 };
 use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
-use tari_transaction_components::BanPeriod;
+use tari_transaction_components::{BanPeriod, tari_proof_of_work::PowData};
 use tari_utilities::hex::Hex;
 
 pub(crate) use super::{BlockHeaderSyncError, validator::BlockHeaderSyncValidator};
@@ -273,7 +273,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(5))
             // Headers are small, so let the client buffer many while they are validated
-            .with_stream_buffer_size(100);
+            .with_stream_buffer_size(100)
+            // A streamed header is a few hundred bytes of fixed-size fields plus its pow data, which is at most
+            // `PowData::max_size()` (64 KiB) at decode time. 4x that is a generous bound that still keeps a full
+            // buffer of padded headers at ~25 MiB rather than ~800 MiB.
+            .with_max_response_size(PowData::default().max_size().saturating_mul(4));
         // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
         let mut client = tokio::time::timeout(
             self.config.rpc_deadline,

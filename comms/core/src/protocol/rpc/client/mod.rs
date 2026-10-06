@@ -277,6 +277,17 @@ impl<TClient> RpcClientBuilder<TClient> {
         self
     }
 
+    /// Set the largest payload, in bytes, accepted for each streamed item, i.e. each response that does not end the
+    /// request. A streamed item over this size ends the request with an error and closes the session, since the
+    /// rest of that stream is still in flight. With [`with_stream_buffer_size`](Self::with_stream_buffer_size) this
+    /// bounds the memory a peer can make the client hold for one stream. The final response of a request (which is
+    /// the only response of a non-streaming call) is not capped by this, only by the frame size.
+    /// Default: [`RPC_MAX_FRAME_SIZE`](rpc::RPC_MAX_FRAME_SIZE), i.e. no limit beyond the frame size
+    pub fn with_max_response_size(mut self, size: usize) -> Self {
+        self.config.max_response_size = size;
+        self
+    }
+
     /// Set the protocol ID associated with this client. This is used for logging purposes only.
     pub fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
         self.protocol_id = Some(protocol_id);
@@ -331,6 +342,8 @@ pub struct RpcClientConfig {
     pub handshake_timeout: Duration,
     /// The number of streamed responses buffered for the caller per request
     pub stream_buffer_size: usize,
+    /// The largest payload accepted for each streamed item (see `RpcClientBuilder::with_max_response_size`)
+    pub max_response_size: usize,
 }
 
 impl RpcClientConfig {
@@ -352,6 +365,7 @@ impl Default for RpcClientConfig {
             deadline_grace_period: Duration::from_secs(60),
             handshake_timeout: Duration::from_secs(90),
             stream_buffer_size: 5,
+            max_response_size: rpc::RPC_MAX_FRAME_SIZE,
         }
     }
 }
@@ -871,6 +885,32 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     return Err(err);
                 },
             };
+
+            // Check the size before the item is queued for the caller: with a deep stream buffer, oversized items are
+            // what a peer would use to make this client hold a lot of memory. The final (FIN) response is never
+            // queued behind others, so it is only bounded by the frame size.
+            let is_fin = resp.flags().map(|flags| flags.is_fin()).unwrap_or(false);
+            if !is_fin && resp.payload.len() > self.config.max_response_size {
+                let err = RpcError::MaxResponseSizeExceeded {
+                    got: resp.payload.len(),
+                    expected: self.config.max_response_size,
+                };
+                warn!(
+                    target: LOG_TARGET,
+                    "(stream={}) Request {} (method={}) to peer {}: {}",
+                    self.stream_id(),
+                    request_id,
+                    method,
+                    self.node_id,
+                    err
+                );
+                if !response_tx.is_closed() {
+                    let _result = response_tx.send(Err(RpcStatus::protocol_error(&err.to_string()))).await;
+                }
+                // The rest of the stream is still on its way, so end the session rather than leave those frames to be
+                // read as responses to the next request
+                return Err(err);
+            }
 
             match Self::convert_to_result(resp) {
                 Ok(Ok(resp)) => {

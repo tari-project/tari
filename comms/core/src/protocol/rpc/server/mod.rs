@@ -1136,7 +1136,8 @@ where
             // substream can no longer be trusted for a subsequent request and the session ends.
             let send = self.send_with_deadline(msg, deadline);
             tokio::pin!(send);
-            // While the send is in flight, pull and encode the next item. At most one item is held. If the send
+            // While the send is in flight, pull and encode the next item. At most one item is held, so a session whose
+            // peer stops reading holds one extra encoded item, for no longer than the send deadline. If the send
             // finishes first, the pending pull is dropped (a stream loses nothing when `next()` is cancelled) and the
             // top of the loop waits for it as before, under a fresh per-item deadline.
             loop {
