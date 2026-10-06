@@ -115,6 +115,9 @@ pub enum ChainStorageError {
     HeldBlockInvalid {
         hash: FixedHash,
         body_verified: bool,
+        /// The block that failed is the block being added, with the body its sender just sent, and the verdict was a
+        /// fault of ours. For a locally mined block that is still worth telling the mempool about.
+        sent_body_failed: bool,
         source: ValidationError,
     },
     /// The block being added builds on a block whose body matches its header and is invalid, so whoever sent it

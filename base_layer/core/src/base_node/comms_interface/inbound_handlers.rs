@@ -1394,8 +1394,18 @@ where B: BlockchainBackend + 'static
     /// a fault of ours). That is only logged: no metric and no event, as `AddBlockValidationFailed` or
     /// `AddBlockErrored` would make the mempool clear a local block's transactions for a failure that is not
     /// theirs.
+    ///
+    /// The one exception is a locally mined block whose own body failed for a fault of ours: `AddBlockErrored` is
+    /// published for it, as for any other local block that fails for a reason other than a validation error, so that
+    /// the mempool clears its transactions. A transaction that breaks every template it is in is cleared that way.
     fn report_invalid_block(&self, block: Arc<Block>, source_peer: Option<NodeId>, error: &ChainStorageError) {
-        if matches!(error, ChainStorageError::HeldBlockInvalid { .. }) {
+        if let ChainStorageError::HeldBlockInvalid { sent_body_failed, .. } = error {
+            if *sent_body_failed && source_peer.is_none() {
+                self.publish_block_event(BlockEvent::AddBlockErrored {
+                    block: block.clone(),
+                    source_peer: None,
+                });
+            }
             warn!(
                 target: LOG_TARGET,
                 "Block #{} ({}) from {} not added: {}",

@@ -445,7 +445,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         "get_validator_node"
     );
 
-    make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
+    make_async_fn!(swap_to_highest_pow_chain() -> AddBlockOutcome, "swap to highest proof-of-work chain");
 
     make_async_fn!(
         fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo,

@@ -137,12 +137,7 @@ impl BlockSync {
                 } else {
                     warn!(target: LOG_TARGET, "Block sync failed - {}", err);
                 }
-                if let Err(e) = shared.db.swap_to_highest_pow_chain().await {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to reset chain to highest proof of work: {e}"
-                    );
-                }
+                swap_to_highest_pow_chain_and_publish(shared).await;
                 StateEvent::BlockSyncFailed
             },
         }
@@ -150,6 +145,31 @@ impl BlockSync {
 
     pub fn is_synced(&self) -> bool {
         self.is_synced
+    }
+}
+
+/// After a failed sync, swap to the strongest chain we hold, and publish a chain change as `handle_block` does, so that
+/// the mempool and other listeners follow it
+async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) {
+    match shared.db.swap_to_highest_pow_chain().await {
+        Ok(outcome) => {
+            let tip_block = match &outcome.result {
+                BlockAddResult::Ok(block) => Some(block.to_arc_block()),
+                BlockAddResult::ChainReorg { added, .. } => added.last().map(|block| block.to_arc_block()),
+                BlockAddResult::BlockExists | BlockAddResult::OrphanBlock => None,
+            };
+            if let Some(tip_block) = tip_block {
+                shared
+                    .local_node_interface
+                    .publish_block_event(BlockEvent::ValidBlockAdded(tip_block, outcome.result));
+            }
+        },
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Failed to reset chain to highest proof of work: {e}"
+            );
+        },
     }
 }
 

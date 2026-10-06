@@ -126,6 +126,8 @@ pub struct AddBlockOutcome {
 }
 
 /// A block that failed body validation during a reorg. It, and every orphan built on it, has been dropped.
+// Four independent facts about the failure, each read on its own by a different caller
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub struct RejectedBlock {
     pub hash: FixedHash,
@@ -141,6 +143,9 @@ pub struct RejectedBlock {
     pub body_verified: bool,
     /// Whether the block being added was dropped with this block: it is this block, or built on it
     pub dropped_candidate: bool,
+    /// Whether the body that failed is the one the sender of the block being added just sent: the block that failed is
+    /// the block being added, and it was not already held
+    pub sent_body_failed: bool,
 }
 
 impl RejectedBlock {
@@ -152,6 +157,7 @@ impl RejectedBlock {
             ChainStorageError::HeldBlockInvalid {
                 hash: self.hash,
                 body_verified: self.body_verified,
+                sent_body_failed: self.sent_body_failed,
                 source: self.error,
             }
         } else if self.hash == candidate_hash {

@@ -1315,49 +1315,71 @@ impl CandidateBlockValidator<TempDatabase> for FaultyBodyValidator {
     }
 }
 
-/// A locally mined block that fails for a reason that is ours is reported as not added, but not as invalid: the error
-/// is not a ban, and the mempool is not told it failed (which would clear its transactions)
+/// A block whose own body fails for a reason that is ours is reported as not added, but not as invalid: the error is
+/// not a ban, and no `AddBlockValidationFailed` is published. A locally mined one does get `AddBlockErrored`, so that
+/// the mempool clears its transactions (a transaction that breaks every template is cleared that way); one from a peer
+/// gets no event at all.
 #[tokio::test]
 async fn a_local_fault_does_not_report_the_block_as_invalid() {
-    let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
-    let validators = Validators::new(FaultyBodyValidator, MockValidator::new(true), MockValidator::new(true));
-    let store = create_store_with_consensus_and_validators_and_config(
-        rules.clone(),
-        validators,
-        BlockchainDatabaseConfig::default(),
-    );
-    let block = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
-    let (block_event_sender, mut block_events) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
-    let (block_sender, mut propagated) = mpsc::unbounded_channel();
-    let (connectivity, _) = create_connectivity_mock();
-    let mut handlers = InboundNodeCommsHandlers::new(
-        block_event_sender,
-        store.clone().into(),
-        new_mempool(),
-        rules,
-        OutboundNodeCommsInterface::new(request_sender, block_sender),
-        connectivity,
-        RandomXFactory::new(2),
-    );
+    for source_peer in [None, Some(NodeId::default())] {
+        let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
+        let validators = Validators::new(FaultyBodyValidator, MockValidator::new(true), MockValidator::new(true));
+        let store = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            validators,
+            BlockchainDatabaseConfig::default(),
+        );
+        let block = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+        let (block_event_sender, mut block_events) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, mut propagated) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            store.clone().into(),
+            new_mempool(),
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(2),
+        );
 
-    let err = handlers.handle_block(block.clone(), None).await.unwrap_err();
+        let err = handlers
+            .handle_block(block.clone(), source_peer.clone())
+            .await
+            .unwrap_err();
 
-    assert!(
-        matches!(
-            &err,
-            CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { hash, .. })
-                if *hash == block.hash()
-        ),
-        "{err:?}"
-    );
-    assert!(err.get_ban_reason().is_none());
-    // No event at all: not `AddBlockValidationFailed`, and not `AddBlockErrored` either
-    assert!(block_events.try_recv().is_err());
-    assert!(propagated.try_recv().is_err());
-    assert_eq!(store.get_height().unwrap(), 0);
-    assert!(!store.bad_block_exists(block.hash()).unwrap().0);
-    assert!(!store.chain_block_or_orphan_block_exists(block.hash()).unwrap());
+        assert!(
+            matches!(
+                &err,
+                CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { hash, .. })
+                    if *hash == block.hash()
+            ),
+            "{err:?}"
+        );
+        assert!(err.get_ban_reason().is_none());
+        let mut events = vec![];
+        while let Ok(event) = block_events.try_recv() {
+            events.push(event);
+        }
+        if source_peer.is_none() {
+            assert_eq!(events.len(), 1, "{events:?}");
+            let BlockEvent::AddBlockErrored {
+                block: errored,
+                source_peer: None,
+            } = &*events[0]
+            else {
+                panic!("expected AddBlockErrored for the local block, got {}", events[0]);
+            };
+            assert_eq!(errored.hash(), block.hash());
+        } else {
+            assert!(events.is_empty(), "{events:?}");
+        }
+        assert!(propagated.try_recv().is_err());
+        assert_eq!(store.get_height().unwrap(), 0);
+        assert!(!store.bad_block_exists(block.hash()).unwrap().0);
+        assert!(!store.chain_block_or_orphan_block_exists(block.hash()).unwrap());
+    }
 }
 
 fn assert_banned_and_not_stored(err: &CommsInterfaceError, store: &BlockchainDatabase<TempDatabase>, hash: FixedHash) {
