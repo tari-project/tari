@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{FutureExt, Stream, channel::oneshot, task::Context};
+use futures::{Stream, channel::oneshot, task::Context};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,
@@ -324,12 +324,24 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                     self.peer_connection_info,
                 );
                 // Hand over streams accepted before the connection closed, their buffered data is still readable.
-                // This must not wait, so streams that do not fit in the channel are dropped.
-                let _ignore = poll_fn(|cx| self.incoming_substreams.poll_send_done(cx)).now_or_never();
-                for stream in self.pending_inbound.drain(..) {
-                    if incoming_tx.try_send(stream).is_err() {
-                        break;
+                // The connection has no more I/O to drive, so waiting on the channel is fine, for a bounded time.
+                let deliver = async {
+                    if poll_fn(|cx| self.incoming_substreams.poll_send_done(cx)).await.is_err() {
+                        return;
                     }
+                    while let Some(stream) = self.pending_inbound.pop_front() {
+                        if incoming_tx.send(stream).await.is_err() {
+                            return;
+                        }
+                    }
+                };
+                if tokio::time::timeout(CONNECTION_CLOSE_TIMEOUT, deliver).await.is_err() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer ({}) timed out handing over inbound substreams after the connection closed, dropping {}",
+                        self.peer_connection_info,
+                        self.pending_inbound.len(),
+                    );
                 }
             },
             WorkerExit::IncomingClosed => {
@@ -898,6 +910,42 @@ mod test {
         assert!(result.is_ok(), "close did not return");
 
         writer.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn queued_inbound_streams_are_delivered_after_connection_closes() {
+        // More than the incoming channel holds, so some are still queued in the worker when the connection closes
+        const NUM_STREAMS: usize = 20;
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+
+        let mut outbound = Vec::with_capacity(NUM_STREAMS);
+        for _ in 0..NUM_STREAMS {
+            let mut stream = dialer_control.open_stream().await.unwrap();
+            stream.write_all(b"hello").await.unwrap();
+            outbound.push(stream);
+        }
+        dialer_control.close().await.unwrap();
+        // Time is paused, so this sleep only completes once every other task is idle, i.e. after the listener's worker
+        // has seen the connection close
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let mut inbound = collect_stream!(
+            &mut listener.incoming,
+            take = NUM_STREAMS,
+            timeout = Duration::from_secs(10)
+        );
+        assert_eq!(inbound.len(), NUM_STREAMS);
+        for stream in &mut inbound {
+            let mut buf = [0u8; 5];
+            stream.read_exact(&mut buf).await.unwrap();
+            assert_eq!(&buf, b"hello");
+        }
     }
 
     #[tokio::test]
