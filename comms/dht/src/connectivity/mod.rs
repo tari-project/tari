@@ -1469,13 +1469,9 @@ impl DhtConnectivity {
             .into_iter()
             .filter(|node_id| eligible.contains(node_id))
             .collect();
-        // Accumulated, not replaced: see `InboundSuggested`
-        self.inbound_learned.add(
-            learned_from_inbound
-                .iter()
-                .filter(|node_id| eligible.contains(*node_id)),
-            Instant::now(),
-        );
+        // Accumulated, not replaced: see `InboundSuggested`. All of them, not only the eligible learned ones: any of
+        // them may still be dialled from the peer database.
+        self.inbound_learned.add(learned_from_inbound, Instant::now());
         // Learned peers from earlier rebootstraps that are still connected keep counting against the inbound share
         self.prune_learned_taken();
         Ok(())

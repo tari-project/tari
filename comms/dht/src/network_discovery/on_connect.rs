@@ -91,37 +91,8 @@ impl OnConnect {
                         );
                         continue;
                     }
-                    self.mark_synced(conn.peer_node_id().clone(), Instant::now());
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Node peer `{}` connected. Syncing peers...",
-                        conn.peer_node_id()
-                    );
-
-                    match self.sync_peers(*conn.clone()).await {
-                        Ok(_) => continue,
-                        Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
-                            warn!(target: LOG_TARGET, "{err}. Banning peer.");
-                            if let Err(err) = self
-                                .context
-                                .connectivity
-                                .ban_peer_until(
-                                    conn.peer_node_id().clone(),
-                                    self.config().ban_duration,
-                                    err.to_string(),
-                                )
-                                .await
-                            {
-                                return err.into();
-                            }
-                        },
-                        Err(err) => debug!(
-                            target: LOG_TARGET,
-                            "Failed to peer sync from `{}`: {}",
-                            conn.peer_node_id(),
-                            err
-                        ),
+                    if let Some(event) = self.sync_from(*conn).await {
+                        return event;
                     }
                 },
                 Ok(_) => { /* Nothing to do */ },
@@ -135,6 +106,46 @@ impl OnConnect {
         }
 
         StateEvent::Shutdown
+    }
+
+    /// Syncs peers from a newly connected peer. Returns an event if the state machine must stop.
+    ///
+    /// The peer is marked as synced before the sync, so that it is not synced from twice at once, and unmarked if the
+    /// sync fails, so that a transient failure does not block a retry for `on_connect_resync_ttl`. A peer that sent
+    /// invalid peer data is banned and stays marked.
+    pub(super) async fn sync_from(&mut self, conn: PeerConnection) -> Option<StateEvent> {
+        self.mark_synced(conn.peer_node_id().clone(), Instant::now());
+
+        debug!(
+            target: LOG_TARGET,
+            "Node peer `{}` connected. Syncing peers...",
+            conn.peer_node_id()
+        );
+
+        match self.sync_peers(conn.clone()).await {
+            Ok(_) => {},
+            Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
+                warn!(target: LOG_TARGET, "{err}. Banning peer.");
+                if let Err(err) = self
+                    .context
+                    .connectivity
+                    .ban_peer_until(conn.peer_node_id().clone(), self.config().ban_duration, err.to_string())
+                    .await
+                {
+                    return Some(err.into());
+                }
+            },
+            Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to peer sync from `{}`: {}",
+                    conn.peer_node_id(),
+                    err
+                );
+                self.prev_synced.remove(conn.peer_node_id());
+            },
+        }
+        None
     }
 
     async fn sync_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {

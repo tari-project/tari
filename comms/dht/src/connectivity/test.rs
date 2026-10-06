@@ -1121,6 +1121,27 @@ mod rebootstrap_trigger {
         assert!(!connectivity.is_peer_dialed(&queued_id).await);
     }
 
+    /// Every peer an inbound source relayed is inbound-suggested, not only the ones kept in the learned list: the
+    /// others can still be dialled from the peer database.
+    #[tokio::test]
+    async fn peers_relayed_by_inbound_sources_are_all_inbound_suggested() {
+        let learned = make_node_identity().to_peer();
+        let learned_id = learned.node_id.clone();
+        let not_kept = NodeId::from_public_key(make_node_identity().public_key());
+        let (mut dht_connectivity, _, _, _, _, _shutdown) =
+            setup(DhtConfig::default(), make_node_identity(), vec![learned]).await;
+
+        dht_connectivity
+            .set_rebootstrap_peers(std::slice::from_ref(&learned_id), &[
+                learned_id.clone(),
+                not_kept.clone(),
+            ])
+            .await
+            .unwrap();
+        assert!(dht_connectivity.inbound_learned.contains(&learned_id, Instant::now()));
+        assert!(dht_connectivity.inbound_learned.contains(&not_kept, Instant::now()));
+    }
+
     /// Learned peers as from 1 outbound and 4 inbound sources, interleaved: one outbound-sourced peer in every five.
     /// Returns the inbound-sourced ones.
     fn learned_from_five_sources(dht_connectivity: &mut DhtConnectivity) -> HashSet<NodeId> {

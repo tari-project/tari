@@ -92,7 +92,8 @@ pub struct RebootstrapInfo {
     pub num_from_connected: usize,
     /// The distinct peers learned in this rebootstrap. DhtConnectivity prefers these when refilling its pool.
     pub learned_peers: Vec<NodeId>,
-    /// The peers in `learned_peers` that came from inbound sources. DhtConnectivity limits how many of these it dials.
+    /// Every peer stored from an inbound source in this rebootstrap, whether or not it made it into `learned_peers`.
+    /// DhtConnectivity limits how many of these join its pool, however they are dialled.
     pub learned_from_inbound: Vec<NodeId>,
 }
 
@@ -254,9 +255,19 @@ impl Rebootstrap {
         let seeds_synced = sources.len();
         sources.extend(connected);
 
-        let (learned_peers, learned_from_inbound, kept) = interleave_sources(&sources);
-        // Remembered across rebootstraps, so that a peer an inbound source told us about is still treated as
-        // inbound-sourced if we have since dialled it (see `sync_from_connected_peers`)
+        let (learned_peers, _, kept) = interleave_sources(&sources);
+        // Every peer an inbound source told us about, not only the ones kept in the learned list: the others are in
+        // the peer database too, and could be dialled from there. Remembered across rebootstraps, so that such a
+        // peer is still treated as inbound-sourced if we have since dialled it (see `sync_from_connected_peers`).
+        // At most `rebootstrap_connected_peers` sources x `MAX_STORED_PER_SOURCE` peers.
+        let mut seen = HashSet::new();
+        let learned_from_inbound = sources
+            .iter()
+            .filter(|source| source.kind == SourceKind::Inbound)
+            .flat_map(|source| source.stored.iter())
+            .filter(|node_id| seen.insert((*node_id).clone()))
+            .cloned()
+            .collect::<Vec<_>>();
         if let Ok(mut inbound_learned) = self.context.inbound_learned.lock() {
             inbound_learned.add(&learned_from_inbound, Instant::now());
         }
@@ -702,7 +713,8 @@ async fn sync_from_connection(
 
 /// Validates and stores peers received from `source`. Returns the node ids of the peers stored.
 ///
-/// Like Discovering, an occasional unusable claim is skipped, but a source that relays more than
+/// Only the first `MAX_STORED_PER_SOURCE` valid peers are stored; the rest are still validated. Like Discovering, an
+/// occasional unusable claim is skipped, but a source that relays more than
 /// `MAX_HOSTILE_RELAYED_CLAIMS` claims only a broken or hostile node could produce fails with
 /// `TooManyInvalidPeersReceived`, which is a ban offence.
 pub(super) async fn store_peers(
@@ -742,16 +754,20 @@ pub(super) async fn store_peers(
                 continue;
             },
         };
+        // Past the cap the rest of the (already bounded) response is still validated, so that hostile records after
+        // the first valid ones count towards a ban, but nothing more is stored
+        if stored.len() >= MAX_STORED_PER_SOURCE {
+            continue;
+        }
         let node_id = valid_peer.node_id.clone();
         context.peer_manager.add_or_update_peer(valid_peer).await?;
         stored.push(node_id);
-        if stored.len() >= MAX_STORED_PER_SOURCE {
-            debug!(
-                target: REBOOTSTRAP_LOG_TARGET,
-                "Stored the first {MAX_STORED_PER_SOURCE} valid peer(s) from '{source}'; ignoring the rest"
-            );
-            break;
-        }
+    }
+    if stored.len() >= MAX_STORED_PER_SOURCE {
+        debug!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Stored the first {MAX_STORED_PER_SOURCE} valid peer(s) from '{source}'; ignored the rest"
+        );
     }
     Ok(stored)
 }

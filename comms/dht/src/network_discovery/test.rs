@@ -688,6 +688,42 @@ mod rebootstrap {
         assert_eq!(context.peer_manager.count().await, 50);
     }
 
+    /// Records after the first `MAX_STORED_PER_SOURCE` valid peers are still checked: hostile ones count towards a
+    /// ban.
+    #[tokio::test]
+    async fn hostile_records_after_the_store_cap_still_count() {
+        let (context, _mock, _events) = context(None);
+        let source = NodeId::from_public_key(make_node_identity().public_key());
+        let mut peers = build_many_node_identities(50, PeerFeatures::COMMUNICATION_NODE)
+            .into_iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        peers.extend((0..6).map(|_| PeerInfo {
+            public_key: vec![1u8; 3],
+            claims: vec![],
+        }));
+        let err = store_peers(&context, &source, peers).await.unwrap_err();
+        assert!(
+            matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived),
+            "{err:?}"
+        );
+    }
+
+    /// A failed sync unmarks the peer, so that its next connection is synced from again.
+    #[tokio::test]
+    async fn a_failed_on_connect_sync_does_not_block_a_retry() {
+        let (context, _mock, _events) = context(None);
+        let mut on_connect = OnConnect::new(context);
+        let node_id = NodeId::from_public_key(make_node_identity().public_key());
+        // A connection that is already closed, so the sync fails at once
+        let (conn, requests) =
+            create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Inbound);
+        drop(requests);
+
+        assert!(on_connect.sync_from(conn).await.is_none());
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now()));
+    }
+
     /// Discovering bans a peer it dialled for an RPC failure, but not a peer it was already connected to.
     #[tokio::test]
     async fn discovering_does_not_ban_an_existing_connection_for_an_rpc_failure() {
