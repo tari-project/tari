@@ -385,7 +385,8 @@ where B: BlockchainBackend + 'static
         task::spawn(async move {
             // Released when the task finishes, however it finishes
             let _pending_guard = pending_guard;
-            let result = handle_incoming_block(inbound_nch, decode_permits, new_block).await;
+            let mut block_hash = None;
+            let result = handle_incoming_block(inbound_nch, decode_permits, new_block, &mut block_hash).await;
 
             match result {
                 Ok(()) => {},
@@ -395,6 +396,10 @@ where B: BlockchainBackend + 'static
                     // Special case, dont log this again as an error
                 },
                 Err(e) => {
+                    // Names the block in the logs below, if it was decoded far enough to have one
+                    let block = block_hash
+                        .map(|h| h.to_hex())
+                        .unwrap_or_else(|| "<undecoded>".to_string());
                     if let Some(ban_reason) = e.get_ban_reason() {
                         let duration = match ban_reason.ban_duration {
                             BanPeriod::Short => short_ban,
@@ -420,13 +425,13 @@ where B: BlockchainBackend + 'static
                     if expected {
                         debug!(
                             target: LOG_TARGET,
-                            "Dropped incoming block message from peer {}: {e}",
+                            "Dropped incoming block message {block} from peer {}: {e}",
                             source_peer.node_id
                         );
                     } else {
                         error!(
                             target: LOG_TARGET,
-                            "Failed to handle incoming block message from peer {}: {e}",
+                            "Failed to handle incoming block message {block} from peer {}: {e}",
                             source_peer.node_id
                         );
                     }
@@ -772,10 +777,13 @@ async fn decode_block_message(
     Ok(decoded)
 }
 
+/// `block_hash` is set to the block's hash as soon as the message has been decoded, so that a caller handling an error
+/// can name the block.
 async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     mut inbound_nch: InboundNodeCommsHandlers<B>,
     decode_permits: Arc<Semaphore>,
     msg: Arc<PeerMessage>,
+    block_hash: &mut Option<BlockHash>,
 ) -> Result<(), BaseNodeServiceError> {
     let domain_block_msg = decode_block_message(decode_permits, msg).await?;
     let DomainMessage::<_> {
@@ -785,10 +793,12 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     } = domain_block_msg;
 
     let new_block = new_block.map_err(BaseNodeServiceError::InvalidBlockMessage)?;
+    let hash = new_block.header.hash();
+    *block_hash = Some(hash);
     debug!(
         target: LOG_TARGET,
         "New candidate block with hash `{}` received from `{}`.",
-        new_block.header.hash().to_hex(),
+        hash.to_hex(),
         source_peer.node_id.short_str()
     );
 
@@ -867,22 +877,58 @@ mod test {
         let decode_permits = decode_permits();
 
         let msg = create_peer_message(TariMessageType::NewBlock, vec![0xff; 64]);
-        let err = handle_incoming_block(inbound_nch.clone(), decode_permits.clone(), msg)
+        let mut block_hash = None;
+        let err = handle_incoming_block(inbound_nch.clone(), decode_permits.clone(), msg, &mut block_hash)
             .await
             .unwrap_err();
         // Unchanged behaviour: an undecodable block message is an `InvalidBlockMessage`
         assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
+        // ... and there is no block to name
+        assert!(block_hash.is_none());
         assert_eq!(decode_permits.available_permits(), MAX_CONCURRENT_BLOCK_DECODES);
 
         let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::default());
         let msg = create_peer_message(TariMessageType::NewBlock, body);
-        let err = handle_incoming_block(inbound_nch, decode_permits.clone(), msg)
+        let err = handle_incoming_block(inbound_nch, decode_permits.clone(), msg, &mut None)
             .await
             .unwrap_err();
         assert!(matches!(err, BaseNodeServiceError::InvalidBlockMessage(_)));
         assert_eq!(decode_permits.available_permits(), MAX_CONCURRENT_BLOCK_DECODES);
         // Decoding never touches the mempool's reconciliation permits
         assert_eq!(mempool.available_reconciliation_permits(), reconciliation_permits);
+    }
+
+    /// A block that decodes but is then rejected is named by its hash, so the failure can be attributed to it
+    #[tokio::test]
+    async fn a_decoded_block_that_is_rejected_reports_its_hash() {
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let tip = db.fetch_last_chain_header().unwrap();
+        // Merge mining data that cannot be parsed, so the anti-spam gate rejects it before any network request
+        let mut header = BlockHeader::new(tip.header().version);
+        header.height = tip.height() + 1;
+        header.prev_hash = *tip.hash();
+        header.pow.pow_algo = PowAlgorithm::RandomXM;
+        header.pow.pow_data = vec![0u8; 64].try_into().unwrap();
+        let expected_hash = header.hash();
+        let new_block = NewBlock {
+            header,
+            coinbase_kernels: vec![],
+            coinbase_outputs: vec![],
+            kernel_excess_sigs: vec![],
+        };
+        let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::try_from(new_block).unwrap());
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+
+        let mut block_hash = None;
+        let err = tokio::time::timeout(
+            Duration::from_secs(30),
+            handle_incoming_block(inbound_nch, decode_permits(), msg, &mut block_hash),
+        )
+        .await
+        .expect("the block should be rejected without waiting on the network")
+        .unwrap_err();
+        assert!(err.get_ban_reason().is_some(), "{err:?}");
+        assert_eq!(block_hash, Some(expected_hash));
     }
 
     /// The decode permit only covers decoding: it is back in the pool while reconciliation waits on the network, and
@@ -922,7 +968,8 @@ mod test {
         let body = prost::Message::encode_to_vec(&shared_protos::core::NewBlock::try_from(new_block).unwrap());
         let msg = create_peer_message(TariMessageType::NewBlock, body);
 
-        let task = task::spawn(handle_incoming_block(inbound_nch, decode_permits.clone(), msg));
+        let task_permits = decode_permits.clone();
+        let task = task::spawn(async move { handle_incoming_block(inbound_nch, task_permits, msg, &mut None).await });
         // The full block request reaches the (never answering) outbound interface
         let request = tokio::time::timeout(Duration::from_secs(30), requests.next())
             .await

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use log::*;
 use tari_common_types::{epoch::VnEpoch, types::FixedHash};
@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_transaction_components::{
     consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
-    tari_proof_of_work::{PowAlgorithm, PowError},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
 
@@ -135,20 +135,17 @@ pub fn check_target_difficulty(
     consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
-    let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
-        PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
-        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
-        PowAlgorithm::Cuckaroo => {
-            let constants = consensus.consensus_constants(block_header.height);
-            cuckaroo_difficulty(
-                block_header,
-                constants.cuckaroo_cycle_length(),
-                constants.cuckaroo_edge_bits(),
-                constants.bipartite_cuckaroo_verification(),
-            )?
-        },
-    };
+    let achieved =
+        achieved_difficulty(block_header, randomx_factory, gen_hash, consensus, tari_vm_key).inspect_err(|e| {
+            // A failure that is not the peer's fault (e.g. building a RandomX VM) says nothing about the block
+            if e.get_ban_reason().is_some() {
+                warn!(
+                    target: LOG_TARGET,
+                    "{}",
+                    pow_rejection_message(&block_header.hash(), block_header, false, e)
+                );
+            }
+        })?;
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
@@ -169,6 +166,62 @@ pub fn check_target_difficulty(
             ))
         },
     }
+}
+
+fn achieved_difficulty(
+    block_header: &BlockHeader,
+    randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
+    consensus: &BaseNodeConsensusManager,
+    tari_vm_key: FixedHash,
+) -> Result<Difficulty, ValidationError> {
+    let achieved = match block_header.pow_algo() {
+        PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
+        PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
+        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
+        PowAlgorithm::Cuckaroo => {
+            let constants = consensus.consensus_constants(block_header.height);
+            cuckaroo_difficulty(
+                block_header,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+                constants.bipartite_cuckaroo_verification(),
+            )?
+        },
+    };
+    Ok(achieved)
+}
+
+/// The most characters of the error text [`pow_rejection_message`] includes.
+const MAX_POW_REJECTION_ERROR_CHARS: usize = 512;
+
+/// The log line for a header whose proof of work could not be verified, naming the block by hash, height and
+/// algorithm. Where the rejection leads to a ban, the ban reason is only the error itself, so this line is what lets
+/// the ban be matched to a block; not every caller bans. `hash` is the header's hash, passed in because some callers
+/// already have it. `height_is_claimed` is for a header not yet linked to our chain, whose height is only what the peer
+/// says it is. The line carries the fixed-size header fields and the error, never the pow data, and the error text is
+/// capped at [`MAX_POW_REJECTION_ERROR_CHARS`], so this line stays bounded whatever the peer sent. The cap applies to
+/// this line only, not to the ban reason or other logs of the same error.
+pub(crate) fn pow_rejection_message(
+    hash: &FixedHash,
+    header: &BlockHeader,
+    height_is_claimed: bool,
+    err: &dyn Display,
+) -> String {
+    let mut err = err.to_string();
+    if let Some((cut, _)) = err.char_indices().nth(MAX_POW_REJECTION_ERROR_CHARS) {
+        err.truncate(cut);
+        err.push_str("...");
+    }
+    let height = if height_is_claimed { "claimed height" } else { "height" };
+    format!(
+        "Proof of work for block {} at {} {} ({}) was rejected: {}",
+        hash.to_hex(),
+        height,
+        header.height,
+        header.pow_algo(),
+        err
+    )
 }
 
 /// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
@@ -541,6 +594,107 @@ mod test {
         fn it_returns_false_when_duplicate_and_unsorted() {
             let v = [4, 2, 3, 0, 4];
             assert!(!is_all_unique_and_sorted(&v));
+        }
+    }
+
+    mod pow_rejection_message {
+        use tari_common::configuration::Network;
+        use tari_transaction_components::tari_proof_of_work::PowData;
+
+        use super::*;
+        use crate::proof_of_work::monero_rx::MergeMineError;
+
+        /// Maximum-size RandomXM pow data that fails to deserialize at various depths
+        fn unparseable_monero_pow_data() -> Vec<Vec<u8>> {
+            let max_size = PowData::default().max_size();
+            // A well formed Monero header, RandomX key, transaction count, merkle root and empty coinbase merkle
+            // proof, so that decoding gets as far as the coinbase prefix before running into 0xff bytes
+            let mut deep = vec![0x0c, 0x0c, 0x00];
+            deep.extend([0u8; 32]);
+            deep.extend([0u8; 4]);
+            deep.push(32);
+            deep.extend([1u8; 32]);
+            deep.extend([1u8, 0]);
+            deep.extend([0u8; 32]);
+            deep.extend([0u8, 0]);
+            deep.resize(max_size, 0xff);
+            vec![vec![0x00; max_size], vec![0x01; max_size], vec![0xff; max_size], deep]
+        }
+
+        #[test]
+        fn it_names_the_block_and_algorithm_of_a_rejected_randomxm_header() {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+            let randomx_factory = RandomXFactory::default();
+            for pow_data in unparseable_monero_pow_data() {
+                let mut header = BlockHeader::new(0);
+                header.height = 10;
+                header.pow.pow_algo = PowAlgorithm::RandomXM;
+                header.pow.pow_data = PowData::try_from(pow_data).unwrap();
+
+                let err = check_target_difficulty(
+                    &header,
+                    AdjustedTarget::unadjusted(Difficulty::min()),
+                    &randomx_factory,
+                    &FixedHash::zero(),
+                    &rules,
+                    FixedHash::zero(),
+                )
+                .unwrap_err();
+                // The decode failure itself, whose text is built from the decoder's error and so is the part that
+                // could depend on what the peer sent
+                assert!(
+                    matches!(&err, ValidationError::MergeMineError(MergeMineError::DeserializeError(e)) if e.contains("(expected the")),
+                    "{err:?}"
+                );
+                let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
+                let message = pow_rejection_message(&header.hash(), &header, false, &err);
+
+                assert!(message.contains(&header.hash().to_hex()), "{message}");
+                assert!(message.contains("RandomXMonero"), "{message}");
+                // The ban record carries the same error, which is what ties the two together
+                assert!(message.contains(&ban_reason), "{message}");
+                // Neither grows with the pow data
+                assert!(message.len() < 512, "{} bytes: {message}", message.len());
+                assert!(ban_reason.len() < 256, "{} bytes: {ban_reason}", ban_reason.len());
+            }
+        }
+
+        #[test]
+        fn it_caps_the_error_text() {
+            struct LongError;
+            impl Display for LongError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    // Multi-byte characters, so that a byte based cut would land inside one
+                    write!(f, "{}", "é".repeat(10_000))
+                }
+            }
+            let header = BlockHeader::new(0);
+            let message = pow_rejection_message(&header.hash(), &header, false, &LongError);
+            let (_, err) = message.split_once("was rejected: ").unwrap();
+            assert_eq!(err, format!("{}...", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS)));
+
+            // An error at the cap is left alone
+            struct ShortError;
+            impl Display for ShortError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS))
+                }
+            }
+            let message = pow_rejection_message(&header.hash(), &header, false, &ShortError);
+            assert!(
+                message.ends_with(&"é".repeat(MAX_POW_REJECTION_ERROR_CHARS)),
+                "{message}"
+            );
+        }
+
+        #[test]
+        fn it_says_when_the_height_is_only_claimed() {
+            let mut header = BlockHeader::new(0);
+            header.height = 42;
+            let message = pow_rejection_message(&header.hash(), &header, false, &"err");
+            assert!(message.contains(" at height 42 "), "{message}");
+            let message = pow_rejection_message(&header.hash(), &header, true, &"err");
+            assert!(message.contains(" at claimed height 42 "), "{message}");
         }
     }
 

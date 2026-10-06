@@ -136,18 +136,8 @@ fn cuckaroo_result_inner(
         }
     }
 
+    // unpack_nonces returns at most `required_cycle_length` nonces and rejects any non-zero extras
     let nonces = unpack_nonces(packed_edge_data, edge_bits, required_cycle_length.get())?;
-    // There might be extra padding at  the end of the nonces.
-
-    // This should not happen because unpack_nonces should return the correct
-    // length, but here for completeness
-    if nonces.len() > required_cycle_length.get() {
-        for n in nonces.get(required_cycle_length.get()..).expect("Already checked") {
-            if *n != 0 {
-                return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
-            }
-        }
-    }
 
     let siphash_keys = [
         u64::from_le_bytes(
@@ -228,9 +218,6 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
         remaining = remaining.saturating_sub(8);
         while remaining <= 64u8.saturating_sub(edge_bits) {
             let nonce = mini_buffer & node_mask;
-            if nonce > node_mask {
-                return Err(CuckarooVerificationError::NonceTooLarge);
-            }
             nonces.push(nonce);
             mini_buffer >>= edge_bits;
             remaining = remaining.saturating_add(edge_bits);
@@ -519,6 +506,22 @@ mod test {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
+            CuckarooVerificationError::PowDataContainsNonZeroPadding
+        );
+    }
+
+    #[test]
+    fn test_unpack_nonces_truncates_to_expected_length() {
+        let edge_bits = 3;
+        // 6 nonces packed, only 4 expected: the two zero extras are dropped
+        let packed = pack_nonces(&[0, 1, 2, 3, 0, 0], edge_bits);
+        let actual = unpack_nonces(&packed, edge_bits, 4).unwrap();
+        assert_eq!(actual, vec![0, 1, 2, 3]);
+
+        // A non-zero extra nonce is rejected
+        let packed = pack_nonces(&[0, 1, 2, 3, 0, 5], edge_bits);
+        assert_eq!(
+            unpack_nonces(&packed, edge_bits, 4).unwrap_err(),
             CuckarooVerificationError::PowDataContainsNonZeroPadding
         );
     }
