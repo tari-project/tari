@@ -1915,7 +1915,8 @@ where B: BlockchainBackend
     /// reorg can fail on another block, after which the node keeps the strongest valid chain it holds. The blocks that
     /// failed are listed in the outcome's `rejected`, each with whether the sender of this block is to blame for it.
     ///
-    /// If an error does occur while writing the new block parts, all changes are reverted before returning.
+    /// If an error does occur while writing the new block parts, all changes are reverted before returning. Once the
+    /// main chain has changed, an error is never returned: the change is.
     pub fn add_block(&self, candidate_block: Arc<Block>) -> Result<AddBlockOutcome, ChainStorageError> {
         let timer = Instant::now();
 
@@ -1988,13 +1989,18 @@ where B: BlockchainBackend
             candidate_block,
         )?;
 
-        // If blocks were added and the node is in pruned mode, perform pruning
+        // If blocks were added and the node is in pruned mode, perform pruning. The chain change is already committed
+        // here, so a failure from now on is logged rather than returned: returning it would hide the change (and any
+        // rejected block) from the caller.
         if outcome.result.was_chain_modified() {
-            info!(
-                target: LOG_TARGET,
-                "Best chain is now at height: {}",
-                db.fetch_chain_metadata()?.best_block_height()
-            );
+            match db.fetch_chain_metadata() {
+                Ok(metadata) => info!(
+                    target: LOG_TARGET,
+                    "Best chain is now at height: {}",
+                    metadata.best_block_height()
+                ),
+                Err(e) => warn!(target: LOG_TARGET, "Failed to fetch chain metadata after adding a block: {e}"),
+            }
             // Skip inline pruning if background pruning is already handling it
             if self.is_background_pruning.load(atomic::Ordering::SeqCst) {
                 debug!(
@@ -2002,7 +2008,11 @@ where B: BlockchainBackend
                     "Background pruning is active, skipping inline prune_database_if_needed."
                 );
             } else {
-                prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
+                if let Err(e) =
+                    prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)
+                {
+                    warn!(target: LOG_TARGET, "Failed to prune the database after adding a block: {e}");
+                }
             }
         }
 
@@ -6731,10 +6741,7 @@ mod test {
         use tari_transaction_components::aggregated_body::AggregateBody;
 
         use super::*;
-        use crate::{
-            consensus::chain_strength_comparer::ChainStrengthComparerBuilder,
-            test_helpers::blockchain::create_store_with_consensus_and_validators,
-        };
+        use crate::test_helpers::blockchain::create_store_with_consensus_and_validators;
 
         /// A body validator that fails exactly the blocks in its list, with a consensus error, which is a long ban
         #[derive(Clone, Default)]
@@ -6759,8 +6766,9 @@ mod test {
             }
         }
 
-        /// Every block is worth the same (the mock header validator credits the minimum target), so the strongest
-        /// chain is the longest one, and two chains of the same length are equal.
+        /// Every block is credited with the proof of work it carries, which is 1 unless a test asks for more, and the
+        /// strongest chain is the one with the most of it, so mostly the longest one; two chains with the same work
+        /// are equal.
         struct Harness {
             db: BlockchainDatabase<TempDatabase>,
             failing: FailsBlocks,
@@ -6771,17 +6779,23 @@ mod test {
                 let network = Network::LocalNet;
                 let rules = BaseNodeConsensusManager::builder(network)
                     .add_consensus_constants(ConsensusConstantsBuilder::new(network).build())
-                    .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
+                    .on_ties(strongest_chain().by_sha3x_difficulty().build())
                     .build()
                     .unwrap();
                 let failing = FailsBlocks::default();
-                let validators = Validators::new(failing.clone(), MockValidator::new(true), MockValidator::new(true));
+                let validators =
+                    Validators::new(failing.clone(), PowCreditingHeaderValidator, MockValidator::new(true));
                 let db = create_store_with_consensus_and_validators(rules, validators);
                 Self { db, failing }
             }
 
             /// A block on our tip, which the block's header commits to its body against. It is not added.
             fn build(&self, name: &'static str) -> Arc<ChainBlock> {
+                self.build_with_difficulty(name, 1)
+            }
+
+            /// As `build`, mined to `difficulty`
+            fn build_with_difficulty(&self, name: &'static str, difficulty: u64) -> Arc<ChainBlock> {
                 let height = self.db.get_height().unwrap();
                 let tip = Arc::new(
                     self.db
@@ -6790,7 +6804,8 @@ mod test {
                         .try_into_chain_block()
                         .unwrap(),
                 );
-                let (_, blocks) = create_chained_blocks(&self.db, &[(leaked(format!("{name}->GB")), 1, 120)], tip);
+                let (_, blocks) =
+                    create_chained_blocks(&self.db, &[(leaked(format!("{name}->GB")), difficulty, 120)], tip);
                 blocks.get(name).unwrap().clone()
             }
 
@@ -7072,6 +7087,53 @@ mod test {
             let err = h.db.add_block(without_body(&c)).unwrap_err();
             assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
             assert!(!h.is_bad(&c));
+        }
+
+        /// V <- Y <- C on a fork, with V alone stronger than our tip. Y's body matches its header and is invalid, and C
+        /// is the block being added: its sender relayed an invalid chain and is to blame, but V is valid and stronger,
+        /// so the chain changes to V as well, and the outcome carries both.
+        #[tokio::test]
+        async fn a_blamed_rejection_is_reported_alongside_a_chain_change() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let v = h.build_with_difficulty("V", 5);
+            h.add(&v);
+            let y = h.build("Y");
+            h.add(&y);
+            let c = h.build("C");
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            // V and Y are held: with 6 blocks above A our chain is stronger than V <- Y, so they are never tried
+            h.add(&v).result.assert_orphaned();
+            h.add(&y).result.assert_orphaned();
+            // Our chain then falls back to B2 (as after a rewind), leaving V alone stronger than our tip but untried
+            h.db.rewind_to_height(3).unwrap();
+            let mut txn = DbTransaction::new();
+            for block in ours.iter().skip(2).rev() {
+                txn.delete_orphan(*block.hash());
+            }
+            h.db.write(txn).unwrap();
+            assert_eq!(h.tip_hash(), *ours[1].hash());
+            h.fail(&y);
+
+            let outcome = h.add(&c);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), true)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to V, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*v.hash()]);
+            assert_eq!(hashes(&removed), vec![*ours[1].hash(), *ours[0].hash()]);
+            assert_eq!(h.tip_hash(), *v.hash());
+            assert!(h.is_bad(&y));
+            assert!(!h.is_orphan(&y));
+            assert!(!h.is_orphan(&c));
         }
 
         fn hashes_of_rejected(outcome: &AddBlockOutcome) -> Vec<(HashOutput, bool)> {
