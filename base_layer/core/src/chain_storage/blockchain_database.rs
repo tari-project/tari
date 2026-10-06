@@ -7136,6 +7136,121 @@ mod test {
             assert!(!h.is_orphan(&c));
         }
 
+        /// Puts `ours` back on top of A (height 1), then outweighs everything with six more blocks on top so that
+        /// whatever is held next is never tried. Returns those six, to be dropped with `fall_back_to_height_3`.
+        fn outweigh_with_our_chain(h: &Harness, ours: &[&Arc<ChainBlock>]) -> Vec<Arc<ChainBlock>> {
+            h.forget_above(1);
+            for block in ours {
+                h.add(block).result.assert_added();
+            }
+            ["B3", "B4", "B5", "B6", "B7", "B8"]
+                .into_iter()
+                .map(|name| {
+                    let block = h.build(name);
+                    h.add(&block).result.assert_added();
+                    block
+                })
+                .collect()
+        }
+
+        /// Our chain falls back to B2 at height 3 (as after a rewind), and the blocks above it are forgotten, leaving
+        /// what is held untried
+        fn fall_back_to_height_3(h: &Harness, extra: &[Arc<ChainBlock>]) {
+            h.db.rewind_to_height(3).unwrap();
+            let mut txn = DbTransaction::new();
+            for block in extra.iter().rev() {
+                txn.delete_orphan(*block.hash());
+            }
+            h.db.write(txn).unwrap();
+        }
+
+        /// One call keeps the valid prefix of a failed reorg, then reorgs to another tip that forks below both that
+        /// prefix and the tip we started at. The net result has neither the kept-then-rewound prefix block nor
+        /// anything else twice: our blocks above the fork removed, the other tip's blocks added.
+        ///
+        /// Our chain A <- B <- B2. Y (on B2) <- X (invalid) <- X2 is linked by Y. Z1 <- Z2 on A is held, untried,
+        /// and outweighs Y alone but not Y <- X <- X2. (A tip is indexed with the work of the block that linked it,
+        /// so Z2 is indexed with Z1's and X2 with Y's; that is what makes X2's chain the one tried first.)
+        #[tokio::test]
+        async fn a_kept_prefix_rewound_by_a_lower_fork_is_in_neither_list() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            h.forget_above(1);
+            let z1 = h.build("Z1");
+            h.add(&z1);
+            let z2 = h.build_with_difficulty("Z2", 5);
+            let extra = outweigh_with_our_chain(&h, &[&b, &b2]);
+            for block in [&z2, &z1, &x2, &x] {
+                h.add(block).result.assert_orphaned();
+            }
+            fall_back_to_height_3(&h, &extra);
+            assert_eq!(h.tip_hash(), *b2.hash());
+            h.fail(&x);
+
+            let outcome = h.add(&y);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to Z2, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*z1.hash(), *z2.hash()]);
+            assert_eq!(hashes(&removed), vec![*b2.hash(), *b.hash()]);
+            assert_eq!(h.tip_hash(), *z2.hash());
+        }
+
+        /// One call keeps the valid prefix of a failed reorg, which removed some of our blocks, then reorgs to a tip
+        /// that extends our original chain. The removed blocks come back, so they are in neither list, and nor is
+        /// the kept-then-rewound prefix: the net result is just the extension.
+        ///
+        /// Our chain A <- B <- B2. Y (on A) <- X (invalid) <- X2 is linked by Y, and Y alone outweighs B <- B2.
+        /// K1 <- K2 on B2 is held, untried, and outweighs Y alone but not Y <- X <- X2.
+        #[tokio::test]
+        async fn removed_blocks_that_come_back_are_in_neither_list() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            let k1 = h.build("K1");
+            h.add(&k1);
+            let k2 = h.build_with_difficulty("K2", 3);
+            h.forget_above(1);
+            let y = h.build_with_difficulty("Y", 3);
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            let extra = outweigh_with_our_chain(&h, &[&b, &b2]);
+            for block in [&k2, &k1, &x2, &x] {
+                h.add(block).result.assert_orphaned();
+            }
+            fall_back_to_height_3(&h, &extra);
+            assert_eq!(h.tip_hash(), *b2.hash());
+            h.fail(&x);
+
+            let outcome = h.add(&y);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to K2, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*k1.hash(), *k2.hash()]);
+            assert!(removed.is_empty(), "{:?}", hashes(&removed));
+            assert_eq!(h.tip_hash(), *k2.hash());
+        }
+
         fn hashes_of_rejected(outcome: &AddBlockOutcome) -> Vec<(HashOutput, bool)> {
             outcome
                 .rejected
