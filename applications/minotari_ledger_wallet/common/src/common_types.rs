@@ -20,15 +20,29 @@ pub enum AppSW {
     ScriptSignatureFail = 0xB004,
     RawSchnorrSignatureFail = 0xB005,
     SchnorrSignatureFail = 0xB006,
-    ScriptOffsetNotUnique = 0xB007,
+    // ScriptOffsetNotUnique = 0xB007 Dont reuse, is retired
     KeyDeriveFail = 0xB008,
     KeyDeriveFromCanonical = 0xB009,
     KeyDeriveFromUniform = 0xB00A,
     RandomNonceFail = 0xB00B,
     BadBranchKey = 0xB00C,
     MetadataSignatureFail = 0xB00D,
-    WrongApduLength = 0x6e03, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
-    UserCancelled = 0x6e04,   // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
+    ScriptOffsetNoSenderOffsets = 0xB00E,
+    ScriptOffsetInvalidScriptBranch = 0xB00F,
+    ScriptOffsetNoDeviceScriptKeys = 0xB010,
+    NonceStoreFull = 0xB011,
+    NonceHandleInvalid = 0xB012,
+    // The two below are not this application's to choose: the device returns `ledger_device_sdk`'s own
+    // `StatusWords` values for them (see `AppSW` in `wallet/src/main.rs`, which defines these two from
+    // `StatusWords` rather than from here). A value written here that the SDK disagrees with is not a cosmetic
+    // mismatch - it is a status word the host can never recognise. `wallet/src/main.rs` carries a `const _:`
+    // assertion that holds the two definitions together, so this cannot drift again without failing the build.
+    WrongApduLength = 0x6e03, // ledger_device_sdk::io::StatusWords::BadLen
+    // 0x6985, not 0x6e04. This was 0x6e04 until the Speculos harness noticed that a rejected review reaches the
+    // host as an unrecognised status word and is reported as a malformed reply - `ledger_get_one_sided_metadata_
+    // signature`'s `retcode() == AppSW::UserCancelled` test could never be true, so `LedgerDeviceError::
+    // UserCancelled` was unreachable and a user who pressed Reject got "insufficient data" instead.
+    UserCancelled = 0x6985, // ledger_device_sdk::io::StatusWords::UserCancelled
     Ok = 0x9000,
 }
 
@@ -43,17 +57,26 @@ impl TryFrom<u16> for AppSW {
             0xB004 => Ok(AppSW::ScriptSignatureFail),
             0xB005 => Ok(AppSW::RawSchnorrSignatureFail),
             0xB006 => Ok(AppSW::SchnorrSignatureFail),
-            0xB007 => Ok(AppSW::ScriptOffsetNotUnique),
             0xB008 => Ok(AppSW::KeyDeriveFail),
             0xB009 => Ok(AppSW::KeyDeriveFromCanonical),
             0xB00A => Ok(AppSW::KeyDeriveFromUniform),
             0xB00B => Ok(AppSW::RandomNonceFail),
             0xB00C => Ok(AppSW::BadBranchKey),
             0xB00D => Ok(AppSW::MetadataSignatureFail),
+            0xB00E => Ok(AppSW::ScriptOffsetNoSenderOffsets),
+            0xB00F => Ok(AppSW::ScriptOffsetInvalidScriptBranch),
+            0xB010 => Ok(AppSW::ScriptOffsetNoDeviceScriptKeys),
+            0xB011 => Ok(AppSW::NonceStoreFull),
+            0xB012 => Ok(AppSW::NonceHandleInvalid),
             0x6e03 => Ok(AppSW::WrongApduLength),
-            0x6e04 => Ok(AppSW::UserCancelled),
+            0x6985 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
-            _ => Err(String::from("Invalid value for AppSW (") + utils::u16_to_string(value).as_str() + ")"),
+            _ => {
+                let mut msg = String::from("Invalid value for AppSW (");
+                msg.push_str(utils::u16_to_string(value).as_str());
+                msg.push(')');
+                Err(msg)
+            },
         }
     }
 }
@@ -74,6 +97,10 @@ pub enum Instruction {
     GetScriptSchnorrSignature = 0x10,
     GetOneSidedMetadataSignature = 0x11,
     GetScriptSignatureManaged = 0x12,
+    GenerateEphemeralNonce = 0x13,
+    // TODO: Delete together with `handler_get_raw_schnorr_signature_legacy_nonce`, once the pre-mine spend flow no
+    //       longer needs a nonce that outlives a single device session.
+    GetRawSchnorrSignatureLegacyNonce = 0x14,
 }
 
 impl Instruction {
@@ -95,6 +122,8 @@ impl Instruction {
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
             0x11 => Some(Instruction::GetOneSidedMetadataSignature),
             0x12 => Some(Instruction::GetScriptSignatureManaged),
+            0x13 => Some(Instruction::GenerateEphemeralNonce),
+            0x14 => Some(Instruction::GetRawSchnorrSignatureLegacyNonce),
             _ => None,
         }
     }
@@ -106,7 +135,7 @@ impl Instruction {
 #[cfg_attr(feature = "borsh", derive(borsh::BorshSerialize, borsh::BorshDeserialize))]
 #[cfg_attr(feature = "borsh", borsh(use_discriminant = true))]
 pub enum LedgerKeyBranch {
-    MetadataEphemeralNonce = 0x01,
+    // MetadataEphemeralNonce = 0x01 Dont reuse, is retired
     OneSidedSenderOffset = 0x06,
     Random = 0x08,
     PreMine = 0x09,
@@ -120,7 +149,6 @@ impl LedgerKeyBranch {
 
     pub fn from_byte(value: u8) -> Option<Self> {
         match value {
-            0x01 => Some(LedgerKeyBranch::MetadataEphemeralNonce),
             0x06 => Some(LedgerKeyBranch::OneSidedSenderOffset),
             0x08 => Some(LedgerKeyBranch::Random),
             0x09 => Some(LedgerKeyBranch::PreMine),
@@ -135,7 +163,6 @@ impl LedgerKeyBranch {
             LedgerKeyBranch::Random => "Random",
             LedgerKeyBranch::PreMine => "PreMine",
             LedgerKeyBranch::Spend => "Spend",
-            LedgerKeyBranch::MetadataEphemeralNonce => "MetadataEphemeralNonce",
         }
     }
 }
@@ -149,7 +176,6 @@ impl FromStr for LedgerKeyBranch {
             "Random" => Ok(LedgerKeyBranch::Random),
             "PreMine" => Ok(LedgerKeyBranch::PreMine),
             "Spend" => Ok(LedgerKeyBranch::Spend),
-            "MetadataEphemeralNonce" => Ok(LedgerKeyBranch::MetadataEphemeralNonce),
             _ => Err("Invalid ledger key branch".to_string()),
         }
     }
@@ -174,15 +200,19 @@ mod test {
             (0xB004, AppSW::ScriptSignatureFail),
             (0xB005, AppSW::RawSchnorrSignatureFail),
             (0xB006, AppSW::SchnorrSignatureFail),
-            (0xB007, AppSW::ScriptOffsetNotUnique),
             (0xB008, AppSW::KeyDeriveFail),
             (0xB009, AppSW::KeyDeriveFromCanonical),
             (0xB00A, AppSW::KeyDeriveFromUniform),
             (0xB00B, AppSW::RandomNonceFail),
             (0xB00C, AppSW::BadBranchKey),
             (0xB00D, AppSW::MetadataSignatureFail),
+            (0xB00E, AppSW::ScriptOffsetNoSenderOffsets),
+            (0xB00F, AppSW::ScriptOffsetInvalidScriptBranch),
+            (0xB010, AppSW::ScriptOffsetNoDeviceScriptKeys),
+            (0xB011, AppSW::NonceStoreFull),
+            (0xB012, AppSW::NonceHandleInvalid),
             (0x6e03, AppSW::WrongApduLength),
-            (0x6e04, AppSW::UserCancelled),
+            (0x6985, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
         ];
 
@@ -206,9 +236,6 @@ mod test {
                 AppSW::SchnorrSignatureFail => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
-                AppSW::ScriptOffsetNotUnique => {
-                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
-                },
                 AppSW::KeyDeriveFail => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
@@ -225,6 +252,21 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::MetadataSignatureFail => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetNoSenderOffsets => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetInvalidScriptBranch => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::ScriptOffsetNoDeviceScriptKeys => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::NonceStoreFull => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::NonceHandleInvalid => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::WrongApduLength => {
@@ -255,6 +297,8 @@ mod test {
             (0x10, Instruction::GetScriptSchnorrSignature),
             (0x11, Instruction::GetOneSidedMetadataSignature),
             (0x12, Instruction::GetScriptSignatureManaged),
+            (0x13, Instruction::GenerateEphemeralNonce),
+            (0x14, Instruction::GetRawSchnorrSignatureLegacyNonce),
         ];
 
         for (expected_byte, instruction) in &mappings {
@@ -304,6 +348,14 @@ mod test {
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },
                 Instruction::GetScriptSignatureManaged => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
+                Instruction::GenerateEphemeralNonce => {
+                    assert_eq!(instruction.as_byte(), *expected_byte);
+                    assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
+                },
+                Instruction::GetRawSchnorrSignatureLegacyNonce => {
                     assert_eq!(instruction.as_byte(), *expected_byte);
                     assert_eq!(Instruction::from_byte(*expected_byte), Some(*instruction));
                 },

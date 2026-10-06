@@ -14,7 +14,7 @@ use tari_transaction_components::{
         models,
         models::{
             BlockUtxoInfo,
-            GenerateKernelMerkleProofResponse,
+            GenerateBurnOutputProofResponse,
             GetUtxosByBlockRequest,
             GetUtxosByBlockResponse,
             MinimalUtxoSyncInfo,
@@ -66,6 +66,10 @@ pub enum Error {
     HeaderHeightMismatch { start_height: u64, end_height: u64 },
     #[error("Output not found")]
     OutputNotFound,
+    #[error("Burn not found")]
+    BurnNotFound,
+    #[error("{0}")]
+    BlockBodyPruned(String),
     #[error("A general error occurred: {0}")]
     General(anyhow::Error),
 }
@@ -140,6 +144,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored,
                 mined_timestamp: None,
@@ -197,11 +202,14 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
         // we can cache all wallet's queries
-        let increase = ((start_header.height + WALLET_MAX_BLOCKS_PER_REQUEST) / WALLET_MAX_BLOCKS_PER_REQUEST) *
-            WALLET_MAX_BLOCKS_PER_REQUEST;
+        let increase = (start_header.height.saturating_add(WALLET_MAX_BLOCKS_PER_REQUEST) /
+            WALLET_MAX_BLOCKS_PER_REQUEST)
+            .saturating_mul(WALLET_MAX_BLOCKS_PER_REQUEST);
         let end_height = cmp::min(tip_header.header().height, increase);
         // pagination
-        let start_header_height = start_header.height + (request.page * request.limit);
+        let start_header_height = start_header
+            .height
+            .saturating_add(request.page.saturating_mul(request.limit));
         if start_header_height > tip_header.header().height {
             return Err(Error::HeaderHeightMismatch {
                 start_height: start_header.height,
@@ -219,7 +227,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let mut utxos = vec![];
         let next_page_start_height = start_header.height.saturating_add(request.limit);
         let mut current_header = start_header;
-        let mut fetched_chunks = 0;
+        let mut fetched_chunks = 0u64;
         let spending_end_header_hash = self
             .db
             .fetch_header(
@@ -308,7 +316,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
-                fetched_chunks += 1;
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
             // We might still have inputs left to send if they are more than the outputs
             for input_chunk in inputs.chunks(self.max_utxo_chunk_size) {
@@ -320,7 +328,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
-                fetched_chunks += 1;
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
 
             if current_header.height >= tip_header.header().height {
@@ -354,18 +362,17 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 has_next_page = false;
                 break;
             }
-            if current_header.height + 1 > end_height {
+            let next_height = current_header.height.saturating_add(1);
+            if next_height > end_height {
                 next_header_to_request = current_header.hash().to_vec();
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
                 break; // Stop if we reach the end height
             }
-            current_header =
-                self.db
-                    .fetch_header(current_header.height + 1)
-                    .await?
-                    .ok_or_else(|| Error::HeaderNotFound {
-                        height: current_header.height + 1,
-                    })?;
+            current_header = self
+                .db
+                .fetch_header(next_height)
+                .await?
+                .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
 
             if current_header.height == next_page_start_height {
                 // we are on the limit, stop here
@@ -420,7 +427,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let mut right_height = tip_header.height();
 
         while left_height <= right_height {
-            let mut mid_height = (left_height + right_height) / 2;
+            let mut mid_height = left_height.saturating_add(right_height) / 2;
 
             if mid_height == 0 {
                 return Ok(0u64);
@@ -437,16 +444,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
                 .ok_or_else(|| Error::HeaderNotFound { height: mid_height })?;
             let before_mid_header = self
                 .db
-                .fetch_header(mid_height - 1)
+                .fetch_header(mid_height.saturating_sub(1))
                 .await?
-                .ok_or_else(|| Error::HeaderNotFound { height: mid_height - 1 })?;
+                .ok_or_else(|| Error::HeaderNotFound {
+                    height: mid_height.saturating_sub(1),
+                })?;
             trace!(
                 target: LOG_TARGET,
                 "requested_epoch_time: {}, left: {}, mid: {}/{} ({}/{}), right: {}",
                 epoch_time,
                 left_height,
                 mid_height,
-                mid_height-1,
+                mid_height.saturating_sub(1),
                 mid_header.timestamp.as_u64(),
                 before_mid_header.timestamp.as_u64(),
                 right_height
@@ -519,7 +528,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash: types::HashOutput = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
             if let Some(output) = output {
                 utxos.push(models::MinedUtxoInfo {
                     utxo_hash: hash.to_vec(),
@@ -574,11 +585,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
 
             if let Some(output) = output {
                 // is it still unspent?
-                let input = self.db().fetch_input(hash).await?;
+                let mut input_entries = self.db().fetch_inputs(hash).await?;
+                input_entries.sort_by_key(|i| i.spent_height);
+                let input = input_entries.into_iter().next_back();
                 if let Some(i) = input {
                     utxos.push(models::DeletedUtxoInfo {
                         utxo_hash: hash.to_vec(),
@@ -629,10 +644,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let output = self.db().fetch_output(hash).await?;
+            let mut output_entries = self.db().fetch_outputs(hash).await?;
+            output_entries.sort_by_key(|o| o.mined_height);
+            let output = output_entries.into_iter().next_back();
 
             let utxo_info = if let Some(output) = output {
-                let input = self.db().fetch_input(hash).await?;
+                let mut input_entries = self.db().fetch_inputs(hash).await?;
+                input_entries.sort_by_key(|i| i.spent_height);
+                let input = input_entries.into_iter().next_back();
                 models::DeletedUtxoInfoV1 {
                     utxo_hash: hash.to_vec(),
                     found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
@@ -657,17 +676,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         })
     }
 
-    async fn generate_kernel_merkle_proof(
+    async fn generate_burn_output_proof(
         &self,
-        excess_sig: types::CompressedSignature,
-    ) -> Result<GenerateKernelMerkleProofResponse, Self::Error> {
-        let proof = self.db().generate_kernel_merkle_proof(excess_sig).await?;
-        Ok(GenerateKernelMerkleProofResponse {
-            encoded_merkle_proof: bincode::serialize(&proof.merkle_proof).map_err(Error::general)?,
-            block_hash: proof.block_hash,
-            leaf_index: proof.leaf_index.value() as u64,
-            block_height: Some(proof.block_height),
-        })
+        commitment: types::CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, Self::Error> {
+        let proof = self
+            .db()
+            .generate_burn_output_proof(commitment)
+            .await
+            .map_err(|err| match err {
+                ChainStorageError::ValueNotFound { .. } => Error::BurnNotFound,
+                ChainStorageError::BlockBodyPruned { .. } => Error::BlockBodyPruned(err.to_string()),
+                err => err.into(),
+            })?;
+        Ok(GenerateBurnOutputProofResponse { proof })
     }
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error> {
@@ -727,6 +749,67 @@ mod tests {
         let state_machine = make_state_machine_handle();
         let mempool = make_mempool_handle();
         Service::new(adb, state_machine, mempool)
+    }
+
+    #[tokio::test]
+    async fn get_utxos_mined_info_rejects_oversized_query() {
+        use crate::base_node::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+        let service = make_service().await;
+
+        // One over the limit is rejected before any db work is done
+        let err = service
+            .get_utxos_mined_info(models::GetUtxosMinedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE + 1],
+                version: 1,
+            })
+            .await
+            .unwrap_err();
+        match err {
+            Error::SerdeValidation(_) => {},
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        // Exactly at the limit is accepted
+        service
+            .get_utxos_mined_info(models::GetUtxosMinedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE],
+                version: 1,
+            })
+            .await
+            .expect("query at the limit should be accepted");
+    }
+
+    #[tokio::test]
+    async fn get_utxos_deleted_info_rejects_oversized_query() {
+        use crate::base_node::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+        let service = make_service().await;
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+
+        let oversized = || models::GetUtxosDeletedInfoRequest {
+            hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE + 1],
+            must_include_header: genesis.hash().to_vec(),
+        };
+
+        for err in [
+            service.get_utxos_deleted_info(oversized()).await.unwrap_err(),
+            service.get_utxos_deleted_info_v1(oversized()).await.unwrap_err(),
+        ] {
+            match err {
+                Error::SerdeValidation(_) => {},
+                other => panic!("unexpected error: {other:?}"),
+            }
+        }
+
+        // Exactly at the limit is accepted
+        service
+            .get_utxos_deleted_info(models::GetUtxosDeletedInfoRequest {
+                hashes: vec![vec![0u8; 32]; MAX_ALLOWED_QUERY_SIZE],
+                must_include_header: genesis.hash().to_vec(),
+            })
+            .await
+            .expect("query at the limit should be accepted");
     }
 
     #[tokio::test]

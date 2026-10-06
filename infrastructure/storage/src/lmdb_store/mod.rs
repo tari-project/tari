@@ -26,6 +26,7 @@ mod store;
 pub use error::LMDBError;
 pub use lmdb_zero::{
     db,
+    open,
     traits::{AsLmdbBytes, FromLmdbBytes},
 };
 pub use store::{

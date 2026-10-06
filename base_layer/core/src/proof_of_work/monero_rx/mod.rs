@@ -32,16 +32,18 @@ pub use helpers::{
     extract_aux_merkle_root_from_block,
     insert_aux_chain_mr_and_info_into_block,
     monero_randomx_difficulty,
+    monero_randomx_difficulty_at_rules_height,
     serialize_monero_block_to_hex,
     tari_randomx_difficulty,
     verify_header,
+    verify_header_at_rules_height,
 };
 
 mod fixed_array;
 pub use fixed_array::FixedByteArray;
 
 mod pow_data;
-pub use pow_data::MoneroPowData;
+pub use pow_data::{CoinbasePrefix, CoinbasePrefixMode, CoinbaseTxPrefix, MoneroPowData};
 
 mod merkle_tree;
 mod merkle_tree_parameters;

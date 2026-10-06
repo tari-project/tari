@@ -22,3 +22,4 @@
 
 mod header_full_validator;
 pub use header_full_validator::HeaderFullValidator;
+pub(crate) use header_full_validator::check_randomxt_pow_data;

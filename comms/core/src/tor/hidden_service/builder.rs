@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use bitflags::bitflags;
 use log::*;
-use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
+use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 
 use super::controller::HiddenServiceControllerError;
@@ -47,6 +47,8 @@ pub enum HiddenServiceBuilderError {
     ProxiedPortMappingNotProvided,
     #[error("The control server address was not provided. Use `with_control_server_address` to set it.")]
     TorControlServerAddressNotProvided,
+    #[error("Shutdown signal not set. Call `with_shutdown_signal(shutdown_signal)` on [HiddenServiceBuilder]")]
+    ShutdownSignalNotSet,
     #[error("HiddenServiceControllerError: {0}")]
     HiddenServiceControllerError(#[from] HiddenServiceControllerError),
 }
@@ -72,7 +74,7 @@ pub struct HiddenServiceBuilder {
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
     hs_flags: HsFlags,
-    shutdown_signal: OptionalShutdownSignal,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl HiddenServiceBuilder {
@@ -132,10 +134,10 @@ impl HiddenServiceBuilder {
         self
     }
 
-    /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
-    /// listener address as given by the tor control port.
+    /// The signal that stops the hidden service controller (and its reconnect loop). Required: `build` returns an
+    /// error if this is not provided.
     pub fn with_shutdown_signal(mut self, shutdown_signal: ShutdownSignal) -> Self {
-        self.shutdown_signal.set(shutdown_signal);
+        self.shutdown_signal = Some(shutdown_signal);
         self
     }
 
@@ -163,6 +165,9 @@ impl HiddenServiceBuilder {
         let control_server_addr = self
             .control_server_addr
             .ok_or(HiddenServiceBuilderError::TorControlServerAddressNotProvided)?;
+        let shutdown_signal = self
+            .shutdown_signal
+            .ok_or(HiddenServiceBuilderError::ShutdownSignalNotSet)?;
 
         debug!(
             target: LOG_TARGET,
@@ -178,7 +183,7 @@ impl HiddenServiceBuilder {
             self.identity,
             self.hs_flags,
             self.proxy_opts,
-            self.shutdown_signal,
+            shutdown_signal,
         );
 
         Ok(controller)

@@ -146,6 +146,9 @@ impl BlockHeader {
     }
 
     pub fn hash(&self) -> FixedHash {
+        // NOTE: the "block_header" label (BlocksHashDomain) is shared by `hash()` and `mining_hash()`, which hash two
+        // different preimage shapes. They are separated only by the length/layout of their preimages today; give each
+        // a distinct label at the next hard fork.
         DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.mining_hash())
             .chain(&self.pow)
@@ -161,7 +164,7 @@ impl BlockHeader {
         let prev_hash = prev.hash();
         BlockHeader {
             version: prev.version,
-            height: prev.height + 1,
+            height: prev.height.saturating_add(1),
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
@@ -222,7 +225,7 @@ impl BlockHeader {
                 Some(t) => t,
                 None => 0.into(),
             };
-            let n = headers.len() - 1;
+            let n = headers.len().saturating_sub(1);
             let avg = dt.as_u64() as f64 / n as f64;
 
             (max, min, avg)
@@ -232,6 +235,9 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
+        // NOTE: the "block_header" label (BlocksHashDomain) is shared by `hash()` and `mining_hash()`, which hash two
+        // different preimage shapes. They are separated only by the length/layout of their preimages today; give each
+        // a distinct label at the next hard fork.
         DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)

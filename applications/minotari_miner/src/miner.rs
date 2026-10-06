@@ -264,7 +264,7 @@ pub fn mining_task(
         } else {
             REPORTING_FREQUENCY_SHA3
         };
-        if hasher.header.nonce % reporting_frequency == 0 {
+        if hasher.header.nonce.checked_rem(reporting_frequency).unwrap_or(1) == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
                 difficulty,

@@ -270,15 +270,20 @@ async fn build_node_context(
     // Check for consensus constants changes before starting the node
     let consensus_tracker = ConsensusConstantsTracker::new(&app_config.base_node.data_dir);
     let current_constants = rules.consensus_constants_vec();
-    let current_height = blockchain_db
-        .get_chain_metadata()
-        .map(|o| o.best_block_height())
-        .unwrap_or_default();
+    // let current_height = blockchain_db
+    //     .get_chain_metadata()
+    //     .map(|o| o.best_block_height())
+    //     .unwrap_or_default();
 
-    if let Err(error_msg) = consensus_tracker.check_for_changes(current_constants, current_height) {
-        error!(target: LOG_TARGET, "{}", error_msg);
+    // bypassing for now as we will hit this, we are changing the epoch length of the ootle, but this wont impact any
+    // current mainnet node if let Err(error_msg) = consensus_tracker.check_for_changes(current_constants,
+    // current_height) {     error!(target: LOG_TARGET, "{}", error_msg);
+    //     eprintln!("\n{}\n", error_msg);
+    // }
+    // remove this later
+    if let Err(error_msg) = consensus_tracker.store_current(current_constants) {
         eprintln!("\n{}\n", error_msg);
-    }
+    };
 
     let mempool_validator = TransactionFullValidator::new(
         factories.clone(),

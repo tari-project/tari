@@ -321,7 +321,7 @@ impl OutputFields {
         }
         let mut written = writer.write_varint(len)?;
         for byte in self.iter().map(|f| f.as_byte()) {
-            written += writer.write_u8_fixed(byte)?;
+            written = written.saturating_add(writer.write_u8_fixed(byte)?);
         }
         Ok(written)
     }

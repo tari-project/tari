@@ -175,6 +175,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .get_random_key(encryption_key, ledger_key)
     }
 
+    fn reserve_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        self.transaction_key_manager_inner.reserve_ephemeral_nonce()
+    }
+
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         self.transaction_key_manager_inner.get_public_key_at_key_id(key_id)
     }
@@ -202,7 +206,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError> {
+    ) -> Result<(), KeyManagerError> {
         self.transaction_key_manager_inner
             .verify_mask(commitment, commitment_mask_key_id, value)
     }
@@ -376,10 +380,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
     fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
         self.transaction_key_manager_inner
-            .get_script_offset(script_key_ids, sender_offset_key_ids)
+            .get_script_offset(script_key_ids, sender_offset_count)
     }
 
     fn get_metadata_signature(
@@ -479,8 +483,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // signers, this can be left as none
     fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
+        ephemeral_private_nonce: &TariKeyAndId,
+        sender_offset: &TariKeyAndId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: TransactionOutputVersion,
@@ -488,8 +492,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.transaction_key_manager_inner
             .get_sender_partial_metadata_signature(
-                ephemeral_private_nonce_id,
-                sender_offset_key_id,
+                ephemeral_private_nonce,
+                sender_offset,
                 commitment,
                 ephemeral_commitment,
                 txo_version,

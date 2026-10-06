@@ -221,16 +221,16 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
     let group_bit_count = 11;
     let mut padded_size = bits.reveal().len() / group_bit_count;
     if !bits.reveal().len().is_multiple_of(group_bit_count) {
-        padded_size += 1;
+        padded_size = padded_size.saturating_add(1);
     }
-    padded_size *= group_bit_count;
+    padded_size = padded_size.saturating_mul(group_bit_count);
     bits.reveal_mut().resize(padded_size, false);
 
     // Group each set of 11 bits to form one mnemonic word
     let mut mnemonic_sequence: Vec<Hidden<String>> = Vec::new();
     for i in 0..bits.reveal().len() / group_bit_count {
-        let start_index = i * group_bit_count;
-        let stop_index = start_index + group_bit_count;
+        let start_index = i.saturating_mul(group_bit_count);
+        let stop_index = start_index.saturating_add(group_bit_count);
         let sub_v = bits.reveal().get(start_index..stop_index).expect("Slice should exist");
         let word_index = checked_bits_to_uint(sub_v).ok_or(MnemonicError::BitsToIntConversion)?;
         let mnemonic_word = find_mnemonic_word_from_index(word_index, language)?;
@@ -279,13 +279,13 @@ pub fn to_bytes_with_language(
             *language,
         )? as u64;
         // Add 11 bits to the front
-        rest += index << rest_bits;
-        rest_bits += 11;
+        rest = rest.saturating_add(index << rest_bits);
+        rest_bits = rest_bits.saturating_add(11);
         while rest_bits >= 8 {
             // Get last 8 bits and shift it
             bytes.reveal_mut().push((rest & MASK) as u8);
             rest >>= 8;
-            rest_bits -= 8;
+            rest_bits = rest_bits.saturating_sub(8);
         }
     }
     // If we have any leftover, we write it.

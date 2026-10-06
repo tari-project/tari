@@ -1,5 +1,6 @@
 [package]
 name = "tari_integration_tests"
+publish = false
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -14,7 +15,7 @@ minotari_node = { path = "../applications/minotari_node", features = [
     "metrics",
 ] }
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_crypto = { version = "0.23" }
+tari_crypto = { version = "0.24" }
 tari_common = { path = "../common" }
 tari_common_sqlite = { path = "../common_sqlite" }
 tari_common_types = { path = "../base_layer/common_types" }
@@ -47,6 +48,7 @@ cucumber = { version = "0.23", features = [
     "libtest",
     "output-junit",
 ] }
+fs2 = "0.4.0"
 futures = { version = "^0.3.1" }
 indexmap = "1.9.1"
 libc = "0.2.65"

@@ -27,20 +27,27 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use futures::{Future, FutureExt, future, future::Either};
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use anyhow::anyhow;
+use futures::{Future, future, future::Either};
+use tari_shutdown::{
+    ShutdownSignal,
+    oneshot_trigger::{OneshotSignal, OneshotTrigger},
+};
 use tokio::task;
 
-use crate::context::LazyService;
+use crate::{context::LazyService, initializer::ServiceInitializationError};
 
-/// Create a Notifier, ServiceInitializerContext pair.
+/// Create a ready notifier, ServiceInitializerContext pair.
 ///
-/// The `Notifier::notify` method will notify all cloned `ServiceHandlesFuture`s
-/// and which will resolve with the collected `ServiceHandles`.
-pub(crate) fn create_context_notifier_pair(shutdown_signal: ShutdownSignal) -> (Shutdown, ServiceInitializerContext) {
-    let trigger = Shutdown::new();
-    let trigger_signal = trigger.to_signal();
-    (trigger, ServiceInitializerContext::new(shutdown_signal, trigger_signal))
+/// Broadcasting on the notifier resolves every cloned context's ready signal with `Some(())`, after which
+/// `wait_ready` yields the collected `ServiceHandles`. Dropping the notifier without broadcasting (the stack failed to
+/// build) resolves them with `None`, and `wait_ready` returns an error.
+pub(crate) fn create_context_notifier_pair(
+    shutdown_signal: ShutdownSignal,
+) -> (OneshotTrigger<()>, ServiceInitializerContext) {
+    let notifier = OneshotTrigger::new();
+    let ready_signal = notifier.to_signal();
+    (notifier, ServiceInitializerContext::new(shutdown_signal, ready_signal))
 }
 
 /// Contains context for service initialization.
@@ -50,7 +57,7 @@ pub(crate) fn create_context_notifier_pair(shutdown_signal: ShutdownSignal) -> (
 #[derive(Clone)]
 pub struct ServiceInitializerContext {
     inner: ServiceHandles,
-    ready_signal: ShutdownSignal,
+    ready_signal: OneshotSignal<()>,
 }
 
 impl ServiceInitializerContext {
@@ -58,9 +65,9 @@ impl ServiceInitializerContext {
     ///
     /// ## Parameters
     /// `shutdown_signal` - signal that is provided to services. If this signal is triggered, services should terminate.
-    /// `ready_signal` - indicates that all services are ready. This should be triggered by the `StackBuilder` once all
-    ///                  initializers have run.
-    pub(crate) fn new(shutdown_signal: ShutdownSignal, ready_signal: ShutdownSignal) -> Self {
+    /// `ready_signal` - resolves with `Some(())` once the `StackBuilder` has run every initializer successfully, or
+    ///                  with `None` if the stack failed to build.
+    pub(crate) fn new(shutdown_signal: ShutdownSignal, ready_signal: OneshotSignal<()>) -> Self {
         Self {
             inner: ServiceHandles::new(shutdown_signal),
             ready_signal,
@@ -80,17 +87,25 @@ impl ServiceInitializerContext {
     }
 
     /// Spawn a task once handles are ready. The resolved handles are passed into this closure.
-    pub fn spawn_when_ready<F, Fut>(self, f: F) -> task::JoinHandle<Fut::Output>
+    ///
+    /// If the service stack fails to build, the closure is never called and the task resolves to `None`.
+    pub fn spawn_when_ready<F, Fut>(self, f: F) -> task::JoinHandle<Option<Fut::Output>>
     where
         F: FnOnce(ServiceHandles) -> Fut + Send + 'static,
         Fut: Future + Send + 'static,
         Fut::Output: Send,
     {
-        task::spawn(self.wait_ready().then(f))
+        task::spawn(async move {
+            let handles = self.wait_ready().await.ok()?;
+            Some(f(handles).await)
+        })
     }
 
     /// Spawn a task once handles are ready. The resolved handles are passed into this closure.
     /// The future returned from the closure is polled on a new task until the shutdown signal is triggered.
+    ///
+    /// Resolves to `None` if the shutdown signal fired first, or if the service stack failed to build (in which case
+    /// the closure is never called).
     pub fn spawn_until_shutdown<F, Fut>(self, f: F) -> task::JoinHandle<Option<Fut::Output>>
     where
         F: FnOnce(ServiceHandles) -> Fut + Send + 'static,
@@ -99,8 +114,8 @@ impl ServiceInitializerContext {
     {
         task::spawn(async move {
             let shutdown_signal = self.get_shutdown_signal();
-            self.ready_signal.await;
-            let fut = f(self.inner);
+            let handles = self.wait_ready().await.ok()?;
+            let fut = f(handles);
             futures::pin_mut!(fut);
             let either = future::select(shutdown_signal, fut).await;
             match either {
@@ -110,10 +125,16 @@ impl ServiceInitializerContext {
         })
     }
 
-    /// Wait until the service handle are ready and return them when they are.
-    pub async fn wait_ready(self) -> ServiceHandles {
-        self.ready_signal.await;
-        self.inner
+    /// Wait until the service handles are ready and return them.
+    ///
+    /// Returns an error if the service stack failed to build, i.e. an initializer returned an error.
+    pub async fn wait_ready(self) -> Result<ServiceHandles, ServiceInitializationError> {
+        match self.ready_signal.await {
+            Some(()) => Ok(self.inner),
+            None => Err(anyhow!(
+                "service stack failed to build; service handles will never be ready"
+            )),
+        }
     }
 
     /// Returns the shutdown signal for this stack
@@ -209,6 +230,8 @@ impl ServiceHandles {
 
 #[cfg(test)]
 mod test {
+    use tari_shutdown::Shutdown;
+
     use super::*;
 
     #[test]
@@ -227,7 +250,7 @@ mod test {
         #[derive(Clone)]
         struct TestHandle;
         let trigger = Shutdown::new();
-        let context = ServiceInitializerContext::new(trigger.to_signal(), trigger.to_signal());
+        let context = ServiceInitializerContext::new(trigger.to_signal(), OneshotTrigger::new().to_signal());
         context.register_handle(TestHandle);
         context.inner.expect_handle::<TestHandle>();
         assert!(context.inner.get_handle::<()>().is_none());

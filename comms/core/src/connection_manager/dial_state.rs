@@ -62,7 +62,7 @@ impl DialState {
 
     /// Increment the number of attempts
     pub fn inc_attempts(&mut self) -> &mut Self {
-        self.attempts += 1;
+        self.attempts = self.attempts.saturating_add(1);
         self
     }
 

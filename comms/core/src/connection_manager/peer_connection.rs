@@ -443,9 +443,11 @@ impl PeerConnection {
             ))
             .await
             .inspect_err(|e| {
-                info!(
+                // A send error here means the peer connection worker has already exited, i.e. the connection is
+                // already gone. This is an expected race (the caller wanted it disconnected anyway), so log at debug.
+                debug!(
                     target: LOG_TARGET,
-                    "Failed to send Disconnect request to peer `{}`: {}",
+                    "Failed to send Disconnect request to peer `{}` (connection already closed): {}",
                     self.peer_node_id,
                     e
                 );
@@ -495,9 +497,11 @@ impl PeerConnection {
             ))
             .await
             .inspect_err(|e| {
-                info!(
+                // A send error here means the peer connection worker has already exited, i.e. the connection is
+                // already gone. This is an expected race (the caller wanted it disconnected anyway), so log at debug.
+                debug!(
                     target: LOG_TARGET,
-                    "Failed to send Disconnect request to peer `{}`: {}",
+                    "Failed to send Disconnect request to peer `{}` (connection already closed): {}",
                     self.peer_node_id,
                     e
                 );

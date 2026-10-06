@@ -158,11 +158,12 @@ impl FromStr for LegacyTariKeyId {
                 },
                 ZERO_KEY_BRANCH => Ok(LegacyTariKeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    if parts.len() < 3 {
+                    // The nested key id may be a single token (`derived.zero`) or have parts of its own
+                    // (`derived.managed.comms.0`); it is parsed when the key id is converted or used
+                    let key = parts.get(1..).unwrap_or_default().join(".");
+                    if key.is_empty() {
                         return Err("Wrong derived format".to_string());
                     };
-
-                    let key = parts.get(1..).expect("Already checked").join(".");
                     Ok(LegacyTariKeyId::Derived {
                         key: LegacySerializedKeyString::from(key),
                     })

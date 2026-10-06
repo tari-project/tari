@@ -41,11 +41,12 @@ use tari_comms::{
     protocol::{
         ProtocolId,
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
+        rpc::RpcServer,
     },
     transports::MemoryTransport,
     types::{CommsDatabase, CommsPublicKey},
 };
-use tari_comms_dht::{Dht, DhtConfig, inbound::DecryptedDhtMessage};
+use tari_comms_dht::{Dht, DhtConfig, SeedPeerProvider, inbound::DecryptedDhtMessage};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tokio::{
@@ -57,6 +58,7 @@ use tower::ServiceBuilder;
 pub struct TestNode {
     pub name: String,
     pub comms: CommsNode,
+    #[allow(dead_code)]
     pub dht: Dht,
     pub inbound_messages: mpsc::Receiver<DecryptedDhtMessage>,
     #[allow(dead_code)]
@@ -88,7 +90,7 @@ impl TestNode {
         time::timeout(timeout, self.inbound_messages.recv()).await.ok()?
     }
 
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(self) {
         self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }
@@ -143,6 +145,16 @@ pub async fn make_node_with_node_identity<I: IntoIterator<Item = Peer>>(
     dht_config: DhtConfig,
     known_peers: I,
 ) -> TestNode {
+    make_node_with_seed_peer_provider(name, node_identity, dht_config, known_peers, None).await
+}
+
+pub async fn make_node_with_seed_peer_provider<I: IntoIterator<Item = Peer>>(
+    name: &str,
+    node_identity: Arc<NodeIdentity>,
+    dht_config: DhtConfig,
+    known_peers: I,
+    seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+) -> TestNode {
     let (tx, inbound_messages) = mpsc::channel(10);
     let shutdown = Shutdown::new();
     let (comms, dht, messaging_events) = setup_comms_dht(
@@ -151,6 +163,7 @@ pub async fn make_node_with_node_identity<I: IntoIterator<Item = Peer>>(
         tx,
         known_peers.into_iter().collect(),
         dht_config,
+        seed_peer_provider,
         shutdown.to_signal(),
     )
     .await;
@@ -171,6 +184,7 @@ pub async fn setup_comms_dht(
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     peers: Vec<Peer>,
     dht_config: DhtConfig,
+    seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
@@ -188,10 +202,14 @@ pub async fn setup_comms_dht(
         .build()
         .unwrap();
 
-    let dht = Dht::builder()
-        .with_config(dht_config)
+    let mut dht = Dht::builder();
+    dht.with_config(dht_config)
         .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
-        .with_outbound_sender(outbound_tx)
+        .with_outbound_sender(outbound_tx);
+    if let Some(provider) = seed_peer_provider {
+        dht.with_seed_peer_provider(provider);
+    }
+    let dht = dht
         .build(
             comms.node_identity(),
             comms.peer_manager(),
@@ -220,6 +238,7 @@ pub async fn setup_comms_dht(
 
     let (event_tx, _) = broadcast::channel(100);
     let comms = comms
+        .add_rpc_server(RpcServer::new().add_service(dht.rpc_service()))
         .add_protocol_extension(
             MessagingProtocolExtension::new(ProtocolId::from_static(b"test"), event_tx.clone(), pipeline)
                 .enable_message_received_event(),

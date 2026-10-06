@@ -12,6 +12,10 @@ license.workspace = true
 [features]
 default = []
 benches = []
+c29_audit = []
+# GHSA-3qmx-q9pv-f3m4 audit tooling: builds `examples/audit_rxt_pow_data.rs`, the read-only LMDB scanner that finds
+# RandomXT headers carrying a non-canonical (non-empty) `pow_data` in an existing chain.
+rxt_pow_data_audit = []
 metrics = ["tari_metrics"]
 sqlite_bundled = ["tari_common_sqlite/bundled"]
 
@@ -30,7 +34,6 @@ tari_metrics = { workspace = true, optional = true }
 tari_mmr = { workspace = true }
 tari_p2p = { workspace = true }
 tari_script = { workspace = true }
-tari_sidechain = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }
@@ -49,7 +52,7 @@ dirs-next = "1.0.2"
 fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hickory-proto = { version = "0.26.1" }
+hickory-proto = { version = "0.26.3" }
 integer-encoding = "3.0"
 jmt = { version = "0.11.0", features = ["mocks"] }
 lmdb-zero = "0.4.4"
@@ -58,7 +61,7 @@ monero = { version = "0.21.0", features = ["serde-crate"] }
 once_cell = "1.8.0"
 prost = "0.13.3"
 rand = { workspace = true }
-randomx-rs = { version = "1.4" }
+randomx-rs = { version = "1.6" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_valid = "2"
@@ -76,6 +79,8 @@ url = "2.5.4"
 
 [dev-dependencies]
 criterion = { version = "0.8" }
+# `test-util` enables tokio's paused clock, used to exercise protocol timeouts without real waits
+tokio = { workspace = true, features = ["test-util"] }
 flate2 = "1"
 tari_p2p = { workspace = true, features = ["test-mocks"] }
 tari_test_utils = { workspace = true }
@@ -104,3 +109,14 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [package.metadata.cargo-machete]
 ignored = ["hickory-proto"]
+
+[[example]]
+name = "audit_c29"
+required-features = ["c29_audit"]
+# The exit-status rules in `report()` are the tool's only defence against an audit that silently covered nothing or
+# ran against the wrong network, so they carry their own tests rather than shipping unexercised.
+test = true
+
+[[example]]
+name = "audit_rxt_pow_data"
+required-features = ["rxt_pow_data_audit"]

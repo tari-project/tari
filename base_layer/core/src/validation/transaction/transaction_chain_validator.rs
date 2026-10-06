@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
@@ -42,8 +43,23 @@ impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
     }
 }
 
+/// This validator only performs the chain-linked checks: `validate_full` is the same as `validate_chain_linked`, and
+/// `validate_internal_consistency` does nothing. Use [TransactionFullValidator](super::TransactionFullValidator) to
+/// also check scripts, signatures, range proofs and balance.
 impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValidator<B> {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        self.validate_chain_linked(tx)
+    }
+
+    fn validate_internal_consistency(
+        &self,
+        _tx: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        Ok(())
+    }
+
+    fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
         if tx
@@ -60,9 +76,13 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
             let db = self.db.db_read_access()?;
             let tip_header = db.fetch_tip_header()?;
             self.aggregate_body_validator
-                .validate(&tx.body, tip_header.header(), &*db)?;
+                .validate_transaction_body(&tx.body, tip_header.header(), &*db)?;
         };
 
         Ok(())
+    }
+
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
+        Ok(Some(self.db.db_read_access()?.fetch_chain_metadata()?))
     }
 }

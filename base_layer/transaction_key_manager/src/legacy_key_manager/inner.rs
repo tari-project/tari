@@ -251,6 +251,15 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 branch: branch.as_str().to_string(),
                 index: *index,
             },
+            // The legacy encoding has no ephemeral nonce form, and should not gain one: an ephemeral nonce is
+            // reserved and consumed inside a single signing call and is never persisted or re-derived. This
+            // deliberately produces a `Derived` key string that `LegacyTariKeyId::from_str` cannot parse, so
+            // anything that does try to convert it back fails loudly. Mapping it to `Managed` instead would be
+            // silently catastrophic - an unrecognised `Managed` branch is derived from the master seed, which would
+            // turn a one-shot nonce back into the deterministic, host-indexable one this type exists to replace.
+            TariKeyId::LedgerEphemeralNonce { .. } => LegacyTariKeyId::Derived {
+                key: key_id.to_string().into(),
+            },
         }
     }
 
@@ -260,6 +269,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         ledger_key: Option<LedgerKeyBranch>,
     ) -> Result<TariKeyAndId, KeyManagerError> {
         self.key_manager.get_random_key(encryption_key, ledger_key)
+    }
+
+    pub fn reserve_ephemeral_nonce(&self) -> Result<TariKeyAndId, KeyManagerError> {
+        self.key_manager.reserve_ephemeral_nonce()
     }
 
     pub fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
@@ -341,13 +354,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.key_manager.get_commitment(private_key, value)
     }
 
-    /// Verify that the commitment matches the value and the spending key/mask
+    /// Verify that the commitment matches the value and the spending key/mask. Returns
+    /// `Err(KeyManagerError::InvalidMask)` if it does not.
     pub fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
-    ) -> Result<bool, KeyManagerError> {
+    ) -> Result<(), KeyManagerError> {
         self.key_manager.verify_mask(commitment, commitment_mask_key_id, value)
     }
 
@@ -441,14 +455,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .construct_range_proof(commitment_mask_key_id, value, min_value)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, KeyManagerError> {
-        self.key_manager
-            .get_script_offset(script_key_ids, sender_offset_key_ids)
+        sender_offset_count: usize,
+    ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError> {
+        self.key_manager.get_script_offset(script_key_ids, sender_offset_count)
     }
 
     pub fn sign_script_message(
@@ -555,16 +567,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // signers, this can be left as none
     pub fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &TariKeyId,
-        sender_offset_key_id: &TariKeyId,
+        ephemeral_private_nonce: &TariKeyAndId,
+        sender_offset: &TariKeyAndId,
         commitment: &CompressedCommitment,
         ephemeral_commitment: &CompressedCommitment,
         txo_version: TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_sender_partial_metadata_signature(
-            ephemeral_private_nonce_id,
-            sender_offset_key_id,
+            ephemeral_private_nonce,
+            sender_offset,
             commitment,
             ephemeral_commitment,
             txo_version,

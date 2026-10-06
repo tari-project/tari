@@ -38,3 +38,35 @@ pub mod hex_or_bytes {
         Ok(value)
     }
 }
+
+/// [`hex_or_bytes`] for an optional value.
+pub mod option_hex_or_bytes {
+    use serde::Serialize;
+
+    use super::*;
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(transparent)]
+    struct HexOrBytes<T>(
+        #[serde(
+            with = "hex_or_bytes",
+            bound(serialize = "T: AsRef<[u8]>", deserialize = "T: for<'a> TryFrom<&'a [u8]>")
+        )]
+        T,
+    );
+
+    pub fn serialize<S: Serializer, T: AsRef<[u8]>>(v: &Option<T>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            Some(v) => s.serialize_some(&HexOrBytes(v)),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: for<'a> TryFrom<&'a [u8]>,
+    {
+        Ok(Option::<HexOrBytes<T>>::deserialize(d)?.map(|HexOrBytes(v)| v))
+    }
+}

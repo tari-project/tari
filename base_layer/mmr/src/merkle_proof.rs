@@ -136,7 +136,7 @@ impl MerkleProof {
         // Get the peaks of the merkle trees, which are bagged together to form the root
         // For the proof, we must leave out the local root for the candidate node
         let peaks = find_peaks(mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
-        let mut peak_hashes = Vec::with_capacity(peaks.len() - 1);
+        let mut peak_hashes = Vec::with_capacity(peaks.len().saturating_sub(1));
         for peak_index in peaks {
             if peak_index != peak_pos {
                 let hash = mmr
@@ -187,22 +187,26 @@ impl MerkleProof {
     fn check_root<D: Digest>(&self, hash: &HashSlice, pos: usize, peaks: &[usize]) -> Result<Hash, MerkleProofError> {
         // The peak hash list provided in the proof does not include the local peak determined from the candidate
         // node, so len(peak) must be len(self.peaks) + 1.
-        if peaks.len() != self.peaks.len() + 1 {
+        if peaks.len() != self.peaks.len().saturating_add(1) {
             return Err(MerkleProofError::IncorrectPeakMap);
         }
-        let hasher = D::new();
+        let mut hasher = D::new();
         // We're going to hash the peaks together, but insert the provided hash in the correct position.
-        let peak_hashes = self.peaks.iter();
-        let (hasher, _) = peaks
-            .iter()
-            .fold((hasher, peak_hashes), |(hasher, mut peak_hashes), i| {
-                if *i == pos {
-                    (hasher.chain_update(hash), peak_hashes)
-                } else {
-                    let hash = peak_hashes.next().unwrap();
-                    (hasher.chain_update(hash), peak_hashes)
-                }
-            });
+        // A malformed proof can walk us up to a position that is not a canonical peak, in which case we would consume
+        // more peak hashes than the proof provides. That is an invalid proof, not a reason to panic.
+        let mut peak_hashes = self.peaks.iter();
+        for peak_pos in peaks {
+            if *peak_pos == pos {
+                hasher = hasher.chain_update(hash);
+            } else {
+                let peak_hash = peak_hashes.next().ok_or(MerkleProofError::IncorrectPeakMap)?;
+                hasher = hasher.chain_update(peak_hash);
+            }
+        }
+        // Every hash given in the proof must have been used, otherwise the candidate position was not a peak.
+        if peak_hashes.next().is_some() {
+            return Err(MerkleProofError::IncorrectPeakMap);
+        }
         Ok(hasher.finalize().to_vec())
     }
 
@@ -238,7 +242,7 @@ impl MerkleProof {
 
         let sibling = self.path.remove(0); // FIXME Compare perf vs using a VecDeque
         let (parent_pos, sibling_pos) = family(pos)?;
-        if parent_pos > self.mmr_size {
+        if parent_pos >= self.mmr_size {
             Err(MerkleProofError::Unexpected)
         } else {
             let parent = if is_left_sibling(sibling_pos) {

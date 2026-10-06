@@ -48,6 +48,9 @@ jobs:
           components: clippy
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: Cache cargo files and outputs
@@ -83,6 +86,20 @@ jobs:
         run: |
           cargo install cargo-machete@0.7.0
           cargo machete
+      # `minotari_ledger_wallet_comms_testing` is its own workspace and is deliberately `exclude`d from the root
+      # one - see the comment on `[workspace] exclude` in the root Cargo.toml, which is a security property, not a
+      # packaging accident. The consequence is that no other job in this file compiles or runs a line of it.
+      #
+      # This step is a *minimal* guard, and it is here because a change to the shipped device firmware
+      # (`wallet/src/main.rs`, `common/src/common_types.rs`) landed alongside that crate's tests and nothing else
+      # would notice it regressing. Every test that needs a device is `#[ignore]`d, so this needs no Docker and no
+      # simulator and finishes in a couple of seconds.
+      #
+      # It is deliberately NOT the Speculos job. Building the `.elf` and running the suite against an emulator -
+      # `./scripts/ledger_speculos.sh test` - is the `ledger speculos tests` job in .github/workflows/ledger_tests.yml,
+      # with its own timeout and artifact uploads.
+      - name: ledger comms_testing unit tests
+        run: cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml
       - name: cargo vet
         # Disable cargo vet
         if: ${{ false }}
@@ -97,23 +114,45 @@ jobs:
   ledger-build-tests:
     name: ledger build tests
     runs-on: [ubuntu-latest]
-    env:
-      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:5.3.10"
+    timeout-minutes: 30
     steps:
       - name: checkout tari
         uses: actions/checkout@v7
 
+      # Restore only - this job never saves. The one writer of this cache is the `ledger speculos tests` job in
+      # .github/workflows/ledger_tests.yml, on pushes to `development`, and the key below must stay byte for byte the
+      # same as the one there. Why:
+      #
+      # * A cache saved from a pull request is visible to that pull request only, and one saved from a merge queue
+      #   ref to nobody else at all; only `development`'s are visible to every PR. This workflow never runs on a push
+      #   to `development`, so anything it saved would be seen by one PR at most while spending the repository's
+      #   shared 10 GB cache quota, which Tari already runs at the limit.
+      # * Both jobs build the same crate with the same toolchain, into the same target directory, so one entry
+      #   serves both. The writer builds all four models on `development` precisely so that this job's flex and
+      #   nanox builds are warm too.
+      #
+      # `cargo-home/registry/src` is left out: it is the unpacked copy of `registry/cache`, which cargo re-extracts
+      # offline in seconds, and it is about half the cache by size.
+      #
+      # Ownership: the builder runs as the runner's own uid (see `cmd_build` in scripts/ledger_speculos.sh), so
+      # nothing in these paths is root-owned - which is what lets a later `actions/cache/save` read them and a
+      # restored cache be written over by the next build.
+      - name: restore ledger build cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            applications/minotari_ledger_wallet/wallet/target
+            !applications/minotari_ledger_wallet/wallet/target/cargo-home/registry/src
+          key: ledger-wallet-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('applications/minotari_ledger_wallet/wallet/Cargo.lock', 'applications/minotari_ledger_wallet/wallet/rust-toolchain.toml') }}
+          restore-keys: |
+            ledger-wallet-${{ runner.os }}-${{ runner.arch }}-
+
+      # Built through scripts/ledger_speculos.sh so that this job, the Speculos job and a developer's machine run the
+      # same `docker run`: the builder image pinned by digest, run as the invoking user rather than root, with
+      # CARGO_HOME inside the cached target directory, and `cargo ledger build <model> -- --locked`.
       - name: ledger build tests
         shell: bash
-        run: |
-          for ledger_target in stax flex nanosplus nanox; do
-            echo "Building for ${ledger_target}"
-            docker run --rm \
-              -v "${GITHUB_WORKSPACE}:/app" \
-              -w /app/applications/minotari_ledger_wallet/wallet \
-              "${DOCKER_IMAGE}" \
-              cargo ledger build "${ledger_target}" -- --locked
-          done
+        run: ./scripts/ledger_speculos.sh build stax flex nanosplus nanox
 
   wasm-build-tests:
     name: wasm build tests
@@ -132,6 +171,9 @@ jobs:
 
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
@@ -244,6 +286,9 @@ jobs:
 
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
@@ -282,6 +327,61 @@ jobs:
       - name: run the license check
         run: ./scripts/file_license_check.sh
 
+  # Unlike the `test` job, this one must pass: it fails when a type's serde, borsh and protobuf decoders stop
+  # accepting the same values (see scripts/decoder_parity_check.py and
+  # applications/minotari_app_grpc/tests/decoder_parity.rs).
+  decoder-parity:
+    name: decoder parity
+    # GitHub-hosted, with the same dependency setup as the `ci` job
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: check that no type with a validating constructor derives its serde or borsh decoder, and the node ingress rules
+        run: |
+          python3 ./scripts/decoder_parity_check.py --self-test
+          python3 ./scripts/decoder_parity_check.py
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v2
+      - name: cross-family decoder parity (serde_json, bincode, borsh, P2P proto, gRPC proto)
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_app_grpc --test decoder_parity
+      - name: ValidatedDecode tests
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_max_size --lib -- validated_decode
+      - name: TariScript and ExecutionStack decoder tests
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_script --lib -- stack:: script::
+      - name: TariAddress decoder tests
+        run: ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_common_types --lib -- tari_address
+      - name: MemoField, EncryptedData, KernelFeatures, Covenant, AggregateBody, Difficulty and TariKeyId decoder tests
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p tari_transaction_components --lib --
+          memo_field encrypted_data kernel_features covenants aggregated_body tari_proof_of_work::difficulty
+          key_manager::key_id
+      - name: Legacy wallet records with oversized memos still load
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --lib --
+          legacy_transaction_protocol
+      - name: Imported wallet transactions get the same status check as new ones; legacy key ids still load
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_wallet --test wallet_integration_tests --
+          --exact transaction_service_tests::service::import_transaction_rejects_the_coinbase_status
+          output_manager_service_tests::storage::test_legacy_derived_spend_key_reads_migrates_and_reads_again
+      - name: Node submit paths decode through the P2P proto
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
+          grpc::base_node_grpc_server::test http::handler::json_rpc
+
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]
@@ -311,6 +411,9 @@ jobs:
           toolchain: ${{ env.toolchain }}
       - name: ubuntu dependencies
         run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: Cache cargo files and outputs

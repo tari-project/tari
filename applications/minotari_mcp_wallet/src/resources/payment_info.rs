@@ -18,14 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Payment info resource (templated)
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetTransactionInfoRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::GetTransactionInfoRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Resource providing payment information by payment ID
@@ -43,7 +45,9 @@ impl PaymentInfoResource {
         // Expected format: payment_id/{id}
         let parts: Vec<&str> = uri.split('/').collect();
         if parts.len() != 2 || parts[0] != "payment_id" {
-            return Err(McpError::invalid_request("Invalid payment ID URI format. Expected: payment_id/{id}"));
+            return Err(McpError::invalid_request(
+                "Invalid payment ID URI format. Expected: payment_id/{id}",
+            ));
         }
 
         let payment_id = parts[1].to_string();
@@ -75,9 +79,9 @@ impl McpResource for PaymentInfoResource {
 
     async fn read_with_uri(&self, uri: &str) -> McpResult<Value> {
         let payment_id = Self::extract_payment_id(uri)?;
-        
+
         let mut client = self.grpc_client.as_ref().clone();
-        
+
         // Search for transactions with matching payment ID/message
         // First try completed transactions
         let completed_response = client
@@ -89,7 +93,7 @@ impl McpResource for PaymentInfoResource {
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get completed transactions: {e}")))?;
 
         let completed_txs = completed_response.into_inner().transactions;
-        
+
         // Look for transactions with matching message or containing the payment ID
         let mut matching_transactions = Vec::new();
         for tx in completed_txs {
@@ -134,7 +138,10 @@ impl McpResource for PaymentInfoResource {
         }
 
         if matching_transactions.is_empty() {
-            return Err(McpError::resource_not_found(format!("No transactions found with payment ID: {}", payment_id)));
+            return Err(McpError::resource_not_found(format!(
+                "No transactions found with payment ID: {}",
+                payment_id
+            )));
         }
 
         Ok(serde_json::json!({
@@ -147,6 +154,8 @@ impl McpResource for PaymentInfoResource {
     }
 
     async fn read(&self) -> McpResult<Value> {
-        Err(McpError::invalid_request("Payment info requires a payment ID. Use: payment_id/{id}"))
+        Err(McpError::invalid_request(
+            "Payment info requires a payment ID. Use: payment_id/{id}",
+        ))
     }
 }

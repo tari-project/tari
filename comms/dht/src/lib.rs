@@ -94,6 +94,8 @@ pub use error::DhtEncryptError;
 mod network_discovery;
 pub use network_discovery::{
     NetworkDiscoveryConfig,
+    RebootstrapInfo,
+    SeedPeerProvider,
     state_machine::{BootstrapMethod, DiscoveryPhase},
 };
 
@@ -106,8 +108,15 @@ mod filter;
 mod logging_middleware;
 mod message_signature;
 mod peer_validator;
+pub use peer_validator::{DhtPeerValidatorError, PeerValidator};
+
 mod proto;
+// The `get_peers` request and response types, so that peer syncing can be driven from outside the DHT's own network
+// discovery (see the `minotari_peer_sync` diagnostic tool).
+pub use proto::rpc::{GetPeersRequest, GetPeersResponse, PeerInfo};
+
 mod rpc;
+pub use rpc::{DhtClient, UnvalidatedPeerInfo};
 mod schema;
 
 mod version;

@@ -27,6 +27,8 @@ use crate::{
     helpers::borsh::SerializedSize,
     transaction_components::{
         EncryptedData,
+        OutputType,
+        SideChainFeatureData,
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
@@ -78,9 +80,10 @@ pub fn check_tari_encrypted_data_byte_size(
     max_encrypted_data_size: usize,
 ) -> Result<(), AggregatedBodyValidationError> {
     let encrypted_data_size = encrypted_data.as_bytes().len();
-    if encrypted_data_size > max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
+    let max_total_size = max_encrypted_data_size.saturating_add(STATIC_ENCRYPTED_DATA_SIZE_TOTAL);
+    if encrypted_data_size > max_total_size {
         return Err(AggregatedBodyValidationError::EncryptedDataExceedsMaxSize {
-            max_encrypted_data_size: max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+            max_encrypted_data_size: max_total_size,
             actual_encrypted_data_size: encrypted_data_size,
         });
     }
@@ -98,6 +101,37 @@ pub fn check_permitted_output_types(
         return Err(AggregatedBodyValidationError::OutputTypeNotPermitted {
             output_type: output.features.output_type,
         });
+    }
+
+    Ok(())
+}
+
+/// Checks the output's side-chain feature data against the data bound to its output type:
+/// - `Standard`, `Coinbase`, `SidechainCheckpoint` and `SidechainProof` carry none,
+/// - `Burn` carries none, or a burn claim (`ConfidentialOutput`),
+/// - `ValidatorNodeRegistration` and `ValidatorNodeExit` carry their registration or exit,
+/// - `CodeTemplateRegistration` is deprecated and carries nothing valid.
+///
+/// Which output types a network permits at all is set by `ConsensusConstants::permitted_output_types`.
+pub fn check_sidechain_data_rules(output: &TransactionOutput) -> Result<(), AggregatedBodyValidationError> {
+    let output_type = output.features.output_type;
+    let data = output.features.sidechain_feature.as_ref().map(|f| f.data());
+    let permitted = match output_type {
+        OutputType::Standard | OutputType::Coinbase | OutputType::SidechainCheckpoint | OutputType::SidechainProof => {
+            data.is_none()
+        },
+        OutputType::Burn => matches!(data, None | Some(SideChainFeatureData::ConfidentialOutput(_))),
+        OutputType::ValidatorNodeRegistration | OutputType::ValidatorNodeExit if data.is_none() => {
+            return Err(AggregatedBodyValidationError::SideChainFeatureRequired { output_type });
+        },
+        OutputType::ValidatorNodeRegistration => {
+            matches!(data, Some(SideChainFeatureData::ValidatorNodeRegistration(_)))
+        },
+        OutputType::ValidatorNodeExit => matches!(data, Some(SideChainFeatureData::ValidatorNodeExit(_))),
+        OutputType::CodeTemplateRegistration => false,
+    };
+    if !permitted {
+        return Err(AggregatedBodyValidationError::SideChainFeatureNotPermitted { output_type });
     }
 
     Ok(())
@@ -275,7 +309,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
@@ -302,7 +336,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
@@ -330,7 +364,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
@@ -338,6 +372,130 @@ mod test {
                 .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbase = err);
+        }
+    }
+
+    mod check_sidechain_data_rules {
+        use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
+
+        use super::*;
+        use crate::transaction_components::{
+            BuildInfo,
+            CodeTemplateRegistration,
+            ConfidentialOutputData,
+            SideChainFeature,
+            TemplateType,
+            ValidatorNodeExit,
+            ValidatorNodeRegistration,
+            ValidatorNodeSignature,
+        };
+
+        fn all_sidechain_data() -> Vec<SideChainFeatureData> {
+            vec![
+                SideChainFeatureData::ValidatorNodeRegistration(Box::new(ValidatorNodeRegistration::new(
+                    ValidatorNodeSignature::new(CompressedPublicKey::default(), Default::default()),
+                    CompressedPublicKey::default(),
+                    VnEpoch(1),
+                ))),
+                SideChainFeatureData::CodeTemplateRegistration(CodeTemplateRegistration {
+                    author_public_key: CompressedPublicKey::default(),
+                    author_signature: Default::default(),
+                    template_name: "t".try_into().unwrap(),
+                    template_version: 0,
+                    template_type: TemplateType::Wasm { abi_version: 0 },
+                    build_info: BuildInfo {
+                        repo_url: "u".try_into().unwrap(),
+                        commit_hash: Default::default(),
+                    },
+                    binary_sha: Default::default(),
+                    binary_url: "u".try_into().unwrap(),
+                }),
+                SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
+                    claim_public_key: CompressedPublicKey::default(),
+                }),
+                SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::new(
+                    ValidatorNodeSignature::new(CompressedPublicKey::default(), Default::default()),
+                    VnEpoch(0),
+                    VnEpoch(1),
+                )),
+            ]
+        }
+
+        fn output(output_type: OutputType, data: Option<SideChainFeatureData>) -> TransactionOutput {
+            let mut output = TransactionOutput::default();
+            output.features.output_type = output_type;
+            output.features.sidechain_feature = data.map(|data| SideChainFeature {
+                data,
+                sidechain_id: None,
+            });
+            output
+        }
+
+        fn is_bound_to(output_type: OutputType, data: Option<&SideChainFeatureData>) -> bool {
+            matches!(
+                (output_type, data),
+                (
+                    OutputType::Standard |
+                        OutputType::Coinbase |
+                        OutputType::Burn |
+                        OutputType::SidechainCheckpoint |
+                        OutputType::SidechainProof,
+                    None
+                ) | (OutputType::Burn, Some(SideChainFeatureData::ConfidentialOutput(_))) |
+                    (
+                        OutputType::ValidatorNodeRegistration,
+                        Some(SideChainFeatureData::ValidatorNodeRegistration(_))
+                    ) |
+                    (
+                        OutputType::ValidatorNodeExit,
+                        Some(SideChainFeatureData::ValidatorNodeExit(_))
+                    )
+            )
+        }
+
+        #[test]
+        fn it_accepts_only_the_side_chain_data_bound_to_each_output_type() {
+            let data = all_sidechain_data();
+            for output_type in OutputType::all()
+                .iter()
+                .copied()
+                .chain([OutputType::CodeTemplateRegistration])
+            {
+                for data in data.iter().map(Some).chain([None]) {
+                    let result = check_sidechain_data_rules(&output(output_type, data.cloned()));
+                    assert_eq!(
+                        result.is_ok(),
+                        is_bound_to(output_type, data),
+                        "{output_type} with {:?}: {result:?}",
+                        data.map(std::mem::discriminant)
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn it_requires_validator_node_outputs_to_carry_their_data() {
+            for output_type in [OutputType::ValidatorNodeRegistration, OutputType::ValidatorNodeExit] {
+                let err = check_sidechain_data_rules(&output(output_type, None)).unwrap_err();
+                assert!(
+                    matches!(err, AggregatedBodyValidationError::SideChainFeatureRequired { output_type: t } if t == output_type),
+                    "{output_type}: {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn it_rejects_side_chain_data_not_permitted_for_the_output_type() {
+            let confidential_output = all_sidechain_data()
+                .into_iter()
+                .find(|d| matches!(d, SideChainFeatureData::ConfidentialOutput(_)));
+            let err = check_sidechain_data_rules(&output(OutputType::Standard, confidential_output)).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::SideChainFeatureNotPermitted {
+                    output_type: OutputType::Standard
+                }
+            ));
         }
     }
 }

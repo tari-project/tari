@@ -1,58 +1,49 @@
 <!-- CI / Build Status -->
-[![CI](../../actions/workflows/ci.yml/badge.svg?branch=development)](../../actions/workflows/ci.yml)
-[![Integration Tests](../../actions/workflows/integration_tests.yml/badge.svg?branch=development)](../../actions/workflows/integration_tests.yml)
-[![Docker Build](../../actions/workflows/build_dockers.yml/badge.svg?branch=development)](../../actions/workflows/build_dockers.yml)
-[![Binary Build](../../actions/workflows/build_binaries.yml/badge.svg?branch=development)](../../actions/workflows/build_binaries.yml)
+[![CI](https://github.com/tari-project/tari/actions/workflows/ci.yml/badge.svg)](https://github.com/tari-project/tari/actions/workflows/ci.yml)
+[![Integration Tests](https://github.com/tari-project/tari/actions/workflows/integration_tests.yml/badge.svg)](https://github.com/tari-project/tari/actions/workflows/integration_tests.yml)
+[![Docker Build](https://github.com/tari-project/tari/actions/workflows/build_dockers.yml/badge.svg)](https://github.com/tari-project/tari/actions/workflows/build_dockers.yml)
+[![Binary Build](https://github.com/tari-project/tari/actions/workflows/build_binaries.yml/badge.svg)](https://github.com/tari-project/tari/actions/workflows/build_binaries.yml)
 
 <!-- Release & License -->
 [![Release](https://img.shields.io/github/v/release/tari-project/tari?sort=semver)](https://github.com/tari-project/tari/releases)
 [![License](https://img.shields.io/github/license/tari-project/tari)](https://github.com/tari-project/tari/blob/development/LICENSE)
-
 [![Coverage Status](https://coveralls.io/repos/github/tari-project/tari/badge.svg?branch=development)](https://coveralls.io/github/tari-project/tari?branch=development)
 
 # The Tari protocol
 
-A number of applications have been developed by the Tari community to implement the Tari protocol. These are:
+This repository contains the Rust implementation of the Tari base layer protocol — the blockchain, its consensus rules,
+the peer-to-peer network stack, and the applications that run on top of them.
 
-- Minotari Base Node
-- Minotari Wallet
-- Minotari Miner
-- Minotari Merge Mining Proxy
-- Minotari MCP Servers (for AI integration)
-- Minotari Aurora wallets for Android and iOS
+## Applications
 
-The core applications and MCP servers are documented in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
+| Application | Binary | What it does |
+| --- | --- | --- |
+| Base Node | `minotari_node` | Full node: stores and validates the blockchain, serves the P2P network and a gRPC API. See [README](applications/minotari_node/README.md). |
+| Console Wallet | `minotari_console_wallet` | Terminal wallet for sending, receiving and managing funds. See [README](applications/minotari_console_wallet/README.md). |
+| Miner | `minotari_miner` | Standalone SHA-3 miner. See [README](applications/minotari_miner/README.md). |
+| Merge Mining Proxy | `minotari_merge_mining_proxy` | Lets you merge mine Tari alongside Monero via XMRig. |
+| Offline Signer | `minotari_offline_signer` | Signs one-sided transactions on an air-gapped machine. See [README](applications/minotari_offline_signer/README.md). |
 
-## Developers
-Want to contribute? Start by reading the [Contributing Guide](Contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
-Want to discuss new ideas? Head over to the [Tari Forum](https://community.tari.com/) and join the conversation.
-Want to learn about the technical details of Tari? Head over to the [Tari RFCs](https://rfc.tari.com/).
+These five are the binaries published with each [release](https://github.com/tari-project/tari/releases).
 
-## Installing using binaries
+The repository also contains supporting binaries that are built from source but not shipped in releases:
 
-### Versions
-The recommended version is available at: [Latest version](https://github.com/tari-project/tari/releases/latest)
+| Application | Binary | What it does |
+| --- | --- | --- |
+| Peer Sync | `minotari_peer_sync` | Diagnostic tool that runs only the base node's peer discovery. See [README](applications/minotari_peer_sync/README.md). |
+| Utils | `minotari_utils` | Assorted base node operational utilities. See [README](applications/minotari_utils/README.md). |
+| Ledger Wallet | — | Ledger hardware wallet app, used by the console wallet's `ledger` feature. |
+| MCP Servers | `minotari_mcp_wallet`, `minotari_mcp_node` | Model Context Protocol servers for AI agents. See [AI integration](#ai-integration-mcp-servers). |
 
-### Running tests
-Tests can be run using Nextest. Install it with the following command:
+The Aurora mobile wallets live in their own repositories:
+[wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios).
 
-```bash
-cargo install cargo-nextest
-```
+## Installing from binaries
 
-Then run the tests with:
+[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run
+a Tari node, but you're essentially trusting the person that built and uploaded them that nothing untoward has happened.
 
-```bash
-cargo ci-test
-```
-
-### Download
-
-[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
-essentially trusting the person that built and uploaded them that nothing untoward has happened.
-
-Hashes of the binaries are available alongside the downloads.
-You can get the hash of your download by opening a terminal or command prompt and running the following:
+Hashes of the binaries are published alongside the downloads. Get the hash of your download with:
 
 (\*nix)
 
@@ -62,77 +53,72 @@ You can get the hash of your download by opening a terminal or command prompt an
 
     certUtil -hashfile <PATH_TO_BINARY_INSTALL_FILE> SHA256
 
-If the result doesn't match the published hash, don't run the binary.
-Note that this only checks that your binary was downloaded correctly; it cannot detect if the binary was replaced by a bad actor.
-If you need to ensure that your binary matches the source, see [Building from source](#building-from-source) below.
+If the result doesn't match the published hash, don't run the binary. Note that this only checks that your binary was
+downloaded correctly; it cannot detect if the binary was replaced by a bad actor. If you need to ensure that your binary
+matches the source, see [Building from source](#building-from-source) below.
 
+The installer lays down soft links/shortcuts for each application. If you want to mine, use:
 
-### Runtime links
+- SHA-3 standalone mining — `start_minotari_miner`
+- Merge mining with Monero — `start_minotari_merge_mining_proxy`, then `start_xmrig`
 
-#### Start all applications individually
-
-  **Note**: The Tor console will output `[notice] Bootstrapped 100% (done): Done`
-  when the Tor services have fully started.
-
-- Depending on your choice of mining:
-
-  - SHA3 standalone mining
-    - Execute the `start_minotari_miner` soft link/shortcut.
-  - Merge mining with Monero
-    - Execute the `start_minotari_merge_mining_proxy` soft link/shortcut.
-    - Execute the `start_xmrig` shortcut.
+On Windows the base node needs a Tor daemon; start it with `start_tor` before starting the node. The Tor console prints
+`[notice] Bootstrapped 100% (done): Done` once it is ready. On Linux and macOS Tor is embedded in the binaries via the
+`libtor` feature, so no separate Tor process is required.
 
 ## Building from source
 
-To build the Minotari codebase from source, there are a few dependencies you need to have installed.
+### Requirements
 
-### Network versions
-It's important to note that when compiling from source, you need to specify the target network at compile time using an environment variable. For example, to compile for the Esmeralda testnet, you would run:
+- Rust `1.93.0` or newer (the workspace uses edition 2024). `rust-toolchain.toml` pins the `stable` channel, so
+  `rustup` will pick the right toolchain automatically.
+- A recent `protoc` (protobuf compiler). Distro packages are often too old to compile the `optional` proto3 fields used
+  here — see the note in `scripts/install_ubuntu_dependencies.sh`.
 
+#### Linux (Ubuntu/Debian)
+
+The dependency list CI uses is kept in a script, so it never drifts from what actually builds:
+
+```bash
+sudo apt-get update
+sudo bash scripts/install_ubuntu_dependencies.sh
 ```
-    TARI_TARGET_NETWORK=testnet cargo build --release
-```
 
-| TARI_TARGET_NETWORK | Available Networks |
-| --- | --- |
-| "" | esmeralda, igor, localnet |
-| testnet | esmeralda, igor, localnet |
-| nextnet | nextnet |
-| mainnet | mainnet, stagenet |
+#### macOS
 
-
-### Install development packages
-
-First you'll need to make sure you have a full development environment set up:
-
-#### (macOS)
-
-```
+```bash
 brew update
-brew install coreutils tor openssl \
-  cmake make libtool autoconf automake protobuf
+brew install cmake coreutils automake autoconf libtool protobuf zip
 ```
 
-#### (Ubuntu 18.04, including WSL-2 on Windows)
+#### Windows
 
+Follow the guide in [buildtools/windows-dev-environment-notes.md](buildtools/windows-dev-environment-notes.md) to set
+up your build environment.
+
+### Choosing a network
+
+When compiling from source you select the target network at compile time with the `TARI_TARGET_NETWORK` environment
+variable. This decides which consensus rules and feature flags are compiled in:
+
+| `TARI_TARGET_NETWORK` | Default network | Networks you can run |
+| --- | --- | --- |
+| unset | esmeralda | esmeralda, igor, localnet |
+| `testnet` | esmeralda | esmeralda, igor, localnet |
+| `nextnet` | nextnet | nextnet |
+| `mainnet` | mainnet | mainnet, stagenet |
+
+For example, to build for the Esmeralda testnet:
+
+```bash
+TARI_TARGET_NETWORK=testnet cargo build --release
 ```
-sudo apt-get update
-sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler libncurses5-dev libncursesw5-dev
-sudo apt-get install -y wget apt-transport-https
-sudo wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
-sudo dpkg -i packages-microsoft-prod.deb
-sudo apt-get update
-sudo add-apt-repository universe
-sudo apt-get install -y powershell
-```
+If you do not specify a target network, it will choose testnet. 
 
-#### (Windows)
-
-Please follow the guide [located here](https://github.com/tari-project/tari/blob/development/buildtools/windows-dev-environment-notes.md) for setting up your build environment on Windows.
+At runtime you pick the specific network with `--network <name>` or the `TARI_NETWORK` environment variable, within the
+set the binary was compiled for.
 
 ### Build
-
-Grab a cup of coffee and begin the Tari build.
 
 (\*nix)
 
@@ -141,21 +127,11 @@ Grab a cup of coffee and begin the Tari build.
 
 (Windows)
 
-This is similar to building in Ubuntu, except the Microsoft Visual Studio environment must be sourced. Open the
-appropriate _x64\x86 Native Tools Command Prompt for VS 2019_, and in your main Tari directory perform the
-build, which will create the executable inside your `%USERPROFILE%\Code\tari\target\release` directory:
+This is similar to building on Linux, except the Microsoft Visual Studio environment must be sourced. Open the
+appropriate _x64\x86 Native Tools Command Prompt for VS_, and in your main Tari directory run the build:
 
     cd %USERPROFILE%\Code\tari
     cargo build --release
-
-A successful build should output something like this:
-
-```
-   Compiling minotari_wallet v0.0.9 (.../tari/base_layer/wallet)
-   Compiling minotari_wallet_ffi v0.0.9 (.../tari/base_layer/wallet_ffi)
-   Compiling minotari_node v0.0.9 (.../tari/applications/minotari_node)
-    Finished release [optimized] target(s) in 12m 24s
-```
 
 Compiled executables can be found at these paths:
 
@@ -163,30 +139,24 @@ Compiled executables can be found at these paths:
     ./target/release/minotari_console_wallet
     ./target/release/minotari_merge_mining_proxy
     ./target/release/minotari_miner
+    ./target/release/minotari_offline_signer
     ./target/release/minotari_mcp_wallet
     ./target/release/minotari_mcp_node
 
-Alternatively, `cargo` can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
-on your system:
+Alternatively, `cargo` can build and install an executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows),
+so it is runnable from anywhere on your system:
 
     cargo install --path=applications/minotari_node --force
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
     cargo install --path=applications/minotari_miner --force
+    cargo install --path=applications/minotari_offline_signer --force
     cargo install --path=applications/minotari_mcp_wallet --force
     cargo install --path=applications/minotari_mcp_node --force
 
-### Run
+## Running
 
-The executables will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release`
-(on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) or `%USERPROFILE%\.cargo\bin` (on Windows)
-directory, depending on the build method used above. If you used the former method, you can run the executables
-from that directory or copy them somewhere more convenient.
-
-On Windows, make sure to start the Tor service via `%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk`.
-On Linux and macOS, Tor is included in the binary.
-
-Running:
+Run the executables from `./target/release` (or from `~/.cargo/bin` if you used `cargo install`):
 
     minotari_node
 
@@ -196,93 +166,37 @@ Running:
 
     minotari_miner
 
-    minotari_mcp_wallet
+    minotari_offline_signer
 
-    minotari_mcp_node
-
-Alternatively, you can run the Tari applications from your source directory using `cargo`. Omit the `--release`
-flag to run in debug mode:
+Or run them from the source directory with `cargo`. Omit `--release` to run a debug build:
 
     cargo run --bin minotari_node --release
 
-    cargo run --bin minotari_merge_mining_proxy --release
-
     cargo run --bin minotari_console_wallet --release
+
+    cargo run --bin minotari_merge_mining_proxy --release
 
     cargo run --bin minotari_miner --release
 
-    cargo run --bin minotari_mcp_wallet --release
+With the default options, the blockchain database, wallet databases, log files and all configuration files are created
+under `~/.tari/<network>` (Linux/macOS) or `%USERPROFILE%\.tari\<network>` (Windows). Override the root with
+`--base-path <base-path>`.
 
-    cargo run --bin minotari_mcp_node --release
+The base node's gRPC server listens on `127.0.0.1:18142` and is enabled by default. The console wallet's gRPC server
+listens on `127.0.0.1:18143` and is off by default — enable it with `--grpc-enabled`.
 
-With the default options, the blockchain database, wallet database, console wallet database, log files, and all
-configuration files will be created in `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows).
-You can override this by specifying `--base-path <base-path>` on the command line.
+### Base node console
 
-## Advanced build configurations
-
-- Vagrant: See [Building with Vagrant](https://github.com/tari-project/tari/issues/1407) for using Vagrant to build and run a base node in a clean environment.
-
-## Using Docker
-
-### Running the base node with a Docker image
-
-Minotari Base Node Docker images can be found at https://quay.io/repository/tarilabs/minotari_node
-
-Using `docker-compose.yaml`:
+The base node runs an interactive console. Type `help` to list the available commands, or press Tab for
+auto-completion:
 
 ```
-version: "3"
-
-services:
-  minotari_node:
-    image: quay.io/tarilabs/minotari_node:latest-nextnet
-    restart: unless-stopped
-    volumes:
-      - ./data:/var/tari
-# These 2 params are required for an interactive docker-compose session
-    stdin_open: true
-    tty: true
-    expose:
-      - 18142
-    ports:
-      - "18142:18142"
-```
-
-The Docker image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists
-the node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
-
-Then run `docker-compose up -d` to start your docker service.
-
-Check the running state with `docker-compose ps`:
-
-```
-        Name           Command    State            Ports
-------------------------------------------------------------------
-tbn_minotari_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
-```
-
-To connect to the console, use `docker ps` to get the container ID of the `minotari_node` container:
-
-```
-CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
-73427509a4bb        quay.io/tarilabs/minotari_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_minotari_node_1
-```
-
-With the container ID `73427509a4bb`, connect to the `minotari_node` console using `docker attach 73427509a4bb`:
-
-```
->> help
-Available commands are:
-help, version, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers,
-check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats,
-get-mempool-state, whoami, get-state-info, quit, exit
 >> get-chain-metadata
-Height of longest chain : 5228
-Geometric mean of longest chain : 5892870
-Best block : 2c4f92854b2160324b8afebaa476b39be4004d2a7a19c69dd2d4e4da257bfee2
-Pruning horizon : 0
-Effective pruned height : 0
+Best block height: 5228
+Total accumulated difficulty: 5892870
+Best block hash: 2c4f92854b2160324b8afebaa476b39be4004d2a7a19c69dd2d4e4da257bfee2
+Pruning horizon: 0
+Pruned height: 0
 >> get-state-info
 Current state machine state:
 Synchronizing blocks: Syncing from the following peers:
@@ -290,56 +204,129 @@ Synchronizing blocks: Syncing from the following peers:
 Syncing 5229/5233
 ```
 
----
+Pass `--non-interactive-mode` to run the node without the console.
 
-## AI Integration (MCP Servers)
+## Using Docker
 
-Tari provides Model Context Protocol (MCP) servers that enable AI agents like Claude to interact securely with Tari blockchain functionality.
+Images are published to `ghcr.io/tari-project` and `quay.io/tarilabs` for `minotari_node`,
+`minotari_console_wallet`, `minotari_merge_mining_proxy`, `minotari_sha3_miner` and `minotari_offline_signer`.
 
-### MCP Applications
+Using `compose.yaml`:
 
-- **`minotari_mcp_wallet`**: Provides secure wallet operations for AI agents
-- **`minotari_mcp_node`**: Enables AI agents to query blockchain and node information
-- **`minotari_mcp_common`**: Shared infrastructure for building secure MCP servers
+```yaml
+services:
+  minotari_node:
+    image: ghcr.io/tari-project/minotari_node:latest-nextnet
+    restart: unless-stopped
+    volumes:
+      - ./data:/var/tari
+    # Required for an interactive session
+    stdin_open: true
+    tty: true
+    # The image defaults to --non-interactive-mode; clear it to get the console
+    command: []
+    ports:
+      - "18189:18189"
+```
 
-### Quick Start
+The image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists the
+node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
 
-1. **Start your Tari wallet with gRPC enabled**:
-   ```bash
-   minotari_console_wallet --enable-grpc
-   ```
+Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
+publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0`.
 
-2. **Start the MCP wallet server** (read-only, safe for AI):
-   ```bash
-   minotari_mcp_wallet --mcp-enabled
-   ```
+Start the service with `docker compose up -d` and check it with `docker compose ps`. To reach the console, find the
+container ID with `docker ps` and run `docker attach <container-id>`.
 
-3. **Start the MCP node server**:
-   ```bash
-   minotari_mcp_node --mcp-enabled
-   ```
+## AI integration (MCP servers)
 
-### Security Features
+Tari provides [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-03-26) servers that let AI
+agents interact with Tari over stdio.
 
-- **Local-only binding**: Servers only bind to 127.0.0.1 for security
-- **Permission levels**: Separate read-only and control operations
-- **Rate limiting**: Configurable request limits per client
-- **Audit logging**: Comprehensive operation tracking
-- **User confirmation**: Optional confirmation for value transfers
+- **`minotari_mcp_wallet`** — wallet operations, read-only unless control operations are enabled
+- **`minotari_mcp_node`** — blockchain and node queries
+- **`minotari_mcp_common`** — shared infrastructure for building the MCP servers
+
+Both servers talk to a console wallet or base node over local gRPC, and will auto-launch that process if it isn't
+already running (`--auto-launch-wallet` / `--auto-launch-node`, on by default). To point them at an already-running
+instance instead, start it with gRPC enabled:
+
+```bash
+minotari_console_wallet --grpc-enabled
+minotari_mcp_wallet --wallet-grpc-address 127.0.0.1:18143
+
+minotari_node   # gRPC is enabled by default
+minotari_mcp_node --node-grpc-address 127.0.0.1:18142
+```
+
+Security-relevant options:
+
+- Read-only by default; `--mcp-control-enabled` opts in to operations that can move funds or change node state
+- `--require-confirmation` (wallet) prompts the user for every value transfer
+- `--mcp-rate-limit` caps requests per minute per client
+- `--mcp-audit-logging` / `--mcp-audit-log-path` record every operation
+- The servers connect only to local gRPC endpoints
 
 For complete documentation, see:
+
 - [MCP Implementation Guide](docs/mcp/TARI_MCP_IMPLEMENTATION.md)
 - [Wallet MCP Server](applications/minotari_mcp_wallet/README.md)
+- [Node MCP Server](applications/minotari_mcp_node/README.md)
 - [Common MCP Framework](applications/minotari_mcp_common/README.md)
 
-For more information about the Model Context Protocol, visit [modelcontextprotocol.io](https://modelcontextprotocol.io/specification/2025-03-26).
+## Development
 
-# Project documentation
+Want to contribute? Start with the [Contributing Guide](Contributing.md) and the
+[Reviewing Guide](docs/src/reviewing_guide.md).
+Want to discuss new ideas? Head over to the [Tari Forum](https://community.tari.com/).
+Want the technical details? Head over to the [Tari RFCs](https://rfc.tari.com/).
 
-- [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
-- Source code documentation is hosted on [docs.rs](https://docs.rs)
-- [RFC repo](https://github.com/tari-project/rfcs)
+Security issues should be reported as described in [SECURITY.md](SECURITY.md).
 
+### Unit tests
+
+Unit tests run under [nextest](https://nexte.st/):
+
+```bash
+cargo install cargo-nextest
+cargo ci-test
+```
+
+### Integration tests
+
+The cucumber integration tests live in [`integration_tests`](integration_tests/README.md) and need the release binaries
+to be built first:
+
+```bash
+cargo build --release
+cargo test --release --test cucumber --all-features --package tari_integration_tests -- -t "@critical"
+```
+
+`cargo ci-cucumber` is a shorthand for the critical subset.
+
+### Formatting and lints
+
+Formatting uses nightly-only rustfmt options, so it must be run on a nightly toolchain. Clippy runs through
+[cargo-lints](https://crates.io/crates/cargo-lints) using the rule set in `lints.toml`:
+
+```bash
+cargo install cargo-lints
+cargo +nightly ci-fmt        # check formatting
+cargo +nightly ci-fmt-fix    # apply formatting
+cargo ci-clippy              # lints
+cargo ci-check               # fast type check
+```
+
+All `ci-*` aliases are defined in [`.cargo/config.toml`](.cargo/config.toml).
+
+## Project documentation
+
+- [RFC documents](https://rfc.tari.com) — protocol specifications, maintained in the
+  [rfcs repository](https://github.com/tari-project/rfcs)
+- [`docs/`](docs/README.md) — developer docs as an mdbook; run `mdbook serve` in `docs/` and open
+  [localhost:3000](http://localhost:3000)
+- [Applications overview](docs/guide/applications_overview.md) — every application, its CLI options and config overrides
+- [gRPC overview](docs/guide/grpc_overview.md) and [FFI overview](docs/guide/ffi_overview.md)
 
 ### Source code documentation
 
@@ -347,6 +334,7 @@ Run
 
     cargo doc
 
-to generate the documentation. The generated HTML sits in `target/doc/`. Alternatively, to open a specific package's documentation directly in your browser, run:
+to generate the documentation. The generated HTML sits in `target/doc/`. To open a specific package's documentation
+directly in your browser, run:
 
     cargo doc -p <package> --open

@@ -81,8 +81,8 @@ pub enum HorizonSyncError {
     ValidationError(#[from] ValidationError),
     #[error("No sync peers")]
     NoSyncPeers,
-    #[error("Sync failed for all peers")]
-    FailedSyncAllPeers,
+    #[error("Sync failed for all peers: {0}")]
+    FailedSyncAllPeers(String),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
     MaxLatencyExceeded {
         peer: NodeId,
@@ -131,7 +131,7 @@ impl HorizonSyncError {
             // no ban
             HorizonSyncError::ChainStorageError(e) => e.get_ban_reason(),
             HorizonSyncError::NoSyncPeers |
-            HorizonSyncError::FailedSyncAllPeers |
+            HorizonSyncError::FailedSyncAllPeers(_) |
             HorizonSyncError::AllSyncPeersExceedLatency |
             HorizonSyncError::ConnectivityError(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |

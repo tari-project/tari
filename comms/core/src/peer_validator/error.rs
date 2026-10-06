@@ -33,6 +33,8 @@ pub enum PeerValidatorError {
     InvalidPeerAddresses { peer: NodeId },
     #[error("Peer '{peer}' has no address claims")]
     PeerHasNoAddresses { peer: NodeId },
+    #[error("Peer '{peer}' has address claims, but none are usable")]
+    PeerHasNoUsableAddresses { peer: NodeId },
     #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),
     #[error("Onion v2 is deprecated and not supported")]
@@ -48,7 +50,51 @@ pub enum PeerValidatorError {
 }
 
 impl PeerValidatorError {
+    /// Returns whether this validation failure indicates hostile peer input.
+    ///
+    /// A peer with no advertised address, or only local addresses, may simply
+    /// be behind NAT or misconfigured. Rejecting the update is sufficient and
+    /// avoids punishing a reachable peer that relayed it.
+    pub fn is_ban_offence(&self) -> bool {
+        match self {
+            Self::PeerHasNoAddresses { .. } | Self::PeerHasNoUsableAddresses { .. } => false,
+            Self::InvalidPeerSignature { .. } |
+            Self::InvalidPeerAddresses { .. } |
+            Self::InvalidMultiaddr(_) |
+            Self::OnionV2NotSupported |
+            Self::PeerIdentityTooManyProtocols { .. } |
+            Self::PeerIdentityTooManyAddresses { .. } |
+            Self::PeerIdentityProtocolIdTooLong { .. } |
+            Self::PeerIdentityUserAgentTooLong { .. } => true,
+        }
+    }
+
     pub fn as_ban_duration(&self) -> Option<Duration> {
-        Some(BAN_DURATION_LONG)
+        self.is_ban_offence().then_some(BAN_DURATION_LONG)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn only_non_hostile_address_absence_errors_avoid_a_ban() {
+        let peer = NodeId::default();
+        assert!(
+            PeerValidatorError::PeerHasNoAddresses { peer: peer.clone() }
+                .as_ban_duration()
+                .is_none()
+        );
+        assert!(
+            PeerValidatorError::PeerHasNoUsableAddresses { peer }
+                .as_ban_duration()
+                .is_none()
+        );
+        assert!(
+            PeerValidatorError::InvalidMultiaddr("bad address".to_string())
+                .as_ban_duration()
+                .is_some()
+        );
     }
 }

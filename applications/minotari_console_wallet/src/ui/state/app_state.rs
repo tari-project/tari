@@ -52,7 +52,8 @@ use tari_common_types::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
-    tari_amount::{MicroMinotari, uT},
+    consensus::ConsensusConstantsBuilder,
+    tari_amount::MicroMinotari,
     transaction_components::{
         OutputFeatures,
         TransactionError,
@@ -203,7 +204,7 @@ impl AppState {
 
         let output_features = OutputFeatures { ..Default::default() };
 
-        let fee_per_gram = fee_per_gram * uT;
+        let fee_per_gram = MicroMinotari::from(fee_per_gram);
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_to_stealth_address_transaction(
             address,
@@ -231,7 +232,7 @@ impl AppState {
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
 
-        let fee_per_gram = fee_per_gram * uT;
+        let fee_per_gram = MicroMinotari::from(fee_per_gram);
         let tx_service_handle = inner.wallet.transaction_service.clone();
         let claim_public_key = match claim_public_key {
             None => return Err(UiError::PublicKeyParseError),
@@ -448,12 +449,10 @@ impl AppStateInner {
     }
 
     pub fn get_transaction_weight(&self) -> TransactionWeight {
-        *self
-            .wallet
-            .network
-            .create_consensus_constants()
-            .last()
-            .unwrap()
+        // Via the builder so that entries gated on an unscheduled activation height are skipped: taking the last
+        // entry raw would hand out fork rules that are not live on this network.
+        *ConsensusConstantsBuilder::new(self.wallet.network.as_network())
+            .build()
             .transaction_weight_params()
     }
 
@@ -568,7 +567,7 @@ impl AppStateInner {
                             format!("Available ({confirmations} confirmations)"),
                         )
                     } else {
-                        let remaining = required_confirmations - confirmations;
+                        let remaining = required_confirmations.saturating_sub(confirmations);
                         (
                             None,
                             format!(
@@ -704,8 +703,7 @@ impl AppStateInner {
             ui_proofs.push(UiBurnProof {
                 id: proof.id,
                 proof: proof.burn_proof,
-                encoded_merkle_proof: proof.kernel_merkle_proof,
-                kernel: proof.kernel,
+                burn_output_proof: proof.burn_output_proof,
                 burned_at: proof.created_at,
             });
         }
@@ -774,7 +772,7 @@ impl AppStateInner {
 
     pub fn add_notification(&mut self, notification: String) {
         self.data.notifications.push((Local::now(), notification));
-        self.data.new_notification_count += 1;
+        self.data.new_notification_count = self.data.new_notification_count.saturating_add(1);
 
         const MAX_NOTIFICATIONS: usize = 100;
         if self.data.notifications.len() > MAX_NOTIFICATIONS {

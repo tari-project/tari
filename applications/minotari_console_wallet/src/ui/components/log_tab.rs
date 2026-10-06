@@ -96,12 +96,12 @@ impl<B: Backend> Component<B> for LogTab {
 
     fn on_up(&mut self, _app_state: &mut AppState) {
         if self.scroll > 1 {
-            self.scroll -= 1;
+            self.scroll = self.scroll.saturating_sub(1);
         }
     }
 
     fn on_down(&mut self, _app_state: &mut AppState) {
-        self.scroll += 1;
+        self.scroll = self.scroll.saturating_add(1);
     }
 
     fn on_esc(&mut self, _: &mut AppState) {}

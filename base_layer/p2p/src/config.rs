@@ -64,7 +64,8 @@ pub struct PeerSeedsConfig {
         serialize_with = "serialize_string"
     )]
     pub dns_seed_name_servers: DnsNameServerList,
-    /// All DNS seed records must pass DNSSEC validation
+    /// All DNS seed records must pass DNSSEC validation. Name servers that return records which cannot be proven
+    /// authentic are treated as failed, and no seed peers are taken from them.
     #[serde(default)]
     pub dns_seeds_use_dnssec: bool,
 }
@@ -140,7 +141,7 @@ pub struct P2pConfig {
     /// A value of 0 will disallow any liveness sessions.
     pub listener_liveness_max_sessions: usize,
     /// If Some, enables periodic socket-level liveness checks
-    #[serde(with = "serializers::optional_seconds")]
+    #[serde(with = "serializers::optional_seconds_nonzero")]
     pub listener_self_liveness_check_interval: Option<Duration>,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: StringList,
@@ -158,10 +159,38 @@ pub struct P2pConfig {
     /// it with a new session. If false, the RPC server will reject the new session and preserve the older session.
     /// (default value = true).
     pub cull_oldest_peer_rpc_connection_on_full: bool,
+    /// How long an RPC session may sit without receiving a request before the server closes it and reclaims its slot
+    /// in `rpc_max_simultaneous_sessions`. Time spent servicing a request does not count towards this. A peer that
+    /// disappears without closing its substream would otherwise hold its session forever.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rpc_idle_session_timeout: Duration,
+    /// The longest deadline the RPC server will honour from a client. The deadline bounds a single
+    /// service call and the gap between two messages of a streaming response, and arrives on the
+    /// wire as an unbounded number of seconds, so without a ceiling a peer can switch off those
+    /// timeouts entirely. Requests asking for more are clamped to this, not rejected; a request
+    /// that then runs past it gets a `Timeout` status. Raise it if peers legitimately need a longer
+    /// `rpc_deadline` than this allows. Values below the 1s minimum client deadline are floored at
+    /// it, so a misconfigured zero cannot stop the node serving.
+    /// Default: 10 minutes
+    #[serde(with = "serializers::seconds")]
+    pub rpc_maximum_client_deadline: Duration,
     /// The maximum time a seed peer connection is allowed to stay open before being forcibly closed.
     /// Default: 15 minutes
     #[serde(with = "serializers::seconds")]
     pub max_seed_peer_age: Duration,
+    /// Enable proactive (recovery) dialing in the comms connectivity manager. The DHT peer pool owns the
+    /// steady-state connection count; the proactive dialer only exists to get this node back off the floor when
+    /// the pool cannot recover unaided (cold start, total isolation). Setting this to false is the kill switch
+    /// for that subsystem.
+    /// Default: true
+    pub proactive_dialing_enabled: bool,
+    /// The connection count below which the proactive dialer is allowed to run. A *floor*, not a target - it
+    /// must stay strictly below the DHT peer pool size (`dht.num_neighbouring_nodes + dht.num_random_nodes`) or
+    /// the dialer becomes a second steady-state connection-count controller fighting the pool on the same tick.
+    /// `P2pInitializer` clamps it below the pool size and warns if this is set into conflict.
+    /// Default: 8
+    pub proactive_dialing_floor: usize,
 }
 
 impl Default for P2pConfig {
@@ -187,7 +216,11 @@ impl Default for P2pConfig {
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,
             cull_oldest_peer_rpc_connection_on_full: true,
+            rpc_idle_session_timeout: Duration::from_secs(10 * 60),
+            rpc_maximum_client_deadline: Duration::from_secs(10 * 60),
             max_seed_peer_age: Duration::from_secs(15 * 60),
+            proactive_dialing_enabled: true,
+            proactive_dialing_floor: 8,
         }
     }
 }

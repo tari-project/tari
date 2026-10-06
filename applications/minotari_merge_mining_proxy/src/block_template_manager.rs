@@ -144,7 +144,7 @@ impl BlockTemplateManager<'_> {
     }
 
     async fn create_new_block_template(&mut self) -> Result<(NewBlockTemplate, u64), MmProxyError> {
-        let mut loop_count = 0;
+        let mut loop_count = 0usize;
         loop {
             let new_template = match self.get_new_block_template().await {
                 Ok(val) => {
@@ -156,7 +156,7 @@ impl BlockTemplateManager<'_> {
                                 "mempool not in sync".to_string(),
                             ));
                         } else {
-                            loop_count += 1;
+                            loop_count = loop_count.saturating_add(1);
                             continue;
                         }
                     }
@@ -352,7 +352,7 @@ fn remove_reserved_merge_mining_tag_space(extra: &mut RawExtraField) -> Result<(
         )));
     }
 
-    nonce.truncate(nonce.len() - TARI_MERGE_MINING_TAG_SIZE);
+    nonce.truncate(nonce.len().saturating_sub(TARI_MERGE_MINING_TAG_SIZE));
     *extra = extra_field.into();
     Ok(())
 }

@@ -166,7 +166,7 @@ impl InputSanitizer {
 
         let mut sanitized_arr = Vec::with_capacity(arr.len());
         for item in arr {
-            let sanitized_item = self.sanitize_value(item, depth + 1)?;
+            let sanitized_item = self.sanitize_value(item, depth.saturating_add(1))?;
             sanitized_arr.push(sanitized_item);
         }
 
@@ -202,7 +202,7 @@ impl InputSanitizer {
             }
 
             // Sanitize the value
-            let sanitized_value = self.sanitize_value(value, depth + 1)?;
+            let sanitized_value = self.sanitize_value(value, depth.saturating_add(1))?;
             sanitized_obj.insert(trimmed_key.to_string(), sanitized_value);
         }
 
@@ -436,9 +436,11 @@ mod tests {
         assert!(sanitizer.validate_number_range(0.5, 1.0, 10.0, "test").is_err());
         assert!(sanitizer.validate_number_range(15.0, 1.0, 10.0, "test").is_err());
         assert!(sanitizer.validate_number_range(f64::NAN, 1.0, 10.0, "test").is_err());
-        assert!(sanitizer
-            .validate_number_range(f64::INFINITY, 1.0, 10.0, "test")
-            .is_err());
+        assert!(
+            sanitizer
+                .validate_number_range(f64::INFINITY, 1.0, 10.0, "test")
+                .is_err()
+        );
     }
 
     #[test]
@@ -446,14 +448,20 @@ mod tests {
         let sanitizer = InputSanitizer::default();
         let hex_pattern = ValidationPatterns::hex();
 
-        assert!(sanitizer
-            .validate_string_pattern("deadbeef", &hex_pattern, "hex")
-            .is_ok());
-        assert!(sanitizer
-            .validate_string_pattern("DEADBEEF", &hex_pattern, "hex")
-            .is_ok());
-        assert!(sanitizer
-            .validate_string_pattern("not_hex", &hex_pattern, "hex")
-            .is_err());
+        assert!(
+            sanitizer
+                .validate_string_pattern("deadbeef", &hex_pattern, "hex")
+                .is_ok()
+        );
+        assert!(
+            sanitizer
+                .validate_string_pattern("DEADBEEF", &hex_pattern, "hex")
+                .is_ok()
+        );
+        assert!(
+            sanitizer
+                .validate_string_pattern("not_hex", &hex_pattern, "hex")
+                .is_err()
+        );
     }
 }

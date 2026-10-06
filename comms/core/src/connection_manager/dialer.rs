@@ -20,12 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{
     FutureExt,
     future,
-    future::{BoxFuture, Either, FusedFuture},
+    future::{BoxFuture, Either},
     pin_mut,
     stream::FuturesUnordered,
 };
@@ -61,13 +65,24 @@ use crate::{
     multiplexing::Yamux,
     net_address::{MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
     types::{CommsPublicKey, TransportProtocol},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
+
+/// Maximum time the dialer will wait for space on the ConnectionManager's event channel before it
+/// gives up and drops the event.
+///
+/// This wait MUST be bounded. The ConnectionManager can itself be parked awaiting space on the
+/// dialer's request channel (see `send_dialer_request`), and if both actors park on each other's
+/// full channel neither `select!` can drain the other: the dialer stops accepting dial requests,
+/// the ConnectionManager stops draining dial results, and the node stays isolated until it is
+/// restarted. Bounding the wait guarantees the dialer returns to its select loop and drains
+/// `request_rx`, which is what lets the ConnectionManager make progress again.
+const CONN_MAN_NOTIFY_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
 type DialFuturesUnordered = FuturesUnordered<
@@ -196,7 +211,7 @@ where
     }
 
     fn cancel_dial(&mut self, peer_id: &NodeId) {
-        if let Some(mut s) = self.cancel_signals.remove(peer_id) {
+        if let Some(s) = self.cancel_signals.remove(peer_id) {
             s.trigger();
         }
     }
@@ -217,7 +232,7 @@ where
             "Cancelling {} pending dial(s)",
             self.cancel_signals.len()
         );
-        self.cancel_signals.drain().for_each(|(_, mut signal)| {
+        self.cancel_signals.drain().for_each(|(_, signal)| {
             signal.trigger();
         })
     }
@@ -235,9 +250,12 @@ where
             Ok((conn, peer_identity)) => {
                 // try save the peer back to the peer manager
                 let peer = dial_state.peer_mut();
-                peer.update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_identity.claim.clone(),
-                });
+                peer.update_addresses(
+                    &peer_identity.permitted_addresses,
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: peer_identity.claim.clone(),
+                    },
+                );
                 peer.supported_protocols = peer_identity.metadata.supported_protocols;
                 peer.user_agent = peer_identity.metadata.user_agent;
 
@@ -272,16 +290,31 @@ where
             },
         }
 
-        let _ = self
-            .peer_manager
-            .add_or_update_peer(dial_state.peer().clone())
-            .await
-            .map_err(|e| {
+        // Bounded, because this write-back sits on the dialer's `select!` loop: every failed dial
+        // writes the peer back, so under a dial storm this is exactly where the dialer used to wedge.
+        // The write still completes on the blocking pool if it overruns - we just stop waiting for it
+        // and carry on servicing dial requests.
+        let write_back = time::timeout(
+            PEER_LOOKUP_TIMEOUT,
+            self.peer_manager.add_or_update_peer(dial_state.peer().clone()),
+        )
+        .await;
+        match write_back {
+            Ok(Ok(_)) => {},
+            Ok(Err(e)) => {
                 error!(target: LOG_TARGET, "Could not update peer data: {e}");
                 let _ = dial_state
                     .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
                     .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {e:?}"));
-            });
+            },
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer write-back for '{node_id}' exceeded {PEER_LOOKUP_TIMEOUT:.0?}; it will complete in the \
+                     background. The peer database is slow."
+                );
+            },
+        }
 
         #[cfg(feature = "metrics")]
         metrics::pending_connections(ConnectionDirection::Outbound).dec();
@@ -289,12 +322,45 @@ where
         self.cancel_dial(&node_id);
     }
 
+    /// Publish an event to the ConnectionManager without parking the dialer indefinitely.
+    ///
+    /// The fast path is a non-blocking `try_send`. If the ConnectionManager's event channel is full
+    /// we fall back to a *bounded* wait rather than an unbounded one — see
+    /// [`CONN_MAN_NOTIFY_TIMEOUT`] for why that bound is load-bearing.
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
-        log_if_error!(
-            target: LOG_TARGET,
-            self.conn_man_notifier.send(event).await,
-            "Failed to publish event because '{error}'",
-        );
+        let event = match self.conn_man_notifier.try_send(event) {
+            Ok(_) => return,
+            Err(mpsc::error::TrySendError::Full(event)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "ConnectionManager event channel is full. Waiting up to {CONN_MAN_NOTIFY_TIMEOUT:.0?} to publish \
+                     '{event}'"
+                );
+                event
+            },
+            Err(mpsc::error::TrySendError::Closed(event)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Not publishing event '{event}' because the ConnectionManager has shut down"
+                );
+                return;
+            },
+        };
+
+        if let Err(err) = self
+            .conn_man_notifier
+            .send_timeout(event, CONN_MAN_NOTIFY_TIMEOUT)
+            .await
+        {
+            // Dropping the event leaves the ConnectivityManager's pool out of step with reality for
+            // this peer, which is bad — but it is recoverable on the next pool refresh, whereas
+            // blocking here is not recoverable at all.
+            error!(
+                target: LOG_TARGET,
+                "Dropped ConnectionManager event after waiting {CONN_MAN_NOTIFY_TIMEOUT:.0?}: {err}. The \
+                 ConnectionManager is not draining its event channel."
+            );
+        }
     }
 
     fn reply_to_pending_requests(
@@ -307,9 +373,10 @@ where
             .and_then(|reply_oneshots| {
                 reply_oneshots.into_iter().for_each(|tx| {
                     log_if_error_fmt!(
+                        level: debug,
                         target: LOG_TARGET,
                         tx.send(result.clone()),
-                        "Failed to send dial result for peer '{}'",
+                        "Failed to send dial result for peer '{}' (requester no longer waiting)",
                         peer_node_id.short_str()
                     );
                 });
@@ -450,7 +517,7 @@ where
         let peer_identity =
             common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -462,7 +529,7 @@ where
         let peer_identity =
             common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -474,7 +541,7 @@ where
         let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        if cancel_signal.is_terminated() {
+        if cancel_signal.is_triggered() {
             muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }

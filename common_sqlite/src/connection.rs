@@ -27,6 +27,7 @@ use std::{
     iter,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockWriteGuard},
+    time::Duration,
 };
 
 use diesel::{
@@ -138,6 +139,39 @@ lazy_static::lazy_static! {
 #[derive(Clone)]
 pub struct DbConnection {
     pool: SqliteConnectionPool,
+    /// Set only for the temp-file databases created by [`Self::connect_temp_file_and_migrate`].
+    /// Shared across clones so the directory is removed exactly once - see [`TempDatabaseDir`].
+    temp_dir: Option<Arc<TempDatabaseDir>>,
+}
+
+/// Owns the temporary directory backing a temp-file database and removes it when the last
+/// [`DbConnection`] sharing it is dropped.
+///
+/// `DbConnection` is `Clone`, and one database is routinely held through several handles at once:
+/// `DhtActor`, for instance, hands one to `DedupCacheDatabase` and another to `DhtDatabase`, which
+/// then makes further clones per spawned task. Removing the directory in `DbConnection::drop` let
+/// whichever handle went out of scope first delete the file out from under all the others, which
+/// surfaced as `disk I/O error` and silently empty query results in the surviving handles.
+struct TempDatabaseDir {
+    pool: SqliteConnectionPool,
+    dir: PathBuf,
+}
+
+impl Drop for TempDatabaseDir {
+    fn drop(&mut self) {
+        if !self.dir.exists() {
+            return;
+        }
+        // Release the pool's connections before unlinking the files they are open on.
+        let pool_state = self.pool.cleanup();
+        debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {pool_state:?}");
+        debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", self.dir.display());
+        if let Err(e) = fs::remove_dir_all(&self.dir) {
+            error!(target: LOG_TARGET, "Failed to clean up temp dir: {e}");
+        } else {
+            debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", self.dir.display());
+        }
+    }
 }
 
 impl DbConnection {
@@ -145,7 +179,22 @@ impl DbConnection {
     /// override the default setting of 1.
     /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
     pub fn connect_url(db_url: &DbConnectionUrl, sqlite_pool_size: Option<usize>) -> Result<Self, StorageError> {
-        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}'");
+        Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+    }
+
+    /// As [`Self::connect_url`], but with an explicit `PRAGMA busy_timeout`.
+    ///
+    /// The default ([`PRAGMA_BUSY_TIMEOUT`], 60s) suits databases where losing a write is worse than
+    /// waiting - the wallet, for instance. It is a poor fit for databases on a hot networking path,
+    /// where a call that waits a minute for a lock has long outlived the request that made it and,
+    /// even when run on a blocking thread pool, occupies a thread in it for that whole minute. Such
+    /// callers should pass something far shorter.
+    pub fn connect_url_with_busy_timeout(
+        db_url: &DbConnectionUrl,
+        sqlite_pool_size: Option<usize>,
+        busy_timeout: Duration,
+    ) -> Result<Self, StorageError> {
+        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}' (busy_timeout {busy_timeout:.0?})");
 
         // Ensure the path exists
         if let DbConnectionUrl::File(path) = db_url &&
@@ -159,7 +208,7 @@ impl DbConnection {
             sqlite_pool_size.unwrap_or(1),
             true,
             true,
-            PRAGMA_BUSY_TIMEOUT,
+            busy_timeout,
         );
         pool.create_pool()?;
 
@@ -191,8 +240,19 @@ impl DbConnection {
         migrations: EmbeddedMigrations,
         sqlite_pool_size: Option<usize>,
     ) -> Result<Self, StorageError> {
+        Self::connect_and_migrate_with_busy_timeout(db_url, migrations, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+    }
+
+    /// As [`Self::connect_and_migrate`], but with an explicit `PRAGMA busy_timeout`. See
+    /// [`Self::connect_url_with_busy_timeout`] for when to override the default.
+    pub fn connect_and_migrate_with_busy_timeout(
+        db_url: &DbConnectionUrl,
+        migrations: EmbeddedMigrations,
+        sqlite_pool_size: Option<usize>,
+        busy_timeout: Duration,
+    ) -> Result<Self, StorageError> {
         let _lock = Self::acquire_migration_write_lock()?;
-        let conn = Self::connect_url(db_url, sqlite_pool_size)?;
+        let conn = Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, busy_timeout)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
@@ -216,11 +276,16 @@ impl DbConnection {
         let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
         fs::create_dir_all(&path)?;
         let db_url = DbConnectionUrl::File(path.join("my_temp.db"));
-        DbConnection::connect_and_migrate(&db_url, migrations, Some(10))
+        let mut conn = DbConnection::connect_and_migrate(&db_url, migrations, Some(10))?;
+        conn.temp_dir = Some(Arc::new(TempDatabaseDir {
+            pool: conn.pool.clone(),
+            dir: path,
+        }));
+        Ok(conn)
     }
 
     fn new(pool: SqliteConnectionPool) -> Self {
-        Self { pool }
+        Self { pool, temp_dir: None }
     }
 
     /// Fetch a connection from the pool. This function synchronously blocks the current thread for up to 60 seconds or
@@ -243,28 +308,6 @@ impl DbConnection {
     #[cfg(test)]
     pub(crate) fn db_path(&self) -> PathBuf {
         self.pool.db_path()
-    }
-}
-
-impl Drop for DbConnection {
-    fn drop(&mut self) {
-        let path = self.pool.db_path();
-
-        if path.exists() &&
-            let Some(parent) = path.parent() &&
-            parent.starts_with(DbConnection::temp_db_dir())
-        {
-            debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
-            // Explicitly cleanup and drop the connection pool to ensure all connections are released
-            let pool_state = self.pool.cleanup();
-            debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {pool_state:?}");
-            debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
-            if let Err(e) = fs::remove_dir_all(parent) {
-                error!(target: LOG_TARGET, "Failed to clean up temp dir: {e}");
-            } else {
-                debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
-            }
-        }
     }
 }
 
@@ -309,6 +352,47 @@ mod test {
         drop(pool_conn);
         drop(db_conn);
         assert!(!path.exists());
+    }
+
+    /// A temp database is routinely held through several clones at once - `DhtActor`, for instance,
+    /// hands one to `DedupCacheDatabase` and another to `DhtDatabase`, which then clones further per
+    /// spawned task. Cleaning up in `DbConnection::drop` let whichever clone went out of scope first
+    /// delete the file out from under the rest, which surfaced as `disk I/O error` and silently
+    /// empty results in the survivors.
+    #[tokio::test]
+    async fn temp_dir_survives_until_the_last_clone_is_dropped() {
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
+
+        let db_conn = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let path = db_conn.db_path();
+        assert!(path.exists());
+
+        // Write through a clone, then drop the clone. This is the point at which the old `Drop`
+        // removed the directory.
+        let clone = db_conn.clone();
+        {
+            let mut pool_conn = clone.get_pooled_connection().unwrap();
+            pool_conn
+                .batch_execute("INSERT INTO test_table (id) VALUES (1);")
+                .unwrap();
+        }
+        drop(clone);
+
+        assert!(path.exists(), "the database was removed while another handle was live");
+
+        // ...and the original handle can still read what the clone wrote.
+        let mut pool_conn = db_conn
+            .get_pooled_connection()
+            .expect("surviving handle lost its database");
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
+            .get_result(&mut pool_conn)
+            .expect("query through the surviving handle failed");
+        assert_eq!(count, 1);
+
+        // The last handle going away is what cleans up.
+        drop(pool_conn);
+        drop(db_conn);
+        assert!(!path.exists(), "temp dir was not cleaned up by the last handle");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

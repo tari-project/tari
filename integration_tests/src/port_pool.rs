@@ -40,8 +40,6 @@ struct PortPoolInner {
     http_ports: VecDeque<u16>,
     /// Pre-validated available ports for wallet gRPC (19500-19999)
     wallet_grpc_ports: VecDeque<u16>,
-    /// Pre-validated available ports for wallet HTTP (20000-20499)
-    wallet_http_ports: VecDeque<u16>,
     /// Pre-validated available ports for xmrig proxy (20500-20999)
     xmrig_proxy_ports: VecDeque<u16>,
 }
@@ -56,10 +54,12 @@ pub struct BaseNodePorts {
 }
 
 /// A set of ports allocated for a single wallet.
+///
+/// Wallets only own a gRPC port — the HTTP endpoint they talk to belongs to the base node they
+/// are attached to (see `spawn_wallet`), so it must not be tracked here.
 #[derive(Debug, Clone)]
 pub struct WalletPorts {
     pub grpc: u16,
-    pub http: u16,
 }
 
 impl PortPool {
@@ -72,17 +72,14 @@ impl PortPool {
         let grpc_ports = scan_available_ports(18500, 18999, capacity);
         let http_ports = scan_available_ports(19000, 19499, capacity);
         let wallet_grpc_ports = scan_available_ports(19500, 19999, capacity);
-        let wallet_http_ports = scan_available_ports(20000, 20499, capacity);
         let xmrig_proxy_ports = scan_available_ports(20500, 20999, capacity);
 
         println!(
-            "PortPool initialized: {} p2p, {} grpc, {} http, {} wallet_grpc, {} wallet_http, {} xmrig_proxy ports \
-             available",
+            "PortPool initialized: {} p2p, {} grpc, {} http, {} wallet_grpc, {} xmrig_proxy ports available",
             p2p_ports.len(),
             grpc_ports.len(),
             http_ports.len(),
             wallet_grpc_ports.len(),
-            wallet_http_ports.len(),
             xmrig_proxy_ports.len(),
         );
 
@@ -92,7 +89,6 @@ impl PortPool {
                 grpc_ports,
                 http_ports,
                 wallet_grpc_ports,
-                wallet_http_ports,
                 xmrig_proxy_ports,
             }),
         }
@@ -103,10 +99,10 @@ impl PortPool {
     /// Returns `None` if not enough ports are available (pool exhausted).
     pub fn allocate_base_node_ports(&self) -> Option<BaseNodePorts> {
         let mut inner = self.pools.lock().unwrap();
-        let p2p = inner.p2p_ports.pop_front()?;
-        let grpc = inner.grpc_ports.pop_front()?;
-        let http = inner.http_ports.pop_front()?;
-        let xmrig_proxy = inner.xmrig_proxy_ports.pop_front()?;
+        let p2p = take_available(&mut inner.p2p_ports)?;
+        let grpc = take_available(&mut inner.grpc_ports)?;
+        let http = take_available(&mut inner.http_ports)?;
+        let xmrig_proxy = take_available(&mut inner.xmrig_proxy_ports)?;
         Some(BaseNodePorts {
             p2p,
             grpc,
@@ -118,9 +114,8 @@ impl PortPool {
     /// Allocate a set of ports for a wallet.
     pub fn allocate_wallet_ports(&self) -> Option<WalletPorts> {
         let mut inner = self.pools.lock().unwrap();
-        let grpc = inner.wallet_grpc_ports.pop_front()?;
-        let http = inner.wallet_http_ports.pop_front()?;
-        Some(WalletPorts { grpc, http })
+        let grpc = take_available(&mut inner.wallet_grpc_ports)?;
+        Some(WalletPorts { grpc })
     }
 
     /// Return base node ports to the pool for reuse by another scenario.
@@ -136,8 +131,25 @@ impl PortPool {
     pub fn return_wallet_ports(&self, ports: WalletPorts) {
         let mut inner = self.pools.lock().unwrap();
         inner.wallet_grpc_ports.push_back(ports.grpc);
-        inner.wallet_http_ports.push_back(ports.http);
     }
+}
+
+/// Pop the first port from `pool` that is *still* bindable right now.
+///
+/// The pool is validated once at construction, but a port can be taken by something else on the
+/// machine in between (or lingering from a process that has not fully released it yet). Ports that
+/// fail the re-check are rotated to the back so they become available again once they free up.
+///
+/// Returns `None` once every port in the pool has been tried without success.
+fn take_available(pool: &mut VecDeque<u16>) -> Option<u16> {
+    for _ in 0..pool.len() {
+        let port = pool.pop_front()?;
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Some(port);
+        }
+        pool.push_back(port);
+    }
+    None
 }
 
 /// Scan a port range and return up to `capacity` ports that are currently available.

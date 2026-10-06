@@ -102,7 +102,10 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                 ..
             }) => {
                 // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
-                let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
+                let percentage_progress = current_height
+                    .saturating_mul(100)
+                    .checked_div(tip_height)
+                    .unwrap_or(100);
                 let msg = format!(
                     "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
@@ -121,7 +124,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                 let s = format!("Attempt {num_retries}/{retry_limit}: Failed to complete wallet recovery {error}.");
                 println!("{s}");
                 warn!(target: LOG_TARGET, "{s}");
-                failed_events += 1;
+                failed_events = failed_events.saturating_add(1);
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,

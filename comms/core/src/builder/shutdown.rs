@@ -27,19 +27,22 @@ use std::{
 };
 
 use futures::{FutureExt, future, future::JoinAll};
-use tari_shutdown::ShutdownSignal;
+use tari_shutdown::{ShutdownSignal, oneshot_trigger::OneshotSignal};
 
-/// Future which resolves once comms has shut down
+/// Future which resolves once comms has shut down: the shutdown signal has fired and every comms service has
+/// signalled that it is complete.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct CommsShutdown {
-    signals: JoinAll<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
+    complete_signals: JoinAll<OneshotSignal<()>>,
 }
 
 impl CommsShutdown {
-    pub fn new<I>(triggers: I) -> Self
-    where I: IntoIterator<Item = ShutdownSignal> {
+    pub fn new<I>(shutdown_signal: ShutdownSignal, complete_signals: I) -> Self
+    where I: IntoIterator<Item = OneshotSignal<()>> {
         Self {
-            signals: future::join_all(triggers),
+            shutdown_signal,
+            complete_signals: future::join_all(complete_signals),
         }
     }
 }
@@ -48,7 +51,8 @@ impl Future for CommsShutdown {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let _result = futures::ready!(self.signals.poll_unpin(cx));
+        futures::ready!(self.shutdown_signal.poll_unpin(cx));
+        let _result = futures::ready!(self.complete_signals.poll_unpin(cx));
         Poll::Ready(())
     }
 }

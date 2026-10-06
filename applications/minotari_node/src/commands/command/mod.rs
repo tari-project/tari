@@ -352,7 +352,7 @@ impl CommandContext {
                 }
                 let tip = blockchain_db.fetch_tip_header().await?.height();
                 blockchain_db
-                    .fetch_chain_headers(tip.saturating_sub(from_tip - 1)..=tip)
+                    .fetch_chain_headers(tip.saturating_sub(from_tip.saturating_sub(1))..=tip)
                     .await
                     .map_err(Into::into)
             },

@@ -52,8 +52,6 @@ use minotari_app_grpc::tari_rpc::{
     CoinSplitResponse,
     CreateBurnTransactionRequest,
     CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
     DbWalletOutputInfo,
     DebugTransactionRequest,
     DebugTransactionResponse,
@@ -117,8 +115,6 @@ use minotari_app_grpc::tari_rpc::{
     SendShaAtomicSwapResponse,
     SignMessageRequest,
     SignMessageResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
     SubmitValidatorNodeExitRequest,
     SubmitValidatorNodeExitResponse,
     TransactionDirection,
@@ -183,6 +179,7 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
     offline_signing::models::SignedOneSidedTransactionResult,
+    rpc::MAX_ALLOWED_QUERY_SIZE,
     transaction_components::{
         OutputFeatures,
         TransactionOutput,
@@ -382,6 +379,7 @@ impl WalletGrpcServer {
     async fn transfer_single_tx(
         &self,
         recipients: Vec<minotari_app_grpc::tari_rpc::PaymentRecipient>,
+        selection_criteria: UtxoSelectionCriteria,
     ) -> Result<Response<minotari_app_grpc::tari_rpc::TransferResponse>, Status> {
         let fee_per_gram = recipients.first().expect("already checked").fee_per_gram;
         let recipients = recipients
@@ -417,7 +415,7 @@ impl WalletGrpcServer {
         let ids = transaction_service
             .send_one_sided_multi_recipient_transaction(
                 recipients,
-                UtxoSelectionCriteria::default(),
+                selection_criteria,
                 OutputFeatures::default(),
                 fee_per_gram.into(),
             )
@@ -714,7 +712,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let payment_id = if !message.raw_payment_id.is_empty() {
-            MemoField::from_bytes(&message.raw_payment_id)
+            memo_from_raw_bytes(&message.raw_payment_id)?
         } else if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -941,7 +939,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
 
         let payment_id = if !recipient.raw_payment_id.is_empty() {
-            MemoField::from_bytes(&recipient.raw_payment_id)
+            memo_from_raw_bytes(&recipient.raw_payment_id)?
         } else if let Some(user_pay_id) = recipient.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -1179,8 +1177,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             ));
         }
 
+        let selection_criteria = UtxoSelectionCriteria {
+            excluding: parse_excluded_commitments(message.excluded_commitments)?,
+            ..Default::default()
+        };
+
         if message.single_tx {
-            return self.transfer_single_tx(message.recipients).await;
+            return self.transfer_single_tx(message.recipients, selection_criteria).await;
         }
         let recipients = message
             .recipients
@@ -1209,7 +1212,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ));
             }
             let payment_id = if !raw_payment_id.is_empty() {
-                MemoField::from_bytes(&raw_payment_id)
+                memo_from_raw_bytes(&raw_payment_id)?
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -1230,6 +1233,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 MemoField::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
+            let selection_criteria = selection_criteria.clone();
             transfers.push(async move {
                 (
                     hex_address,
@@ -1238,7 +1242,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -1249,7 +1253,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .send_one_sided_to_stealth_address_transaction(
                                 address,
                                 amount.into(),
-                                UtxoSelectionCriteria::default(),
+                                selection_criteria,
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
                                 payment_id,
@@ -1545,7 +1549,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                MemoField::from_bytes(&message.payment_id),
+                memo_from_raw_bytes(&message.payment_id)?,
                 Some(message.claim_public_key.as_slice())
                     .filter(|v| !v.is_empty())
                     .map(CompressedPublicKey::from_canonical_bytes)
@@ -1829,7 +1833,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             target: LOG_TARGET,
                             "GetCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
-                            i + 1,
+                            i.saturating_add(1),
                             transactions.len()
                         );
                     },
@@ -1968,8 +1972,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
 
             // Update for next iteration
-            current_offset += current_limit;
-            remaining -= current_limit;
+            current_offset = current_offset.saturating_add(current_limit);
+            remaining = remaining.saturating_sub(current_limit);
         }
 
         debug!(
@@ -2139,7 +2143,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     // Stream the transaction
                     match sender.send(Ok(response)).await {
                         Ok(_) => {
-                            total_sent += 1;
+                            total_sent = total_sent.saturating_add(1);
                             trace!(
                                 target: LOG_TARGET,
                                 "GetAllCompletedTransactionsStreaming: Sent transaction TxId: {} ({} of {})",
@@ -2159,7 +2163,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
 
                 // Update for next iteration
-                current_offset += current_limit;
+                current_offset = current_offset.saturating_add(current_limit);
                 remaining = remaining.saturating_sub(current_limit);
 
                 trace!(
@@ -2393,7 +2397,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        MemoField::from_bytes(&message.payment_id),
+                        memo_from_raw_bytes(&message.payment_id)?,
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{e:?}")))?
@@ -2528,64 +2532,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
     }
 
-    async fn create_template_registration(
-        &self,
-        request: Request<CreateTemplateRegistrationRequest>,
-    ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut transaction_service = self.wallet.transaction_service.clone();
-        let message = request.into_inner();
-
-        let fee_per_gram = message.fee_per_gram.into();
-
-        let (tx_id, template_address) = transaction_service
-            .register_code_template(
-                message
-                    .template_name
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
-                message
-                    .template_version
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
-                if let Some(tt) = message.template_type {
-                    tt.try_into()
-                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("template type is missing"));
-                },
-                if let Some(bi) = message.build_info {
-                    bi.try_into()
-                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("build info is missing"));
-                },
-                message
-                    .binary_sha
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
-                message
-                    .binary_url
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
-                fee_per_gram,
-                if message.sidechain_deployment_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
-                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
-                    )
-                },
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(CreateTemplateRegistrationResponse {
-            tx_id: tx_id.as_u64(),
-            template_address: template_address.to_vec(),
-        }))
-    }
-
     async fn register_validator_node(
         &self,
         request: Request<RegisterValidatorNodeRequest>,
@@ -2627,7 +2573,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                MemoField::from_bytes(&request.payment_id),
+                memo_from_raw_bytes(&request.payment_id)?,
             )
             .await
         {
@@ -2682,6 +2628,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 sidechain_key,
+                request.activation_epoch.into(),
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
@@ -2702,53 +2649,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
-            },
-        };
-        Ok(Response::new(response))
-    }
-
-    async fn submit_validator_eviction_proof(
-        &self,
-        request: Request<SubmitValidatorEvictionProofRequest>,
-    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
-        let request = request.into_inner();
-        let mut transaction_service = self.get_transaction_service();
-
-        let sidechain_key = Some(request.sidechain_deployment_key)
-            .filter(|k| !k.is_empty())
-            .map(|k| PrivateKey::from_canonical_bytes(&k))
-            .transpose()
-            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
-
-        let proof = request
-            .proof
-            .map(TryInto::try_into)
-            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Failed to convert proof: {e}");
-                Status::invalid_argument(format!("Invalid proof: {e}"))
-            })?;
-
-        let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
-            Status::internal("failed to fetch consensus constants")
-        })?;
-
-        let response = match transaction_service
-            .submit_validator_eviction_proof(
-                constants.validator_node_registration_min_deposit_amount(),
-                proof,
-                request.fee_per_gram.into(),
-                sidechain_key,
-                MemoField::new_open(request.message.into_bytes(), TxType::PaymentToSelf)
-                    .map_err(|e| Status::internal(e.to_string()))?,
-            )
-            .await
-        {
-            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {e}");
-                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))
@@ -2888,43 +2788,45 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let tx_id = TxId::from(req.transaction_id);
+        // The completed transaction may no longer exist — e.g. it was reorged out of the chain and
+        // then cancelled. That is exactly the case where the *historical* PayRefs matter, so a
+        // missing transaction must not short-circuit the whole call: we only skip deriving the
+        // current PayRefs / commitment info (which need the live transaction) and still return the
+        // archived history below.
         let completed_tx = match transaction_service.get_completed_transaction(tx_id).await {
-            Ok(completed_tx) => completed_tx,
+            Ok(completed_tx) => Some(completed_tx),
             Err(e) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
-                    "get_transaction_pay_refs: Failed to get transaction {}: {}",
+                    "get_transaction_pay_refs: No live transaction {} ({}); returning historical PayRefs only",
                     req.transaction_id,
                     e
                 );
-                return Err(Status::not_found(format!(
-                    "Transaction {} not found",
-                    req.transaction_id
-                )));
+                None
             },
         };
 
-        let payment_references = {
-            // Only return PayRefs if transaction is mined and has block hash
-            if let Some(block_hash) = &completed_tx.mined_in_block {
+        // Only derive current PayRefs when the transaction is still present and mined.
+        let payment_references = match completed_tx
+            .as_ref()
+            .and_then(|tx| tx.mined_in_block.as_ref().map(|block_hash| (tx, block_hash)))
+        {
+            Some((completed_tx, block_hash)) => {
                 let mut payment_references = Vec::new();
 
                 // Generate PayRefs from sent output hashes
                 for output_hash in &completed_tx.sent_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 // Generate PayRefs from received output hashes
                 for output_hash in &completed_tx.received_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 // Generate PayRefs from change output hashes (per-output approach)
                 for output_hash in &completed_tx.change_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payment_references.push(payref.to_vec());
+                    payment_references.push(generate_payment_reference(block_hash, output_hash).to_vec());
                 }
 
                 debug!(
@@ -2935,14 +2837,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 );
 
                 payment_references
-            } else {
+            },
+            None => {
                 debug!(
                     target: LOG_TARGET,
-                    "get_transaction_pay_refs: Transaction {} is not mined yet",
+                    "get_transaction_pay_refs: Transaction {} is not present/mined; current PayRefs empty",
                     req.transaction_id
                 );
                 vec![]
-            }
+            },
         };
 
         // Fetch historical payrefs for this transaction
@@ -2966,7 +2869,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetTransactionPayRefsResponse {
             #[allow(deprecated)]
             payment_references,
-            output_commitments_info: get_transaction_output_commitments_info(&completed_tx),
+            output_commitments_info: completed_tx
+                .as_ref()
+                .map(get_transaction_output_commitments_info)
+                .unwrap_or_default(),
             historical_payment_references,
         }))
     }
@@ -3189,6 +3095,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ))
             })?;
 
+        let mined_in_epoch = proof.burn_output_proof.as_ref().map(|p| {
+            self.rules
+                .consensus_constants(p.block_height)
+                .block_height_to_epoch(p.block_height)
+                .as_u64()
+        });
         Ok(Response::new(GetBurnClaimProofResponse {
             claim_proof: Some(tari_rpc::BurnClaimProof {
                 commitment: commitment.as_bytes().to_vec(),
@@ -3199,20 +3111,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 kernel_excess_signature: proof.burn_proof.kernel_excess_signature.clone(),
                 sender_offset_public_key: proof.burn_proof.sender_offset_public_key.to_vec(),
             }),
-            merkle_proof: proof.kernel_merkle_proof.map(|p| tari_rpc::EncodedMerkleProof {
-                block_hash: p.block_hash.to_vec(),
-                encoded_proof: p.encoded_merkle_proof,
-                leaf_index: p.leaf_index,
-            }),
+            burn_output_proof: proof.burn_output_proof.map(Into::into),
             kernel: Some(proof.kernel.into()),
             encrypted_data: proof.encrypted_data.map(|ed| ed.into_vec()).unwrap_or_default(),
             value: proof.value.as_ref().map(|v| v.as_u64()).unwrap_or_default(),
-            mined_in_epoch: proof.mined_in_height.map(|height| {
-                self.rules
-                    .consensus_constants(height)
-                    .block_height_to_epoch(height)
-                    .as_u64()
-            }),
+            mined_in_epoch,
         }))
     }
 
@@ -4137,7 +4040,12 @@ fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -
     while latencies.len() > AVG_LATENCIES_CAPACITY {
         latencies.pop_back();
     }
-    latencies.iter().sum::<u64>() / max(latencies.len() as u64, 1)
+    latencies
+        .iter()
+        .copied()
+        .fold(0u64, u64::saturating_add)
+        .checked_div(max(latencies.len() as u64, 1))
+        .unwrap_or(0)
 }
 
 async fn handle_completed_tx(
@@ -4473,7 +4381,10 @@ fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<ta
     let all_artefacts = input_artefacts.into_iter().chain(output_artefacts).collect::<Vec<_>>();
 
     let mut output_commitments_info = Vec::with_capacity(
-        txn.sent_output_hashes.len() + txn.received_output_hashes.len() + txn.change_output_hashes.len(),
+        txn.sent_output_hashes
+            .len()
+            .saturating_add(txn.received_output_hashes.len())
+            .saturating_add(txn.change_output_hashes.len()),
     );
     for hash in &txn.sent_output_hashes {
         output_commitments_info.push(tari_rpc::CommitmentInfo {
@@ -4525,5 +4436,96 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
         }
     } else {
         Default::default()
+    }
+}
+
+/// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
+/// once stored (see [`MemoField::from_bytes_checked`]).
+fn memo_from_raw_bytes(bytes: &[u8]) -> Result<MemoField, Status> {
+    MemoField::from_bytes_checked(bytes).map_err(|e| Status::invalid_argument(format!("Invalid payment id: {e}")))
+}
+
+fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<CompressedCommitment>, Status> {
+    if commitments.len() > MAX_ALLOWED_QUERY_SIZE {
+        return Err(Status::invalid_argument(format!(
+            "excluded_commitments exceeds the maximum allowed size. Requested: {}, max: {MAX_ALLOWED_QUERY_SIZE}",
+            commitments.len()
+        )));
+    }
+
+    commitments
+        .into_iter()
+        .enumerate()
+        .map(|(index, commitment)| {
+            let commitment = CompressedCommitment::from_canonical_bytes(&commitment).map_err(|error| {
+                Status::invalid_argument(format!(
+                    "excluded_commitments[{index}] is not a canonical compressed commitment: {error}"
+                ))
+            })?;
+            commitment.to_commitment().map_err(|error| {
+                Status::invalid_argument(format!(
+                    "excluded_commitments[{index}] is not a valid compressed commitment: {error}"
+                ))
+            })?;
+            Ok(commitment)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::types::{CommitmentFactory, CompressedCommitment};
+    use tari_crypto::commitment::HomomorphicCommitmentFactory;
+    use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
+    use tari_utilities::ByteArray;
+
+    use super::{memo_from_raw_bytes, parse_excluded_commitments};
+
+    #[test]
+    fn memo_from_raw_bytes_rejects_oversized_payment_ids() {
+        use tari_common_types::tari_address::MAX_PAYMENT_ID_SIZE;
+
+        // An empty payment id is an empty memo; an unknown tag keeps all of its (at most MAX_PAYMENT_ID_SIZE) bytes
+        assert!(memo_from_raw_bytes(&[]).unwrap().is_empty());
+        assert!(memo_from_raw_bytes(&[0x09; MAX_PAYMENT_ID_SIZE]).is_ok());
+
+        let status = memo_from_raw_bytes(&[0x09; MAX_PAYMENT_ID_SIZE + 1]).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("Invalid payment id"), "{}", status.message());
+    }
+
+    #[test]
+    fn parse_excluded_commitments_rejects_invalid_lengths_with_their_index() {
+        let status = parse_excluded_commitments(vec![vec![1; 31]]).unwrap_err();
+
+        assert!(status.message().contains("excluded_commitments[0]"));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_rejects_invalid_points_with_their_index() {
+        let invalid_point = vec![
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let status = parse_excluded_commitments(vec![invalid_point]).unwrap_err();
+
+        assert!(status.message().contains("excluded_commitments[0]"));
+        assert!(status.message().contains("not a valid compressed commitment"));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_rejects_oversized_requests() {
+        let status = parse_excluded_commitments(vec![Vec::new(); MAX_ALLOWED_QUERY_SIZE + 1]).unwrap_err();
+
+        assert!(status.message().contains(&MAX_ALLOWED_QUERY_SIZE.to_string()));
+    }
+
+    #[test]
+    fn parse_excluded_commitments_accepts_canonical_commitments() {
+        let commitment = CompressedCommitment::from_commitment(CommitmentFactory::default().zero());
+        let bytes = commitment.as_bytes().to_vec();
+
+        let parsed = parse_excluded_commitments(vec![bytes]).unwrap();
+
+        assert_eq!(parsed, vec![commitment]);
     }
 }

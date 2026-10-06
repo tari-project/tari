@@ -22,6 +22,8 @@
 
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::sync::Arc;
 
 use blake2::Blake2b;
@@ -159,8 +161,8 @@ pub fn create_block<TDB: BlockchainBackend>(
     let mut block = header
         .into_builder()
         .with_transactions(
-            Some(coinbase_transaction)
-                .filter(|_| !spec.skip_coinbase)
+            (!spec.skip_coinbase)
+                .then_some(coinbase_transaction)
                 .into_iter()
                 .chain(spec.transactions)
                 .collect(),
@@ -175,7 +177,14 @@ pub fn create_block<TDB: BlockchainBackend>(
         .unwrap();
     let mut block = apply_mmr_to_block(db, block);
 
-    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
+    // Outputs are added to the SMT and spent inputs are removed, so the net size change accounts for both. Saturating
+    // arithmetic keeps this from wrapping when a test builds a block that spends more than the SMT holds, for example
+    // when the coinbase is skipped.
+    block.header.output_smt_size = prev_block
+        .header
+        .output_smt_size
+        .saturating_add(block.body.outputs().len() as u64)
+        .saturating_sub(block.body.inputs().len() as u64);
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)
@@ -192,12 +201,14 @@ pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, 
         },
     };
     //     block.header.input_mr = mmr_roots.input_mr;
+    block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    //     block.header.output_smt_size = mmr_roots.output_smt_size;
-    //     block.header.kernel_mr = mmr_roots.kernel_mr;
-    //     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
-    //     block.header.validator_node_mr = mmr_roots.validator_node_mr;
-    //     block.header.validator_node_size = mmr_roots.validator_node_size;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.kernel_mr = mmr_roots.kernel_mr;
+    block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
     block
 }
 
@@ -209,7 +220,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
         if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
         }
-        block.header.nonce += 1;
+        block.header.nonce = block.header.nonce.saturating_add(1);
     }
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
@@ -244,6 +255,7 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
         header.pow_algo(),
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
         Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
+        Difficulty::from_u64(Difficulty::min().as_u64() + 1).unwrap(),
     )
     .unwrap();
     let accumulated_data = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
@@ -274,4 +286,34 @@ pub fn make_hash2<T: AsRef<[u8]>, U: AsRef<[u8]>>(preimage1: T, preimage2: U) ->
         .chain_update(preimage2.as_ref())
         .finalize()
         .into()
+}
+
+/// Creates an inbound [PeerMessage](tari_p2p::comms_connector::PeerMessage) of the given type, from a random peer, with
+/// the given (possibly malformed) body.
+pub fn create_peer_message(
+    message_type: tari_p2p::tari_message::TariMessageType,
+    body: Vec<u8>,
+) -> Arc<tari_p2p::comms_connector::PeerMessage> {
+    use tari_comms::message::MessageTag;
+    use tari_comms_dht::{
+        DhtProtocolVersion,
+        domain_message::MessageHeader,
+        envelope::{DhtMessageHeader, DhtMessageType},
+    };
+    Arc::new(tari_p2p::comms_connector::PeerMessage {
+        dht_header: DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: Default::default(),
+            message_signature: Vec::new(),
+            ephemeral_public_key: None,
+            message_type: DhtMessageType::None,
+            flags: Default::default(),
+            message_tag: MessageTag::new(),
+            expires: None,
+        },
+        source_peer: create_test_peer(),
+        message_header: MessageHeader::new(message_type as i32),
+        authenticated_origin: None,
+        body,
+    })
 }

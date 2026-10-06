@@ -23,6 +23,8 @@
 // Sync lock used in async context throughout this module
 #![allow(clippy::await_holding_lock)]
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     cmp::min,
     collections::HashMap,

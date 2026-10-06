@@ -11,13 +11,12 @@ pub mod query_service;
 
 use std::{error::Error, fmt::Debug};
 
-use tari_comms::{
-    protocol::rpc::{Request, Response, RpcStatus, Streaming},
-    types::CompressedSignature,
-};
+use tari_common_types::types::CompressedCommitment;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
+pub use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
 use tari_transaction_components::{
-    rpc::{models, models::GenerateKernelMerkleProofResponse},
+    rpc::{models, models::GenerateBurnOutputProofResponse},
     transaction_components::TransactionOutput,
 };
 use url::Url;
@@ -94,10 +93,10 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         request: models::GetUtxosDeletedInfoRequest,
     ) -> Result<models::GetUtxosDeletedInfoResponseV1, Self::Error>;
 
-    async fn generate_kernel_merkle_proof(
+    async fn generate_burn_output_proof(
         &self,
-        excess_sig: CompressedSignature,
-    ) -> Result<GenerateKernelMerkleProofResponse, Self::Error>;
+        commitment: CompressedCommitment,
+    ) -> Result<GenerateBurnOutputProofResponse, Self::Error>;
 
     async fn get_utxo(&self, request: models::GetUtxoRequest) -> Result<Option<TransactionOutput>, Self::Error>;
 

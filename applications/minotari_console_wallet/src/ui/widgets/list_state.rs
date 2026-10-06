@@ -45,30 +45,30 @@ impl WindowedListState {
         // Update the offset based on current offset, selected value and height
         self.start = self.offset;
         let view_height = height.min(self.num_items);
-        self.end = self.offset + view_height;
+        self.end = self.offset.saturating_add(view_height);
         let mut list_state = ListState::default();
         if let Some(selected) = self.selected {
             if selected >= self.end {
-                let diff = selected - self.end + 1;
-                self.start += diff;
-                self.end += diff;
+                let diff = selected.saturating_sub(self.end).saturating_add(1);
+                self.start = self.start.saturating_add(diff);
+                self.end = self.end.saturating_add(diff);
             } else if selected < self.start {
-                let diff = self.start - selected;
-                self.start -= diff;
-                self.end -= diff;
+                let diff = self.start.saturating_sub(selected);
+                self.start = self.start.saturating_sub(diff);
+                self.end = self.end.saturating_sub(diff);
             } else {
                 // dont care
             }
             self.offset = self.start;
-            list_state.select(Some(selected - self.start));
+            list_state.select(Some(selected.saturating_sub(self.start)));
         }
         // If the window was resized make sure we are within bounds of the list.
         if self.end > self.num_items {
-            let diff = self.end - self.num_items;
-            self.start -= diff;
-            self.end -= diff;
+            let diff = self.end.saturating_sub(self.num_items);
+            self.start = self.start.saturating_sub(diff);
+            self.end = self.end.saturating_sub(diff);
             if let Some(selected) = self.selected {
-                list_state.select(Some(selected - self.start));
+                list_state.select(Some(selected.saturating_sub(self.start)));
             }
             self.offset = self.start;
         }
@@ -85,10 +85,10 @@ impl WindowedListState {
         } else {
             let i = match self.selected {
                 Some(i) => {
-                    if i >= self.num_items - 1 {
+                    if i >= self.num_items.saturating_sub(1) {
                         0
                     } else {
-                        i + 1
+                        i.saturating_add(1)
                     }
                 },
                 None => 0,
@@ -104,9 +104,9 @@ impl WindowedListState {
             let i = match self.selected {
                 Some(i) => {
                     if i == 0 {
-                        self.num_items - 1
+                        self.num_items.saturating_sub(1)
                     } else {
-                        i - 1
+                        i.saturating_sub(1)
                     }
                 },
                 None => 0,
@@ -137,14 +137,14 @@ impl WindowedListState {
 
     pub fn set_num_items(&mut self, num_items: usize) {
         if num_items < self.num_items {
-            self.offset = self.offset.saturating_sub(self.num_items - num_items);
+            self.offset = self.offset.saturating_sub(self.num_items.saturating_sub(num_items));
         }
         self.num_items = num_items;
         if num_items > 0 {
             if let Some(p) = self.selected &&
-                p > num_items - 1
+                p > num_items.saturating_sub(1)
             {
-                self.selected = Some(num_items - 1);
+                self.selected = Some(num_items.saturating_sub(1));
             }
         } else {
             self.selected = None;

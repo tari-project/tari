@@ -9,7 +9,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, FixedHash, PrivateKey, UncompressedPublicKey},
 };
-use tari_crypto::signatures::CompressedSchnorrSignature;
+use tari_crypto::signatures::{CompressedSchnorrSignature, SchnorrSignature};
 use tari_hashing::{ValidatorNodeHashDomain, layer2};
 use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
 use tari_utilities::ByteArray;
@@ -17,13 +17,15 @@ use tari_utilities::ByteArray;
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
-    serde::hex_or_bytes,
+    serde::{hex_or_bytes, option_hex_or_bytes},
     shard_group::ShardGroup,
     validations::check_proof_elements,
 };
 
 pub type ValidatorBlockSignature =
     CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
+/// A [`ValidatorBlockSignature`] decoded to curve points, the form it is verified in.
+pub type DecodedValidatorBlockSignature = SchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
 pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
@@ -174,6 +176,9 @@ pub struct ChainLink {
 
 impl ChainLink {
     pub fn calc_block_id(&self) -> FixedHash {
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
@@ -185,6 +190,14 @@ impl ChainLink {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct SidechainBlockHeader {
     pub network: u8,
+    /// The protocol version the block was produced under. A block is self-describing: [`Self::calculate_hash`]
+    /// selects its hash schema from this field alone, so this crate can hash any block it is given without knowing
+    /// the sidechain's per-network activation schedule.
+    ///
+    /// Version 0 is the version a header encodes to when the field is absent, so a proof serialised before the
+    /// field existed still deserialises into the version it was produced under.
+    #[serde(default)]
+    pub protocol_version: u32,
     #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
     #[serde(with = "hex_or_bytes")]
@@ -199,6 +212,11 @@ pub struct SidechainBlockHeader {
     pub state_merkle_root: FixedHash,
     #[serde(with = "hex_or_bytes")]
     pub command_merkle_root: FixedHash,
+    /// A Merkle root over the outcome of each transaction this block finalizes, which lets a client prove that a
+    /// transaction committed or aborted in this block. Committed to from protocol version 1. A version 0 header
+    /// carries none, and a proof whose version 0 header carries one is invalid.
+    #[serde(default, with = "option_hex_or_bytes", skip_serializing_if = "Option::is_none")]
+    pub transaction_merkle_root: Option<FixedHash>,
     /// Signature of block by the proposer.
     pub signature: ValidatorBlockSignature,
     pub accumulated_data: ShardGroupAccumulatedData,
@@ -208,25 +226,52 @@ pub struct SidechainBlockHeader {
 
 impl SidechainBlockHeader {
     pub fn calculate_hash(&self) -> FixedHash {
-        let fields = BlockHeaderHashFields::V1(BlockHeaderHashFieldsV1 {
-            network: self.network,
-            justify_id: &self.justify_id,
-            height: self.height,
-            epoch: self.epoch,
-            epoch_hash: &self.epoch_hash,
-            shard_group: self.shard_group,
-            proposed_by: self.proposed_by.as_bytes(),
-            state_merkle_root: &self.state_merkle_root,
-            command_merkle_root: &self.command_merkle_root,
-            accumulated_data: &self.accumulated_data,
-            metadata_hash: &self.metadata_hash,
-        });
+        let fields = match self.protocol_version {
+            // Protocol version 0 commits to a preimage that carries no version, so its block IDs stay reproducible.
+            0 => BlockHeaderHashFields::V1(BlockHeaderHashFieldsV1 {
+                network: self.network,
+                justify_id: &self.justify_id,
+                height: self.height,
+                epoch: self.epoch,
+                epoch_hash: &self.epoch_hash,
+                shard_group: self.shard_group,
+                proposed_by: self.proposed_by.as_bytes(),
+                state_merkle_root: &self.state_merkle_root,
+                command_merkle_root: &self.command_merkle_root,
+                accumulated_data: &self.accumulated_data,
+                metadata_hash: &self.metadata_hash,
+            }),
+            // From version 1 the version is part of the preimage, so that two versions sharing a preimage shape
+            // (a fork that changes something other than the header) still produce distinct block IDs and the
+            // version a block claims cannot be altered without invalidating it.
+            protocol_version => BlockHeaderHashFields::V2(BlockHeaderHashFieldsV2 {
+                network: self.network,
+                protocol_version,
+                justify_id: &self.justify_id,
+                height: self.height,
+                epoch: self.epoch,
+                epoch_hash: &self.epoch_hash,
+                shard_group: self.shard_group,
+                proposed_by: self.proposed_by.as_bytes(),
+                state_merkle_root: &self.state_merkle_root,
+                command_merkle_root: &self.command_merkle_root,
+                transaction_merkle_root: self.transaction_merkle_root.as_ref(),
+                accumulated_data: &self.accumulated_data,
+                metadata_hash: &self.metadata_hash,
+            }),
+        };
 
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher().chain(&fields).finalize().into()
     }
 
     pub fn calculate_block_id(&self) -> FixedHash {
         let header_hash = self.calculate_hash();
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&header_hash)
@@ -236,6 +281,10 @@ impl SidechainBlockHeader {
 
     pub fn signature(&self) -> &ValidatorBlockSignature {
         &self.signature
+    }
+
+    pub fn transaction_merkle_root(&self) -> Option<&FixedHash> {
+        self.transaction_merkle_root.as_ref()
     }
 
     pub fn accumulated_data(&self) -> &ShardGroupAccumulatedData {
@@ -254,12 +303,28 @@ pub struct QuorumCertificate {
     pub header_hash: FixedHash,
     #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
+    /// The protocol version of the block this certificate justifies, which selects the message its members signed.
+    /// A certificate is self-describing for the same reason a header is, and carries its own version because the
+    /// certificates in a proof may justify blocks either side of an activation from the block in its header.
+    #[serde(default)]
+    pub protocol_version: u32,
+    /// The epoch of the justified block. From protocol version 1 it is signed over by each member, so a mismatch
+    /// fails signature verification. A certificate that carries no epoch reads as 0, which is what a version 0
+    /// certificate — whose signatures do not cover it — encodes to.
+    #[serde(default)]
+    pub epoch: u64,
+    /// The height of the justified block. See `epoch`.
+    #[serde(default)]
+    pub height: u64,
     pub signatures: Vec<ValidatorQcSignature>,
     pub decision: QuorumDecision,
 }
 
 impl QuorumCertificate {
     pub fn calculate_justified_block(&self) -> FixedHash {
+        // NOTE: the L2 "Block" label (`layer2::block_hasher`) is shared by the block id (parent_id || header_hash) and
+        // the header hash (`SidechainBlockHeader::calculate_hash`), two different preimage shapes separated only by
+        // length/layout today. Give each a distinct label at the next hard fork.
         layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
@@ -330,19 +395,27 @@ pub struct ValidatorQcSignature {
 
 impl ValidatorQcSignature {
     #[must_use]
-    pub fn verify(&self, block_id: &FixedHash, decision: QuorumDecision) -> bool {
-        let Ok(public_key) = self.public_key.to_public_key() else {
+    pub fn verify(
+        &self,
+        protocol_version: u32,
+        block_id: &FixedHash,
+        decision: QuorumDecision,
+        epoch: u64,
+        height: u64,
+    ) -> bool {
+        let Some((public_key, signature)) = self.decode() else {
             return false;
         };
 
-        let Ok(signature) = self.signature.to_schnorr_signature() else {
-            return false;
-        };
-
-        let fields = ProposalCertificateSignatureFields { block_id, decision };
-
-        let message = layer2::proposal_vote_signature_hasher().chain(&fields).finalize();
+        let message = ProposalVoteMessage::new(protocol_version, block_id, decision, epoch, height).calculate_hash();
         signature.verify(&public_key, message)
+    }
+
+    /// Decodes the public key and signature to curve points, or returns `None` if either is not a valid encoding.
+    pub fn decode(&self) -> Option<(UncompressedPublicKey, DecodedValidatorBlockSignature)> {
+        let public_key = self.public_key.to_public_key().ok()?;
+        let signature = self.signature.to_schnorr_signature().ok()?;
+        Some((public_key, signature))
     }
 
     pub fn public_key(&self) -> &CompressedPublicKey {
@@ -354,6 +427,54 @@ impl ValidatorQcSignature {
     }
 }
 
+/// The message a proposal vote signs, in the shape the block's protocol version calls for. Signing and verifying
+/// both go through this so that the two cannot select different shapes.
+///
+/// Each variant serialises as its inner fields with no discriminant, so version 0 signs exactly the bytes it always
+/// has and signatures already collected stay verifiable.
+#[derive(Debug)]
+pub enum ProposalVoteMessage<'a> {
+    V0(ProposalCertificateSignatureFields<'a>),
+    V1(ProposalCertificateSignatureFieldsV1<'a>),
+}
+
+impl<'a> ProposalVoteMessage<'a> {
+    pub fn new(
+        protocol_version: u32,
+        block_id: &'a FixedHash,
+        decision: QuorumDecision,
+        epoch: u64,
+        height: u64,
+    ) -> Self {
+        match protocol_version {
+            0 => Self::V0(ProposalCertificateSignatureFields { block_id, decision }),
+            protocol_version => Self::V1(ProposalCertificateSignatureFieldsV1 {
+                protocol_version,
+                block_id,
+                decision,
+                epoch,
+                height,
+            }),
+        }
+    }
+
+    pub fn calculate_hash(&self) -> FixedHash {
+        // NOTE: the L2 "VoteSignature" label (`layer2::proposal_vote_signature_hasher`) is shared across the vote
+        // message shapes of different protocol versions, separated only by length/layout today. Give each shape a
+        // distinct label at the next hard fork.
+        layer2::proposal_vote_signature_hasher().chain(self).finalize().into()
+    }
+}
+
+impl BorshSerialize for ProposalVoteMessage<'_> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        match self {
+            Self::V0(fields) => fields.serialize(writer),
+            Self::V1(fields) => fields.serialize(writer),
+        }
+    }
+}
+
 #[derive(Debug, BorshSerialize)]
 pub struct ProposalCertificateSignatureFields<'a> {
     pub block_id: &'a FixedHash,
@@ -361,8 +482,26 @@ pub struct ProposalCertificateSignatureFields<'a> {
 }
 
 #[derive(Debug, BorshSerialize)]
+pub struct ProposalCertificateSignatureFieldsV1<'a> {
+    /// The version the vote was cast under. Committed to so that two versions sharing this preimage shape still
+    /// produce distinct messages, and a certificate cannot be relabelled to a version its members did not sign.
+    pub protocol_version: u32,
+    pub block_id: &'a FixedHash,
+    pub decision: QuorumDecision,
+    /// The epoch the vote was cast in. Present so that a single signature attributes the vote to a view, which is
+    /// what lets two conflicting votes be proven to be equivocation rather than two votes at different heights.
+    pub epoch: u64,
+    /// The height the vote was cast at. See `epoch`.
+    pub height: u64,
+}
+
+/// The hash preimage schemas for a sidechain block header, one per shape the header has taken. The variant is
+/// selected by [`SidechainBlockHeader::protocol_version`], so the variant index is consensus-bound: entries are
+/// append-only and never reordered.
+#[derive(Debug, BorshSerialize)]
 pub enum BlockHeaderHashFields<'a> {
     V1(BlockHeaderHashFieldsV1<'a>),
+    V2(BlockHeaderHashFieldsV2<'a>),
 }
 
 #[derive(Debug, BorshSerialize)]
@@ -378,5 +517,24 @@ pub struct BlockHeaderHashFieldsV1<'a> {
     pub proposed_by: &'a [u8],
     pub state_merkle_root: &'a FixedHash,
     pub command_merkle_root: &'a FixedHash,
+    pub metadata_hash: &'a FixedHash,
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct BlockHeaderHashFieldsV2<'a> {
+    pub network: u8,
+    pub protocol_version: u32,
+    pub justify_id: &'a FixedHash,
+    pub height: u64,
+    pub epoch: u64,
+    pub epoch_hash: &'a FixedHash,
+    pub shard_group: ShardGroup,
+    pub accumulated_data: &'a ShardGroupAccumulatedData,
+    // NOTE this is borsh encoded as variable length bytes - technically should always be 32
+    pub proposed_by: &'a [u8],
+    pub state_merkle_root: &'a FixedHash,
+    pub command_merkle_root: &'a FixedHash,
+    /// Borsh encodes the `Option` tag, so a header that carries no root and one that carries any root hash apart.
+    pub transaction_merkle_root: Option<&'a FixedHash>,
     pub metadata_hash: &'a FixedHash,
 }

@@ -56,14 +56,14 @@ impl<B: Backend> TabsContainer<B> {
     }
 
     pub fn next(&mut self) {
-        self.index = (self.index + 1) % self.titles.len();
+        self.index = self.index.saturating_add(1).checked_rem(self.titles.len()).unwrap_or(0);
     }
 
     pub fn previous(&mut self) {
         if self.index > 0 {
-            self.index -= 1;
+            self.index = self.index.saturating_sub(1);
         } else {
-            self.index = self.titles.len() - 1;
+            self.index = self.titles.len().saturating_sub(1);
         }
     }
 

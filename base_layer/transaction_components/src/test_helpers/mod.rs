@@ -25,6 +25,7 @@ pub use test_helpers_functions::{
     TestParams,
     TransactionSchema,
     UtxoTestParams,
+    add_outputs_with_reserved_sender_offset_keys,
     create_coinbase_kernel,
     create_coinbase_wallet_output,
     create_consensus_constants,

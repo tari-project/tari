@@ -504,7 +504,7 @@ fn print_failure_message(last_check_height: u64, current_height: u64, mode: Mode
     if last_failure.corrupt_db {
         println!(
             "[check-db] {mode}, detected corruption at height {}: {}",
-            last_check_height + 1,
+            last_check_height.saturating_add(1),
             last_failure.error
         );
     } else {

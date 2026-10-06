@@ -23,6 +23,7 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::*;
+use tari_common::configuration::Network;
 use tari_common_types::types::{
     CommitmentFactory,
     CompressedCommitment,
@@ -57,6 +58,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
+            check_sidechain_data_rules,
             check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
             is_all_unique_and_sorted,
@@ -108,19 +110,28 @@ impl AggregateBodyInternalConsistencyValidator {
     ) -> Result<(), AggregatedBodyValidationError> {
         let total_reward = total_reward.unwrap_or(MicroMinotari::zero());
 
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        // Structural checks first. Everything below this point costs at least one signature
+        // verification per kernel or output, so the bound on how many of those there can be has to
+        // be applied before any of it runs - otherwise a peer can spend a single oversized
+        // `submit_transaction` to buy an unbounded amount of our CPU for a body we were always
+        // going to reject. Neither of these does any crypto.
+        check_weight(body, height, constants)?;
+        check_sorting_and_duplicates(body)?;
+
         // old internal validator
         verify_kernel_signatures(body)?;
 
-        let constants = self.consensus_manager.consensus_constants(height);
-
         validate_versions(body, constants)?;
 
+        let network = self.consensus_manager.network().as_network();
         for output in body.outputs() {
-            validate_individual_output(output, constants)?;
+            validate_individual_output(output, constants, network)?;
         }
-
-        check_weight(body, height, constants)?;
-        check_sorting_and_duplicates(body)?;
+        // Every spent output had its script size checked when it was created, so this only rejects inputs that can
+        // never be valid. It runs before any input script is executed, to bound the cost of executing them.
+        check_input_script_sizes(body.inputs(), constants.max_script_byte_size())?;
 
         // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
@@ -164,17 +175,21 @@ fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Res
     Ok(())
 }
 
+/// Validates a single output in isolation. `network` is the network the output is being validated for; validator node
+/// registration and exit signatures are bound to it.
 pub fn validate_individual_output(
     output: &TransactionOutput,
     consensus_constants: &ConsensusConstants,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
     check_permitted_range_proof_types(consensus_constants, output)?;
+    check_sidechain_data_rules(output)?;
     output.verify_metadata_signature()?;
-    check_sidechain_features(consensus_constants, output)?;
+    check_sidechain_features(consensus_constants, output, network)?;
 
     Ok(())
 }
@@ -201,6 +216,23 @@ fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Resu
         );
         e
     })
+}
+
+/// Verify that no input's TariScript is larger than the max size
+fn check_input_script_sizes(
+    inputs: &[TransactionInput],
+    max_script_size: usize,
+) -> Result<(), AggregatedBodyValidationError> {
+    for input in inputs {
+        check_tari_script_byte_size(input.script()?, max_script_size).map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "input ({input}) script size exceeded max size {e:?}."
+            );
+            e
+        })?;
+    }
+    Ok(())
 }
 
 /// Verify that the TariScript is not larger than the max size
@@ -239,6 +271,8 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), AggregatedBo
 ///
 /// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
 /// block balances, or zero for transaction balances)
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn validate_kernel_sum(
     body: &AggregateBody,
     offset_and_reward: CompressedCommitment,
@@ -263,6 +297,8 @@ fn validate_kernel_sum(
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn sum_kernels(
     body: &AggregateBody,
     offset_with_fee: CompressedCommitment,
@@ -284,6 +320,8 @@ fn sum_kernels(
 }
 
 /// Calculate the sum of the outputs - inputs
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn sum_commitments(body: &AggregateBody) -> Result<CompressedCommitment, AggregatedBodyValidationError> {
     let mut sum_inputs = UncompressedCommitment::default();
     for inputs in body.inputs() {
@@ -308,6 +346,8 @@ fn validate_range_proofs(
 }
 
 /// this will validate the script and script offset of the aggregate body.
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn validate_script_and_script_offset(
     body: &AggregateBody,
     script_offset: CompressedPublicKey,
@@ -429,14 +469,15 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
 fn check_sidechain_features(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() else {
         return Ok(());
     };
     check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
-    check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
+    check_validator_node_registration_utxo(constants, output, sidechain_feature, network)?;
     check_template_registration_utxo(sidechain_feature)?;
-    check_validator_node_exit_utxo(sidechain_feature)?;
+    check_validator_node_exit_utxo(sidechain_feature, network)?;
 
     Ok(())
 }
@@ -454,6 +495,7 @@ fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
     sidechain_feature: &SideChainFeature,
+    network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     let Some(reg) = sidechain_feature.validator_node_registration() else {
         return Ok(());
@@ -474,19 +516,28 @@ fn check_validator_node_registration_utxo(
         });
     }
 
-    if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+    if !reg.is_valid_signature_for(
+        network.as_byte(),
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+    ) {
         return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 
     Ok(())
 }
 
-fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
+fn check_validator_node_exit_utxo(
+    sidechain_feature: &SideChainFeature,
+    network: Network,
+) -> Result<(), AggregatedBodyValidationError> {
     let Some(exit) = sidechain_feature.validator_node_exit() else {
         return Ok(());
     };
 
-    if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+    if !exit.is_valid_signature_for(
+        network.as_byte(),
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+    ) {
         return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 
@@ -621,7 +672,7 @@ mod test {
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
+        let mut body = AggregateBody::new_unsorted(Vec::new(), vec![output1.clone(), output2.clone()], vec![
             kernel1.clone(),
             kernel2.clone(),
         ]);
@@ -633,8 +684,117 @@ mod test {
         body.add_outputs(vec![output3.clone()]);
         assert!(check_total_burned(&body).is_err());
         // Lets try one with a commitment with no kernel
-        let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
+        let body2 = AggregateBody::new_unsorted(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
         assert!(check_total_burned(&body2).is_err());
+    }
+
+    /// `is_all_unique_and_sorted` is what makes an output commitment unique within a body: `Ord for
+    /// TransactionOutput` compares nothing but the commitment, so two outputs sharing a commitment compare `Equal`
+    /// and the check rejects them no matter what the rest of the output looks like. The same holds for inputs, which
+    /// are ordered on the hash of the output they spend.
+    mod duplicate_commitments {
+        use tari_script::{ExecutionStack, StackItem};
+
+        use super::*;
+        use crate::transaction_components::SpentOutput;
+
+        fn utxo(key_manager: &KeyManager) -> TransactionOutput {
+            let (output, _, _) = test_helpers::create_utxo(
+                100.into(),
+                key_manager,
+                &OutputFeatures::default(),
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                0.into(),
+            );
+            output
+        }
+
+        fn input_spending(output: &TransactionOutput, input_data: ExecutionStack) -> TransactionInput {
+            TransactionInput::new_current_version(
+                SpentOutput::create_from_output(output.clone()),
+                input_data,
+                Default::default(),
+            )
+        }
+
+        #[test]
+        fn it_accepts_distinct_output_commitments() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = vec![utxo(&key_manager), utxo(&key_manager), utxo(&key_manager)];
+            outputs.sort();
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, Vec::new());
+            check_sorting_and_duplicates(&body).unwrap();
+        }
+
+        #[test]
+        fn it_rejects_two_identical_outputs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![output.clone(), output], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_two_outputs_sharing_a_commitment() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            // Same commitment, different canonical hash. A duplicate check keyed on the output hash would wave this
+            // pair through; only the commitment ordering catches it. The commitment is what the UTXO set is keyed on,
+            // so letting both into a block would put two entries under one key.
+            let mut twin = output.clone();
+            twin.script = script!(Nop Nop).unwrap();
+            assert_eq!(output.commitment, twin.commitment);
+            assert_ne!(output.hash(), twin.hash());
+
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![output.clone(), twin.clone()], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+
+            // The order the two are presented in must not matter.
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![twin, output], Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_a_duplicate_commitment_hidden_among_distinct_outputs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = vec![utxo(&key_manager), utxo(&key_manager), utxo(&key_manager)];
+            outputs.sort();
+            // Re-insert the middle output next to itself so the body stays sorted; only the duplicate breaks it.
+            outputs.insert(1, outputs[1].clone());
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+            ));
+        }
+
+        #[test]
+        fn it_rejects_two_inputs_spending_the_same_output() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let output = utxo(&key_manager);
+            let input = input_spending(&output, ExecutionStack::default());
+            // A competing double spend differs only in its witness, which `canonical_hash` distinguishes but `Ord`
+            // deliberately does not.
+            let twin = input_spending(&output, ExecutionStack::new(vec![StackItem::Number(1)]));
+            assert_eq!(input.output_hash(), twin.output_hash());
+            assert_ne!(input.canonical_hash(), twin.canonical_hash());
+
+            let body = AggregateBody::new_sorted_unchecked(vec![input, twin], Vec::new(), Vec::new());
+            assert!(matches!(
+                check_sorting_and_duplicates(&body),
+                Err(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+            ));
+        }
     }
 
     mod transaction_ordering {

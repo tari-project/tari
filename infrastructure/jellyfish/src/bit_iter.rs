@@ -17,7 +17,7 @@ impl<'a> BitIterator<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         BitIterator {
             bytes,
-            pos: 0..bytes.len() * 8,
+            pos: 0..bytes.len().saturating_mul(8),
         }
     }
 
@@ -28,7 +28,7 @@ impl<'a> BitIterator<'a> {
         // assume!(self.hash_bytes.len() == 32); // invariant
         // assume!(self.pos.end == self.hash_bytes.len() * 8); // invariant
         let pos = index / 8;
-        let bit = 7 - index % 8;
+        let bit = 7usize.saturating_sub(index % 8);
         Some((self.bytes.get(pos)? >> bit) & 1 != 0)
     }
 }

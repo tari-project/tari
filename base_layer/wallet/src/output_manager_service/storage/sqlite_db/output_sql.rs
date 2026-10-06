@@ -77,7 +77,7 @@ use crate::{
         storage::{
             OutputSource,
             OutputStatus,
-            database::{OutputBackendQuery, SortDirection},
+            database::{OutputBackendQuery, OutputMaskVerificationRow, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{CoinBucket, UpdateOutput, UpdateOutputSql},
         },
@@ -513,7 +513,7 @@ impl OutputSql {
         }
 
         // Otherwise, we need additional outputs
-        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT) - must_include_outputs.len() as i64;
+        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT).saturating_sub(must_include_outputs.len() as i64);
         let mut final_outputs = must_include_outputs;
 
         if remaining_limit > 0 {
@@ -1092,6 +1092,52 @@ impl OutputSql {
         Ok(())
     }
 
+    /// Fetch a keyset-paginated batch of the columns needed to re-check an output's commitment mask, for every output
+    /// whose status is not already `Invalid`. Rows are filtered by `id > last_id` and returned ordered ascending.
+    pub fn fetch_for_mask_verification(
+        last_id: i32,
+        batch_size: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .select(MASK_VERIFICATION_COLUMNS)
+            .filter(outputs::id.gt(last_id))
+            .filter(outputs::status.ne(OutputStatus::Invalid as i32))
+            .order(outputs::id.asc())
+            .limit(batch_size)
+            .load::<MaskVerificationColumns>(conn)?
+            .into_iter()
+            .map(to_mask_verification_row)
+            .collect())
+    }
+
+    /// The same columns as `fetch_for_mask_verification`, for every output (any status) received in `tx_id`.
+    pub fn fetch_for_mask_verification_by_received_tx(
+        tx_id: TxId,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .select(MASK_VERIFICATION_COLUMNS)
+            .filter(outputs::received_in_tx_id.eq(tx_id.as_i64_wrapped()))
+            .order(outputs::id.asc())
+            .load::<MaskVerificationColumns>(conn)?
+            .into_iter()
+            .map(to_mask_verification_row)
+            .collect())
+    }
+
+    /// Set the status of the given outputs to `Invalid`, skipping any that are already `Invalid`. Returns the number
+    /// of rows changed.
+    pub fn mark_invalid_by_ids(ids: &[i32], conn: &mut SqliteConnection) -> Result<usize, OutputManagerStorageError> {
+        Ok(diesel::update(
+            outputs::table
+                .filter(outputs::id.eq_any(ids))
+                .filter(outputs::status.ne(OutputStatus::Invalid as i32)),
+        )
+        .set(outputs::status.eq(OutputStatus::Invalid as i32))
+        .execute(conn)?)
+    }
+
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;
@@ -1294,5 +1340,41 @@ impl OutputSql {
             spent_in_tx_id: self.spent_in_tx_id.map(|d| (d as u64).into()),
             payment_id,
         })
+    }
+}
+
+/// Columns selected for commitment mask verification: id, commitment, spending_key, value, status, received_in_tx_id,
+/// spent_in_tx_id.
+const MASK_VERIFICATION_COLUMNS: (
+    outputs::id,
+    outputs::commitment,
+    outputs::spending_key,
+    outputs::value,
+    outputs::status,
+    outputs::received_in_tx_id,
+    outputs::spent_in_tx_id,
+) = (
+    outputs::id,
+    outputs::commitment,
+    outputs::spending_key,
+    outputs::value,
+    outputs::status,
+    outputs::received_in_tx_id,
+    outputs::spent_in_tx_id,
+);
+
+type MaskVerificationColumns = (i32, Vec<u8>, String, i64, i32, Option<i64>, Option<i64>);
+
+fn to_mask_verification_row(
+    (id, commitment, spending_key, value, status, received_in_tx_id, spent_in_tx_id): MaskVerificationColumns,
+) -> OutputMaskVerificationRow {
+    OutputMaskVerificationRow {
+        id,
+        commitment,
+        spending_key,
+        value,
+        status,
+        received_in_tx_id: received_in_tx_id.map(|t| (t as u64).into()),
+        spent_in_tx_id: spent_in_tx_id.map(|t| (t as u64).into()),
     }
 }

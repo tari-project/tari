@@ -48,7 +48,7 @@ impl Stream {
             let base_host = format!(
                 "{}.{}",
                 split_url
-                    .get(split_url.len() - 2)
+                    .get(split_url.len().saturating_sub(2))
                     .ok_or(Error::MissingData("No url".to_string()))?,
                 split_url.last().ok_or(Error::MissingData("No port".to_string()))?
             );

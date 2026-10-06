@@ -116,10 +116,10 @@ impl ResourceRegistry {
 
         // Try pattern matching for templated resources
         for (pattern, resource_uri) in &self.patterns {
-            if self.matches_pattern(pattern, uri) {
-                if let Some(resource) = self.get(resource_uri) {
-                    return Ok(resource);
-                }
+            if self.matches_pattern(pattern, uri) &&
+                let Some(resource) = self.get(resource_uri)
+            {
+                return Ok(resource);
             }
         }
 
@@ -195,9 +195,8 @@ impl ResourceRegistry {
         }
 
         for (template_part, uri_part) in template_parts.iter().zip(uri_parts.iter()) {
-            if template_part.starts_with('{') && template_part.ends_with('}') {
-                // Extract parameter name from {param_name}
-                let param_name = &template_part[1..template_part.len() - 1];
+            // Extract parameter name from {param_name}
+            if let Some(param_name) = template_part.strip_prefix('{').and_then(|p| p.strip_suffix('}')) {
                 params.insert(param_name.to_string(), uri_part.to_string());
             } else if *template_part != *uri_part {
                 return Err(McpError::invalid_request("URI does not match template"));

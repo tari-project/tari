@@ -60,7 +60,6 @@ use crate::{
 ///
 /// ```rust
 /// # use std::{sync::Arc, time::Duration};
-/// # use rand::;
 /// # use tari_shutdown::Shutdown;
 /// # use tari_comms::{
 /// #     {CommsBuilder, NodeIdentity},
@@ -69,26 +68,19 @@ use crate::{
 /// # };
 /// # #[tokio::main]
 /// # async fn main() {
-/// use std::env::temp_dir;
 /// use tari_common_sqlite::connection::DbConnection;
-/// use tari_comms::connectivity::ConnectivityConfig;
-/// use tari_comms::peer_manager::create_test_peer;
 /// use tari_comms::peer_manager::database::{PeerDatabaseSql, MIGRATIONS};
-/// use tari_comms::test_utils::peer_manager::random_name;
 ///
-/// use tari_storage::{
-///     lmdb_store::{LMDBBuilder, LMDBConfig},
-///     LMDBWrapper,
-/// };
 /// let node_identity = Arc::new(NodeIdentity::random(
 ///     &mut rand::rng(),
 ///     "/dns4/basenodezforhire.com/tcp/18000".parse().unwrap(),
 ///     PeerFeatures::COMMUNICATION_NODE,
 /// ));
 /// node_identity.sign();
-/// let mut shutdown = Shutdown::new();
+/// let shutdown = Shutdown::new();
 /// let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
-/// let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE)).unwrap();
+/// // The peer database is seeded with this node's own identity.
+/// let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
 ///
 /// let unspawned_node = CommsBuilder::new()
 ///   // .with_listener_address("/ip4/0.0.0.0/tcp/18000".parse().unwrap())
@@ -314,9 +306,28 @@ impl CommsBuilder {
     pub fn with_minimize_connections(mut self, connections: Option<usize>) -> Self {
         self.maintain_n_closest_connections_only = connections;
         self.connectivity_config.maintain_n_closest_connections_only = connections;
-        if let Some(val) = connections {
-            self.connectivity_config.reaper_min_connection_threshold = val;
-        }
+        self
+    }
+
+    /// The closest number of peer connections to maintain; connections above the threshold will be removed
+    pub fn with_reaper_min_connection_thresholds(mut self, connections: usize) -> Self {
+        self.connectivity_config.reaper_min_connection_threshold = connections;
+        self
+    }
+
+    /// Enable or disable proactive (recovery) dialing. Disabling it leaves the DHT peer pool as the only thing
+    /// dialing new peers, which is fine on a node that stays connected and removes its only unaided way back
+    /// from total isolation.
+    pub fn with_proactive_dialing_enabled(mut self, enabled: bool) -> Self {
+        self.connectivity_config.proactive_dialing_enabled = enabled;
+        self
+    }
+
+    /// The connection count below which the proactive dialer is allowed to run. This is a floor, not a target -
+    /// see [`ConnectivityConfig::proactive_dialing_floor`]. It must stay strictly below the DHT peer pool size;
+    /// `P2pInitializer` clamps it to enforce that.
+    pub fn with_proactive_dialing_floor(mut self, floor: usize) -> Self {
+        self.connectivity_config.proactive_dialing_floor = floor;
         self
     }
 

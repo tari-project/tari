@@ -60,6 +60,8 @@ pub enum RpcServerError {
     ServiceCallExceededDeadline,
     #[error("Stream read exceeded deadline")]
     ReadStreamExceededDeadline,
+    #[error("Stream write exceeded deadline")]
+    WriteStreamExceededDeadline,
     #[error("Early close: {0}")]
     EarlyClose(#[from] EarlyCloseError<BytesMut>),
     #[error("Protocol error: {0}")]

@@ -38,10 +38,8 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
-use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     MicroMinotari,
     multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
@@ -54,15 +52,7 @@ use tari_transaction_components::{
         SignedOneSidedWithdrawMultisigTransactionResult,
     },
     rpc::models::FeePerGramStat,
-    transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
-        MemoField,
-        OutputFeatures,
-        TemplateType,
-        Transaction,
-        TransactionOutput,
-    },
+    transaction_components::{MemoField, OutputFeatures, Transaction, TransactionOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::wallet_types::FeeType;
 use tari_utilities::hex::Hex;
@@ -167,27 +157,11 @@ pub enum TransactionServiceRequest {
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
-    },
-    RegisterCodeTemplate {
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-    },
-    SubmitValidatorEvictionProof {
-        amount: MicroMinotari,
-        proof: EvictionProof,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-        sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
         destination: TariAddress,
@@ -551,9 +525,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {count})")
             },
-            Self::RegisterCodeTemplate { template_name, .. } => {
-                write!(f, "RegisterCodeTemplate: {template_name}")
-            },
             Self::GetPaymentByReference { payref } => {
                 write!(f, "GetPaymentByReference({payref})")
             },
@@ -567,22 +538,6 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "GetTransactionByHistoricalPayref({payref})")
             },
 
-            Self::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                ..
-            } => {
-                write!(
-                    f,
-                    "SubmitValidatorEvictionProof (amount: {}, evicts: {}, fee_per_gram: {}, message: {})",
-                    amount,
-                    proof.node_to_evict(),
-                    fee_per_gram,
-                    payment_id
-                )
-            },
             Self::CreateMultisigUtxo { request } => {
                 write!(f, "CreateMultisigUtxo (request: {:?})", request)
             },
@@ -641,10 +596,6 @@ pub enum TransactionServiceResponse {
         tx_id: TxId,
         proof: Option<Box<PartialBurnClaimProof>>,
     },
-    TemplateRegistrationTransactionSent {
-        tx_id: TxId,
-        template_registration: Box<CodeTemplateRegistration>,
-    },
     TransactionCancelled,
     PendingInboundTransactions(Vec<InboundTransaction>),
     PendingOutboundTransactions(Vec<OutboundTransaction>),
@@ -675,13 +626,6 @@ pub enum TransactionServiceResponse {
     SignedOneSidedDepositMultisigTransaction(Box<SignedOneSidedDepositMultisigTransactionResult>),
     SignedOneSidedWithdrawMultisigTransaction(Box<SignedOneSidedWithdrawMultisigTransactionResult>),
     TransactionReplaced(TxId),
-    CodeRegistrationTransactionSent {
-        tx_id: TxId,
-        template_address: FixedHash,
-    },
-    ValidatorEvictionProofSent {
-        tx_id: TxId,
-    },
 
     PrepareDepositMultisigTransaction(Box<PrepareDepositMultisigTransactionResult>),
     PrepareWithdrawMultisigTransaction(Box<PrepareWithdrawMultisigTransactionResult>),
@@ -937,6 +881,7 @@ impl TransactionServiceHandle {
         validator_node_public_key: CompressedPublicKey,
         validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
@@ -949,6 +894,7 @@ impl TransactionServiceHandle {
                 validator_node_public_key,
                 validator_node_signature,
                 sidechain_deployment_key,
+                activation_epoch,
                 max_epoch,
                 selection_criteria,
                 fee_per_gram,
@@ -960,70 +906,6 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::SubmitValidatorNodeExit".to_string(),
-            )),
-        }
-    }
-
-    pub async fn register_code_template(
-        &mut self,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RegisterCodeTemplate {
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                fee_per_gram,
-                sidechain_deployment_key,
-            })
-            .await
-            .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::RegisterCodeTemplate({e})"))??
-        {
-            TransactionServiceResponse::CodeRegistrationTransactionSent {
-                tx_id,
-                template_address,
-            } => Ok((tx_id, template_address)),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::RegisterCodeTemplate".to_string(),
-            )),
-        }
-    }
-
-    pub async fn submit_validator_eviction_proof(
-        &mut self,
-        amount: MicroMinotari,
-        proof: EvictionProof,
-        fee_per_gram: MicroMinotari,
-        sidechain_deployment_key: Option<PrivateKey>,
-        payment_id: MemoField,
-    ) -> Result<TxId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                sidechain_deployment_key,
-            })
-            .await
-            .inspect_err(
-                |e| warn!(target: LOG_TARGET, "TransactionServiceRequest::SubmitValidatorEvictionProof({e})"),
-            )?? {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse(
-                "TransactionServiceRequest::SubmitValidatorEvictionProof".to_string(),
             )),
         }
     }

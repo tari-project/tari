@@ -18,26 +18,29 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Integration module demonstrating ProtobufReflector usage with auto-discovery
 //!
 //! This module shows how to integrate the ProtobufReflector with the existing
 //! auto-discovery system to provide enhanced runtime schema generation capabilities.
 
-use crate::{
-    ProtobufReflector, 
-    AutoDiscoveryRegistry, 
-    GrpcExecutor, 
-    McpError, 
-    McpResult,
-    GrpcMethodInfo,
-    ToolMetadata,
-    ToolCategory,
-    ToolRiskLevel
-};
-use schemars::schema::Schema;
 use std::collections::HashMap;
+
+use schemars::schema::Schema;
 use serde_json::Value;
+
+use crate::{
+    AutoDiscoveryRegistry,
+    GrpcExecutor,
+    GrpcMethodInfo,
+    McpError,
+    McpResult,
+    ProtobufReflector,
+    ToolCategory,
+    ToolMetadata,
+    ToolRiskLevel,
+};
 
 /// Enhanced auto-discovery with runtime protobuf reflection
 pub struct ReflectiveAutoDiscovery {
@@ -59,10 +62,10 @@ impl ReflectiveAutoDiscovery {
     /// Initialize with protobuf reflection capabilities
     pub fn with_reflection(mut self, descriptor_set: &[u8]) -> McpResult<Self> {
         let mut reflector = ProtobufReflector::new(descriptor_set)?;
-        
+
         // Pre-generate schemas for all known methods
         let mut method_schemas = HashMap::new();
-        
+
         for method_info in self.registry.get_all_methods() {
             if let Ok(schema) = reflector.generate_schema(&method_info.input_type) {
                 method_schemas.insert(method_info.name.clone(), schema);
@@ -76,11 +79,13 @@ impl ReflectiveAutoDiscovery {
 
     /// Get enhanced tool metadata with runtime schema
     pub fn get_enhanced_tool(&self, method_name: &str) -> McpResult<EnhancedToolMetadata> {
-        let method_info = self.registry.get_method_info(method_name)
+        let method_info = self
+            .registry
+            .get_method_info(method_name)
             .ok_or_else(|| McpError::tool_not_found(method_name))?;
 
         let schema = self.method_schemas.get(method_name);
-        
+
         Ok(EnhancedToolMetadata {
             basic_info: method_info.clone(),
             runtime_schema: schema.cloned(),
@@ -92,7 +97,7 @@ impl ReflectiveAutoDiscovery {
     /// Generate comprehensive tool documentation
     pub fn generate_tool_documentation(&self, method_name: &str) -> McpResult<ToolDocumentation> {
         let enhanced_tool = self.get_enhanced_tool(method_name)?;
-        
+
         Ok(ToolDocumentation {
             name: enhanced_tool.basic_info.name.clone(),
             description: enhanced_tool.basic_info.description.clone(),
@@ -109,12 +114,12 @@ impl ReflectiveAutoDiscovery {
         if let Some(schema) = self.method_schemas.get(method_name) {
             // Here you would integrate with a JSON schema validator
             // For example, using the `jsonschema` crate:
-            // 
+            //
             // let validator = JSONSchema::compile(schema)?;
             // if let Err(errors) = validator.validate(params) {
             //     return Err(McpError::invalid_request(format!("Validation failed: {:?}", errors)));
             // }
-            
+
             // For now, just basic validation
             self.basic_parameter_validation(params)
         } else {
@@ -151,34 +156,27 @@ impl ReflectiveAutoDiscovery {
         for method_info in self.registry.get_all_methods() {
             if let Some(schema) = self.method_schemas.get(&method_info.name) {
                 // Convert JSON schema to OpenAPI schema format
-                spec.components.schemas.insert(
-                    format!("{}Request", method_info.name),
-                    schema.clone()
-                );
+                spec.components
+                    .schemas
+                    .insert(format!("{}Request", method_info.name), schema.clone());
 
                 // Add path entry
-                spec.paths.insert(
-                    format!("/{}", method_info.name),
-                    OpenApiPath {
-                        post: Some(OpenApiOperation {
-                            summary: method_info.description.clone(),
-                            request_body: Some(OpenApiRequestBody {
-                                required: true,
-                                content: {
-                                    let mut content = HashMap::new();
-                                    content.insert(
-                                        "application/json".to_string(),
-                                        OpenApiMediaType {
-                                            schema: Some(format!("#/components/schemas/{}Request", method_info.name)),
-                                        }
-                                    );
-                                    content
-                                },
-                            }),
-                            responses: HashMap::new(),
+                spec.paths.insert(format!("/{}", method_info.name), OpenApiPath {
+                    post: Some(OpenApiOperation {
+                        summary: method_info.description.clone(),
+                        request_body: Some(OpenApiRequestBody {
+                            required: true,
+                            content: {
+                                let mut content = HashMap::new();
+                                content.insert("application/json".to_string(), OpenApiMediaType {
+                                    schema: Some(format!("#/components/schemas/{}Request", method_info.name)),
+                                });
+                                content
+                            },
                         }),
-                    }
-                );
+                        responses: HashMap::new(),
+                    }),
+                });
             }
         }
 
@@ -342,7 +340,7 @@ mod tests {
 
         let registry = AutoDiscoveryRegistry::new(config);
         let discovery = ReflectiveAutoDiscovery::new(registry);
-        
+
         assert!(discovery.reflector.is_none());
         assert!(discovery.method_schemas.is_empty());
     }
@@ -358,11 +356,11 @@ mod tests {
 
         let registry = AutoDiscoveryRegistry::new(config);
         let discovery = ReflectiveAutoDiscovery::new(registry);
-        
+
         // Test with valid object
         let valid_params = serde_json::json!({"test": "value"});
         assert!(discovery.validate_parameters("test_method", &valid_params).is_ok());
-        
+
         // Test with invalid non-object
         let invalid_params = serde_json::json!("not an object");
         assert!(discovery.validate_parameters("test_method", &invalid_params).is_err());

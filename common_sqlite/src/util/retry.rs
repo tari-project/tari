@@ -72,7 +72,7 @@ where
                     if attempt > 0 {
                         warn!(
                             target: LOG_TARGET,
-                            "{}: failed after {} retries: {}", op_name, attempt + 1, e
+                            "{}: failed after {} retries: {}", op_name, attempt.saturating_add(1), e
                         );
                     }
                     return Err(e);
@@ -81,12 +81,12 @@ where
                     target: LOG_TARGET,
                     "{}: database is locked (attempt {}/{}), retrying in {:?}",
                     op_name,
-                    attempt + 1,
+                    attempt.saturating_add(1),
                     DEFAULT_MAX_RETRIES,
                     backoff
                 );
                 thread::sleep(backoff);
-                backoff = (backoff * 2).min(MAX_BACKOFF);
+                backoff = backoff.saturating_mul(2).min(MAX_BACKOFF);
             },
         }
     }

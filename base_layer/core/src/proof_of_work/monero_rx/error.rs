@@ -46,6 +46,12 @@ pub enum MergeMineError {
     HexError(String),
     #[error("Monero PoW data did not contain a valid merkle root")]
     InvalidMerkleRoot,
+    #[error("Monero coinbase transaction prefix is {size} bytes, which is more than the {max} bytes allowed")]
+    CoinbasePrefixTooLarge { size: usize, max: usize },
+    #[error("Monero coinbase transaction prefix is not a canonical, self-delimiting coinbase prefix: {0}")]
+    NonCanonicalCoinbasePrefix(String),
+    #[error("Legacy Monero coinbase hasher state is degenerate: {0}")]
+    DegenerateLegacyCoinbaseHasher(String),
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
     #[error("Cannot mine with 0 aux chains")]
@@ -63,6 +69,9 @@ impl MergeMineError {
             err @ MergeMineError::HashingError(_) |
             err @ MergeMineError::ValidationError(_) |
             err @ MergeMineError::InvalidMerkleRoot |
+            err @ MergeMineError::CoinbasePrefixTooLarge { .. } |
+            err @ MergeMineError::NonCanonicalCoinbasePrefix(_) |
+            err @ MergeMineError::DegenerateLegacyCoinbaseHasher(_) |
             err @ MergeMineError::DifficultyError(_) |
             err @ MergeMineError::HexError(_) => Some(BanReason {
                 reason: err.to_string(),

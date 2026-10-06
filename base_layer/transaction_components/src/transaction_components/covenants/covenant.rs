@@ -20,14 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io::{self, Write},
-    iter::FromIterator,
-};
+use std::io::{self, Write};
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use integer_encoding::{VarIntReader, VarIntWriter};
-use tari_max_size::MaxSizeVec;
+use borsh::BorshSerialize;
+use integer_encoding::VarIntWriter;
+use tari_max_size::{EncodedBytes, MaxSizeVec, ValidatedDecode, impl_validated_decode};
 
 use super::decoder::CovenantDecodeError;
 use crate::{
@@ -47,9 +44,31 @@ use crate::{
     },
 };
 
-const MAX_COVENANT_BYTES: usize = 4096;
+/// The maximum encoded size of a covenant.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) const MAX_COVENANT_BYTES: usize = 4096;
 
-pub(crate) type CovenantTokens = MaxSizeVec<CovenantToken, 128>;
+/// The maximum number of tokens in a covenant.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) const MAX_COVENANT_TOKENS: usize = 128;
+
+/// The deepest a covenant may nest another covenant (via `ARG_COVENANT`).
+///
+/// Decoding a nested covenant recurses, and each nesting level only costs the attacker the byte code plus a length
+/// varint. Without this limit a single ~4KB covenant — the size cap is `MAX_COVENANT_BYTES` — nests over a thousand
+/// levels deep and overflows the stack of whichever thread is validating it. The limit is set far above anything a
+/// real covenant needs so that it bounds the recursion without constraining legitimate use.
+pub(crate) const MAX_COVENANT_DEPTH: usize = 16;
+
+/// The tokens of a covenant, at most [`MAX_COVENANT_TOKENS`].
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) type CovenantTokens = MaxSizeVec<CovenantToken, MAX_COVENANT_TOKENS>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 /// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
@@ -69,25 +88,18 @@ impl BorshSerialize for Covenant {
     }
 }
 
-impl BorshDeserialize for Covenant {
-    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
-    where R: io::Read {
-        let len = reader.read_varint()?;
-        if len > MAX_COVENANT_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Larger than max covenant bytes".to_string(),
-            ));
-        }
-        let mut data = Vec::with_capacity(len);
-        for _ in 0..len {
-            data.push(u8::deserialize_reader(reader)?);
-        }
-        let covenant = Self::from_bytes(&mut data.as_slice())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        Ok(covenant)
+/// serde: a hex string or a byte array; borsh: the bytes behind a varint length prefix of at most
+/// [`MAX_COVENANT_BYTES`]. Both decoders then apply [`Covenant::from_bytes`].
+impl ValidatedDecode for Covenant {
+    type Error = CovenantDecodeError;
+    type Raw = EncodedBytes<MAX_COVENANT_BYTES>;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        Self::from_bytes(&mut raw.as_bytes())
     }
 }
+
+impl_validated_decode!(Covenant);
 
 impl Covenant {
     pub fn new() -> Self {
@@ -99,13 +111,39 @@ impl Covenant {
     /// Produces a new `Covenant` instance, out of a byte buffer. It errors
     /// if the byte buffer length is higher than `MAX_COVENANT_BYTES`.
     pub fn from_bytes(bytes: &mut &[u8]) -> Result<Self, CovenantDecodeError> {
+        Self::from_bytes_at_depth(bytes, 0)
+    }
+
+    /// As [`Covenant::from_bytes`], but tracking how deeply this covenant is nested inside an enclosing one so that
+    /// the recursion through `ARG_COVENANT` stays bounded.
+    pub(super) fn from_bytes_at_depth(bytes: &mut &[u8], depth: usize) -> Result<Self, CovenantDecodeError> {
+        if depth > MAX_COVENANT_DEPTH {
+            return Err(CovenantDecodeError::ExceededMaxDepth {
+                max: MAX_COVENANT_DEPTH,
+            });
+        }
         if bytes.is_empty() {
             return Ok(Self::new());
         }
         if bytes.len() > MAX_COVENANT_BYTES {
             return Err(CovenantDecodeError::ExceededMaxBytes);
         }
-        CovenantTokenDecoder::new(bytes).collect()
+
+        // Every token must be kept: dropping tokens past the cap would make the decoded covenant differ from the
+        // bytes it came from — two distinct encodings would map to the same `Covenant`, and the re-serialised
+        // (truncated) form is what gets hashed. Too many tokens is an error.
+        let tokens = CovenantTokenDecoder::new(bytes, depth).collect::<Result<Vec<_>, _>>()?;
+        let tokens = CovenantTokens::try_from(tokens).map_err(|_| CovenantDecodeError::ExceededMaxTokens {
+            max: MAX_COVENANT_TOKENS,
+        })?;
+
+        // A complete decode consumes the whole buffer; anything left over means the token stream did not describe
+        // these bytes and must not be accepted as if it did.
+        if !bytes.is_empty() {
+            return Err(CovenantDecodeError::TrailingBytes { remaining: bytes.len() });
+        }
+
+        Ok(Self { tokens })
     }
 
     /// Given a `Covenant` instance, it writes its bytes content to a
@@ -141,7 +179,7 @@ impl Covenant {
             return Ok(outputs.len());
         }
 
-        let tokens = CovenantTokenCollection::from_iter(self.tokens.clone());
+        let tokens = CovenantTokenCollection::from(self.tokens.clone().into_vec());
         let mut cx = CovenantContext::new(tokens, input, block_height);
         let root = cx.require_next_filter()?;
         let mut output_set = OutputSet::new(outputs);
@@ -154,6 +192,18 @@ impl Covenant {
         }
 
         Ok(output_set.len())
+    }
+
+    /// Builds a covenant from a sequence of tokens, failing with [`CovenantDecodeError::ExceededMaxTokens`] if there
+    /// are more than `MAX_COVENANT_TOKENS`. The iterator is abandoned as soon as the limit is exceeded.
+    ///
+    /// There is intentionally no `FromIterator` impl: it can not fail, so it would have to silently drop tokens and
+    /// the resulting covenant would not match its input.
+    pub fn try_from_iter<I: IntoIterator<Item = CovenantToken>>(iter: I) -> Result<Self, CovenantDecodeError> {
+        let tokens = CovenantTokens::try_from_iter(iter).map_err(|_| CovenantDecodeError::ExceededMaxTokens {
+            max: MAX_COVENANT_TOKENS,
+        })?;
+        Ok(Self { tokens })
     }
 
     /// Adds a new `CovenantToken` to the current `tokens` vector field.
@@ -178,26 +228,21 @@ impl Covenant {
     }
 }
 
-impl FromIterator<CovenantToken> for Covenant {
-    /// Creates a new `CovenantToken` instance from an iterator with `Item = CovenantToken`.
-    fn from_iter<T: IntoIterator<Item = CovenantToken>>(iter: T) -> Self {
-        Self {
-            tokens: iter.into_iter().collect(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
     use borsh::{BorshDeserialize, BorshSerialize};
+    use integer_encoding::VarIntWriter;
 
+    use super::{MAX_COVENANT_DEPTH, MAX_COVENANT_TOKENS};
     use crate::{
         covenant,
         key_manager::KeyManager,
         test_helpers::UtxoTestParams,
         transaction_components::covenants::{
             Covenant,
+            byte_codes,
+            decoder::CovenantDecodeError,
             test::{create_input, create_outputs},
         },
     };
@@ -259,5 +304,98 @@ mod test {
         let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
         let buf = &mut buf.as_slice();
         assert!(Covenant::deserialize(buf).is_err());
+    }
+
+    /// Builds `depth` levels of `covenant(covenant(covenant(... identity() ...)))` as raw bytes.
+    ///
+    /// Each level costs three bytes — the `ARG_COVENANT` byte code, a one byte length varint and the enclosed
+    /// covenant — so the whole thing comfortably fits inside the 4096 byte covenant size limit.
+    fn nested_covenant_bytes(depth: usize) -> Vec<u8> {
+        // `identity()` is a single filter byte code
+        let mut buf = vec![byte_codes::FILTER_IDENTITY];
+        for _ in 0..depth {
+            let mut next = vec![byte_codes::ARG_COVENANT];
+            next.write_varint(buf.len()).unwrap();
+            next.extend_from_slice(&buf);
+            buf = next;
+        }
+        buf
+    }
+
+    #[test]
+    fn it_rejects_deeply_nested_covenants() {
+        // A single message under the size limit that nests far deeper than the recursion limit allows. Before the
+        // depth limit this recursed once per level and overflowed the stack of the validating thread.
+        let bytes = nested_covenant_bytes(1300);
+        assert!(
+            bytes.len() <= 4096,
+            "the payload must stay within the covenant size limit to show that size alone does not bound the recursion"
+        );
+        let err = Covenant::from_bytes(&mut bytes.as_slice()).unwrap_err();
+        assert!(
+            matches!(err, CovenantDecodeError::ExceededMaxDepth { .. }),
+            "expected a depth error, got {err}"
+        );
+    }
+
+    #[test]
+    fn it_accepts_nesting_up_to_the_depth_limit() {
+        Covenant::from_bytes(&mut nested_covenant_bytes(MAX_COVENANT_DEPTH).as_slice()).unwrap();
+        let err = Covenant::from_bytes(&mut nested_covenant_bytes(MAX_COVENANT_DEPTH + 1).as_slice()).unwrap_err();
+        assert!(matches!(err, CovenantDecodeError::ExceededMaxDepth { .. }));
+    }
+
+    #[test]
+    fn try_from_iter_accepts_up_to_the_maximum_and_rejects_more() {
+        use crate::transaction_components::covenants::token::CovenantToken;
+
+        let covenant =
+            Covenant::try_from_iter(std::iter::repeat_n(CovenantToken::identity(), MAX_COVENANT_TOKENS)).unwrap();
+        assert_eq!(covenant.num_tokens(), MAX_COVENANT_TOKENS);
+
+        let err = Covenant::try_from_iter(std::iter::repeat_n(CovenantToken::identity(), MAX_COVENANT_TOKENS + 1))
+            .unwrap_err();
+        assert!(matches!(err, CovenantDecodeError::ExceededMaxTokens {
+            max: MAX_COVENANT_TOKENS
+        }));
+
+        // An unbounded iterator is abandoned as soon as the limit is exceeded
+        let err = Covenant::try_from_iter(std::iter::repeat_with(CovenantToken::identity)).unwrap_err();
+        assert!(matches!(err, CovenantDecodeError::ExceededMaxTokens { .. }));
+    }
+
+    #[test]
+    fn it_rejects_more_tokens_than_the_maximum() {
+        // `MaxSizeVec` used to have a `FromIterator` that stopped at the cap rather than failing, so decoding used to
+        // silently drop every token past the 128th and accept the covenant. The extra tokens then vanished from the
+        // re-serialised form, which is what gets hashed — two different encodings for one covenant.
+        let bytes = vec![byte_codes::FILTER_IDENTITY; MAX_COVENANT_TOKENS + 1];
+        let err = Covenant::from_bytes(&mut bytes.as_slice()).unwrap_err();
+        assert!(
+            matches!(err, CovenantDecodeError::ExceededMaxTokens { .. }),
+            "expected a token count error, got {err}"
+        );
+
+        // Exactly at the limit still decodes, and round-trips to the same bytes
+        let covenant =
+            Covenant::from_bytes(&mut vec![byte_codes::FILTER_IDENTITY; MAX_COVENANT_TOKENS].as_slice()).unwrap();
+        assert_eq!(covenant.num_tokens(), MAX_COVENANT_TOKENS);
+        assert_eq!(covenant.to_bytes(), vec![
+            byte_codes::FILTER_IDENTITY;
+            MAX_COVENANT_TOKENS
+        ]);
+    }
+
+    #[test]
+    fn it_is_not_malleable_by_appending_tokens() {
+        // Truncation made these two distinct encodings decode to the same covenant, so an appended token changed the
+        // wire bytes without changing the covenant that gets hashed into the output.
+        let base = vec![byte_codes::FILTER_IDENTITY; MAX_COVENANT_TOKENS];
+        let mut extended = base.clone();
+        extended.push(byte_codes::FILTER_IDENTITY);
+
+        let decoded = Covenant::from_bytes(&mut base.as_slice()).unwrap();
+        assert_eq!(decoded.to_bytes(), base);
+        assert!(Covenant::from_bytes(&mut extended.as_slice()).is_err());
     }
 }

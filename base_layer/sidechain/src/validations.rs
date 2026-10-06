@@ -9,6 +9,8 @@ use tari_common_types::types::FixedHash;
 use crate::{
     CheckVnFunc,
     CommitProofElement,
+    DecodedValidatorBlockSignature,
+    ProposalVoteMessage,
     QuorumCertificate,
     QuorumDecision,
     SidechainBlockHeader,
@@ -17,6 +19,12 @@ use crate::{
 
 const LOG_TARGET: &str = "c::sidechain::validations";
 
+/// The maximum number of signatures a quorum certificate may contain. A valid quorum certificate contains at most one
+/// signature per committee member, so this is an upper bound for any committee size. It is enforced at the proto
+/// deserialization boundary and again during proof validation, in both cases before any signature is verified or
+/// duplicates are collected, so that the work an untrusted quorum certificate can cause is bounded.
+pub const MAX_QC_SIGNATURES: usize = 1000;
+
 pub fn check_proof_elements(
     header: &SidechainBlockHeader,
     proof_elements: &[CommitProofElement],
@@ -24,6 +32,7 @@ pub fn check_proof_elements(
     expected_decision: QuorumDecision,
     quorum_threshold: usize,
 ) -> Result<(), SidechainProofValidationError> {
+    check_header_commits_to_its_fields(header)?;
     check_proof_elements_num_qcs(proof_elements, 3)?;
 
     let mut last_parent = None::<&FixedHash>;
@@ -48,7 +57,7 @@ pub fn check_proof_elements(
                 }
 
                 if proven_3_chain < 3 {
-                    proven_3_chain += 1;
+                    proven_3_chain = proven_3_chain.saturating_add(1);
                     debug!(target: LOG_TARGET, "3-chain rule: {proven_3_chain} of 3 proven");
                 }
 
@@ -133,6 +142,19 @@ pub fn check_proof_elements(
 
     Ok(())
 }
+
+/// Rejects a header that carries a field its protocol version's hash preimage does not cover, since nothing
+/// authenticates such a field.
+fn check_header_commits_to_its_fields(header: &SidechainBlockHeader) -> Result<(), SidechainProofValidationError> {
+    if header.protocol_version == 0 && header.transaction_merkle_root.is_some() {
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: "Header claims protocol version 0, which commits to no transaction merkle root, but carries one"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
 pub fn check_proof_elements_num_qcs(
     proof_elems: &[CommitProofElement],
     expected_len: usize,
@@ -179,6 +201,16 @@ fn validate_qc(
         });
     }
 
+    if qc.signatures.len() > MAX_QC_SIGNATURES {
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: format!(
+                "Quorum certificate must contain at most {} signatures but contained {}",
+                MAX_QC_SIGNATURES,
+                qc.signatures.len()
+            ),
+        });
+    }
+
     if qc.decision != quorum_decision {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
@@ -195,6 +227,7 @@ fn validate_qc(
     }
 
     let block_id = qc.calculate_justified_block();
+    let mut decoded = Vec::with_capacity(qc.signatures.len());
     for sig in &qc.signatures {
         if !check_vn(&sig.public_key)? {
             return Err(SidechainProofValidationError::InvalidProof {
@@ -205,13 +238,30 @@ fn validate_qc(
             });
         }
 
-        if !sig.verify(&block_id, quorum_decision) {
-            return Err(SidechainProofValidationError::InvalidProof {
-                details: format!("Invalid signature for QC for block ID {block_id}",),
-            });
-        }
+        let Some(pair) = sig.decode() else {
+            return Err(invalid_qc_signature(&block_id));
+        };
+        decoded.push(pair);
+    }
+
+    // Every member of a QC signs the same message. An empty batch verifies, so a QC without signatures is rejected
+    // only by the quorum threshold check.
+    let message =
+        ProposalVoteMessage::new(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height).calculate_hash();
+    let batch = decoded
+        .iter()
+        .map(|(public_key, signature)| (signature, public_key, message))
+        .collect::<Vec<_>>();
+    if !DecodedValidatorBlockSignature::verify_batch(&batch) {
+        return Err(invalid_qc_signature(&block_id));
     }
     Ok(())
+}
+
+fn invalid_qc_signature(block_id: &FixedHash) -> SidechainProofValidationError {
+    SidechainProofValidationError::InvalidProof {
+        details: format!("Invalid signature for QC for block ID {block_id}"),
+    }
 }
 
 fn has_duplicates<I, T>(iter: I) -> bool

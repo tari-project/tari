@@ -24,8 +24,10 @@ use std::sync::Arc;
 
 use log::*;
 use tari_comms::peer_manager::NodeId;
+use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
+use tokio::task;
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -34,8 +36,16 @@ use crate::{
     chain_storage::BlockAddResult,
     mempool::{
         Mempool,
+        MempoolError,
         TxStorageResponse,
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
+        ValidationPermit,
+        service::{
+            MempoolRequest,
+            MempoolResponse,
+            MempoolServiceError,
+            OutboundMempoolServiceInterface,
+            initializer::extract_transaction,
+        },
     },
 };
 
@@ -85,7 +95,9 @@ impl MempoolInboundHandlers {
                     target: LOG_TARGET,
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
-                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
+                Ok(MempoolResponse::TxStorage(
+                    self.submit_transaction(tx, None, None).await?,
+                ))
             },
             GetFeePerGramStats { count, tip_height } => {
                 let stats = self.mempool.get_fee_per_gram_stats(count, tip_height).await?;
@@ -97,11 +109,78 @@ impl MempoolInboundHandlers {
         }
     }
 
+    /// Acquire a mempool validation permit, for [MempoolInboundHandlers::submit_transaction_request]
+    pub async fn acquire_validation_permit(&self) -> Result<ValidationPermit, MempoolServiceError> {
+        Ok(self.mempool.acquire_validation_permit().await?)
+    }
+
+    /// Handle a `SubmitTransaction` request (as [MempoolInboundHandlers::handle_request] does), validating with the
+    /// given, already acquired, permit
+    pub async fn submit_transaction_request(
+        &mut self,
+        tx: Transaction,
+        permit: ValidationPermit,
+    ) -> Result<MempoolResponse, MempoolServiceError> {
+        let first_tx_kernel_excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or(MempoolServiceError::TransactionNoKernels)?
+            .get_signature()
+            .to_hex();
+        debug!(
+            target: LOG_TARGET,
+            "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
+        );
+        Ok(MempoolResponse::TxStorage(
+            self.submit_transaction(tx, None, Some(permit)).await?,
+        ))
+    }
+
+    /// Handle a raw inbound transaction message from a remote peer.
+    ///
+    /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
+    /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
+    /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit.
+    pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
+        let permit = self.mempool.acquire_validation_permit().await?;
+        let decoded = task::spawn_blocking(move || extract_transaction(&msg))
+            .await
+            .map_err(MempoolError::from)?;
+        let Some(DomainMessage::<_> { source_peer, inner, .. }) = decoded else {
+            return Ok(());
+        };
+
+        debug!(
+            "New transaction received: {}, from: {}",
+            inner
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "No kernels!".to_string()),
+            source_peer.public_key,
+        );
+        trace!(
+            target: LOG_TARGET,
+            "New transaction: {}, from: {}",
+            inner,
+            source_peer.public_key
+        );
+        self.handle_transaction_inner(inner, Some(source_peer.node_id), Some(permit))
+            .await
+    }
+
     /// Handle inbound transactions from remote wallets and local services.
     pub async fn handle_transaction(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
+    ) -> Result<(), MempoolServiceError> {
+        self.handle_transaction_inner(tx, source_peer, None).await
+    }
+
+    async fn handle_transaction_inner(
+        &mut self,
+        tx: Transaction,
+        source_peer: Option<NodeId>,
+        permit: Option<ValidationPermit>,
     ) -> Result<(), MempoolServiceError> {
         let first_tx_kernel_excess_sig = tx
             .first_kernel_excess_sig()
@@ -117,15 +196,17 @@ impl MempoolInboundHandlers {
                 .map(|p| format!("remote peer: {p}"))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        self.submit_transaction(tx, source_peer).await?;
+        self.submit_transaction(tx, source_peer, permit).await?;
         Ok(())
     }
 
-    /// Submits a transaction to the mempool and propagate valid transactions.
+    /// Submits a transaction to the mempool and propagate valid transactions. If a validation `permit` is given, it
+    /// is used for validation instead of acquiring a new one.
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
+        permit: Option<ValidationPermit>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
@@ -143,7 +224,11 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-        match self.mempool.insert(tx.clone()).await {
+        let result = match permit {
+            Some(permit) => self.mempool.insert_with_permit(tx.clone(), permit).await,
+            None => self.mempool.insert(tx.clone()).await,
+        };
+        match result {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
@@ -205,19 +290,443 @@ impl MempoolInboundHandlers {
             AddBlockValidationFailed {
                 block: failed_block,
                 source_peer,
+            } |
+            AddBlockErrored {
+                block: failed_block,
+                source_peer,
             } => {
-                // Only clear mempool transaction for local block validation failures
+                // Only clear mempool transactions for locally submitted blocks. A block template is built from the
+                // mempool, so if adding it fails - whether at validation or at commit time - one of its transactions
+                // is the likely cause; leaving them in place would make every subsequent template fail the same way.
+                // Blocks from peers say nothing about our mempool and are left alone.
                 if source_peer.is_none() {
                     self.mempool
                         .clear_transactions_for_failed_block(failed_block.clone())
                         .await?;
                 }
             },
-            AddBlockErrored { .. } => {},
         }
 
         self.update_pool_size_metrics().await;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use prost::Message;
+    use tari_p2p::tari_message::TariMessageType;
+    use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::{
+        mempool::MempoolConfig,
+        proto,
+        test_helpers::{create_consensus_rules, create_peer_message},
+        validation::mocks::MockValidator,
+    };
+
+    /// Receives the transactions the handlers propagate, with the peers they are not sent to
+    type PropagatedTxs = mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>;
+
+    fn create_handlers() -> (MempoolInboundHandlers, Mempool, PropagatedTxs) {
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
+        let (tx_sender, tx_receiver) = mpsc::unbounded_channel();
+        let handlers = MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        (handlers, mempool, tx_receiver)
+    }
+
+    #[tokio::test]
+    async fn malformed_transaction_messages_are_dropped_and_release_the_permit() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let permits = mempool.available_validation_permits();
+
+        // Not a protobuf transaction at all
+        let msg = create_peer_message(TariMessageType::NewTransaction, vec![0xff; 64]);
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+
+        // A valid protobuf message that is not a valid transaction
+        let body = proto::types::Transaction::default().encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        assert!(propagated.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn well_formed_transaction_messages_are_decoded_and_inserted() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let permits = mempool.available_validation_permits();
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let body = proto::types::Transaction::try_from(tx.clone()).unwrap().encode_to_vec();
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+        let source = msg.source_peer.node_id.clone();
+
+        handlers.handle_transaction_message(msg).await.unwrap();
+        assert_eq!(mempool.available_validation_permits(), permits);
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        // Propagated to everyone except the peer it came from
+        let (propagated_tx, excluded) = propagated.try_recv().unwrap();
+        assert_eq!(propagated_tx, tx);
+        assert_eq!(excluded, vec![source]);
+    }
+
+    mod add_block_errored {
+        use tari_node_components::blocks::{Block, BlockHeader};
+
+        use super::*;
+        use crate::mempool::TxStorageResponse;
+
+        fn create_handlers_with_validator(validator: MockValidator) -> (MempoolInboundHandlers, Mempool) {
+            let mut config = MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
+            let (tx_sender, _tx_receiver) = mpsc::unbounded_channel();
+            let handlers =
+                MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+            (handlers, mempool)
+        }
+
+        /// Inserts a transaction into the mempool and returns it together with a block containing it.
+        async fn insert_tx_and_build_block(mempool: &Mempool) -> (Arc<Transaction>, Arc<Block>) {
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            );
+            mempool.insert(tx.clone()).await.unwrap();
+            assert_eq!(
+                mempool.has_transaction(tx.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            let block = Arc::new(Block::new(BlockHeader::new(0), tx.body.clone()));
+            (tx, block)
+        }
+
+        async fn local_block_errored(handlers: &mut MempoolInboundHandlers, block: Arc<Block>) {
+            handlers
+                .handle_block_event(&BlockEvent::AddBlockErrored {
+                    block,
+                    source_peer: None,
+                })
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn a_local_block_failing_at_commit_evicts_a_transaction_that_fails_revalidation() {
+            // A locally built block that fails at commit time (`AddBlockErrored`, no source peer) has each of its
+            // transactions removed and individually re-validated, exactly as for a validation failure. One that is
+            // no longer valid (here: the validator now rejects it) is evicted.
+            let validator = MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let (mut handlers, mempool) = create_handlers_with_validator(validator);
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            is_valid.set(false);
+            local_block_errored(&mut handlers, block).await;
+
+            assert_ne!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn a_local_block_failing_at_commit_reinserts_a_transaction_that_still_passes_revalidation() {
+            // Re-validation is individual: a transaction that is valid on its own goes straight back into the pool,
+            // even if it was the cause of the failure in combination with another transaction of the same block (e.g.
+            // two exits for one validator node). Eviction alone therefore cannot break such a loop - that is done by
+            // refusing to store the second transaction in the first place (the unconfirmed pool's validator node
+            // conflict check, see `validator_node_conflicts` below).
+            let (mut handlers, mempool) = create_handlers_with_validator(MockValidator::new(true));
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            local_block_errored(&mut handlers, block).await;
+
+            assert_eq!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+
+        #[tokio::test]
+        async fn a_peer_block_that_fails_at_commit_leaves_the_mempool_alone() {
+            let validator = MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let (mut handlers, mempool) = create_handlers_with_validator(validator);
+            let (tx, block) = insert_tx_and_build_block(&mempool).await;
+
+            // Even a transaction that would now fail re-validation is not touched for a peer's block
+            is_valid.set(false);
+            handlers
+                .handle_block_event(&BlockEvent::AddBlockErrored {
+                    block,
+                    source_peer: Some(NodeId::default()),
+                })
+                .await
+                .unwrap();
+
+            assert_eq!(
+                mempool.has_transaction(tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
+    }
+
+    mod validator_node_conflicts {
+        use tari_common_types::{
+            epoch::VnEpoch,
+            types::{CompressedPublicKey, PrivateKey},
+        };
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+
+        use super::*;
+        use crate::mempool::TxStorageResponse;
+
+        const NETWORK: u8 = 0x10;
+
+        fn tx_with(features: OutputFeatures, fee: u64, key_manager: &KeyManager) -> Arc<Transaction> {
+            Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(fee), inputs: 1, outputs: 1, features: features, key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            )
+        }
+
+        fn exit_features(vn_secret_key: &PrivateKey) -> OutputFeatures {
+            let signature =
+                ValidatorNodeSignature::sign_for_exit(vn_secret_key, NETWORK, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        }
+
+        fn registration_features(vn_secret_key: &PrivateKey) -> OutputFeatures {
+            registration_features_until(vn_secret_key, VnEpoch(10))
+        }
+
+        fn registration_features_until(vn_secret_key: &PrivateKey, max_epoch: VnEpoch) -> OutputFeatures {
+            let claim = CompressedPublicKey::from_secret_key(vn_secret_key);
+            let signature =
+                ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim, max_epoch);
+            OutputFeatures::for_validator_node_registration(signature, claim, None, max_epoch)
+        }
+
+        #[tokio::test]
+        async fn a_published_block_re_validates_validator_node_transactions_and_drops_invalid_ones() {
+            // A validator node transaction's validity depends on chain state that changes at epoch boundaries and
+            // when validator node transactions are mined (e.g. a cancelling spend becomes invalid once the registration
+            // activates), so such blocks re-check them. Ordinary transactions, and ordinary blocks, are left alone.
+            let validator = crate::validation::mocks::MockValidator::new(true);
+            let is_valid = validator.shared_flag();
+            let mut config = crate::mempool::MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(config, create_consensus_rules(), Box::new(validator));
+            let key_manager = KeyManager::new_random().unwrap();
+
+            let vn_tx = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            let plain_tx = Arc::new(
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0,
+            );
+            for tx in [&vn_tx, &plain_tx] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+            let block_with = |body: &tari_transaction_components::aggregated_body::AggregateBody| {
+                Arc::new(tari_node_components::blocks::Block::new(
+                    tari_node_components::blocks::BlockHeader::new(0),
+                    body.clone(),
+                ))
+            };
+
+            // The chain moves on and the validator node transaction is no longer valid, but a block with no validator
+            // node transactions inside an epoch does not re-check anything
+            is_valid.set(false);
+            let plain_block_tx =
+                tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx")
+                    .0;
+            mempool
+                .process_published_block(block_with(&plain_block_tx.body))
+                .await
+                .unwrap();
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+
+            // A block that mines a validator node transaction (for another node) re-checks the pool's validator node
+            // transactions: the stale one is dropped, the ordinary one stays
+            let other_vn_tx = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            mempool
+                .process_published_block(block_with(&other_vn_tx.body))
+                .await
+                .unwrap();
+            assert_ne!(
+                mempool.has_transaction(vn_tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.has_transaction(plain_tx).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        }
+
+        #[tokio::test]
+        async fn a_validator_node_slot_is_replaced_only_by_a_strictly_higher_fee() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn_secret_key = PrivateKey::random(&mut rand::rng());
+
+            let exit1 = tx_with(exit_features(&vn_secret_key), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // The same transaction again is still reported as stored
+            assert_eq!(
+                mempool.insert(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // An equal or lower fee for the same validator node (exit or registration) is refused, with a reason that
+            // is not a validation failure
+            for (features, fee) in [
+                (exit_features(&vn_secret_key), 5),
+                (exit_features(&vn_secret_key), 1),
+                (registration_features(&vn_secret_key), 5),
+            ] {
+                assert_eq!(
+                    mempool.insert(tx_with(features, fee, &key_manager)).await.unwrap(),
+                    TxStorageResponse::NotStoredValidatorNodeSlotTaken
+                );
+            }
+
+            // A strictly higher fee replaces the holder
+            let exit2 = tx_with(exit_features(&vn_secret_key), 10, &key_manager);
+            assert_eq!(
+                mempool.insert(exit2.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_ne!(
+                mempool.has_transaction(exit1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // ... and the slot now belongs to the new holder
+            assert_eq!(
+                mempool
+                    .insert(tx_with(exit_features(&vn_secret_key), 10, &key_manager))
+                    .await
+                    .unwrap(),
+                TxStorageResponse::NotStoredValidatorNodeSlotTaken
+            );
+
+            // Another validator node is unaffected
+            let other = tx_with(exit_features(&PrivateKey::random(&mut rand::rng())), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(other.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // So a template never carries two transactions for one validator node
+            let template = mempool.retrieve(1_000_000).await.unwrap();
+            assert_eq!(template.len(), 2);
+            assert!(template.contains(&exit2));
+            assert!(template.contains(&other));
+            assert!(!template.contains(&exit1));
+        }
+
+        #[tokio::test]
+        async fn a_published_block_evicts_a_pool_transaction_for_the_same_validator_node() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn_secret_key = PrivateKey::random(&mut rand::rng());
+            let t1 = tx_with(exit_features(&vn_secret_key), 5, &key_manager);
+            assert_eq!(
+                mempool.insert(t1.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // A peer's block exits the same validator node through a different transaction
+            let t2 = tx_with(exit_features(&vn_secret_key), 7, &key_manager);
+            let block = Arc::new(tari_node_components::blocks::Block::new(
+                tari_node_components::blocks::BlockHeader::new(0),
+                t2.body.clone(),
+            ));
+            mempool.process_published_block(block).await.unwrap();
+
+            assert_ne!(
+                mempool.has_transaction(t1).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn a_published_block_drops_validator_node_transactions_that_expire_before_the_next_epoch() {
+            let (_handlers, mempool, _propagated) = create_handlers();
+            let key_manager = KeyManager::new_random().unwrap();
+            let epoch_length = create_consensus_rules().consensus_constants(0).epoch_length();
+            let epoch = VnEpoch(1);
+
+            let expiring = tx_with(
+                registration_features_until(&PrivateKey::random(&mut rand::rng()), epoch),
+                5,
+                &key_manager,
+            );
+            let still_valid = tx_with(
+                registration_features_until(&PrivateKey::random(&mut rand::rng()), epoch.saturating_add(VnEpoch(1))),
+                5,
+                &key_manager,
+            );
+            assert_eq!(
+                mempool.insert(expiring.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.insert(still_valid.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+
+            // A block that is not the last of the epoch leaves both
+            let mut header = tari_node_components::blocks::BlockHeader::new(0);
+            header.height = (epoch.as_u64() + 1) * epoch_length - 2;
+            let block = |header| {
+                Arc::new(tari_node_components::blocks::Block::new(
+                    header,
+                    tari_transaction_components::aggregated_body::AggregateBody::empty(),
+                ))
+            };
+            mempool.process_published_block(block(header.clone())).await.unwrap();
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+
+            // The last block of the epoch: the next template is in the following epoch, so `expiring` is dropped
+            header.height += 1;
+            mempool.process_published_block(block(header)).await.unwrap();
+            assert_ne!(
+                mempool.has_transaction(expiring).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(
+                mempool.has_transaction(still_valid).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+        }
     }
 }

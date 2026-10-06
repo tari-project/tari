@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedSignature, PrivateKey};
@@ -462,7 +464,7 @@ fn check_cut_through() {
         outputs.retain(|x| !input.is_equal_to(x));
         inputs.retain(|x| *x != input);
     }
-    tx3_cut_through.body = AggregateBody::new(inputs, outputs, tx3_cut_through.body.kernels().clone());
+    tx3_cut_through.body = AggregateBody::new_unsorted(inputs, outputs, tx3_cut_through.body.kernels().clone());
     tx3.body.sort();
     tx3_cut_through.body.sort();
 
@@ -511,7 +513,7 @@ fn inputs_not_malleable() {
     )
     .expect("Failed to create wallet outputs");
     let mut stack = inputs[0].input_data().clone();
-    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager);
+    let (mut tx, _outputs) = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager);
 
     stack
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
@@ -520,7 +522,7 @@ fn inputs_not_malleable() {
     let mut inputs = tx.body().inputs().clone();
     inputs[0].set_script(script![Drop].unwrap()).unwrap();
     inputs[0].input_data = stack;
-    tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
+    tx.body = AggregateBody::new_unsorted(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
@@ -591,7 +593,7 @@ mod validate_internal_consistency {
         inputs[0].set_features(input_params.features.clone());
         inputs[0].set_covenant(input_params.covenant.clone());
         inputs[0].set_script(input_params.script.clone());
-        let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager);
+        let (tx, _outputs) = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager);
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());

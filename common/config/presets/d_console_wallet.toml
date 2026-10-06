@@ -24,6 +24,8 @@
 # 1. Start the console wallet with the --password=secret argument, or
 # 2. Set the environment variable MINOTARI_WALLET_PASSWORD=secret before starting the console wallet, or
 # 3. Set the "password" key in this [wallet] section of the config
+# WARNING: option 3 stores the password in plain text in this file, and this file is often shared by several Tari
+# applications. Prefer option 1 or 2. If you do use option 3, make the file readable only by you (chmod 600).
 # (default = )
 #password = "secret"
 
@@ -133,7 +135,7 @@ broadcast_send_timeout = 180
 # This is the number of block confirmations required for a transaction to be considered completely mined and
 # confirmed. (default = 3)
 #num_confirmations_required = 3
-# The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+# The number of unconfirmed transactions processed per round of base node queries. Values below 1 are treated as 1.
 # (default = 20)
 #max_tx_query_batch_size = 20
 # This option specifies the transaction routing mechanism as being directly between wallets, making
@@ -143,7 +145,9 @@ broadcast_send_timeout = 180
 # This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
 # wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
 transaction_event_channel_size = 25000
-# This is the timeout period that will be used to re-submit transactions not found in the mempool (default = 600)
+# This is the minimum period between re-submissions of a transaction that is not found in the mempool. A transaction is
+# submitted at most 5 times in total (the initial submission plus 4 re-submissions) before it is cancelled as invalid.
+# (default = 600)
 #transaction_mempool_resubmission_window = 600
 
 [wallet.outputs]
@@ -159,7 +163,8 @@ event_channel_size = 3500
 # The number of confirmations (difference between tip height and mined height) required for the output to be marked as
 # mined confirmed (default = 3)
 #num_confirmations_required = 3
-# The number of batches the unconfirmed outputs will be divided into before being queried from the base node
+# The number of outputs sent to the base node in a single validation query. The base node rejects batch queries
+# larger than 512, so values outside 1..=512 are clamped to that range.
 # (default = 100)
 #tx_validator_batch_size = 100
 # Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
@@ -337,6 +342,17 @@ connectivity.update_interval = 300 # 2 * 60
 # making sybil attacks costly. This setting does not guarantee this ratio is maintained.
 # Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
 connectivity.minimum_desired_tcpv4_node_ratio = 0.0
+# The peer pool counts as starved while connected outbound-dialled pool peers are below this fraction of the pool
+# target (num_neighbouring_nodes + num_random_nodes). Inbound peers do not count. Default: 0.5
+#connectivity.pool_starved_threshold_ratio = 0.5
+# The number of consecutive update_interval ticks the pool must be starved before a peer rebootstrap (re-resolve
+# seeds, sync peers from seeds and connected peers) is requested. Default: 3
+#connectivity.pool_starved_ticks = 3
+# The first rebootstrap fires immediately. While the pool stays starved, the cooldown between rebootstraps starts
+# at rebootstrap_cooldown_min (at least 60) and doubles each time up to rebootstrap_cooldown_max, +/-25% jitter.
+# Default: 10 mins and 2 hours
+#connectivity.rebootstrap_cooldown_min = 600 # 10 * 60
+#connectivity.rebootstrap_cooldown_max = 7_200 # 2 * 60 * 60
 
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
@@ -381,6 +397,12 @@ network_discovery.initial_peer_sync_delay = 25
 #network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
+# How long to remember that peers were synced from a connected peer before syncing from it again when it
+# reconnects. (Default: 1 hour)
+#network_discovery.on_connect_resync_ttl = 3_600 # 60 * 60
+# The maximum number of connected peers to request peers from during a rebootstrap, outbound ones first. At most 20.
+# (Default: 5)
+#network_discovery.rebootstrap_connected_peers = 5
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 ban_duration = 120 # 2 mins

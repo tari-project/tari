@@ -26,13 +26,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use minotari_mcp_common::{
-    get_optional_string_param,
-    get_required_number_param,
-    get_required_string_param,
     McpError,
     McpResult,
     McpTool,
     PermissionLevel,
+    get_optional_string_param,
+    get_required_number_param,
+    get_required_string_param,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::Value;
@@ -133,10 +133,10 @@ impl McpTool for SimpleTransferTool {
         }
 
         // Validate optional message
-        if let Some(message) = get_optional_string_param(params, "message") {
-            if message.len() > 280 {
-                return Err(McpError::invalid_request("Message cannot exceed 280 characters"));
-            }
+        if let Some(message) = get_optional_string_param(params, "message") &&
+            message.len() > 280
+        {
+            return Err(McpError::invalid_request("Message cannot exceed 280 characters"));
         }
 
         // Validate optional fee
@@ -164,7 +164,7 @@ impl McpTool for SimpleTransferTool {
         // For now, return a detailed placeholder response that shows what would happen
         // In a real implementation, this would call the wallet gRPC service
         let estimated_fee = fee_per_gram.unwrap_or(25); // Default 25 µT/gram
-        let total_cost = amount + estimated_fee;
+        let total_cost = amount.saturating_add(estimated_fee);
 
         Ok(serde_json::json!({
             "status": "simulated",

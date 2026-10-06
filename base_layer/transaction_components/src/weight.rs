@@ -80,10 +80,17 @@ impl TransactionWeight {
         rounded_up_features_and_scripts_byte_size: usize,
     ) -> u64 {
         let params = self.params();
-        params.kernel_weight * num_kernels as u64 +
-            params.input_weight * num_inputs as u64 +
-            params.output_weight * num_outputs as u64 +
-            rounded_up_features_and_scripts_byte_size as u64 / params.features_and_scripts_bytes_per_gram.get()
+        params
+            .kernel_weight
+            .saturating_mul(num_kernels as u64)
+            .saturating_add(params.input_weight.saturating_mul(num_inputs as u64))
+            .saturating_add(params.output_weight.saturating_mul(num_outputs as u64))
+            .saturating_add(
+                // `features_and_scripts_bytes_per_gram` is a `NonZero`, so this cannot divide by zero.
+                (rounded_up_features_and_scripts_byte_size as u64)
+                    .checked_div(params.features_and_scripts_bytes_per_gram.get())
+                    .unwrap_or(0),
+            )
     }
 
     pub fn calculate_body(&self, body: &AggregateBody) -> std::io::Result<u64> {
@@ -129,14 +136,15 @@ impl TransactionWeight {
         // EXPECT: consensus constant should not be set incorrectly
         let per_gram = usize::try_from(self.params().features_and_scripts_bytes_per_gram.get())
             .expect("features_and_scripts_bytes_per_gram exceeds usize::MAX");
-        let rem = features_and_scripts_size % per_gram;
+        // `per_gram` is derived from a `NonZero`, so these cannot divide by zero.
+        let rem = features_and_scripts_size.checked_rem(per_gram).unwrap_or(0);
         if rem == 0 {
             features_and_scripts_size
         } else {
             features_and_scripts_size
-                .checked_add(per_gram - rem)
+                .checked_add(per_gram.saturating_sub(rem))
                 // The maximum rounded value possible is usize::MAX - usize::MAX % per_gram
-                .unwrap_or(usize::MAX - usize::MAX % per_gram)
+                .unwrap_or_else(|| usize::MAX.saturating_sub(usize::MAX.checked_rem(per_gram).unwrap_or(0)))
         }
     }
 

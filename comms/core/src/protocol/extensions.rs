@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_shutdown::ShutdownSignal;
+use tari_shutdown::{ShutdownSignal, oneshot_trigger::OneshotSignal};
 
 use crate::{
     PeerManager,
@@ -111,7 +111,7 @@ pub struct ProtocolExtensionContext {
     connectivity: ConnectivityRequester,
     peer_manager: Arc<PeerManager>,
     protocols: Option<Protocols<Substream>>,
-    complete_signals: Vec<ShutdownSignal>,
+    complete_signals: Vec<OneshotSignal<()>>,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -144,7 +144,7 @@ impl ProtocolExtensionContext {
     }
 
     /// Register a signal that triggers once the task is complete.
-    pub fn register_complete_signal(&mut self, signal: ShutdownSignal) -> &mut Self {
+    pub fn register_complete_signal(&mut self, signal: OneshotSignal<()>) -> &mut Self {
         self.complete_signals.push(signal);
         self
     }
@@ -164,8 +164,8 @@ impl ProtocolExtensionContext {
         self.shutdown_signal.clone()
     }
 
-    pub(crate) fn drain_complete_signals(&mut self) -> Vec<ShutdownSignal> {
-        self.complete_signals.drain(..).collect()
+    pub(crate) fn drain_complete_signals(&mut self) -> Vec<OneshotSignal<()>> {
+        std::mem::take(&mut self.complete_signals)
     }
 
     pub(crate) fn take_protocols(&mut self) -> Option<Protocols<Substream>> {

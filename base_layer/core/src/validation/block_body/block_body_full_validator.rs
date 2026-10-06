@@ -35,9 +35,9 @@ use crate::{
         BlockBodyValidator,
         CandidateBlockValidator,
         ValidationError,
-        aggregate_body::AggregateBodyChainLinkedValidator,
+        aggregate_body::{AggregateBodyChainLinkedValidator, hydrate_compact_inputs},
         block_body::block_body_partial_validator::BlockBodyPartialValidator,
-        helpers::check_mmr_roots,
+        helpers::{check_block_body_size, check_mmr_roots},
     },
 };
 
@@ -65,28 +65,35 @@ impl BlockBodyFullValidator {
         }
     }
 
+    /// Validate the block body against the current db.
+    ///
+    /// The block's inputs are expected to already be hydrated (see
+    /// [`AggregateBodyChainLinkedValidator::validate`](crate::validation::aggregate_body::AggregateBodyChainLinkedValidator::validate)).
+    /// This holds for locally produced blocks, propagated blocks (hydrated on receipt) and blocks passed via
+    /// [`BlockBodyValidator::validate_body`], which hydrates before calling this. The block is validated by reference,
+    /// so nothing is cloned.
     pub fn validate<B: BlockchainBackend>(
         &self,
         backend: &B,
         block: &Block,
         metadata_option: Option<&ChainMetadata>,
-    ) -> Result<Block, ValidationError> {
+    ) -> Result<(), ValidationError> {
         if let Some(metadata) = metadata_option {
             validate_block_metadata(block, metadata)?;
         }
 
+        // The size check is cheap, so it runs before the chain-linked checks (scripts and database lookups). The
+        // internal consistency validator below repeats it, for its callers that do not come through here.
+        check_block_body_size(block, self.consensus_manager.consensus_constants(block.header.height))?;
+
         // validate the block body against the current db
-        // the inputs may be only references to outputs, that's why the validator returns a new body and we need a new
-        // block
-        let body = self
-            .aggregate_body_chain_validator
+        self.aggregate_body_chain_validator
             .validate(&block.body, &block.header, backend)?;
-        let block = Block::new(block.header.clone(), body);
 
         // validate the internal consistency of the block body
-        self.block_internal_validator.validate(&block)?;
+        self.block_internal_validator.validate(block)?;
 
-        let mmr_roots = match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block) {
+        let mmr_roots = match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, block) {
             Ok(mmr_roots) => mmr_roots,
             Err(e) => {
                 error!(
@@ -100,7 +107,7 @@ impl BlockBodyFullValidator {
 
         BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
 
-        Ok(block)
+        Ok(())
     }
 
     fn check_monero_seed_height<B: BlockchainBackend>(
@@ -132,8 +139,9 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         block: &ChainBlock,
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError> {
-        self.validate(backend, block.block(), Some(metadata))?;
-        Ok(())
+        // Blocks reaching this point (locally produced or propagated) already have hydrated inputs, so no cloning is
+        // needed: the block is validated in place.
+        self.validate(backend, block.block(), Some(metadata))
     }
 
     // This body-at-height validation is intended to validate the block body without any knowledge of consecutive
@@ -148,8 +156,19 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
-    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError> {
-        self.validate(backend, block, None)
+    /// Validate a block whose inputs may be compact (as received during block sync).
+    ///
+    /// The compact inputs are hydrated in place before validation and the resulting fully-hydrated block is returned
+    /// so that it can be stored. The block is consumed and mutated in place, so nothing is cloned into the returned
+    /// block.
+    fn validate_body(&self, backend: &B, mut block: Block) -> Result<Block, ValidationError> {
+        // Reject an oversized body before any per-input database work
+        check_block_body_size(&block, self.consensus_manager.consensus_constants(block.header.height))?;
+        hydrate_compact_inputs(&mut block.body, backend)?;
+
+        self.validate(backend, &block, None)?;
+
+        Ok(block)
     }
 }
 
@@ -160,9 +179,9 @@ fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<()
             block_hash: block.header.prev_hash.to_hex(),
         });
     }
-    if block.header.height != metadata.best_block_height() + 1 {
+    if block.header.height != metadata.best_block_height().saturating_add(1) {
         return Err(ValidationError::IncorrectHeight {
-            expected: metadata.best_block_height() + 1,
+            expected: metadata.best_block_height().saturating_add(1),
             block_height: block.header.height,
         });
     }

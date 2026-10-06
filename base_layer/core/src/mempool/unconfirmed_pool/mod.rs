@@ -27,7 +27,13 @@ mod unconfirmed_pool;
 // Public re-exports
 pub use error::UnconfirmedPoolError;
 use tari_crypto::hash_domain;
-pub use unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolConfig};
+pub use unconfirmed_pool::{
+    MAX_BLOCK_TEMPLATE_BODY_BYTES,
+    RetrieveResults,
+    TransactionKey,
+    UnconfirmedPool,
+    UnconfirmedPoolConfig,
+};
 
 hash_domain!(
     UnconfirmedPoolOutputTokenIdHashDomain,

@@ -9,12 +9,14 @@ extern crate alloc;
 mod crypto;
 mod hashing;
 pub mod utils;
+mod wire;
 
 mod app_ui {
     pub mod menu;
 }
 mod handlers {
     pub mod get_dh_shared_secret;
+    pub mod get_ephemeral_nonce;
     pub mod get_one_sided_metadata_signature;
     pub mod get_public_key;
     pub mod get_public_spend_key;
@@ -27,10 +29,15 @@ mod handlers {
 use app_ui::menu::ui_menu_main;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
+    get_ephemeral_nonce::{handler_generate_ephemeral_nonce, EphemeralNonceCtx},
     get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
-    get_schnorr_signature::{handler_get_raw_schnorr_signature, handler_get_script_schnorr_signature},
+    get_schnorr_signature::{
+        handler_get_raw_schnorr_signature,
+        handler_get_raw_schnorr_signature_legacy_nonce,
+        handler_get_script_schnorr_signature,
+    },
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::{handler_get_script_signature_derived, handler_get_script_signature_managed},
     get_version::handler_get_version,
@@ -43,16 +50,13 @@ use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
 use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
 use ledger_device_sdk::ui::gadgets::display_pending_review;
-use minotari_ledger_wallet_common::common_types::{
-    AppSW as AppSWMapping,
-    Instruction as InstructionMapping,
-    LedgerKeyBranch as BranchMapping,
+use minotari_ledger_wallet_common::{
+    codec::{TextReply, CHUNK_LAST, CHUNK_MORE, CLA},
+    common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
 static BIP32_COIN_TYPE: u32 = 535348;
-static CLA: u8 = 0x80;
-static RESPONSE_VERSION: u8 = 1;
 
 // Application status words.
 #[repr(u16)]
@@ -64,17 +68,39 @@ pub enum AppSW {
     ScriptSignatureFail = AppSWMapping::ScriptSignatureFail as u16,
     RawSchnorrSignatureFail = AppSWMapping::RawSchnorrSignatureFail as u16,
     SchnorrSignatureFail = AppSWMapping::SchnorrSignatureFail as u16,
-    ScriptOffsetNotUnique = AppSWMapping::ScriptOffsetNotUnique as u16,
     KeyDeriveFail = AppSWMapping::KeyDeriveFail as u16,
     KeyDeriveFromCanonical = AppSWMapping::KeyDeriveFromCanonical as u16,
     KeyDeriveFromUniform = AppSWMapping::KeyDeriveFromUniform as u16,
     RandomNonceFail = AppSWMapping::RandomNonceFail as u16,
     BadBranchKey = AppSWMapping::BadBranchKey as u16,
     MetadataSignatureFail = AppSWMapping::MetadataSignatureFail as u16,
+    ScriptOffsetNoSenderOffsets = AppSWMapping::ScriptOffsetNoSenderOffsets as u16,
+    ScriptOffsetInvalidScriptBranch = AppSWMapping::ScriptOffsetInvalidScriptBranch as u16,
+    ScriptOffsetNoDeviceScriptKeys = AppSWMapping::ScriptOffsetNoDeviceScriptKeys as u16,
+    NonceStoreFull = AppSWMapping::NonceStoreFull as u16,
+    NonceHandleInvalid = AppSWMapping::NonceHandleInvalid as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = AppSWMapping::Ok as u16,
 }
+
+// The two status words above come from the SDK rather than from `minotari_ledger_wallet_common`, so they are the
+// only two that can disagree with the host's copy - and when they disagree nothing says so. The host's
+// `AppSW::try_from` simply fails to recognise the value, so a rejected review arrives at
+// `ledger_get_one_sided_metadata_signature` as "insufficient data" rather than as `UserCancelled`.
+//
+// That is not hypothetical: `StatusWords::UserCancelled` moved from 0x6e04 to 0x6985 in the SDK and the host's
+// copy stayed where it was, which left `LedgerDeviceError::UserCancelled` unreachable. A pair of `const`
+// assertions costs nothing and turns the next such move into a build failure in the crate that has to change.
+const _: () = assert!(
+    AppSW::UserCancelled as u16 == AppSWMapping::UserCancelled as u16,
+    "minotari_ledger_wallet_common's AppSW::UserCancelled no longer matches ledger_device_sdk's StatusWords; the \
+     host cannot recognise a rejected review until they agree"
+);
+const _: () = assert!(
+    AppSW::WrongApduLength as u16 == AppSWMapping::WrongApduLength as u16,
+    "minotari_ledger_wallet_common's AppSW::WrongApduLength no longer matches ledger_device_sdk's StatusWords"
+);
 
 impl From<AppSW> for Reply {
     fn from(sw: AppSW) -> Reply {
@@ -95,11 +121,12 @@ pub enum Instruction {
     GetViewKey,
     GetDHSharedSecret,
     GetRawSchnorrSignature,
+    GetRawSchnorrSignatureLegacyNonce,
     GetScriptSchnorrSignature,
     GetOneSidedMetadataSignature,
+    GenerateEphemeralNonce,
 }
 
-const P2_MORE: u8 = 0x01;
 const STATIC_SPEND_INDEX: u64 = 42;
 const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number by large dice roll
 const MAX_PAYLOADS: u8 = 250;
@@ -113,7 +140,7 @@ pub enum KeyType {
     OneSidedSenderOffset = 0x04,
     Random = 0x06,
     PreMine = 0x07,
-    MetadataEphemeralNonce = 0x08,
+    // MetadataEphemeralNonce = 0x08 Dont reuse, is retired
 }
 
 impl KeyType {
@@ -121,22 +148,30 @@ impl KeyType {
         self as u8
     }
 
+    /// Map a host supplied branch identifier onto a key type.
+    ///
+    /// The spend branch is deliberately not reachable from here: `alpha` is the wallet's root spend key and no
+    /// handler may ever be pointed at it by the host. It stays reachable internally through
+    /// `derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)`.
     fn from_branch_key(n: u64) -> Result<Self, AppSW> {
-        if n > u64::from(u8::MAX) {
-            return Err(AppSW::BadBranchKey);
-        }
-        if let Some(branch) = BranchMapping::from_byte(n as u8) {
-            match branch {
-                BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
-                BranchMapping::Spend => Ok(Self::Spend),
-                BranchMapping::Random => Ok(Self::Random),
-                BranchMapping::PreMine => Ok(Self::PreMine),
-                BranchMapping::MetadataEphemeralNonce => Ok(Self::MetadataEphemeralNonce),
-            }
-        } else {
-            return Err(AppSW::BadBranchKey);
+        match branch_key_from_u64(n)? {
+            BranchMapping::OneSidedSenderOffset => Ok(Self::OneSidedSenderOffset),
+            BranchMapping::Random => Ok(Self::Random),
+            BranchMapping::PreMine => Ok(Self::PreMine),
+            BranchMapping::Spend => Err(AppSW::BadBranchKey),
         }
     }
+}
+
+/// Decode a host supplied branch identifier into the shared branch enum.
+///
+/// This stops short of [`KeyType::from_branch_key`] so that a handler which needs to reason about the branch the
+/// host asked for - rather than the key type it maps to - can do so against the same enum the host used.
+pub fn branch_key_from_u64(n: u64) -> Result<BranchMapping, AppSW> {
+    if n > u64::from(u8::MAX) {
+        return Err(AppSW::BadBranchKey);
+    }
+    BranchMapping::from_byte(n as u8).ok_or(AppSW::BadBranchKey)
 }
 
 impl TryFrom<ApduHeader> for Instruction {
@@ -162,13 +197,19 @@ impl TryFrom<ApduHeader> for Instruction {
             (InstructionMapping::GetPublicKey, 0, 0) => Ok(Instruction::GetPublicKey),
             (InstructionMapping::GetScriptSignatureManaged, 0, 0) => Ok(Instruction::GetScriptSignatureManaged),
             (InstructionMapping::GetScriptSignatureDerived, 0, 0) => Ok(Instruction::GetScriptSignatureDerived),
-            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, 0 | P2_MORE) => Ok(Instruction::GetScriptOffset {
-                chunk_number: value.p1,
-                more: value.p2 == P2_MORE,
-            }),
+            (InstructionMapping::GetScriptOffset, 0..=MAX_PAYLOADS, CHUNK_LAST | CHUNK_MORE) => {
+                Ok(Instruction::GetScriptOffset {
+                    chunk_number: value.p1,
+                    more: value.p2 == CHUNK_MORE,
+                })
+            },
             (InstructionMapping::GetViewKey, 0, 0) => Ok(Instruction::GetViewKey),
             (InstructionMapping::GetDHSharedSecret, 0, 0) => Ok(Instruction::GetDHSharedSecret),
             (InstructionMapping::GetRawSchnorrSignature, 0, 0) => Ok(Instruction::GetRawSchnorrSignature),
+            (InstructionMapping::GetRawSchnorrSignatureLegacyNonce, 0, 0) => {
+                Ok(Instruction::GetRawSchnorrSignatureLegacyNonce)
+            },
+            (InstructionMapping::GenerateEphemeralNonce, 0, 0) => Ok(Instruction::GenerateEphemeralNonce),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
             (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Ok(Instruction::GetOneSidedMetadataSignature),
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
@@ -182,10 +223,21 @@ fn show_status_and_home_if_needed(
     ins: &Instruction,
     status: &AppSW,
     _offset_ctx: &mut ScriptOffsetCtx,
+    _nonce_ctx: &mut EphemeralNonceCtx,
     home: &mut NbglHomeAndSettings,
 ) {
+    // `UserCancelled` belongs here as much as `Deny` and `Ok` do. Without it, a Stax or Flex user who taps
+    // "Yes, reject" is left looking at the rejection dialog for ever: the handler returns, the main loop replies
+    // and goes back to waiting for the next command, but nothing ever redraws the home screen. The device is
+    // still perfectly usable - the next instruction is served normally - which is exactly what makes it hard to
+    // notice, and what makes it indistinguishable on screen from a device that has hung.
+    //
+    // BAGL models do not have this problem: their main loop redraws the home menu itself on every pass.
     let (show_status, _status_type) = match (ins, status) {
-        (Instruction::GetOneSidedMetadataSignature, AppSW::Deny | AppSW::Ok) => (true, StatusType::Transaction),
+        (
+            Instruction::GetOneSidedMetadataSignature,
+            AppSW::Deny | AppSW::Ok | AppSW::UserCancelled,
+        ) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
     };
 
@@ -206,6 +258,11 @@ extern "C" fn sample_main() {
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+
+    // Also long-lived, but for the opposite reason to `offset_ctx`: an ephemeral nonce is reserved by one exchange
+    // and spent by a later one, so unrelated instructions in between must leave it alone. Entries only ever leave
+    // this store by being consumed, or by the store itself going away when the application exits.
+    let mut nonce_ctx = EphemeralNonceCtx::new();
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
@@ -229,27 +286,46 @@ extern "C" fn sample_main() {
             continue;
         };
 
-        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+        // `offset_ctx` accumulates a `GetScriptOffset` across several exchanges, so anything that is not the next
+        // chunk of that accumulation has to invalidate it. Without this, a host whose chunk was rejected could
+        // resume with a differently numbered follow-up chunk and read back a value the rejection withheld - for an
+        // unblinded script offset, that is the wallet's spend key.
+        if !matches!(ins, Instruction::GetScriptOffset { .. }) {
+            offset_ctx.reset();
+        }
+
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
             },
             Err(sw) => {
+                offset_ctx.reset();
                 comm.reply(sw.clone());
                 sw
             },
         };
 
         #[cfg(any(target_os = "stax", target_os = "flex"))]
-        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut home);
+        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut nonce_ctx, &mut home);
     }
 }
 
-fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetCtx) -> Result<(), AppSW> {
+fn handle_apdu(
+    comm: &mut Comm,
+    ins: Instruction,
+    offset_ctx: &mut ScriptOffsetCtx,
+    nonce_ctx: &mut EphemeralNonceCtx,
+) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
         Instruction::GetAppName => {
-            comm.append(env!("CARGO_PKG_NAME").as_bytes());
+            wire::reply(
+                comm,
+                &TextReply {
+                    text: env!("CARGO_PKG_NAME").as_bytes(),
+                },
+            );
             Ok(())
         },
         Instruction::GetPublicKey => handler_get_public_key(comm),
@@ -261,8 +337,10 @@ fn handle_apdu(comm: &mut Comm, ins: Instruction, offset_ctx: &mut ScriptOffsetC
         },
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
-        Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm),
+        Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm, nonce_ctx),
+        Instruction::GetRawSchnorrSignatureLegacyNonce => handler_get_raw_schnorr_signature_legacy_nonce(comm),
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
         Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
+        Instruction::GenerateEphemeralNonce => handler_generate_ephemeral_nonce(comm, nonce_ctx),
     }
 }

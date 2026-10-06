@@ -74,6 +74,8 @@ impl StackBuilder {
             mut initializers,
         } = self;
 
+        // If any initializer fails, `?` drops the notifier without broadcasting, which resolves every waiting
+        // `wait_ready` with an error instead of "ready".
         let (mut notifier, context) = create_context_notifier_pair(shutdown_signal);
 
         // Collect all the initialization futures
@@ -83,7 +85,7 @@ impl StackBuilder {
         // on the first one that failed.
         future::try_join_all(init_futures).await?;
 
-        notifier.trigger();
+        notifier.broadcast(());
 
         Ok(context.into_inner())
     }
@@ -91,14 +93,19 @@ impl StackBuilder {
 
 #[cfg(test)]
 mod test {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+    use std::{
+        sync::{
+            Arc,
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Duration,
     };
 
     use async_trait::async_trait;
     use futures::executor::block_on;
     use tari_shutdown::Shutdown;
+    use tokio::{task, time};
     use tower::service_fn;
 
     use super::*;
@@ -172,5 +179,50 @@ mod test {
         handles.get_handle::<DummyServiceHandle>().unwrap();
 
         assert_eq!(shared_state.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn failing_initializer_never_signals_ready() {
+        type Pending = (
+            task::JoinHandle<Option<()>>,
+            task::JoinHandle<Option<()>>,
+            task::JoinHandle<Result<ServiceHandles, ServiceInitializationError>>,
+        );
+        let closure_ran = Arc::new(AtomicUsize::new(0));
+        let pending = Arc::new(Mutex::new(None::<Pending>));
+
+        let shutdown = Shutdown::new();
+        let result = StackBuilder::new(shutdown.to_signal())
+            .add_initializer_fn({
+                let closure_ran = closure_ran.clone();
+                let pending = pending.clone();
+                move |context: ServiceInitializerContext| {
+                    let when_ready = context.clone().spawn_when_ready({
+                        let closure_ran = closure_ran.clone();
+                        move |_| async move {
+                            closure_ran.fetch_add(1, Ordering::SeqCst);
+                        }
+                    });
+                    let until_shutdown = context.clone().spawn_until_shutdown(move |_| async move {
+                        closure_ran.fetch_add(1, Ordering::SeqCst);
+                    });
+                    let ready = task::spawn(context.wait_ready());
+                    *pending.lock().unwrap() = Some((when_ready, until_shutdown, ready));
+                    Ok(())
+                }
+            })
+            .add_initializer_fn(|_: ServiceInitializerContext| Err(anyhow::anyhow!("initializer failed")))
+            .build()
+            .await;
+        assert!(result.is_err());
+
+        let (when_ready, until_shutdown, ready) = pending.lock().unwrap().take().unwrap();
+        let timeout = Duration::from_secs(5);
+        assert!(time::timeout(timeout, ready).await.unwrap().unwrap().is_err());
+        assert!(time::timeout(timeout, when_ready).await.unwrap().unwrap().is_none());
+        assert!(time::timeout(timeout, until_shutdown).await.unwrap().unwrap().is_none());
+        assert_eq!(closure_ran.load(Ordering::SeqCst), 0);
+        // The stack's shutdown signal was never triggered; failure is reported through the ready signal alone
+        assert!(!shutdown.is_triggered());
     }
 }

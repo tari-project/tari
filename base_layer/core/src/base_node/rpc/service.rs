@@ -14,7 +14,7 @@ use url::Url;
 use crate::{
     base_node::{
         StateMachineHandle,
-        rpc::{BaseNodeWalletService, sync_utxos_by_block_task::SyncUtxosByBlockTask},
+        rpc::{BaseNodeWalletService, MAX_ALLOWED_QUERY_SIZE, sync_utxos_by_block_task::SyncUtxosByBlockTask},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
@@ -49,7 +49,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
-const MAX_QUERY_DELETED_HASHES: usize = 1000;
 
 pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
@@ -150,6 +149,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
                 best_block_hash: vec![],
@@ -201,6 +201,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::FeeTooLow.into(),
+                is_synced,
+            },
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::ValidatorNodeSlotTaken.into(),
                 is_synced,
             },
             TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
@@ -286,8 +291,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         };
 
         let message = request.into_message();
+        if message.sigs.is_empty() {
+            return Err(RpcStatus::bad_request("Empty signatures"));
+        }
+        if message.sigs.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query signatures. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
+        }
 
-        let mut responses: Vec<TxQueryBatchResponse> = Vec::new();
+        let mut responses: Vec<TxQueryBatchResponse> = Vec::with_capacity(message.sigs.len());
 
         let metadata = self
             .db
@@ -322,6 +335,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus> {
         let message = request.into_message();
+        if message.output_hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty output hashes"));
+        }
+        if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
+        }
 
         let state_machine = self.state_machine();
         // Determine if we are synced
@@ -366,7 +387,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         if message.output_hashes.is_empty() {
             return Err(RpcStatus::bad_request("Empty output hashes"));
         }
-        const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
             return Err(RpcStatus::bad_request(&format!(
                 "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
@@ -402,7 +422,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             target: LOG_TARGET,
             "Found {} mined and {} unmined UTXO(s)",
             num_mined,
-            mined_info_resp.len() - num_mined
+            mined_info_resp.len().saturating_sub(num_mined)
         );
         let metadata = self
             .db
@@ -440,10 +460,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<QueryDeletedRequest>,
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
         let message = request.into_message();
-        if message.hashes.len() > MAX_QUERY_DELETED_HASHES {
-            return Err(RpcStatus::bad_request(
-                &"Received more hashes than we allow".to_string(),
-            ));
+        if message.hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty utxo hashes"));
+        }
+        if message.hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(&format!(
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
+            )));
         }
         let chain_include_header = message.chain_must_include_header;
         if !chain_include_header.is_empty() {
@@ -583,7 +606,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         );
 
         while left_height <= right_height {
-            let mut mid_height = (left_height + right_height) / 2;
+            let mut mid_height = left_height.saturating_add(right_height) / 2;
 
             if mid_height == 0 {
                 return Ok(Response::new(0u64));
@@ -603,11 +626,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 })?;
             let before_mid_header = self
                 .db()
-                .fetch_header(mid_height - 1)
+                .fetch_header(mid_height.saturating_sub(1))
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height - 1))
+                    RpcStatus::not_found(&format!(
+                        "Header not found during search at height {}",
+                        mid_height.saturating_sub(1)
+                    ))
                 })?;
             trace!(
                 target: LOG_TARGET,
@@ -615,7 +641,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 requested_epoch_time,
                 left_height,
                 mid_height,
-                mid_height-1,
+                mid_height.saturating_sub(1),
                 mid_header.timestamp.as_u64(),
                 before_mid_header.timestamp.as_u64(),
                 right_height

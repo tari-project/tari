@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Range, str::FromStr};
+use std::{ops::Range, str::FromStr};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
@@ -49,11 +49,20 @@ use tokio::time::Instant;
 use crate::{
     output_manager_service::{
         UtxoSelectionCriteria,
+        commitment_mask::error_kind,
         error::OutputManagerStorageError,
         service::Balance,
         storage::{
             OutputStatus,
-            database::{DbKey, DbKeyValuePair, DbValue, OutputBackendQuery, OutputManagerBackend, WriteOperation},
+            database::{
+                DbKey,
+                DbKeyValuePair,
+                DbValue,
+                OutputBackendQuery,
+                OutputManagerBackend,
+                OutputMaskVerificationRow,
+                WriteOperation,
+            },
             models::{DbWalletOutput, KnownOneSidedPaymentScript},
         },
     },
@@ -64,6 +73,8 @@ use crate::{
 mod new_output_sql;
 mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
+/// Maximum number of ids bound into a single `UPDATE ... WHERE id IN (...)` by `mark_outputs_invalid`
+const MARK_INVALID_CHUNK_SIZE: usize = 500;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -112,6 +123,202 @@ impl OutputManagerSqliteDatabase {
                 script_sql.commit(conn)?
             },
         }
+        Ok(())
+    }
+}
+
+impl OutputManagerSqliteDatabase {
+    /// Batch upsert of received outputs' mined data and status. With `revivable` set, a row that is currently
+    /// `Invalid` is only updated if its commitment is listed, so a status written concurrently (e.g. by the commitment
+    /// mask migration) after the caller read the output is not overwritten.
+    fn set_received_outputs_mined_height_and_statuses_impl(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Option<&[CompressedCommitment]>,
+    ) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let commitments: Vec<CompressedCommitment> = updates.iter().map(|update| update.commitment.clone()).collect();
+        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
+        // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
+        // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
+        // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
+        // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
+        // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
+        // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
+        // provided values. The `UPDATE` action updates the existing row with the new values provided by the
+        // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
+        // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
+        // Note:
+        //   `diesel` does not support batch updates, so we have to do it manually. For example, this
+        //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut
+        // conn)?;`   errors with
+        //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
+        let mut query = String::from(
+            "INSERT INTO outputs ( commitment, mined_height, mined_in_block, status, mined_timestamp, spending_key, \
+             value, output_type, maturity, hash, script, input_data, script_private_key, sender_offset_public_key, \
+             metadata_signature_ephemeral_commitment, metadata_signature_ephemeral_pubkey, metadata_signature_u_a, \
+             metadata_signature_u_x, metadata_signature_u_y, spending_priority, covenant, encrypted_data, \
+             minimum_value_promise
+            )
+             VALUES ",
+        );
+
+        query.push_str(
+            &updates
+                .iter()
+                .map(|update| {
+                    format!(
+                        "(x'{}', {}, x'{}', {}, {}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
+                        update.commitment.to_hex(),
+                        update.mined_height as i64,
+                        update.mined_in_block.to_hex(),
+                        if update.confirmed {
+                            OutputStatus::Unspent as i32
+                        } else {
+                            OutputStatus::UnspentMinedUnconfirmed as i32
+                        },
+                        // Quoted timestamp, or an unquoted SQL NULL (a quoted 'NULL' would be stored as text)
+                        DateTime::from_timestamp(update.mined_timestamp as i64, 0)
+                            .map_or_else(|| "NULL".to_string(), |val| format!("'{}'", val.naive_utc())),
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(", "),
+        );
+
+        query.push_str(
+            " ON CONFLICT (commitment) DO UPDATE SET mined_height = excluded.mined_height, mined_in_block = \
+             excluded.mined_in_block, status = excluded.status, mined_timestamp = excluded.mined_timestamp, \
+             marked_deleted_at_height = NULL, marked_deleted_in_block = NULL, last_validation_timestamp = NULL",
+        );
+        if let Some(revivable) = revivable {
+            query.push_str(&format!(" WHERE outputs.status != {}", OutputStatus::Invalid as i32));
+            if !revivable.is_empty() {
+                query.push_str(&format!(
+                    " OR outputs.commitment IN ({})",
+                    revivable
+                        .iter()
+                        .map(|c| format!("x'{}'", c.to_hex()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        }
+
+        conn.batch_execute(&query)?;
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_received_outputs_mined_height_and_statuses: lock {} + db_op {} = {} ms \
+                ({} outputs)",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis(),
+                updates.len()
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Batch update of outputs to unspent. With `revivable` set, a row that is currently `Invalid` is only updated if
+    /// its hash is listed (see `set_received_outputs_mined_height_and_statuses_impl`); rows skipped that way are not
+    /// an error.
+    fn mark_outputs_as_unspent_impl(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Option<&[FixedHash]>,
+    ) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        // Split out the confirmed and unconfirmed outputs so that we can handle each of them as a separate batch
+        // operation
+        let confirmed_hashes = hashes
+            .iter()
+            .filter(|(_hash, confirmed)| *confirmed)
+            .map(|(hash, _confirmed)| hash)
+            .collect::<Vec<_>>();
+        let unconfirmed_hashes = hashes
+            .iter()
+            .filter(|(_hash, confirmed)| !*confirmed)
+            .map(|(hash, _confirmed)| hash)
+            .collect::<Vec<_>>();
+
+        if !confirmed_hashes.is_empty() {
+            // Unguarded, every listed output may be updated whatever its status
+            let may_update_invalid: Vec<Vec<u8>> = revivable.map_or_else(
+                || confirmed_hashes.iter().map(|h| h.to_vec()).collect(),
+                |r| r.iter().map(|h| h.to_vec()).collect(),
+            );
+            let updated = diesel::update(
+                outputs::table
+                    .filter(outputs::hash.eq_any(confirmed_hashes.iter().map(|hash| hash.to_vec())))
+                    .filter(
+                        outputs::status
+                            .ne(OutputStatus::Invalid as i32)
+                            .or(outputs::hash.eq_any(may_update_invalid)),
+                    ),
+            )
+            .set((
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::Unspent as i32),
+            ))
+            .execute(&mut conn)?;
+            // Unguarded callers expect every listed output to exist; guarded ones may skip Invalid rows
+            if revivable.is_none() && updated != confirmed_hashes.len() {
+                return Err(DieselError::NotFound.into());
+            }
+        }
+
+        if !unconfirmed_hashes.is_empty() {
+            // Unguarded, every listed output may be updated whatever its status
+            let may_update_invalid: Vec<Vec<u8>> = revivable.map_or_else(
+                || unconfirmed_hashes.iter().map(|h| h.to_vec()).collect(),
+                |r| r.iter().map(|h| h.to_vec()).collect(),
+            );
+            let updated = diesel::update(
+                outputs::table
+                    .filter(outputs::hash.eq_any(unconfirmed_hashes.iter().map(|hash| hash.to_vec())))
+                    .filter(
+                        outputs::status
+                            .ne(OutputStatus::Invalid as i32)
+                            .or(outputs::hash.eq_any(may_update_invalid)),
+                    ),
+            )
+            .set((
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::UnspentMinedUnconfirmed as i32),
+            ))
+            .execute(&mut conn)?;
+            // Unguarded callers expect every listed output to exist; guarded ones may skip Invalid rows
+            if revivable.is_none() && updated != unconfirmed_hashes.len() {
+                return Err(DieselError::NotFound.into());
+            }
+        }
+
+        debug!(target: LOG_TARGET, "mark_outputs_as_unspent: Unspent {}, UnspentMinedUnconfirmed {}", confirmed_hashes.len(), unconfirmed_hashes.len());
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - mark_outputs_as_unspent: lock {} + db_op {} = {} ms (Unspent {}, UnspentMinedUnconfirmed {})",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis(),
+                confirmed_hashes.len(), unconfirmed_hashes.len()
+            );
+        }
+
         Ok(())
     }
 }
@@ -243,7 +450,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
                 key,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -292,7 +499,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_mined_unspent_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -321,15 +528,28 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_invalid_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
 
-        outputs
+        // Skip, rather than fail on, rows that cannot be decoded: one such row would otherwise make every TXO
+        // revalidation of invalid outputs fail, so no Invalid output could ever be revived
+        Ok(outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output(key_manager))
-            .collect::<Result<Vec<_>, _>>()
+            .filter_map(|o| {
+                let (id, commitment) = (o.id, o.commitment.to_hex());
+                o.to_db_wallet_output(key_manager)
+                    .inspect_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Skipping invalid output id={id} commitment {commitment} that cannot be decoded ({})",
+                            error_kind(e)
+                        );
+                    })
+                    .ok()
+            })
+            .collect())
     }
 
     fn fetch_many_outputs<KM: LegacyTransactionKeyManagerInterface>(
@@ -347,7 +567,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_many_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -372,7 +592,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_unspent_mined_unconfirmed_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -433,7 +653,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - write {}: lock {} + db_op {} = {} ms",
                 msg,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -463,7 +683,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_pending_incoming_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -478,86 +698,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         &self,
         updates: Vec<ReceivedOutputInfoForBatch>,
     ) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
+        self.set_received_outputs_mined_height_and_statuses_impl(updates, None)
+    }
 
-        let commitments: Vec<CompressedCommitment> = updates.iter().map(|update| update.commitment.clone()).collect();
-        if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
-            return Err(OutputManagerStorageError::ValuesNotFound);
-        }
-
-        // This SQL query is a dummy `INSERT INTO` statement combined with an `ON CONFLICT` clause and `UPDATE` action.
-        // It specifies what action should be taken if a unique constraint violation occurs during the execution of the
-        // `INSERT INTO` statement. The `INSERT INTO` statement must list all columns that cannot be NULL should it
-        // succeed. We provide `commitment` values that will cause a unique constraint violation, triggering the
-        // `ON CONFLICT` clause. The `ON CONFLICT` clause ensures that if a row with a matching commitment already
-        // exists, the specified columns (`mined_height`, `mined_in_block`, `status`, `mined_timestamp`,
-        // `marked_deleted_at_height`, `marked_deleted_in_block`, `last_validation_timestamp`) will be updated with the
-        // provided values. The `UPDATE` action updates the existing row with the new values provided by the
-        // `INSERT INTO` statement. The `excluded` keyword refers to the new data being inserted or updated and allows
-        // accessing the values provided in the `VALUES` clause of the `INSERT INTO` statement.
-        // Note:
-        //   `diesel` does not support batch updates, so we have to do it manually. For example, this
-        //   `diesel::insert_into(...).values(&...).on_conflict(outputs::hash).do_update().set((...)).execute(&mut
-        // conn)?;`   errors with
-        //   `the trait bound `BatchInsert<Vec<....>` is not satisfied`
-        let mut query = String::from(
-            "INSERT INTO outputs ( commitment, mined_height, mined_in_block, status, mined_timestamp, spending_key, \
-             value, output_type, maturity, hash, script, input_data, script_private_key, sender_offset_public_key, \
-             metadata_signature_ephemeral_commitment, metadata_signature_ephemeral_pubkey, metadata_signature_u_a, \
-             metadata_signature_u_x, metadata_signature_u_y, spending_priority, covenant, encrypted_data, \
-             minimum_value_promise
-            )
-             VALUES ",
-        );
-
-        query.push_str(
-            &updates
-                .iter()
-                .map(|update| {
-                    format!(
-                        "(x'{}', {}, x'{}', {}, '{}', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)",
-                        update.commitment.to_hex(),
-                        update.mined_height as i64,
-                        update.mined_in_block.to_hex(),
-                        if update.confirmed {
-                            OutputStatus::Unspent as i32
-                        } else {
-                            OutputStatus::UnspentMinedUnconfirmed as i32
-                        },
-                        if let Some(val) = DateTime::from_timestamp(update.mined_timestamp as i64, 0) {
-                            val.naive_utc().to_string()
-                        } else {
-                            "NULL".to_string()
-                        },
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join(", "),
-        );
-
-        query.push_str(
-            " ON CONFLICT (commitment) DO UPDATE SET mined_height = excluded.mined_height, mined_in_block = \
-             excluded.mined_in_block, status = excluded.status, mined_timestamp = excluded.mined_timestamp, \
-             marked_deleted_at_height = NULL, marked_deleted_in_block = NULL, last_validation_timestamp = NULL",
-        );
-
-        conn.batch_execute(&query)?;
-
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_received_outputs_mined_height_and_statuses: lock {} + db_op {} = {} ms \
-                ({} outputs)",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis(),
-                updates.len()
-            );
-        }
-
-        Ok(())
+    fn set_received_outputs_mined_height_and_statuses_guarded(
+        &self,
+        updates: Vec<ReceivedOutputInfoForBatch>,
+        revivable: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.set_received_outputs_mined_height_and_statuses_impl(updates, Some(&revivable))
     }
 
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError> {
@@ -582,7 +731,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_outputs_to_unmined_and_invalid: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 hashes.len()
             );
@@ -651,7 +800,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -688,7 +837,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - set_outputs_to_be_revalidated: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -757,7 +906,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - update_last_validation_timestamps: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 commitments.len(),
             );
@@ -832,7 +981,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - mark_outputs_as_spent: lock {} + db_op {} = {} ms ({} outputs)",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis(),
                 updates.len()
             );
@@ -842,61 +991,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn mark_outputs_as_unspent(&self, hashes: Vec<(FixedHash, bool)>) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        // Split out the confirmed and unconfirmed outputs so that we can handle each of them as a separate batch
-        // operation
-        let confirmed_hashes = hashes
-            .iter()
-            .filter(|(_hash, confirmed)| *confirmed)
-            .map(|(hash, _confirmed)| hash)
-            .collect::<Vec<_>>();
-        let unconfirmed_hashes = hashes
-            .iter()
-            .filter(|(_hash, confirmed)| !*confirmed)
-            .map(|(hash, _confirmed)| hash)
-            .collect::<Vec<_>>();
+        self.mark_outputs_as_unspent_impl(hashes, None)
+    }
 
-        if !confirmed_hashes.is_empty() {
-            diesel::update(
-                outputs::table.filter(outputs::hash.eq_any(confirmed_hashes.iter().map(|hash| hash.to_vec()))),
-            )
-            .set((
-                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
-                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::status.eq(OutputStatus::Unspent as i32),
-            ))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(confirmed_hashes.len())?;
-        }
-
-        if !unconfirmed_hashes.is_empty() {
-            diesel::update(
-                outputs::table.filter(outputs::hash.eq_any(unconfirmed_hashes.iter().map(|hash| hash.to_vec()))),
-            )
-            .set((
-                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
-                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::status.eq(OutputStatus::UnspentMinedUnconfirmed as i32),
-            ))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(unconfirmed_hashes.len())?;
-        }
-
-        debug!(target: LOG_TARGET, "mark_outputs_as_unspent: Unspent {}, UnspentMinedUnconfirmed {}", confirmed_hashes.len(), unconfirmed_hashes.len());
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - mark_outputs_as_unspent: lock {} + db_op {} = {} ms (Unspent {}, UnspentMinedUnconfirmed {})",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis(),
-                confirmed_hashes.len(), unconfirmed_hashes.len()
-            );
-        }
-
-        Ok(())
+    fn mark_outputs_as_unspent_guarded(
+        &self,
+        hashes: Vec<(FixedHash, bool)>,
+        revivable: Vec<FixedHash>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.mark_outputs_as_unspent_impl(hashes, Some(&revivable))
     }
 
     fn short_term_encumber_outputs(
@@ -967,7 +1070,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     "sqlite profile - short_term_encumber_outputs (TxId: {}): lock {} + db_op {} = {} ms",
                     tx_id,
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -1021,7 +1124,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 "sqlite profile - confirm_encumbered_outputs (TxId: {}): lock {} + db_op {} = {} ms",
                 tx_id,
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1055,7 +1158,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - clear_short_term_encumberances: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1076,7 +1179,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_mined_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1100,7 +1203,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_last_spent_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1124,7 +1227,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_balance: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1147,7 +1250,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - count_outputs_in_ranges: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1169,7 +1272,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - get_balance_payment_id: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1243,7 +1346,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - cancel_pending_or_completed_transaction: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1279,44 +1382,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - update_output_metadata_signature: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
 
-        Ok(())
-    }
-
-    fn revalidate_unspent_output(&self, commitment: &CompressedCommitment) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        conn.transaction::<_, _, _>(|conn| {
-            let output = OutputSql::find_by_commitment_and_cancelled(&commitment.to_vec(), false, conn)?;
-
-            if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
-                return Err(OutputManagerStorageError::ValuesNotFound);
-            }
-            output.update(
-                UpdateOutput {
-                    status: Some(OutputStatus::Unspent),
-                    ..Default::default()
-                },
-                conn,
-            )?;
-
-            Ok(())
-        })?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - revalidate_unspent_output: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
         Ok(())
     }
 
@@ -1337,7 +1407,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1360,7 +1430,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - add_unvalidated_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -1385,7 +1455,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             target: LOG_TARGET,
             "sqlite profile - get_range_limited_outputs_for_spending: lock {} + db_op {} = {} ms",
             acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().saturating_sub(acquire_lock).as_millis(),
             start.elapsed().as_millis()
         );
         Ok((
@@ -1417,7 +1487,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 target: LOG_TARGET,
                 "sqlite profile - fetch_unspent_outputs_for_spending: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
             Ok::<_, OutputManagerStorageError>(outputs)
@@ -1480,6 +1550,38 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     ) -> Result<(), OutputManagerStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         OutputSql::update_key_ids(output_id, &spending_key, &script_private_key, &mut conn)
+    }
+
+    fn fetch_outputs_for_mask_verification(
+        &self,
+        last_id: i32,
+        batch_size: i64,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::fetch_for_mask_verification(last_id, batch_size, &mut conn)
+    }
+
+    fn fetch_outputs_for_mask_verification_by_received_tx(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<OutputMaskVerificationRow>, OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        OutputSql::fetch_for_mask_verification_by_received_tx(tx_id, &mut conn)
+    }
+
+    fn mark_outputs_invalid(&self, output_ids: Vec<i32>) -> Result<usize, OutputManagerStorageError> {
+        if output_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        conn.transaction::<_, OutputManagerStorageError, _>(|conn| {
+            let mut updated = 0usize;
+            // Chunked to stay well under SQLite's bound-parameter limit
+            for chunk in output_ids.chunks(MARK_INVALID_CHUNK_SIZE) {
+                updated = updated.saturating_add(OutputSql::mark_invalid_by_ids(chunk, conn)?);
+            }
+            Ok(updated)
+        })
     }
 }
 

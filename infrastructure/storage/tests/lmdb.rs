@@ -42,6 +42,7 @@ use tari_storage::{
         LMDBError,
         LMDBStore,
         db,
+        open,
     },
 };
 
@@ -92,6 +93,13 @@ fn init(name: &str) -> Result<LMDBStore, LMDBError> {
     LMDBBuilder::new()
         .set_path(&path)
         .set_env_config(LMDBConfig::default())
+        // `LMDBDatabase::insert` commits a transaction per call, and LMDB fsyncs on commit, so the
+        // 1000-insert tests below issue 1000 serialised fsyncs. That is ~0.3s on a local NVMe but
+        // 290s on CI, where it also saturates the disk for every test running alongside it. None of
+        // these tests assert durability across a crash, so drop the fsync - the transactions, and
+        // what they exercise, are unchanged. `test_multi_thread_writes` is the control: same 1000
+        // inserts batched into one transaction, and it has never shown up as slow.
+        .set_env_flags(open::NOSYNC | open::NOMETASYNC)
         .set_max_number_of_databases(2)
         .add_database("users", db::CREATE)
         .build()

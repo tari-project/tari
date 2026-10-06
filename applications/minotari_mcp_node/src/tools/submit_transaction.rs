@@ -23,10 +23,10 @@
 //! Submit transaction MCP tool
 
 use async_trait::async_trait;
-use minotari_mcp_common::{get_required_string_param, McpError, McpResult, McpTool};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
 use minotari_node_grpc_client::{
-    grpc::{SubmitTransactionRequest, Transaction},
     BaseNodeGrpcClient,
+    grpc::{SubmitTransactionRequest, Transaction},
 };
 use serde_json::Value;
 use tonic::transport::Channel;

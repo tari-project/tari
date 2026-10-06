@@ -15,3 +15,7 @@ serde = { version = "1",  default-features = false, features = ["derive"] }
 
 [features]
 borsh = ["dep:borsh"]
+# Host conveniences on the wire-format codec (`codec::Encode::to_vec`, and `codec::Writer` for `Vec<u8>`). The device
+# application does not enable this: it encodes straight into its APDU buffer, and has no use for code that builds a
+# second copy of a reply on the heap.
+alloc = []

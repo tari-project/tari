@@ -79,19 +79,19 @@ where T: Into<Vec<ListItem<'a>>>
     pub fn render<B: Backend>(mut self, f: &mut Frame<B>, area: Rect, state: &mut ListState) {
         // This accounts for the box border
         let mut constraints = vec![Constraint::Length(1)];
-        let mut sum_width = 0;
-        for i in 0..self.columns.len() - 1 {
+        let mut sum_width = 0u16;
+        for i in 0..self.columns.len().saturating_sub(1) {
             if let Some(w) = self.columns[i].width {
                 constraints.push(Constraint::Length(w));
-                sum_width += w;
+                sum_width = sum_width.saturating_add(w);
             } else {
                 constraints.push(Constraint::Length(self.columns[i].heading.unwrap_or(" ").len() as u16));
             }
         }
 
         if let Some(w) = self.max_width {
-            if w - 2 > sum_width {
-                constraints.push(Constraint::Length(w - sum_width - 2));
+            if w.saturating_sub(2) > sum_width {
+                constraints.push(Constraint::Length(w.saturating_sub(sum_width).saturating_sub(2)));
             } else {
                 constraints.push(Constraint::Min(0));
             }
@@ -109,7 +109,7 @@ where T: Into<Vec<ListItem<'a>>>
         for c in 0..self.columns.len() {
             let column = self.columns.remove(0);
             let list_area = match column.heading {
-                None => column_areas[c + 1],
+                None => column_areas[c.saturating_add(1)],
                 Some(heading) => {
                     let padded_heading = if c == 0 && self.highlight_style.is_some() {
                         format!("  {heading}")
@@ -119,7 +119,7 @@ where T: Into<Vec<ListItem<'a>>>
 
                     let column_heading_list_area = Layout::default()
                         .constraints([Constraint::Length(1), Constraint::Min(0)].as_ref())
-                        .split(column_areas[c + 1]);
+                        .split(column_areas[c.saturating_add(1)]);
                     let span = match self.heading_style {
                         None => Span::raw(padded_heading.as_str()),
                         Some(s) => Span::styled(padded_heading.as_str(), s),

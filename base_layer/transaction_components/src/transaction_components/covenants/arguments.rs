@@ -45,9 +45,21 @@ use crate::transaction_components::{
     },
 };
 
+/// The maximum size of a covenant argument read as variable length bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
-const MAX_BYTES_ARG_SIZE: usize = 4096;
+/// The maximum size of a `Bytes` covenant argument.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+pub(crate) const MAX_BYTES_ARG_SIZE: usize = 4096;
 
+/// A `Bytes` covenant argument, at most [`MAX_BYTES_ARG_SIZE`] bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub(crate) type BytesArg = MaxSizeBytes<MAX_BYTES_ARG_SIZE>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +85,12 @@ impl CovenantArg {
 
     /// Reads a `CovenantArg` from a buffer of bytes
     pub fn read_from(reader: &mut &[u8], code: u8) -> Result<Self, CovenantDecodeError> {
+        Self::read_from_at_depth(reader, code, 0)
+    }
+
+    /// As [`CovenantArg::read_from`], but tracking how deeply the enclosing covenant is nested so that a nested
+    /// covenant argument can refuse to recurse without bound.
+    pub(super) fn read_from_at_depth(reader: &mut &[u8], code: u8, depth: usize) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
         match code {
             ARG_HASH => {
@@ -92,8 +110,10 @@ impl CovenantArg {
             ARG_COVENANT => {
                 let buf = reader.read_variable_length_bytes(MAX_COVENANT_ARG_SIZE)?;
                 // Do not use consensus_decoding here because the compiler infinitely recurses to resolve the R generic,
-                // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe
-                let covenant = Covenant::from_bytes(&mut buf.as_bytes())?;
+                // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe.
+                // The depth is incremented so that the recursion this introduces stays bounded: the size limit alone
+                // still allows well over a thousand levels of nesting in a single message.
+                let covenant = Covenant::from_bytes_at_depth(&mut buf.as_bytes(), depth.saturating_add(1))?;
                 Ok(CovenantArg::Covenant(covenant))
             },
             ARG_OUTPUT_TYPE => {

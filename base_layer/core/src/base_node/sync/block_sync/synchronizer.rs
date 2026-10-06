@@ -35,7 +35,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::RpcClient,
 };
-use tari_node_components::blocks::{Block, ChainBlock};
+use tari_node_components::blocks::{Block, BlockValidationError, ChainBlock};
 use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody};
 use tari_utilities::hex::Hex;
 
@@ -45,7 +45,7 @@ use crate::{
         BlockchainSyncConfig,
         sync::{SyncPeer, ban::PeerBanManager, hooks::Hooks, rpc},
     },
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb, body_matches_header},
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
     validation::{BlockBodyValidator, ValidationError},
@@ -114,15 +114,26 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             if peer.ensure_strong_connection() {
                 continue;
             }
-            match self
-                .connectivity
-                .dial_peer(peer.node_id().clone(), RefKind::Strong)
-                .await
+            // Bounded: this upgrade is an optimisation, not a requirement — attempt_block_sync will
+            // dial the peer itself if no connection is attached. Blocking here would park the state
+            // machine before block sync has logged anything at all, which is exactly what a wedged
+            // ConnectivityManager used to do to the chain tip.
+            match tokio::time::timeout(
+                self.config.rpc_deadline,
+                self.connectivity.dial_peer(peer.node_id().clone(), RefKind::Strong),
+            )
+            .await
             {
-                Ok(conn) => peer.set_connection(conn),
-                Err(e) => debug!(
+                Ok(Ok(conn)) => peer.set_connection(conn),
+                Ok(Err(e)) => debug!(
                     target: LOG_TARGET,
                     "Failed to dial sync peer {} as strong: {e}", peer.node_id()
+                ),
+                Err(_) => warn!(
+                    target: LOG_TARGET,
+                    "Timed out after {:.2?} dialing sync peer {} as strong",
+                    self.config.rpc_deadline,
+                    peer.node_id()
                 ),
             }
         }
@@ -140,21 +151,21 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
     async fn synchronize_inner(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
-        let mut sync_round = 0;
-        let mut latency_increases_counter = 0;
+        let mut sync_round = 0usize;
+        let mut latency_increases_counter = 0usize;
         loop {
             match self.attempt_block_sync(max_latency).await {
                 Ok(_) => return Ok(()),
                 Err(err @ BlockSyncError::AllSyncPeersExceedLatency) => {
                     warn!(target: LOG_TARGET, "{err}");
-                    max_latency += self.config.max_latency_increase;
+                    max_latency = max_latency.saturating_add(self.config.max_latency_increase);
                     warn!(
                         target: LOG_TARGET,
                         "Retrying block sync with increased max latency {:.2?} with {} sync peers",
                         max_latency,
                         self.sync_peers.len()
                     );
-                    latency_increases_counter += 1;
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
                     }
@@ -166,7 +177,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     }
                 },
                 Err(err @ BlockSyncError::SyncRoundFailed) => {
-                    sync_round += 1;
+                    sync_round = sync_round.saturating_add(1);
                     warn!(target: LOG_TARGET, "{err} ({sync_round})");
                     continue;
                 },
@@ -279,7 +290,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                             .await;
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
+                        latency_counter = latency_counter.saturating_add(1);
                     } else {
                         self.remove_sync_peer(&node_id);
                     }
@@ -398,18 +409,30 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let (header, header_accum_data) = header.into_parts();
             let block = Block::new(header, body);
 
-            // Validate the block inside a tokio task
-            let task_block = block.clone();
+            // Validate the block body. The validator consumes the block, hydrates its (compact) inputs and returns the
+            // fully-hydrated block, so we use its return value rather than `block` below.
             let db = self.db.inner().clone();
             let validator = self.block_validator.clone();
             let res = {
                 let txn = db.db_read_access()?;
-                validator.validate_body(&*txn, &task_block)
+                // The peer chooses the body it sends for our header. Check first that it is the body the header
+                // commits to: if it is not, only the peer is at fault, and the header must not be marked as bad.
+                if !body_matches_header(&*txn, &block)? {
+                    return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+                        kind: "block body",
+                    })
+                    .into());
+                }
+                validator.validate_body(&*txn, block)
             };
 
             let block = match res {
                 Ok(block) => block,
-                Err(err @ ValidationError::BadBlockFound { .. }) | Err(err @ ValidationError::FatalStorageError(_)) => {
+                // A hydration failure depends on our database as well as the block, so it is not memoised either
+                Err(err @ ValidationError::BadBlockFound { .. }) |
+                Err(err @ ValidationError::FatalStorageError(_)) |
+                Err(err @ ValidationError::UnknownInput) |
+                Err(err @ ValidationError::UnknownInputs(_)) => {
                     return Err(err.into());
                 },
                 Err(err) => {

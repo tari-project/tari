@@ -3,7 +3,7 @@
 use utoipa::openapi::{Object, OneOf, Schema, Type, schema::SchemaType};
 
 mod fee_per_gram;
-mod generate_kernel_merkle_proof;
+mod generate_burn_output_proof;
 mod get_header_by_height;
 mod get_tip_info;
 mod get_utxo;
@@ -15,7 +15,7 @@ mod transaction_query;
 mod tx_submission_response;
 
 pub use fee_per_gram::*;
-pub use generate_kernel_merkle_proof::*;
+pub use generate_burn_output_proof::*;
 pub use get_header_by_height::*;
 pub use get_tip_info::*;
 pub use get_utxo::*;
@@ -25,6 +25,13 @@ pub use get_utxos_mined_info::*;
 pub use sync_utxos_by_block::*;
 pub use transaction_query::*;
 pub use tx_submission_response::*;
+
+// `serde_valid`'s derive only accepts literals, so the request models below spell out `max_items = 512` instead of
+// referring to `MAX_ALLOWED_QUERY_SIZE`. Keep the two in lockstep.
+const _: () = assert!(
+    crate::rpc::MAX_ALLOWED_QUERY_SIZE == 512,
+    "the `max_items` validations on the request models must be updated to match MAX_ALLOWED_QUERY_SIZE"
+);
 
 #[allow(clippy::too_many_lines)]
 pub fn transaction_output_schema() -> Schema {

@@ -3,6 +3,8 @@
 
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use std::{
         ffi::c_void,
         mem::size_of,

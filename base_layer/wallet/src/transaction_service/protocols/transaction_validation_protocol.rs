@@ -28,6 +28,7 @@ use tari_common_types::{
     transaction::{LegacyTransactionStatus, TxId},
     types::{BlockHash, CompressedSignature, FixedHash},
 };
+use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::rpc::models::TxLocation;
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
 use tari_utilities::{ByteArray, hex::Hex};
@@ -58,6 +59,8 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager: OutputManagerHandle<TKeyManagerInterface>,
+    /// Handed to background work spawned by this protocol so it counts towards, and stops on, wallet shutdown.
+    shutdown_signal: ShutdownSignal,
 }
 
 #[allow(unused_variables)]
@@ -75,6 +78,7 @@ where
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager: OutputManagerHandle<TKeyManagerInterface>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
             operation_id,
@@ -83,10 +87,29 @@ where
             config,
             event_publisher,
             output_manager,
+            shutdown_signal,
         }
     }
 
+    /// The number of unconfirmed transactions to process per round of base node queries.
+    ///
+    /// `max_tx_query_batch_size` is operator configurable, so it is floored at 1 here: a configured `0` would panic
+    /// `chunks()`. Unlike the output validator this batch is only an iteration size — each transaction is queried
+    /// individually — so there is no upper bound to enforce against the base node's query limit.
+    fn batch_size(&self) -> usize {
+        self.config.max_tx_query_batch_size.max(1)
+    }
+
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
+        if self.config.max_tx_query_batch_size != self.batch_size() {
+            warn!(
+                target: LOG_TARGET,
+                "Configured `max_tx_query_batch_size` of {} is out of range, using {} instead (Operation ID: {})",
+                self.config.max_tx_query_batch_size,
+                self.batch_size(),
+                self.operation_id,
+            );
+        }
         let base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
         self.check_for_reorgs(&base_node_wallet_client).await?;
@@ -112,6 +135,7 @@ where
                 self.connectivity.clone(),
                 self.event_publisher.clone(),
                 confirmed_burnt,
+                self.shutdown_signal.clone(),
             ));
         }
 
@@ -143,7 +167,7 @@ where
         })?;
         let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         let mut confirmed_burns = vec![];
-        for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
+        for batch in unconfirmed_transactions.chunks(self.batch_size()) {
             let (mined, unmined) = self
                 .query_base_node_for_transactions(batch, &base_node_wallet_client)
                 .await
@@ -351,7 +375,7 @@ where
                         warn!(
                             target: LOG_TARGET,
                             "Transaction {} is mined but has no height (Operation ID: {})",
-                            &unconfirmed_tx.tx_id,
+                            unconfirmed_tx.tx_id,
                             self.operation_id,
                         );
                         continue;
@@ -362,7 +386,7 @@ where
                 warn!(
                     target: LOG_TARGET,
                     "Transaction {} is unmined (Operation ID: {})",
-                    &unconfirmed_tx.tx_id,
+                    unconfirmed_tx.tx_id,
                     self.operation_id,
                 );
                 unmined.push((*unconfirmed_tx).clone());

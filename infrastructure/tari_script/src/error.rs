@@ -54,6 +54,8 @@ pub enum ScriptError {
     CompareFailed(String),
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("The serialised script is {actual} bytes, which exceeds the maximum of {max} bytes")]
+    ScriptTooLarge { max: usize, actual: usize },
 }
 
 impl ScriptError {

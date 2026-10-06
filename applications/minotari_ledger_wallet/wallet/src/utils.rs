@@ -14,6 +14,7 @@ use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     random::LedgerRng,
 };
+use minotari_ledger_wallet_common::u64_to_string;
 use rand_core::RngCore;
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
@@ -33,98 +34,6 @@ hash_domain!(
     "com.tari.base_layer.core.transactions.key_manager",
     1
 );
-
-/// BIP32 path stored as an array of [`u32`].
-///
-/// # Generic arguments
-///
-/// * `S` - Maximum possible path length, i.e. the capacity of the internal buffer.
-pub struct Bip32Path<const S: usize = 10> {
-    buffer: [u32; S],
-    len: usize,
-}
-
-impl AsRef<[u32]> for Bip32Path {
-    fn as_ref(&self) -> &[u32] {
-        &self.buffer[..self.len]
-    }
-}
-
-impl<const S: usize> Default for Bip32Path<S> {
-    fn default() -> Self {
-        Self {
-            buffer: [0u32; S],
-            len: 0,
-        }
-    }
-}
-
-impl<const S: usize> TryFrom<&[u8]> for Bip32Path<S> {
-    type Error = AppSW;
-
-    /// Constructs a [`Bip32Path`] from a given byte array.
-    ///
-    /// This method will return an error in the following cases:
-    /// - the input array is empty,
-    /// - the number of bytes in the input array is not a multiple of 4,
-    /// - the input array exceeds the capacity of the [`Bip32Path`] internal buffer.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - Encoded BIP32 path. First byte is the length of the path, as encoded by ragger.
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        // Assert the data is not empty; we need at least a length byte!
-        if data.is_empty() {
-            return Err(AppSW::WrongApduLength);
-        }
-
-        // We cannot have too many elements in the path, and must have `u32` path elements
-        let input_path_len = (data.len() - 1) / 4;
-        if input_path_len > S || data[0] as usize * 4 != data.len() - 1 {
-            return Err(AppSW::WrongApduLength);
-        }
-
-        let mut path = [0; S];
-        for (chunk, p) in data[1..].chunks(4).zip(path.iter_mut()) {
-            *p = u32::from_be_bytes(chunk.try_into().unwrap());
-        }
-
-        Ok(Self {
-            buffer: path,
-            len: input_path_len,
-        })
-    }
-}
-
-/// Convert a u64 to a string without using the standard library
-pub fn u64_to_string(number: u64) -> String {
-    let mut buffer = [0u8; 20]; // Maximum length for a 64-bit integer (including null terminator)
-    let mut pos = 0;
-
-    if number == 0 {
-        buffer[pos] = b'0';
-        pos += 1;
-    } else {
-        let mut num = number;
-
-        let mut digits = [0u8; 20];
-        let mut num_digits = 0;
-
-        while num > 0 {
-            digits[num_digits] = b'0' + (num % 10) as u8;
-            num /= 10;
-            num_digits += 1;
-        }
-
-        while num_digits > 0 {
-            num_digits -= 1;
-            buffer[pos] = digits[num_digits];
-            pos += 1;
-        }
-    }
-
-    String::from_utf8_lossy(&buffer[..pos]).to_string()
-}
 
 // Convert CxError to a string for display
 fn cx_error_to_string(e: CxError) -> String {
@@ -297,6 +206,15 @@ pub fn alpha_hasher(
     let private_key = get_key_from_uniform_bytes(&raw_key_hashed)?;
 
     Ok(private_key + alpha)
+}
+
+/// Get a uniform random `u64` from the device RNG.
+///
+/// Used to pick key indexes that the host cannot influence.
+pub fn get_random_u64() -> u64 {
+    let mut raw_bytes = [0u8; 8];
+    LedgerRng.fill_bytes(&mut raw_bytes);
+    u64::from_le_bytes(raw_bytes)
 }
 
 /// Get a uniform random nonce

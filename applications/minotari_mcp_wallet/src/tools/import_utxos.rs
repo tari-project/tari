@@ -18,17 +18,16 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Import UTXOs MCP tool
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param
-};
-use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::ImportUtxosRequest};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResult, McpTool, PermissionLevel, get_required_string_param, json_schema};
+use minotari_wallet_grpc_client::{WalletGrpcClient, grpc::ImportUtxosRequest};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Tool for importing external UTXOs
@@ -75,7 +74,8 @@ impl McpTool for ImportUtxosTool {
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         // Validate outputs array
-        let outputs = params.get("outputs")
+        let outputs = params
+            .get("outputs")
             .ok_or_else(|| McpError::invalid_request("outputs parameter is required"))?
             .as_array()
             .ok_or_else(|| McpError::invalid_request("outputs must be an array"))?;
@@ -90,15 +90,19 @@ impl McpTool for ImportUtxosTool {
 
         // Validate each output is a hex string
         for (i, output) in outputs.iter().enumerate() {
-            let output_str = output.as_str()
+            let output_str = output
+                .as_str()
                 .ok_or_else(|| McpError::invalid_request(format!("Output {} must be a string", i)))?;
-            
+
             if output_str.is_empty() {
                 return Err(McpError::invalid_request(format!("Output {} cannot be empty", i)));
             }
 
             if !output_str.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Err(McpError::invalid_request(format!("Output {} contains invalid hex characters", i)));
+                return Err(McpError::invalid_request(format!(
+                    "Output {} contains invalid hex characters",
+                    i
+                )));
             }
 
             if output_str.len() % 2 != 0 {
@@ -112,7 +116,9 @@ impl McpTool for ImportUtxosTool {
             return Err(McpError::invalid_request("Source public key must be valid hex"));
         }
         if source_key.len() != 64 {
-            return Err(McpError::invalid_request("Source public key must be 32 bytes (64 hex chars)"));
+            return Err(McpError::invalid_request(
+                "Source public key must be 32 bytes (64 hex chars)",
+            ));
         }
 
         Ok(())
@@ -150,7 +156,7 @@ impl McpTool for ImportUtxosTool {
             "success": true,
             "imported_count": response.num_imported,
             "total_value": response.total_value,
-            "message": format!("Successfully imported {} UTXOs with total value {} microTari", 
+            "message": format!("Successfully imported {} UTXOs with total value {} microTari",
                              response.num_imported, response.total_value)
         }))
     }

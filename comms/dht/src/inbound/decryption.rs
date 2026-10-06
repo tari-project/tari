@@ -187,6 +187,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn validate_and_decrypt_message(
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
@@ -323,10 +325,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-        match message_signature.verify(&binding_hash) {
-            Ok(true) => {},
-            _ => return Err(DecryptionError::InvalidSignature),
-        }
+        message_signature
+            .verify(&binding_hash)
+            .map_err(|_| DecryptionError::InvalidSignature)?;
 
         // The message is valid at this point
         Ok(ValidatedDhtInboundMessage::new(

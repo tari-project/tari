@@ -92,7 +92,11 @@ pub struct DbStat {
 impl DbStat {
     /// Returns the total size in bytes of all pages
     pub fn total_page_size(&self) -> usize {
-        self.psize as usize * (self.leaf_pages + self.branch_pages + self.overflow_pages)
+        (self.psize as usize).saturating_mul(
+            self.leaf_pages
+                .saturating_add(self.branch_pages)
+                .saturating_add(self.overflow_pages),
+        )
     }
 }
 
@@ -155,7 +159,7 @@ impl DbSize {
             return 0;
         }
 
-        self.total() / self.num_entries
+        self.total().checked_div(self.num_entries).unwrap_or(0)
     }
 }
 

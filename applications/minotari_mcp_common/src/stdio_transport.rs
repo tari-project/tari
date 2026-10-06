@@ -172,49 +172,48 @@ impl StdioTransport {
     /// Extract request ID from JSON line, even if malformed
     fn extract_request_id(&self, line: &str) -> Option<Value> {
         // Simple string-based extraction of ID field
-        if let Some(start) = line.find(r#""id""#) {
-            let after_id = &line[start + 4..];
-            if let Some(colon_pos) = after_id.find(':') {
-                let after_colon = &after_id[colon_pos + 1..].trim_start();
+        if let Some((_, after_id)) = line.split_once(r#""id""#) &&
+            let Some((_, after_colon)) = after_id.split_once(':')
+        {
+            let after_colon = after_colon.trim_start();
 
-                // Find end of value (comma, closing brace, or end of line)
-                let mut end_pos = 0;
-                let mut in_string = false;
-                let mut escaped = false;
+            // Find end of value (comma, closing brace, or end of line)
+            let mut end_pos = 0;
+            let mut in_string = false;
+            let mut escaped = false;
 
-                for (i, ch) in after_colon.char_indices() {
-                    if escaped {
-                        escaped = false;
-                        continue;
-                    }
-
-                    match ch {
-                        '"' => in_string = !in_string,
-                        '\\' if in_string => escaped = true,
-                        ',' | '}' | ']' if !in_string => {
-                            end_pos = i;
-                            break;
-                        },
-                        _ => {},
-                    }
+            for (i, ch) in after_colon.char_indices() {
+                if escaped {
+                    escaped = false;
+                    continue;
                 }
 
-                if end_pos == 0 {
-                    end_pos = after_colon.len();
+                match ch {
+                    '"' => in_string = !in_string,
+                    '\\' if in_string => escaped = true,
+                    ',' | '}' | ']' if !in_string => {
+                        end_pos = i;
+                        break;
+                    },
+                    _ => {},
                 }
+            }
 
-                let id_text = after_colon[..end_pos].trim();
+            if end_pos == 0 {
+                end_pos = after_colon.len();
+            }
 
-                // Try to parse as number, string, or null
-                if id_text == "null" {
-                    return Some(Value::Null);
-                } else if let Ok(num) = id_text.parse::<i64>() {
-                    return Some(Value::Number(serde_json::Number::from(num)));
-                } else if id_text.starts_with('"') && id_text.ends_with('"') && id_text.len() >= 2 {
-                    return Some(Value::String(id_text[1..id_text.len() - 1].to_string()));
-                } else {
-                    // Could not parse as valid JSON value
-                }
+            let id_text = after_colon[..end_pos].trim();
+
+            // Try to parse as number, string, or null
+            if id_text == "null" {
+                return Some(Value::Null);
+            } else if let Ok(num) = id_text.parse::<i64>() {
+                return Some(Value::Number(serde_json::Number::from(num)));
+            } else if let Some(quoted) = id_text.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                return Some(Value::String(quoted.to_string()));
+            } else {
+                // Could not parse as valid JSON value
             }
         }
         None
@@ -318,11 +317,7 @@ impl StdioTransport {
         repaired = leading_zeros.replace_all(&repaired, "$1").to_string();
 
         // Return the repaired JSON if it's different from input
-        if repaired == input {
-            None
-        } else {
-            Some(repaired)
-        }
+        if repaired == input { None } else { Some(repaired) }
     }
 
     /// Create a JSON-RPC error response

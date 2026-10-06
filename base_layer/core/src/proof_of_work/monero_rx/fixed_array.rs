@@ -55,6 +55,19 @@ impl BorshDeserialize for FixedByteArray {
                 format!("length exceeded maximum of 60-bytes for FixedByteArray: {len}"),
             ));
         }
+        // An empty array round trips canonically, so without this a peer could put a zero length RandomX key in a
+        // header. That key is used as an LMDB key (`monero_seed_height_db`), and LMDB rejects zero length keys with
+        // `MDB_BAD_VALSIZE`, which surfaces as a storage error: neither bannable nor blacklistable. Refusing it here
+        // turns it into an ordinary, bannable deserialization failure instead, on every path that reads PoW data.
+        //
+        // This cannot invalidate a header any node has ever accepted: committing one calls `insert_header`, which
+        // writes exactly that key, so the write - and the whole transaction with it - would have failed.
+        if len == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "FixedByteArray may not be empty",
+            ));
+        }
         let mut bytes = Vec::with_capacity(len);
         for _ in 0..len {
             bytes.push(u8::deserialize_reader(reader)?);
@@ -140,6 +153,18 @@ impl ByteArray for FixedByteArray {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn it_rejects_a_zero_length_array() {
+        // `len == 0` is canonical on the wire, so only an explicit check keeps it out.
+        let mut empty = &[0u8][..];
+        let err = FixedByteArray::deserialize_reader(&mut empty).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        // One byte of payload is still fine
+        let mut one = &[1u8, 42u8][..];
+        assert_eq!(FixedByteArray::deserialize_reader(&mut one).unwrap().len(), 1);
+    }
 
     #[test]
     fn assert_size() {

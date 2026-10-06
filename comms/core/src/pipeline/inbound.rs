@@ -25,7 +25,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::future::FusedFuture;
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::mpsc, time};
@@ -71,12 +70,12 @@ where
     /// Run the inbounde pipeline. This returns a future that resolves once the stream has ended. Typically, you would
     /// spawn this in a new task.
     pub async fn run(mut self) {
-        let mut current_id = 0;
+        let mut current_id = 0u64;
         while let Some(item) = self.stream.recv().await {
             // Check if the shutdown signal has been triggered.
             // If there are messages in the stream, drop them. Otherwise the stream is empty,
             // it will return None and the while loop will end.
-            if self.shutdown_signal.is_terminated() {
+            if self.shutdown_signal.is_triggered() {
                 info!(
                     target: LOG_TARGET,
                     "Inbound pipeline is terminating because the shutdown signal is triggered"
@@ -95,12 +94,12 @@ where
                     Level::Trace
                 },
                 "Inbound pipeline usage: {}/{}",
-                max_available - num_available,
+                max_available.saturating_sub(num_available),
                 max_available
             );
 
             let id = current_id;
-            current_id = (current_id + 1) % u64::MAX;
+            current_id = current_id.wrapping_add(1) % u64::MAX;
 
             // Call the service in it's own spawned task
             self.executor

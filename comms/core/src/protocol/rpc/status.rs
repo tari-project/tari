@@ -149,7 +149,7 @@ impl RpcStatus {
 
 impl Display for RpcStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {}", self.code, &self.details)
+        write!(f, "{:?}: {}", self.code, self.details)
     }
 }
 

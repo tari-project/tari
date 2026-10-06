@@ -223,7 +223,7 @@ impl HealthMonitor {
             }
 
             tokio::time::sleep(delay).await;
-            attempt += 1;
+            attempt = attempt.saturating_add(1);
         }
 
         Err(McpError::server_error(format!(

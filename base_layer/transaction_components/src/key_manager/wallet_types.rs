@@ -37,7 +37,7 @@ use tari_crypto::{
     hashing::DomainSeparatedHasher,
     keys::{PublicKey, SecretKey},
 };
-use tari_hashing::KeyManagerDomain;
+use tari_hashing::{KeyManagerDomain, ZeroizingFinalize};
 use tari_utilities::ByteArrayError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -312,9 +312,8 @@ fn derive_private_key(seed: &CipherSeed, branch_seed: String, account: u64) -> R
         .chain(seed.entropy())
         .chain(branch_seed.as_bytes())
         .chain(account.to_le_bytes())
-        .finalize();
+        .finalize_zeroizing();
 
-    let derive_key = derive_key.as_ref();
-    let s = PrivateKey::from_uniform_bytes(derive_key)?;
+    let s = PrivateKey::from_uniform_bytes(derive_key.as_slice())?;
     Ok(s)
 }

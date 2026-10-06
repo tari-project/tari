@@ -23,6 +23,7 @@ pub mod marshal_output_pair;
 pub mod models;
 pub mod offline_signer;
 pub mod one_sided_signer;
+pub mod payload_summary;
 
 pub use models::PaymentRecipient;
 pub use offline_signer::{
@@ -33,6 +34,7 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
 };
+pub use payload_summary::{OutputSummary, PayloadSummary, RecipientSummary};
 
 #[cfg(test)]
 mod test {
@@ -56,8 +58,7 @@ mod test {
         MicroMinotari,
         TransactionBuilder,
         crypto_factories::CryptoFactories,
-        fee::Fee,
-        helpers::borsh::SerializedSize,
+        fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
         key_manager::{
             KeyManager,
             SerializedKeyString,
@@ -106,9 +107,9 @@ mod test {
         let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -172,6 +173,7 @@ mod test {
         }];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -208,6 +210,130 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
+    /// A payload carrying a directly-specified output must sign into a *valid* transaction.
+    ///
+    /// The output arrives with a metadata signature made against a sender offset key the signer does not hold, so the
+    /// signer replaces both the key and the signature. Without that, the output travels into the body still signed
+    /// against the discarded key and the whole transaction is unbroadcastable. The output here is built the way a
+    /// wallet builds one — a genuine signature, not a placeholder — because a placeholder takes a different branch in
+    /// the builder and would hide the defect.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn offline_sign_with_a_custom_output_is_valid() {
+        use crate::{
+            offline_signing::PayloadSummary,
+            test_helpers::{TestParams, create_wallet_output_with_data},
+        };
+
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(50000), 0, &alice_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+
+        // A fully formed output, signed against a sender offset key that the offline signer will replace
+        let custom_value = MicroMinotari(6000);
+        let custom_output = create_wallet_output_with_data(
+            push_pubkey_script(&bob_key_manager.get_spend_key().pub_key),
+            OutputFeatures::default(),
+            &TestParams::new(&alice_key_manager),
+            custom_value,
+            &alice_view_key_manager,
+        )
+        .unwrap();
+        assert_ne!(
+            custom_output.metadata_signature(),
+            &Default::default(),
+            "the output must carry a real signature, or the builder takes its placeholder branch"
+        );
+        let custom_sender_offset = alice_view_key_manager.get_random_key(None, None).unwrap();
+        tx_builder
+            .with_output(custom_output, custom_sender_offset.key_id, None)
+            .unwrap();
+
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let amount = MicroMinotari(5000);
+        let recipients = [PaymentRecipient {
+            amount,
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+
+        let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+        assert_eq!(init.info.outputs.len(), 1);
+
+        // The summary the operator approves must account for the custom output
+        let summary = PayloadSummary::from_one_sided(init.tx_id, &init.info);
+        assert_eq!(summary.total_output_amount, custom_value);
+        assert_eq!(summary.total_spend(), amount + custom_value);
+
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            init,
+        )
+        .unwrap();
+
+        let tx = signed.signed_transaction.transaction.clone();
+        // recipient + custom output + change
+        assert_eq!(tx.body.outputs().len(), 3);
+        for output in tx.body.outputs() {
+            output.verify_metadata_signature().unwrap();
+        }
+        let fee = tx.body.kernels()[0].fee;
+        assert_eq!(
+            signed.signed_transaction.change_output.clone().unwrap().value(),
+            MicroMinotari(50000) - amount - custom_value - fee
+        );
+
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        validator.validate(&tx, None, None, u64::MAX).unwrap();
+    }
+
     #[test]
     #[allow(clippy::too_many_lines)]
     fn batch_offline_sign_is_valid() {
@@ -222,9 +348,9 @@ mod test {
         let bob_key_manager = KeyManager::new_random().unwrap();
         let charlie_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -308,6 +434,7 @@ mod test {
         ];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -380,7 +507,7 @@ mod test {
             recipients.push(recipient);
         }
 
-        let input = create_test_input(MicroMinotari(1000000000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(1000000000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -406,6 +533,7 @@ mod test {
         .unwrap();
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -487,9 +615,9 @@ mod test {
             bob_spend_key.clone(),
         ];
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -525,6 +653,7 @@ mod test {
 
         assert_eq!(alice_address, alice_address_s);
         let init = prepare_deposit_multisig_transaction(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             amount,
@@ -721,23 +850,41 @@ mod test {
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
         let script = push_pubkey_script(&Default::default());
 
-        let features_and_scripts_byte_size = consensus_constants
-            .transaction_weight_params()
-            .round_up_features_and_scripts_size(
-                output_features.get_serialized_size().unwrap() +
-                    script.get_serialized_size().unwrap() +
-                    Covenant::default().get_serialized_size().unwrap(),
-            );
+        // Mirror what `MultisigSession::spend_multisig_utxo` and `PrepareWithdrawMultisigTransaction` do: the whole
+        // input goes to one recipient output with no change, and that output carries an `AddressAndData` memo which
+        // the builder charges for. The memo records the fee being calculated here, so measure a zero-fee copy first.
+        let measured_memo = addressed_output_memo(
+            MemoField::default(),
+            bob_address.clone(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
+        )
+        .unwrap();
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            &output_features,
+            &script,
+            &Covenant::default(),
+            &measured_memo,
+        )
+        .unwrap();
 
         let fee: MicroMinotari = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+        let output_payment_id =
+            addressed_output_memo(MemoField::default(), bob_address.clone(), fee, TxType::PaymentToOther).unwrap();
+        assert!(
+            output_payment_id.get_size() > payment_id.get_size(),
+            "the output memo must be non-empty, otherwise this test cannot tell whether the estimate counts it"
+        );
 
         let total_amount = amount.checked_sub(fee).unwrap();
         assert_eq!(alice_address, alice_address_s);
         let init = prepare_withdraw_multisig_transaction(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             total_amount,
-            payment_id,
+            output_payment_id,
             output_features,
             alice_address,
             bob_address,
@@ -775,7 +922,7 @@ mod test {
         let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(100000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(100000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -819,6 +966,7 @@ mod test {
             payment_id: payment_id_bob.clone(),
         }];
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -891,9 +1039,9 @@ mod test {
 
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_view_key_manager, vec![], None);
-        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(2000), 0, &alice_key_manager, vec![], None);
+        let input3 = create_test_input(MicroMinotari(15000), 0, &alice_key_manager, vec![], None);
         // this replicates the behaviour od the oms that selects the inputs and starts the build tx process.
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
@@ -957,6 +1105,7 @@ mod test {
         }];
 
         let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -1002,8 +1151,8 @@ mod test {
         let bob_key_manager = KeyManager::new_random().unwrap();
         let mallory_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
-        let input2 = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
+        let input2 = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
@@ -1051,6 +1200,7 @@ mod test {
 
         // Prepare the transaction — the payload is signed by alice's view key.
         let mut prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
@@ -1099,7 +1249,7 @@ mod test {
         // Bob is an unrelated wallet that happens to receive the JSON.
         let bob_key_manager = KeyManager::new_random().unwrap();
 
-        let input = create_test_input(MicroMinotari(10000), 0, &alice_view_key_manager, vec![], None);
+        let input = create_test_input(MicroMinotari(10000), 0, &alice_key_manager, vec![], None);
         let mut tx_builder = TransactionBuilder::new(
             rules.consensus_constants(0).clone(),
             alice_view_key_manager.clone(),
@@ -1137,6 +1287,7 @@ mod test {
 
         // Alice prepares the payload (signed with alice's view key).
         let prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,

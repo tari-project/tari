@@ -5,7 +5,16 @@ mod error;
 pub use error::TransactionBuilderError;
 
 mod models;
-pub use models::{FinalizedTransaction, OutputPair, RecipientDetails};
+pub use models::{
+    FinalizedTransaction,
+    OutputPair,
+    RecipientDetails,
+    RecipientKeys,
+    RecipientMetadataSignature,
+    RecipientScript,
+    RecipientScriptKey,
+    RecipientSpec,
+};
 
 mod builder;
-pub use builder::TransactionBuilder;
+pub use builder::{PendingOutput, TransactionBuilder};

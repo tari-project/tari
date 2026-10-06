@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(clippy::mutex_atomic)]
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     collections::HashMap,
     fmt,
@@ -606,7 +608,7 @@ impl TestNode {
         }
     }
 
-    pub async fn shutdown(mut self) {
+    pub async fn shutdown(self) {
         self.shutdown.trigger();
         self.comms.wait_until_shutdown().await;
     }

@@ -214,7 +214,7 @@ impl DhtDiscoveryService {
                             target: LOG_TARGET,
                             "Received discovery response from peer {}. Discovery completed in {}s",
                             peer.node_id,
-                            (Instant::now() - start_ts).as_secs_f32()
+                            start_ts.elapsed().as_secs_f32()
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
@@ -235,7 +235,7 @@ impl DhtDiscoveryService {
                             "Failed to validate and add peer from discovery response from peer. {:?} Discovery \
                              completed in {}s",
                             err,
-                            (Instant::now() - start_ts).as_secs_f32()
+                            start_ts.elapsed().as_secs_f32()
                         );
                     },
                 }
@@ -279,12 +279,11 @@ impl DhtDiscoveryService {
     ) -> Result<T, DhtPeerValidatorError> {
         match result {
             Ok(peer) => Ok(peer),
-            Err(err @ DhtPeerValidatorError::NewAndExistingMismatch { .. }) => Err(err),
-            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
-            Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
+            Err(err) if err.is_ban_offence() => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
                 Err(err)
             },
+            Err(err) => Err(err),
         }
     }
 
@@ -317,7 +316,7 @@ impl DhtDiscoveryService {
         trace!(
             target: LOG_TARGET,
             "{} inflight request(s) cleared",
-            inflight_count - self.inflight_discoveries.len()
+            inflight_count.saturating_sub(self.inflight_discoveries.len())
         );
 
         // Add the new inflight request.
@@ -353,7 +352,7 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discovery message for peer public key '{}' with destination {}", &dest_public_key, destination
+            "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
         );
 
         self.outbound_requester
@@ -361,7 +360,7 @@ impl DhtDiscoveryService {
                 SendMessageParams::new()
                     .broadcast(Vec::new())
                     .with_destination(destination)
-                    .with_debug_info(format!("discover: {}", &dest_public_key))
+                    .with_debug_info(format!("discover: {}", dest_public_key))
                     .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
                     .with_dht_message_type(DhtMessageType::Discovery)
                     .finish(),

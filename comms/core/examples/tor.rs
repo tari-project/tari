@@ -1,6 +1,8 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     collections::HashMap,
     convert::identity,
@@ -36,6 +38,7 @@ use tari_comms::{
     tor,
     types::CommsPublicKey,
 };
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::{
@@ -75,6 +78,7 @@ async fn run() -> Result<(), Error> {
     let tor_identity2 = args_iter.next().map(load_tor_identity);
 
     println!("Starting comms nodes...",);
+    let shutdown = Shutdown::new();
 
     let temp_dir1 = Builder::new().prefix("tor-example1").tempdir().unwrap();
     let (comms_node1, inbound_rx1, outbound_tx1) = setup_node_with_tor(
@@ -82,6 +86,7 @@ async fn run() -> Result<(), Error> {
         temp_dir1.as_ref(),
         (9098u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()),
         tor_identity1,
+        shutdown.to_signal(),
     )
     .await?;
 
@@ -91,6 +96,7 @@ async fn run() -> Result<(), Error> {
         temp_dir2.as_ref(),
         (9099u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()),
         tor_identity2,
+        shutdown.to_signal(),
     )
     .await?;
 
@@ -149,6 +155,7 @@ async fn run() -> Result<(), Error> {
     tokio::signal::ctrl_c().await.expect("ctrl-c failed");
 
     println!("Tor example is shutting down...");
+    shutdown.trigger();
     comms_node1.wait_until_shutdown().await;
     comms_node2.wait_until_shutdown().await;
 
@@ -182,6 +189,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     database_path: &Path,
     port_mapping: P,
     tor_identity: Option<tor::TorIdentity>,
+    shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
         CommsNode,
@@ -198,6 +206,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut hs_builder = tor::HiddenServiceBuilder::new()
+        .with_shutdown_signal(shutdown_signal.clone())
         .with_port_mapping(port_mapping)
         .with_control_server_address(control_port_addr);
 
@@ -214,6 +223,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     ));
 
     let comms_node = CommsBuilder::new()
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_listener_address(hs_controller.proxied_address())
         .with_peer_storage(peer_database)

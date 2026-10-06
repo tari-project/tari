@@ -57,7 +57,7 @@ impl EnvelopeBody {
 
     /// Total size of all parts contained within this envelope.
     pub fn total_size(&self) -> usize {
-        self.parts.iter().fold(0, |acc, b| acc + b.len())
+        self.parts.iter().fold(0, |acc: usize, b| acc.saturating_add(b.len()))
     }
 
     /// Returns true if the envelope is empty, otherwise false.

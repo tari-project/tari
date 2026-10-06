@@ -105,6 +105,8 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
+    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn build(self, consensus_constants: &ConsensusConstants) -> Result<BlockHeaderAccumulatedData, BlockError> {
         let previous_accum = self.previous_accum;
         let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;

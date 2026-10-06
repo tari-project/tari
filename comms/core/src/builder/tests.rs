@@ -32,6 +32,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{broadcast, mpsc, oneshot},
     task,
+    time,
 };
 
 use crate::{
@@ -46,6 +47,7 @@ use crate::{
     multiplexing::Substream,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
+        NodeId,
         Peer,
         PeerFeatures,
         database::{MIGRATIONS, PeerDatabaseSql},
@@ -126,6 +128,28 @@ async fn spawn_node(
     (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
 }
 
+/// Wait until `node`'s connectivity pool holds an active connection to `peer`.
+///
+/// `dial_peer` resolves as soon as the `ConnectionManager` has completed the dial, which is before either
+/// side's `ConnectivityManager` has put the connection into its pool. Anything sent in that window asks
+/// connectivity for a connection, is told there is none, and dials again - the two connections are then
+/// tie-broken against each other and the loser is disconnected, dropping everything already written to it.
+/// Waiting for the pool on *both* sides closes that window.
+async fn wait_for_connection_to(node: &CommsNode, peer: &NodeId) {
+    let mut connectivity = node.connectivity();
+    for _ in 0..100 {
+        let active = connectivity.get_active_connections().await.unwrap();
+        if active.iter().any(|conn| conn.peer_node_id() == peer) {
+            return;
+        }
+        time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!(
+        "'{}' never registered a connection to '{peer}' in its connectivity pool",
+        node.node_identity().node_id()
+    );
+}
+
 #[tokio::test]
 async fn peer_to_peer_custom_protocols() {
     static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
@@ -147,7 +171,7 @@ async fn peer_to_peer_custom_protocols() {
         .add([TEST_PROTOCOL.clone()], &test_sender)
         .add([ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
 
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let (comms_node1, _, _, _) = spawn_node(protocols1, shutdown.to_signal()).await;
     let (comms_node2, _, _, _) = spawn_node(protocols2, shutdown.to_signal()).await;
 
@@ -361,6 +385,13 @@ async fn peer_to_peer_messaging_simultaneous() {
         .dial_peer(comms_node2.node_identity().node_id().clone(), RefKind::Weak)
         .await
         .unwrap();
+    // Both nodes send below, so both must already be holding this connection in their pool. Without this the
+    // node that did not dial re-dials the node that did, the redundant connection is tie-broken against the
+    // live one, and the messages already written to whichever connection loses are silently dropped - this
+    // test is about simultaneous messaging, not simultaneous dialling.
+    wait_for_connection_to(&comms_node1, comms_node2.node_identity().node_id()).await;
+    wait_for_connection_to(&comms_node2, comms_node1.node_identity().node_id()).await;
+
     // Simultaneously send messages between the two nodes
     let handle1 = task::spawn(async move {
         for i in 0..NUM_MSGS {

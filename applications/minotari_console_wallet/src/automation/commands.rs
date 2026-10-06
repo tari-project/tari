@@ -25,7 +25,7 @@ use std::{
     convert::TryInto,
     fs::{self, File},
     io::{self, BufRead, BufReader, LineWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -54,6 +54,7 @@ use minotari_wallet::{
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
+use rand::{RngExt, distr::Alphanumeric};
 use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -79,7 +80,7 @@ use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, wallet_types::WalletType},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
         PrepareDepositMultisigTransactionResult,
@@ -89,7 +90,7 @@ use tari_transaction_components::{
         TransactionResult,
     },
     rpc::models::TxLocation,
-    tari_amount::{MicroMinotari, Minotari, uT},
+    tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -136,6 +137,7 @@ use crate::{
             read_and_verify,
             read_session_info,
             read_verify_session_info,
+            validate_session_id,
             write_json_object_to_file_as_line,
             write_to_json_file,
         },
@@ -146,6 +148,8 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
+/// How long `import-paper-wallet` waits for its temporary wallet's tasks to exit before deleting the wallet directory.
+const TEMP_WALLET_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 // Pre-mine file names
 pub(crate) const FILE_EXTENSION: &str = "json";
 pub(crate) const SPEND_SESSION_INFO: &str = "step_1_session_info";
@@ -225,6 +229,8 @@ async fn spend_backup_pre_mine_utxo(
 }
 
 /// finalises an already encumbered a n-of-m transaction
+// Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 async fn finalise_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     tx_id: u64,
@@ -265,7 +271,13 @@ pub async fn init_sha_atomic_swap(
     payment_id: MemoField,
 ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
+        .send_sha_atomic_swap_transaction(
+            dest_address,
+            amount,
+            selection_criteria,
+            MicroMinotari::from(fee_per_gram),
+            payment_id,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -348,7 +360,7 @@ pub async fn send_one_sided_to_stealth_address(
             amount,
             selection_criteria,
             OutputFeatures::default(),
-            fee_per_gram * uT,
+            MicroMinotari::from(fee_per_gram),
             payment_id,
         )
         .await
@@ -405,7 +417,7 @@ pub async fn make_it_rain(
                 start_time,
                 payment_id.payment_id_as_string()
             );
-            (start_time - now).num_milliseconds() as u64
+            start_time.signed_duration_since(now).num_milliseconds() as u64
         } else {
             0
         };
@@ -439,25 +451,26 @@ pub async fn make_it_rain(
                 debug!(
                     target: LOG_TARGET,
                     "make-it-rain starting {} of {} {} transactions",
-                    i + 1,
+                    i.saturating_add(1),
                     num_txs,
                     transaction_type
                 );
                 let loop_started_at = Instant::now();
                 let tx_service = wallet_transaction_service.clone();
                 // Transaction details
-                let amount = start_amount + increase_amount * (i as u64);
+                let amount = start_amount.saturating_add(increase_amount.saturating_mul(MicroMinotari::from(i as u64)));
 
                 // Manage transaction submission rate
-                let actual_ms = (Utc::now() - started_at).num_milliseconds();
+                let actual_ms = Utc::now().signed_duration_since(started_at).num_milliseconds();
                 let target_ms = (i as f64 * (1000.0 / transactions_per_second)) as i64;
                 trace!(
                     target: LOG_TARGET,
                     "make-it-rain {i}: target {target_ms:?} ms vs. actual {actual_ms:?} ms"
                 );
-                if target_ms - actual_ms > 0 {
+                let remaining_ms = target_ms.saturating_sub(actual_ms);
+                if remaining_ms > 0 {
                     // Maximum delay between Txs set to 120 s
-                    let delay_ms = Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64);
+                    let delay_ms = Duration::from_millis(remaining_ms.min(120_000i64) as u64);
                     trace!(
                         target: LOG_TARGET,
                         "make-it-rain {i}: delaying for {delay_ms:?} ms"
@@ -489,7 +502,7 @@ pub async fn make_it_rain(
 
                     if let Err(e) = sender_clone
                         .send(TransactionSendStats {
-                            i: i + 1,
+                            i: i.saturating_add(1),
                             tx_id,
                             delayed_for: delayed_for.duration_since(loop_started_at),
                             submit_time: submit_time.duration_since(spawn_start),
@@ -641,6 +654,8 @@ pub async fn monitor_transactions(
 }
 
 #[allow(clippy::too_many_lines)]
+// Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<CliCommands>,
@@ -662,7 +677,7 @@ pub async fn command_runner(
 
     #[allow(clippy::enum_glob_use)]
     for (idx, parsed) in commands.into_iter().enumerate() {
-        println!("\n{}. {:?}\n", idx + 1, parsed);
+        println!("\n{}. {:?}\n", idx.saturating_add(1), parsed);
         use crate::cli::CliCommands::*;
         match parsed {
             GetBalance => match output_service.clone().get_balance().await {
@@ -898,6 +913,12 @@ pub async fn command_runner(
                 let session_info = read_session_info::<PreMineSpendStep1SessionInfo>(file_path.clone())?;
                 // Verify  session info
                 // session_info.recipient_info
+                // The session ID comes from a file supplied by the leader and is used as a directory name, so it must
+                // be verified before any path is constructed with it
+                if let Err(e) = validate_session_id(&session_info.session_id) {
+                    eprintln!("\nError: {e}\n");
+                    break;
+                }
 
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
@@ -915,7 +936,7 @@ pub async fn command_runner(
                 for (i, recipient_info) in session_info.recipient_info.iter().enumerate() {
                     println!(
                         "  Start processing {} of {} transactions, current wallet {}",
-                        i + 1,
+                        i.saturating_add(1),
                         session_info.recipient_info.len(),
                         recipient_info.recipient_address
                     );
@@ -931,10 +952,38 @@ pub async fn command_runner(
                         };
                     let commitment = embedded_output.commitment.clone();
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP: everywhere else these nonces would be reserved with
+                    // `reserve_ephemeral_nonce`, which yields a handle to a nonce the device generated and can only
+                    // spend once. These two cannot be, because they are created here in step 2 and signed with in
+                    // step 3, with N of them outstanding across a file rather than a device session - and the
+                    // device's nonce store is in RAM and holds eight. So they stay host indexed on the `Random`
+                    // branch, and signing with them goes through `GetRawSchnorrSignatureLegacyNonce`.
+                    //
+                    // These signatures therefore remain open to the two-signatures-one-nonce attack, which for
+                    // pre-mine outputs reaches the script key as well as the key that signed. The full cost, the
+                    // scope, and the TODO that closes it live in `minotari_ledger_wallet_common::legacy_nonce`;
+                    // read that before touching either of these lines.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
-                    let sender_offset_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let sender_offset_nonce =
                         key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
+
+                    let pre_mine_script_key_id = TariKeyId::LedgerKey {
+                        branch: LedgerKeyBranch::PreMine,
+                        index: output_index as u64,
+                    };
+                    // The sender offset key has to be generated by the key manager - on a ledger wallet the device
+                    // picks the index and never hands the key over - and it comes back with the script offset for
+                    // this output, which step 4 hands to the leader.
+                    let (script_offset, mut sender_offset_keys) =
+                        key_manager_service.get_script_offset(std::slice::from_ref(&pre_mine_script_key_id), 1)?;
+                    let sender_offset_key = match sender_offset_keys.pop() {
+                        Some(key) => key,
+                        None => {
+                            eprintln!("\nError: No sender offset key returned for output {output_index}\n");
+                            error = true;
+                            break;
+                        },
+                    };
                     let shared_secret = key_manager_service.get_diffie_hellman_shared_secret(
                         &sender_offset_key.key_id,
                         recipient_info
@@ -943,11 +992,6 @@ pub async fn command_runner(
                             .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
                     )?;
                     let shared_secret_public_key = CompressedPublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
-
-                    let pre_mine_script_key_id = TariKeyId::LedgerKey {
-                        branch: LedgerKeyBranch::PreMine,
-                        index: output_index as u64,
-                    };
                     let pre_mine_public_script_key =
                         match key_manager_service.get_public_key_at_key_id(&pre_mine_script_key_id) {
                             Ok(key) => key,
@@ -978,10 +1022,11 @@ pub async fn command_runner(
                         sender_offset_key_id: sender_offset_key.key_id,
                         sender_offset_nonce_key_id: sender_offset_nonce.key_id,
                         pre_mine_script_key_id,
+                        script_offset,
                     });
                     println!(
                         "    Processed {} of {} transactions",
-                        i + 1,
+                        i.saturating_add(1),
                         session_info.recipient_info.len()
                     );
 
@@ -994,18 +1039,18 @@ pub async fn command_runner(
                 }
 
                 let out_dir = out_dir(&session_info.session_id)?;
-                let out_file_leader = out_dir.join(get_file_name(SPEND_STEP_2_LEADER, Some(args.alias.clone())));
+                let out_file_leader = out_dir.join(get_file_name(SPEND_STEP_2_LEADER, Some(alias.clone())));
                 write_json_object_to_file_as_line(&out_file_leader, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file_leader, false, PreMineSpendStep2OutputsForLeader {
                     outputs_for_leader,
-                    alias: args.alias.clone(),
+                    alias: alias.clone(),
                 })?;
 
                 let out_file_self = out_dir.join(get_file_name(SPEND_STEP_2_SELF, None));
                 write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file_self, false, PreMineSpendStep2OutputsForSelf {
                     outputs_for_self,
-                    alias: args.alias.clone(),
+                    alias: alias.clone(),
                 })?;
 
                 println!();
@@ -1267,7 +1312,11 @@ pub async fn command_runner(
                             break;
                         },
                     }
-                    println!("  Processed {} of {} transactions", i + 1, party_info_per_index.len());
+                    println!(
+                        "  Processed {} of {} transactions",
+                        i.saturating_add(1),
+                        party_info_per_index.len()
+                    );
                 }
                 if error {
                     break;
@@ -1430,6 +1479,10 @@ pub async fn command_runner(
                         &embedded_output.commitment,
                     );
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP: `script_nonce_key_id` is a host indexed nonce reserved
+                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce` and stays open to the
+                    // two-signatures-one-nonce attack. See `minotari_ledger_wallet_common::legacy_nonce` for the
+                    // full cost and the TODO that closes it, and the reservation site in step 2 for why.
                     let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.pre_mine_script_key_id,
                         &party_info.script_nonce_key_id,
@@ -1474,7 +1527,12 @@ pub async fn command_runner(
                         commitment_mask_key_id,
                         committed_value.as_u64(),
                     ) {
-                        Ok(_) => {},
+                        Ok(()) => {},
+                        Err(KeyManagerError::InvalidMask) => {
+                            eprintln!("\nError: Could not verify mask! Commitment does not match value and mask\n");
+                            error = true;
+                            break;
+                        },
                         Err(e) => {
                             eprintln!("\nError: Could not verify mask! {e}\n");
                             error = true;
@@ -1488,11 +1546,9 @@ pub async fn command_runner(
                     )?;
                     let script = push_pubkey_script(&script_spending_key);
 
-                    // Metadata signature
-                    let script_offset = key_manager_service.get_script_offset(
-                        std::slice::from_ref(&party_info.pre_mine_script_key_id),
-                        std::slice::from_ref(&party_info.sender_offset_key_id),
-                    )?;
+                    // Metadata signature. The script offset was computed in step 2, when the key manager generated
+                    // the sender offset key.
+                    let script_offset = party_info.script_offset.clone();
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
                         TransactionOutputVersion::get_current_version(),
                         &script,
@@ -1506,6 +1562,16 @@ pub async fn command_runner(
                         MicroMinotari::zero(),
                     );
 
+                    // KNOWN, DELIBERATELY DEFERRED GAP, AND THE WORST OF THE THREE: `sender_offset_key_id` is on
+                    // the `OneSidedSenderOffset` branch - `get_script_offset` issues it - and
+                    // `sender_offset_nonce_key_id` is a host indexed nonce reserved back in step 2, so this routes
+                    // to `GetRawSchnorrSignatureLegacyNonce`.
+                    //
+                    // That branch is on the legacy whitelist deliberately, so that pre-mine spend keeps working,
+                    // and the price is that a compromised host can recover this output's sender offset private key
+                    // and then subtract it back out of the script offset to recover the script private key too.
+                    // `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope - pre-mine
+                    // only, normal spends use device issued handles - and the TODO that closes it.
                     let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.sender_offset_key_id,
                         &party_info.sender_offset_nonce_key_id,
@@ -1539,7 +1605,7 @@ pub async fn command_runner(
 
                     println!(
                         "  Processed {} of {} transactions",
-                        i + 1,
+                        i.saturating_add(1),
                         leader_info_indexed.outputs_for_parties.len()
                     );
                 }
@@ -1701,7 +1767,7 @@ pub async fn command_runner(
 
                     // Collect all inputs, outputs and kernels that should go into the genesis block
                     println!();
-                    println!("  Processed {} of {}", i + 1, party_info_per_index.len());
+                    println!("  Processed {} of {}", i.saturating_add(1), party_info_per_index.len());
                 }
                 if error {
                     break;
@@ -1881,7 +1947,7 @@ pub async fn command_runner(
                             println!(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}, Commitment: {}, \
                                  isMultisig: {}",
-                                i + 1,
+                                i.saturating_add(1),
                                 utxo.0.value,
                                 if args.with_private_keys {
                                     utxo.0.commitment_mask_key.to_hex()
@@ -1951,7 +2017,7 @@ pub async fn command_runner(
                         for (i, utxo) in unblinded_utxos.iter().enumerate() {
                             println!(
                                 "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
-                                i + 1,
+                                i.saturating_add(1),
                                 utxo.0.value,
                                 if args.with_private_keys {
                                     utxo.0.commitment_mask_key.to_hex()
@@ -2114,7 +2180,7 @@ pub async fn command_runner(
                     },
                     args.epoch,
                     UtxoSelectionCriteria::default(),
-                    config.fee_per_gram * uT,
+                    MicroMinotari::from(config.fee_per_gram),
                     memo,
                 )
                 .await?;
@@ -2257,13 +2323,23 @@ pub async fn command_runner(
                 }
             },
             ImportPaperWallet(args) => {
+                // The temporary wallet holds the recovered master seed, so it gets a randomly named directory that is
+                // removed again on every exit path. Creation fails rather than reusing an existing directory, so a
+                // leftover from an earlier crash is never adopted, however unlikely a name collision is.
                 let temp_path = config
                     .db_file
                     .parent()
                     .ok_or(CommandError::General("No parent".to_string()))?
-                    .join("temp");
+                    .join(format!("temp-{}", random_alphanumeric(8)));
                 println!("saving temp wallet in: {temp_path:?}");
-                {
+                let temp_wallet_dir = TempWalletDir::create(temp_path.clone())?;
+                // Owns the temporary wallet's services. It is triggered on every exit path below, and before the
+                // directory is removed we wait, bounded by TEMP_WALLET_SHUTDOWN_TIMEOUT, for the tasks holding one of
+                // its shutdown signals to exit. The drain only sees tasks that hold a signal, and a removal after a
+                // timeout may still race an open database handle (on Windows the removal then fails and the error is
+                // reported).
+                let shutdown = Shutdown::new();
+                let result: Result<(), CommandError> = async {
                     let passphrase = if args.passphrase.is_empty() {
                         None
                     } else {
@@ -2291,8 +2367,10 @@ pub async fn command_runner(
                     };
 
                     let wallet_type = LegacyWalletType::DerivedKeys;
-                    let password = SafePassword::from("password".to_string());
-                    let shutdown = Shutdown::new();
+                    // The temporary wallet database is deleted again when this command finishes, so its password
+                    // is never needed a second time; a random single-use one keeps the seed it holds unreadable
+                    // if the database does survive (e.g. the process is killed before the guard can run).
+                    let password = SafePassword::from(random_alphanumeric(32));
                     let shutdown_signal = shutdown.to_signal();
                     let mut new_config = config.clone();
                     // Directly set paths to temp_path. We cannot use set_base_path here because
@@ -2359,7 +2437,7 @@ pub async fn command_runner(
                             wallet
                                 .get_wallet_one_sided_address()
                                 .map_err(|e| CommandError::General(e.to_string()))?,
-                            config.fee_per_gram * uT,
+                            MicroMinotari::from(config.fee_per_gram),
                         )
                         .await
                         .map_err(CommandError::TransactionServiceError)
@@ -2385,9 +2463,31 @@ pub async fn command_runner(
                         },
                         Err(e) => eprintln!("SendMinotari error! {e}"),
                     }
+                    Ok(())
                 }
-                println!("removing temp wallet in: {temp_path:?}");
-                fs::remove_dir_all(temp_path)?;
+                .await;
+                // The temporary wallet is out of scope; stop its services and wait (bounded) for them to exit.
+                shutdown.trigger();
+                if timeout(TEMP_WALLET_SHUTDOWN_TIMEOUT, shutdown.wait_for_listeners())
+                    .await
+                    .is_err()
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Timed out after {TEMP_WALLET_SHUTDOWN_TIMEOUT:.0?} waiting for the temporary wallet to shut \
+                         down; removing it anyway"
+                    );
+                }
+                // Remove explicitly rather than on drop, so that a failure to delete the seed-bearing database fails
+                // the command instead of being logged and ignored. A command error takes precedence, but `remove`
+                // consumed the drop guard, so a removal failure must be surfaced here even when the command failed.
+                let removed = temp_wallet_dir.remove();
+                if let (Err(_), Err(remove_error)) = (&result, &removed) {
+                    error!(target: LOG_TARGET, "{remove_error}");
+                    eprintln!("{remove_error}");
+                }
+                result?;
+                removed?;
             },
 
             ShowPayRef(args) => {
@@ -2413,15 +2513,15 @@ pub async fn command_runner(
                                 if completed_tx.mined_in_block.is_some() {
                                     println!("\nReceived PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_received_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                     println!("\nSent PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_sent_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                     println!("\nChange PayRefs for this transaction:");
                                     for (i, pay_ref) in completed_tx.calculate_change_payment_references().iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                        println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                     }
                                 } else {
                                     println!("Payrefs: Transaction not mined yet.");
@@ -2485,7 +2585,7 @@ pub async fn command_runner(
                         println!("{}", "=".repeat(80));
 
                         for (i, tx) in txs.iter().enumerate() {
-                            println!("{}. Transaction ID: {}", i + 1, tx.tx_id);
+                            println!("{}. Transaction ID: {}", i.saturating_add(1), tx.tx_id);
                             println!("   Amount: {}", tx.amount);
                             println!("   Direction: {:?}", tx.direction);
                             println!("   Status: {:?}", tx.status);
@@ -2498,15 +2598,15 @@ pub async fn command_runner(
                             if tx.mined_in_block.is_some() {
                                 println!("\nReceived PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_received_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                                 println!("\nSent PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_sent_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                                 println!("\nChange PayRefs for this transaction:");
                                 for (i, pay_ref) in tx.calculate_change_payment_references().iter().enumerate() {
-                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    println!("{}. PayRef: {}", i.saturating_add(1), pay_ref);
                                 }
                             } else {
                                 println!("Payrefs: Transaction not mined yet.");
@@ -2607,7 +2707,7 @@ pub async fn command_runner(
                         args.amount,
                         UtxoSelectionCriteria::default(),
                         OutputFeatures::default(),
-                        config.fee_per_gram * uT,
+                        MicroMinotari::from(config.fee_per_gram),
                         memo,
                     )
                     .await
@@ -2916,7 +3016,7 @@ pub async fn command_runner(
                                 input_outputs.len()
                             );
                             for (i, output) in input_outputs.iter().enumerate() {
-                                println!("\nInput #{}", i + 1);
+                                println!("\nInput #{}", i.saturating_add(1));
                                 println!("{:#?}", output);
                             }
 
@@ -2925,7 +3025,7 @@ pub async fn command_runner(
                                 received_outputs.len()
                             );
                             for (i, output) in received_outputs.iter().enumerate() {
-                                println!("\nOutput #{}", i + 1);
+                                println!("\nOutput #{}", i.saturating_add(1));
                                 println!("{:#?}", output);
                             }
                         },
@@ -3433,6 +3533,103 @@ pub async fn command_runner(
     Ok(unban_peer_manager_peers)
 }
 
+/// A random alphanumeric string of `len` characters.
+///
+/// Uses `ThreadRng`, a cryptographically secure generator seeded from the operating system and periodically reseeded
+/// from it. That is what makes this suitable for generating a password.
+fn random_alphanumeric(len: usize) -> String {
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
+/// Owns a temporary wallet directory and removes it, and everything in it, when it goes out of scope.
+///
+/// The paper wallet import writes a wallet database containing the recovered master seed into this directory, so it
+/// must not outlive the command - not when it returns early with an error, and not when it unwinds.
+///
+/// On the path where the command succeeds, call [`TempWalletDir::remove`] instead of letting the guard drop: a
+/// failure to delete a database holding the master seed must not be reported as success. `Drop` is the backstop for
+/// the error and unwind paths, where there is no result to propagate into, and can only log.
+struct TempWalletDir {
+    path: PathBuf,
+}
+
+impl TempWalletDir {
+    /// Creates the directory (owner-only where the platform supports it) and takes ownership of it.
+    fn create(path: PathBuf) -> Result<Self, CommandError> {
+        create_owner_only_dir(&path)?;
+        Ok(Self { path })
+    }
+
+    /// Removes the directory and everything in it, propagating any failure to the caller.
+    ///
+    /// The subsequent `Drop` finds the directory gone and does nothing, so this never removes twice.
+    fn remove(self) -> Result<(), CommandError> {
+        if !self.path.exists() {
+            return Ok(());
+        }
+        println!("removing temp wallet in: {:?}", self.path);
+        fs::remove_dir_all(&self.path).map_err(|e| {
+            CommandError::General(format!(
+                "Could not remove the temporary wallet directory '{}': {}. It contains wallet keys and should be \
+                 deleted manually.",
+                self.path.display(),
+                e
+            ))
+        })
+    }
+}
+
+impl Drop for TempWalletDir {
+    fn drop(&mut self) {
+        if !self.path.exists() {
+            return;
+        }
+        println!("removing temp wallet in: {:?}", self.path);
+        if let Err(e) = fs::remove_dir_all(&self.path) {
+            error!(
+                target: LOG_TARGET,
+                "Could not remove temporary wallet directory '{}': {}", self.path.display(), e
+            );
+            eprintln!(
+                "Could not remove temporary wallet directory '{}': {}. It contains wallet keys and should be deleted \
+                 manually.",
+                self.path.display(),
+                e
+            );
+        }
+    }
+}
+
+/// Creates `path`, and any missing parents, so that only the owner can read it (0700). The directory holds a wallet
+/// database, so it must never be group- or world-readable.
+///
+/// The final component is created non-recursively, so this fails if it already exists. That is deliberate: the
+/// directory must be a fresh one, never a leftover from an earlier crash or one planted by another user. `mkdir` is
+/// subject to the umask, so the mode is set explicitly afterwards.
+#[cfg(target_family = "unix")]
+fn create_owner_only_dir(path: &Path) -> Result<(), CommandError> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::DirBuilder::new().mode(0o700).create(path)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(target_family = "unix"))]
+fn create_owner_only_dir(path: &Path) -> Result<(), CommandError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::DirBuilder::new().create(path)?;
+    Ok(())
+}
+
 async fn detect_tx_metadata(wallet: &WalletSqlite, destination: &TariAddress) -> TxType {
     if let Ok(interactive_address) = wallet.get_wallet_interactive_address() {
         if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address() {
@@ -3515,7 +3712,7 @@ fn verify_no_duplicate_indexes(recipient_info: &[CliRecipientInfo]) -> Result<()
     } else {
         Err(format!(
             "{}",
-            max(all_indexes_len, all_indexes.len()) - min(all_indexes_len, all_indexes.len())
+            max(all_indexes_len, all_indexes.len()).saturating_sub(min(all_indexes_len, all_indexes.len()))
         ))
     }
 }
@@ -3584,7 +3781,7 @@ fn write_utxos_to_csv_file(
         writeln!(
             csv_file,
             r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
-            i + 1,
+            i.saturating_add(1),
             utxo.version.as_u8(),
             utxo.value.0,
             if with_private_keys { utxo.commitment_mask_key.to_hex() } else { "*hidden*".to_string() },
@@ -3616,7 +3813,7 @@ fn write_utxos_to_csv_file(
         debug!(
             target: LOG_TARGET,
             "UTXO {} exported: {:?}",
-            i + 1,
+            i.saturating_add(1),
             utxo
         );
     }
@@ -3721,4 +3918,75 @@ fn write_audit_to_csv_file(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn random_alphanumeric_is_the_requested_length_and_not_repeated() {
+        let first = random_alphanumeric(32);
+        let second = random_alphanumeric(32);
+        assert_eq!(first.len(), 32);
+        assert_eq!(second.len(), 32);
+        assert!(first.chars().all(|c| c.is_ascii_alphanumeric()));
+        // Two 32-character draws from a 62-symbol alphabet collide with probability 62^-32, i.e. about 1 in 10^57.
+        // This is not a flaky assertion; it is the only one here that would catch a generator stubbed out to return a
+        // constant, which is exactly the regression that would silently reinstate a fixed password.
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn temp_wallet_dir_is_owner_only_and_removed_on_drop() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+        {
+            let _guard = TempWalletDir::create(path.clone()).unwrap();
+            assert!(path.is_dir());
+            #[cfg(target_family = "unix")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o700);
+            }
+            // The database (and anything else the wallet writes) must go with the directory.
+            fs::write(path.join("console_wallet.db"), b"seed").unwrap();
+        }
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn temp_wallet_dir_remove_deletes_the_directory_and_reports_success() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+        let guard = TempWalletDir::create(path.clone()).unwrap();
+        fs::write(path.join("console_wallet.db"), b"seed").unwrap();
+
+        guard.remove().unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn temp_wallet_dir_is_never_created_over_an_existing_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+        let _guard = TempWalletDir::create(path.clone()).unwrap();
+
+        // A leftover directory must not be adopted - it could hold another run's seed database, or be planted.
+        assert!(TempWalletDir::create(path).is_err());
+    }
+
+    #[test]
+    fn temp_wallet_dir_is_removed_when_the_scope_exits_with_an_error() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("temp-wallet");
+
+        fn fail(path: PathBuf) -> Result<(), CommandError> {
+            let _guard = TempWalletDir::create(path)?;
+            Err(CommandError::General("recovery failed".to_string()))
+        }
+
+        assert!(fail(path.clone()).is_err());
+        assert!(!path.exists());
+    }
 }

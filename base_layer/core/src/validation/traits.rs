@@ -20,23 +20,20 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, FixedHash},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
-use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::AchievedTargetDifficulty,
-    validation::error::ValidationError,
+    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget},
+    validation::{chain_context::HeaderChainContext, error::ValidationError},
 };
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
 pub trait BlockBodyValidator<B>: Send + Sync {
-    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError>;
+    fn validate_body(&self, backend: &B, block: Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
@@ -55,11 +52,60 @@ pub trait CandidateBlockValidator<B>: Send + Sync {
 }
 
 pub trait TransactionValidator: Send + Sync {
-    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError>;
+    /// Fully validate a transaction. An implementation may only return [`ValidationError::UnknownInputs`] once every
+    /// other check, including internal consistency, has passed, since callers accept such a transaction if the
+    /// unknown inputs are found elsewhere (i.e. in the mempool).
+    ///
+    /// Runs chain-linked validation and then internal consistency, and runs the internal checks even when the
+    /// chain-linked step returned `UnknownInputs`. Must not be used on untrusted input; the mempool uses
+    /// [`Self::validate_chain_linked`] + [`Self::validate_internal_consistency`].
+    fn validate_full(&self, tx: &Transaction) -> Result<(), ValidationError>;
+
+    /// Validate a transaction against the chain state only. [`ValidationError::UnknownInputs`] means that every other
+    /// chain-linked check passed. A transaction accepted by this must also pass
+    /// [`Self::validate_internal_consistency`] before it may be stored.
+    ///
+    /// Required, with no default: a default that ran [`Self::validate_full`] would run the internal checks (scripts)
+    /// on transactions with unknown inputs on the mempool path.
+    fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError>;
+
+    /// Validate the internal consistency of a transaction (scripts, signatures, range proofs, balance). This is the
+    /// expensive part of validation and does not depend on the transaction's inputs being in the chain. It does depend
+    /// on the chain tip (e.g. scripts can check the block height), so the caller may provide the tip to validate
+    /// against; if `None`, the current tip is used.
+    ///
+    /// Required, with no default, so that an implementation cannot silently skip these checks.
+    fn validate_internal_consistency(
+        &self,
+        tx: &Transaction,
+        tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError>;
+
+    /// The chain tip that validation is currently performed against, or `None` if it is not known. Used to detect
+    /// whether the tip has moved since a transaction was validated.
+    fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
+        Ok(None)
+    }
 }
 
 pub trait InternalConsistencyValidator: Send + Sync {
     fn validate_internal_consistency(&self, item: &Block) -> Result<(), ValidationError>;
+}
+
+/// What header validation found out about a header, beyond the fact that it is valid.
+#[derive(Debug, Clone)]
+pub struct ValidatedHeader {
+    /// The difficulty the header achieved, and the target it had to clear.
+    pub achieved_target: AchievedTargetDifficulty,
+    /// The Monero RandomX seed the header is keyed by, for a merge mined header, and `None` for any other proof of
+    /// work.
+    ///
+    /// This is handed back rather than left for the caller to work out because recovering it means parsing the
+    /// header's PoW data, and `MoneroPowData::from_header` deliberately does an expensive job of it: it Borsh
+    /// deserializes the structure and then re-serializes it to prove the encoding was canonical. A caller that
+    /// tracks the seeds of a chain the database does not hold yet (see [`crate::validation::MoneroSeedHeights`])
+    /// would otherwise pay for that a second time on every merge mined header of a sync.
+    pub monero_seed: Option<Vec<u8>>,
 }
 
 pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
@@ -69,9 +115,9 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         header: &BlockHeader,
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
-        target_difficulty: Option<Difficulty>,
-        vm_key: FixedHash,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>;
+        target_difficulty: Option<AdjustedTarget>,
+        chain_context: HeaderChainContext<'_>,
+    ) -> Result<ValidatedHeader, ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

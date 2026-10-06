@@ -69,7 +69,7 @@ impl TransactionsTab {
             (Constraint::Max(3), Constraint::Min(4))
         } else {
             (
-                Constraint::Length((3 + app_state.get_pending_txs().len()).min(7) as u16),
+                Constraint::Length(app_state.get_pending_txs().len().saturating_add(3).min(7) as u16),
                 Constraint::Min(4),
             )
         };
@@ -891,13 +891,13 @@ fn get_alias_and_clip(address_string: String, max_len: u16) -> String {
 fn clip_address(address: String, max_len: u16) -> String {
     let max_len = max_len as usize;
     if address.chars().count() > max_len {
-        let display_portion = (max_len - 4) / 2;
+        let display_portion = max_len.saturating_sub(4) / 2;
         let chars: Vec<char> = address.chars().collect();
         let adjust_odd = usize::from(!max_len.is_multiple_of(2));
         format!(
             "{}....{}",
             chars[..display_portion].iter().collect::<String>(),
-            chars[chars.len() - display_portion - adjust_odd..]
+            chars[chars.len().saturating_sub(display_portion).saturating_sub(adjust_odd)..]
                 .iter()
                 .collect::<String>()
         )

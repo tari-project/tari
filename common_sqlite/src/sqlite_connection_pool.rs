@@ -99,7 +99,7 @@ impl SqliteConnectionPool {
                 // When we get a pooled connection, we want the pool connection timeout to be longer
                 // than the database busy timeout (set by `PRAGMA busy_timeout`). Here we set the
                 // connection timeout to whatever the busy timeout is plus a delta (5s).
-                builder = builder.connection_timeout(timeout + R2D2_POOL_CONNECTION_DELTA);
+                builder = builder.connection_timeout(timeout.saturating_add(R2D2_POOL_CONNECTION_DELTA));
             } else {
                 // If no busy timeout is set, we use the default value.
                 builder = builder.connection_timeout(R2D2_POOL_CONNECTION_TIMEOUT);

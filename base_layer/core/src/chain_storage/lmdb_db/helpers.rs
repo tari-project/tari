@@ -51,7 +51,7 @@ where T: Serialize + ?Sized {
         ChainStorageError::AccessError(e.to_string())
     })?;
     if buf.len() >= BYTES_PER_MB {
-        let serialize_time = start.elapsed() - check_time;
+        let serialize_time = start.elapsed().saturating_sub(check_time);
         trace!(
             "lmdb_replace - {} MB, serialize check in {:.2?}, serialize in {:.2?}",
             buf.len() / BYTES_PER_MB,
@@ -78,4 +78,12 @@ where T: DeserializeOwned {
             e
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))
+}
+
+/// As [`deserialize`], but does not log on failure. Use this where a decode failure is an expected,
+/// handled outcome (e.g. probing which of several on-disk formats a value is stored in) rather than
+/// an error; the caller is responsible for logging if the failure turns out to matter.
+pub fn try_deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
+where T: DeserializeOwned {
+    bincode::deserialize(buf_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))
 }

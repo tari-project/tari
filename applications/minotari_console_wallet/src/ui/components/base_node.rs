@@ -97,7 +97,7 @@ impl<B: Backend> Component<B> for BaseNode {
                 [
                     Constraint::Ratio(title.width() as u32, u32::from(MAX_WIDTH)),
                     Constraint::Ratio(
-                        u32::from(MAX_WIDTH.saturating_sub((title.width() + base_node_id.width()) as u16)),
+                        u32::from(MAX_WIDTH.saturating_sub(title.width().saturating_add(base_node_id.width()) as u16)),
                         u32::from(MAX_WIDTH),
                     ),
                     Constraint::Ratio(base_node_id.width() as u32, u32::from(MAX_WIDTH)),

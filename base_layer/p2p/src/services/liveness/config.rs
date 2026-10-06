@@ -24,6 +24,12 @@ use std::time::Duration;
 
 use tari_comms::peer_manager::NodeId;
 
+/// Default maximum time an in-flight ping may go unanswered before it is counted as a failed ping.
+///
+/// This is a *timeout*, not a rate. It is deliberately kept separate from [`LivenessConfig::auto_ping_interval`]
+/// so that pinging more often does not also make the failure detector more trigger-happy.
+pub const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(30);
+
 /// Configuration for liveness service
 #[derive(Debug, Clone)]
 pub struct LivenessConfig {
@@ -35,6 +41,17 @@ pub struct LivenessConfig {
     pub monitored_peers: Vec<NodeId>,
     /// Number of ping failures to tolerate before disconnecting the peer. A value of zero disables this feature.
     pub max_allowed_ping_failures: usize,
+    /// How long an in-flight ping may go unanswered before it is counted as a failed ping (Default:
+    /// [`MAX_INFLIGHT_TTL`], 30s).
+    ///
+    /// This is **independent of `auto_ping_interval`**. Ping *rate* and ping *timeout* are separate concerns:
+    /// lowering `auto_ping_interval` (e.g. for faster chain-tip detection) must not shorten the deadline a peer
+    /// has to answer. Since `max_allowed_ping_failures + 1` consecutive expiries hard-disconnect the peer, this
+    /// value should stay comfortably above the worst-case ping round-trip time under load.
+    ///
+    /// Note that expiry is evaluated lazily - a stale in-flight ping is only reaped when the *next* ping is
+    /// recorded - so the effective deadline is between this TTL and this TTL plus one `auto_ping_interval`.
+    pub max_inflight_ttl: Duration,
 }
 
 impl Default for LivenessConfig {
@@ -44,6 +61,7 @@ impl Default for LivenessConfig {
             num_peers_per_round: 8,
             monitored_peers: Default::default(),
             max_allowed_ping_failures: 2,
+            max_inflight_ttl: MAX_INFLIGHT_TTL,
         }
     }
 }

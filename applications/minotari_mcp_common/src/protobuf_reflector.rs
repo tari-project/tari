@@ -18,7 +18,8 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol) infrastructure for Tari applications
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.//! Common MCP (Model Context Protocol)
+// infrastructure for Tari applications
 //! Runtime Protobuf Schema Generation using prost-reflect
 //!
 //! This module provides dynamic JSON schema generation from protobuf FileDescriptorSet
@@ -29,10 +30,12 @@
 //! Advanced features like validation rule extraction and complex type handling
 //! can be extended in future iterations.
 
-use prost_reflect::{DescriptorPool, FieldDescriptor, Kind, MessageDescriptor, EnumDescriptor};
+use std::collections::{BTreeMap, HashMap};
+
+use prost_reflect::{DescriptorPool, EnumDescriptor, FieldDescriptor, Kind, MessageDescriptor};
 use schemars::schema::*;
 use serde_json::Value as JsonValue;
-use std::collections::{BTreeMap, HashMap};
+
 use crate::error::{McpError, McpResult};
 
 /// Runtime protobuf schema generator using reflection
@@ -46,7 +49,7 @@ impl ProtobufReflector {
     pub fn new(descriptor_set: &[u8]) -> McpResult<Self> {
         let descriptor_pool = DescriptorPool::decode(descriptor_set)
             .map_err(|e| McpError::server_error(format!("Failed to decode descriptor set: {e}")))?;
-        
+
         Ok(Self {
             descriptor_pool,
             schema_cache: HashMap::new(),
@@ -71,7 +74,7 @@ impl ProtobufReflector {
             .ok_or_else(|| McpError::invalid_request(format!("Service '{}' not found", service_name)))?;
 
         let mut schemas = HashMap::new();
-        
+
         for method in service_desc.methods() {
             let input_type = method.input().full_name().to_string();
             let schema = self.generate_schema(&input_type)?;
@@ -103,7 +106,7 @@ impl ProtobufReflector {
     /// Generate schema for a message with caching
     fn generate_message_schema(&mut self, message_desc: &MessageDescriptor) -> McpResult<Schema> {
         let type_name = message_desc.full_name().to_string();
-        
+
         // Check cache first
         if let Some(cached_schema) = self.schema_cache.get(&type_name) {
             return Ok(cached_schema.clone());
@@ -116,9 +119,9 @@ impl ProtobufReflector {
         for field in message_desc.fields() {
             let field_name = field.json_name().to_string();
             let field_schema = self.generate_field_schema(&field)?;
-            
+
             properties.insert(field_name.clone(), field_schema);
-            
+
             // In proto3, fields are optional by default, but we check for custom validation
             if self.is_field_required(&field) {
                 required.push(field_name);
@@ -157,7 +160,7 @@ impl ProtobufReflector {
                 instance_type: Some(InstanceType::Boolean.into()),
                 ..Default::default()
             }),
-            
+
             Kind::Int32 | Kind::Sint32 | Kind::Sfixed32 => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Integer.into()),
                 format: Some("int32".to_string()),
@@ -168,7 +171,7 @@ impl ProtobufReflector {
                 })),
                 ..Default::default()
             }),
-            
+
             Kind::Uint32 | Kind::Fixed32 => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Integer.into()),
                 format: Some("uint32".to_string()),
@@ -179,13 +182,13 @@ impl ProtobufReflector {
                 })),
                 ..Default::default()
             }),
-            
+
             Kind::Int64 | Kind::Sint64 | Kind::Sfixed64 => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Integer.into()),
                 format: Some("int64".to_string()),
                 ..Default::default()
             }),
-            
+
             Kind::Uint64 | Kind::Fixed64 => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Integer.into()),
                 format: Some("uint64".to_string()),
@@ -195,24 +198,24 @@ impl ProtobufReflector {
                 })),
                 ..Default::default()
             }),
-            
+
             Kind::Float => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Number.into()),
                 format: Some("float".to_string()),
                 ..Default::default()
             }),
-            
+
             Kind::Double => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::Number.into()),
                 format: Some("double".to_string()),
                 ..Default::default()
             }),
-            
+
             Kind::String => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::String.into()),
                 ..Default::default()
             }),
-            
+
             Kind::Bytes => Schema::Object(SchemaObject {
                 instance_type: Some(InstanceType::String.into()),
                 format: Some("byte".to_string()),
@@ -222,7 +225,7 @@ impl ProtobufReflector {
                 })),
                 ..Default::default()
             }),
-            
+
             Kind::Message(message_desc) => {
                 // Handle special message types
                 match message_desc.full_name() {
@@ -238,8 +241,8 @@ impl ProtobufReflector {
                     }),
                     _ => self.generate_message_schema(&message_desc)?,
                 }
-            }
-            
+            },
+
             Kind::Enum(enum_desc) => self.generate_enum_schema(&enum_desc),
         };
 
@@ -297,9 +300,12 @@ impl ProtobufReflector {
         // Extract custom validation rules from protobuf options
         // This would require parsing proto options like (validate.rules)
         // For now, we apply sensible defaults
-        
+
         let mut extensions = BTreeMap::new();
-        extensions.insert("mcp_type".to_string(), JsonValue::String("protobuf_message".to_string()));
+        extensions.insert(
+            "mcp_type".to_string(),
+            JsonValue::String("protobuf_message".to_string()),
+        );
         schema.extensions.extend(extensions);
     }
 
@@ -309,7 +315,7 @@ impl ProtobufReflector {
         // This would parse annotations like:
         // string name = 1 [(validate.rules).string.min_len = 3];
         // uint32 age = 2 [(validate.rules).uint32.gt = 0];
-        
+
         if let Schema::Object(obj) = schema {
             match field.kind() {
                 Kind::String => {
@@ -317,22 +323,21 @@ impl ProtobufReflector {
                     if obj.string.is_none() {
                         obj.string = Some(Box::new(StringValidation::default()));
                     }
-                    
+
                     // Example: minimum length for strings
                     if field.json_name().contains("email") {
-                        obj.string.as_mut().unwrap().pattern = Some(
-                            r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$".to_string()
-                        );
+                        obj.string.as_mut().unwrap().pattern =
+                            Some(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$".to_string());
                     }
-                }
+                },
                 Kind::Uint32 | Kind::Uint64 => {
                     // Ensure non-negative for unsigned integers
                     if obj.number.is_none() {
                         obj.number = Some(Box::new(NumberValidation::default()));
                     }
                     obj.number.as_mut().unwrap().minimum = Some(0.0);
-                }
-                _ => {}
+                },
+                _ => {},
             }
 
             // Add MCP-specific metadata
@@ -361,21 +366,21 @@ mod tests {
         // Test with minimal valid descriptor set (would need actual protobuf bytes)
         // This is a placeholder for real test data
         let descriptor_bytes = vec![]; // Would contain actual FileDescriptorSet bytes
-        
+
         if let Ok(mut reflector) = ProtobufReflector::new(&descriptor_bytes) {
             let result = reflector.generate_schema("NonexistentMessage");
             assert!(result.is_err());
         }
     }
 
-    #[test] 
+    #[test]
     fn test_list_operations() {
         let descriptor_bytes = vec![]; // Would contain actual FileDescriptorSet bytes
-        
+
         if let Ok(reflector) = ProtobufReflector::new(&descriptor_bytes) {
             let messages = reflector.list_message_types();
             let services = reflector.list_services();
-            
+
             // With empty descriptor, should have empty lists
             assert!(messages.is_empty());
             assert!(services.is_empty());

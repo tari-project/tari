@@ -20,6 +20,7 @@ use std::{fmt, ops::Deref};
 use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use tari_max_size::MaxSizeVecError;
 use tari_utilities::{ByteArrayError, hex::Hex};
 
 use super::ScriptError;
@@ -34,46 +35,52 @@ type MultiSigArgs = (u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message
 
 /// Convert a slice into a HashValue.
 ///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-pub fn slice_to_hash(slice: &[u8]) -> HashValue {
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(slice);
-    hash
+/// Returns [ScriptError::InvalidData] if the slice is not exactly 32 bytes long.
+pub fn slice_to_hash(slice: &[u8]) -> Result<HashValue, ScriptError> {
+    HashValue::try_from(slice).map_err(|_| ScriptError::InvalidData)
 }
 
-/// Convert a slice into a Boxed HashValue
-pub fn slice_to_boxed_hash(slice: &[u8]) -> Box<HashValue> {
-    Box::new(slice_to_hash(slice))
+/// Convert a slice into a Boxed HashValue.
+///
+/// Returns [ScriptError::InvalidData] if the slice is not exactly 32 bytes long.
+pub fn slice_to_boxed_hash(slice: &[u8]) -> Result<Box<HashValue>, ScriptError> {
+    Ok(Box::new(slice_to_hash(slice)?))
 }
 
 /// Convert a slice into a Message.
 ///
-/// # Panics
-///
-/// The function does not check slice for length at all.  You need to check this / guarantee it yourself.
-pub fn slice_to_message(slice: &[u8]) -> Message {
-    let mut msg = [0u8; MESSAGE_LENGTH];
-    msg.copy_from_slice(slice);
-    msg
+/// Returns [ScriptError::InvalidData] if the slice is not exactly `MESSAGE_LENGTH` (32) bytes long.
+pub fn slice_to_message(slice: &[u8]) -> Result<Message, ScriptError> {
+    Message::try_from(slice).map_err(|_| ScriptError::InvalidData)
 }
 
-/// Convert a slice into a Boxed Message
-pub fn slice_to_boxed_message(slice: &[u8]) -> Box<Message> {
-    Box::new(slice_to_message(slice))
+/// Convert a slice into a Boxed Message.
+///
+/// Returns [ScriptError::InvalidData] if the slice is not exactly `MESSAGE_LENGTH` (32) bytes long.
+pub fn slice_to_boxed_message(slice: &[u8]) -> Result<Box<Message>, ScriptError> {
+    Ok(Box::new(slice_to_message(slice)?))
+}
+
+/// Returns the bytes following an opcode byte and the `size`-byte varint that succeeds it.
+fn bytes_after_varint(bytes: &[u8], size: usize) -> Result<&[u8], ScriptError> {
+    bytes
+        .get(size.checked_add(1).ok_or(ScriptError::InvalidData)?..)
+        .ok_or(ScriptError::InvalidData)
 }
 
 /// Convert a slice into a vector of Public Keys.
 pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<CompressedKey<RistrettoPublicKey>>, ScriptError> {
-    if slice.len() < num * PUBLIC_KEY_LENGTH {
+    let required_len = num.checked_mul(PUBLIC_KEY_LENGTH).ok_or(ScriptError::InvalidData)?;
+    if slice.len() < required_len {
         return Err(ScriptError::InvalidData);
     }
 
     let public_keys = slice
-        .chunks_exact(PUBLIC_KEY_LENGTH)
+        .as_chunks::<PUBLIC_KEY_LENGTH>()
+        .0
+        .iter()
         .take(num)
-        .map(CompressedKey::from_canonical_bytes)
+        .map(|chunk| CompressedKey::from_canonical_bytes(chunk))
         .collect::<Result<Vec<CompressedKey<RistrettoPublicKey>>, ByteArrayError>>()?;
 
     Ok(public_keys)
@@ -140,14 +147,18 @@ pub enum Opcode {
     /// reach `height`. Fails with `IncompatibleTypes` if u64 is not a valid 64-bit unsigned integer. Fails with
     /// `StackOverflow` if the stack would exceed the max stack height.
     CheckHeight(u64),
-    /// Pops the top of the stack as `height` and compares it to the current block height. Fails with `InvalidInput`
-    /// if there is not a valid integer value on top of the stack. Fails with `StackUnderflow` if the stack is empty.
+    /// Pops the top of the stack as an unsigned (u64) `height` and compares it to the current block height.
+    /// Fails with `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the top of the stack is not a
+    /// `Number`. Fails with `ValueExceedsBounds` if the `Number` is negative (it cannot be converted to a u64).
     /// Fails with `VerifyFailed` if the block height < `height`.
+    ///
+    /// Note that this differs from `CompareHeight`, which pops a signed (i64) value.
     CompareHeightVerify,
-    /// Pops the top of the stack as `height`, then pushes the value of (the current height - `height`) to the stack.
-    /// In other words, this opcode replaces the top of the stack with the difference between `height` and the
-    /// current height. Fails with `InvalidInput` if there is not a valid integer value on top of the stack. Fails
-    /// with `StackUnderflow` if the stack is empty.
+    /// Pops the top of the stack as a signed (i64) `height`, then pushes the value of (the current height - `height`)
+    /// to the stack. In other words, this opcode replaces the top of the stack with the difference between `height`
+    /// and the current height; `height` may be negative. Fails with `StackUnderflow` if the stack is empty. Fails with
+    /// `InvalidInput` if the top of the stack is not a `Number`. Fails with `ValueExceedsBounds` if the current block
+    /// height does not fit in an i64, and with `CompareFailed` if the subtraction overflows.
     CompareHeight,
 
     // Stack Manipulation
@@ -174,8 +185,8 @@ pub enum Opcode {
     /// Duplicates the top stack item. Fails with `StackUnderflow` if the stack is empty. Fails with `StackOverflow` if
     /// the stack would exceed the max stack height.
     Dup,
-    /// Reverse rotation. The top stack item moves into 3rd place, e.g. abc => bca. Fails with `StackUnderflow` if the
-    /// stack has fewer than three items.
+    /// Reverse rotation. The top stack item moves into 3rd place (counting from the top). Written bottom-first with
+    /// `c` on top: `[a, b, c] => [c, a, b]`. Fails with `StackUnderflow` if the stack has fewer than three items.
     RevRot,
 
     // Math Operations
@@ -204,45 +215,59 @@ pub enum Opcode {
     /// (e.g. an integer and public key).
     Sub,
     /// Pops the top two items from the stack, and pushes 1 to the stack if the inputs are exactly equal, 0 otherwise.
-    /// A 0 is also pushed if the values cannot be compared (e.g. integer and pubkey). Fails with `StackUnderflow` if
-    /// the stack has fewer than two items.
+    /// Only two items of the same type can be compared: `Number`, `Hash`, `PublicKey`, `Commitment` or `Signature`.
+    /// Fails with `StackUnderflow` if the stack has fewer than two items. Fails with `IncompatibleTypes` (aborting
+    /// the script, rather than pushing 0) if the two items are of different types (e.g. an integer and a public
+    /// key), or if either item is a `Scalar` (scalars are not comparable, not even with another scalar).
     Equal,
-    /// Pops the top two items from the stack, and compares their values. Fails with `StackUnderflow` if the stack has
-    /// fewer than two items. Fails with `VerifyFailed` if the top two stack elements are not equal.
+    /// Pops the top two items from the stack, and compares their values using the same rules as `Equal`. Fails with
+    /// `StackUnderflow` if the stack has fewer than two items. Fails with `IncompatibleTypes` if the items cannot be
+    /// compared (see `Equal`). Fails with `VerifyFailed` if the top two stack elements are not equal.
     EqualVerify,
 
     // Boolean Logic
     /// Pops `n` + 1 items from the stack (with u8 as `n`). If the last item matches at least one of the first `n`
     /// items, push 1 onto the stack, otherwise push 0 onto the stack. Fails with `StackUnderflow` if the stack has
-    /// fewer than `n` + 1 items. Fails with `InvalidInput` if u8 is not a valid 8-bit unsigned integer.
+    /// fewer than `n` + 1 items. Fails with `InvalidInput` if the `n` + 1 items are not all of the same type.
     Or(u8),
     /// Pops `n` + 1 items from the stack (with u8 as `n`). If the last item matches at least one of the first n items,
-    /// continue. Fails with `StackUnderflow` if the stack has fewer than `n` + 1 items. Fails with `VerifyFailed`
-    /// the last item does not match at least one of the first `n` items. Fails with `InvalidInput` if u8 is not a
-    /// valid 8-bit unsigned integer.
+    /// continue. Fails with `StackUnderflow` if the stack has fewer than `n` + 1 items. Fails with `InvalidInput` if
+    /// the `n` + 1 items are not all of the same type. Fails with `VerifyFailed` if the last item does not match at
+    /// least one of the first `n` items.
     OrVerify(u8),
 
     // Cryptographic Operations
-    /// Pops the top element, hash it with the Blake2b<U32> hash function and push the result to the stack. Fails with
-    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
-    /// value.
+    //
+    // The hash opcodes below hash the raw, untagged 32-byte payload of the popped item: no type tag or domain
+    // separator is included. A `Hash`, a `PublicKey` and a `Commitment` holding the same 32 bytes therefore produce
+    // the same digest. `Number`, `Scalar` and `Signature` items cannot be hashed.
+    /// Pops the top element (a `Hash`, `PublicKey` or `Commitment`), hashes its raw 32 bytes with the Blake2b<U32>
+    /// hash function and pushes the result to the stack as a `Hash`. Fails with `StackUnderflow` if the stack is
+    /// empty. Fails with `IncompatibleTypes` if the item is a `Number`, `Scalar` or `Signature`.
     HashBlake256,
-    /// Pops the top element, hash it with the SHA256 hash function and push the result to the stack. Fails with
-    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
-    /// value.
+    /// Pops the top element (a `Hash`, `PublicKey` or `Commitment`), hashes its raw 32 bytes with the SHA256 hash
+    /// function and pushes the result to the stack as a `Hash`. Fails with `StackUnderflow` if the stack is empty.
+    /// Fails with `IncompatibleTypes` if the item is a `Number`, `Scalar` or `Signature`.
     HashSha256,
-    /// Pops the top element, hash it with the SHA-3 hash function and push the result to the stack. Fails with
-    /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
-    /// value.
+    /// Pops the top element (a `Hash`, `PublicKey` or `Commitment`), hashes its raw 32 bytes with the SHA-3 hash
+    /// function and pushes the result to the stack as a `Hash`. Fails with `StackUnderflow` if the stack is empty.
+    /// Fails with `IncompatibleTypes` if the item is a `Number`, `Scalar` or `Signature`.
     HashSha3,
     /// Pops the public key and then the signature from the stack. If signature validation using the 32-byte message
-    /// and public key succeeds , push 1 to the stack, otherwise push 0. Fails with `IncompatibleTypes` if Message
-    /// is not a valid 32-byte sequence. Fails with `StackUnderflow` if the stack has fewer than 2 items. Fails
-    /// with `InvalidInput` if the top stack element is not a PublicKey. Fails with `InvalidInput` if the second
-    /// stack element is not a Signature.
+    /// and public key succeeds, push 1 to the stack, otherwise push 0. Fails with `StackUnderflow` if the stack has
+    /// fewer than 2 items. Fails with `IncompatibleTypes` if the top stack element is not a `PublicKey` or the second
+    /// stack element is not a `Signature`. Fails with `InvalidInput` if the public key cannot be decompressed.
+    ///
+    /// # Security
+    ///
+    /// The message is a constant embedded in the script; it is not derived from the spending transaction. A valid
+    /// signature is therefore replayable: it satisfies this opcode in any script, on any output, that uses the same
+    /// (public key, message) pair. The only binding between a script execution and a particular spend is the
+    /// input's script signature, which is checked outside the script engine. To avoid cross-output replay, use a
+    /// message that is unique to the output, such as the output commitment (as the pre-mine scripts do).
     CheckSig(Box<Message>),
     /// Identical to CheckSig, except that nothing is pushed to the stack if the signature is valid, and the operation
-    /// fails with `VerifyFailed` if the signature is invalid.
+    /// fails with `VerifyFailed` if the signature is invalid. The replay caveat on `CheckSig` applies.
     CheckSigVerify(Box<Message>),
     /// Pops exactly `m` signatures from the stack. The multiple signature validation will not succeed if the `m`
     /// signatures are not unique or if Vec<RistrettoPublicKey> contains a duplicate public key. Each signature is
@@ -256,6 +281,15 @@ pub enum Opcode {
     /// Fails with `StackUnderflow` if the stack has fewer than m items.
     /// Fails with `IncompatibleTypes` if any of the m signatures from the stack is not a valid signature.
     /// Fails with `InvalidInput` if each of the top m elements is not a Signature.
+    ///
+    /// [TariScript::new](crate::TariScript::new) rejects a `CheckMultiSig*` opcode whose `n` differs from the number
+    /// of public keys, since such an opcode cannot be serialised faithfully.
+    ///
+    /// # Security
+    ///
+    /// As with `CheckSig`, the message is a script constant, so the signatures are replayable across every output
+    /// that shares the same (public keys, message). Binding to a particular spend comes only from the input's script
+    /// signature. Prefer a message unique to the output, such as the output commitment.
     CheckMultiSig(u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>),
     /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the multiple signature validation is
     /// either valid or invalid. Fails with `VerifyFailed` if any signature is invalid.
@@ -328,11 +362,20 @@ impl Opcode {
         }
     }
 
-    pub fn parse(bytes: &[u8]) -> Result<Vec<Opcode>, ScriptError> {
+    /// Parse a byte slice into a list of opcodes. Parsing stops with an error as soon as more than `max_opcodes`
+    /// opcodes would be read, so that an oversized script is rejected without materialising all of its opcodes.
+    pub fn parse(bytes: &[u8], max_opcodes: usize) -> Result<Vec<Opcode>, ScriptError> {
         let mut script = Vec::new();
         let mut bytes_copy = bytes;
 
         while !bytes_copy.is_empty() {
+            if script.len() >= max_opcodes {
+                return Err(MaxSizeVecError::MaxSizeVecLengthError {
+                    expected: max_opcodes,
+                    actual: script.len().saturating_add(1),
+                }
+                .into());
+            }
             let (opcode, bytes_left) = Opcode::read_next(bytes_copy)?;
             script.push(opcode);
             bytes_copy = bytes_left;
@@ -351,17 +394,11 @@ impl Opcode {
         match *code {
             OP_CHECK_HEIGHT_VERIFY => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeightVerify(height),
-                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
-                ))
+                Ok((CheckHeightVerify(height), bytes_after_varint(bytes, size)?))
             },
             OP_CHECK_HEIGHT => {
                 let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((
-                    CheckHeight(height),
-                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
-                ))
+                Ok((CheckHeight(height), bytes_after_varint(bytes, size)?))
             },
             OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, scrubbed_bytes)),
             OP_COMPARE_HEIGHT => Ok((CompareHeight, scrubbed_bytes)),
@@ -369,12 +406,12 @@ impl Opcode {
             OP_PUSH_ZERO => Ok((PushZero, scrubbed_bytes)),
             OP_PUSH_ONE => Ok((PushOne, scrubbed_bytes)),
             OP_PUSH_HASH => {
-                let hash = slice_to_boxed_hash(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                let hash = slice_to_boxed_hash(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
                 Ok((PushHash(hash), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_PUSH_INT => {
                 let (n, size) = i64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
-                Ok((PushInt(n), bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?))
+                Ok((PushInt(n), bytes_after_varint(bytes, size)?))
             },
             OP_PUSH_PUBKEY => {
                 let p = CompressedKey::from_canonical_bytes(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
@@ -406,11 +443,11 @@ impl Opcode {
             OP_HASH_SHA256 => Ok((HashSha256, scrubbed_bytes)),
             OP_HASH_SHA3 => Ok((HashSha3, scrubbed_bytes)),
             OP_CHECK_SIG => {
-                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
                 Ok((CheckSig(msg), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_CHECK_SIG_VERIFY => {
-                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
                 Ok((CheckSigVerify(msg), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_CHECK_MULTI_SIG => {
@@ -450,10 +487,13 @@ impl Opcode {
         let m = bytes.get(1).ok_or(ScriptError::InvalidData)?;
         let n = bytes.get(2).ok_or(ScriptError::InvalidData)?;
         let num = *n as usize;
-        let len = 3 + num * PUBLIC_KEY_LENGTH;
-        let end = len + MESSAGE_LENGTH;
+        let len = num
+            .checked_mul(PUBLIC_KEY_LENGTH)
+            .and_then(|v| v.checked_add(3))
+            .ok_or(ScriptError::InvalidData)?;
+        let end = len.checked_add(MESSAGE_LENGTH).ok_or(ScriptError::InvalidData)?;
         let keys = slice_to_vec_pubkeys(bytes.get(3..len).ok_or(ScriptError::InvalidData)?, num)?;
-        let msg = slice_to_boxed_message(bytes.get(len..end).ok_or(ScriptError::InvalidData)?);
+        let msg = slice_to_boxed_message(bytes.get(len..end).ok_or(ScriptError::InvalidData)?)?;
 
         Ok((*m, *n, keys, msg, end))
     }
@@ -633,6 +673,16 @@ impl fmt::Display for Opcode {
     }
 }
 
+/// The script opcode version, used by consensus to restrict which opcodes may appear in output scripts.
+///
+/// Note on how this gate is (and is not) applied:
+/// * The parser ([Opcode::parse] / `Opcode::read_next`) rejects any byte it does not recognise with `InvalidOpcode`
+///   *before* the consensus opcode-version range is ever consulted. An opcode that the parser does not know about can
+///   therefore never be admitted by widening the version range alone.
+/// * The consensus version range is only applied to output scripts, not to input scripts.
+///
+/// Adding a new opcode therefore requires changing `read_next` first, and then applying the version range to input
+/// scripts as well, so that a node cannot be made to execute an opcode that is newer than the consensus rules allow.
 #[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum OpcodeVersion {
@@ -641,28 +691,52 @@ pub enum OpcodeVersion {
 
 #[cfg(test)]
 mod test {
-    use crate::op_codes::*;
+    #![allow(clippy::indexing_slicing)]
+    use crate::{op_codes::*, script::MAX_SCRIPT_OPCODES};
 
     #[test]
     fn empty_script() {
-        assert_eq!(Opcode::parse(&[]).unwrap(), Vec::new())
+        assert_eq!(Opcode::parse(&[], MAX_SCRIPT_OPCODES).unwrap(), Vec::new())
     }
 
     #[test]
     fn parse() {
         let script = [0xFF, 0x71, 0x00];
-        let err = Opcode::parse(&script).unwrap_err();
+        let err = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidOpcode));
 
         let script = [0x60u8, 0x71];
-        let opcodes = Opcode::parse(&script).unwrap();
+        let opcodes = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap();
         let code = opcodes.first().unwrap();
         assert_eq!(code, &Opcode::Return);
         let code = opcodes.get(1).unwrap();
         assert_eq!(code, &Opcode::Dup);
 
-        let err = Opcode::parse(&[0x7a]).unwrap_err();
+        let err = Opcode::parse(&[0x7a], MAX_SCRIPT_OPCODES).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidData));
+    }
+
+    #[test]
+    fn parse_stops_at_max_opcodes() {
+        // Exactly the maximum number of opcodes parses
+        let script = vec![OP_NOP; MAX_SCRIPT_OPCODES];
+        assert_eq!(
+            Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap().len(),
+            MAX_SCRIPT_OPCODES
+        );
+
+        // One more is rejected as soon as it would be pushed, before any of the following bytes are read (the trailing
+        // invalid opcode would otherwise have produced `InvalidOpcode`)
+        let mut script = vec![OP_NOP; MAX_SCRIPT_OPCODES + 1];
+        script.push(0xFF);
+        let err = Opcode::parse(&script, MAX_SCRIPT_OPCODES).unwrap_err();
+        assert_eq!(
+            err,
+            ScriptError::MaxSizeVecError(MaxSizeVecError::MaxSizeVecLengthError {
+                expected: MAX_SCRIPT_OPCODES,
+                actual: MAX_SCRIPT_OPCODES + 1,
+            })
+        );
     }
 
     #[test]
@@ -1018,5 +1092,42 @@ mod test {
         for p in keys {
             assert_eq!(key, p);
         }
+    }
+
+    #[test]
+    fn slice_helpers_reject_wrong_lengths() {
+        let bytes = [7u8; 33];
+        assert_eq!(slice_to_hash(&bytes[..32]), Ok([7u8; 32]));
+        assert_eq!(slice_to_boxed_hash(&bytes[..32]), Ok(Box::new([7u8; 32])));
+        assert_eq!(slice_to_message(&bytes[..32]), Ok([7u8; 32]));
+        assert_eq!(slice_to_boxed_message(&bytes[..32]), Ok(Box::new([7u8; 32])));
+        for len in [0, 1, 31, 33] {
+            assert_eq!(slice_to_hash(&bytes[..len]), Err(ScriptError::InvalidData));
+            assert_eq!(slice_to_boxed_hash(&bytes[..len]), Err(ScriptError::InvalidData));
+            assert_eq!(slice_to_message(&bytes[..len]), Err(ScriptError::InvalidData));
+            assert_eq!(slice_to_boxed_message(&bytes[..len]), Err(ScriptError::InvalidData));
+        }
+    }
+
+    /// Pins the current (lenient) varint decoding of `integer-encoding` 3.0.4: a non-minimal encoding of zero is
+    /// accepted, and re-serialised minimally. If a dependency bump makes the decoder strict, this test must fail,
+    /// because it would change which scripts are valid (a consensus change).
+    #[test]
+    fn non_minimal_varint_is_accepted_pinned() {
+        let opcodes = Opcode::parse(&[0x67, 0x80, 0x00], MAX_SCRIPT_OPCODES).unwrap();
+        assert_eq!(opcodes, vec![Opcode::CheckHeight(0)]);
+        let mut bytes = Vec::new();
+        opcodes[0].to_bytes(&mut bytes);
+        assert_eq!(bytes, vec![0x67, 0x00]);
+
+        // The same holds for the other varint-carrying opcodes
+        assert_eq!(
+            Opcode::parse(&[0x66, 0x81, 0x80, 0x00], MAX_SCRIPT_OPCODES).unwrap(),
+            vec![Opcode::CheckHeightVerify(1)]
+        );
+        // PushInt is zig-zag encoded: 0x02 is 1
+        assert_eq!(Opcode::parse(&[0x7d, 0x82, 0x00], MAX_SCRIPT_OPCODES).unwrap(), vec![
+            Opcode::PushInt(1)
+        ]);
     }
 }

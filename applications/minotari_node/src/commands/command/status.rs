@@ -89,7 +89,11 @@ impl CommandContext {
                     if mempool_stats.unconfirmed_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.unconfirmed_weight / constants.max_block_transaction_weight()
+                        mempool_stats
+                            .unconfirmed_weight
+                            .checked_div(constants.max_block_transaction_weight())
+                            .unwrap_or(0)
+                            .saturating_add(1)
                     },
                 ),
             );
@@ -100,9 +104,9 @@ impl CommandContext {
         let conns = self.comms.connectivity().get_active_connections().await?;
         let (num_nodes, num_clients) = conns.iter().fold((0usize, 0usize), |(nodes, clients), conn| {
             if conn.peer_features().is_node() {
-                (nodes + 1, clients)
+                (nodes.saturating_add(1), clients)
             } else {
-                (nodes, clients + 1)
+                (nodes, clients.saturating_add(1))
             }
         });
         status_line.add_field("Connections", format!("{num_nodes}|{num_clients}"));

@@ -81,7 +81,10 @@ impl HashRateMovingAverage {
         } else {
             u128::from(difficulty.as_u64()).saturating_mul(additional_multiplier)
         };
-        let current_hash_rate = u64::try_from(nominator / u128::from(target_time)).unwrap_or(u64::MAX);
+        let current_hash_rate = nominator
+            .checked_div(u128::from(target_time))
+            .and_then(|v| u64::try_from(v).ok())
+            .unwrap_or(u64::MAX);
         self.hash_rates.push_front(current_hash_rate);
 
         // after adding the hash rate we need to recalculate the average
@@ -101,12 +104,13 @@ impl HashRateMovingAverage {
 
         let sum: u64 = self.hash_rates.iter().sum();
         let count = self.hash_rates.len() as u64;
-        sum / count
+        // The `is_empty` guard above proves the count is non-zero.
+        sum.checked_div(count).unwrap_or(0)
     }
 
     pub fn average(&self) -> u64 {
         if self.use_scaling {
-            self.average / NANOS_PER_UNIT
+            self.average.checked_div(NANOS_PER_UNIT).unwrap_or(0)
         } else {
             self.average
         }

@@ -85,7 +85,9 @@ pub enum DbKey {
     EncryptedMainKey,    // the database encryption key, itself encrypted with the secondary key
     SecondaryKeySalt,    // the salt used (with the user's passphrase) to derive the secondary derivation key
     SecondaryKeyVersion, // the parameter version for the secondary derivation key
-    SecondaryKeyHash,    // a hash commitment to the secondary derivation key
+    // Legacy: a commitment to the secondary derivation key, which was byte-for-byte the secondary key itself. Never
+    // written or trusted any more; retained only so that it can be cleared from pre-existing wallets on unlock.
+    SecondaryKeyHash,
     WalletBirthday,
     LastAccessedNetwork,
     LastAccessedVersion,
@@ -374,7 +376,9 @@ where T: WalletBackend + 'static
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {k:?}")),
+            // The master seed is the wallet's root secret; it must never reach a log line, so nothing about it other
+            // than its presence is rendered here.
+            DbValue::MasterSeed(_) => f.write_str("MasterSeed"),
             DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {v:?}")),
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
@@ -388,7 +392,9 @@ impl Display for DbValue {
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
             DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {network}")),
             DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {version}")),
-            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {wallet_type:?}")),
+            // Use `Display`, not `Debug`: a wallet type can carry a `CipherSeed`, and only `Display` is guaranteed to
+            // render just the public key material.
+            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {wallet_type}")),
         }
     }
 }

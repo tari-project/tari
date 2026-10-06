@@ -64,7 +64,7 @@ impl PeerConnectionStats {
     pub fn set_connection_failed(&mut self) {
         self.last_connection_attempt = LastConnectionAttempt::Failed {
             failed_at: Instant::now(),
-            num_attempts: self.failed_attempts() + 1,
+            num_attempts: self.failed_attempts().saturating_add(1),
         };
         // Use default from ConnectivityConfig to ensure centralization
         use super::config::ConnectivityConfig;
@@ -77,7 +77,7 @@ impl PeerConnectionStats {
     pub fn set_connection_failed_with_threshold(&mut self, circuit_breaker_threshold: usize) {
         self.last_connection_attempt = LastConnectionAttempt::Failed {
             failed_at: Instant::now(),
-            num_attempts: self.failed_attempts() + 1,
+            num_attempts: self.failed_attempts().saturating_add(1),
         };
         self.health_metrics.record_failure(circuit_breaker_threshold);
     }

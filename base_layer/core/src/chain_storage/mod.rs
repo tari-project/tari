@@ -43,11 +43,16 @@ pub use blockchain_database::{
     BlockchainDatabaseConfig,
     MmrRoots,
     Validators,
+    adjusted_target_difficulties_in_range,
+    body_matches_header,
     calculate_mmr_roots,
     calculate_validator_node_mr,
     fetch_header,
     fetch_headers,
+    fetch_target_difficulties_for_next_block,
     fetch_target_difficulty_for_next_block,
+    inputs_and_outputs_match_header,
+    reorg_reintroduces_pre_ghsa_blocks,
 };
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
@@ -99,10 +104,6 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, HashOutput},
 };
-mod template_registation;
-pub use template_registation::TemplateRegistrationEntry;
-mod kernel_merkle_proof;
-pub use kernel_merkle_proof::*;
 mod smt_hasher;
 
 pub use smt_hasher::SmtHasher;

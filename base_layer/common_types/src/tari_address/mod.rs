@@ -43,7 +43,10 @@ use thiserror::Error;
 
 use crate::{
     emoji::EMOJI,
-    tari_address::{dual_address::DualAddress, single_address::SingleAddress},
+    tari_address::{
+        dual_address::{DualAddress, LegacyDualAddress},
+        single_address::{LegacySingleAddress, SingleAddress},
+    },
     types::CompressedPublicKey,
 };
 
@@ -53,7 +56,13 @@ const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 443; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
-pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
+/// The maximum size of the payment id (memo) carried by an address, and of the payment id part of an output's
+/// encrypted data.
+///
+/// The bound is applied at decode time (for example to `DualAddress`), so changing it changes which addresses and
+/// payment ids can be decoded at all. It is not the same as (and must not be confused with) the size of the
+/// encrypted data of an output, which adds a fixed-size nonce, tag, value and mask to it.
+pub const MAX_PAYMENT_ID_SIZE: usize = 256;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
@@ -197,53 +206,10 @@ impl TariAddress {
         )?)))
     }
 
-    pub fn combine_addresses(one: &TariAddress, two: &TariAddress) -> Result<TariAddress, TariAddressError> {
-        if one.comms_public_key() != two.comms_public_key() {
-            return Err(TariAddressError::CreationError("Public keys do not match".to_string()));
-        }
-        if one.network() != two.network() {
-            return Err(TariAddressError::CreationError("Networks do not match".to_string()));
-        }
-        if let TariAddress::Dual(one) = one &&
-            let TariAddress::Dual(two) = two &&
-            one.public_view_key() != two.public_view_key()
-        {
-            return Err(TariAddressError::CreationError("View keys do not match".to_string()));
-        }
-
-        match (one, two) {
-            (TariAddress::Dual(one), _) => TariAddress::new_dual_address(
-                one.public_view_key().clone(),
-                one.public_spend_key().clone(),
-                one.network(),
-                one.features().combine_features(two.features()),
-                None,
-            ),
-            (_, TariAddress::Dual(two)) => TariAddress::new_dual_address(
-                two.public_view_key().clone(),
-                one.public_spend_key().clone(),
-                one.network(),
-                one.features().combine_features(two.features()),
-                None,
-            ),
-            (_, _) => TariAddress::new_single_address(
-                one.public_spend_key().clone(),
-                one.network(),
-                one.features().combine_features(two.features()),
-            ),
-        }
-    }
-
-    /// Gets the bytes size of the Tari Address
+    /// Gets the bytes size of the Tari Address, which is always the length of [`TariAddress::to_vec`]
     pub fn get_size(&self) -> usize {
         match self {
-            TariAddress::Dual(v) => {
-                if v.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                    v.to_vec().len()
-                } else {
-                    TARI_ADDRESS_INTERNAL_DUAL_SIZE
-                }
-            },
+            TariAddress::Dual(v) => v.to_vec().len(),
             TariAddress::Single(_) => TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
         }
     }
@@ -343,7 +309,7 @@ impl TariAddress {
     where Self: Sized {
         if !(bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
             (bytes.len() >= TARI_ADDRESS_INTERNAL_DUAL_SIZE &&
-                bytes.len() <= (TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)))
+                bytes.len() <= (TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_PAYMENT_ID_SIZE)))
         {
             return Err(TariAddressError::InvalidSize);
         }
@@ -351,6 +317,23 @@ impl TariAddress {
             Ok(TariAddress::Single(Box::new(SingleAddress::from_bytes(bytes)?)))
         } else {
             Ok(TariAddress::Dual(Box::new(DualAddress::from_bytes(bytes)?)))
+        }
+    }
+
+    /// Construct Tari Address from bytes, accepting a `PAYMENT_ID` feature flag that does not match the payment id.
+    /// This is only meant for loading already stored addresses (for example the wallet database), so that they keep
+    /// loading and round-trip byte-identically; use [`TariAddress::from_bytes`] for everything else.
+    pub fn from_bytes_lenient(bytes: &[u8]) -> Result<TariAddress, TariAddressError> {
+        if !(bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
+            (bytes.len() >= TARI_ADDRESS_INTERNAL_DUAL_SIZE &&
+                bytes.len() <= (TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_PAYMENT_ID_SIZE)))
+        {
+            return Err(TariAddressError::InvalidSize);
+        }
+        if bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
+            Ok(TariAddress::Single(Box::new(SingleAddress::from_bytes_lenient(bytes)?)))
+        } else {
+            Ok(TariAddress::Dual(Box::new(DualAddress::from_bytes_lenient(bytes)?)))
         }
     }
 
@@ -364,7 +347,7 @@ impl TariAddress {
 
     /// Construct Tari Address from hex
     pub fn from_base58(bas58_str: &str) -> Result<TariAddress, TariAddressError> {
-        if bas58_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE {
+        if bas58_str.len() < INTERNAL_SINGLE_MIN_BASE58_SIZE || bas58_str.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
 
@@ -464,17 +447,20 @@ impl<'de> Visitor<'de> for TariAddressVisitorLegacy {
         let entry = map.next_entry::<String, serde_json::Value>()?;
         let (variant, value) = entry.ok_or_else(|| M::Error::custom("expected a single key for enum variant"))?;
 
-        match variant.as_str() {
+        // The legacy map only carries the raw fields. They are encoded to bytes and decoded with `from_bytes`, so
+        // this path accepts exactly the addresses every other decoder accepts.
+        let bytes = match variant.as_str() {
             "Dual" => {
-                let inner: DualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
-                Ok(TariAddress::Dual(Box::new(inner)))
+                let fields: LegacyDualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                fields.into_unchecked_bytes()
             },
             "Single" => {
-                let inner: SingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
-                Ok(TariAddress::Single(Box::new(inner)))
+                let fields: LegacySingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                fields.into_unchecked_bytes()
             },
-            other => Err(M::Error::unknown_variant(other, &["Dual", "Single"])),
-        }
+            other => return Err(M::Error::unknown_variant(other, &["Dual", "Single"])),
+        };
+        TariAddress::from_bytes(&bytes).map_err(M::Error::custom)
     }
 }
 
@@ -1253,5 +1239,239 @@ mod test {
             String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
             "Hello"
         );
+    }
+
+    /// Sets the feature byte of an encoded address and fixes up the (unkeyed) checksum
+    fn with_feature_byte(mut bytes: Vec<u8>, features: u8) -> Vec<u8> {
+        let last = bytes.len().saturating_sub(1);
+        bytes[1] = features;
+        bytes[last] = compute_checksum(&bytes[..last]);
+        bytes
+    }
+
+    fn random_dual_address(payment_id: Option<Vec<u8>>) -> TariAddress {
+        let mut rng = rand::rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::MainNet,
+            TariAddressFeatures::default(),
+            payment_id,
+        )
+        .unwrap()
+    }
+
+    /// A dual address with a payment id but without the `PAYMENT_ID` flag
+    fn forged_dual_address_bytes(payment_id_len: usize) -> Vec<u8> {
+        let address = random_dual_address(Some(vec![0xaa; payment_id_len]));
+        with_feature_byte(address.to_vec(), TariAddressFeatures::default().as_u8())
+    }
+
+    #[test]
+    fn strict_decoders_reject_payment_id_without_flag() {
+        let bytes = forged_dual_address_bytes(10);
+
+        assert_eq!(TariAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
+        assert_eq!(DualAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
+        assert_eq!(
+            TariAddress::from_hex(&bytes.to_hex()),
+            Err(TariAddressError::InvalidFeatures)
+        );
+        let lenient = TariAddress::from_bytes_lenient(&bytes).unwrap();
+        assert_eq!(
+            TariAddress::from_base58(&lenient.to_base58()),
+            Err(TariAddressError::InvalidFeatures)
+        );
+        assert_eq!(
+            TariAddress::from_emoji_string(&lenient.to_emoji_string()),
+            Err(TariAddressError::InvalidFeatures)
+        );
+        assert_eq!(
+            TariAddress::from_str(&lenient.to_base58()),
+            Err(TariAddressError::InvalidAddressString)
+        );
+        assert_eq!(
+            TariAddress::from_str(&lenient.to_hex()),
+            Err(TariAddressError::InvalidAddressString)
+        );
+
+        // borsh
+        let encoded = borsh::to_vec(&bytes).unwrap();
+        let err = borsh::from_slice::<TariAddress>(&encoded).unwrap_err();
+        assert!(err.to_string().contains("Invalid features"), "{}", err);
+
+        // serde bytes (bincode) and serde human readable (base58)
+        let encoded = bincode::serialize(&lenient).unwrap();
+        let err = bincode::deserialize::<TariAddress>(&encoded).unwrap_err();
+        assert!(err.to_string().contains("Invalid features"), "{}", err);
+        let json = serde_json::to_string(&lenient).unwrap();
+        assert!(serde_json::from_str::<TariAddress>(&json).is_err());
+    }
+
+    #[test]
+    fn lenient_decoder_accepts_and_round_trips_inconsistent_addresses() {
+        let bytes = forged_dual_address_bytes(10);
+        let address = TariAddress::from_bytes_lenient(&bytes).unwrap();
+        assert!(!address.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(address.get_memo_field_payment_id_bytes(), vec![0xaa; 10]);
+        assert_eq!(address.to_vec(), bytes);
+        assert_eq!(address.get_size(), bytes.len());
+
+        // Well formed addresses decode the same either way
+        let address = random_dual_address(Some(vec![1, 2, 3]));
+        assert_eq!(TariAddress::from_bytes_lenient(&address.to_vec()).unwrap(), address);
+        assert_eq!(TariAddress::from_bytes(&address.to_vec()).unwrap(), address);
+    }
+
+    #[test]
+    fn get_size_matches_encoded_length() {
+        for len in 1..=MAX_PAYMENT_ID_SIZE {
+            let bytes = forged_dual_address_bytes(len);
+            let address = TariAddress::from_bytes_lenient(&bytes).unwrap();
+            assert_eq!(address.get_size(), address.to_vec().len());
+            assert_eq!(address.get_size(), TARI_ADDRESS_INTERNAL_DUAL_SIZE + len);
+
+            let address = random_dual_address(Some(vec![0xaa; len]));
+            assert_eq!(address.get_size(), address.to_vec().len());
+        }
+        let address = random_dual_address(None);
+        assert_eq!(address.get_size(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
+        assert_eq!(address.get_size(), address.to_vec().len());
+    }
+
+    #[test]
+    fn single_address_with_payment_id_flag() {
+        let mut rng = rand::rng();
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let address = TariAddress::new_single_address_with_interactive_only(spend_key, Network::MainNet).unwrap();
+        let features = address.features().as_u8() | TariAddressFeatures::PAYMENT_ID.as_u8();
+        let bytes = with_feature_byte(address.to_vec(), features);
+
+        assert_eq!(TariAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
+        let lenient = TariAddress::from_bytes_lenient(&bytes).unwrap();
+        assert!(lenient.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(lenient.to_vec(), bytes);
+        assert_eq!(lenient.get_size(), bytes.len());
+    }
+
+    #[test]
+    fn empty_payment_id_is_no_payment_id() {
+        let address = random_dual_address(Some(vec![]));
+        assert!(!address.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(address.to_vec().len(), TARI_ADDRESS_INTERNAL_DUAL_SIZE);
+
+        let with_id = random_dual_address(Some(vec![1, 2, 3]));
+        assert!(with_id.features().contains(TariAddressFeatures::PAYMENT_ID));
+        let cleared = with_id.with_memo_field_payment_id(vec![]).unwrap();
+        assert!(!cleared.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert!(cleared.get_memo_field_payment_id_bytes().is_empty());
+
+        // An address with the flag set and an empty payment id still decodes
+        let features = TariAddressFeatures::default() | TariAddressFeatures::PAYMENT_ID;
+        let bytes = with_feature_byte(random_dual_address(None).to_vec(), features.as_u8());
+        let address = TariAddress::from_bytes(&bytes).unwrap();
+        assert!(address.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(address.to_vec(), bytes);
+        assert_eq!(TariAddress::from_base58(&address.to_base58()).unwrap(), address);
+    }
+
+    #[test]
+    fn legacy_json_goes_through_byte_checks() {
+        let legacy = |features: u8, payment_id: &str| {
+            format!(
+                r#"{{"Dual": {{
+                    "network": "mainnet",
+                    "features": {features},
+                    "public_view_key": "3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924",
+                    "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61",
+                    "payment_id_user_data": {{ "inner": [{payment_id}] }}
+                }}}}"#
+            )
+        };
+        // Well formed, with and without a payment id
+        let address = serde_json::from_str::<TariAddress>(&legacy(1, "")).unwrap();
+        assert_eq!(address.features(), TariAddressFeatures::ONE_SIDED);
+        let address = serde_json::from_str::<TariAddress>(&legacy(5, "1,2,3")).unwrap();
+        assert_eq!(address.get_memo_field_payment_id_bytes(), vec![1, 2, 3]);
+
+        // A payment id without the flag
+        let err = serde_json::from_str::<TariAddress>(&legacy(1, "1,2,3")).unwrap_err();
+        assert!(err.to_string().contains("Invalid features"), "{}", err);
+        // Unknown feature bits
+        let err = serde_json::from_str::<TariAddress>(&legacy(0x41, "")).unwrap_err();
+        assert!(err.to_string().contains("Invalid features"), "{}", err);
+
+        // A single address with the payment id flag
+        let single = r#"{"Single": {
+            "network": "mainnet",
+            "features": 6,
+            "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61"
+        }}"#;
+        let err = serde_json::from_str::<TariAddress>(single).unwrap_err();
+        assert!(err.to_string().contains("Invalid features"), "{}", err);
+    }
+
+    #[test]
+    fn legacy_map_accepts_exactly_what_from_bytes_accepts() {
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let single = TariAddress::new_single_address_with_interactive_only(spend_key, Network::MainNet).unwrap();
+        let payment_id_flag = TariAddressFeatures::PAYMENT_ID.as_u8();
+        let samples = [
+            random_dual_address(None).to_vec(),
+            random_dual_address(Some(vec![1, 2, 3])).to_vec(),
+            random_dual_address(Some(vec![0xff; MAX_PAYMENT_ID_SIZE])).to_vec(),
+            single.to_vec(),
+            // The flag with an empty payment id is valid
+            with_feature_byte(
+                random_dual_address(None).to_vec(),
+                TariAddressFeatures::default().as_u8() | payment_id_flag,
+            ),
+            // A payment id without the flag, and a single address with the flag, are not
+            forged_dual_address_bytes(10),
+            with_feature_byte(single.to_vec(), single.features().as_u8() | payment_id_flag),
+        ];
+        for bytes in samples {
+            // The lenient decoder accepts all of the samples, so it can produce their legacy map form
+            let fields = match TariAddress::from_bytes_lenient(&bytes).unwrap() {
+                TariAddress::Dual(address) => serde_json::json!({ "Dual": address }),
+                TariAddress::Single(address) => serde_json::json!({ "Single": address }),
+            };
+            let expected = TariAddress::from_bytes(&bytes).ok();
+            let from_map = serde_json::from_value::<TariAddress>(fields.clone()).ok();
+            let from_json_string = serde_json::from_value::<TariAddress>(fields.to_string().into()).ok();
+            let from_borsh = borsh::from_slice::<TariAddress>(&borsh::to_vec(&bytes).unwrap()).ok();
+            assert_eq!(from_map, expected, "{fields}");
+            assert_eq!(from_json_string, expected, "{fields}");
+            assert_eq!(from_borsh, expected, "{fields}");
+            if let Some(address) = expected {
+                assert_eq!(address.to_vec(), bytes);
+            }
+        }
+    }
+
+    #[test]
+    fn single_address_constructor_drops_payment_id_flag() {
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let features = TariAddressFeatures::default() | TariAddressFeatures::PAYMENT_ID;
+        let address = TariAddress::new_single_address(spend_key, Network::MainNet, features).unwrap();
+        assert_eq!(address.features(), TariAddressFeatures::default());
+        assert_eq!(TariAddress::from_bytes(&address.to_vec()).unwrap(), address);
+    }
+
+    #[test]
+    fn from_base58_rejects_overlong_strings() {
+        // The longest dual address, with the largest payment id, still parses
+        let address = random_dual_address(Some(vec![0xff; MAX_PAYMENT_ID_SIZE]));
+        let base58 = address.to_base58();
+        assert!(base58.len() <= INTERNAL_DUAL_BASE58_MAX_SIZE, "{}", base58.len());
+        assert_eq!(TariAddress::from_base58(&base58).unwrap(), address);
+        assert_eq!(TariAddress::from_str(&base58).unwrap(), address);
+
+        let overlong = "1".repeat(INTERNAL_DUAL_BASE58_MAX_SIZE + 1);
+        assert_eq!(TariAddress::from_base58(&overlong), Err(TariAddressError::InvalidSize));
+        let huge = "z".repeat(4_000_000);
+        assert_eq!(TariAddress::from_base58(&huge), Err(TariAddressError::InvalidSize));
     }
 }

@@ -66,6 +66,7 @@ pub struct AutoUpdateConfig {
     )]
     pub name_server: DnsNameServer,
     pub update_uris: StringList,
+    /// Update records must pass DNSSEC validation. Records that cannot be proven authentic are discarded.
     pub use_dnssec: bool,
     pub download_base_url: String,
     pub hashes_url: String,

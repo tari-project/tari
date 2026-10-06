@@ -20,11 +20,10 @@ use ledger_device_sdk::ui::{
     gadgets::{Field, MultiFieldReview, SingleMessage},
 };
 use minotari_ledger_wallet_common::{
+    codec::{Decode, OneSidedMetadataSignatureHead},
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
-    TARI_DUAL_ADDRESS_MAX_SIZE,
-    TARI_DUAL_ADDRESS_MIN_SIZE,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
@@ -47,62 +46,54 @@ use crate::{
         KeyManagerTransactionsHashDomain,
         TransactionHashDomain,
     },
+    wire::{reply_com_and_pub_sig, with_screen},
     AppSW,
     KeyType,
-    RESPONSE_VERSION,
 };
 
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
-    // Validate minimum required data size early
-    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
-    // address_size(2) + min_address(67) + message(32) = 171
-    if data.len() < 171 {
-        return Err(AppSW::WrongApduLength);
-    }
+    // The layout has a variable length address in the middle, so the codec decodes it in stages that interleave with
+    // the checks below exactly as the hand written parser did: the status word a malformed request gets depends on
+    // which check fails first. See `minotari_ledger_wallet_common::codec::metadata`.
+    let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
-    let mut account_bytes = [0u8; 8];
-    account_bytes.clone_from_slice(&data[0..8]);
-    let account = u64::from_le_bytes(account_bytes);
+    let account = head.account;
+    // A `u64` on the wire but a single byte in the hash label: reject rather than truncate.
+    let network = u8::try_from(head.network).map_err(|_| AppSW::WrongApduLength)?;
+    let txo_version = head.txo_version;
+    let sender_offset_key_index = head.sender_offset_key_index;
+    let value_u64 = head.value;
+    let value = Minotari::new(head.value);
 
-    let mut network_bytes = [0u8; 8];
-    network_bytes.clone_from_slice(&data[8..16]);
-    let network = u64::from_le_bytes(network_bytes);
+    let commitment_mask: RistrettoSecretKey =
+        get_key_from_canonical_bytes::<RistrettoSecretKey>(head.commitment_mask)?.into();
 
-    let mut txo_version_bytes = [0u8; 8];
-    txo_version_bytes.clone_from_slice(&data[16..24]);
-    let txo_version = u64::from_le_bytes(txo_version_bytes);
+    let tail = head.receiver_address().map_err(|_| AppSW::WrongApduLength)?;
 
-    let mut sender_offset_key_index_bytes = [0u8; 8];
-    sender_offset_key_index_bytes.clone_from_slice(&data[24..32]);
-    let sender_offset_key_index = u64::from_le_bytes(sender_offset_key_index_bytes);
+    // Everything read from here to the signature is an owned copy, never a borrow of `data`.
+    //
+    // `data` is the SDK's APDU buffer, and the review screen below does not leave it alone. On Stax and Flex,
+    // `NbglReview::show` polls in `ux_sync_wait` -> `nbgl_next_event_ahead` -> `Comm::next_event_ahead` ->
+    // `decode_event`, which copies *any* APDU that arrives while the screen is up into `apdu_buffer`
+    // (`ledger_device_sdk` 1.35.0, `io_legacy.rs`: `self.apdu_buffer[0..272].copy_from_slice(..)`). So a borrow of
+    // `data` read after the review reads whatever the host sent last, not what the user approved: a host could show
+    // the user receiver A, send a second APDU carrying receiver B mid-review, and have the device sign a script
+    // paying B once the user approves A.
+    //
+    // The whole address is copied, rather than only the spend key the signature needs, so that every check still
+    // runs exactly where and in the order it always has - the address checksum before the review, the spend key's
+    // canonical check after it - and a malformed request still gets the same status word from the same check. It is
+    // copied to the heap, not the stack: up to `TARI_DUAL_ADDRESS_MAX_SIZE` (323) bytes is a lot of a Ledger stack,
+    // and this handler already allocates for its review fields. The length was bounded by `receiver_address()` above,
+    // so the copy itself cannot fail on a length.
+    //
+    // `wire::with_screen` below takes `&mut Comm` so that the borrow checker refuses to compile any use of `data`,
+    // `head` or `tail` after the review.
+    let receiver_address_bytes = tail.receiver_address.to_vec();
 
-    let mut value_bytes = [0u8; 8];
-    value_bytes.clone_from_slice(&data[32..40]);
-    let value_u64 = u64::from_le_bytes(value_bytes);
-    let value = Minotari::new(u64::from_le_bytes(value_bytes));
-
-    let commitment_mask: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
-
-    // Parse variable-length address
-    if data.len() < 74 {
-        return Err(AppSW::WrongApduLength);
-    }
-    let address_size_bytes = &data[72..74];
-    let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
-
-    if address_size < TARI_DUAL_ADDRESS_MIN_SIZE || address_size > TARI_DUAL_ADDRESS_MAX_SIZE {
-        return Err(AppSW::WrongApduLength);
-    }
-
-    let address_end = 74 + address_size;
-    if data.len() < address_end {
-        return Err(AppSW::WrongApduLength);
-    }
-    let receiver_address_bytes = &data[74..address_end];
-
-    let receiver_address = match tari_dual_address_display(receiver_address_bytes) {
+    let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
         Ok(address) => address,
         Err(e) => {
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
@@ -120,18 +111,11 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    // Update subsequent data offset calculations
-    let metadata_signature_message_common_start = address_end;
-    let metadata_signature_message_common_end = metadata_signature_message_common_start + 32;
-    if data.len() < metadata_signature_message_common_end {
-        return Err(AppSW::WrongApduLength);
-    }
-    let mut metadata_signature_message_common = [0u8; 32];
-    metadata_signature_message_common
-        .clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
+    // Copied for the same reason as the address: it is hashed into the signed message after the review.
+    let metadata_signature_message_common: [u8; 32] = *tail.message().map_err(|_| AppSW::WrongApduLength)?;
 
     // Extract payment ID if present
-    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(receiver_address_bytes)
+    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
     let mut fields = Vec::new();
@@ -173,7 +157,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             "Reject",
             Some(&CROSSMARK),
         );
-        if !review.show() {
+        if !with_screen(comm, || review.show()) {
             return Err(AppSW::UserCancelled);
         }
     }
@@ -188,7 +172,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             .glyph(&TARI);
 
         //
-        if !review.show(fields_array) {
+        if !with_screen(comm, || review.show(fields_array)) {
             return Err(AppSW::UserCancelled);
         }
     }
@@ -270,15 +254,14 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
-    comm.append(&[RESPONSE_VERSION]); // version
-    comm.append(&metadata_signature.to_vec());
+    reply_com_and_pub_sig(comm, &metadata_signature);
 
     Ok(())
 }
 
 fn finalize_metadata_signature_challenge(
     _version: u64,
-    network: u64,
+    network: u8,
     sender_offset_public_key: &RistrettoPublicKey,
     ephemeral_commitment: &PedersenCommitment,
     ephemeral_pubkey: &RistrettoPublicKey,
@@ -297,7 +280,7 @@ fn finalize_metadata_signature_challenge(
     challenge.into()
 }
 
-fn metadata_signature_message_from_script_and_common(network: u64, script: &Script, common: &[u8; 32]) -> [u8; 32] {
+fn metadata_signature_message_from_script_and_common(network: u8, script: &Script, common: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", network)
         .chain(script)
         .chain(common)

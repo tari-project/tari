@@ -32,9 +32,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use minotari_mcp_common::{get_optional_string_param, json_schema, McpError, McpResult, McpTool, PermissionLevel};
+use minotari_mcp_common::{McpError, McpResult, McpTool, PermissionLevel, get_optional_string_param, json_schema};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::time::sleep;
 use tonic::transport::Channel;
 
@@ -73,25 +73,24 @@ impl WalletStateTool {
         match self.get_wallet_info().await {
             Ok(info) => {
                 // Check if wallet is syncing
-                if let Some(sync_info) = info.get("sync_info") {
-                    if let Some(is_syncing) = sync_info.get("is_syncing").and_then(|v| v.as_bool()) {
-                        if is_syncing {
-                            let current_height = sync_info.get("current_height").and_then(|v| v.as_u64()).unwrap_or(0);
-                            let network_height = sync_info.get("network_height").and_then(|v| v.as_u64()).unwrap_or(0);
+                if let Some(sync_info) = info.get("sync_info") &&
+                    let Some(is_syncing) = sync_info.get("is_syncing").and_then(|v| v.as_bool()) &&
+                    is_syncing
+                {
+                    let current_height = sync_info.get("current_height").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let network_height = sync_info.get("network_height").and_then(|v| v.as_u64()).unwrap_or(0);
 
-                            let progress_percent = if network_height > 0 {
-                                (current_height as f64 / network_height as f64) * 100.0
-                            } else {
-                                0.0
-                            };
+                    let progress_percent = if network_height > 0 {
+                        (current_height as f64 / network_height as f64) * 100.0
+                    } else {
+                        0.0
+                    };
 
-                            return WalletStatus::Syncing {
-                                current_height,
-                                network_height,
-                                progress_percent,
-                            };
-                        }
-                    }
+                    return WalletStatus::Syncing {
+                        current_height,
+                        network_height,
+                        progress_percent,
+                    };
                 }
 
                 // Check if wallet is ready for transactions

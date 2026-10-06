@@ -49,7 +49,12 @@ use crate::{
         hooks::Hooks,
         rpc,
     },
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{
+        BlockchainBackend,
+        ChainStorageError,
+        async_db::AsyncBlockchainDb,
+        reorg_reintroduces_pre_ghsa_blocks,
+    },
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -72,6 +77,7 @@ pub struct HeaderSynchronizer<'a, B> {
     hooks: Hooks,
     local_cached_metadata: &'a ChainMetadata,
     peer_ban_manager: PeerBanManager,
+    consensus_rules: BaseNodeConsensusManager,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -87,13 +93,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         Self {
             config,
-            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
+            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules.clone(), randomx_factory),
             db,
             connectivity,
             sync_peers,
             hooks: Default::default(),
             local_cached_metadata: local_metadata,
             peer_ban_manager,
+            consensus_rules,
         }
     }
 
@@ -163,7 +170,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn synchronize_inner(&mut self) -> Result<(SyncPeer, AttemptSyncResult), BlockHeaderSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
-        let mut latency_increases_counter = 0;
+        let mut latency_increases_counter = 0usize;
         loop {
             match self.try_sync_from_all_peers(max_latency).await {
                 Ok((peer, sync_result)) => break Ok((peer, sync_result)),
@@ -172,8 +179,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     if self.sync_peers.len() < 2 {
                         return Err(err);
                     }
-                    max_latency += self.config.max_latency_increase;
-                    latency_increases_counter += 1;
+                    max_latency = max_latency.saturating_add(self.config.max_latency_increase);
+                    latency_increases_counter = latency_increases_counter.saturating_add(1);
                     if latency_increases_counter > MAX_LATENCY_INCREASES {
                         return Err(err);
                     }
@@ -211,7 +218,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
+                        latency_counter = latency_counter.saturating_add(1);
                     } else {
                         self.remove_sync_peer(&node_id);
                     }
@@ -406,15 +413,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let max_chain_split_iters = max_reorg_depth_allowed.saturating_div(NUM_CHAIN_SPLIT_HEADERS);
 
         let mut offset = 0;
-        let mut iter_count = 0;
+        let mut iter_count = 0usize;
         loop {
-            iter_count += 1;
+            iter_count = iter_count.saturating_add(1);
             if iter_count > max_chain_split_iters {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                    NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -427,7 +434,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Determining if chain splits between {} and {} headers back from the tip (peer: `{}`, {} hashes sent)",
                 offset,
-                offset + NUM_CHAIN_SPLIT_HEADERS,
+                offset.saturating_add(NUM_CHAIN_SPLIT_HEADERS),
                 peer_node_id,
                 block_hashes.len()
             );
@@ -438,7 +445,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                     peer_node_id,
-                    NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                    NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                 );
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
@@ -458,12 +465,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             target: LOG_TARGET,
                             "Peer `{}` did not provide a chain split after {} headers requested. Peer will be banned.",
                             peer_node_id,
-                            NUM_CHAIN_SPLIT_HEADERS * max_chain_split_iters,
+                            NUM_CHAIN_SPLIT_HEADERS.saturating_mul(max_chain_split_iters),
                         );
                         return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
                     }
                     // Chain split not found, let's go further back
-                    offset = NUM_CHAIN_SPLIT_HEADERS * iter_count;
+                    offset = NUM_CHAIN_SPLIT_HEADERS.saturating_mul(iter_count);
                     continue;
                 },
                 Err(err) => {
@@ -554,6 +561,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 chain_split_result.peer_headers.len(),
                 sync_peer
             );
+
+            self.check_deep_reorg_anchor(sync_peer, &best_block_header, chain_split_result.chain_split_hash)
+                .await?;
         }
 
         // If the peer returned no new headers, they may still have more blocks than we have, thus have a higher
@@ -631,6 +641,61 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             HeaderSyncStatus::Lagging(Box::new(chain_split_info)),
             chain_split_result,
         ))
+    }
+
+    /// GHSA-3qmx-q9pv-f3m4 deep reorg anchor, header sync half.
+    ///
+    /// `swap_to_highest_pow_chain` anchors the gossip driven reorg path, but header sync never goes through it:
+    /// `switch_to_pending_chain` rewinds the local chain itself, via `rewind_blockchain`. That is the route a
+    /// genuinely deep fork arrives by, so it has to be anchored here too or the rule is decorative.
+    ///
+    /// This is called right after the chain split is located and before a single header has been validated, so
+    /// the refusal costs nothing and the peer is banned rather than being left to keep feeding us a chain we will
+    /// throw away. `chain_split_hash` is a hash we sent the peer, from our own chain, so its height is ours to
+    /// look up and cannot be asserted by them. The blocks a reorg would add start at `split height + 1`; see
+    /// `reorg_reintroduces_pre_ghsa_blocks` for why the rule is about the added blocks rather than the split
+    /// point, and `GHSA_DEEP_REORG_CONFIRMATION_WINDOW` for why it does not engage until our tip is well past the
+    /// activation height. The ban here is what makes the window load bearing: below it the rule must not fire at
+    /// all, because an honest peer serving an ordinary reorg would be banned for it.
+    async fn check_deep_reorg_anchor(
+        &self,
+        sync_peer: &SyncPeer,
+        best_block_header: &ChainHeader,
+        chain_split_hash: HashOutput,
+    ) -> Result<(), BlockHeaderSyncError> {
+        let split_header = self
+            .db
+            .fetch_header_by_block_hash(chain_split_hash)
+            .await?
+            .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(chain_split_hash.to_hex()))?;
+        let activation_height = self.consensus_rules.derived_monero_coinbase_activation_height();
+        let local_tip_height = best_block_header.height();
+        if !reorg_reintroduces_pre_ghsa_blocks(
+            local_tip_height,
+            split_header.height.saturating_add(1),
+            activation_height,
+        ) {
+            return Ok(());
+        }
+
+        error!(
+            target: LOG_TARGET,
+            "REFUSED header sync from peer `{}` (GHSA-3qmx-q9pv-f3m4): their chain splits from ours at height {}, \
+             below the activation height {} of the advisory's proof of work rules, while our tip is already at {}. \
+             Blocks below that height are still validated with the pre-fork verifiers the advisory describes as \
+             forgeable, so a chain rooted there can be minted at no proof of work cost. Refusing the rewind and \
+             banning the peer. If you believe this is the honest chain, this node's database is on the wrong side \
+             of the fork and has to be resynced from scratch.",
+            sync_peer.node_id(),
+            split_header.height,
+            activation_height,
+            local_tip_height,
+        );
+        Err(BlockHeaderSyncError::ReorgBelowGhsaActivation {
+            split_height: split_header.height,
+            activation_height,
+            local_tip_height,
+        })
     }
 
     async fn rewind_blockchain(&self, split_hash: HashOutput) -> Result<Vec<Arc<ChainBlock>>, BlockHeaderSyncError> {

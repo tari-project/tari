@@ -37,6 +37,7 @@ use crate::helpers::{
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_archival_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_archival_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -108,7 +109,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     // 3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)
     println!("\n3. Alice attempts horizon sync after header sync (to height 5; includes genesys block UTXO spend)\n");
     let output_hash = initial_coinbase.output_hash();
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    assert!(!alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     let commitment = initial_coinbase.commitment().clone();
     assert!(
         alice_node
@@ -135,7 +136,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         alice_node.blockchain_db.get_height().unwrap(),
         alice_node.blockchain_db.fetch_last_header().unwrap().height - pruning_horizon
     );
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     assert!(
         alice_node
             .blockchain_db
@@ -202,7 +203,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
         .collect::<Vec<_>>();
     for output in &spent_coinbases {
         let output_hash = output.output_hash();
-        assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+        assert!(!alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
         let commitment = output.commitment().clone();
         assert!(
             alice_node
@@ -232,7 +233,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
     );
     for output in &spent_coinbases {
         let output_hash = output.output_hash();
-        assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+        assert!(alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
         let commitment = output.commitment().clone();
         assert!(
             alice_node
@@ -286,6 +287,7 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -352,7 +354,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         "\n1. Alice attempts initial horizon sync from Bob (to pruning height 4; includes genesys block UTXO spend)\n"
     );
     let output_hash = initial_coinbase.output_hash();
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    assert!(!alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     let commitment = initial_coinbase.commitment().clone();
     assert!(
         alice_node
@@ -384,7 +386,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
         alice_node.blockchain_db.get_height().unwrap(),
         alice_header_height - pruning_horizon_alice
     );
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     assert!(
         alice_node
             .blockchain_db
@@ -669,6 +671,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_initial_horizon_sync_from_prune_node_happy_path() {
+    sync::init_connection_logging();
     //` cargo test --release --test core_integration_tests
     //` tests::horizon_sync::test_initial_horizon_sync_from_prune_node_happy_path > .\target\output.txt 2>&1
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -725,7 +728,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     println!("\n1. Carol attempts initial horizon sync from Bob archival node (to pruning height 16)\n");
 
     let output_hash = initial_coinbase.output_hash();
-    assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    assert!(!carol_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     let commitment = initial_coinbase.commitment().clone();
     assert!(
         carol_node
@@ -758,7 +761,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
         carol_header_height - pruning_horizon_carol
     );
 
-    assert!(carol_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(carol_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     assert!(
         carol_node
             .blockchain_db
@@ -791,7 +794,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     // 3. Alice attempts initial horizon sync from Carol prune node (to height 24)
     println!("\n3. Alice attempts initial horizon sync from Carol prune node (to height 24)\n");
 
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_some());
+    assert!(!alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     assert!(
         alice_node
             .blockchain_db
@@ -823,7 +826,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
         alice_header_height - pruning_horizon_alice
     );
 
-    assert!(alice_node.blockchain_db.fetch_output(output_hash).unwrap().is_none());
+    assert!(alice_node.blockchain_db.fetch_outputs(output_hash).unwrap().is_empty());
     assert!(
         alice_node
             .blockchain_db
@@ -856,6 +859,7 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_discards_mismatched_checkpoint() {
+    sync::init_connection_logging();
     // Exercises the full sync state machine through a horizon sync where Alice's database already
     // contains a `HorizonSyncOutputCheckpoint` whose `sync_target_hash` does NOT match the new
     // sync target. The synchronizer must discard the stale checkpoint and complete a fresh sync.
@@ -949,6 +953,7 @@ async fn test_horizon_sync_discards_mismatched_checkpoint() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_horizon_sync_clears_checkpoint_on_completion() {
+    sync::init_connection_logging();
     // Verifies the end-to-end resume contract: after a horizon sync runs to completion the
     // checkpoint is cleared, so a subsequent sync starts from height 1 (verified via the resume
     // path's no-checkpoint branch).

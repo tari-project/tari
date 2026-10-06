@@ -486,7 +486,7 @@ impl Listening {
             return;
         }
 
-        state.ahead_of_peers_counter += 1;
+        state.ahead_of_peers_counter = state.ahead_of_peers_counter.saturating_add(1);
         if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
             self.set_synced_response(shared);
             info!(target: LOG_TARGET, "Initial sync achieved");
@@ -515,7 +515,7 @@ impl Listening {
             sync_peers,
         } = sync_mode
         {
-            state.initial_sync_counter += 1;
+            state.initial_sync_counter = state.initial_sync_counter.saturating_add(1);
             self.initial_delay_count = state.initial_sync_counter;
             for peer in sync_peers {
                 let node_id = peer.node_id().to_string();
@@ -726,7 +726,7 @@ fn determine_sync_mode(
             sync_peers: vec![network.clone().into()],
         }
     } else {
-        if local_tip_accum_difficulty / 2 > network_tip_accum_difficulty {
+        if local_tip_accum_difficulty.checked_div(2.into()).unwrap_or_default() > network_tip_accum_difficulty {
             // We are ahead of the network, but not by much. We should be in listening mode.
             trace!(
                 target: LOG_TARGET,

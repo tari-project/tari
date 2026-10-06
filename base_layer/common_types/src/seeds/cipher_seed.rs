@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{mem::size_of, str::FromStr};
+use std::{fmt, mem::size_of, str::FromStr};
 
 use blake2::Blake2b;
 use chacha20::{
@@ -35,7 +35,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_hashing::KeyManagerDomain;
+use tari_hashing::{KeyManagerDomain, ZeroizingFinalize};
 use tari_utilities::{SafePassword, hidden::Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -120,12 +120,27 @@ hidden_type!(CipherSeedMacKey, SafeArray< u8, CIPHER_SEED_MAC_KEY_BYTES>);
 /// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
 /// blockchain.
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
     entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
     salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES],
+}
+
+/// `Debug` is implemented by hand rather than derived: the entropy is the wallet master secret, and every key in the
+/// wallet can be re-derived from it. A derived `Debug` would render it in full, and any `{:?}` sink (log lines, error
+/// messages, `Display` impls of enclosing types) would then leak the master seed. The secret fields are rendered the
+/// same way `Hidden` renders its contents so that the redaction is obvious in output.
+impl fmt::Debug for CipherSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CipherSeed")
+            .field("version", &self.version)
+            .field("birthday", &self.birthday)
+            .field("entropy", &format_args!("Hidden<[u8; {CIPHER_SEED_ENTROPY_BYTES}]>"))
+            .field("salt", &format_args!("Hidden<[u8; {CIPHER_SEED_MAIN_SALT_BYTES}]>"))
+            .finish()
+    }
 }
 
 // This is a separate type to make the linter happy
@@ -136,7 +151,9 @@ impl CipherSeed {
     /// Generate a new seed
     pub fn random() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
+        let birthday_genesis_date = UNIX_EPOCH
+            .checked_add(Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH))
+            .unwrap_or(UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
             .unwrap_or_default() // default to the epoch on error
@@ -205,8 +222,11 @@ impl CipherSeed {
         Self::apply_stream_cipher(&mut secret_data, &encryption_key, self.salt.as_ref())?;
 
         // Assemble the final seed: version, main salt, secret data, checksum
-        let mut encrypted_seed =
-            Vec::<u8>::with_capacity(1 + CIPHER_SEED_MAIN_SALT_BYTES + secret_data.len() + CIPHER_SEED_CHECKSUM_BYTES);
+        let mut encrypted_seed = Vec::<u8>::with_capacity(
+            CIPHER_SEED_MAIN_SALT_BYTES
+                .saturating_add(secret_data.len())
+                .saturating_add(CIPHER_SEED_CHECKSUM_BYTES.saturating_add(1)),
+        );
         encrypted_seed.push(CIPHER_SEED_VERSION);
         encrypted_seed.extend(secret_data.iter());
         encrypted_seed.extend(self.salt.iter());
@@ -355,19 +375,16 @@ impl CipherSeed {
             return Err(CipherError::InvalidData);
         }
 
-        Ok(
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
-                .chain([version])
-                .chain(birthday)
-                .chain(entropy)
-                .chain(salt)
-                .chain(mac_key.reveal())
-                .finalize()
-                .as_ref()
-                .get(..CIPHER_SEED_MAC_BYTES)
-                .expect("Index should exist")
-                .to_vec(),
-        )
+        // The hasher absorbs the entropy and MAC key; finalize into a zeroizing buffer so that no unzeroized copy of
+        // the full digest is left behind.
+        let mac = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerDomain>::new_with_label(HASHER_LABEL_CIPHER_SEED_MAC)
+            .chain([version])
+            .chain(birthday)
+            .chain(entropy)
+            .chain(salt)
+            .chain(mac_key.reveal())
+            .finalize_zeroizing();
+        Ok(mac.get(..CIPHER_SEED_MAC_BYTES).expect("Index should exist").to_vec())
     }
 
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
@@ -457,7 +474,7 @@ mod test {
 
     use chrono::{DateTime, TimeZone, Utc};
     use crc32fast::Hasher as CrcHasher;
-    use tari_utilities::{Hidden, SafePassword};
+    use tari_utilities::{Hidden, SafePassword, hex::to_hex};
 
     use super::{BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, SECONDS_PER_DAY};
     use crate::seeds::{
@@ -466,6 +483,7 @@ mod test {
             CIPHER_SEED_CHECKSUM_BYTES,
             CIPHER_SEED_ENTROPY_BYTES,
             CIPHER_SEED_MAC_BYTES,
+            CIPHER_SEED_MAIN_SALT_BYTES,
             CIPHER_SEED_VERSION,
             CipherSeed,
         },
@@ -473,6 +491,34 @@ mod test {
         mnemonic::{Mnemonic, MnemonicLanguage},
         seed_words::{SeedWords, get_birthday_from_unix_epoch_in_seconds},
     };
+
+    #[test]
+    fn test_cipher_seed_debug_does_not_leak_entropy() {
+        let seed = CipherSeed::random();
+        let rendered = format!("{seed:?}");
+
+        // Neither the entropy nor the salt may appear, in hex or in the byte-slice rendering a derived `Debug` uses
+        assert!(
+            !rendered.contains(&to_hex(seed.entropy())),
+            "CipherSeed Debug leaked the entropy: {rendered}"
+        );
+        assert!(
+            !rendered.contains(&format!("{:?}", seed.entropy())),
+            "CipherSeed Debug leaked the entropy: {rendered}"
+        );
+        assert!(
+            !rendered.contains(&format!("{:?}", seed.salt)),
+            "CipherSeed Debug leaked the salt: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_ENTROPY_BYTES}]>")),
+            "entropy was not redacted: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("Hidden<[u8; {CIPHER_SEED_MAIN_SALT_BYTES}]>")),
+            "salt was not redacted: {rendered}"
+        );
+    }
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {

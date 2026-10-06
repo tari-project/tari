@@ -197,7 +197,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             break;
         }
         print!("\x1B[{}D\x1B[K", counter.to_string().len());
-        counter += 1;
+        counter = counter.saturating_add(1);
     }
     Ok(())
 }

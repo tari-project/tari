@@ -1,5 +1,6 @@
 [package]
 name = "minotari_offline_signer"
+publish = false
 description = "Offline transaction signing tool for Tari"
 authors = { workspace = true }
 repository = { workspace = true }

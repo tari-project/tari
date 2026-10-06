@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use lmdb_zero::error;
-use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
+use tari_common_types::{
+    chain_metadata::ChainMetaDataError,
+    types::{FixedHash, FixedHashSizeError},
+};
 use tari_mmr::{MerkleProofError, error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
 use tari_node_components::blocks::BlockError;
 use tari_storage::lmdb_store::LMDBError;
@@ -70,6 +73,11 @@ pub enum ChainStorageError {
         start_height: u64,
         target_height: u64,
     },
+    #[error(
+        "The body of block #{height} is not available because this node is pruned up to height {pruned_height}. Use \
+         an archival node."
+    )]
+    BlockBodyPruned { height: u64, pruned_height: u64 },
     #[error("Invalid argument `{arg}` in `{func}`: {message}")]
     InvalidArguments {
         func: &'static str,
@@ -97,6 +105,14 @@ pub enum ChainStorageError {
         #[from]
         source: ValidationError,
     },
+    /// A block other than the one being added, whose body was never shown to be the one its header commits to (an
+    /// orphan a peer sent us), failed validation during a reorg. That says nothing about the peer that sent the block
+    /// being added, so it is not a ban.
+    #[error(
+        "Held block {hash} failed validation during a reorg, but its body may not be the one it was mined with: \
+         {source}"
+    )]
+    UnverifiedHeldBlockInvalid { hash: FixedHash, source: ValidationError },
     #[error("The MMR root for {0} in the provided block header did not match the MMR root in the database")]
     MismatchedMmrRoot(MmrTree),
     #[error("An invalid block was submitted to the database: {0}")]
@@ -212,7 +228,9 @@ impl ChainStorageError {
             _err @ ChainStorageError::MrHashError(_) |
             _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
             _err @ ChainStorageError::PayRefIndexNotAvailable { .. } |
-            _err @ ChainStorageError::AccDataMigrationStillInProgress => None,
+            _err @ ChainStorageError::BlockBodyPruned { .. } |
+            _err @ ChainStorageError::AccDataMigrationStillInProgress |
+            _err @ ChainStorageError::UnverifiedHeldBlockInvalid { .. } => None,
         }
     }
 }

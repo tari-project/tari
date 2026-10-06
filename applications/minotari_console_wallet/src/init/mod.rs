@@ -23,7 +23,13 @@
 // This is here because this crate is used as a lib and a binary, mainly to support Cucumber tests. In future, something
 // should be done so this is not needed.
 #![allow(dead_code, unused)]
-use std::{fs, io, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    fs,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 use dialoguer::Input as InputPrompt;
@@ -46,7 +52,7 @@ use minotari_wallet::{
 use rpassword::prompt_password as rpassword_prompt;
 use rustyline::Editor;
 use tari_common::{
-    configuration::{MultiaddrList, bootstrap::prompt},
+    configuration::MultiaddrList,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
@@ -102,7 +108,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
     loop {
         // Prompt the user for a passphrase and confirm it, up to the defined limit
         // This ensures an unlucky user doesn't get stuck
-        let mut tries = 0;
+        let mut tries = 0u8;
         let mut passphrase = SafePassword::from(""); // initial value for scope
         loop {
             passphrase = prompt_password(prompt)?;
@@ -114,7 +120,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
             }
 
             // If they don't match, keep prompting until we hit the sanity limit
-            tries += 1;
+            tries = tries.saturating_add(1);
             if tries == PASSPHRASE_SANITY_LIMIT {
                 return Err(ExitError::new(ExitCode::InputError, "Passphrases don't match!"));
             }
@@ -375,10 +381,7 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        matches!(
-            sig.is_valid(&comms_public_key, node_features, &node_addresses),
-            Ok(true)
-        )
+        sig.verify(&comms_public_key, node_features, &node_addresses).is_ok()
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
@@ -455,6 +458,41 @@ pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitEr
         match readline {
             Ok(line) => match line.to_lowercase().as_ref() {
                 "confirm" => return Ok(()),
+                _ => continue,
+            },
+            Err(e) => {
+                return Err(ExitError::new(ExitCode::IOError, e));
+            },
+        }
+    }
+}
+
+/// Confirm with the user that the wallet seed words may be written, in the clear, to the given file.
+///
+/// This is only asked when the wallet passphrase was not supplied up front (via the CLI or the config file), as in
+/// that case the wallet is being driven interactively and the user may not have intended to export the seed words.
+///
+/// Returns `true` if and only if the user confirmed the export.
+pub(crate) fn confirm_seed_words_file(file_name: &Path) -> Result<bool, ExitError> {
+    println!();
+    println!("=========================");
+    println!("       IMPORTANT!        ");
+    println!("=========================");
+    println!("You asked for the wallet seed words to be written to:");
+    println!("  {}", file_name.display());
+    println!("They will be written unencrypted; anyone able to read that file can spend your funds.");
+    println!();
+    println!("\x07"); // beep!
+
+    let mut rl = Editor::<()>::new();
+    loop {
+        println!("Are you sure you want to write the seed words to this file?");
+        println!(r#"Type "yes" or "y" to continue, or "no" or "n" to start the wallet without exporting them."#);
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => match line.trim().to_lowercase().as_ref() {
+                "yes" | "y" => return Ok(true),
+                "no" | "n" => return Ok(false),
                 _ => continue,
             },
             Err(e) => {
@@ -640,9 +678,9 @@ pub fn prompt_wallet_type(
     non_interactive: bool,
     view_private_key: Option<String>,
     spend_key: Option<String>,
-) -> Option<LegacyWalletType> {
+) -> Result<Option<LegacyWalletType>, ExitError> {
     if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
-        return Some(LegacyWalletType::default());
+        return Ok(Some(LegacyWalletType::default()));
     }
 
     match boot_mode {
@@ -670,17 +708,17 @@ pub fn prompt_wallet_type(
                 prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
             };
 
-            Some(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
+            Ok(Some(LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
                 view_key,
                 public_spend_key: spend_key,
                 private_spend_key: None,
                 private_comms_key: None,
                 birthday,
-            }))
+            })))
         },
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
-            return Some(WalletType::default());
+            return Ok(Some(WalletType::default()));
 
             #[cfg(feature = "ledger")]
             {
@@ -690,25 +728,35 @@ pub fn prompt_wallet_type(
                     },
                     _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
                 };
-                if prompt(connected_hardware_msg) {
+                // Closed stdin must not silently pick a software wallet for someone who meant to use a Ledger
+                let use_hardware = tari_common::configuration::bootstrap::prompt_required(connected_hardware_msg)
+                    .map_err(|e| {
+                        ExitError::new(
+                            ExitCode::IOError,
+                            format!(
+                                "{e}; stdin closed: pass --non-interactive-mode or answer the hardware wallet prompt"
+                            ),
+                        )
+                    })?;
+                if use_hardware {
                     print!("Scanning for connected Ledger hardware device... ");
                     let account = prompt_ledger_account(boot_mode).expect("An account value");
                     match ledger_get_public_spend_key(account) {
                         Ok(public_alpha) => match ledger_get_view_key(account) {
                             Ok(view_key) => {
                                 let ledger = LedgerWallet::new(account, wallet_config.network, public_alpha, view_key);
-                                Some(LegacyWalletType::Ledger(ledger))
+                                Ok(Some(LegacyWalletType::Ledger(ledger)))
                             },
                             Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
                     }
                 } else {
-                    Some(LegacyWalletType::default())
+                    Ok(Some(LegacyWalletType::default()))
                 }
             }
         },
-        _ => None,
+        _ => Ok(None),
     }
 }
 

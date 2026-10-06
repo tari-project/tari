@@ -104,7 +104,7 @@ impl MonitorPeersService {
     /// metadata is requested from peers.
     #[allow(clippy::too_many_lines)]
     pub async fn run(mut self) {
-        let mut interval_timer = time::interval(self.auto_ping_interval * 10);
+        let mut interval_timer = time::interval(self.auto_ping_interval.saturating_mul(10));
         let liveness_events = self.liveness_handle.get_event_stream();
         pin_mut!(liveness_events);
 
@@ -112,7 +112,7 @@ impl MonitorPeersService {
 
         let mut loop_count = 0u64;
         loop {
-            loop_count += 1;
+            loop_count = loop_count.saturating_add(1);
             tokio::select! {
                 biased;
                 _ = self.shutdown_signal.wait() => {

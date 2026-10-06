@@ -27,7 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, PrivateKey, UncompressedCommitment};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::hex::Hex;
@@ -35,6 +35,7 @@ use tari_utilities::hex::Hex;
 use crate::{
     MicroMinotari,
     crypto_factories::CryptoFactories,
+    helpers::borsh::SerializedSize,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -55,7 +56,12 @@ pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 pub struct AggregateBody {
     /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
     /// has been called. This may be false even if all components are sorted.
+    ///
+    /// The flag is part of the serde encoding, so the serde decoders still read it, but a decoded body is never
+    /// trusted to be sorted: the flag always decodes as `false`, as it does in borsh (where it is skipped) and in
+    /// the protobuf conversions.
     #[borsh(skip)]
+    #[serde(deserialize_with = "deserialize_sorted_flag")]
     sorted: bool,
     /// List of inputs spent by the transaction.
     inputs: Vec<TransactionInput>,
@@ -73,7 +79,7 @@ impl AggregateBody {
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
-    pub fn new(
+    pub fn new_unsorted(
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
@@ -99,6 +105,15 @@ impl AggregateBody {
             outputs,
             kernels,
         }
+    }
+
+    /// Provide mutable access to the input list alongside read-only access to the output list.
+    ///
+    /// This exists so that compact inputs can be hydrated in place against the outputs created in the same body.
+    /// Hydrating an input does not change its output hash, which is what the input ordering is based on, so the
+    /// `sorted` flag remains valid.
+    pub fn inputs_mut_with_outputs(&mut self) -> (&mut [TransactionInput], &[TransactionOutput]) {
+        (&mut self.inputs, &self.outputs)
     }
 
     /// Provide read-only access to the input list
@@ -196,7 +211,8 @@ impl AggregateBody {
         // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
             for i in 1..self.inputs().len() {
-                if self.inputs().get(i).expect("Already checked") == self.inputs().get(i - 1).expect("Already checked")
+                if self.inputs().get(i).expect("Already checked") ==
+                    self.inputs().get(i.saturating_sub(1)).expect("Already checked")
                 {
                     return true;
                 }
@@ -204,7 +220,7 @@ impl AggregateBody {
             return false;
         }
         for i in 0..self.inputs().len() {
-            for j in (i + 1)..self.inputs().len() {
+            for j in i.saturating_add(1)..self.inputs().len() {
                 if self.inputs().get(i).expect("Already checked") == self.inputs().get(j).expect("Already checked") {
                     return true;
                 }
@@ -218,7 +234,7 @@ impl AggregateBody {
         if self.sorted {
             for i in 1..self.outputs().len() {
                 if self.outputs().get(i).expect("Already checked") ==
-                    self.outputs().get(i - 1).expect("Already checked")
+                    self.outputs().get(i.saturating_sub(1)).expect("Already checked")
                 {
                     return true;
                 }
@@ -226,7 +242,7 @@ impl AggregateBody {
             return false;
         }
         for i in 0..self.outputs().len() {
-            for j in (i + 1)..self.outputs().len() {
+            for j in i.saturating_add(1)..self.outputs().len() {
                 if self.outputs().get(i).expect("Already checked") == self.outputs().get(j).expect("Already checked") {
                     return true;
                 }
@@ -283,6 +299,8 @@ impl AggregateBody {
     /// 1. There is exactly ONE coinbase output
     /// 1. The coinbase output's maturity is correctly set
     /// 1. The reward amount is correct.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn check_coinbase_output(
         &self,
         reward: MicroMinotari,
@@ -293,11 +311,11 @@ impl AggregateBody {
     ) -> Result<(), TransactionError> {
         let mut coinbase_utxo_sum = UncompressedCommitment::default();
         let mut coinbase_kernel = None;
-        let mut coinbase_counter = 0;
+        let mut coinbase_counter = 0u64;
         for utxo in self.outputs() {
             if utxo.features.output_type == OutputType::Coinbase {
-                coinbase_counter += 1;
-                if utxo.features.maturity < (height + coinbase_min_maturity) {
+                coinbase_counter = coinbase_counter.saturating_add(1);
+                if utxo.features.maturity < height.saturating_add(coinbase_min_maturity) {
                     warn!(target: LOG_TARGET, "Coinbase {utxo} found with maturity set too low");
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
@@ -324,7 +342,7 @@ impl AggregateBody {
             });
         }
 
-        let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
+        let mut coinbase_kernel_counter = 0u64; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
                 if kernel.fee != 0.into() {
@@ -334,7 +352,7 @@ impl AggregateBody {
                     );
                     return Err(TransactionError::InvalidCoinbase);
                 }
-                coinbase_kernel_counter += 1;
+                coinbase_kernel_counter = coinbase_kernel_counter.saturating_add(1);
                 coinbase_kernel = Some(kernel);
             }
         }
@@ -400,6 +418,20 @@ impl AggregateBody {
         transaction_weight
             .calculate_body(self)
             .map_err(|e| TransactionError::SerializationError(e.to_string()))
+    }
+
+    /// The borsh-serialised size, in bytes, of this body in its compact form, i.e. with every input reduced to the hash
+    /// of the output it spends. Blocks are stored and synced in this form, so the result is the same whether the inputs
+    /// of this body are compact or hydrated.
+    pub fn compact_serialized_size(&self) -> std::io::Result<usize> {
+        // The u32 length prefix of the inputs vector
+        let mut size = size_of::<u32>();
+        for input in &self.inputs {
+            size = size.saturating_add(input.to_compact().get_serialized_size()?);
+        }
+        size = size.saturating_add(self.outputs.get_serialized_size()?);
+        size = size.saturating_add(self.kernels.get_serialized_size()?);
+        Ok(size)
     }
 
     pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {
@@ -478,6 +510,12 @@ impl AggregateBody {
     }
 }
 
+/// Reads the `sorted` flag of an encoded [`AggregateBody`] and discards it, see the field docs
+fn deserialize_sorted_flag<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    <bool as Deserialize>::deserialize(deserializer)?;
+    Ok(false)
+}
+
 impl PartialEq for AggregateBody {
     fn eq(&self, other: &Self) -> bool {
         self.kernels == other.kernels && self.inputs == other.inputs && self.outputs == other.outputs
@@ -522,6 +560,89 @@ mod test {
 
     use super::*;
     use crate::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion, covenants::Covenant};
+
+    #[test]
+    fn compact_serialized_size_measures_the_compact_form() {
+        let input = TransactionInput::new_with_output_data(
+            TransactionInputVersion::get_current_version(),
+            OutputFeatures::default(),
+            CompressedCommitment::default(),
+            TariScript::default(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+            CompressedPublicKey::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            ComAndPubSignature::default(),
+            FixedHash::zero(),
+            0.into(),
+        );
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::default(),
+            0.into(),
+            0,
+            CompressedCommitment::default(),
+            CompressedSignature::default(),
+            None,
+        );
+        let hydrated = AggregateBody::new_unsorted(
+            vec![input.clone(), input.clone()],
+            vec![TransactionOutput::default()],
+            vec![kernel.clone()],
+        );
+        let compact = AggregateBody::new_unsorted(
+            vec![input.to_compact(), input.to_compact()],
+            vec![TransactionOutput::default()],
+            vec![kernel],
+        );
+
+        let expected = borsh::to_vec(&compact).unwrap().len();
+        assert_eq!(compact.compact_serialized_size().unwrap(), expected);
+        assert_eq!(hydrated.compact_serialized_size().unwrap(), expected);
+        assert!(hydrated.get_serialized_size().unwrap() > expected);
+    }
+
+    #[test]
+    fn a_decoded_body_is_never_trusted_to_be_sorted() {
+        // Kernels are ordered by their excess signature
+        let kernel = |nonce: u64| {
+            TransactionKernel::new_current_version(
+                KernelFeatures::default(),
+                0.into(),
+                0,
+                CompressedCommitment::default(),
+                CompressedSignature::new(CompressedPublicKey::default(), PrivateKey::from(nonce)),
+                None,
+            )
+        };
+        let mut really_sorted = AggregateBody::new_unsorted(vec![], vec![], vec![kernel(1), kernel(2)]);
+        really_sorted.sort();
+        let mut kernels = really_sorted.kernels().clone();
+        kernels.reverse();
+        // Claims to be sorted, but is not
+        let claimed = AggregateBody::new_sorted_unchecked(vec![], vec![], kernels);
+        assert!(claimed.sorted);
+
+        let json = serde_json::to_string(&claimed).unwrap();
+        assert!(json.contains(r#""sorted":true"#), "{json}");
+        let encoded = bincode::serialize(&claimed).unwrap();
+        for mut decoded in [
+            serde_json::from_str::<AggregateBody>(&json).unwrap(),
+            bincode::deserialize::<AggregateBody>(&encoded).unwrap(),
+        ] {
+            assert!(!decoded.sorted);
+            assert!(!decoded.is_sorted());
+            // The encoding is unchanged: only the decoded flag differs
+            decoded.sorted = true;
+            assert_eq!(serde_json::to_string(&decoded).unwrap(), json);
+            assert_eq!(bincode::serialize(&decoded).unwrap(), encoded);
+            // `sort()` is no longer a no-op on it
+            decoded.sorted = false;
+            assert_ne!(decoded.kernels(), really_sorted.kernels());
+            decoded.sort();
+            assert_eq!(decoded.kernels(), really_sorted.kernels());
+        }
+    }
 
     #[test]
     fn test_sorted() {

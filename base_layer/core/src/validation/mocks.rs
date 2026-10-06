@@ -25,12 +25,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, FixedHash},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
-use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -42,9 +39,15 @@ use super::{
 };
 use crate::{
     chain_storage::BlockchainBackend,
-    proof_of_work::{AchievedTargetDifficulty, randomx_factory::RandomXFactory},
+    proof_of_work::{AdjustedTarget, randomx_factory::RandomXFactory},
     test_helpers::create_consensus_rules,
-    validation::{DifficultyCalculator, FinalHorizonStateValidation, error::ValidationError},
+    validation::{
+        DifficultyCalculator,
+        FinalHorizonStateValidation,
+        ValidatedHeader,
+        chain_context::HeaderChainContext,
+        error::ValidationError,
+    },
 };
 
 #[derive(Clone)]
@@ -73,9 +76,9 @@ impl MockValidator {
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
-    fn validate_body(&self, _: &B, block: &Block) -> Result<Block, ValidationError> {
+    fn validate_body(&self, _: &B, block: Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            Ok(block.clone())
+            Ok(block)
         } else {
             Err(ValidationError::ConsensusError(
                 "This mock validator always returns an error".to_string(),
@@ -126,14 +129,20 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         header: &BlockHeader,
         _: &BlockHeader,
         _: &[EpochTime],
-        _: Option<Difficulty>,
-        _: FixedHash,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
+        _: Option<AdjustedTarget>,
+        _: HeaderChainContext<'_>,
+    ) -> Result<ValidatedHeader, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             // this assumes consensus rules are the same as the test rules which is a little brittle
             let difficulty_calculator = DifficultyCalculator::new(create_consensus_rules(), RandomXFactory::default());
-            let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
-            Ok(achieved_target_diff)
+            let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
+            Ok(ValidatedHeader {
+                achieved_target,
+                // Always `None`, including for a merge mined header: this mock never parses PoW data. A test driven
+                // by this validator therefore proves nothing about a caller's Monero seed tracking (see
+                // `MoneroSeedHeights`) - that needs the real `HeaderFullValidator`.
+                monero_seed: None,
+            })
         } else {
             Err(ValidationError::ConsensusError(
                 "This mock validator always returns an error".to_string(),
@@ -143,7 +152,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
 }
 
 impl TransactionValidator for MockValidator {
-    fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
+    fn validate_full(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -151,6 +160,19 @@ impl TransactionValidator for MockValidator {
                 "This mock validator always returns an error".to_string(),
             ))
         }
+    }
+
+    fn validate_chain_linked(&self, transaction: &Transaction) -> Result<(), ValidationError> {
+        self.validate_full(transaction)
+    }
+
+    fn validate_internal_consistency(
+        &self,
+        _transaction: &Transaction,
+        _tip: Option<&ChainMetadata>,
+    ) -> Result<(), ValidationError> {
+        // `validate_chain_linked` already returned the mock's verdict
+        Ok(())
     }
 }
 

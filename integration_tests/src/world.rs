@@ -346,17 +346,21 @@ impl TariWorld {
             ffi_wallet.destroy();
         }
 
-        // Kill wallets — they depend on base nodes
-        for (name, mut p) in self.wallets.drain(..) {
+        // Kill wallets — they depend on base nodes.
+        // Concurrently within the phase: each `kill` waits on a shutdown that is already in
+        // flight, so doing them one at a time just adds up the waits and lengthens the window in
+        // which this scenario's ports stay checked out from the shared pool.
+        let wallets: Vec<_> = self.wallets.drain(..).collect();
+        futures::future::join_all(wallets.into_iter().map(|(name, mut p)| async move {
             println!("Shutting down wallet {name}");
             let grpc_port = p.grpc_port;
-            p.kill();
-            // Return wallet gRPC port to pool for reuse
-            pool.return_wallet_ports(crate::port_pool::WalletPorts {
-                grpc: grpc_port,
-                http: 0, // wallet doesn't own an http port
-            });
-        }
+            p.kill().await;
+            grpc_port
+        }))
+        .await
+        .into_iter()
+        // Return wallet gRPC ports to the pool for reuse
+        .for_each(|grpc| pool.return_wallet_ports(crate::port_pool::WalletPorts { grpc }));
 
         // Clear merge mining proxies (they are lightweight HTTP clients, no ports to return)
         for (name, _proxy) in self.merge_mining_proxies.drain(..) {
@@ -371,7 +375,8 @@ impl TariWorld {
 
         // Kill base nodes last — kill() waits for ports to be released,
         // preventing port conflicts with the next scenario
-        for (name, mut p) in self.base_nodes.drain(..) {
+        let base_nodes: Vec<_> = self.base_nodes.drain(..).collect();
+        futures::future::join_all(base_nodes.into_iter().map(|(name, mut p)| async move {
             println!("Shutting down base node {name}");
             let ports = crate::port_pool::BaseNodePorts {
                 p2p: p.port,
@@ -379,10 +384,13 @@ impl TariWorld {
                 http: p.http_port,
                 xmrig_proxy: p.xmrig_proxy_port,
             };
-            p.kill();
-            // Return ports to pool for reuse by next scenario
-            pool.return_base_node_ports(ports);
-        }
+            p.kill().await;
+            ports
+        }))
+        .await
+        .into_iter()
+        // Return ports to pool for reuse by next scenario
+        .for_each(|ports| pool.return_base_node_ports(ports));
     }
 
     pub async fn script_key_id(&mut self) -> TariKeyId {

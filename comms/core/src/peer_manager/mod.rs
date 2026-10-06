@@ -70,6 +70,8 @@
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
 
+mod blocking_storage;
+
 mod error;
 pub use error::PeerManagerError;
 
@@ -94,7 +96,7 @@ mod peer_id;
 pub use peer_id::{PeerId, generate_peer_id_as_i64};
 
 mod manager;
-pub use manager::PeerManager;
+pub use manager::{PEER_DATABASE_BUSY_TIMEOUT, PEER_LOOKUP_TIMEOUT, PeerManager};
 #[cfg(test)]
 pub use manager::{
     create_test_peer,

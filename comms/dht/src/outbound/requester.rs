@@ -63,7 +63,7 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .with_debug_info(format!("Send direct to {} from {}", &dest_public_key, source_info))
+                .with_debug_info(format!("Send direct to {} from {}", dest_public_key, source_info))
                 .direct_public_key(dest_public_key.clone())
                 .with_discovery(true)
                 .with_encryption(encryption)
@@ -89,7 +89,7 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .with_debug_info(format!("Send direct to {} from {}", &dest_public_key, source_info))
+                .with_debug_info(format!("Send direct to {} from {}", dest_public_key, source_info))
                 .direct_public_key(dest_public_key)
                 .with_discovery(true)
                 .finish(),

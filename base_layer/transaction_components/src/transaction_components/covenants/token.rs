@@ -58,6 +58,12 @@ pub enum CovenantToken {
 impl CovenantToken {
     /// Reads from a byte buffer.
     pub fn read_from(reader: &mut &[u8]) -> Result<Option<Self>, CovenantDecodeError> {
+        Self::read_from_at_depth(reader, 0)
+    }
+
+    /// As [`CovenantToken::read_from`], but tracking how deeply the enclosing covenant is nested so that a nested
+    /// covenant argument can refuse to recurse without bound.
+    pub(super) fn read_from_at_depth(reader: &mut &[u8], depth: usize) -> Result<Option<Self>, CovenantDecodeError> {
         let code = match reader.read_next_byte_code()? {
             Some(c) => c,
             // Nothing further to read
@@ -69,7 +75,7 @@ impl CovenantToken {
                 Ok(Some(CovenantToken::Filter(filter)))
             },
             code if CovenantArg::is_valid_code(code) => {
-                let arg = CovenantArg::read_from(reader, code)?;
+                let arg = CovenantArg::read_from_at_depth(reader, code, depth)?;
                 Ok(Some(CovenantToken::Arg(Box::new(arg))))
             },
             code => Err(CovenantDecodeError::UnknownByteCode { code }),

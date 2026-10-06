@@ -75,6 +75,8 @@ pub struct Step2OutputsForSelf {
     sender_offset_key_id: TariKeyId,
     sender_offset_nonce_key_id: TariKeyId,
     pre_mine_script_key_id: TariKeyId,
+    /// `pre_mine_script_key - sender_offset_key`, computed when the key manager generated the sender offset key.
+    script_offset: PrivateKey,
 }
 
 // Step 2 outputs for leader with `PreMineSpendPartyDetails`

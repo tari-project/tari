@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::indexing_slicing)]
 use std::{cmp, sync::Arc};
 
@@ -64,8 +66,14 @@ mod header_validators {
         block_specs,
         consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
         test_helpers::blockchain::{create_main_chain, create_new_blockchain},
-        validation::{HeaderChainLinkedValidator, header::HeaderFullValidator},
+        validation::{HeaderChainContext, HeaderChainLinkedValidator, header::HeaderFullValidator},
     };
+    /// Header validation always runs against a candidate chain. These tests validate headers that extend what is in the
+    /// database, so the candidate and the database agree right up to the previous header.
+    fn chain_context(prev_header: &BlockHeader) -> HeaderChainContext<'static> {
+        HeaderChainContext::candidate_chain(FixedHash::zero(), prev_header.height, None)
+    }
+
     #[test]
     fn header_iter_empty_and_invalid_height() {
         let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -133,7 +141,7 @@ mod header_validators {
                 genesis.header(),
                 &[],
                 None,
-                FixedHash::zero(),
+                chain_context(genesis.header()),
             )
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
@@ -162,7 +170,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
-                FixedHash::zero(),
+                chain_context(last_block.header()),
             )
             .unwrap();
 
@@ -175,7 +183,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
-                FixedHash::zero(),
+                chain_context(last_block.header()),
             )
             .unwrap_err();
         assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {
@@ -308,10 +316,11 @@ async fn chain_balance_validation() {
         .unwrap();
 
     let mut header1 = BlockHeader::from_previous(genesis.header());
-    header1.kernel_mmr_size += 1;
-    header1.output_smt_size += 1;
+    header1.kernel_mmr_size = header1.kernel_mmr_size.saturating_add(1);
+    header1.output_smt_size = header1.output_smt_size.saturating_add(1);
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )
@@ -372,10 +381,11 @@ async fn chain_balance_validation() {
         .unwrap();
 
     let mut header2 = BlockHeader::from_previous(header1.header());
-    header2.kernel_mmr_size += 1;
-    header2.output_smt_size += 1;
+    header2.kernel_mmr_size = header2.kernel_mmr_size.saturating_add(1);
+    header2.output_smt_size = header2.output_smt_size.saturating_add(1);
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )
@@ -391,7 +401,7 @@ async fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment.to_commitment().unwrap() + &utxo_sum;
     kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     txn.insert_utxo(coinbase, *header2.hash(), 2, 0);
-    mmr_position += 1;
+    mmr_position = mmr_position.saturating_add(1);
     txn.insert_kernel(kernel, *header2.hash(), mmr_position);
 
     db.commit(txn).unwrap();
@@ -560,6 +570,7 @@ async fn chain_balance_validation_burned() {
     header1.output_smt_size += 2;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
+        genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().target_difficulty,
         genesis.accumulated_data().achieved_difficulty,
     )

@@ -28,14 +28,14 @@ use std::{
 
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::UpdateBlockAccumulatedData,
-    chain_storage::{HorizonData, Reorg, error::ChainStorageError},
+    chain_storage::{AccumulatedDataRebuildStatus, HorizonData, Reorg, error::ChainStorageError},
 };
 
 /// Persisted state for an in-progress horizon output sync session.
@@ -175,18 +175,6 @@ impl DbTransaction {
         self
     }
 
-    pub fn delete_validator_node(
-        &mut self,
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteValidatorNode {
-            sidechain_public_key,
-            public_key,
-        });
-        self
-    }
-
     pub fn delete_all_kernerls_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
         self.operations
             .push(WriteOperation::DeleteAllKernelsInBlock { block_hash });
@@ -245,6 +233,27 @@ impl DbTransaction {
     /// Remove an orphan from the orphan tip set
     pub fn remove_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
         self.operations.push(WriteOperation::DeleteOrphanChainTip(hash));
+        self
+    }
+
+    /// Remove an orphan from the orphan tip set if it is in there, and do nothing if it is not.
+    ///
+    /// `remove_orphan_chain_tip` fails the whole transaction on a hash that is not a tip, so a caller that cannot
+    /// know in advance has to probe first - and a probe is a fallible call, which is exactly what a cleanup that
+    /// must not be able to fail half way cannot afford.
+    pub fn remove_orphan_chain_tip_if_exists(&mut self, hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteOrphanChainTipIfExists(hash));
+        self
+    }
+
+    /// Record the progress of the accumulated data rebuild.
+    ///
+    /// The backend also exposes this as a standalone method. This variant exists so that the status can be committed
+    /// in the *same* LMDB transaction as the work it describes, which is what makes "the chain was rewound and the
+    /// rebuild is finished" a single outcome rather than two writes with a failure window between them.
+    pub fn set_accumulated_data_rebuild_status(&mut self, status: AccumulatedDataRebuildStatus) -> &mut Self {
+        self.operations
+            .push(WriteOperation::SetAccumulatedDataRebuildStatus(status));
         self
     }
 
@@ -388,7 +397,9 @@ pub enum WriteOperation {
     DeleteTipBlock(HashOutput),
     DeleteBlockAccumulatedData(u64),
     DeleteOrphanChainTip(HashOutput),
+    DeleteOrphanChainTipIfExists(HashOutput),
     InsertOrphanChainTip(HashOutput, U512),
+    SetAccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus),
     InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdateBlockAccumulatedData {
         header_hash: HashOutput,
@@ -433,10 +444,6 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
-    DeleteValidatorNode {
-        sidechain_public_key: Option<CompressedPublicKey>,
-        public_key: CompressedPublicKey,
-    },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
@@ -548,6 +555,10 @@ impl fmt::Display for WriteOperation {
                 header_hash,
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({hash})",),
+            DeleteOrphanChainTipIfExists(hash) => write!(f, "DeleteOrphanChainTipIfExists({hash})",),
+            SetAccumulatedDataRebuildStatus(status) => {
+                write!(f, "SetAccumulatedDataRebuildStatus({status:?})")
+            },
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                 write!(f, "InsertOrphanChainTip({hash}, {total_accumulated_difficulty})")
             },
@@ -601,9 +612,6 @@ impl fmt::Display for WriteOperation {
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
-            DeleteValidatorNode { public_key, .. } => {
-                write!(f, "Delete validator node with public key: {public_key}")
-            },
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,

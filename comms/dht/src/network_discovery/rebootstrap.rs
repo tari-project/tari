@@ -1,0 +1,773 @@
+//  Copyright 2026, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+//! # Rebootstrap
+//!
+//! Refreshes this node's peer knowledge when DhtConnectivity reports that the peer pool cannot be filled through
+//! our own outbound dials (`DhtEvent::PoolStarved`). Seeds are re-resolved and synced from, and in parallel the
+//! peers that are still connected (outbound first, then inbound) are asked for their peer lists.
+
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    fmt::{Display, Formatter},
+    time::{Duration, Instant},
+};
+
+use futures::future;
+use log::*;
+use rand::prelude::SliceRandom;
+use tari_comms::{
+    Minimized,
+    PeerConnection,
+    RefKind,
+    peer_manager::{NodeId, Peer, PeerFlags, PeerManagerError},
+};
+use tokio::time;
+
+use crate::{
+    actor::OffenceSeverity,
+    network_discovery::{
+        NetworkDiscoveryError,
+        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, ban_peer, is_bad_data_offence, is_connected},
+        seed_strap::fetch_peers_from_connection,
+        state_machine::{NetworkDiscoveryContext, StateEvent},
+    },
+    peer_validator::PeerValidator,
+    proto::rpc::PeerInfo,
+    rpc::UnvalidatedPeerInfo,
+};
+
+/// Fixed log target for everything to do with rebootstrapping (the trigger, the rebootstrap itself and the pool
+/// refill afterwards), so that the whole sequence can be found with a single query.
+pub const REBOOTSTRAP_LOG_TARGET: &str = "comms::dht::rebootstrap";
+
+/// Supplies this node's seed peers on demand. The DHT stays DNS-agnostic: the p2p layer injects an implementation
+/// that resolves the configured `peer_seeds` and `dns_seeds`, and a rebootstrap calls it to pick up seeds that have
+/// changed since start-up.
+#[tari_comms::async_trait]
+pub trait SeedPeerProvider: Send + Sync + 'static {
+    /// Resolve the current set of seed peers. Errors are logged and swallowed by the implementation; an empty list
+    /// means no seeds could be resolved.
+    async fn resolve_seed_peers(&self) -> Vec<Peer>;
+}
+
+impl fmt::Debug for dyn SeedPeerProvider {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "SeedPeerProvider")
+    }
+}
+
+/// The result of a rebootstrap.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RebootstrapInfo {
+    /// Number of seed peers returned by the `SeedPeerProvider`.
+    pub seeds_resolved: usize,
+    /// Number of seeds peers were successfully synced from.
+    pub seeds_synced: usize,
+    /// Number of connected peers peers were successfully synced from.
+    pub connected_peers_synced: usize,
+    /// Number of valid peers received from seeds.
+    pub num_from_seeds: usize,
+    /// Number of valid peers received from connected peers.
+    pub num_from_connected: usize,
+    /// The distinct peers learned in this rebootstrap. DhtConnectivity prefers these when refilling its pool.
+    pub learned_peers: Vec<NodeId>,
+    /// Every peer stored from an inbound source in this rebootstrap, whether or not it made it into `learned_peers`.
+    /// DhtConnectivity limits how many of these join its pool, however they are dialled.
+    pub learned_from_inbound: Vec<NodeId>,
+}
+
+impl Display for RebootstrapInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "seeds resolved = {}, seeds synced = {} ({} peer(s)), connected peers synced = {} ({} peer(s)), distinct \
+             peers learned = {}",
+            self.seeds_resolved,
+            self.seeds_synced,
+            self.num_from_seeds,
+            self.connected_peers_synced,
+            self.num_from_connected,
+            self.learned_peers.len()
+        )
+    }
+}
+
+/// The most learned peers a rebootstrap hands to DhtConnectivity. Far more than a pool refill can use (a pool of 12
+/// dials at most 36 at once), but small enough that DhtConnectivity can take from the list cheaply.
+pub const MAX_LEARNED_PEERS: usize = 200;
+
+/// The least time a rebootstrap gets, whatever `bootstrap_timeout` is.
+const MIN_REBOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// At most this many peers from one source are written to the peer database. No source can contribute more than a
+/// quarter of the learned list once there are a few sources, so storing more only adds peer DB writes.
+const MAX_STORED_PER_SOURCE: usize = 50;
+
+/// Each source contributes at most `MAX_LEARNED_PEERS / number of sources` peers, but never fewer than this.
+const MIN_PEERS_PER_SOURCE: usize = 10;
+
+/// Peers relayed by inbound connections make up at most this share (1/n) of the learned list. Anyone can dial in, so
+/// inbound peers are the source an attacker controls most easily.
+const INBOUND_SHARE_DIVISOR: usize = 4;
+
+/// How long a peer suggested by an inbound source is remembered as such.
+const INBOUND_SUGGESTED_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// The most peers remembered as suggested by inbound sources. The oldest are forgotten first.
+const MAX_INBOUND_SUGGESTED: usize = 1000;
+
+/// Peers that inbound sources told us about, and when. They stay inbound-sourced for `INBOUND_SUGGESTED_TTL`, across
+/// rebootstraps, so that an inbound peer cannot launder its suggestions by waiting for a rebootstrap in which it is
+/// not asked.
+#[derive(Debug, Default)]
+pub struct InboundSuggested {
+    suggested_at: HashMap<NodeId, Instant>,
+}
+
+impl InboundSuggested {
+    /// Records `node_ids` as suggested by an inbound source at `now`.
+    pub fn add<'a, I: IntoIterator<Item = &'a NodeId>>(&mut self, node_ids: I, now: Instant) {
+        for node_id in node_ids {
+            self.suggested_at.insert(node_id.clone(), now);
+        }
+        self.suggested_at
+            .retain(|_, at| now.saturating_duration_since(*at) < INBOUND_SUGGESTED_TTL);
+        if self.suggested_at.len() > MAX_INBOUND_SUGGESTED {
+            let mut entries = self
+                .suggested_at
+                .iter()
+                .map(|(node_id, at)| (node_id.clone(), *at))
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|(_, at)| *at);
+            let overflow = entries.len().saturating_sub(MAX_INBOUND_SUGGESTED);
+            for (node_id, _) in entries.into_iter().take(overflow) {
+                self.suggested_at.remove(&node_id);
+            }
+        }
+    }
+
+    /// Returns true if an inbound source suggested `node_id` within the last `INBOUND_SUGGESTED_TTL`.
+    pub fn contains(&self, node_id: &NodeId, now: Instant) -> bool {
+        self.suggested_at
+            .get(node_id)
+            .is_some_and(|at| now.saturating_duration_since(*at) < INBOUND_SUGGESTED_TTL)
+    }
+}
+
+/// Where a batch of learned peers came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SourceKind {
+    Seed,
+    Outbound,
+    Inbound,
+}
+
+impl Display for SourceKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceKind::Seed => write!(f, "seed"),
+            SourceKind::Outbound => write!(f, "outbound"),
+            SourceKind::Inbound => write!(f, "inbound"),
+        }
+    }
+}
+
+/// The peers stored from one source, in the order received.
+#[derive(Debug, Clone)]
+pub(super) struct SourceResult {
+    pub node_id: NodeId,
+    pub kind: SourceKind,
+    pub stored: Vec<NodeId>,
+}
+
+#[derive(Debug)]
+pub(super) struct Rebootstrap {
+    context: NetworkDiscoveryContext,
+}
+
+impl Rebootstrap {
+    pub fn new(context: NetworkDiscoveryContext) -> Self {
+        Self { context }
+    }
+
+    pub async fn next_event(&mut self) -> StateEvent {
+        let config = &self.context.config.network_discovery;
+        let started = Instant::now();
+        info!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Rebootstrap started: re-resolving seeds and syncing peers from up to {} seed(s) and up to {} connected \
+             peer(s)",
+            config.max_seed_peer_sync_count,
+            config.rebootstrap_connected_peers,
+        );
+
+        // Seeds are chosen first (that needs the DNS resolution) so that the connected-peer sync knows which
+        // connections the seed sync is using. The seed sync has to dial (30-60s over Tor) while the connected-peer
+        // sync does not, so the two then run side by side. Each source has its own deadline (see `source_timeout`),
+        // so a slow one only loses its own results; this outer bound is a backstop.
+        let context = &self.context;
+        let work = async {
+            let resolved = refresh_seed_peers(context).await;
+            let seeds_resolved = resolved.as_ref().map_or(0, Vec::len);
+            let active = active_connections(context).await;
+            let seeds = select_seeds(context, resolved, &active).await;
+            let seed_ids = seeds.iter().map(|seed| seed.node_id.clone()).collect::<HashSet<_>>();
+            let (seed_results, connected) = future::join(
+                sync_from_seeds(context, seeds),
+                sync_from_connected_peers(context, active, &seed_ids),
+            )
+            .await;
+            (seeds_resolved, seed_results, connected)
+        };
+        let timeout = rebootstrap_timeout(context);
+        let (seeds_resolved, mut sources, connected) = match time::timeout(timeout, work).await {
+            Ok(results) => results,
+            Err(_) => {
+                // Whatever was learned before the timeout is already in the peer DB
+                warn!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Rebootstrap timed out after {timeout:.0?}"
+                );
+                (0, Vec::new(), Vec::new())
+            },
+        };
+        let seeds_synced = sources.len();
+        sources.extend(connected);
+
+        let (learned_peers, _, kept) = interleave_sources(&sources);
+        // Every peer an inbound source told us about, not only the ones kept in the learned list: the others are in
+        // the peer database too, and could be dialled from there. Remembered across rebootstraps, so that such a
+        // peer is still treated as inbound-sourced if we have since dialled it (see `sync_from_connected_peers`).
+        // At most `rebootstrap_connected_peers` sources x `MAX_STORED_PER_SOURCE` peers.
+        let mut seen = HashSet::new();
+        let learned_from_inbound = sources
+            .iter()
+            .filter(|source| source.kind == SourceKind::Inbound)
+            .flat_map(|source| source.stored.iter())
+            .filter(|node_id| seen.insert((*node_id).clone()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if let Ok(mut inbound_learned) = self.context.inbound_learned.lock() {
+            inbound_learned.add(&learned_from_inbound, Instant::now());
+        }
+        let count = |kind: SourceKind| -> usize {
+            sources
+                .iter()
+                .filter(|source| source.kind == kind)
+                .map(|source| source.stored.len())
+                .sum()
+        };
+        let info = RebootstrapInfo {
+            seeds_resolved,
+            seeds_synced,
+            connected_peers_synced: sources.len().saturating_sub(seeds_synced),
+            num_from_seeds: count(SourceKind::Seed),
+            num_from_connected: count(SourceKind::Outbound).saturating_add(count(SourceKind::Inbound)),
+            learned_peers,
+            learned_from_inbound,
+        };
+        let per_source = sources
+            .iter()
+            .zip(kept)
+            .map(|(source, kept)| {
+                format!(
+                    "{} {} stored={} kept={kept}",
+                    source.node_id.short_str(),
+                    source.kind,
+                    source.stored.len()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        info!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Rebootstrap finished in {:.1?}: {info}. Sources: [{per_source}]",
+            started.elapsed()
+        );
+        StateEvent::RebootstrapComplete(info)
+    }
+}
+
+/// The deadline for syncing from any one source, dial included.
+fn source_timeout(context: &NetworkDiscoveryContext) -> Duration {
+    rebootstrap_timeout(context).checked_div(2).unwrap_or_default()
+}
+
+/// The bound on a whole rebootstrap: `bootstrap_timeout`, but at least `MIN_REBOOTSTRAP_TIMEOUT`. The floor applies
+/// here only, so that a short `bootstrap_timeout` (e.g. for local test networks) still shortens the initial
+/// bootstrap without leaving a rebootstrap too little time to dial seeds over Tor.
+fn rebootstrap_timeout(context: &NetworkDiscoveryContext) -> Duration {
+    context
+        .config
+        .network_discovery
+        .bootstrap_timeout
+        .max(MIN_REBOOTSTRAP_TIMEOUT)
+}
+
+/// Builds the learned list from all sources, taking one peer from each source in turn (seeds, then outbound, then
+/// inbound connected peers) so that no single source can fill the list. Each source contributes at most its share of
+/// `MAX_LEARNED_PEERS`, and inbound sources together at most `1 / INBOUND_SHARE_DIVISOR` of it. Returns the list, the
+/// peers in it that came from inbound sources, and how many peers each source contributed.
+pub(super) fn interleave_sources(sources: &[SourceResult]) -> (Vec<NodeId>, Vec<NodeId>, Vec<usize>) {
+    let mut learned = Vec::new();
+    let mut from_inbound = Vec::new();
+    let mut kept = vec![0usize; sources.len()];
+    if sources.is_empty() {
+        return (learned, from_inbound, kept);
+    }
+    let per_source_cap = MAX_LEARNED_PEERS
+        .checked_div(sources.len())
+        .unwrap_or(0)
+        .max(MIN_PEERS_PER_SOURCE);
+    let inbound_cap = MAX_LEARNED_PEERS / INBOUND_SHARE_DIVISOR;
+    let mut num_inbound = 0usize;
+    let mut seen = HashSet::new();
+
+    let mut order = (0..sources.len()).collect::<Vec<_>>();
+    // Stable, so sources of the same kind keep their order
+    order.sort_by_key(|&i| match sources.get(i).map(|source| source.kind) {
+        Some(SourceKind::Seed) => 0,
+        Some(SourceKind::Outbound) => 1,
+        _ => 2,
+    });
+
+    for position in 0..per_source_cap {
+        for &i in &order {
+            if learned.len() >= MAX_LEARNED_PEERS {
+                return (learned, from_inbound, kept);
+            }
+            let Some(source) = sources.get(i) else { continue };
+            let Some(node_id) = source.stored.get(position) else {
+                continue;
+            };
+            let is_inbound = source.kind == SourceKind::Inbound;
+            if is_inbound && num_inbound >= inbound_cap {
+                continue;
+            }
+            if !seen.insert(node_id.clone()) {
+                continue;
+            }
+            learned.push(node_id.clone());
+            if let Some(count) = kept.get_mut(i) {
+                *count = count.saturating_add(1);
+            }
+            if is_inbound {
+                num_inbound = num_inbound.saturating_add(1);
+                from_inbound.push(node_id.clone());
+            }
+        }
+    }
+    (learned, from_inbound, kept)
+}
+
+/// Live connections, for choosing seeds and connected peers to sync from.
+async fn active_connections(context: &NetworkDiscoveryContext) -> Vec<PeerConnection> {
+    let mut connectivity = context.connectivity.clone();
+    match connectivity.get_active_connections().await {
+        Ok(conns) => conns.into_iter().filter(|conn| conn.is_connected()).collect(),
+        Err(err) => {
+            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to get active connections: {err}");
+            Vec::new()
+        },
+    }
+}
+
+/// Chooses up to `max_seed_peer_sync_count` seeds to sync from.
+///
+/// Stored seeds this node already has a connection to come first, as long as we dialled them or they are in the
+/// current resolution: on an isolated node such a connection (e.g. the proactive dialer's) may be the only live one,
+/// and syncing over it needs no dial. A stored seed that merely dialled in, and is no longer published, gets no such
+/// priority - it is treated as an ordinary inbound peer by the connected-peer sync.
+///
+/// The remaining slots go to the seeds of the current resolution, so that seeds no longer published (or injected into
+/// an earlier resolution) do not linger in the selection. If nothing usable resolved, the other stored seeds fill them
+/// instead: they are better than none.
+async fn select_seeds(
+    context: &NetworkDiscoveryContext,
+    resolved: Option<Vec<NodeId>>,
+    active: &[PeerConnection],
+) -> Vec<Peer> {
+    let max_seeds = context.config.network_discovery.max_seed_peer_sync_count;
+    let resolved = resolved.unwrap_or_default();
+    let resolved_ids = resolved.iter().cloned().collect::<HashSet<_>>();
+    let outbound = active
+        .iter()
+        .filter(|conn| conn.direction().is_outbound())
+        .map(|conn| conn.peer_node_id().clone())
+        .collect::<HashSet<_>>();
+    let inbound = active
+        .iter()
+        .filter(|conn| !conn.direction().is_outbound())
+        .map(|conn| conn.peer_node_id().clone())
+        .collect::<HashSet<_>>();
+    let only_dialled_in =
+        |node_id: &NodeId| inbound.contains(node_id) && !outbound.contains(node_id) && !resolved_ids.contains(node_id);
+    let mut stored_seeds = load_seeds(context, context.peer_manager.get_seed_peers().await);
+    stored_seeds.retain(|seed| !only_dialled_in(&seed.node_id));
+
+    let mut seeds = stored_seeds
+        .iter()
+        .filter(|seed| outbound.contains(&seed.node_id) || inbound.contains(&seed.node_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    seeds.shuffle(&mut rand::rng());
+    seeds.truncate(max_seeds);
+
+    let mut candidates = if resolved.is_empty() {
+        Vec::new()
+    } else {
+        load_seeds(context, context.peer_manager.get_peers_by_node_ids(&resolved).await)
+    };
+    if candidates.is_empty() {
+        candidates = stored_seeds;
+    }
+    candidates.shuffle(&mut rand::rng());
+    for candidate in candidates {
+        if seeds.len() >= max_seeds {
+            break;
+        }
+        if !seeds.iter().any(|seed| seed.node_id == candidate.node_id) {
+            seeds.push(candidate);
+        }
+    }
+    seeds
+}
+
+/// Syncs from each of the chosen seeds. Returns a result for each seed synced from.
+async fn sync_from_seeds(context: &NetworkDiscoveryContext, seeds: Vec<Peer>) -> Vec<SourceResult> {
+    let timeout = source_timeout(context);
+    let results = future::join_all(seeds.into_iter().map(|seed| async move {
+        let node_id = seed.node_id.clone();
+        match time::timeout(timeout, sync_from_seed(context, seed)).await {
+            Ok(result) => result.map(|stored| SourceResult {
+                node_id,
+                kind: SourceKind::Seed,
+                stored,
+            }),
+            Err(_) => {
+                debug!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Sync from seed '{}' timed out after {timeout:.0?}",
+                    node_id.short_str()
+                );
+                None
+            },
+        }
+    }))
+    .await;
+    results.into_iter().flatten().collect()
+}
+
+/// Keeps the seeds that can be dialled. Real bans are honoured: the connectivity manager would refuse the dial anyway,
+/// this just avoids spending one of the seed slots on it.
+fn load_seeds(context: &NetworkDiscoveryContext, seeds: Result<Vec<Peer>, PeerManagerError>) -> Vec<Peer> {
+    let mut seeds = match seeds {
+        Ok(seeds) => seeds,
+        Err(err) => {
+            warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to load seed peers: {err}");
+            return Vec::new();
+        },
+    };
+    seeds.retain(|seed| !seed.is_banned() && seed.node_id != *context.node_identity.node_id());
+    seeds
+}
+
+/// Asks the `SeedPeerProvider` for the current seeds and upserts them as seed peers. Returns the node ids of the
+/// seeds to sync from in this rebootstrap, or `None` if there is no provider.
+///
+/// A resolved record whose public key is already stored as an ordinary (non-seed) peer is synced from, but not
+/// stored: a DNS answer must not be able to promote a known peer to a seed or overwrite what is stored for it. Seed
+/// nodes are ordinary network members too, so most of them reach the peer DB through gossip long before (or
+/// instead of) a successful DNS resolution.
+pub(super) async fn refresh_seed_peers(context: &NetworkDiscoveryContext) -> Option<Vec<NodeId>> {
+    let Some(provider) = context.seed_peer_provider.as_ref() else {
+        debug!(target: REBOOTSTRAP_LOG_TARGET, "No seed peer provider configured, using stored seeds only");
+        return None;
+    };
+    let mut accepted = Vec::new();
+    for mut peer in provider.resolve_seed_peers().await {
+        if peer.public_key == *context.node_identity.public_key() {
+            continue;
+        }
+        match context.peer_manager.find_by_public_key(&peer.public_key).await {
+            Ok(Some(existing)) if !existing.is_seed() => {
+                debug!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Resolved seed '{}' is already known as an ordinary peer. Syncing from it without storing it as a \
+                     seed.",
+                    existing.node_id.short_str()
+                );
+                accepted.push(existing.node_id);
+                continue;
+            },
+            Ok(_) => {},
+            Err(err) => {
+                warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to look up resolved seed peer: {err}");
+                continue;
+            },
+        }
+        // Seeds are deliberately not added to the allow-list. Merging keeps any ban already recorded for this peer.
+        peer.add_flags(PeerFlags::SEED);
+        let node_id = peer.node_id.clone();
+        match context.peer_manager.add_or_update_peer(peer).await {
+            Ok(_) => accepted.push(node_id),
+            Err(err) => warn!(target: REBOOTSTRAP_LOG_TARGET, "Failed to store resolved seed peer: {err}"),
+        }
+    }
+    Some(accepted)
+}
+
+/// Dials a seed and syncs peers from it. Returns `None` if the seed could not be synced from.
+///
+/// Seeds may have failed only because of our own outage, so none of the dial suppression applies here: an explicit
+/// dial (one with a reply) is never circuit-broken by the connectivity manager, the dialer tries every address
+/// regardless of past address failures, and the DHT pool's per-peer dial backoff only gates pool dials. Bans are
+/// still enforced by the connectivity manager.
+async fn sync_from_seed(context: &NetworkDiscoveryContext, seed: Peer) -> Option<Vec<NodeId>> {
+    // An existing connection to the seed may be this node's only lifeline (e.g. the proactive dialer's), so only a
+    // connection this rebootstrap created is hung up afterwards.
+    let was_connected = is_connected(&mut context.connectivity.clone(), &seed.node_id).await;
+    let dial_timeout = context.config.network_discovery.bootstrap_dial_peer_timeout;
+    let dial = time::timeout(
+        dial_timeout,
+        context.connectivity.dial_peer(seed.node_id.clone(), RefKind::Weak),
+    )
+    .await;
+    let mut conn = match dial {
+        Ok(Ok(conn)) => conn,
+        Ok(Err(err)) => {
+            debug!(
+                target: REBOOTSTRAP_LOG_TARGET,
+                "Failed to dial seed '{}': {err}",
+                seed.node_id.short_str()
+            );
+            return None;
+        },
+        Err(_) => {
+            debug!(
+                target: REBOOTSTRAP_LOG_TARGET,
+                "Dial to seed '{}' timed out after {dial_timeout:.0?}",
+                seed.node_id.short_str()
+            );
+            return None;
+        },
+    };
+
+    let result = sync_from_connection(context, &mut conn).await;
+    // Seeds are for bootstrapping, not for holding a pool slot - unless the DHT pool has since taken this connection.
+    let is_pool_peer = context
+        .pool_peers
+        .read()
+        .map(|pool| pool.contains(&seed.node_id))
+        .unwrap_or(true);
+    if !was_connected &&
+        !is_pool_peer &&
+        !conn.is_strongly_held() &&
+        let Err(err) = conn.disconnect(Minimized::Yes, "Rebootstrap seed sync complete").await
+    {
+        debug!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Failed to disconnect seed '{}': {err}",
+            seed.node_id.short_str()
+        );
+    }
+    match result {
+        Ok(learned) => Some(learned),
+        Err(err) => {
+            debug!(
+                target: REBOOTSTRAP_LOG_TARGET,
+                "Failed to sync peers from seed '{}': {err}",
+                seed.node_id.short_str()
+            );
+            None
+        },
+    }
+}
+
+/// Syncs peers from up to `rebootstrap_connected_peers` random connected non-client peers, leaving out the seeds the
+/// seed sync is using. Outbound connections are picked first, and only the remaining slots go to inbound ones: we
+/// chose our outbound peers, while anyone can dial in. (A refinement of "inbound or outbound" in the rebootstrap
+/// spec.) An outbound connection to a peer that an inbound source told us about in the last rebootstrap still counts
+/// as inbound, so that an inbound peer cannot launder its suggestions through our own dials. Peers that relay bad peer
+/// data are banned. Returns a result for each peer synced from, outbound ones first.
+async fn sync_from_connected_peers(
+    context: &NetworkDiscoveryContext,
+    conns: Vec<PeerConnection>,
+    seed_ids: &HashSet<NodeId>,
+) -> Vec<SourceResult> {
+    let max_peers = context.config.network_discovery.rebootstrap_connected_peers;
+    if max_peers == 0 {
+        return Vec::new();
+    }
+    let now = Instant::now();
+    let classified = conns
+        .into_iter()
+        .filter(|conn| !conn.peer_features().is_client() && !seed_ids.contains(conn.peer_node_id()))
+        .map(|conn| {
+            let suggested = context
+                .inbound_learned
+                .lock()
+                .is_ok_and(|inbound_learned| inbound_learned.contains(conn.peer_node_id(), now));
+            let kind = source_kind(&conn, suggested);
+            (conn, kind)
+        })
+        .collect::<Vec<_>>();
+    let (mut outbound, mut inbound) = classified
+        .into_iter()
+        .partition::<Vec<_>, _>(|(_, kind)| *kind == SourceKind::Outbound);
+    outbound.shuffle(&mut rand::rng());
+    inbound.shuffle(&mut rand::rng());
+    let mut conns = outbound;
+    conns.extend(inbound);
+    conns.truncate(max_peers);
+
+    let timeout = source_timeout(context);
+    let results = future::join_all(conns.into_iter().map(|(mut conn, kind)| async move {
+        let node_id = conn.peer_node_id().clone();
+        let result = match time::timeout(timeout, sync_from_connection(context, &mut conn)).await {
+            Ok(result) => result,
+            Err(_) => {
+                debug!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Sync from connected peer '{}' timed out after {timeout:.0?}",
+                    node_id.short_str()
+                );
+                return None;
+            },
+        };
+        match result {
+            Ok(stored) => Some(SourceResult { node_id, kind, stored }),
+            Err(err) => {
+                debug!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Failed to sync peers from connected peer '{}': {err}",
+                    node_id.short_str()
+                );
+                ban_on_offence(context, node_id, &err).await;
+                None
+            },
+        }
+    }))
+    .await;
+    results.into_iter().flatten().collect()
+}
+
+/// How a connected peer counts as a source: inbound if it dialled us, or if an inbound source suggested it.
+pub(super) fn source_kind(conn: &PeerConnection, suggested_by_inbound: bool) -> SourceKind {
+    if conn.direction().is_outbound() && !suggested_by_inbound {
+        SourceKind::Outbound
+    } else {
+        SourceKind::Inbound
+    }
+}
+
+/// Bans a connected peer that sent bad peer data. Unlike Discovering for peers it dials, RPC failures (no free
+/// sessions, timeouts) are not banned for: they are routine over Tor, and on a starved node these connections may be
+/// its last ones. Seeds the seed sync is using never get here; a stored seed that merely dialled in is treated like
+/// any other inbound peer.
+pub(super) async fn ban_on_offence(context: &NetworkDiscoveryContext, node_id: NodeId, err: &NetworkDiscoveryError) {
+    if is_bad_data_offence(err) {
+        ban_peer(context, node_id, OffenceSeverity::High, err).await;
+    }
+}
+
+/// Requests peers over an existing connection and stores the valid ones. Returns the node ids of the peers stored.
+async fn sync_from_connection(
+    context: &NetworkDiscoveryContext,
+    conn: &mut PeerConnection,
+) -> Result<Vec<NodeId>, NetworkDiscoveryError> {
+    let config = &context.config;
+    let peers = fetch_peers_from_connection(
+        conn,
+        config.network_discovery.max_peers_to_sync_per_round,
+        config.max_permitted_peer_claims,
+        config.peer_validator_config.max_permitted_peer_addresses_per_claim,
+        config.network_discovery.bootstrap_rpc_connect_timeout,
+        config.network_discovery.bootstrap_rpc_get_peers_stream_timeout,
+        config.network_discovery.bootstrap_rpc_streaming_timeout,
+    )
+    .await?;
+    store_peers(context, conn.peer_node_id(), peers).await
+}
+
+/// Validates and stores peers received from `source`. Returns the node ids of the peers stored.
+///
+/// Only the first `MAX_STORED_PER_SOURCE` valid peers are stored; the rest are still validated. Like Discovering, an
+/// occasional unusable claim is skipped, but a source that relays more than
+/// `MAX_HOSTILE_RELAYED_CLAIMS` claims only a broken or hostile node could produce fails with
+/// `TooManyInvalidPeersReceived`, which is a ban offence.
+pub(super) async fn store_peers(
+    context: &NetworkDiscoveryContext,
+    source: &NodeId,
+    peers: Vec<PeerInfo>,
+) -> Result<Vec<NodeId>, NetworkDiscoveryError> {
+    let validator = PeerValidator::new(&context.config);
+    let mut stored = Vec::new();
+    let mut hostile_claims = 0usize;
+    for peer_info in peers {
+        let peer = match UnvalidatedPeerInfo::try_from(peer_info) {
+            Ok(peer) => peer,
+            Err(err) => {
+                debug!(target: REBOOTSTRAP_LOG_TARGET, "Invalid peer info from '{source}': {err}");
+                hostile_claims = hostile_claims.saturating_add(1);
+                if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
+                    return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
+                }
+                continue;
+            },
+        };
+        if peer.public_key == *context.node_identity.public_key() {
+            continue;
+        }
+        let existing = context.peer_manager.find_by_public_key(&peer.public_key).await?;
+        let valid_peer = match validator.validate_peer(peer, existing) {
+            Ok(valid_peer) => valid_peer,
+            Err(err) => {
+                debug!(target: REBOOTSTRAP_LOG_TARGET, "Invalid peer from '{source}': {err}");
+                if err.is_ban_offence() {
+                    hostile_claims = hostile_claims.saturating_add(1);
+                    if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
+                        return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
+                    }
+                }
+                continue;
+            },
+        };
+        // Past the cap the rest of the (already bounded) response is still validated, so that hostile records after
+        // the first valid ones count towards a ban, but nothing more is stored
+        if stored.len() >= MAX_STORED_PER_SOURCE {
+            continue;
+        }
+        let node_id = valid_peer.node_id.clone();
+        context.peer_manager.add_or_update_peer(valid_peer).await?;
+        stored.push(node_id);
+    }
+    if stored.len() >= MAX_STORED_PER_SOURCE {
+        debug!(
+            target: REBOOTSTRAP_LOG_TARGET,
+            "Stored the first {MAX_STORED_PER_SOURCE} valid peer(s) from '{source}'; ignored the rest"
+        );
+    }
+    Ok(stored)
+}

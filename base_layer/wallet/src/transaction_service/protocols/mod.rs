@@ -24,7 +24,6 @@ use bincode::serialize_into;
 use log::{debug, error};
 use serde::Serialize;
 use tari_common_types::transaction::TxId;
-use tari_comms::protocol::rpc;
 
 use crate::transaction_service::error::{TransactionServiceError, TransactionServiceProtocolError};
 
@@ -35,6 +34,11 @@ pub mod transaction_validation_protocol;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols";
 
+/// The largest serialised transaction the wallet will negotiate and broadcast. Space is reserved for the frame
+/// overhead and for coinbases, keeping a single transaction just under 4 MiB. This was historically derived as
+/// `6 MiB RPC frame - 2 MiB - 10 KiB`; it is fixed here so that raising the RPC frame size does not change it.
+pub const MAX_BROADCAST_TRANSACTION_SIZE: usize = 4 * 1024 * 1024 - 10 * 1024;
+
 /// Verify that the negotiated transaction is not too large to be broadcast
 pub fn check_transaction_size<T: Serialize>(
     transaction: &T,
@@ -44,13 +48,10 @@ pub fn check_transaction_size<T: Serialize>(
     serialize_into(&mut buf, transaction).map_err(|e| {
         TransactionServiceProtocolError::new(tx_id, TransactionServiceError::SerializationError(e.to_string()))
     })?;
-    // we reserve some space for the frame overhead and same for coinbases trying to keep the single transaction under
-    // 4MB
-    const SIZE_MARGIN: usize = (1024 * 10) + (2 * 1024 * 1024);
-    if buf.len() > rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN) {
+    if buf.len() > MAX_BROADCAST_TRANSACTION_SIZE {
         let err = TransactionServiceProtocolError::new(tx_id, TransactionServiceError::TransactionTooLarge {
             got: buf.len(),
-            expected: rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN),
+            expected: MAX_BROADCAST_TRANSACTION_SIZE,
         });
         error!(
             target: LOG_TARGET,
@@ -61,8 +62,26 @@ pub fn check_transaction_size<T: Serialize>(
         debug!(
             target: LOG_TARGET,
             "Transaction '{}' size ok, can be broadcast (got: {}, limit: {}).",
-            tx_id, buf.len(), rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN)
+            tx_id, buf.len(), MAX_BROADCAST_TRANSACTION_SIZE
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_comms::protocol::rpc::RPC_MAX_REQUEST_SIZE;
+
+    use super::MAX_BROADCAST_TRANSACTION_SIZE;
+
+    #[test]
+    fn max_broadcast_transaction_size_is_unchanged_and_fits_in_a_request() {
+        // The historical value, derived from the old 6 MiB RPC frame
+        assert_eq!(
+            MAX_BROADCAST_TRANSACTION_SIZE,
+            6 * 1024 * 1024 - (2 * 1024 * 1024 + 10 * 1024)
+        );
+        // A negotiated transaction is submitted to base nodes in an RPC request
+        const { assert!(MAX_BROADCAST_TRANSACTION_SIZE < RPC_MAX_REQUEST_SIZE) };
     }
 }

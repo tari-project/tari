@@ -144,6 +144,6 @@ impl TransactionServiceMockState {
 
     pub fn drain_requests(&mut self) -> Vec<TransactionServiceRequest> {
         let mut lock = acquire_lock!(self.service_requests);
-        (*lock).drain(..).collect()
+        std::mem::take(&mut *lock)
     }
 }

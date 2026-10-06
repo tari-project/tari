@@ -32,6 +32,9 @@ pub use error::ValidationError;
 
 pub(crate) mod helpers;
 
+mod chain_context;
+pub use chain_context::{HeaderChainContext, MoneroSeedHeights};
+
 mod traits;
 
 pub use traits::{
@@ -41,6 +44,7 @@ pub use traits::{
     HeaderChainLinkedValidator,
     InternalConsistencyValidator,
     TransactionValidator,
+    ValidatedHeader,
 };
 pub mod block_body;
 mod difficulty_calculator;

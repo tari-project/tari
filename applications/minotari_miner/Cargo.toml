@@ -1,5 +1,6 @@
 [package]
 name = "minotari_miner"
+publish = false
 description = "The tari miner implementation"
 authors.workspace = true
 repository.workspace = true
@@ -50,6 +51,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
     "rt-multi-thread",
+    "time",
 ] }
 tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }
 

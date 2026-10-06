@@ -144,7 +144,7 @@ impl Iterator for PathIterator<'_> {
             return None;
         }
         let bit = get_bit(self.key.as_slice(), self.cursor_front)?;
-        self.cursor_front += 1;
+        self.cursor_front = self.cursor_front.saturating_add(1);
         Some(bit_to_dir(bit))
     }
 
@@ -348,7 +348,7 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
     pub fn build_tree(self, height: usize, sibling: LeafNode<H>) -> Result<BranchNode<H>, SMTError> {
         let diverge_height = count_common_prefix(&self.key, &sibling.key);
         let num_branches = match diverge_height.checked_sub(height) {
-            Some(n) => n + 1,
+            Some(n) => n.saturating_add(1),
             None => {
                 let msg = format!("Diverge height {diverge_height} is less than height {height}");
                 return Err(SMTError::InvalidBranch(msg));
@@ -365,9 +365,15 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
             Ok(root)
         } else {
             let (left, right) = if get_bit(self.key.as_slice(), height) == Some(0) {
-                (Branch(self.build_tree(height + 1, sibling)?), Empty(EmptyNode {}))
+                (
+                    Branch(self.build_tree(height.saturating_add(1), sibling)?),
+                    Empty(EmptyNode {}),
+                )
             } else {
-                (Empty(EmptyNode {}), Branch(self.build_tree(height + 1, sibling)?))
+                (
+                    Empty(EmptyNode {}),
+                    Branch(self.build_tree(height.saturating_add(1), sibling)?),
+                )
             };
             let root = BranchNode::new(height, root_key, left, right)?;
             Ok(root)

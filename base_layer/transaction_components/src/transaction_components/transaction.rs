@@ -66,7 +66,7 @@ impl Transaction {
     ) -> Self {
         Self {
             offset,
-            body: AggregateBody::new(inputs, outputs, kernels),
+            body: AggregateBody::new_unsorted(inputs, outputs, kernels),
             script_offset,
         }
     }
@@ -106,6 +106,8 @@ impl Add for Transaction {
 
     /// This function adds two transactions together by summing up the offset, script offset and
     /// extending inputs, outputs and kernels.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn add(mut self, other: Self) -> Self {
         self.offset = self.offset + other.offset;
         self.script_offset = self.script_offset + other.script_offset;

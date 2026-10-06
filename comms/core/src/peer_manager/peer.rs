@@ -231,7 +231,7 @@ impl Peer {
     pub fn offline_since(&self) -> Option<Duration> {
         let offline_at = self.addresses.offline_at();
         offline_at
-            .map(|offline_at| Utc::now().naive_utc() - offline_at)
+            .map(|offline_at| Utc::now().naive_utc().signed_duration_since(offline_at))
             .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
     }
 

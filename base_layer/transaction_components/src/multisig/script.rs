@@ -45,6 +45,8 @@ pub fn get_multi_sig_script_components(script: &TariScript) -> Option<(Vec<Compr
     None
 }
 
+// Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 pub fn derive_multisig_ephemeral_pubkey<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     public_key: &CompressedPublicKey,

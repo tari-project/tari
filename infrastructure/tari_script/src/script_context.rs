@@ -21,13 +21,19 @@ use crate::HashValue;
 
 /// Contextual data for use in Tari scripts. The context will typically be unambiguously and deterministically
 /// populated by nodes that are executing the script.
+///
+/// Only the block height is currently read by any opcode (`CheckHeightVerify`, `CheckHeight`, `CompareHeightVerify`
+/// and `CompareHeight`; see [TariScript::is_context_sensitive](crate::TariScript::is_context_sensitive)). The
+/// `prev_block_hash` and `commitment` fields are carried for future opcodes but are not read by any opcode today.
+///
+/// The [Default] context has a block height of 0.
 #[derive(Debug, Clone, Default)]
 pub struct ScriptContext {
     /// The height of the chain where the UTXO is being _spent_; not the height the UTXO was created in
     block_height: u64,
-    /// The hash of the previous block's hash
+    /// The hash of the previous block's hash. Currently not read by any opcode.
     prev_block_hash: HashValue,
-    /// The commitment of the UTXO that is attached to this script
+    /// The commitment of the UTXO that is attached to this script. Currently not read by any opcode.
     commitment: CompressedPedersenCommitment,
 }
 

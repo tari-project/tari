@@ -22,11 +22,21 @@
 
 use tari_max_size::MaxSizeVec;
 
+pub(crate) mod inbound_backpressure;
 pub mod rolling_avg;
 pub mod rolling_vec;
 pub(crate) mod waiting_requests;
 
-/// AuxChainHashes is a vector of limited size
-pub type AuxChainHashes = MaxSizeVec<monero::Hash, 128>;
+/// The maximum number of merge mined aux chain hashes, the bound of [`AuxChainHashes`].
+pub const MAX_AUX_CHAIN_HASHES: usize = 128;
+
+/// AuxChainHashes is a vector of limited size (at most [`MAX_AUX_CHAIN_HASHES`] merge mined aux chain hashes).
+///
+/// It is only used when *building* Monero merge mining pow data (the merge mining proxy); a node never decodes an
+/// `AuxChainHashes`, so this bound is not itself a decode-time consensus rule. What a node decodes is the aux chain
+/// merkle proof built from it, whose branch length has its own (larger) decode bound. The bound must stay small
+/// enough that a proof over this many aux chains still decodes; `aux_chain_hashes_bound_fits_the_merkle_proof_bound`
+/// checks that.
+pub type AuxChainHashes = MaxSizeVec<monero::Hash, MAX_AUX_CHAIN_HASHES>;
 
 pub type RequestKey = u64;

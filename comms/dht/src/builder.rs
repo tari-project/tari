@@ -29,11 +29,19 @@ use tari_comms::{NodeIdentity, PeerManager, connectivity::ConnectivityRequester}
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
-use crate::{Dht, DhtConfig, dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion};
+use crate::{
+    Dht,
+    DhtConfig,
+    SeedPeerProvider,
+    dht::DhtInitializationError,
+    outbound::DhtOutboundRequest,
+    version::DhtProtocolVersion,
+};
 
 /// Builder for the DHT.
 ///
 /// ```rust
+/// use tari_common_sqlite::connection::DbConnectionUrl;
 /// use tari_comms_dht::Dht;
 /// let builder = Dht::builder()
 ///     .mainnet()
@@ -44,6 +52,7 @@ use crate::{Dht, DhtConfig, dht::DhtInitializationError, outbound::DhtOutboundRe
 pub struct DhtBuilder {
     config: DhtConfig,
     outbound_tx: Option<mpsc::UnboundedSender<DhtOutboundRequest>>,
+    seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
 }
 
 impl DhtBuilder {
@@ -54,6 +63,7 @@ impl DhtBuilder {
             #[cfg(not(test))]
             config: Default::default(),
             outbound_tx: None,
+            seed_peer_provider: None,
         }
     }
 
@@ -78,6 +88,13 @@ impl DhtBuilder {
     /// Sets the mpsc sender that is hooked up to the outbound messaging pipeline.
     pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>) -> &mut Self {
         self.outbound_tx = Some(outbound_tx);
+        self
+    }
+
+    /// Sets the provider used to re-resolve seed peers when the peer pool is starved and the node rebootstraps.
+    /// Without one, a rebootstrap only uses the seeds already stored in the peer database.
+    pub fn with_seed_peer_provider(&mut self, provider: Arc<dyn SeedPeerProvider>) -> &mut Self {
+        self.seed_peer_provider = Some(provider);
         self
     }
 
@@ -158,6 +175,7 @@ impl DhtBuilder {
             peer_manager,
             outbound_tx,
             connectivity,
+            self.seed_peer_provider.clone(),
             shutdown_signal,
         )
         .await

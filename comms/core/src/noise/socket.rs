@@ -162,6 +162,11 @@ impl<TSocket> NoiseSocket<TSocket> {
         self.get_remote_static()
             .and_then(|s| CommsPublicKey::from_canonical_bytes(s).ok())
     }
+
+    /// Returns true if the remote closed the connection, i.e. a read reached the end of the stream.
+    fn is_eof(&self) -> bool {
+        matches!(self.read_state, ReadState::Eof(_))
+    }
 }
 
 fn poll_write_all<TSocket>(
@@ -187,13 +192,13 @@ where
         trace!(
             target: LOG_TARGET,
             "poll_write_all: wrote {}/{} bytes",
-            *offset + n,
+            offset.saturating_add(n),
             buf.len()
         );
         if n == 0 {
             return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
         }
-        *offset += n;
+        *offset = offset.saturating_add(n);
         assert!(*offset <= buf.len());
 
         if *offset == buf.len() {
@@ -256,13 +261,13 @@ where
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
-            *offset + n,
+            offset.saturating_add(n),
             buf.len()
         );
         if n == 0 {
             return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()));
         }
-        *offset += n;
+        *offset = offset.saturating_add(n);
         assert!(*offset <= buf.len());
 
         if *offset == buf.len() {
@@ -343,8 +348,9 @@ where TSocket: AsyncRead + Unpin
                     decrypted_len,
                     ref mut offset,
                 } => {
-                    let num_bytes_to_copy = cmp::min(decrypted_len - *offset, buf.len());
-                    let bytes_to_copy = match self.buffers.read_decrypted.get(*offset..(*offset + num_bytes_to_copy)) {
+                    let num_bytes_to_copy = cmp::min(decrypted_len.saturating_sub(*offset), buf.len());
+                    let copy_end = offset.saturating_add(num_bytes_to_copy);
+                    let bytes_to_copy = match self.buffers.read_decrypted.get(*offset..copy_end) {
                         Some(bytes) => bytes,
                         None => {
                             return Poll::Ready(Err(io::Error::new(
@@ -359,10 +365,10 @@ where TSocket: AsyncRead + Unpin
                     trace!(
                         target: LOG_TARGET,
                         "CopyDecryptedFrame: copied {}/{} bytes",
-                        *offset + num_bytes_to_copy,
+                        copy_end,
                         decrypted_len
                     );
-                    *offset += num_bytes_to_copy;
+                    *offset = copy_end;
                     if *offset == decrypted_len {
                         self.read_state = ReadState::Init;
                     }
@@ -414,7 +420,8 @@ where TSocket: AsyncWrite + Unpin
                 },
                 WriteState::BufferData { ref mut offset } => {
                     let bytes_buffered = if let Some(buf) = buf {
-                        let num_bytes_to_copy = ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH - *offset, buf.len());
+                        let num_bytes_to_copy =
+                            ::std::cmp::min(MAX_WRITE_BUFFER_LENGTH.saturating_sub(*offset), buf.len());
                         let bytes = match buf.get(..num_bytes_to_copy) {
                             Some(bytes) => bytes,
                             None => {
@@ -426,7 +433,7 @@ where TSocket: AsyncWrite + Unpin
                         };
                         self.buffers
                             .write_decrypted
-                            .get_mut(*offset..(*offset + num_bytes_to_copy))
+                            .get_mut(*offset..offset.saturating_add(num_bytes_to_copy))
                             .expect("this is checked")
                             .copy_from_slice(bytes);
                         trace!(
@@ -435,7 +442,7 @@ where TSocket: AsyncWrite + Unpin
                             num_bytes_to_copy,
                             buf.len()
                         );
-                        *offset += num_bytes_to_copy;
+                        *offset = offset.saturating_add(num_bytes_to_copy);
                         Some(num_bytes_to_copy)
                     } else {
                         None
@@ -633,9 +640,23 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive(&mut self) -> io::Result<usize> {
-        time::timeout(self.recv_timeout, self.socket.read(&mut []))
+        let num_bytes = time::timeout(self.recv_timeout, self.socket.read(&mut []))
             .await
-            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
+            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))??;
+
+        // Handshake messages carry no payload, so the read above is issued with an empty buffer and
+        // returns Ok(0) both when a handshake message was consumed and when the remote hung up
+        // before sending one. Left undetected, the EOF case lets the handshake continue and fail on
+        // the next `send` with a confusing snow state error ("NotTurnToWrite") rather than
+        // reporting that the peer closed the connection.
+        if self.socket.is_eof() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "peer closed the connection during the noise handshake",
+            ));
+        }
+
+        Ok(num_bytes)
     }
 
     fn build(self) -> io::Result<NoiseSocket<TSocket>> {
@@ -769,6 +790,24 @@ mod test {
             listener_socket.get_remote_static(),
             Some(dialer_keypair.public.as_ref())
         );
+    }
+
+    #[tokio::test]
+    async fn handshake_reports_eof_when_peer_hangs_up() {
+        let ((_dialer_keypair, dialer), (_listener_keypair, mut listener)) = build_test_connection().await.unwrap();
+
+        // The peer reads our first handshake message and then hangs up without replying.
+        let listener_task = tokio::spawn(async move {
+            listener.receive().await.unwrap();
+            drop(listener);
+        });
+
+        let err = dialer.perform_handshake().await.unwrap_err();
+        listener_task.await.unwrap();
+
+        // Before the EOF was detected explicitly this surfaced as an InvalidData "EncryptionError:
+        // state error: NotTurnToWrite" from snow, which says nothing about the peer hanging up.
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof, "unexpected error: {err}");
     }
 
     #[tokio::test]

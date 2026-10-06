@@ -49,8 +49,10 @@ pub struct DnsSeedResolver {
 }
 
 impl DnsSeedResolver {
-    /// Connect to DNS host with DNSSEC protection using default root DNSKEY public keys
-    /// obtained from root DNS.
+    /// Connect to DNS host with DNSSEC protection using the default root DNSKEY public keys as trust anchors.
+    ///
+    /// Records that cannot be proven authentic are rejected, so a resolution either yields validated seed peers or
+    /// an error - never unvalidated peers.
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records

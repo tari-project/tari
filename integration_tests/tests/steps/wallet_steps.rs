@@ -21,6 +21,8 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#![allow(clippy::arithmetic_side_effects)]
 use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
 
 use cucumber::{given, then, when};
@@ -647,6 +649,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -710,6 +713,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -798,6 +802,7 @@ async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -889,6 +894,7 @@ async fn send_many_interactive_amount_from_wallet_to_wallet_at_fee(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let mut tx_ids = Vec::with_capacity(usize::try_from(number_of_transactions).unwrap());
     for i in 0..number_of_transactions {
@@ -1213,7 +1219,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 async fn stop_all_wallets(world: &mut TariWorld) {
     for (wallet, wallet_ps) in &mut world.wallets {
         cucumber_steps_log(format!("Stopping wallet {wallet}"));
-        wallet_ps.kill();
+        wallet_ps.kill().await;
     }
 }
 
@@ -1224,7 +1230,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     world.wallet_addresses.insert(wallet.clone(), wallet_address);
     cucumber_steps_log(format!("Stopping wallet {}", wallet.as_str()));
-    wallet_ps.kill();
+    wallet_ps.kill().await;
 }
 
 #[when(expr = "I start wallet {word}")]
@@ -1245,7 +1251,7 @@ async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
 async fn restart_wallet(world: &mut TariWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     // stop wallet
-    wallet_ps.kill();
+    wallet_ps.kill().await;
     // start wallet
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap().clone();
     let base_node_ps = world.base_nodes.get(&base_node).unwrap();
@@ -1411,6 +1417,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
             single_tx: false,
+            excluded_commitments: vec![],
         };
         let transfer_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let transfer_res = transfer_res.results.first().unwrap();
@@ -1418,7 +1425,7 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
         if !transfer_res.is_success {
             panic!(
                 "Failed to send transaction from wallet {} to wallet {}, with message \n {}",
-                &sender_wallet, &receiver_wallet, &transfer_res.failure_message
+                sender_wallet, receiver_wallet, transfer_res.failure_message
             );
         }
         tx_ids.push(transfer_res.transaction_id);
@@ -1574,6 +1581,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1780,6 +1788,7 @@ async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
         single_tx: true,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -1870,6 +1879,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2164,6 +2174,7 @@ async fn send_one_sided_stealth_transaction(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
         single_tx: false,
+        excluded_commitments: vec![],
     };
     let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
@@ -2225,7 +2236,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2355,7 +2366,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2483,7 +2494,7 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
     if wallet_a_ps.is_running() {
         cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill();
+        wallet_a_ps.kill().await;
     }
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2676,6 +2687,7 @@ async fn multi_send_txs_from_wallet(
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
             single_tx: false,
+            excluded_commitments: vec![],
         };
         let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
         let tx_res = tx_res.results;
@@ -2797,8 +2809,9 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
         recipients: vec![transfer_with_tx_id],
     };
 
+    // No sleep here: `response` is already resolved by the `await` above, so sleeping before
+    // reading it only burned wall-clock without synchronising anything.
     let response = client.user_pay_for_fee(user_pay_for_fee_req).await;
-    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let tx_results = response
         .expect("UserPayForFee response should succeed")

@@ -55,7 +55,8 @@ pub struct TransactionServiceConfig {
     /// This is the number of block confirmations required for a transaction to be considered completely mined and
     /// confirmed
     pub num_confirmations_required: u64,
-    /// The number of batches the unconfirmed transactions will be divided into before being queried from the base node
+    /// The number of unconfirmed transactions processed per round of base node queries. Values below 1 are treated
+    /// as 1.
     pub max_tx_query_batch_size: usize,
     /// This option specifies the transaction routing mechanism as being directly between wallets, making use of store
     /// and forward or using any combination of these.
@@ -63,7 +64,9 @@ pub struct TransactionServiceConfig {
     /// This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy
     /// console wallet doing thousands of bulk payments or used for stress testing needs a fairly big size.
     pub transaction_event_channel_size: usize,
-    /// This is the timeout period that will be used to re-submit transactions not found in the mempool
+    /// This is the minimum period between re-submissions of a transaction that is not found in the mempool. A
+    /// transaction is submitted at most 5 times in total (the initial submission plus 4 re-submissions) before it is
+    /// cancelled as invalid.
     #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
     /// Directory where burn proof files are written after a burn transaction completes. The L2 wallet daemon reads
@@ -141,5 +144,16 @@ impl From<String> for TransactionRoutingMechanism {
                 Self::DirectAndStoreAndForward
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_tx_query_batch_size_is_a_valid_chunk_size() {
+        // `chunks()` panics on a zero size.
+        assert!(TransactionServiceConfig::default().max_tx_query_batch_size >= 1);
     }
 }

@@ -79,7 +79,7 @@ pub use conversion_registry_factory::ConversionRegistryFactory;
 pub use error::{McpError, McpResult};
 pub use executable_finder::{ExecutableFinder, TariExecutables};
 pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
-pub use grpc_discovery::{base_node_methods, wallet_methods, GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery};
+pub use grpc_discovery::{GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery, base_node_methods, wallet_methods};
 pub use grpc_error_mapper::{ErrorCategory, ErrorContext, ErrorSeverity, GrpcErrorMapper};
 pub use grpc_executor::{ExecutorStatus, GrpcExecutor, NodeGrpcClient, WalletGrpcClient};
 pub use health_checker::{
@@ -90,7 +90,7 @@ pub use health_checker::{
     HealthStatus as GrpcHealthStatus,
 };
 pub use health_monitor::{HealthCheckResult, HealthMonitor, HealthStatus, ServiceHealthMonitors};
-pub use input_sanitizer::{sanitize_tool_input, InputSanitizer, ValidationPatterns};
+pub use input_sanitizer::{InputSanitizer, ValidationPatterns, sanitize_tool_input};
 pub use method_implementations::{register_node_converters, register_wallet_converters};
 pub use parameter_converter::{ConversionError, ConversionRegistry, JsonParameterExtractor, ParameterConverter};
 pub use process_launcher::{
@@ -104,13 +104,13 @@ pub use process_launcher::{
 };
 pub use process_manager::{ProcessStatus, ProcessSupervisor, ProcessType, ProcessUtils};
 pub use prompts::{
-    resource_message,
-    text_message,
     McpPrompt,
     MessageRole,
     PromptContent,
     PromptMessage,
     PromptRegistry,
+    resource_message,
+    text_message,
 };
 pub use protobuf_reflector_simple::ProtobufReflector;
 pub use resources::{McpResource, ResourceRegistry};
@@ -138,13 +138,13 @@ pub use tool_metadata::{
     ToolRiskLevel,
 };
 pub use tools::{
+    McpTool,
+    ToolRegistry,
     get_optional_string_param,
     get_required_bool_param,
     get_required_number_param,
     get_required_string_param,
     get_required_u64_param,
-    McpTool,
-    ToolRegistry,
 };
 // Export all macros for public use
 // pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec}; //

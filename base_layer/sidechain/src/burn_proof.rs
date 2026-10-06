@@ -20,11 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::{
-    burn_proof::EncodedMerkleProof,
-    serializers,
-    types::{CompressedCommitment, CompressedPublicKey},
-};
+use tari_common_types::{burn_proof::BurnOutputProof, serializers, types::CompressedPublicKey};
 use tari_crypto::ristretto::CompressedRistrettoSchnorr;
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -34,84 +30,68 @@ pub struct CompleteClaimBurnProof {
     pub encrypted_data: Vec<u8>,
     /// The L1 epoch the burn was mined in (`block_height / vn_epoch_length`). Lets an L2 claimant defer the
     /// claim until L2 has synced past this epoch, avoiding a premature, permanently-rejected submission.
-    /// `Option` (via `serde(default)`) so proof files written before this field, or by wallets connected to a
-    /// base node that did not report the height, still deserialize (as `None`) and older readers ignore it.
-    #[serde(default)]
-    pub mined_in_epoch: Option<u64>,
+    pub mined_in_epoch: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct BurnClaimProof {
-    /// This is typically the public nonce that the UTXO was burnt with
+    /// The L2 account public key (`P`) the burn is intended for
     pub burn_public_key: CompressedPublicKey,
-    pub commitment: CompressedCommitment,
     pub ownership_proof: CompressedRistrettoSchnorr,
-    pub encoded_merkle_proof: EncodedMerkleProof,
-    pub kernel: AbridgedTransactionKernel,
+    /// Proves that the burn output was mined in an L1 block. The output carries the commitment, the sender offset
+    /// public key and the claim public key (in its features).
+    pub output_proof: BurnOutputProof,
     pub value: u64,
-    pub sender_offset_public_key: CompressedPublicKey,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AbridgedTransactionKernel {
-    pub version: u8,
-    pub fee: u64,
-    pub lock_height: u64,
-    pub excess: CompressedCommitment,
-    pub excess_sig: CompressedRistrettoSchnorr,
 }
 
 #[cfg(test)]
 mod tests {
+    use tari_common_types::burn_proof::{MmrInclusionProof, OutputHashPreimage};
+
     use super::*;
 
-    fn sample_proof(mined_in_epoch: Option<u64>) -> CompleteClaimBurnProof {
-        CompleteClaimBurnProof {
-            claim_proof: BurnClaimProof {
-                burn_public_key: Default::default(),
-                commitment: Default::default(),
-                ownership_proof: Default::default(),
-                encoded_merkle_proof: EncodedMerkleProof {
-                    block_hash: Default::default(),
-                    encoded_merkle_proof: vec![1, 2, 3],
-                    leaf_index: 7,
-                },
-                kernel: AbridgedTransactionKernel {
-                    version: 0,
-                    fee: 100,
-                    lock_height: 0,
-                    excess: Default::default(),
-                    excess_sig: Default::default(),
-                },
-                value: 12_345,
-                sender_offset_public_key: Default::default(),
-            },
-            encrypted_data: vec![9, 9, 9],
-            mined_in_epoch,
+    fn mmr_proof() -> MmrInclusionProof {
+        MmrInclusionProof {
+            leaf_index: 0,
+            mmr_size: 1,
+            path: vec![],
+            peaks: vec![],
         }
     }
 
     #[test]
-    fn mined_in_epoch_round_trips() {
-        let proof = sample_proof(Some(42));
+    fn it_round_trips_as_json() {
+        let proof = CompleteClaimBurnProof {
+            claim_proof: BurnClaimProof {
+                burn_public_key: Default::default(),
+                ownership_proof: Default::default(),
+                output_proof: BurnOutputProof {
+                    block_hash: Default::default(),
+                    block_height: 100,
+                    output: OutputHashPreimage {
+                        version: 1,
+                        features: vec![1, 2],
+                        commitment: Default::default(),
+                        rangeproof_hash: Default::default(),
+                        script: vec![3],
+                        sender_offset_public_key: Default::default(),
+                        metadata_signature: Default::default(),
+                        covenant: vec![0],
+                        encrypted_data: vec![9; 10],
+                        minimum_value_promise: 0,
+                    },
+                    normal_output_proof: mmr_proof(),
+                    normal_output_mr: Default::default(),
+                    block_output_proof: mmr_proof(),
+                },
+                value: 12_345,
+            },
+            encrypted_data: vec![9, 9, 9],
+            mined_in_epoch: 42,
+        };
         let json = serde_json::to_string(&proof).unwrap();
-        assert!(
-            json.contains("mined_in_epoch"),
-            "serialized proof should contain the field: {json}"
-        );
         let parsed: CompleteClaimBurnProof = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.mined_in_epoch, Some(42));
-    }
-
-    #[test]
-    fn absent_mined_in_epoch_defaults_to_none() {
-        // Simulate a proof file written before the field existed by dropping the key entirely, so the reader must
-        // rely on `#[serde(default)]` rather than a `null` value being present.
-        let mut value = serde_json::to_value(sample_proof(Some(42))).unwrap();
-        value.as_object_mut().unwrap().remove("mined_in_epoch");
-        assert!(value.get("mined_in_epoch").is_none());
-
-        let parsed: CompleteClaimBurnProof = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed.mined_in_epoch, None, "absent field must deserialize as None");
+        assert_eq!(parsed.mined_in_epoch, 42);
+        assert_eq!(parsed.claim_proof.output_proof, proof.claim_proof.output_proof);
     }
 }

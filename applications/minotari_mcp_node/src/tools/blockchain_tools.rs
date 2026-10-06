@@ -33,10 +33,10 @@ use minotari_app_grpc::tari_rpc::{
     HeightRequest,
     ListHeadersRequest,
 };
-use minotari_mcp_common::{get_required_string_param, McpError, McpResult, McpTool};
+use minotari_mcp_common::{McpError, McpResult, McpTool, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
 
 /// Tool for listing blockchain headers
 #[derive(Clone)]
@@ -526,6 +526,7 @@ impl McpTool for GetNetworkDifficultyTool {
             difficulties.push(json!({
                 "height": difficulty_response.height,
                 "difficulty": difficulty_response.difficulty,
+                "adjusted_difficulty": difficulty_response.adjusted_difficulty,
                 "estimated_hash_rate": difficulty_response.estimated_hash_rate,
                 "timestamp": difficulty_response.timestamp,
                 "pow_algo": difficulty_response.pow_algo,

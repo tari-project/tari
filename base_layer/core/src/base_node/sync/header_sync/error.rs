@@ -96,6 +96,15 @@ pub enum BlockHeaderSyncError {
     AllSyncPeersExceedLatency,
     #[error("Unable to get TargetDifficulties: ({0})")]
     TargetDifficultiesError(String),
+    #[error(
+        "Refused a deep reorg (GHSA-3qmx-q9pv-f3m4): the peer's chain splits from ours at height {split_height}, \
+         below the advisory's activation height {activation_height}, while our tip is already at {local_tip_height}"
+    )]
+    ReorgBelowGhsaActivation {
+        split_height: u64,
+        activation_height: u64,
+        local_tip_height: u64,
+    },
 }
 
 impl BlockHeaderSyncError {
@@ -130,7 +139,8 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::InvalidProtocolResponse(_) |
             err @ BlockHeaderSyncError::ChainLinkBroken { .. } |
             err @ BlockHeaderSyncError::BlockError(_) |
-            err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
+            err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) |
+            err @ BlockHeaderSyncError::ReorgBelowGhsaActivation { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
             }),

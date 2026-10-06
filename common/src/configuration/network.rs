@@ -25,12 +25,16 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
-    sync::OnceLock,
+    sync::{Once, OnceLock},
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::ConfigurationError;
+use crate::{
+    ConfigurationError,
+    configuration::utils::{emit_warning, sanitize_for_display},
+    network_check::is_network_choice_valid,
+};
 
 static CURRENT_NETWORK: OnceLock<Network> = OnceLock::new();
 
@@ -62,10 +66,7 @@ impl Network {
             Some(&network) => network,
             None => {
                 // Check to see if the network has been set by the environment, otherwise use the default
-                match std::env::var("TARI_NETWORK") {
-                    Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::default()),
-                    Err(_) => Network::default(),
-                }
+                network_from_env().unwrap_or_else(target_default_network)
             },
         }
     }
@@ -120,24 +121,65 @@ impl Network {
     }
 }
 
+/// Reads `TARI_NETWORK` from the environment. The value is only used if it parses and is a valid choice for the
+/// network this binary was built for; otherwise a warning is logged (once per process) and `None` is returned.
+fn network_from_env() -> Option<Network> {
+    static ENV_WARNING: Once = Once::new();
+    let value = std::env::var("TARI_NETWORK").ok()?;
+    let network = match Network::from_str(value.as_str()) {
+        Ok(network) => network,
+        Err(e) => {
+            ENV_WARNING.call_once(|| {
+                // This can run before any logger exists, so also print it
+                emit_warning(&format!(
+                    "Ignoring TARI_NETWORK={}: {e}. Using the default network instead.",
+                    sanitize_for_display(&value)
+                ));
+            });
+            return None;
+        },
+    };
+    match is_network_choice_valid(network) {
+        Ok(network) => Some(network),
+        Err(e) => {
+            ENV_WARNING.call_once(|| {
+                // This can run before any logger exists, so also print it
+                emit_warning(&format!(
+                    "Ignoring TARI_NETWORK={}: {e}. Using the default network instead.",
+                    sanitize_for_display(&value)
+                ));
+            });
+            None
+        },
+    }
+}
+
+/// The network this binary was built for, without consulting the environment.
+fn target_default_network() -> Network {
+    #[cfg(tari_target_network_mainnet)]
+    {
+        Network::MainNet
+    }
+    #[cfg(tari_target_network_nextnet)]
+    {
+        Network::NextNet
+    }
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+    {
+        Network::Esmeralda
+    }
+}
+
 /// The default network for all applications
 impl Default for Network {
     #[cfg(tari_target_network_mainnet)]
     fn default() -> Self {
-        match std::env::var("TARI_NETWORK") {
-            Ok(network) => Network::from_str(network.as_str()).unwrap_or(Network::MainNet),
-            Err(_) => Network::MainNet,
-        }
+        network_from_env().unwrap_or_else(target_default_network)
     }
 
-    #[cfg(tari_target_network_nextnet)]
+    #[cfg(not(tari_target_network_mainnet))]
     fn default() -> Self {
-        Network::NextNet
-    }
-
-    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-    fn default() -> Self {
-        Network::Esmeralda
+        target_default_network()
     }
 }
 

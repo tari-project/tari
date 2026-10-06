@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashSet,
     fmt,
     fmt::{Display, Write},
     future::Future,
@@ -49,12 +50,16 @@ use crate::{
         initializing::Initializing,
         on_connect::OnConnect,
         ready::DiscoveryReady,
+        rebootstrap::{InboundSuggested, REBOOTSTRAP_LOG_TARGET, Rebootstrap, RebootstrapInfo, SeedPeerProvider},
         seed_strap::SeedStrap,
         waiting::Waiting,
     },
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
+
+/// A shared, cheaply readable snapshot of the DHT pool's members.
+pub(crate) type PoolPeers = Arc<std::sync::RwLock<HashSet<NodeId>>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BootstrapMethod {
@@ -74,19 +79,20 @@ impl Display for BootstrapMethod {
 }
 
 #[derive(Debug)]
-enum State {
+pub(super) enum State {
     Initializing,
     SeedStrap(SeedStrap),
     Ready(DiscoveryReady),
     Discovering(Discovering),
     Waiting(Waiting),
     OnConnect(OnConnect),
+    Rebootstrap(Rebootstrap),
     Shutdown,
 }
 
 impl Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use State::{Discovering, Initializing, OnConnect, Ready, SeedStrap, Shutdown, Waiting};
+        use State::{Discovering, Initializing, OnConnect, Ready, Rebootstrap, SeedStrap, Shutdown, Waiting};
         match self {
             Initializing => write!(f, "Initializing"),
             SeedStrap(_) => write!(f, "SeedStrap"),
@@ -94,6 +100,7 @@ impl Display for State {
             Discovering(_) => write!(f, "Discovering"),
             Waiting(w) => write!(f, "Waiting({:.0?})", w.duration()),
             OnConnect(_) => write!(f, "OnConnect"),
+            Rebootstrap(_) => write!(f, "Rebootstrap"),
             Shutdown => write!(f, "Shutdown"),
         }
     }
@@ -107,6 +114,15 @@ impl State {
     pub fn is_seed_strap(&self) -> bool {
         matches!(self, State::SeedStrap(_))
     }
+
+    pub fn is_rebootstrap(&self) -> bool {
+        matches!(self, State::Rebootstrap(_))
+    }
+
+    #[cfg(test)]
+    pub fn is_ready(&self) -> bool {
+        matches!(self, State::Ready(_))
+    }
 }
 
 #[derive(Debug)]
@@ -118,6 +134,9 @@ pub enum StateEvent {
     Idle,
     OnConnectMode,
     DiscoveryComplete(DhtNetworkDiscoveryRoundInfo),
+    /// DhtConnectivity reported that the peer pool cannot be filled (`DhtEvent::PoolStarved`).
+    PoolStarved,
+    RebootstrapComplete(RebootstrapInfo),
     Errored(NetworkDiscoveryError),
     Shutdown,
 }
@@ -135,6 +154,8 @@ impl Display for StateEvent {
             DiscoveryComplete(stats) => write!(f, "DiscoveryComplete({stats})"),
             Errored(err) => write!(f, "Errored({err})"),
             OnConnectMode => write!(f, "OnConnectMode"),
+            PoolStarved => write!(f, "PoolStarved"),
+            RebootstrapComplete(info) => write!(f, "RebootstrapComplete({info})"),
             Shutdown => write!(f, "Shutdown"),
         }
     }
@@ -149,10 +170,12 @@ impl PartialEq for StateEvent {
             (StateEvent::Idle, StateEvent::Idle) => true,
             (StateEvent::OnConnectMode, StateEvent::OnConnectMode) => true,
             (StateEvent::Shutdown, StateEvent::Shutdown) => true,
+            (StateEvent::PoolStarved, StateEvent::PoolStarved) => true,
             // For complex variants, we only check the variant type, not the data
             (StateEvent::BeginDiscovery(_), StateEvent::BeginDiscovery(_)) => true,
             (StateEvent::DiscoveryComplete(_), StateEvent::DiscoveryComplete(_)) => true,
             (StateEvent::Errored(_), StateEvent::Errored(_)) => true,
+            (StateEvent::RebootstrapComplete(_), StateEvent::RebootstrapComplete(_)) => true,
             _ => false,
         }
     }
@@ -176,6 +199,12 @@ pub(super) struct NetworkDiscoveryContext {
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
     pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
+    /// Re-resolves the configured seeds during a rebootstrap. `None` means only stored seeds are used.
+    pub seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+    /// Peers that inbound sources told us about in recent rebootstraps.
+    pub inbound_learned: Arc<std::sync::Mutex<InboundSuggested>>,
+    /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
+    pub pool_peers: PoolPeers,
 }
 
 impl NetworkDiscoveryContext {
@@ -234,6 +263,7 @@ impl NetworkDiscoveryContext {
             DhtEvent::PrimaryBootstrapComplete => "PrimaryBootstrapComplete",
             DhtEvent::NetworkDiscoveryPeersAdded(_) => "NetworkDiscoveryPeersAdded",
             DhtEvent::BootstrapMethodDetermined(_) => "BootstrapMethodDetermined",
+            DhtEvent::RebootstrapComplete(_) => "RebootstrapComplete",
             _ => "Other",
         };
 
@@ -279,6 +309,7 @@ impl DhtNetworkDiscovery {
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
         event_tx: broadcast::Sender<Arc<DhtEvent>>,
+        seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -293,16 +324,26 @@ impl DhtNetworkDiscovery {
                 event_tx,
                 bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
                 bootstrap_started_at: Arc::new(RwLock::new(None)),
+                seed_peer_provider,
+                inbound_learned: Default::default(),
+                pool_peers: Default::default(),
             },
             shutdown_signal,
         }
     }
 
+    /// Shares DhtConnectivity's view of its pool, so that discovery does not hang up on pool peers.
+    pub(crate) fn with_pool_peers(mut self, pool_peers: PoolPeers) -> Self {
+        self.context.pool_peers = pool_peers;
+        self
+    }
+
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
-        use State::{Discovering, Initializing, OnConnect, Ready, SeedStrap, Waiting};
+        use State::{Discovering, Initializing, OnConnect, Ready, Rebootstrap, SeedStrap, Waiting};
         match state {
             Initializing => self::Initializing::new(&mut self.context).next_event().await,
             SeedStrap(seed_strap) => seed_strap.next_event().await,
+            Rebootstrap(rebootstrap) => rebootstrap.next_event().await,
             Ready(ready) => ready.next_event().await,
             Discovering(discovering) => discovering.next_event().await,
             OnConnect(on_connect) => on_connect.next_event().await,
@@ -311,7 +352,7 @@ impl DhtNetworkDiscovery {
         }
     }
 
-    async fn transition(&mut self, current_state: State, next_event: StateEvent) -> State {
+    pub(super) async fn transition(&mut self, current_state: State, next_event: StateEvent) -> State {
         let config = &self.config().network_discovery;
         debug!(
             target: LOG_TARGET,
@@ -375,6 +416,26 @@ impl DhtNetworkDiscovery {
             (State::OnConnect(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (State::Waiting(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (_, StateEvent::Shutdown) => State::Shutdown,
+            // Handled from every state. This is also the way out of the states that would otherwise wait
+            // indefinitely: Initializing (waiting for a first connection) and OnConnect (which never exits by
+            // itself). Dropping the previous state cancels whatever it had in flight, including a SeedStrap.
+            (state @ State::Rebootstrap(_), StateEvent::PoolStarved) => {
+                debug!(target: LOG_TARGET, "Pool starved again while rebootstrapping. Ignoring.");
+                state
+            },
+            (state, StateEvent::PoolStarved) => {
+                info!(
+                    target: REBOOTSTRAP_LOG_TARGET,
+                    "Peer pool starved. Leaving network discovery state `{state}` to rebootstrap"
+                );
+                State::Rebootstrap(Rebootstrap::new(self.context.clone()))
+            },
+            (State::Rebootstrap(_), StateEvent::RebootstrapComplete(info)) => {
+                self.context.publish_event(DhtEvent::RebootstrapComplete(info));
+                // Start a fresh discovery cycle, now with fresh peers to work from.
+                self.context.reset_num_rounds();
+                State::Ready(DiscoveryReady::new(self.context.clone()))
+            },
             (_state, StateEvent::Errored(err)) => {
                 error!(
                     target: LOG_TARGET,
@@ -422,30 +483,30 @@ impl DhtNetworkDiscovery {
 
         let mut state = State::Initializing;
         let mut bootstrap_completed = false;
+        let mut dht_events = self.context.event_tx.subscribe();
 
         loop {
             let shutdown_signal = self.shutdown_signal.clone();
+            // Create a separate context to avoid borrow issues
+            let context_clone = self.context.clone();
+            let bootstrap_timeout_duration = self.config().network_discovery.bootstrap_timeout;
+            let in_rebootstrap = state.is_rebootstrap();
 
-            let next_event = if bootstrap_completed {
-                let fut = self.get_next_event(&mut state);
-                futures::pin_mut!(fut);
-                or_shutdown(shutdown_signal, fut).await
-            } else {
-                // Create a separate context to avoid borrow issues
-                let context_clone = self.context.clone();
-                let bootstrap_timeout_duration = self.config().network_discovery.bootstrap_timeout;
-
+            let next_event = {
                 let fut = self.get_next_event(&mut state);
                 futures::pin_mut!(fut);
 
                 tokio::select! {
                     event = or_shutdown(shutdown_signal, fut) => event,
-                    _ = tokio::time::sleep(bootstrap_timeout_duration) => {
+                    // A rebootstrap has its own timeout and completes the bootstrap itself
+                    _ = tokio::time::sleep(bootstrap_timeout_duration), if !bootstrap_completed && !in_rebootstrap => {
                         warn!(target: LOG_TARGET, "Bootstrap timeout reached - forcing completion");
                         context_clone.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                         bootstrap_completed = true;
                         StateEvent::Ready
-                    }
+                    },
+                    // A pool-starved signal interrupts whatever the current state is doing
+                    _ = wait_for_pool_starved(&mut dht_events), if !in_rebootstrap => StateEvent::PoolStarved,
                 }
             };
 
@@ -456,11 +517,36 @@ impl DhtNetworkDiscovery {
             if matches!(next_event, StateEvent::InitialPeersSufficient) {
                 bootstrap_completed = true;
             }
+            // A rebootstrap may have pre-empted the initial SeedStrap (or the wait for a first connection); it
+            // serves the same purpose, so it completes the primary bootstrap.
+            if matches!(next_event, StateEvent::RebootstrapComplete(_)) && !bootstrap_completed {
+                self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
+                bootstrap_completed = true;
+            }
+            // PoolStarved is not listened for while rebootstrapping, so one published meanwhile is still queued. It was
+            // answered by the rebootstrap that just finished, so drop it rather than start another straight away.
+            if matches!(next_event, StateEvent::RebootstrapComplete(_)) {
+                dht_events = dht_events.resubscribe();
+            }
 
             state = self.transition(state, next_event).await;
             if state.is_shutdown() {
                 break;
             }
+        }
+    }
+}
+
+/// Resolves when DhtConnectivity publishes `DhtEvent::PoolStarved`.
+async fn wait_for_pool_starved(dht_events: &mut broadcast::Receiver<Arc<DhtEvent>>) {
+    loop {
+        match dht_events.recv().await {
+            Ok(event) if matches!(*event, DhtEvent::PoolStarved) => return,
+            Ok(_) => {},
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                warn!(target: LOG_TARGET, "Lagged behind on {n} DHT event(s)");
+            },
+            Err(broadcast::error::RecvError::Closed) => future::pending::<()>().await,
         }
     }
 }

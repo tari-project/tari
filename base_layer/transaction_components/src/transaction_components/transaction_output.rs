@@ -184,7 +184,7 @@ impl TransactionOutput {
                     format!(
                         "Some({}..{})",
                         &proof_hex[0..16],
-                        &proof_hex[proof_hex.len() - 16..proof_hex.len()]
+                        &proof_hex[proof_hex.len().saturating_sub(16)..proof_hex.len()]
                     )
                 } else {
                     "Some(".to_owned() + &proof_hex + ")"
@@ -263,6 +263,8 @@ impl TransactionOutput {
     // As an alternate range proof check, the value of the commitment with a deterministic ephemeral_commitment nonce
     // `r_a` of zero can optionally be bound into the metadata signature. This is a much faster check than the full
     // range proof verification.
+    // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn revealed_value_range_proof_check(&self) -> Result<(), RangeProofError> {
         if self.features.range_proof_type != RangeProofType::RevealedValue {
             return Err(RangeProofError::InvalidRangeProof {
@@ -275,7 +277,16 @@ impl TransactionOutput {
         // NOTE: The metadata signature must also be verified elsewhere
         let e_bytes = self.get_metadata_signature_challenge();
         // Now we can perform the balance proof
-        let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
+        // `get_metadata_signature_challenge` returns exactly the 64 bytes wide reduction needs, so this cannot
+        // currently fail. Map it rather than unwrap so that a future change to the challenge width surfaces as an
+        // invalid range proof instead of taking the node down.
+        let e = PrivateKey::from_uniform_bytes(&e_bytes).map_err(|e| RangeProofError::InvalidRangeProof {
+            reason: format!(
+                "Could not construct the metadata signature challenge scalar for commitment {}: {}",
+                self.commitment.to_hex(),
+                e
+            ),
+        })?;
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
         if self.metadata_signature.u_a() == &(commit_nonce_a + e * value_as_private_key) {
@@ -328,14 +339,17 @@ impl TransactionOutput {
         Ok(())
     }
 
-    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    /// Verify a recovered mask (blinding factor) for a proof against the commitment. Returns
+    /// `Err(TransactionError::InvalidMask)` if the commitment does not open to the value under the mask.
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
         commitment_mask_key: &PrivateKey,
         value: u64,
-    ) -> Result<bool, TransactionError> {
-        Ok(prover.verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)?)
+    ) -> Result<(), TransactionError> {
+        prover
+            .verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)
+            .map_err(Into::into)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
@@ -434,6 +448,9 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&version)
             .chain(features)
@@ -460,6 +477,9 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(version)
             .chain(features)
@@ -472,6 +492,9 @@ impl TransactionOutput {
     }
 
     pub fn metadata_signature_message_from_script_and_common(script: &TariScript, common: &[u8; 32]) -> [u8; 32] {
+        // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
+        // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
+        // preimage shapes separated only by length/layout today. Give each a distinct label at the next hard fork.
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&script)
             .chain(common)
@@ -480,10 +503,12 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self
+            .features
+            .get_serialized_size()?
+            .saturating_add(self.script.get_serialized_size()?)
+            .saturating_add(self.covenant.get_serialized_size()?)
+            .saturating_add(self.encrypted_data.get_payment_id_size()))
     }
 }
 

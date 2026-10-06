@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use log::*;
 use tari_comms_dht::Dht;
 use tari_p2p::{
@@ -72,15 +72,17 @@ impl MempoolServiceInitializer {
         }
     }
 
-    /// Create a stream of 'New Transaction` messages
-    fn inbound_transaction_stream(&self) -> impl Stream<Item = DomainMessage<Transaction>> + use<> {
+    /// Create a stream of raw 'New Transaction` messages. The messages are decoded off the service loop, on a blocking
+    /// thread, under a mempool validation permit (see [MempoolInboundHandlers::handle_transaction_message]).
+    fn inbound_transaction_stream(&self) -> impl Stream<Item = Arc<PeerMessage>> + use<> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewTransaction, SUBSCRIPTION_LABEL)
-            .filter_map(extract_transaction)
     }
 }
 
-async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Transaction>> {
+/// Decode an inbound transaction message. Returns `None` (after logging a warning) if the message cannot be decoded or
+/// the transaction is ill-formed. This is CPU-bound, and must be run on a blocking thread.
+pub(crate) fn extract_transaction(msg: &PeerMessage) -> Option<DomainMessage<Transaction>> {
     match msg.decode_message::<proto::types::Transaction>() {
         Err(e) => {
             warn!(

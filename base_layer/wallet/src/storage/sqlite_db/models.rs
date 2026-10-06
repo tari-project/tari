@@ -3,7 +3,7 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
-    burn_proof::{EncodedMerkleProof, PartialBurnClaimProof},
+    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::FixedHash,
 };
@@ -21,12 +21,14 @@ pub struct DbBurnProof {
     pub output_hash: FixedHash,
     pub burn_proof: PartialBurnClaimProof,
     pub kernel: TransactionKernel,
-    pub kernel_merkle_proof: Option<EncodedMerkleProof>,
+    /// Proves the burn output against the `block_output_mr` of the block it was mined in. Set once the burn is
+    /// confirmed.
+    pub burn_output_proof: Option<BurnOutputProof>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<EncryptedData>,
     pub value: Option<MicroMinotari>,
-    /// The L1 block height the burn was mined in, if known (populated with the kernel merkle proof).
+    /// The L1 block height the burn was mined in, if known (populated with the burn output proof).
     pub mined_in_height: Option<u64>,
 }
 
@@ -36,10 +38,10 @@ impl TryFrom<BurntProofSql> for DbBurnProof {
     fn try_from(value: BurntProofSql) -> Result<Self, Self::Error> {
         let burn_proof = serializers::bincode_decode(&value.burn_proof)?;
         let kernel = serializers::bincode_decode(&value.kernel)?;
-        let kernel_merkle_proof = value
-            .kernel_merkle_proof
+        let burn_output_proof = value
+            .burn_output_proof
             .as_ref()
-            .map(|kp| serializers::bincode_decode(kp))
+            .map(|p| serializers::bincode_decode(p))
             .transpose()?;
         let output_hash = FixedHash::try_from(value.output_hash.as_slice())
             .map_err(|e| WalletStorageError::ConversionError(format!("Invalid output hash length in DB: {}", e)))?;
@@ -68,7 +70,7 @@ impl TryFrom<BurntProofSql> for DbBurnProof {
             output_hash,
             burn_proof,
             kernel,
-            kernel_merkle_proof,
+            burn_output_proof,
             created_at: value.created_at,
             updated_at: value.updated_at,
             encrypted_data,
@@ -86,7 +88,7 @@ pub(crate) struct BurntProofSql {
     pub commitment: Vec<u8>,
     pub burn_proof: Vec<u8>,
     pub kernel: Vec<u8>,
-    pub kernel_merkle_proof: Option<Vec<u8>>,
+    pub burn_output_proof: Option<Vec<u8>>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
     pub encrypted_data: Option<Vec<u8>>,
@@ -129,7 +131,7 @@ pub(crate) struct NewBurntProofSql<'a> {
     pub commitment: &'a [u8],
     pub burn_proof: Vec<u8>,
     pub kernel: Vec<u8>,
-    pub kernel_merkle_proof: Option<&'a [u8]>,
+    pub burn_output_proof: Option<&'a [u8]>,
     pub encrypted_data: Option<&'a [u8]>,
     pub value: Option<i64>,
     pub kernel_excess: Option<&'a [u8]>,
@@ -142,7 +144,7 @@ impl<'a> NewBurntProofSql<'a> {
         commitment: &'a [u8],
         burn_proof: Vec<u8>,
         kernel: Vec<u8>,
-        kernel_merkle_proof: Option<&'a [u8]>,
+        burn_output_proof: Option<&'a [u8]>,
         cipher: &XChaCha20Poly1305,
         encrypted_data: Option<&'a [u8]>,
         value: Option<i64>,
@@ -160,7 +162,7 @@ impl<'a> NewBurntProofSql<'a> {
             commitment,
             burn_proof,
             kernel,
-            kernel_merkle_proof,
+            burn_output_proof,
             encrypted_data,
             value,
             kernel_excess,

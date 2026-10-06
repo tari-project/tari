@@ -35,6 +35,8 @@ pub enum PowError {
     Sha3HeaderNonEmptyPowBytes,
     #[error("Proof of work data is too long. Max allowed is 32 bytes")]
     RandomxTPowDataTooLong,
+    #[error("Proof of work data for RandomXT blocks must not end in a zero byte")]
+    RandomxTPowDataNotCanonical,
     #[error("Target difficulty {target} not achieved. Achieved difficulty: {achieved}")]
     AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
     #[error("Invalid target difficulty (expected: {expected}, got: {got})")]
@@ -52,6 +54,7 @@ impl PowError {
             err @ PowError::AchievedDifficultyBelowMin { .. } |
             err @ PowError::Sha3HeaderNonEmptyPowBytes |
             err @ PowError::RandomxTPowDataTooLong |
+            err @ PowError::RandomxTPowDataNotCanonical |
             err @ PowError::AchievedDifficultyTooLow { .. } |
             err @ PowError::CuckarooPowDataSizeMismatch { .. } |
             err @ PowError::CuckarooPowDataNonZeroPadding { .. } |

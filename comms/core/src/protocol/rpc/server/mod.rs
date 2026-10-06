@@ -173,12 +173,34 @@ impl Default for RpcServer {
     }
 }
 
+/// The default maximum time a session may sit without receiving a request before it is closed. This
+/// is well above any client's polling interval, so it only ever reclaims sessions whose peer is
+/// gone.
+const DEFAULT_IDLE_SESSION_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// The default ceiling applied to the deadline a client asks for. The largest deadline any client
+/// in this workspace sets is the 240s block-sync deadline (sized for full blocks over Tor), so this
+/// leaves generous headroom for an operator who raises it while still bounding how long a single
+/// request can occupy a session. It matches [`DEFAULT_IDLE_SESSION_TIMEOUT`] deliberately: a
+/// request in flight should not be able to hold a session slot for longer than an idle one may sit.
+const DEFAULT_MAXIMUM_CLIENT_DEADLINE: Duration = Duration::from_secs(10 * 60);
+
+/// How long the server will spend trying to shut a substream down gracefully before dropping it.
+///
+/// A close is a handful of bytes, so this only ever elapses when the peer is not reading. It is
+/// deliberately short and not client-controlled: unlike a request deadline there is no legitimate
+/// reason for teardown to take long, and the whole point is to stop a stalled peer from holding the
+/// session's executor permit.
+const SESSION_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Clone)]
 pub struct RpcServerBuilder {
     maximum_simultaneous_sessions: Option<usize>,
     maximum_sessions_per_client: Option<usize>,
     minimum_client_deadline: Duration,
+    maximum_client_deadline: Duration,
     handshake_timeout: Duration,
+    idle_session_timeout: Option<Duration>,
     cull_oldest_peer_rpc_connection_on_full: bool,
 }
 
@@ -217,6 +239,50 @@ impl RpcServerBuilder {
         self
     }
 
+    /// Cap the deadline a client is allowed to ask for. The deadline arrives on the wire as a u64
+    /// of seconds and bounds both the service call and each message of a streaming response, so
+    /// without a ceiling a peer can simply ask for `u64::MAX` and switch off the server's own
+    /// timeouts for that request.
+    ///
+    /// The request is clamped rather than rejected outright: a peer asking for more than the
+    /// ceiling is still served, and only sees a difference if the work actually runs past the
+    /// ceiling - in which case it gets a prompt `Timeout` status instead of the longer wait it
+    /// asked for.
+    ///
+    /// Note this bounds a single service call and the gap between two messages of a stream. It
+    /// does not bound a stream's total duration, which is deliberate: `sync_blocks` streams an
+    /// entire initial block download in one request and a total budget would cut it short.
+    pub fn with_maximum_client_deadline(mut self, deadline: Duration) -> Self {
+        self.maximum_client_deadline = deadline;
+        self
+    }
+
+    /// The deadline this server will actually apply for a client that asked for `requested`.
+    ///
+    /// Floored at `minimum_client_deadline` so that a `maximum_client_deadline` misconfigured below
+    /// it cannot silently reduce every request's deadline to nothing - which would leave the node
+    /// up but aborting every RPC call it is asked to serve.
+    fn clamp_client_deadline(&self, requested: Duration) -> Duration {
+        let capped = cmp::min(requested, self.maximum_client_deadline);
+        cmp::max(capped, self.minimum_client_deadline)
+    }
+
+    /// Close a session that has not received a request for `timeout`. A session holds a slot in the
+    /// global session limit for as long as its substream is open, and a peer that goes away without
+    /// closing the substream (common over Tor) never releases it. Only idle time counts; a session
+    /// servicing requests is never closed.
+    pub fn with_idle_session_timeout(mut self, timeout: Duration) -> Self {
+        self.idle_session_timeout = Some(timeout);
+        self
+    }
+
+    /// Allow sessions to stay open indefinitely while idle. See [`Self::with_idle_session_timeout`]
+    /// for why this is generally a bad idea outside of tests.
+    pub fn with_no_idle_session_timeout(mut self) -> Self {
+        self.idle_session_timeout = None;
+        self
+    }
+
     pub fn finish(self) -> RpcServer {
         let (request_tx, request_rx) = mpsc::channel(10);
         RpcServer {
@@ -233,7 +299,9 @@ impl Default for RpcServerBuilder {
             maximum_simultaneous_sessions: None,
             maximum_sessions_per_client: None,
             minimum_client_deadline: Duration::from_secs(1),
+            maximum_client_deadline: DEFAULT_MAXIMUM_CLIENT_DEADLINE,
             handshake_timeout: Duration::from_secs(15),
+            idle_session_timeout: Some(DEFAULT_IDLE_SESSION_TIMEOUT),
             cull_oldest_peer_rpc_connection_on_full: false,
         }
     }
@@ -392,7 +460,7 @@ where
                         Ok(session_info.len())
                     } else if self.config.cull_oldest_peer_rpc_connection_on_full {
                         // Remove the oldest session(s) until we have space for a new one
-                        let num_to_remove = session_info.len() - max + 1;
+                        let num_to_remove = session_info.len().saturating_sub(max).saturating_add(1);
                         for _ in 0..num_to_remove {
                             let info = session_info.remove(0);
                             info!(target: LOG_TARGET, "Culling oldest RPC session for peer `{node_id}`");
@@ -419,10 +487,10 @@ where
     }
 
     fn close_all_sessions(&mut self, node_id: &NodeId) -> usize {
-        let mut count = 0;
+        let mut count = 0usize;
         if let Some(session_info) = self.sessions.get_mut(node_id) {
             for info in session_info.iter_mut() {
-                count += 1;
+                count = count.saturating_add(1);
                 info!(target: LOG_TARGET, "Closing RPC session {} for peer `{}`", info.stream_id, node_id);
                 let _ = info.peer_watch.send(());
             }
@@ -453,22 +521,6 @@ where
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
-        if !self.executor.can_spawn() {
-            let msg = format!("Used all {} sessions", self.executor.max_available());
-            debug!(
-                target: LOG_TARGET,
-                "Rejecting RPC session request for peer `{}` because {}",
-                node_id,
-                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
-            );
-            handshake
-                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
-                    "Cannot spawn more sessions",
-                ))
-                .await?;
-            return Err(RpcServerError::MaximumSessionsReached(msg));
-        }
-
         let service = match self.service.make_service(protocol.clone()).await {
             Ok(s) => s,
             Err(err) => {
@@ -485,14 +537,12 @@ where
             },
         };
 
-        match self.new_session_possible_for(node_id) {
-            Ok(num_sessions) => {
-                info!(
-                    target: LOG_TARGET,
-                    "NEW SESSION for {node_id} ({num_sessions} currently active) "
-                );
-            },
-
+        // The per-peer limit is enforced before the global one so that culling still happens when
+        // the server is sitting on its global limit - that is precisely when reclaiming a slot from
+        // a peer that is over its own quota matters. Doing the global check first made
+        // `cull_oldest_peer_rpc_connection_on_full` unreachable exactly when it was needed.
+        let num_sessions = match self.new_session_possible_for(node_id) {
+            Ok(num_sessions) => num_sessions,
             Err(err) => {
                 handshake
                     .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
@@ -501,7 +551,30 @@ where
                     .await?;
                 return Err(err);
             },
+        };
+
+        if !self.executor.can_spawn() {
+            let msg = format!("Used all {} sessions", self.executor.max_available());
+            debug!(
+                target: LOG_TARGET,
+                "Rejecting RPC session request for peer `{}` because {}",
+                node_id,
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
+            );
+            handshake
+                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
+                    "Cannot spawn more sessions",
+                ))
+                .await?;
+            // A session culled above only releases its slot once that task winds down, so this
+            // request is still rejected. The client's next attempt is the one that gets in.
+            return Err(RpcServerError::MaximumSessionsReached(msg));
         }
+
+        info!(
+            target: LOG_TARGET,
+            "NEW SESSION for {node_id} ({num_sessions} currently active) "
+        );
 
         let version = handshake.perform_server_handshake().await?;
         debug!(
@@ -631,11 +704,75 @@ where
         }
     }
 
+    /// Write one frame to the peer, giving up after `deadline`.
+    ///
+    /// Every write here goes into a yamux window the peer controls, so a peer that simply stops
+    /// reading can park any unbounded `send`. Route all of them through this so the bound is
+    /// structural rather than something to remember at each call site.
+    async fn send_with_deadline(&mut self, msg: Bytes, deadline: Duration) -> Result<(), RpcServerError> {
+        match time::timeout(deadline, self.framed.send(msg)).await {
+            Ok(result) => result.map_err(Into::into),
+            Err(_elapsed) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Peer did not accept a response within the deadline ({:.0?}). Aborting the session.",
+                    self.logging_context_string,
+                    deadline
+                );
+
+                #[cfg(feature = "metrics")]
+                metrics::error_counter(&self.protocol, &RpcServerError::WriteStreamExceededDeadline).inc();
+                Err(RpcServerError::WriteStreamExceededDeadline)
+            },
+        }
+    }
+
+    /// Shut the substream down, giving up after [`SESSION_CLOSE_TIMEOUT`] and letting it drop.
+    ///
+    /// `EarlyClose::poll_close` falls through to `check_for_early_close`, which returns `Pending`
+    /// for a peer that is merely silent - so closing a substream whose window the peer has filled
+    /// and stopped draining never completes. That is worse than one stuck task: the session holds a
+    /// `BoundedExecutor` permit until `start()` returns, and nothing can reclaim it. The idle timer
+    /// is not running (we are not in the select), and culling only signals `stop_rx`, which this
+    /// task is no longer watching. One peer could walk the global session limit down to zero and
+    /// lock every other peer out of the node.
+    async fn close_framed(&mut self) -> Result<(), RpcServerError> {
+        match time::timeout(SESSION_CLOSE_TIMEOUT, self.framed.close()).await {
+            Ok(result) => result.map_err(Into::into),
+            Err(_elapsed) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Peer did not accept the substream close within {:.0?}. Dropping it.",
+                    self.logging_context_string,
+                    SESSION_CLOSE_TIMEOUT
+                );
+                Ok(())
+            },
+        }
+    }
+
     async fn run(&mut self) -> Result<(), RpcServerError> {
+        // Only the time spent waiting for the next request is bounded - handling a request holds
+        // this loop and cannot trip the timer. Without this, a session (and the slot it occupies in
+        // the global session limit) is held for as long as the substream stays open, which for a
+        // peer that has gone away without closing it is forever.
+        let idle_timeout = self.config.idle_session_timeout;
+        let idle_sleep = time::sleep(idle_timeout.unwrap_or(DEFAULT_IDLE_SESSION_TIMEOUT));
+        tokio::pin!(idle_sleep);
+
         loop {
             tokio::select! {
                 _ = self.stop_rx.changed() => {
                     debug!(target: LOG_TARGET, "({}) Stop signal received, closing substream.", self.logging_context_string);
+                    break;
+                }
+                () = &mut idle_sleep, if idle_timeout.is_some() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Closing session idle for {:.0?}.",
+                        self.logging_context_string,
+                        idle_timeout.unwrap_or_default()
+                    );
                     break;
                 }
                 result = self.framed.next() => {
@@ -647,8 +784,16 @@ where
                             let start = Instant::now();
 
                             if let Err(err) = self.handle_request(frame.freeze()).await {
-                                if let Err(err) = self.framed.close().await {
-                                    let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
+                                // A write deadline means the peer stopped reading, so the window is
+                                // already full and a graceful close cannot land - skip straight to
+                                // dropping the substream rather than burning the close timeout.
+                                let close_result = if matches!(err, RpcServerError::WriteStreamExceededDeadline) {
+                                    Ok(())
+                                } else {
+                                    self.close_framed().await
+                                };
+                                if let Err(err) = close_result {
+                                    let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
 
                                     log!(
                                         target: LOG_TARGET,
@@ -677,9 +822,14 @@ where
                                 elapsed,
                                 if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
                             );
+                            if let Some(timeout) = idle_timeout {
+                                idle_sleep.as_mut().reset(
+                                    time::Instant::now().checked_add(timeout).unwrap_or_else(time::Instant::now),
+                                );
+                            }
                         },
                         Some(Err(err)) => {
-                            if let Err(err) = self.framed.close().await {
+                            if let Err(err) = self.close_framed().await {
                                 error!(
                                     target: LOG_TARGET,
                                     "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
@@ -693,21 +843,35 @@ where
             }
         }
 
-        self.framed.close().await?;
+        self.close_framed().await?;
         Ok(())
     }
 
     #[allow(clippy::too_many_lines)]
     #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
     async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
+        if let Some(rejection) = reject_oversized_request(&request) {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Rejecting a {} byte request, larger than the maximum of {} bytes",
+                self.logging_context_string,
+                request.len(),
+                rpc::max_request_size()
+            );
+            #[cfg(feature = "metrics")]
+            metrics::status_error_counter(&self.protocol, super::RpcStatusCode::BadRequest).inc();
+            self.send_with_deadline(rejection.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
+                .await?;
+            return Ok(());
+        }
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
         let method = RpcMethod::from(decoded_msg.method);
-        let deadline = Duration::from_secs(decoded_msg.deadline);
+        let requested_deadline = Duration::from_secs(decoded_msg.deadline);
 
         // The client side deadline MUST be greater or equal to the minimum_client_deadline
-        if deadline < self.config.minimum_client_deadline {
+        if requested_deadline < self.config.minimum_client_deadline {
             debug!(
                 target: LOG_TARGET,
                 "({}) Client has an invalid deadline. {}", self.logging_context_string, decoded_msg
@@ -715,7 +879,7 @@ where
             // Let the client know that they have disobeyed the spec
             let status = RpcStatus::bad_request(&format!(
                 "Invalid deadline ({:.0?}). The deadline MUST be greater than {:.0?}.",
-                self.node_id, deadline,
+                requested_deadline, self.config.minimum_client_deadline,
             ));
             let bad_request = proto::rpc::RpcResponse {
                 request_id,
@@ -725,8 +889,26 @@ where
             };
             #[cfg(feature = "metrics")]
             metrics::status_error_counter(&self.protocol, status.as_status_code()).inc();
-            self.framed.send(bad_request.to_encoded_bytes().into()).await?;
+            // The client's own deadline was rejected as invalid, so there is nothing to honour
+            // here - bound this on the teardown timeout instead.
+            self.send_with_deadline(bad_request.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
+                .await?;
             return Ok(());
+        }
+
+        // ...and it is capped from above, because the deadline governs both the service call and
+        // each message of a streaming response. An uncapped `u64` of seconds lets a peer disable
+        // those timeouts outright and hold a session slot for as long as it likes. Clamp instead of
+        // rejecting so a peer configured above our ceiling still works.
+        let deadline = self.config.clamp_client_deadline(requested_deadline);
+        if deadline < requested_deadline {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Client requested a deadline of {:.0?}, capping it at {:.0?}.",
+                self.logging_context_string,
+                requested_deadline,
+                deadline
+            );
         }
 
         let msg_flags = RpcMessageFlags::from_bits(u8::try_from(decoded_msg.flags).map_err(|_| {
@@ -752,7 +934,7 @@ where
                 flags: RpcMessageFlags::ACK.bits().into(),
                 ..Default::default()
             };
-            self.framed.send(ack.to_encoded_bytes().into()).await?;
+            self.send_with_deadline(ack.to_encoded_bytes().into(), deadline).await?;
             return Ok(());
         }
 
@@ -789,6 +971,22 @@ where
 
                 #[cfg(feature = "metrics")]
                 metrics::error_counter(&self.protocol, &RpcServerError::ServiceCallExceededDeadline).inc();
+
+                // Tell the client, rather than going silent and leaving it to unwind on its own
+                // timeout. This matters whenever the deadline we applied is shorter than the one the
+                // client asked for - a clamped request would otherwise look identical to a hung
+                // server for the remainder of the client's own (longer) deadline.
+                let status = RpcStatus::timed_out("RPC service did not complete within the deadline");
+                let timed_out = proto::rpc::RpcResponse {
+                    request_id,
+                    status: status.as_code(),
+                    flags: RpcMessageFlags::FIN.bits().into(),
+                    payload: status.to_details_bytes(),
+                };
+                #[cfg(feature = "metrics")]
+                metrics::status_error_counter(&self.protocol, status.as_status_code()).inc();
+                self.send_with_deadline(timed_out.to_encoded_bytes().into(), deadline)
+                    .await?;
                 return Ok(());
             },
         };
@@ -811,7 +1009,8 @@ where
 
                 #[cfg(feature = "metrics")]
                 metrics::status_error_counter(&self.protocol, err.as_status_code()).inc();
-                self.framed.send(resp.to_encoded_bytes().into()).await?;
+                self.send_with_deadline(resp.to_encoded_bytes().into(), deadline)
+                    .await?;
             },
         }
 
@@ -882,7 +1081,14 @@ where
                                 msg.len()
                             );
 
-                            self.framed.send(msg).await?;
+                            // Bounded because this sits outside the `timeout` branch below: it is
+                            // the yamux window that backs up here, so a peer that opens a stream
+                            // and then stops draining it parks this task - and the session slot it
+                            // holds - with no timer running anywhere. The outer `run()` loop cannot
+                            // rescue it either; its idle timer does not tick while a request is
+                            // being handled. On elapse the peer is mid-frame, so the substream can
+                            // no longer be trusted for a subsequent request and the session ends.
+                            self.send_with_deadline(msg, deadline).await?;
                         },
                         None => {
                             trace!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
@@ -915,6 +1121,16 @@ where
     async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
         let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
             Poll::Ready(Some(Ok(mut msg))) => {
+                if msg.len() > rpc::max_request_size() {
+                    // Never decode an oversized message; a client may only send a FIN here, which is tiny
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring a {} byte message received during a streaming response (maximum {} bytes)",
+                        msg.len(),
+                        rpc::max_request_size()
+                    );
+                    return Poll::Ready(None);
+                }
                 let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
                     Ok(msg) => msg,
                     Err(err) => {
@@ -982,6 +1198,35 @@ async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_
     ret
 }
 
+/// Just the request id of an `RpcRequest`. Decoding this skips over the other fields, including the payload, without
+/// copying them.
+#[derive(Clone, PartialEq, prost::Message)]
+struct RpcRequestId {
+    #[prost(uint32, tag = "1")]
+    request_id: u32,
+}
+
+/// If `request` is larger than [rpc::RPC_MAX_REQUEST_SIZE], returns the `BadRequest` response to send instead of
+/// decoding it. Only the request id is read, so that the client can match the response. No ban: a peer running a
+/// version with a larger request cap may send such a request honestly.
+fn reject_oversized_request(request: &Bytes) -> Option<proto::rpc::RpcResponse> {
+    if request.len() <= rpc::max_request_size() {
+        return None;
+    }
+    let request_id = RpcRequestId::decode(request.clone()).map(|r| r.request_id).unwrap_or(0);
+    let status = RpcStatus::bad_request(&format!(
+        "The request size exceeded the maximum allowed request size. Max = {} bytes, Got = {} bytes",
+        rpc::max_request_size(),
+        request.len()
+    ));
+    Some(proto::rpc::RpcResponse {
+        request_id,
+        status: status.as_code(),
+        flags: RpcMessageFlags::FIN.bits().into(),
+        payload: status.to_details_bytes(),
+    })
+}
+
 fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcResponse {
     match result {
         Ok(msg) => {
@@ -1016,5 +1261,79 @@ fn err_to_log_level(err: &io::Error) -> log::Level {
         ErrorKind::WriteZero |
         ErrorKind::UnexpectedEof => log::Level::Debug,
         _ => log::Level::Error,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn client_deadline_is_capped_from_above() {
+        let builder = RpcServerBuilder::new();
+        assert_eq!(builder.maximum_client_deadline, DEFAULT_MAXIMUM_CLIENT_DEADLINE);
+
+        // Anything at or below the ceiling is honoured as asked for.
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(1)),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            builder.clamp_client_deadline(DEFAULT_MAXIMUM_CLIENT_DEADLINE),
+            DEFAULT_MAXIMUM_CLIENT_DEADLINE
+        );
+        // The 240s block-sync deadline must survive untouched, or syncing full blocks over Tor
+        // would start being cut short by peers.
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(240)),
+            Duration::from_secs(240)
+        );
+
+        // Above it, the server's own limit applies...
+        assert_eq!(
+            builder.clamp_client_deadline(DEFAULT_MAXIMUM_CLIENT_DEADLINE + Duration::from_secs(1)),
+            DEFAULT_MAXIMUM_CLIENT_DEADLINE
+        );
+        // ...including the case this exists for: a peer asking for an effectively infinite deadline
+        // to switch off the service-call and streaming timeouts.
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(u64::MAX)),
+            DEFAULT_MAXIMUM_CLIENT_DEADLINE
+        );
+    }
+
+    #[test]
+    fn maximum_client_deadline_is_configurable() {
+        let builder = RpcServerBuilder::new().with_maximum_client_deadline(Duration::from_secs(30));
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(u64::MAX)),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(5)),
+            Duration::from_secs(5)
+        );
+    }
+
+    #[test]
+    fn a_maximum_below_the_minimum_does_not_starve_requests() {
+        // An operator setting this to zero (or anything under the minimum) would otherwise leave
+        // the node up while aborting every request it is asked to serve.
+        let builder = RpcServerBuilder::new()
+            .with_minimum_client_deadline(Duration::from_secs(1))
+            .with_maximum_client_deadline(Duration::from_secs(0));
+
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(0)),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(120)),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            builder.clamp_client_deadline(Duration::from_secs(u64::MAX)),
+            Duration::from_secs(1)
+        );
     }
 }

@@ -22,24 +22,8 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use prost::Message;
 use tari_common_types::types::{CompressedPublicKey, CompressedSignature};
 use tari_max_size::MaxSizeString;
-use tari_sidechain::{
-    ChainLink,
-    CommandCommitProof,
-    CommandCommitProofV1,
-    CommitProofElement,
-    EvictNodeAtom,
-    EvictionProof,
-    QuorumCertificate,
-    QuorumDecision,
-    ShardGroup,
-    ShardGroupAccumulatedData,
-    SidechainBlockCommitProof,
-    SidechainBlockHeader,
-    ValidatorQcSignature,
-};
 use tari_transaction_components::transaction_components::{
     BuildInfo,
     CodeTemplateRegistration,
@@ -89,9 +73,6 @@ impl From<&SideChainFeatureData> for grpc::side_chain_feature::Feature {
             SideChainFeatureData::ConfidentialOutput(output_data) => {
                 grpc::side_chain_feature::Feature::ConfidentialOutput(output_data.into())
             },
-            SideChainFeatureData::EvictionProof(proof) => {
-                grpc::side_chain_feature::Feature::EvictionProof(grpc::EvictionProof::from(&**proof))
-            },
             SideChainFeatureData::ValidatorNodeExit(exit) => {
                 grpc::side_chain_feature::Feature::ValidatorNodeExit(exit.into())
             },
@@ -112,9 +93,6 @@ impl TryFrom<grpc::side_chain_feature::Feature> for SideChainFeatureData {
             },
             grpc::side_chain_feature::Feature::ConfidentialOutput(output_data) => {
                 Ok(SideChainFeatureData::ConfidentialOutput(output_data.try_into()?))
-            },
-            grpc::side_chain_feature::Feature::EvictionProof(proof) => {
-                Ok(SideChainFeatureData::EvictionProof(Box::new(proof.try_into()?)))
             },
             grpc::side_chain_feature::Feature::ValidatorNodeExit(exit) => {
                 Ok(SideChainFeatureData::ValidatorNodeExit(exit.try_into()?))
@@ -208,6 +186,7 @@ impl TryFrom<grpc::ValidatorNodeExit> for ValidatorNodeExit {
                     .map(TryInto::try_into)
                     .ok_or("signature not provided")??,
             ),
+            value.activation_epoch.into(),
             value.max_epoch.into(),
         ))
     }
@@ -221,6 +200,7 @@ impl From<&ValidatorNodeExit> for crate::tari_rpc::ValidatorNodeExit {
                 signature: exit.signature().get_signature().to_vec(),
             }),
             max_epoch: exit.max_epoch().as_u64(),
+            activation_epoch: exit.activation_epoch().as_u64(),
         }
     }
 }
@@ -349,358 +329,6 @@ impl From<&BuildInfo> for grpc::BuildInfo {
         Self {
             repo_url: value.repo_url.as_str().to_string(),
             commit_hash: value.commit_hash.as_bytes().to_vec(),
-        }
-    }
-}
-
-// -------------------------------- EvictionProof -------------------------------- //
-
-impl TryFrom<grpc::EvictionProof> for EvictionProof {
-    type Error = String;
-
-    fn try_from(value: grpc::EvictionProof) -> Result<Self, Self::Error> {
-        let proof = value.proof.ok_or("proof not provided")?.try_into()?;
-        Ok(EvictionProof::new(proof))
-    }
-}
-
-impl From<&EvictionProof> for grpc::EvictionProof {
-    fn from(value: &EvictionProof) -> Self {
-        Self {
-            proof: Some(value.proof().into()),
-        }
-    }
-}
-
-// -------------------------------- Commit proof -------------------------------- //
-
-impl TryFrom<grpc::CommitProof> for CommandCommitProof<EvictNodeAtom> {
-    type Error = String;
-
-    fn try_from(value: grpc::CommitProof) -> Result<Self, Self::Error> {
-        match value.version.ok_or("version not provided")? {
-            grpc::commit_proof::Version::V1(v1) => Ok(Self::V1(v1.try_into()?)),
-        }
-    }
-}
-
-impl From<&CommandCommitProof<EvictNodeAtom>> for grpc::CommitProof {
-    fn from(value: &CommandCommitProof<EvictNodeAtom>) -> Self {
-        match value {
-            CommandCommitProof::V1(v1) => Self {
-                version: Some(grpc::commit_proof::Version::V1(v1.into())),
-            },
-        }
-    }
-}
-
-impl TryFrom<grpc::CommitProofV1> for CommandCommitProofV1<EvictNodeAtom> {
-    type Error = String;
-
-    fn try_from(value: grpc::CommitProofV1) -> Result<Self, Self::Error> {
-        let command = grpc::EvictAtom::decode(value.command.as_slice()).map_err(|e| e.to_string())?;
-        Ok(CommandCommitProofV1 {
-            command: command.try_into()?,
-            commit_proof: value.commit_proof.ok_or("commit_proof not provided")?.try_into()?,
-
-            inclusion_proof: borsh::from_slice(&value.encoded_inclusion_proof)
-                .map_err(|e| format!("Failed to decode SparseMerkleProofExt: {e}"))?,
-        })
-    }
-}
-
-impl From<&CommandCommitProofV1<EvictNodeAtom>> for grpc::CommitProofV1 {
-    fn from(value: &CommandCommitProofV1<EvictNodeAtom>) -> Self {
-        Self {
-            command: grpc::EvictAtom::from(value.command()).encode_to_vec(),
-            commit_proof: Some(value.commit_proof().into()),
-            // Encode since the type is complex
-            // TODO: making this fallible is a pain - we may need to implement the proto for this
-            encoded_inclusion_proof: borsh::to_vec(value.inclusion_proof())
-                .expect("Failed to encode SparseMerkleProofExt"),
-        }
-    }
-}
-
-// -------------------------------- SidechainBlockCommitProof -------------------------------- //
-
-impl TryFrom<grpc::SidechainBlockCommitProof> for SidechainBlockCommitProof {
-    type Error = String;
-
-    fn try_from(value: grpc::SidechainBlockCommitProof) -> Result<Self, Self::Error> {
-        Ok(Self {
-            header: value.header.ok_or("header not provided")?.try_into()?,
-            proof_elements: value
-                .proof_elements
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<_>, _>>()?,
-        })
-    }
-}
-
-impl From<&SidechainBlockCommitProof> for grpc::SidechainBlockCommitProof {
-    fn from(value: &SidechainBlockCommitProof) -> Self {
-        Self {
-            header: Some(value.header().into()),
-            proof_elements: value.proof_elements().iter().map(Into::into).collect(),
-        }
-    }
-}
-
-// -------------------------------- SidechainBlockHeader -------------------------------- //
-
-impl TryFrom<grpc::SidechainBlockHeader> for SidechainBlockHeader {
-    type Error = String;
-
-    fn try_from(value: grpc::SidechainBlockHeader) -> Result<Self, Self::Error> {
-        let network_byte = u8::try_from(value.network).map_err(|_| "Invalid network byte: overflows u8".to_string())?;
-        Ok(Self {
-            network: network_byte,
-            parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
-            justify_id: value.justify_id.try_into().map_err(|_| "Invalid justify id")?,
-            height: value.height,
-            epoch: value.epoch,
-            epoch_hash: value.epoch_hash.try_into().map_err(|_| "Invalid epoch hash")?,
-            shard_group: value.shard_group.ok_or("missing shard_group")?.try_into()?,
-            proposed_by: CompressedPublicKey::from_canonical_bytes(&value.proposed_by)
-                .map_err(|_| "Invalid proposed_by public key")?,
-            state_merkle_root: value
-                .state_merkle_root
-                .try_into()
-                .map_err(|_| "Invalid state merkle root")?,
-            command_merkle_root: value
-                .command_merkle_root
-                .try_into()
-                .map_err(|_| "Invalid command merkle root")?,
-            signature: value
-                .signature
-                .ok_or("SidechainBlockHeader signature not provided")?
-                .try_into()?,
-            accumulated_data: value
-                .accumulated_data
-                .ok_or("accumulated_data not provided")?
-                .try_into()?,
-            metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
-        })
-    }
-}
-
-impl From<&SidechainBlockHeader> for grpc::SidechainBlockHeader {
-    fn from(value: &SidechainBlockHeader) -> Self {
-        Self {
-            network: u32::from(value.network),
-            parent_id: value.parent_id.to_vec(),
-            justify_id: value.justify_id.to_vec(),
-            height: value.height,
-            epoch: value.epoch,
-            epoch_hash: value.epoch_hash.to_vec(),
-            shard_group: Some(value.shard_group.into()),
-            proposed_by: value.proposed_by.to_vec(),
-            state_merkle_root: value.state_merkle_root.to_vec(),
-            command_merkle_root: value.command_merkle_root.to_vec(),
-            signature: Some(value.signature().into()),
-            accumulated_data: Some(value.accumulated_data().into()),
-            metadata_hash: value.metadata_hash.to_vec(),
-        }
-    }
-}
-
-// -------------------------------- CommitProofElement -------------------------------- //
-
-impl TryFrom<grpc::CommitProofElement> for CommitProofElement {
-    type Error = String;
-
-    fn try_from(value: grpc::CommitProofElement) -> Result<Self, Self::Error> {
-        match value.proof_element.ok_or("proof element not provided")? {
-            grpc::commit_proof_element::ProofElement::QuorumCertificate(qc) => {
-                Ok(CommitProofElement::QuorumCertificate(qc.try_into()?))
-            },
-            grpc::commit_proof_element::ProofElement::DummyChain(chain) => Ok(CommitProofElement::ChainLinks(
-                chain
-                    .chain_links
-                    .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
-        }
-    }
-}
-
-impl From<&CommitProofElement> for grpc::CommitProofElement {
-    fn from(value: &CommitProofElement) -> Self {
-        match value {
-            CommitProofElement::QuorumCertificate(qc) => Self {
-                proof_element: Some(grpc::commit_proof_element::ProofElement::QuorumCertificate(qc.into())),
-            },
-            CommitProofElement::ChainLinks(chain) => Self {
-                proof_element: Some(grpc::commit_proof_element::ProofElement::DummyChain(grpc::DummyChain {
-                    chain_links: chain.iter().map(Into::into).collect(),
-                })),
-            },
-        }
-    }
-}
-
-// -------------------------------- ChainLink -------------------------------- //
-
-impl TryFrom<grpc::ChainLink> for ChainLink {
-    type Error = String;
-
-    fn try_from(value: grpc::ChainLink) -> Result<Self, Self::Error> {
-        Ok(Self {
-            header_hash: value.header_hash.try_into().map_err(|_| "Invalid block id")?,
-            parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
-        })
-    }
-}
-
-impl From<&ChainLink> for grpc::ChainLink {
-    fn from(value: &ChainLink) -> Self {
-        Self {
-            header_hash: value.header_hash.to_vec(),
-            parent_id: value.parent_id.to_vec(),
-        }
-    }
-}
-
-// -------------------------------- QuorumCertificate -------------------------------- //
-
-impl TryFrom<grpc::QuorumCertificate> for QuorumCertificate {
-    type Error = String;
-
-    fn try_from(value: grpc::QuorumCertificate) -> Result<Self, Self::Error> {
-        Ok(Self {
-            header_hash: value.header_hash.try_into().map_err(|_| "Invalid block body hash")?,
-            parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,
-            signatures: value
-                .signatures
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<_>, _>>()?,
-            decision: grpc::QuorumDecision::try_from(value.decision)
-                .map_err(|e| format!("Invalid QuorumDecision: {e}"))?
-                .into(),
-        })
-    }
-}
-
-impl From<&QuorumCertificate> for grpc::QuorumCertificate {
-    fn from(value: &QuorumCertificate) -> Self {
-        Self {
-            parent_id: value.parent_id.to_vec(),
-            header_hash: value.header_hash.to_vec(),
-            signatures: value.signatures.iter().map(Into::into).collect(),
-            decision: grpc::QuorumDecision::from(value.decision).into(),
-        }
-    }
-}
-
-// -------------------------------- QuorumDecision -------------------------------- //
-
-impl From<grpc::QuorumDecision> for QuorumDecision {
-    fn from(value: grpc::QuorumDecision) -> Self {
-        match value {
-            grpc::QuorumDecision::Accept => QuorumDecision::Accept,
-            grpc::QuorumDecision::Reject => QuorumDecision::Reject,
-        }
-    }
-}
-
-impl From<QuorumDecision> for grpc::QuorumDecision {
-    fn from(value: QuorumDecision) -> Self {
-        match value {
-            QuorumDecision::Accept => grpc::QuorumDecision::Accept,
-            QuorumDecision::Reject => grpc::QuorumDecision::Reject,
-        }
-    }
-}
-
-// -------------------------------- ValidatorSignature -------------------------------- //
-
-impl TryFrom<grpc::ValidatorSignature> for ValidatorQcSignature {
-    type Error = String;
-
-    fn try_from(value: grpc::ValidatorSignature) -> Result<Self, Self::Error> {
-        Ok(Self {
-            public_key: CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
-            signature: value.signature.ok_or("signature not provided")?.try_into()?,
-        })
-    }
-}
-
-impl From<&ValidatorQcSignature> for grpc::ValidatorSignature {
-    fn from(value: &ValidatorQcSignature) -> Self {
-        Self {
-            public_key: value.public_key().to_vec(),
-            signature: Some(value.signature().into()),
-        }
-    }
-}
-
-// -------------------------------- EvictNodeAtom -------------------------------- //
-
-impl TryFrom<grpc::EvictAtom> for EvictNodeAtom {
-    type Error = String;
-
-    fn try_from(value: grpc::EvictAtom) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
-        ))
-    }
-}
-
-impl From<&EvictNodeAtom> for grpc::EvictAtom {
-    fn from(value: &EvictNodeAtom) -> Self {
-        Self {
-            public_key: value.node_to_evict().to_vec(),
-        }
-    }
-}
-
-// -------------------------------- ShardGroup -------------------------------- //
-
-impl TryFrom<grpc::ShardGroup> for ShardGroup {
-    type Error = String;
-
-    fn try_from(value: grpc::ShardGroup) -> Result<Self, Self::Error> {
-        Ok(Self {
-            start: value.start,
-            end_inclusive: value.end_inclusive,
-        })
-    }
-}
-
-impl From<ShardGroup> for grpc::ShardGroup {
-    fn from(value: ShardGroup) -> Self {
-        Self {
-            start: value.start,
-            end_inclusive: value.end_inclusive,
-        }
-    }
-}
-
-// -------------------------------- AccumulatedData -------------------------------- //
-
-impl TryFrom<grpc::ShardGroupAccumulatedData> for ShardGroupAccumulatedData {
-    type Error = String;
-
-    fn try_from(value: grpc::ShardGroupAccumulatedData) -> Result<Self, Self::Error> {
-        let total_exhaust_burn =
-            (u128::from(value.total_exhaust_burn_msb) << 64) | u128::from(value.total_exhaust_burn_lsb);
-        Ok(Self { total_exhaust_burn })
-    }
-}
-
-impl From<&ShardGroupAccumulatedData> for grpc::ShardGroupAccumulatedData {
-    fn from(value: &ShardGroupAccumulatedData) -> Self {
-        let total_exhaust_burn_msb = (value.total_exhaust_burn >> 64) as u64;
-        #[allow(clippy::cast_possible_truncation)]
-        let total_exhaust_burn_lsb = (value.total_exhaust_burn & u128::from(u64::MAX)) as u64;
-
-        Self {
-            total_exhaust_burn_msb,
-            total_exhaust_burn_lsb,
         }
     }
 }

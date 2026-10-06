@@ -388,7 +388,7 @@ impl TryFrom<proto::types::AggregateBody> for AggregateBody {
         let inputs = try_convert_all(body.inputs)?;
         let outputs = try_convert_all(body.outputs)?;
         let kernels = try_convert_all(body.kernels)?;
-        let body = AggregateBody::new(inputs, outputs, kernels);
+        let body = AggregateBody::new_unsorted(inputs, outputs, kernels);
         Ok(body)
     }
 }

@@ -22,7 +22,10 @@
 // DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{StreamExt, future};
 use tari_shutdown::Shutdown;
@@ -64,6 +67,22 @@ fn setup_connectivity_manager(
 ) {
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
+    setup_connectivity_manager_with_peer_manager(config, node_identity, peer_manager)
+}
+
+#[allow(clippy::type_complexity)]
+fn setup_connectivity_manager_with_peer_manager(
+    config: ConnectivityConfig,
+    node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+) -> (
+    ConnectivityRequester,
+    ConnectivityEventRx,
+    Arc<NodeIdentity>,
+    Arc<PeerManager>,
+    ConnectionManagerMockState,
+    Shutdown,
+) {
     let (cm_requester, mock) = create_connection_manager_mock();
     let cm_mock_state = mock.get_shared_state();
     tokio::spawn(mock.run());
@@ -523,4 +542,117 @@ async fn seed_peer_release() {
         &normal_peer.node_id,
         "Remaining peer should be the normal peer"
     );
+}
+
+/// The ConnectivityManager must keep answering `select_connections` even while the peer database is
+/// unresponsive.
+///
+/// `handle_dial_peer` consults the peer database (`is_peer_banned`) before doing anything else, so a
+/// contended peer database used to wedge the actor there. Once it is wedged `select_connections`
+/// never answers, the DHT blocks mid-propagation, and every outbound message holds a pipeline slot
+/// until it times out — which is how this surfaced in production, four layers downstream.
+///
+/// The runtime has a single worker so that a peer database call which blocks its caller's *thread*
+/// (rather than merely its task) is fatal to the test, as it was to the node.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn select_connections_is_served_while_the_peer_database_is_slow() {
+    use diesel::connection::SimpleConnection;
+    use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+
+    use crate::peer_manager::database::{MIGRATIONS, PeerDatabaseSql};
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_url = DbConnectionUrl::File(temp_dir.path().join("slow_peers.db"));
+    // A long busy timeout on purpose: if a peer database call is allowed to block its caller, it
+    // blocks for far longer than this test is prepared to wait.
+    // A small pool and a long busy timeout on purpose. Writers that are stuck on SQLite's single
+    // write lock hold their pooled connections while they wait, so the pool empties and every
+    // subsequent call - reads included, WAL or not - blocks on the r2d2 checkout instead. That is the
+    // shape of the production failure: `is_peer_banned` is a read, and it still wedged the actor.
+    let db_connection =
+        DbConnection::connect_and_migrate_with_busy_timeout(&db_url, MIGRATIONS, Some(4), Duration::from_secs(15))
+            .unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection.clone(), &node_identity.to_peer()).unwrap();
+    let peer_manager = Arc::new(PeerManager::new(peers_db, crate::types::TransportProtocol::get_all()).unwrap());
+
+    let (connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
+        setup_connectivity_manager_with_peer_manager(Default::default(), node_identity, peer_manager);
+
+    let peers = add_test_peers(&peer_manager, 3).await;
+    let connections = future::join_all(
+        peers
+            .iter()
+            .cloned()
+            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
+    )
+    .await
+    .into_iter()
+    .map(|(_, _, conn, _)| conn)
+    .collect::<Vec<_>>();
+
+    let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
+    unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
+    for conn in &connections {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone().into()));
+    }
+    let _events = collect_try_recv!(event_stream, take = 4, timeout = Duration::from_secs(10));
+
+    // Take SQLite's write lock on one pooled connection, then pile on more writes than the pool has
+    // connections left. Every one of them parks holding (or waiting for) a connection, so the peer
+    // database stops answering anything at all.
+    let mut lock_holder = db_connection.get_pooled_connection().unwrap();
+    lock_holder.batch_execute("BEGIN IMMEDIATE;").unwrap();
+
+    // The probe runs on a real OS thread, outside the runtime's single worker, and both timestamps
+    // are taken there. That is the whole point: when a worker is parked by a blocking call the
+    // runtime's timers stop too, so a task that measures its own latency (or a `tokio::time::timeout`)
+    // sees nothing at all - it is not scheduled until after the stall has passed.
+    let handle = tokio::runtime::Handle::current();
+    let mut probe_connectivity = connectivity.clone();
+    let probe = std::thread::spawn(move || {
+        // Let the writers below saturate the peer database first.
+        std::thread::sleep(Duration::from_millis(400));
+        let started = Instant::now();
+        let result =
+            handle.block_on(probe_connectivity.select_connections(ConnectivitySelection::random_nodes(3, vec![])));
+        (started.elapsed(), result)
+    });
+
+    let writers = (0..6)
+        .map(|_| {
+            let peer_manager = peer_manager.clone();
+            let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+            tokio::spawn(async move { peer_manager.add_or_update_peer(peer).await })
+        })
+        .collect::<Vec<_>>();
+
+    // Ask for a dial too. This is the request that reaches the peer database first, from the
+    // connectivity manager's own request loop, and it is where the actor used to wedge.
+    let dial = tokio::spawn({
+        let connectivity = connectivity.clone();
+        let node_id = peers[0].node_id.clone();
+        async move { connectivity.dial_peer(node_id, RefKind::Weak).await }
+    });
+
+    let (elapsed, result) = tokio::task::spawn_blocking(move || probe.join().expect("probe thread panicked"))
+        .await
+        .unwrap();
+    let conns = result.unwrap();
+    assert_eq!(conns.len(), 3);
+    // Bounded by `PEER_LOOKUP_TIMEOUT` (the shed), not by the peer database's busy timeout.
+    assert!(
+        elapsed < Duration::from_secs(10),
+        "the connectivity manager took {elapsed:.1?} to answer select_connections while the peer database was \
+         saturated; it should shed the peer lookup, not park on it"
+    );
+
+    lock_holder.batch_execute("COMMIT;").unwrap();
+    drop(lock_holder);
+    let _result = dial.await.unwrap();
+    for writer in writers {
+        // Under this much artificial contention an individual write may legitimately give up with
+        // "database is locked". What matters is that none of them took the actor down with them.
+        let _result = writer.await.unwrap();
+    }
 }

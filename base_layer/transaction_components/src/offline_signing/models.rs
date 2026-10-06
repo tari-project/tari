@@ -79,14 +79,29 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 }
 
 /// A domain-separated Schnorr signature produced by the view wallet over the Borsh-encoded
-/// payload data.  The offline signer verifies this before using the spend key, ensuring
-/// that any in-transit tampering (recipient swap, amount change, input substitution, …)
-/// is detected and the signing operation is aborted.
+/// payload data.  The offline signer verifies this before using the spend key, so that any
+/// in-transit tampering (recipient swap, amount change, input substitution, …) by a party
+/// that does not hold the view key is detected and the signing operation is aborted.
 ///
 /// The challenge binds the nonce public key R, the view public key P, and the canonical
 /// Borsh bytes of the transaction payload: `H_domain(R || P || borsh_bytes)`.  Both
 /// wallets share the same view key, so the verifier derives P locally rather than
 /// trusting a key embedded in the payload.
+///
+/// # Security — what this does *not* prove
+///
+/// The signing key here is the wallet's **view key**, which is shareable by design: it is
+/// handed out to view-only wallets, auditors, exchanges and block explorers so that they can
+/// observe incoming payments.  Anyone holding the view key can therefore *forge* this
+/// signature over a payload of their choosing — for example one that redirects the funds to
+/// themselves — and the air-gapped signer will verify it as authentic.
+///
+/// This signature is consequently a **transit-integrity** check, not an authenticity check.
+/// The authoritative authorisation step is the human operating the air-gapped signer
+/// confirming a [`crate::offline_signing::PayloadSummary`] of what is about to be signed.
+/// Closing the gap in the protocol itself requires a dedicated authentication key that is
+/// provisioned to the online wallet separately from the view key, which is a breaking change
+/// to the key-export format and the payload version.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct PayloadIntegritySignature {
     /// Schnorr signature produced with the view private key.

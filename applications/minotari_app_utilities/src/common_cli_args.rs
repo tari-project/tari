@@ -50,8 +50,8 @@ pub struct CommonCliArgs {
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<Network>,
 
-    /// Overrides for properties in the config file (use the fully qualified key name!!), e.g.
-    /// -p base_node.network=esmeralda
+    /// Overrides for properties in the config file (use the fully qualified key name!!). To choose the network use
+    /// --network esmeralda, not -p. Examples:
     /// -p base_node.grpc_server_allow_methods="get_tokens_in_circulation, get_sync_progress, get_mempool_stats"
     /// -p esmeralda.p2p.seeds.peer_seeds="<public_key_1>::<address_1>", "<public_key_2>::<address_2>", or,
     /// -p base_node.grpc_server_allow_methods=""

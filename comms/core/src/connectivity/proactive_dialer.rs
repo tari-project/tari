@@ -72,23 +72,27 @@ impl ProactiveDialer {
         }
 
         let current_connections = pool.count_connected_nodes();
-        let target = self.config.target_connection_count;
+        let floor = self.config.proactive_dialing_floor;
 
         // Update metrics
 
-        if current_connections >= target {
+        // The call site in `refresh_connection_pool` already makes this decision; this is a backstop for any
+        // other caller, not the gate. Keep both: the gate belongs at the call site so it is visible there.
+        if current_connections >= floor {
             debug!(
                 target: LOG_TARGET,
-                "({task_id}) Current connections ({current_connections}) meet or exceed target ({target}), no proactive dialing needed",
+                "({task_id}) Current connections ({current_connections}) are at or above the proactive dialing floor \
+                 ({floor}), no proactive dialing needed",
             );
 
             return Ok(0);
         }
 
-        let needed = target.saturating_sub(current_connections);
+        let needed = floor.saturating_sub(current_connections);
         debug!(
             target: LOG_TARGET,
-            "({task_id}) Proactive dialing: need {needed} more connections ({current_connections}/{target})",
+            "({task_id}) Proactive dialing: need {needed} more connections to reach the floor \
+             ({current_connections}/{floor})",
 
         );
 
@@ -190,19 +194,25 @@ impl ProactiveDialer {
         let mut managed_and_excluded = managed.clone();
         managed_and_excluded.append(&mut excluded_peers.to_vec());
 
-        // Get available dial candidates
+        // Get available dial candidates; 3x more than needed so there is room for health scoring
+        let candidate_target = count.saturating_mul(3);
         let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed_and_excluded, Some(count * 3), true, true) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed_and_excluded, Some(candidate_target), true, true)
             .await?;
-        if candidates.len() < count * 3 {
+        if candidates.len() < candidate_target {
             // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
             let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
             to_be_excluded.append(&mut managed);
             // Now also allow selection from previously failed peers
             let mut random = self
                 .peer_manager
-                .get_available_dial_candidates(&to_be_excluded, Some(count * 3 - candidates.len()), false, true)
+                .get_available_dial_candidates(
+                    &to_be_excluded,
+                    Some(candidate_target.saturating_sub(candidates.len())),
+                    false,
+                    true,
+                )
                 .await?;
             candidates.append(&mut random);
         }
@@ -211,10 +221,11 @@ impl ProactiveDialer {
         let mut final_candidates = Vec::new();
         for peer in candidates {
             // The SQL query already filtered for communication nodes, non-banned, non-deleted
-            // Just need to check circuit breaker state
-            if let Some(stats) = connection_stats.get(&peer.node_id) &&
-                !stats.should_allow_connection(self.config.circuit_breaker_retry_interval)
-            {
+            // Just need to check circuit breaker state. These dials go straight to the connection manager
+            // via `try_send_dial_peer` and never reach `ConnectivityManagerActor::handle_dial_peer`, so this
+            // check cannot be dropped in favour of the one there - but it asks the same question through the
+            // same predicate so the two cannot disagree.
+            if self.config.is_circuit_broken(connection_stats.get(&peer.node_id)) {
                 trace!(
                     target: LOG_TARGET,
                     "({}) Skipping peer {} due to circuit breaker",
@@ -268,7 +279,7 @@ impl ProactiveDialer {
             return 0;
         }
 
-        let mut successful_dials = 0;
+        let mut successful_dials = 0usize;
 
         for peer in peers {
             debug!(
@@ -278,15 +289,18 @@ impl ProactiveDialer {
                 peer.node_id.short_str()
             );
 
-            // Use the connection manager's dial request (fire and forget)
-            match self.connection_manager.send_dial_peer(peer.node_id.clone(), None).await {
+            // Fire and forget, and deliberately non-blocking: this loop runs inside the
+            // ConnectivityManager's `select!` handler, so awaiting space on the connection manager's
+            // request channel would park the whole actor. Proactive dials are speculative — a peer
+            // shed here is simply retried on the next refresh.
+            match self.connection_manager.try_send_dial_peer(peer.node_id.clone(), None) {
                 Ok(_) => {
-                    successful_dials += 1;
+                    successful_dials = successful_dials.saturating_add(1);
                 },
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "({}) Failed to send dial request for peer {}: {:?}",
+                        "({}) Failed to send dial request for peer {}: {}",
                         task_id,
                         peer.node_id.short_str(),
                         err

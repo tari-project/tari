@@ -164,7 +164,7 @@ impl ChainMetadataService {
                 );
                 // If there were no pings for a while, we are probably alone.
                 if *num_peers == 0 {
-                    self.number_of_rounds_no_pings += 1;
+                    self.number_of_rounds_no_pings = self.number_of_rounds_no_pings.saturating_add(1);
                     if self.number_of_rounds_no_pings >= NUM_ROUNDS_NETWORK_SILENCE {
                         self.send_network_silence().await?;
                         self.number_of_rounds_no_pings = 0;

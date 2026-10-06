@@ -123,8 +123,8 @@ where
             return Ok(Vec::new());
         }
         let count = max(1, count);
-        let last_leaf_index = min(leaf_index.0 + count - 1, leaf_count);
-        let mut leaf_hashes = Vec::with_capacity(last_leaf_index - leaf_index.0 + 1);
+        let last_leaf_index = min(leaf_index.0.saturating_add(count).saturating_sub(1), leaf_count);
+        let mut leaf_hashes = Vec::with_capacity(last_leaf_index.saturating_sub(leaf_index.0).saturating_add(1));
         for leaf_index in leaf_index.0..=last_leaf_index {
             if let Some(hash) = self.get_leaf_hash(LeafIndex(leaf_index))? {
                 leaf_hashes.push(hash);
@@ -176,14 +176,14 @@ where
         let mut peak = 1;
         while (peak_map & peak) != 0 {
             // left_sibling can never be out of bounds (>= len) because peak can never be 0
-            let left_sibling = pos + 1 - 2 * peak;
+            let left_sibling = pos.saturating_add(1).saturating_sub(peak.saturating_mul(2));
             debug_assert!(
                 left_sibling < pos,
                 "left_sibling was greater than the reported number of elements contained in the impl of ArrayLike"
             );
             let left_hash = self.hashes.get(left_sibling).unwrap();
-            peak *= 2;
-            pos += 1;
+            peak = peak.saturating_mul(2);
+            pos = pos.saturating_add(1);
             let new_hash = hash_together::<D>(&left_hash, &last_hash);
             last_hash = new_hash.clone();
             self.push_hash(new_hash)?;
@@ -203,8 +203,8 @@ where
                 let hash = self
                     .get_node_hash(n)?
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;
-                let left_pos = n - (1 << height);
-                let right_pos = n - 1;
+                let left_pos = n.saturating_sub(1 << height);
+                let right_pos = n.saturating_sub(1);
                 let left_child_hash = self
                     .get_node_hash(left_pos)?
                     .ok_or(MerkleMountainRangeError::CorruptDataStructure)?;

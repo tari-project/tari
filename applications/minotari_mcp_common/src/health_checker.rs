@@ -36,29 +36,24 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::time;
 use tonic::{
-    transport::{Channel, Endpoint},
     Status,
+    transport::{Channel, Endpoint},
 };
 
 use crate::{McpError, McpResult};
 
 /// Health status of a service
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HealthStatus {
     /// Service is healthy and serving requests
     Serving,
     /// Service is not serving requests
     NotServing,
     /// Health status is unknown or unreachable
+    #[default]
     Unknown,
     /// Service is starting up
     Starting,
-}
-
-impl Default for HealthStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for HealthStatus {
@@ -125,8 +120,8 @@ impl HealthResult {
         self.status = HealthStatus::NotServing;
         self.last_check = Utc::now();
         self.response_time = response_time;
-        self.failure_count += 1;
-        self.consecutive_failures += 1;
+        self.failure_count = self.failure_count.saturating_add(1);
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
         self.last_error = Some(error);
     }
 

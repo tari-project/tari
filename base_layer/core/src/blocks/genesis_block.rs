@@ -54,6 +54,8 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     }
 }
 
+// Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
 fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     let mut outputs = Vec::new();
     let mut inputs = Vec::new();
@@ -64,15 +66,18 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
             inputs.push(input);
         } else if let Ok(kernel) = serde_json::from_str::<TransactionKernel>(line) {
             block.body.add_kernel(kernel);
-            block.header.kernel_mmr_size += 1;
+            block.header.kernel_mmr_size = block.header.kernel_mmr_size.saturating_add(1);
         } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
             block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
         } else {
             panic!("Error: Could not deserialize line: {line} in file: {file}");
         }
     }
-    block.header.output_smt_size += outputs.len() as u64;
-    block.header.output_smt_size -= inputs.len() as u64;
+    block.header.output_smt_size = block
+        .header
+        .output_smt_size
+        .saturating_add(outputs.len() as u64)
+        .saturating_sub(inputs.len() as u64);
     block.body.add_outputs(outputs);
     block.body.add_inputs(inputs);
     block.body.sort();
@@ -120,10 +125,13 @@ fn get_stagenet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
@@ -172,10 +180,13 @@ fn get_nextnet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
@@ -227,10 +238,13 @@ fn get_mainnet_genesis_block_raw() -> Block {
     if gen_block_payload.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            gen_block_payload.len() - PowData::default().max_size()
+            gen_block_payload.len().saturating_sub(PowData::default().max_size())
         );
     }
-    let mut block = get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(gen_block_payload));
+    let mut block = get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(gen_block_payload).expect("genesis constant fits"),
+    );
     block.header.nonce = 61724;
     block
 }
@@ -279,10 +293,13 @@ fn get_igor_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
@@ -332,10 +349,13 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 pub fn get_localnet_genesis_block() -> ChainBlock {
@@ -364,10 +384,13 @@ fn get_localnet_genesis_block_raw() -> Block {
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            not_before_proof.len().saturating_sub(PowData::default().max_size())
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(
+        &genesis_timestamp,
+        &PowData::try_from(not_before_proof.to_vec()).expect("genesis constant fits"),
+    )
 }
 
 fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {
@@ -405,15 +428,18 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
                 pow_data: not_before_proof.clone(),
             },
         },
-        body: AggregateBody::new(vec![], vec![], vec![]),
+        body: AggregateBody::new_unsorted(vec![], vec![], vec![]),
     }
 }
 
 // Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
+    use tari_common::network_check::is_network_choice_valid;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
     use tari_transaction_components::{
@@ -441,13 +467,20 @@ mod test {
     #[serial]
     fn esmeralda_genesis_sanity_check() {
         let network = Network::Esmeralda;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('esmeralda_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_esmeralda_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "3c3681ad318eb54ca3f3e8aed79d3d207d94a5291aec84ba1a0b628633db3621"
+        );
         check_block(network, &block, 313, 794, 314);
         remove_network_env_var();
     }
@@ -456,13 +489,20 @@ mod test {
     #[serial]
     fn nextnet_genesis_sanity_check() {
         let network = Network::NextNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('nextnet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_nextnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "15fdb3fe7ad08615ff5342113349558a047ee372cb297bec84bdaf4c52cf189e"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -471,13 +511,20 @@ mod test {
     #[serial]
     fn mainnet_genesis_sanity_check() {
         let network = Network::MainNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('mainnet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_mainnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "01f0cf665bd4cd31cbb2b2470236389c483522b350335e10a4a5dca34cb85990"
+        );
         check_block(network, &block, 253, 674, 254);
         remove_network_env_var();
     }
@@ -486,13 +533,20 @@ mod test {
     #[serial]
     fn stagenet_genesis_sanity_check() {
         let network = Network::StageNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('stagenet_genesis_sanity_check()')");
         }
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new pre_mine or other
         let block = get_stagenet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "a100a8fb378d4a1367b769680dc1b7b1d53b274c55aa679b7eedea4e703272c2"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -501,12 +555,19 @@ mod test {
     #[serial]
     fn igor_genesis_sanity_check() {
         let network = Network::Igor;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('igor_genesis_sanity_check()')");
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_igor_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "486f0f75a50acadd7e57c5dfcfbf9daece94784d6f35db855012942700216e00"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -515,12 +576,19 @@ mod test {
     #[serial]
     fn localnet_genesis_sanity_check() {
         let network = Network::LocalNet;
-        set_network_by_env_var_or_force_set(network);
+        if !set_network_by_env_var_or_force_set(network) {
+            return;
+        }
         if !network_matches(network) {
             panic!("Network could not be set ('localnet_genesis_sanity_check()')");
         }
         // Note: If outputs and kernels are added, this test will fail unless you explicitly check that network == Igor
         let block = get_localnet_genesis_block();
+        // Pinned header hash: covers the BlocksHashDomain tag, the network byte and the header hashing layout.
+        assert_eq!(
+            block.hash().to_hex(),
+            "bd2126f3f5220653d93dc6eade3d062c26845de9859ec9d0b5c758a5a0b6ef3f"
+        );
         check_block(network, &block, 0, 0, 0);
         remove_network_env_var();
     }
@@ -715,11 +783,19 @@ mod test {
         .unwrap();
     }
 
-    fn set_network_by_env_var_or_force_set(network: Network) {
+    /// Selects `network` for the test via `TARI_NETWORK`, falling back to setting it process-wide. Returns false (and
+    /// sets nothing) if this binary is not built for `network`, in which case the test should be skipped: forcing an
+    /// invalid network would pin it for every later test in the same process.
+    fn set_network_by_env_var_or_force_set(network: Network) -> bool {
+        if is_network_choice_valid(network).is_err() {
+            println!("\nSkipping: this binary is not built for {network:?}.\n");
+            return false;
+        }
         set_network_by_env_var(network);
         if Network::get_current_or_user_setting_or_default() != network {
             let _ = Network::set_current(network);
         }
+        true
     }
 
     // Targeted network compilations will override inferred network hashes; this has effect only if

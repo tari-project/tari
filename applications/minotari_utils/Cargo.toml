@@ -1,5 +1,6 @@
 [package]
 name = "minotari_utils"
+publish = false
 description = "Utility tool for Tari base node operations"
 authors = { workspace = true }
 repository = { workspace = true }

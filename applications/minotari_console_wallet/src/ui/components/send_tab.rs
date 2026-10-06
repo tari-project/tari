@@ -175,31 +175,43 @@ impl SendTab {
             SendInputMode::None => (),
             SendInputMode::To => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[1].x + self.to_field.width() as u16 + 1,
+                vert_chunks[1]
+                    .x
+                    .saturating_add(self.to_field.width() as u16)
+                    .saturating_add(1),
                 // Move one line down, from the border to the input line
-                vert_chunks[1].y + 1,
+                vert_chunks[1].y.saturating_add(1),
             ),
             SendInputMode::Amount => {
                 if self.selected_unique_id.is_none() {
                     f.set_cursor(
                         // Put cursor past the end of the input text
-                        amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
+                        amount_fee_layout[0]
+                            .x
+                            .saturating_add(self.amount_field.width() as u16)
+                            .saturating_add(1),
                         // Move one line down, from the border to the input line
-                        amount_fee_layout[0].y + 1,
+                        amount_fee_layout[0].y.saturating_add(1),
                     )
                 }
             },
             SendInputMode::Fee => f.set_cursor(
                 // Put cursor past the end of the input text
-                amount_fee_layout[1].x + self.fee_field.width() as u16 + 1,
+                amount_fee_layout[1]
+                    .x
+                    .saturating_add(self.fee_field.width() as u16)
+                    .saturating_add(1),
                 // Move one line down, from the border to the input line
-                amount_fee_layout[1].y + 1,
+                amount_fee_layout[1].y.saturating_add(1),
             ),
             SendInputMode::PaymentId => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[3].x + self.payment_id_field.width() as u16 + 1,
+                vert_chunks[3]
+                    .x
+                    .saturating_add(self.payment_id_field.width() as u16)
+                    .saturating_add(1),
                 // Move one line down, from the border to the input line
-                vert_chunks[3].y + 1,
+                vert_chunks[3].y.saturating_add(1),
             ),
         }
     }

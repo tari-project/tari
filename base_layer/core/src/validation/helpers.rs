@@ -20,18 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use log::*;
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{CompressedPublicKey, FixedHash},
-};
+use tari_common_types::{epoch::VnEpoch, types::FixedHash};
+use tari_comms::protocol::{messaging::MAX_FRAME_LENGTH, rpc::RPC_MAX_FRAME_SIZE};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
-use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError};
-use tari_sidechain::SidechainProofValidationError;
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_transaction_components::{
-    consensus::consensus_constants::ConsensusConstants,
+    consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
@@ -41,6 +38,7 @@ use crate::{
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
         AchievedTargetDifficulty,
+        AdjustedTarget,
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
@@ -74,7 +72,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         trace!(
             target: LOG_TARGET,
             "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps.get(mid_index - 1).expect("Already checked"),
+            timestamps.get(mid_index.saturating_sub(1)).expect("Already checked"),
             timestamps.get(mid_index).expect("Already checked"),
         );
         // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
@@ -82,8 +80,13 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
-                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
+                u128::from(
+                    timestamps
+                        .get(mid_index.saturating_sub(1))
+                        .expect("Already checked")
+                        .as_u64(),
+                )
+                .saturating_add(u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
                     2,
             )
             .unwrap_or(u64::MAX),
@@ -126,40 +129,99 @@ pub fn check_header_timestamp_greater_than_median(
 }
 pub fn check_target_difficulty(
     block_header: &BlockHeader,
-    target: Difficulty,
+    target: AdjustedTarget,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
     consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
+    let achieved =
+        achieved_difficulty(block_header, randomx_factory, gen_hash, consensus, tari_vm_key).inspect_err(|e| {
+            // A failure that is not the peer's fault (e.g. building a RandomX VM) says nothing about the block
+            if e.get_ban_reason().is_some() {
+                warn!(
+                    target: LOG_TARGET,
+                    "{}",
+                    pow_rejection_message(&block_header.hash(), block_header, false, e)
+                );
+            }
+        })?;
+    match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {
+        Some(achieved_target) => Ok(achieved_target),
+        None => {
+            warn!(
+                target: LOG_TARGET,
+                "Proof of work for {} at height {} was below the target difficulty. Achieved: {}, Target: {} (adjusted: {})",
+                block_header.hash().to_hex(),
+                block_header.height,
+                achieved,
+                target.base,
+                target.adjusted
+            );
+            Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow {
+                    achieved,
+                    target: target.adjusted,
+                }),
+            ))
+        },
+    }
+}
+
+fn achieved_difficulty(
+    block_header: &BlockHeader,
+    randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
+    consensus: &BaseNodeConsensusManager,
+    tari_vm_key: FixedHash,
+) -> Result<Difficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
         PowAlgorithm::Cuckaroo => {
-            let cuckaroo_cycle_length = consensus
-                .consensus_constants(block_header.height)
-                .cuckaroo_cycle_length();
-            let cuckaroo_bits = consensus.consensus_constants(block_header.height).cuckaroo_edge_bits();
-            cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
+            let constants = consensus.consensus_constants(block_header.height);
+            cuckaroo_difficulty(
+                block_header,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+                constants.bipartite_cuckaroo_verification(),
+            )?
         },
     };
-    match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
-        Some(achieved_target) => Ok(achieved_target),
-        None => {
-            warn!(
-                target: LOG_TARGET,
-                "Proof of work for {} at height {} was below the target difficulty. Achieved: {}, Target: {}",
-                block_header.hash().to_hex(),
-                block_header.height,
-                achieved,
-                target
-            );
-            Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
-            ))
-        },
+    Ok(achieved)
+}
+
+/// The most characters of the error text [`pow_rejection_message`] includes.
+const MAX_POW_REJECTION_ERROR_CHARS: usize = 512;
+
+/// The log line for a header whose proof of work could not be verified, naming the block by hash, height and
+/// algorithm. Where the rejection leads to a ban, the ban reason is only the error itself, so this line is what lets
+/// the ban be matched to a block; not every caller bans. `hash` is the header's hash, passed in because some callers
+/// already have it. `height_is_claimed` is for a header not yet linked to our chain, whose height is only what the peer
+/// says it is. The line carries the fixed-size header fields and the error, never the pow data, and the error text is
+/// capped at [`MAX_POW_REJECTION_ERROR_CHARS`], so this line stays bounded whatever the peer sent. The cap applies to
+/// this line only, not to the ban reason or other logs of the same error.
+pub(crate) fn pow_rejection_message(
+    hash: &FixedHash,
+    header: &BlockHeader,
+    height_is_claimed: bool,
+    err: &dyn Display,
+) -> String {
+    let mut err = err.to_string();
+    if let Some((cut, _)) = err.char_indices().nth(MAX_POW_REJECTION_ERROR_CHARS) {
+        err.truncate(cut);
+        err.push_str("...");
     }
+    let height = if height_is_claimed { "claimed height" } else { "height" };
+    format!(
+        "Proof of work for block {} at {} {} ({}) was rejected: {}",
+        hash.to_hex(),
+        height,
+        header.height,
+        header.pow_algo(),
+        err
+    )
 }
 
 /// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
@@ -175,7 +237,8 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             return Ok(());
         }
 
-        let output = db.fetch_output(&utxo_hash)?;
+        // Diagnostic logging only; any of the (content-identical) entries for this hash is fine.
+        let output = db.fetch_outputs(&utxo_hash)?.into_iter().next();
         warn!(
             target: LOG_TARGET,
             "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
@@ -191,13 +254,13 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
-    if db.fetch_output(&output_hash)?.is_some() {
+    if !db.fetch_outputs(&output_hash)?.is_empty() {
         warn!(
             target: LOG_TARGET,
             "Validation failed due to already spent input: {input}"
         );
-        // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
-        // been Some
+        // The commitment is not in the unspent set (checked above) but the output exists in the index,
+        // so it must already be spent.
         return Err(ValidationError::ContainsSTxO);
     }
 
@@ -257,12 +320,44 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
         });
     }
 
+    // A validator node that has exited but whose exit epoch has not been reached yet is no longer in the registered
+    // set (so `validator_node_exists` is false), but still sits in the exit queue and still counts as active. A
+    // re-registration in that window would let a second exit be queued while the first entry still exists, which can
+    // collide in the exit queue at commit time (and make `undo_exit` restore the wrong instance on a reorg). It must
+    // wait until the pending exit has taken effect.
+    if db.validator_node_is_active(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        vn_reg.public_key(),
+    )? {
+        return Err(ValidationError::ValidatorNodeAlreadyRegistered {
+            public_key: vn_reg.public_key().to_string(),
+        });
+    }
+
     Ok(())
 }
 
-/// Checks the validity of the validator node exit if applicable
+/// Checks the validity of the validator node exit if applicable.
+///
+/// Everything the commit-time exit (`ValidatorNodeStore::exit` via `get_next_exit_epoch`) can fail on must be rejected
+/// here instead. A failure at commit time is not a validation failure: it surfaces as `AddBlockErrored`, so a locally
+/// built block template carrying the exit would keep failing without the offending transaction being evicted.
+///
+/// The exit is accepted only if:
+/// - exits are permitted at all (`vn_registration_max_exits_per_epoch > 0`; with zero, `get_next_exit_epoch` errors);
+/// - the validator node is in the registered validator node set (NOT already queued in the exit queue - `exit()` reads
+///   only the registered set, so a second exit for a queued validator fails at commit time). Note that
+///   `validator_node_is_active` cannot be used for this: it deliberately still reports a queued validator as active
+///   until its exit epoch so that the registration UTXO stays locked;
+/// - the validator node has activated by `current_epoch`;
+/// - the exit's `activation_epoch` (which is part of the signed message) matches the registered activation epoch,
+///   binding the exit to this registration instance.
+///
+/// Duplicate exits within a single body are rejected by `verify_no_duplicate_validator_node_registrations`.
 pub fn check_validator_node_exit<B: BlockchainBackend>(
     db: &B,
+    constants: &ConsensusConstants,
     output: &TransactionOutput,
     current_epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
@@ -273,6 +368,10 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         return Ok(());
     };
 
+    if constants.vn_registration_max_exits_per_epoch() == 0 {
+        return Err(ValidationError::ValidatorNodeExitNotPermitted);
+    }
+
     if exit.max_epoch() < current_epoch {
         return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
             public_key: exit.public_key().to_string(),
@@ -281,82 +380,65 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         });
     }
 
-    if !db.validator_node_is_active(
-        sidechain_features.sidechain_public_key(),
-        current_epoch,
-        exit.public_key(),
-    )? {
+    let Some(entry) = db.fetch_validator_node_entry(sidechain_features.sidechain_public_key(), exit.public_key())?
+    else {
         return Err(ValidationError::ValidatorNodeNotRegistered {
             public_key: exit.public_key().to_string(),
-            details: format!("exit invalid for validator node that is not active/registered in {current_epoch}"),
+            details: format!(
+                "exit invalid for validator node that is not registered or has already exited in {current_epoch}"
+            ),
+        });
+    };
+
+    if entry.activation_epoch > current_epoch {
+        return Err(ValidationError::ValidatorNodeNotRegistered {
+            public_key: exit.public_key().to_string(),
+            details: format!(
+                "exit invalid for validator node that only activates in {} (current epoch {current_epoch})",
+                entry.activation_epoch
+            ),
+        });
+    }
+
+    if entry.activation_epoch != exit.activation_epoch() {
+        return Err(ValidationError::ValidatorNodeExitActivationEpochMismatch {
+            public_key: exit.public_key().to_string(),
+            exit_activation_epoch: exit.activation_epoch(),
+            registered_activation_epoch: entry.activation_epoch,
         });
     }
 
     Ok(())
 }
 
-/// This function checks the validity of the eviction proof if applicable
-pub fn check_eviction_proof<B: BlockchainBackend>(
-    db: &B,
-    output: &TransactionOutput,
-    constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
-    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
-        return Ok(());
-    };
-    let Some(eviction_proof) = sidechain_features.eviction_proof() else {
-        return Ok(());
-    };
+// A block is propagated in a single messaging frame and synced in a single RPC response, so the block body byte limit
+// must stay below both, leaving room for the header and the protobuf and response overhead.
+const _: () = assert!(MAX_BLOCK_BODY_BYTES < MAX_FRAME_LENGTH);
+const _: () = assert!(MAX_BLOCK_BODY_BYTES < RPC_MAX_FRAME_SIZE);
 
-    let epoch = eviction_proof.epoch();
-    let shard_group = eviction_proof.shard_group();
-
-    let chain_metadata = db.fetch_chain_metadata()?;
-    let tip_height = chain_metadata.best_block_height();
-    let tip_epoch = constants.block_height_to_epoch(tip_height);
-    if epoch > tip_epoch {
-        return Err(ValidationError::SidechainEvictionProofInvalidEpoch {
-            epoch,
-            tip_height: chain_metadata.best_block_height(),
+/// Checks that the block body, serialised in its compact form, is no larger than the consensus `max_block_body_bytes`.
+/// The compact form is measured so that the result is the same whether the block's inputs are compact or hydrated.
+/// This is cheap, so it runs before any script or range proof check.
+pub fn check_block_body_size(block: &Block, constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    let max_bytes = constants.max_block_body_bytes();
+    let actual_bytes = block
+        .body
+        .compact_serialized_size()
+        .map_err(|e| ValidationError::SerializationError(e.to_string()))?;
+    if actual_bytes > max_bytes {
+        warn!(
+            target: LOG_TARGET,
+            "Block #{} ({}) body is {} bytes, above the maximum of {} bytes",
+            block.header.height,
+            block.hash().to_hex(),
+            actual_bytes,
+            max_bytes
+        );
+        return Err(ValidationError::BlockBodyTooManyBytes {
+            actual_bytes,
+            max_bytes,
         });
     }
-
-    let validator_pk = eviction_proof.node_to_evict();
-
-    // Only allow a single exit or evict on an active validator
-    if !db.validator_node_is_active_for_shard_group(
-        sidechain_features.sidechain_public_key(),
-        tip_epoch,
-        validator_pk,
-        shard_group,
-    )? {
-        return Err(ValidationError::SidechainEvictionProofValidatorNotFound {
-            validator_pk: validator_pk.to_string(),
-        });
-    }
-
-    let committee_size =
-        db.validator_nodes_count_for_shard_group(sidechain_features.sidechain_public_key(), tip_epoch, shard_group)?;
-    if committee_size == 0 {
-        return Err(ValidationError::ConsensusError(format!(
-            "Committee size for shard group {} is zero",
-            shard_group
-        )));
-    }
-    let quorum_threshold = committee_size - (committee_size - 1) / 3;
-
-    let sidechain_pk = sidechain_features.sidechain_public_key();
-
-    let check_vn = |public_key: &CompressedPublicKey| {
-        let is_active = db
-            .validator_node_is_active_for_shard_group(sidechain_pk, tip_epoch, public_key, shard_group)
-            .map_err(SidechainProofValidationError::internal_error)?;
-
-        Ok(is_active)
-    };
-
-    eviction_proof.validate(quorum_threshold, &check_vn)?;
-
     Ok(())
 }
 
@@ -515,6 +597,107 @@ mod test {
         }
     }
 
+    mod pow_rejection_message {
+        use tari_common::configuration::Network;
+        use tari_transaction_components::tari_proof_of_work::PowData;
+
+        use super::*;
+        use crate::proof_of_work::monero_rx::MergeMineError;
+
+        /// Maximum-size RandomXM pow data that fails to deserialize at various depths
+        fn unparseable_monero_pow_data() -> Vec<Vec<u8>> {
+            let max_size = PowData::default().max_size();
+            // A well formed Monero header, RandomX key, transaction count, merkle root and empty coinbase merkle
+            // proof, so that decoding gets as far as the coinbase prefix before running into 0xff bytes
+            let mut deep = vec![0x0c, 0x0c, 0x00];
+            deep.extend([0u8; 32]);
+            deep.extend([0u8; 4]);
+            deep.push(32);
+            deep.extend([1u8; 32]);
+            deep.extend([1u8, 0]);
+            deep.extend([0u8; 32]);
+            deep.extend([0u8, 0]);
+            deep.resize(max_size, 0xff);
+            vec![vec![0x00; max_size], vec![0x01; max_size], vec![0xff; max_size], deep]
+        }
+
+        #[test]
+        fn it_names_the_block_and_algorithm_of_a_rejected_randomxm_header() {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+            let randomx_factory = RandomXFactory::default();
+            for pow_data in unparseable_monero_pow_data() {
+                let mut header = BlockHeader::new(0);
+                header.height = 10;
+                header.pow.pow_algo = PowAlgorithm::RandomXM;
+                header.pow.pow_data = PowData::try_from(pow_data).unwrap();
+
+                let err = check_target_difficulty(
+                    &header,
+                    AdjustedTarget::unadjusted(Difficulty::min()),
+                    &randomx_factory,
+                    &FixedHash::zero(),
+                    &rules,
+                    FixedHash::zero(),
+                )
+                .unwrap_err();
+                // The decode failure itself, whose text is built from the decoder's error and so is the part that
+                // could depend on what the peer sent
+                assert!(
+                    matches!(&err, ValidationError::MergeMineError(MergeMineError::DeserializeError(e)) if e.contains("(expected the")),
+                    "{err:?}"
+                );
+                let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
+                let message = pow_rejection_message(&header.hash(), &header, false, &err);
+
+                assert!(message.contains(&header.hash().to_hex()), "{message}");
+                assert!(message.contains("RandomXMonero"), "{message}");
+                // The ban record carries the same error, which is what ties the two together
+                assert!(message.contains(&ban_reason), "{message}");
+                // Neither grows with the pow data
+                assert!(message.len() < 512, "{} bytes: {message}", message.len());
+                assert!(ban_reason.len() < 256, "{} bytes: {ban_reason}", ban_reason.len());
+            }
+        }
+
+        #[test]
+        fn it_caps_the_error_text() {
+            struct LongError;
+            impl Display for LongError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    // Multi-byte characters, so that a byte based cut would land inside one
+                    write!(f, "{}", "é".repeat(10_000))
+                }
+            }
+            let header = BlockHeader::new(0);
+            let message = pow_rejection_message(&header.hash(), &header, false, &LongError);
+            let (_, err) = message.split_once("was rejected: ").unwrap();
+            assert_eq!(err, format!("{}...", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS)));
+
+            // An error at the cap is left alone
+            struct ShortError;
+            impl Display for ShortError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS))
+                }
+            }
+            let message = pow_rejection_message(&header.hash(), &header, false, &ShortError);
+            assert!(
+                message.ends_with(&"é".repeat(MAX_POW_REJECTION_ERROR_CHARS)),
+                "{message}"
+            );
+        }
+
+        #[test]
+        fn it_says_when_the_height_is_only_claimed() {
+            let mut header = BlockHeader::new(0);
+            header.height = 42;
+            let message = pow_rejection_message(&header.hash(), &header, false, &"err");
+            assert!(message.contains(" at height 42 "), "{message}");
+            let message = pow_rejection_message(&header.hash(), &header, true, &"err");
+            assert!(message.contains(" at claimed height 42 "), "{message}");
+        }
+    }
+
     mod calc_median_timestamp {
         use super::*;
 
@@ -569,7 +752,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
@@ -596,7 +779,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
@@ -624,7 +807,7 @@ mod test {
             let coinbase_output = coinbase.to_transaction_output().unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
 
-            let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
+            let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 

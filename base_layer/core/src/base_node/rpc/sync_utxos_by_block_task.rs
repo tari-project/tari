@@ -160,13 +160,13 @@ where B: BlockchainBackend + 'static
 
             current_header = self
                 .db
-                .fetch_header(current_header.height + 1)
+                .fetch_header(current_header.height.saturating_add(1))
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::general(&format!(
                         "Potential data consistency issue: header {} not found",
-                        current_header.height + 1
+                        current_header.height.saturating_add(1)
                     ))
                 })?;
         }

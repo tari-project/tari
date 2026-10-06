@@ -23,7 +23,7 @@
 //! Error types for MCP operations
 
 #![allow(clippy::indexing_slicing)]
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 
 pub type McpResult<T> = Result<T, McpError>;

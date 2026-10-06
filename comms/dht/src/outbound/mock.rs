@@ -96,7 +96,10 @@ impl OutboundServiceMockState {
             if timeout.checked_sub(since).is_none() {
                 break None;
             }
-            if time::timeout(timeout - since, rx.changed()).await.is_err() {
+            let Some(remaining) = timeout.checked_sub(since) else {
+                break None;
+            };
+            if time::timeout(remaining, rx.changed()).await.is_err() {
                 break None;
             }
             let calls = self.calls.lock().await;

@@ -86,7 +86,7 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
-    cmp::max,
+    cmp::{max, min},
     convert::TryFrom,
     fmt,
     fs::{self, File},
@@ -132,12 +132,14 @@ use tari_common_types::{
     },
 };
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
-use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{BYTES_PER_MB, LMDBBuilder, LMDBConfig, LMDBStore, db};
 use tari_transaction_components::{
     MicroMinotari,
     aggregated_body::AggregateBody,
-    consensus::{ConsensusConstants, consensus_constants::BlockVersion},
+    consensus::{
+        ConsensusConstants,
+        consensus_constants::{BlockVersion, UNSCHEDULED_ACTIVATION_HEIGHT},
+    },
     tari_proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transaction_components::{
         OutputType,
@@ -157,8 +159,6 @@ use tari_utilities::{
 use tokio::sync::watch;
 
 use super::{
-    cursors::KeyPrefixCursor,
-    lmdb::lmdb_get_prefix_cursor,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
     stats_collector::{DatabaseStats, LMDBStatsCollector, MigrationPhase},
@@ -177,7 +177,6 @@ use crate::{
         MmrTree,
         Optional,
         Reorg,
-        TemplateRegistrationEntry,
         ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
         db_transaction::{
@@ -213,13 +212,16 @@ use crate::{
                 lmdb_first_after,
                 lmdb_get,
                 lmdb_get_multiple,
+                lmdb_get_single_or_vec,
                 lmdb_get_typed,
                 lmdb_insert,
                 lmdb_insert_dup,
+                lmdb_insert_into_vec,
                 lmdb_insert_typed,
                 lmdb_last,
                 lmdb_len,
                 lmdb_replace,
+                lmdb_write_index_entries,
             },
             row_data::block_header_accumulated_data::{
                 LmdbRowBlockHeaderAccumulatedDataV1,
@@ -293,6 +295,8 @@ const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_queue";
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
+const LMDB_DB_VALIDATOR_NODES_CANCELLED: &str = "validator_nodes_cancelled";
+/// Retired: code template registrations are no longer indexed. Only opened by the v9 migration, which drops it.
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA_V1: &str = "jmt_value_data";
@@ -336,7 +340,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_VALIDATOR_NODES,
         LMDB_DB_VALIDATOR_NODES_ACTIVATION,
         LMDB_DB_VALIDATOR_NODES_EXIT,
-        LMDB_DB_TEMPLATE_REGISTRATIONS,
+        LMDB_DB_VALIDATOR_NODES_CANCELLED,
         LMDB_DB_UTXO_SMT,
         LMDB_DB_JMT_VALUE_DATA_V2,
         LMDB_DB_JMT_NODE_DATA_V2,
@@ -345,8 +349,6 @@ pub fn get_all_database_names() -> Vec<&'static str> {
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
-/// Height(8), Hash(32)
-type CodeTemplateRegistrationKey = CompositeKey<40>;
 /// Core database creation logic shared between public functions.
 ///
 /// Exposed `pub(crate)` so tests can open an LMDB at a known path with the exact same
@@ -404,7 +406,7 @@ pub(crate) fn build_lmdb_store<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_ACTIVATION, flags | db::DUPSORT | db::DUPFIXED)
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
-        .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
+        .add_database(LMDB_DB_VALIDATOR_NODES_CANCELLED, flags)
         .add_database(LMDB_DB_UTXO_SMT, flags)
         .add_database(LMDB_DB_JMT_VALUE_DATA_V2, flags)
         .add_database(LMDB_DB_JMT_NODE_DATA_V2, flags)
@@ -533,7 +535,7 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
         .map_err(|e| ChainStorageError::AccessError(format!("Could not read LMDB env stat: {e}")))?;
     let psize = u64::from(env_stat.psize);
     // (last_pgno + 1) * psize is the high-water-mark bytes the env has allocated inside data.mdb.
-    let total_used_pages = env_info.last_pgno as u64 + 1;
+    let total_used_pages = (env_info.last_pgno as u64).saturating_add(1);
 
     let read_txn = db.read_transaction()?;
     let mut live_pages: u64 = 0;
@@ -541,7 +543,10 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
         let stat = read_txn
             .db_stat(db_handle)
             .map_err(|e| ChainStorageError::AccessError(format!("Could not read db_stat for `{name}`: {e}")))?;
-        live_pages += stat.branch_pages as u64 + stat.leaf_pages as u64 + stat.overflow_pages as u64;
+        live_pages = live_pages
+            .saturating_add(stat.branch_pages as u64)
+            .saturating_add(stat.leaf_pages as u64)
+            .saturating_add(stat.overflow_pages as u64);
     }
     // Two fixed meta pages always exist in any LMDB env.
     const META_PAGES: u64 = 2;
@@ -552,8 +557,8 @@ fn should_compact_lmdb_env(db: &LMDBDatabase, min_free_bytes: u64) -> Result<boo
     info!(
         target: LOG_TARGET,
         "[COMPACTION]  free={} MB, thresholds={} MB  -> compact={}",
-        free_bytes / mb,
-        min_free_bytes / mb,
+        free_bytes.checked_div(mb).unwrap_or(0),
+        min_free_bytes.checked_div(mb).unwrap_or(0),
         trigger
     );
     Ok(trigger)
@@ -609,7 +614,7 @@ fn compact_and_reopen_lmdb_database(
     let original_size = fs::metadata(&original_data)
         .map_err(|e| ChainStorageError::AccessError(format!("Could not stat {}: {e}", original_data.display())))?
         .len();
-    let pre_size_mb = original_size / BYTES_PER_MB as u64;
+    let pre_size_mb = original_size.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
     info!(
         target: LOG_TARGET,
         "[MIGRATIONS] Pre-compaction data.mdb size: {pre_size_mb} MB"
@@ -624,7 +629,7 @@ fn compact_and_reopen_lmdb_database(
     match fs2::available_space(&env_path) {
         Ok(available) if available < original_size => {
             let _unused = fs::remove_dir_all(&compact_dir);
-            let available_mb = available / BYTES_PER_MB as u64;
+            let available_mb = available.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
             warn!(
                 target: LOG_TARGET,
                 "[COMPACTION] Insufficient free disk space to compact LMDB ({available_mb} MB free, \
@@ -671,7 +676,7 @@ fn compact_and_reopen_lmdb_database(
             return Ok(db);
         },
     };
-    let post_size_mb = compacted_size / BYTES_PER_MB as u64;
+    let post_size_mb = compacted_size.checked_div(BYTES_PER_MB as u64).unwrap_or(0);
     info!(
         target: LOG_TARGET,
         "[MIGRATIONS] Compacted data.mdb size: {post_size_mb} MB (reclaimed {} MB)",
@@ -868,8 +873,9 @@ pub struct LMDBDatabase {
     validator_nodes_activation_queue: DatabaseRef,
     /// Maps <VN Public Key, Height, Commitment> -> ValidatorNodeEntry
     validator_nodes_exit_queue: DatabaseRef,
-    /// Maps CodeTemplateRegistration <block_height, output hash> -> TemplateRegistration
-    template_registrations: DatabaseRef,
+    /// Maps <spent registration output hash> -> ValidatorNodeEntry removed when a pending registration was cancelled
+    /// by spending its output, so that rewinding the spend can restore it
+    validator_nodes_cancelled: DatabaseRef,
     /// Stores a cache of the sparse merkle tree on the latest mod 1000 height
     utxo_smt: DatabaseRef,
     jmt_value_data: DatabaseRef,
@@ -932,7 +938,7 @@ impl LMDBDatabase {
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
             validator_nodes_activation_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_ACTIVATION)?,
             validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
-            template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
+            validator_nodes_cancelled: get_database(store, LMDB_DB_VALIDATOR_NODES_CANCELLED)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA_V2)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA_V2)?,
@@ -997,7 +1003,13 @@ impl LMDBDatabase {
         let number_of_operations = txn.operations().len();
         let write_txn = self.write_transaction()?;
         for (i, op) in txn.operations().iter().enumerate() {
-            trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
+            trace!(
+                target: LOG_TARGET,
+                "[apply_db_transaction] WriteOperation: {} ({} of {})",
+                op,
+                i.saturating_add(1),
+                number_of_operations
+            );
             match op {
                 InsertOrphanBlock(block) => self.insert_orphan_block(&write_txn, block)?,
                 InsertChainHeader { header } => {
@@ -1033,6 +1045,18 @@ impl LMDBDatabase {
                         &self.orphan_chain_tips_db,
                         hash.deref(),
                         "orphan_chain_tips_db",
+                    )?;
+                },
+                DeleteOrphanChainTipIfExists(hash) => {
+                    lmdb_delete_if_exists(&write_txn, &self.orphan_chain_tips_db, hash.deref())?;
+                },
+                SetAccumulatedDataRebuildStatus(status) => {
+                    lmdb_replace(
+                        &write_txn,
+                        &self.metadata_db,
+                        &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                        &MetadataValue::AccumulatedDataRebuildStatus(status.clone()),
+                        None,
                     )?;
                 },
                 InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
@@ -1084,13 +1108,6 @@ impl LMDBDatabase {
                     output_type,
                 } => {
                     self.prune_output_from_all_dbs(&write_txn, output_hash, commitment, *output_type)?;
-                },
-                DeleteValidatorNode {
-                    sidechain_public_key,
-                    public_key,
-                } => {
-                    self.validator_node_store(&write_txn)
-                        .delete(sidechain_public_key.as_ref(), public_key)?;
                 },
                 DeleteAllKernelsInBlock { block_hash } => {
                     self.delete_all_kernels_in_block(&write_txn, block_hash)?;
@@ -1250,7 +1267,7 @@ impl LMDBDatabase {
                 &self.validator_nodes_activation_queue,
             ),
             (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
-            (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
+            (LMDB_DB_VALIDATOR_NODES_CANCELLED, &self.validator_nodes_cancelled),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
             (LMDB_DB_JMT_VALUE_DATA_V2, &self.jmt_value_data),
             (LMDB_DB_JMT_NODE_DATA_V2, &self.jmt_node_data),
@@ -1299,11 +1316,13 @@ impl LMDBDatabase {
             )?;
         }
 
-        lmdb_insert(
+        // Append to the index vector rather than overwriting: the same output hash can be associated
+        // with more than one header (e.g. across reorgs), so a key may map to multiple indexes.
+        lmdb_insert_into_vec(
             txn,
             &self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(output_key.clone().convert_to_comp_key().to_vec()),
+            output_key.clone().convert_to_comp_key().to_vec(),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
@@ -1410,7 +1429,12 @@ impl LMDBDatabase {
     ) -> Result<TransactionInput, ChainStorageError> {
         let input_with_output_data = match input.spent_output {
             SpentOutput::OutputData { .. } => input,
-            SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
+            // Only the output's contents are used here, and those are identical for every index entry of
+            // the same output hash (the hash commits to the contents), so taking any entry is equivalent.
+            SpentOutput::OutputHash(output_hash) => match self
+                .fetch_outputs_in_txn(txn, output_hash.as_slice())
+                .map(|outputs| outputs.into_iter().next())
+            {
                 Ok(Some(utxo_mined_info)) => TransactionInput {
                     version: input.version,
                     spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
@@ -1461,11 +1485,13 @@ impl LMDBDatabase {
         let hash = input_with_output_data.canonical_hash();
         let output_hash = input_with_output_data.output_hash();
         let key = InputKey::new(header_hash, &hash)?;
-        lmdb_insert(
+        // Append to the index vector rather than overwriting: the same output hash can be spent in
+        // more than one header context (e.g. across reorgs), so a key may map to multiple indexes.
+        lmdb_insert_into_vec(
             txn,
             &self.deleted_txo_hash_to_header_index,
             output_hash.as_slice(),
-            &(key.clone().convert_to_comp_key().to_vec()),
+            key.clone().convert_to_comp_key().to_vec(),
             "deleted_txo_hash_to_header_index",
         )?;
 
@@ -1748,7 +1774,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
+        self.tip_delete_block_inputs_outputs(write_txn, block_hash, height)?;
 
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -1756,7 +1782,7 @@ impl LMDBDatabase {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn delete_block_inputs_outputs(
+    fn tip_delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
@@ -1778,10 +1804,11 @@ impl LMDBDatabase {
             let output_hash = utxo.hash;
             let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
             trace!(target: LOG_TARGET, "Deleting UTXO `{output_hash}` with payref `{payref}`");
-            lmdb_delete(
+            self.remove_index_entry_for_header(
                 txn,
                 &self.txos_hash_to_index_db,
                 utxo.hash.as_slice(),
+                block_hash,
                 "txos_hash_to_index_db",
             )?;
             match lmdb_delete(
@@ -1803,40 +1830,34 @@ impl LMDBDatabase {
                 },
             }
 
-            // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
-            // does not exist here
-            if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
-                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - immediate spend");
-                continue;
-            }
-
+            // The sidechain effects are undone for every output, including one spent in this same block: applying the
+            // block ran `handle_sidechain_utxo` for every output, whether or not it was also spent here.
             if let Some(sidechain_features) = utxo.output.features.sidechain_feature.as_ref() {
                 match &sidechain_features.data {
                     SideChainFeatureData::ValidatorNodeRegistration(vn_reg) => {
-                        self.validator_node_store(txn)
-                            .delete(sidechain_features.sidechain_public_key(), vn_reg.public_key())?;
-                    },
-                    SideChainFeatureData::CodeTemplateRegistration(_) => {
-                        let key = CodeTemplateRegistrationKey::try_from_parts(&[
-                            height.to_be_bytes().as_slice(),
-                            output_hash.as_slice(),
-                        ])?;
-                        lmdb_delete(txn, &self.template_registrations, &key, "template_registrations")?;
-                    },
-                    SideChainFeatureData::ConfidentialOutput(_) => {
-                        // Nothing to do
-                    },
-                    SideChainFeatureData::EvictionProof(evict) => {
-                        let next_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
-                        self.validator_node_store(txn).undo_exit(
+                        // Every later block has been rewound already, so the entry this output created should be back
+                        // in the registered set (an exit is undone with `undo_exit`, and a spend never removes it).
+                        // Checked by commitment, and tolerant so that an unexpected state cannot abort the reorg.
+                        if !self.validator_node_store(txn).delete_registration(
                             sidechain_features.sidechain_public_key(),
-                            next_epoch,
-                            evict.node_to_evict(),
-                        )?;
+                            vn_reg.public_key(),
+                            &utxo.output.commitment,
+                        )? {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Rewinding validator node registration {} in block {}: no matching validator node \
+                                 entry to remove",
+                                vn_reg.public_key(),
+                                block_hash.to_hex()
+                            );
+                        }
+                    },
+                    SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
+                        // Nothing to do
                     },
                     SideChainFeatureData::ValidatorNodeExit(vn_exit) => {
                         // The exit must be on or after the next epoch
-                        let min_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
+                        let min_epoch = constants.block_height_to_epoch(height).saturating_add(VnEpoch(1));
                         self.validator_node_store(txn).undo_exit(
                             sidechain_features.sidechain_public_key(),
                             min_epoch,
@@ -1844,6 +1865,13 @@ impl LMDBDatabase {
                         )?;
                     },
                 }
+            }
+
+            // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
+            // does not exist here
+            if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - immediate spend");
+                continue;
             }
 
             // If an output was burned, it was never created as an unspent utxo
@@ -1870,15 +1898,17 @@ impl LMDBDatabase {
             )?;
         }
         // Move inputs in this block back into the unspent set, any outputs spent within this block they will be removed
-        // by deleting all the block's outputs below
+        // by deleting all the block's outputs below. A spend that cancelled a pending validator node registration is
+        // undone by restoring the recorded entry.
         for (_, row) in inputs {
             // If input spends an output in this block, don't add it to the utxo set
             let output_hash = row.input.output_hash();
 
-            lmdb_delete(
+            self.remove_index_entry_for_header(
                 txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
+                block_hash,
                 "deleted_txo_hash_to_header_index",
             )?;
             if output_rows.iter().any(|(_, r)| r.hash == output_hash) {
@@ -1887,13 +1917,31 @@ impl LMDBDatabase {
 
             let mut input = row.input.clone();
 
-            let utxo_mined_info = self.fetch_output_in_txn(txn, output_hash.as_slice())?.ok_or_else(|| {
-                ChainStorageError::ValueNotFound {
+            let utxo_mined_info = self
+                .fetch_outputs_in_txn(txn, output_hash.as_slice())?
+                .into_iter()
+                .last()
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "UTXO",
                     field: "hash",
                     value: output_hash.to_hex(),
-                }
-            })?;
+                })?;
+
+            if utxo_mined_info
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .is_some_and(|f| f.validator_node_registration().is_some()) &&
+                self.validator_node_store(txn)
+                    .undo_cancel_registration(block_hash.as_slice(), output_hash.as_slice())?
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Restored validator node registration {} whose cancelling spend was rewound",
+                    output_hash.to_hex()
+                );
+            }
 
             let smt_key = KeyHash(
                 utxo_mined_info
@@ -1920,7 +1968,7 @@ impl LMDBDatabase {
         }
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
 
@@ -2025,7 +2073,12 @@ impl LMDBDatabase {
                     self.fetch_orphan_header_accumulated_data(txn, orphan.header.version, parent_hash.as_slice())?;
                 match orphan_parent_accum {
                     Some(val) => {
-                        lmdb_insert(
+                        // `lmdb_replace` rather than `lmdb_insert`: the promotion has to be idempotent. A parent
+                        // with more than one child that is a tip - an ordinary branched fork - is promoted once
+                        // per child deleted, and `lmdb_insert` fails the second time with `KeyExists`, aborting
+                        // the whole write transaction. The value written is the same either way, because it is
+                        // derived from the parent's own accumulated data.
+                        lmdb_replace(
                             txn,
                             &self.orphan_chain_tips_db,
                             parent_hash.as_slice(),
@@ -2033,7 +2086,7 @@ impl LMDBDatabase {
                                 hash: parent_hash,
                                 total_accumulated_difficulty: val.total_accumulated_difficulty,
                             },
-                            "orphan_chain_tips_db",
+                            None,
                         )?;
                     },
                     None => {
@@ -2061,6 +2114,8 @@ impl LMDBDatabase {
 
     // Break function up into smaller pieces
     #[allow(clippy::too_many_lines)]
+    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     fn insert_tip_block_body(
         &self,
         txn: &WriteTransaction<'_>,
@@ -2069,7 +2124,10 @@ impl LMDBDatabase {
     ) -> Result<(), ChainStorageError> {
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
-        if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
+        if self
+            .fetch_block_accumulated_data(txn, header.height.saturating_add(1))?
+            .is_some()
+        {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to insert block at height {} while next block already exists",
                 header.height
@@ -2100,6 +2158,7 @@ impl LMDBDatabase {
                 block_hash.to_hex()
             )));
         }
+        let prev_height = header.height.saturating_sub(1);
         // We make this 1 to circumvent networks thats dont have genesis funds, as they will only have a jmt root from
         // height 1
         if header.height > 1 {
@@ -2111,10 +2170,10 @@ impl LMDBDatabase {
             let root = output_smt
                 .get_root_hash(current_jmt_version)
                 .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-            let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &(header.height - 1)).or_not_found(
+            let prev_header = lmdb_get::<_, BlockHeader>(txn, &self.headers_db, &prev_height).or_not_found(
                 "BlockHeader",
                 "height",
-                (header.height - 1).to_string(),
+                prev_height.to_string(),
             )?;
             if prev_header.output_mr.as_slice() != root.0.as_slice() {
                 return Err(ChainStorageError::InvalidOperation(format!(
@@ -2132,11 +2191,11 @@ impl LMDBDatabase {
         let data = if header.height == 0 {
             BlockAccumulatedData::default()
         } else {
-            self.fetch_block_accumulated_data(txn, header.height - 1)?
+            self.fetch_block_accumulated_data(txn, prev_height)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "BlockAccumulatedData",
                     field: "height",
-                    value: (header.height - 1).to_string(),
+                    value: prev_height.to_string(),
                 })?
         };
 
@@ -2160,7 +2219,7 @@ impl LMDBDatabase {
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
 
-        let mut batch = Vec::with_capacity(outputs.len() + inputs.len());
+        let mut batch = Vec::with_capacity(outputs.len().saturating_add(inputs.len()));
         for output in outputs {
             trace!(
                 target: LOG_TARGET,
@@ -2200,12 +2259,31 @@ impl LMDBDatabase {
             );
             batch.push((smt_key, None));
 
+            // Spending a registration output that is still pending activation cancels the registration: its entry is
+            // removed from the registered set and recorded against the spent output so that rewinding the spend
+            // restores it. Validation rejects spending an active registration (see
+            // `check_validator_node_registration_spend`), and a registration whose exit has taken effect is no longer
+            // in the registered set, so for those this is a no-op.
             let features = input_with_output_data.features()?;
             if let Some(sidechain_feature) = features.sidechain_feature.as_ref() &&
                 let Some(vn_reg) = sidechain_feature.validator_node_registration()
             {
-                self.validator_node_store(txn)
-                    .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
+                let output_hash = input_with_output_data.output_hash();
+                if self.validator_node_store(txn).cancel_registration(
+                    sidechain_feature.sidechain_public_key(),
+                    vn_reg.public_key(),
+                    input_with_output_data.commitment()?,
+                    block_hash.as_slice(),
+                    output_hash.as_slice(),
+                )? {
+                    info!(
+                        target: LOG_TARGET,
+                        "Validator node registration {} cancelled by spending output {} in block {}",
+                        vn_reg.public_key(),
+                        output_hash.to_hex(),
+                        current_header_at_height.height,
+                    );
+                }
             }
             trace!(
                 target: LOG_TARGET,
@@ -2223,7 +2301,7 @@ impl LMDBDatabase {
         }
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
         let (root, ops) = output_smt
@@ -2282,6 +2360,7 @@ impl LMDBDatabase {
             self.validator_nodes.clone(),
             self.validator_nodes_activation_queue.clone(),
             self.validator_nodes_exit_queue.clone(),
+            self.validator_nodes_cancelled.clone(),
         )
     }
 
@@ -2307,34 +2386,8 @@ impl LMDBDatabase {
                     vn_reg,
                 )?;
             },
-            SideChainFeatureData::CodeTemplateRegistration(template_reg) => {
-                let output_hash = output.hash();
-                let record = TemplateRegistrationEntry {
-                    registration_data: template_reg.clone(),
-                    output_hash,
-                    block_height: header.height,
-                    block_hash: header.hash(),
-                };
-
-                self.insert_template_registration(txn, &record)?;
-            },
-            SideChainFeatureData::ConfidentialOutput(_) => {
+            SideChainFeatureData::CodeTemplateRegistration(_) | SideChainFeatureData::ConfidentialOutput(_) => {
                 // Nothing to do
-            },
-            SideChainFeatureData::EvictionProof(proof) => {
-                let store = self.validator_node_store(txn);
-                let evict_node = proof.node_to_evict();
-                let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
-                let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
-                info!(
-                    target: LOG_TARGET,
-                    "Evicting ValidatorNode in {}: public_key: {}, sidechain_public_key: {:?}",
-                    next_epoch,
-                    evict_node,
-                    sidechain_pk.map(|pk| pk.to_hex()),
-                );
-                store.exit(sidechain_pk, evict_node, next_epoch)?;
             },
             SideChainFeatureData::ValidatorNodeExit(exit) => {
                 let store = self.validator_node_store(txn);
@@ -2347,7 +2400,9 @@ impl LMDBDatabase {
                     sidechain_pk.map(|pk| pk.to_hex()),
                 );
                 let constants = self.get_consensus_constants(header.height);
-                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+                let next_epoch = constants
+                    .block_height_to_epoch(header.height)
+                    .saturating_add(VnEpoch(1));
                 let exit_epoch = store.get_next_exit_epoch(
                     sidechain_pk,
                     next_epoch,
@@ -2531,6 +2586,28 @@ impl LMDBDatabase {
         Ok(FixedHash::from(buffer))
     }
 
+    /// Removes the index entry (or entries) belonging to `header_hash` from the vector stored at
+    /// `lmdb_key`, leaving any entries for other headers intact, and deletes the key entirely only once
+    /// no entries remain. Each stored entry is a composite key prefixed with its 32-byte header hash,
+    /// so entries are matched on that prefix. Both the legacy single-entry and the current vector
+    /// storage formats are handled, and an already-absent key is tolerated (treated as a no-op) so the
+    /// operation is idempotent across retried reorgs/prunes.
+    fn remove_index_entry_for_header(
+        &self,
+        txn: &WriteTransaction<'_>,
+        db: &DatabaseRef,
+        lmdb_key: &[u8],
+        header_hash: &HashOutput,
+        table_name: &'static str,
+    ) -> Result<(), ChainStorageError> {
+        let mut entries = lmdb_get_single_or_vec::<_, Vec<u8>>(txn, db, lmdb_key)?;
+        // Keep only the entries belonging to other headers.
+        entries.retain(|entry| entry.get(0..32) != Some(header_hash.as_slice()));
+        // Write back canonically: removing the last entry deletes the key (tolerating an already-absent
+        // key), dropping to a single entry restores the legacy single-entry format.
+        lmdb_write_index_entries(txn, db, lmdb_key, &entries, table_name)
+    }
+
     fn delete_payref_index_entry(
         &self,
         write_txn: &WriteTransaction<'_>,
@@ -2575,9 +2652,10 @@ impl LMDBDatabase {
                 )?;
             }
             let output_hash = input.output_hash();
-            // From 'utxos_db::utxos_db'
-            if let Some(key_bytes) =
-                lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+            // A hash may map to multiple indexes (one per header). Prune the row for each, and remove
+            // only that header's index entry, deleting the index key once its last entry is gone.
+            for key_bytes in
+                lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
             {
                 let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
                 let key = OutputKey::new(&header_hash, &output_hash)?;
@@ -2585,23 +2663,27 @@ impl LMDBDatabase {
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
 
                 self.delete_payref_index_entry(write_txn, &header_hash, &output_hash)?;
-            };
-            // From 'txos_hash_to_index_db::utxos_db'
-            trace!(
-                target: LOG_TARGET,
-                "Pruning output from 'txos_hash_to_index_db': key '{}'",
-                output_hash.to_hex()
-            );
-            lmdb_delete(
-                write_txn,
-                &self.txos_hash_to_index_db,
-                output_hash.as_slice(),
-                LMDB_DB_UTXOS,
-            )?;
-            lmdb_delete_if_exists(
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Pruning index entry from 'txos_hash_to_index_db': key '{}', header '{}'",
+                    output_hash.to_hex(),
+                    header_hash.to_hex(),
+                );
+                self.remove_index_entry_for_header(
+                    write_txn,
+                    &self.txos_hash_to_index_db,
+                    output_hash.as_slice(),
+                    &header_hash,
+                    "txos_hash_to_index_db",
+                )?;
+            }
+            self.remove_index_entry_for_header(
                 write_txn,
                 &self.deleted_txo_hash_to_header_index,
                 output_hash.as_slice(),
+                block_hash,
+                "deleted_txo_hash_to_header_index",
             )?;
         }
 
@@ -2615,45 +2697,53 @@ impl LMDBDatabase {
         commitment: &CompressedCommitment,
         output_type: OutputType,
     ) -> Result<(), ChainStorageError> {
-        match lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
-            Some(key_bytes) => {
-                if !matches!(output_type, OutputType::Burn) {
-                    trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
-                    lmdb_delete(
-                        write_txn,
-                        &self.utxo_commitment_index,
-                        commitment.as_bytes(),
-                        "utxo_commitment_index",
-                    )?;
-                }
-                trace!(target: LOG_TARGET, "Pruning output from 'txos_hash_to_index_db': key '{}'", output_hash.to_hex());
+        // A hash may map to multiple indexes; collect them all so every associated row is pruned.
+        let key_entries =
+            lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?;
+
+        // The commitment index is pruned even when the hash->index mapping is already gone: a previous partial prune
+        // can leave a stale commitment entry behind, which would otherwise keep resolving to this output hash.
+        if !matches!(output_type, OutputType::Burn) {
+            trace!(target: LOG_TARGET, "Pruning output from 'utxo_commitment_index': key '{}'", commitment.to_hex());
+            if key_entries.is_empty() {
+                lmdb_delete_if_exists(write_txn, &self.utxo_commitment_index, commitment.as_bytes())?;
+            } else {
                 lmdb_delete(
                     write_txn,
-                    &self.txos_hash_to_index_db,
-                    output_hash.as_slice(),
-                    LMDB_DB_UTXOS,
+                    &self.utxo_commitment_index,
+                    commitment.as_bytes(),
+                    "utxo_commitment_index",
                 )?;
-                lmdb_delete_if_exists(
-                    write_txn,
-                    &self.deleted_txo_hash_to_header_index,
-                    output_hash.as_slice(),
-                )?;
+            }
+        }
 
-                let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
-                let key = OutputKey::new(&header_hash, output_hash)?;
-                trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
-                lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
-                self.delete_payref_index_entry(write_txn, &header_hash, output_hash)?;
-            },
-            None => {
-                // The output is already absent. This is expected during horizon sync when a previous attempt
-                // pruned this STXO but failed before cleanup could restore it, so the retry finds it gone.
-                debug!(
-                    target: LOG_TARGET,
-                    "prune_output_from_all_dbs: output {} not found, skipping (already pruned)",
-                    output_hash.to_hex()
-                );
-            },
+        if key_entries.is_empty() {
+            // The output is already absent. This is expected during horizon sync when a previous attempt
+            // pruned this STXO but failed before cleanup could restore it, so the retry finds it gone.
+            debug!(
+                target: LOG_TARGET,
+                "prune_output_from_all_dbs: output {} not found, skipping (already pruned)",
+                output_hash.to_hex()
+            );
+            return Ok(());
+        }
+
+        for key_bytes in key_entries {
+            let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
+            let key = OutputKey::new(&header_hash, output_hash)?;
+            trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
+            lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
+            self.delete_payref_index_entry(write_txn, &header_hash, output_hash)?;
+
+            // Remove only this header's index entry; the key is deleted once its last entry is gone.
+            trace!(target: LOG_TARGET, "Pruning index entry from 'txos_hash_to_index_db': key '{}', header '{}'", output_hash.to_hex(), header_hash.to_hex());
+            self.remove_index_entry_for_header(
+                write_txn,
+                &self.txos_hash_to_index_db,
+                output_hash.as_slice(),
+                &header_hash,
+                "txos_hash_to_index_db",
+            )?;
         }
 
         Ok(())
@@ -2680,7 +2770,7 @@ impl LMDBDatabase {
 
         let k = MetadataKey::JMTVersion;
         let val = match lmdb_get(write_txn, &self.metadata_db, &k.as_u32())? {
-            Some(MetadataValue::JMTVersion(v)) => v + 1,
+            Some(MetadataValue::JMTVersion(v)) => v.saturating_add(1),
             _ => 0u64,
         };
         let (_root, ops) = output_smt
@@ -2810,76 +2900,64 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn insert_template_registration(
-        &self,
-        txn: &WriteTransaction<'_>,
-        template_registration: &TemplateRegistrationEntry,
-    ) -> Result<(), ChainStorageError> {
-        let key = CodeTemplateRegistrationKey::try_from_parts(&[
-            template_registration.block_height.to_le_bytes().as_slice(),
-            template_registration.output_hash.as_slice(),
-        ])?;
-        lmdb_insert(
-            txn,
-            &self.template_registrations,
-            &key,
-            template_registration,
-            "template_registrations",
-        )
-    }
-
-    fn fetch_output_in_txn(
+    /// Fetches every output indexed under `output_hash`. A hash may map to multiple indexes (e.g. the
+    /// same output mined under different headers across reorgs), so this returns one entry per index
+    /// that still resolves to a row in `utxos_db`, in index order. An empty vector means no output was
+    /// found.
+    fn fetch_outputs_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &[u8],
-    ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
-            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
-                Some(TransactionOutputRowData {
+    ) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
+        let mut outputs = Vec::new();
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
+            if let Some(TransactionOutputRowData {
+                output: o,
+                mined_height,
+                header_hash,
+                mined_timestamp,
+                ..
+            }) = lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)?
+            {
+                outputs.push(OutputMinedInfo {
                     output: o,
                     mined_height,
                     header_hash,
                     mined_timestamp,
-                    ..
-                }) => Ok(Some(OutputMinedInfo {
-                    output: o,
-                    mined_height,
-                    header_hash,
-                    mined_timestamp,
-                })),
-
-                _ => Ok(None),
+                });
             }
-        } else {
-            Ok(None)
         }
+        Ok(outputs)
     }
 
-    fn fetch_input_in_txn(
+    /// Fetches every input indexed under `output_hash`. A hash may map to multiple indexes (e.g. the
+    /// same output spent under different headers across reorgs), so this returns one entry per index
+    /// that still resolves to a row in `inputs_db`, in index order. An empty vector means no input was
+    /// found.
+    fn fetch_inputs_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &[u8],
-    ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
-            match lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)? {
-                Some(TransactionInputRowData {
+    ) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
+        let mut inputs = Vec::new();
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
+            if let Some(TransactionInputRowData {
+                input: i,
+                spent_height: height,
+                header_hash,
+                spent_timestamp,
+                ..
+            }) = lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)?
+            {
+                inputs.push(InputMinedInfo {
                     input: i,
                     spent_height: height,
                     header_hash,
                     spent_timestamp,
-                    ..
-                }) => Ok(Some(InputMinedInfo {
-                    input: i,
-                    spent_height: height,
-                    header_hash,
-                    spent_timestamp,
-                })),
-
-                _ => Ok(None),
+                });
             }
-        } else {
-            Ok(None)
         }
+        Ok(inputs)
     }
 
     // Fetch mined info by PayRef (Payment Reference)
@@ -2890,7 +2968,22 @@ impl LMDBDatabase {
     ) -> Result<MinedInfo, ChainStorageError> {
         // If we find the output hash for the given PayRef, we can fetch the mined info
         if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
-            return self.fetch_mined_info_by_output_hash_in_txn(txn, &output_hash);
+            // A hash may be mined under multiple headers; the PayRef (= H(header_hash || output_hash))
+            // identifies a single header, so return the entry whose output produces this PayRef.
+            let mined_info = self
+                .fetch_mined_info_by_output_hash_in_txn(txn, &output_hash)?
+                .into_iter()
+                .find(|info| {
+                    info.output
+                        .as_ref()
+                        .is_some_and(|o| generate_payment_reference(&o.header_hash, &output_hash) == *payref)
+                })
+                .unwrap_or(MinedInfo {
+                    input: None,
+                    output: None,
+                });
+
+            return Ok(mined_info);
         }
 
         // If we don't find the output hash, we check if the PayRef index is rebuilt
@@ -2927,19 +3020,29 @@ impl LMDBDatabase {
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &HashOutput,
-    ) -> Result<MinedInfo, ChainStorageError> {
-        let mut mined_info = MinedInfo {
-            input: None,
-            output: None,
-        };
-        if let Ok(Some(output_mined_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
-            mined_info.output = Some(output_mined_info);
+    ) -> Result<Vec<MinedInfo>, ChainStorageError> {
+        let mut results = Vec::new();
+        let mut output_mined_info = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
+        output_mined_info.sort_by_key(|o| o.mined_height);
+        let mut inputs_mined_info = self.fetch_inputs_in_txn(txn, output_hash.as_slice())?;
+        // sort desc so that pop() yields the inputs in ascending spent_height order
+        inputs_mined_info.sort_by_key(|i| core::cmp::Reverse(i.spent_height));
+        for output in output_mined_info {
+            let input = inputs_mined_info.pop();
+            results.push(MinedInfo {
+                input,
+                output: Some(output),
+            });
         }
-        if let Ok(Some(input_mined_info)) = self.fetch_input_in_txn(txn, output_hash.as_slice()) {
-            mined_info.input = Some(input_mined_info);
+        // Any inputs without a matching output (e.g. the output has been pruned) are still reported.
+        for input in inputs_mined_info.into_iter().rev() {
+            results.push(MinedInfo {
+                input: Some(input),
+                output: None,
+            });
         }
 
-        Ok(mined_info)
+        Ok(results)
     }
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
@@ -2957,13 +3060,18 @@ impl LMDBDatabase {
                 field: "commitment",
                 value: commitment.to_hex(),
             })?;
-        let output =
-            self.fetch_output_in_txn(txn, output_hash.as_slice())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "UTXO (in fetch_utxo_by_commitment)",
-                    field: "hash",
-                    value: output_hash.to_string(),
-                })?;
+        // The commitment is unique in the UTXO set; if several index entries exist (e.g. across
+        // reorgs), take the last mined one.
+        let mut outputs = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
+        outputs.sort_by_key(|o| o.mined_height);
+        let output = outputs
+            .into_iter()
+            .next_back()
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_utxo_by_commitment)",
+                field: "hash",
+                value: output_hash.to_string(),
+            })?;
 
         Ok(output)
     }
@@ -3058,7 +3166,11 @@ impl BlockchainBackend for LMDBDatabase {
 
         let mark = Instant::now();
         // Resize this many times before assuming something is not right (up to 1 GB)
-        let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
+        let max_resizes = 1024usize
+            .saturating_mul(BYTES_PER_MB)
+            .checked_div(self.env_config.grow_size_bytes())
+            .unwrap_or(1)
+            .max(1);
         for i in 0..max_resizes {
             let num_operations = txn.operations().len();
             match self.apply_db_transaction(&txn) {
@@ -3076,7 +3188,7 @@ impl BlockchainBackend for LMDBDatabase {
                     info!(
                         target: LOG_TARGET,
                         "Database resize required (resized {} time(s) in this transaction)",
-                        i + 1
+                        i.saturating_add(1)
                     );
                     // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe too
                     // however we happen to know that `LmdbDatabase` is wrapped in an exclusive write lock in
@@ -3092,7 +3204,7 @@ impl BlockchainBackend for LMDBDatabase {
                             info!(
                                 target: LOG_TARGET,
                                 "Database resize required (resized {} time(s) in this transaction)",
-                                i + 1
+                                i.saturating_add(1)
                             );
                             // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe
                             // too however we happen to know that `LmdbDatabase` is wrapped
@@ -3257,7 +3369,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
         // is an index starting from 0
-        let mmr_position = mmr_position + 1;
+        let mmr_position = mmr_position.saturating_add(1);
 
         let height = lmdb_first_after::<_, u64>(&txn, &self.kernel_mmr_size_index, &mmr_position.to_be_bytes())?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -3408,19 +3520,17 @@ impl BlockchainBackend for LMDBDatabase {
                     })?;
             for output in &mut outputs {
                 let hash = output.0.hash();
-                if let Some(key) =
-                    lmdb_get::<_, Vec<u8>>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
+                // A hash may map to multiple spend indexes; the output is spent-at-header if any of
+                // them was spent at or before the target header height.
+                for key in
+                    lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
                 {
-                    let input = lmdb_get::<_, TransactionInputRowData>(&txn, &self.inputs_db, &key)?.ok_or(
-                        ChainStorageError::ValueNotFound {
-                            entity: "input",
-                            field: "hash",
-                            value: header_hash.to_hex(),
-                        },
-                    )?;
-                    if input.spent_height <= header_height {
+                    if let Some(input) = lmdb_get::<_, TransactionInputRowData>(&txn, &self.inputs_db, &key)? &&
+                        input.spent_height <= header_height
+                    {
                         // we know its spend at the header height specified as optional in the fn
                         output.1 = true;
+                        break;
                     }
                 }
             }
@@ -3429,14 +3539,14 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(outputs)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_output_in_txn(&txn, output_hash.as_slice())
+        self.fetch_outputs_in_txn(&txn, output_hash.as_slice())
     }
 
-    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+    fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, output_hash.as_slice())
+        self.fetch_inputs_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -3452,7 +3562,7 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_mined_info_by_payref_in_txn(&txn, payref)
     }
 
-    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError> {
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<Vec<MinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         self.fetch_mined_info_by_output_hash_in_txn(&txn, output_hash)
     }
@@ -3582,6 +3692,22 @@ impl BlockchainBackend for LMDBDatabase {
             Some(MetadataValue::AccumulatedDataRebuildStatus(status)) => Ok(status),
             _ => Ok(AccumulatedDataRebuildStatus::default()),
         }
+    }
+
+    fn set_accumulated_data_rebuild_status(
+        &self,
+        status: AccumulatedDataRebuildStatus,
+    ) -> Result<(), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        lmdb_replace(
+            &write_txn,
+            &self.metadata_db,
+            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+            &MetadataValue::AccumulatedDataRebuildStatus(status),
+            None,
+        )?;
+        write_txn.commit()?;
+        Ok(())
     }
 
     // Returns the burn commitment index rebuild status.
@@ -3917,6 +4043,17 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(res)
     }
 
+    fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.orphans_db, |block: Block| {
+            if block.header.height >= height {
+                Some(block.hash())
+            } else {
+                None
+            }
+        })
+    }
+
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         let txn = self.read_transaction()?;
         match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
@@ -4094,13 +4231,13 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(0);
         }
 
-        let start = metadata.best_block_height() + 1;
+        let start = metadata.best_block_height().saturating_add(1);
         let end = last_header.height;
 
-        let mut num_deleted = 0;
+        let mut num_deleted = 0usize;
         for h in (start..=end).rev() {
             self.delete_header(&txn, h)?;
-            num_deleted += 1;
+            num_deleted = num_deleted.saturating_add(1);
         }
         txn.commit()?;
         Ok(num_deleted)
@@ -4307,26 +4444,26 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(is_active)
     }
 
-    fn validator_node_is_active_for_shard_group(
+    fn fetch_validator_node_entry(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        validator_node_pk: &CompressedPublicKey,
-        _shard_group: ShardGroup,
-    ) -> Result<bool, ChainStorageError> {
-        // TODO: account for shard group
-        self.validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+        public_key: &CompressedPublicKey,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let store = self.validator_node_store(&txn);
+        store.get(sidechain_pk, public_key)
     }
 
-    fn validator_nodes_count_for_shard_group(
+    fn validator_node_has_pending_exit(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        end_epoch: VnEpoch,
-        _shard_group: ShardGroup,
-    ) -> Result<usize, ChainStorageError> {
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
+        epoch: VnEpoch,
+    ) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let vn_store = self.validator_node_store(&txn);
-        vn_store.count_active_validators(sidechain_pk, end_epoch)
+        let store = self.validator_node_store(&txn);
+        store.has_pending_exit(sidechain_pk, public_key, commitment, epoch)
     }
 
     fn get_validator_node(
@@ -4347,8 +4484,12 @@ impl BlockchainBackend for LMDBDatabase {
                 field: "commitment",
                 value: vn.commitment.to_hex(),
             })?;
-        let output = self
-            .fetch_output(&hash)?
+        // The commitment is unique in the UTXO set; if several index entries exist, take the last mined.
+        let mut outputs = self.fetch_outputs(&hash)?;
+        outputs.sort_by_key(|o| o.mined_height);
+        let output = outputs
+            .into_iter()
+            .next_back()
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "UTXO (in fetch_unspent_output_hash_by_commitment)",
                 field: "hash",
@@ -4374,24 +4515,6 @@ impl BlockchainBackend for LMDBDatabase {
             original_registration: reg.clone(),
             minimum_value_promise: vn.minimum_value_promise,
         }))
-    }
-
-    fn fetch_template_registrations(
-        &self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        let mut result = vec![];
-        for _ in start_height..=end_height {
-            let height = start_height.to_le_bytes();
-            let mut cursor: KeyPrefixCursor<TemplateRegistrationEntry> =
-                lmdb_get_prefix_cursor(&txn, &self.template_registrations, &height)?;
-            while let Some((_, val)) = cursor.next()? {
-                result.push(val);
-            }
-        }
-        Ok(result)
     }
 
     fn set_stats_total_height(&self, total: u64) {
@@ -4920,11 +5043,32 @@ impl fmt::Display for MetadataValue {
     }
 }
 
+/// Rewind the recorded migration version, so that reopening the same directory runs the migrations from
+/// `version` again.
+///
+/// Migrations are the one piece of startup behaviour a test cannot reach by building a database and looking at it:
+/// they run once, inside `LMDBDatabase::new`, and a database built by a test is already at the current version by
+/// the time the test can touch it. Meeting a migration the way the field meets it - an existing chain, opened by a
+/// binary that has moved on - means putting the version back first.
+#[cfg(test)]
+pub(crate) fn rewind_migration_version_for_test(db: &LMDBDatabase, version: u64) -> Result<(), ChainStorageError> {
+    let txn = db.write_transaction()?;
+    lmdb_replace(
+        &txn,
+        &db.metadata_db,
+        &MetadataKey::MigrationVersion.as_u32(),
+        &MetadataValue::MigrationVersion(version),
+        None,
+    )?;
+    txn.commit()?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let _unused = verify_metadata_keys(db);
 
-    const MIGRATION_VERSION: u64 = 8;
+    const MIGRATION_VERSION: u64 = 10;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -5292,9 +5436,176 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             write_txn.commit()?;
         }
 
+        // MIGRATION: Repair `target_difficulty`, and everything that accumulates out of it, at and above the
+        // GHSA-3qmx-q9pv-f3m4 activation height.
+        //
+        // That activation entry is a consensus change which is retroactive for any node that already synced past
+        // it. The entry may also move `difficulty_block_window` (MainNet takes it from 90 to 45 at height 350,000,
+        // to halve the recovery time from the hash rate the fix costs the network), so a node that walked those
+        // heights on a pre-fork binary computed each target under the old window and persisted it, while the new
+        // binary computes a different answer for the same header.
+        //
+        // This is worse than a stale display field, because `target_difficulty` is the only quantity that
+        // accumulates: `BlockHeaderAccumulatedDataBuilder::build` sums the unadjusted per-algo target into
+        // `total_accumulated_difficulty`, so one wrong entry corrupts chain strength for every block above it. It
+        // is also self-propagating, because `target_difficulty_for_next_block` reads stored targets out of the
+        // window as its inputs, so a wrong entry poisons the next `difficulty_block_window` targets as well.
+        //
+        // Rather than walking the chain inline and holding up startup, this arms the existing
+        // `rebuild_accumulated_data_background_task` by pushing its watermark back to just below the activation
+        // height. That task already recomputes and rewrites the accumulated data per height, resumably, and it
+        // gains a strict mode at and above the activation height: full header validation, and a rewind if a block
+        // no longer validates under the post-fork rules.
+        //
+        // Deliberately not wrapped in `continue` on the skip path, unlike the earlier migrations: skipping the version
+        // bump below would leave the database at version 8 and re-run this block on the next startup.
+        if migrate_from_version == 8 {
+            let activation = ConsensusConstants::bipartite_cuckaroo_activation_height(
+                db.consensus_manager.consensus_constants_vec(),
+            );
+            // The tip that decides whether there is anything to repair is the *header* tip, not the block tip.
+            // `fetch_chain_height` reads `MetadataKey::ChainHeight`, which is the height of the last *block*, and
+            // header sync routinely runs ahead of block sync - that is its normal steady state, not an edge case.
+            // A node whose blocks stop at 349,990 while its headers already reach 350,053 has post-fork
+            // accumulated data on disk, written by the old binary under the old window, and skipping here would
+            // leave it there forever: header sync never re-validates or rewrites a header it already has, and
+            // block sync writes the stored `BlockHeaderAccumulatedData` back verbatim as each body arrives,
+            // promoting its inflated `total_accumulated_difficulty` straight into chain metadata.
+            //
+            // `max` rather than just the header tip so that a database which somehow has a block tip above its
+            // last header still arms rather than silently skipping.
+            let tip = {
+                let txn = db.read_transaction()?;
+                let block_tip = fetch_chain_height(&txn, &db.metadata_db).ok();
+                let header_tip = db.fetch_last_header_in_txn(&txn)?.map(|header| header.height);
+                block_tip.into_iter().chain(header_tip).max()
+            };
+
+            // Reasons there is nothing to repair:
+            // - The fork is not scheduled on this network (Igor / Stagenet / NextNet), so no stored target was ever
+            //   computed under rules that have since changed.
+            // - The fork is active from height 0 (LocalNet), so nothing was ever mined under the old rules.
+            // - There is no chain, or the highest header this node holds has not reached the fork (Esmeralda today).
+            //   Everything synced from here on is computed under the new rules by the normal add-block and header sync
+            //   paths.
+            // `==` rather than `>=`: `UNSCHEDULED_ACTIVATION_HEIGHT` is `u64::MAX`, so the two are the same
+            // test and clippy rejects the inequality as absurd.
+            let skip_reason = if activation == UNSCHEDULED_ACTIVATION_HEIGHT {
+                Some("the fork is not scheduled on this network".to_string())
+            } else if activation == 0 {
+                Some("the fork has been active since the genesis block".to_string())
+            } else {
+                match tip {
+                    None => Some("this database holds no chain".to_string()),
+                    Some(tip) if tip < activation => Some(format!(
+                        "the highest header {tip} is below the activation height {activation}"
+                    )),
+                    Some(_) => None,
+                }
+            };
+
+            let existing = db.fetch_accumulated_data_rebuild_status()?;
+
+            if let Some(reason) = skip_reason {
+                // The skip path must leave the row exactly as it found it. Every migration block runs inside the
+                // same `run_migrations` loop, so a database at version 5 reaches this block in the same call that
+                // armed the v5 repair a few iterations earlier, and `is_rebuilt: true` is a one-way latch - the
+                // background task returns immediately on it and nothing ever sets it back. Writing "rebuilt" here
+                // because *this* fork has nothing to repair would therefore silently abandon an unrelated repair
+                // that is still owed, on exactly the nodes that need it: a NextNet node at v5 (unscheduled fork),
+                // or a MainNet node whose tip is still below 350,000.
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{migrate_from_version}: No accumulated data repair needed - {reason} \
+                    (leaving the rebuild status untouched: {existing:?})"
+                );
+            } else {
+                // The `min` is load-bearing, but only against a rebuild that is still in flight. A node part way
+                // through the v5 rebuild carries a watermark far below the activation height, and overwriting it
+                // with `activation - 1` would silently abandon the rest of that repair; taking the minimum lets
+                // that walk continue uninterrupted and roll into strict mode by itself once it reaches the
+                // activation height.
+                //
+                // A *finished* rebuild is the opposite case and must not be folded in.
+                // `update_accumulated_difficulty` records `is_rebuilt: height == last_chain_header.height()`, so
+                // the watermark a completed rebuild leaves behind is the tip as it was when that rebuild
+                // finished, which may be a hundred thousand blocks below today's tip. Folding that in would send
+                // the walk back over a prefix that is already correct - heights below the fork were computed
+                // under rules that have not changed - at 100 ms per height.
+                let watermark = if existing.is_rebuilt {
+                    activation.saturating_sub(1)
+                } else {
+                    min(
+                        existing.last_rebuild_height.unwrap_or(u64::MAX),
+                        activation.saturating_sub(1),
+                    )
+                };
+                let status = AccumulatedDataRebuildStatus {
+                    is_rebuilt: false,
+                    last_rebuild_height: Some(watermark),
+                };
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{migrate_from_version}: Arming the accumulated data rebuild from height \
+                    {watermark} for the fork at height {activation} (previous status: {existing:?})"
+                );
+                let write_txn = db.write_transaction()?;
+                lmdb_replace(
+                    &write_txn,
+                    &db.metadata_db,
+                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                    &MetadataValue::AccumulatedDataRebuildStatus(status),
+                    None,
+                )?;
+                write_txn.commit()?;
+
+                // Purge every orphan at or above the activation height, along with its accumulated data, its
+                // parent-map entry and its chain tip entry (`delete_orphan` does all four, and promotes the parent
+                // to a tip where that applies).
+                //
+                // A stale orphan tip carries a `total_accumulated_difficulty` built from pre-fork targets, and can
+                // therefore win an `AccumulatedDifficultySquaredComparer` comparison it should lose - the node
+                // would reorg onto a stale-target side chain the moment the main chain is repaired. Discarding an
+                // orphan is safe: it is re-fetched if it ever mattered. Orphans below the activation height are
+                // left alone; their accumulated data was computed under the rules in force at their height.
+                //
+                // This is only the *first* of two purges. Arming and finishing are hours apart on a real node, and
+                // an ordinary reorg in between seeds the orphan pool with exactly the same hazard all over again -
+                // `rewind_to_height` stores the heights it removes as chained orphans carrying their unrepaired
+                // accumulated data. So the walk runs the same scan again in the transaction that writes
+                // `is_rebuilt: true` (`finish_rebuild` in `blockchain_database.rs`), which is what makes the latch
+                // a statement about the orphan pool and not only about the main chain. Both purges go through
+                // `fetch_orphan_hashes_at_or_above` so the two can never drift apart.
+                let orphan_hashes: Vec<HashOutput> = db.fetch_orphan_hashes_at_or_above(activation)?;
+                if orphan_hashes.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: No orphans at or above height {activation} to purge"
+                    );
+                } else {
+                    let write_txn = db.write_transaction()?;
+                    for hash in &orphan_hashes {
+                        db.delete_orphan(&write_txn, hash)?;
+                    }
+                    write_txn.commit()?;
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{migrate_from_version}: Purged {} orphan(s) at or above height {activation}",
+                        orphan_hashes.len()
+                    );
+                }
+            }
+        }
+
+        // MIGRATION: Drop the retired `template_registrations` table. Code template registrations are no longer
+        // indexed, and new databases never create the table.
+        if migrate_from_version == 9 {
+            drop_template_registrations_db(db)?;
+        }
+
         // Let's update the migration version
         {
-            let migrated_to_version = migrate_from_version + 1;
+            let migrated_to_version = migrate_from_version.saturating_add(1);
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {migrate_from_version} to version {migrated_to_version}"
@@ -5310,6 +5621,23 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         }
     }
     Ok(())
+}
+
+fn drop_template_registrations_db(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
+    let name = LMDB_DB_TEMPLATE_REGISTRATIONS;
+    match Database::open(db.env.clone(), Some(name), &DatabaseOptions::defaults()) {
+        Ok(legacy) => {
+            legacy.delete().map_err(|e| {
+                ChainStorageError::AccessError(format!("Failed to delete legacy database `{name}`: {e}"))
+            })?;
+            info!(target: LOG_TARGET, "[MIGRATIONS] v9: Dropped legacy database `{name}`");
+            Ok(())
+        },
+        Err(LmdbError::Code(code)) if code == NOTFOUND => Ok(()),
+        Err(e) => Err(ChainStorageError::AccessError(format!(
+            "Could not open legacy database `{name}`: {e}"
+        ))),
+    }
 }
 
 /// Rebuild the JMT from the canonical UTXO set under the new v2 layout and drop the legacy
@@ -5486,7 +5814,7 @@ fn migrate_jmt_v1_to_v2(db: &mut LMDBDatabase) -> Result<bool, ChainStorageError
 ///
 /// Walks the index in fixed-size chunks rather than buffering the whole snapshot up front, then
 /// resolves and hashes each chunk inline before pulling the next one. lmdb-zero only permits one
-/// live `ConstAccessor` per transaction, so the cursor and the per-output `fetch_output_in_txn`
+/// live `ConstAccessor` per transaction, so the cursor and the per-output `fetch_outputs_in_txn`
 /// lookups cannot share an accessor — closing the cursor after each chunk releases it without
 /// closing the read transaction, and `MDB_SET_RANGE` on the next iteration restores cursor
 /// position past the last drained key.
@@ -5568,8 +5896,12 @@ fn collect_jmt_migration_entries(db: &LMDBDatabase) -> Result<Vec<(KeyHash, Vec<
         };
 
         for (commitment, output_hash) in &chunk {
-            let utxo_info = db
-                .fetch_output_in_txn(&read_txn, output_hash.as_slice())?
+            // The commitment is unique in the UTXO set; if several entries exist, take the last mined.
+            let mut outputs = db.fetch_outputs_in_txn(&read_txn, output_hash.as_slice())?;
+            outputs.sort_by_key(|o| o.mined_height);
+            let utxo_info = outputs
+                .into_iter()
+                .next_back()
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "TransactionOutput",
                     field: "output_hash",
@@ -5610,7 +5942,13 @@ fn flush_migration_node_batch_chunked(
     chunk_size: usize,
     total_entries: u64,
 ) -> Result<(), ChainStorageError> {
-    let max_resizes = max(8, 1024 * BYTES_PER_MB / db.env_config.grow_size_bytes());
+    let max_resizes = max(
+        8,
+        1024usize
+            .saturating_mul(BYTES_PER_MB)
+            .checked_div(db.env_config.grow_size_bytes())
+            .unwrap_or(1),
+    );
     let mut resize_attempts = 0usize;
 
     let total_nodes = node_batch.nodes().len();
@@ -5644,7 +5982,7 @@ fn flush_migration_node_batch_chunked(
             |txn, key, node| lmdb_replace(txn, &db.jmt_node_data, key, *node, None),
         )?;
 
-        written_nodes += chunk.len();
+        written_nodes = written_nodes.saturating_add(chunk.len());
         info!(
             target: LOG_TARGET,
             "[MIGRATIONS] v6: Wrote {written_nodes}/{total_nodes} JMT nodes"
@@ -5680,7 +6018,7 @@ fn flush_migration_node_batch_chunked(
             },
         )?;
 
-        written_values += chunk.len();
+        written_values = written_values.saturating_add(chunk.len());
         let progress = (written_values as u64).min(total_entries);
         db.update_stats_progress(progress);
         info!(
@@ -5728,7 +6066,7 @@ where
             None => match write_txn.commit() {
                 Ok(()) => return Ok(()),
                 Err(lmdb_zero::Error::Code(code)) if code == lmdb_zero::error::MAP_FULL => {
-                    *resize_attempts += 1;
+                    *resize_attempts = resize_attempts.saturating_add(1);
                     if *resize_attempts >= max_resizes {
                         return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
                     }
@@ -5749,7 +6087,7 @@ where
             },
             Some(ChainStorageError::DbResizeRequired(size_hint)) => {
                 drop(write_txn);
-                *resize_attempts += 1;
+                *resize_attempts = resize_attempts.saturating_add(1);
                 if *resize_attempts >= max_resizes {
                     return Err(ChainStorageError::DbTransactionTooLarge(chunk.len()));
                 }
@@ -6102,5 +6440,55 @@ fn summarize_value(v: &MetadataValue) -> String {
         },
         MetadataValue::JMTVersion(v) => format!("{v}"),
         MetadataValue::BurnCommitmentRebuildStatus(s) => format!("{s:?}"),
+    }
+}
+
+#[cfg(test)]
+mod template_registrations_migration_test {
+    use lmdb_zero::put;
+
+    use super::*;
+    use crate::test_helpers::{blockchain::TempDatabase, create_consensus_rules};
+
+    fn legacy_table_exists(db: &LMDBDatabase) -> bool {
+        match Database::open(
+            db.env.clone(),
+            Some(LMDB_DB_TEMPLATE_REGISTRATIONS),
+            &DatabaseOptions::defaults(),
+        ) {
+            Ok(_) => true,
+            Err(LmdbError::Code(code)) if code == NOTFOUND => false,
+            Err(e) => panic!("Could not open `{LMDB_DB_TEMPLATE_REGISTRATIONS}`: {e}"),
+        }
+    }
+
+    #[test]
+    fn v9_migration_drops_the_template_registrations_table() {
+        let path = tari_test_utils::paths::create_temporary_data_path();
+        {
+            let mut temp = TempDatabase::from_path_with_rules(&path, create_consensus_rules());
+            temp.disable_delete_on_drop();
+            let db = temp.db();
+            assert!(!legacy_table_exists(db), "a new database must not create the table");
+
+            // Put the database back to how a node running the previous release left it
+            let legacy = Database::open(
+                db.env.clone(),
+                Some(LMDB_DB_TEMPLATE_REGISTRATIONS),
+                &DatabaseOptions::new(db::CREATE | db::DUPSORT),
+            )
+            .unwrap();
+            let txn = db.write_transaction().unwrap();
+            txn.access()
+                .put(&legacy, b"key", b"value", put::Flags::empty())
+                .unwrap();
+            txn.commit().unwrap();
+            drop(legacy);
+            assert!(legacy_table_exists(db));
+            rewind_migration_version_for_test(db, 9).unwrap();
+        }
+
+        let temp = TempDatabase::from_path_with_rules(&path, create_consensus_rules());
+        assert!(!legacy_table_exists(temp.db()));
     }
 }

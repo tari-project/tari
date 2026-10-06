@@ -108,8 +108,8 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()),
             )
             .route(
-                "/generate_kernel_merkle_proof",
-                get(handler::generate_kernel_merkle_proof::handle::<B>),
+                "/generate_burn_output_proof",
+                get(handler::generate_burn_output_proof::handle::<B>),
             )
             .route(
                 "/get_mempool_fee_per_gram_stats",

@@ -46,7 +46,7 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8) -> u64 {
     // repeated hashing over the whole block
     let mut siphash = SipHash24::new(v);
     for (i, item) in nonce_hash.iter_mut().enumerate() {
-        siphash.hash(edge0 + i as u64, rot_e);
+        siphash.hash(edge0.saturating_add(i as u64), rot_e);
 
         *item = siphash.digest();
     }

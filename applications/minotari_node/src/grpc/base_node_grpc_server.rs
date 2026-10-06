@@ -64,10 +64,11 @@ use tari_core::{
         state_machine_service::states::StateInfo,
         tari_pulse_service::TariPulseHandle,
     },
-    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
-    consensus::BaseNodeConsensusManager,
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo, adjusted_target_difficulties_in_range},
+    consensus::{BaseNodeConsensusManager, TokenValuesAtHeight},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{TxStorageResponse, service::LocalMempoolService},
+    proof_of_work::{AdjustedTarget, MAX_BACKOFF_RUN_LOOKBACK},
     validation::tari_rx_vm_key_height,
 };
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
@@ -76,6 +77,7 @@ use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    rpc::MAX_ALLOWED_QUERY_SIZE,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         CoinBaseExtra,
@@ -95,7 +97,15 @@ use crate::{
     BaseNodeConfig,
     builder::BaseNodeContext,
     grpc::{
-        blocks::{GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE, block_fees, block_heights, block_size},
+        blocks::{
+            GET_BLOCKS_PAGE_SIZE,
+            block_fees,
+            block_heights,
+            block_size,
+            height_pages,
+            resolve_requested_heights,
+            stream_blocks,
+        },
         data_cache::DataCache,
         hash_rate::{HashRateMovingAverage, NANOS_PER_UNIT, display_u_decimal_value},
         helpers::{mean, median},
@@ -105,7 +115,7 @@ use crate::{
 
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
-const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
+const GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
 // client, so memory is not really a concern here, but a malicious client could request a large
 // number here to keep the node busy
@@ -169,6 +179,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetNewBlock,
             GrpcMethod::GetNewBlockBlob,
             GrpcMethod::GetNetworkDifficulty,
+            GrpcMethod::GetNetworkState,
             GrpcMethod::SubmitBlock,
             GrpcMethod::SubmitBlockBlob,
             GrpcMethod::GetTipInfo,
@@ -186,7 +197,6 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetActiveValidatorNodes,
             GrpcMethod::GetValidatorNodeChanges,
             GrpcMethod::GetShardKey,
-            GrpcMethod::GetTemplateRegistrations,
             GrpcMethod::GetHeaderByHash,
             GrpcMethod::GetSideChainUtxos,
         ];
@@ -224,6 +234,171 @@ pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
     }
 }
 
+/// Normalises a block submitted through any node entry point by round-tripping it through the P2P protobuf
+/// conversion (`Block` <-> `tari_core::proto::core::Block`), i.e. the conversion that blocks received from peers are
+/// decoded with.
+///
+/// The P2P conversion is the canonical decode-time validator for every submission entry point (gRPC `submit_block`,
+/// gRPC `submit_block_blob`): it enforces the invariants of every block component that a peer's block is held to, so
+/// no entry point can hand the node a block that a peer could not have sent. On every value that
+/// `minotari_app_grpc/tests/decoder_parity.rs` samples, the gRPC conversions (`minotari_app_grpc::conversions`), serde
+/// and borsh make the same accept or reject decision as the P2P conversion; the round-trip keeps that true for fields
+/// those tests do not sample, and it resets the compact input version, which serde and borsh carry but neither
+/// protobuf family does.
+///
+/// The round-trip does not alter a valid block. Every header field survives (`block_output_mr` is always a 32-byte
+/// hash on the domain side, which the P2P decoder requires), as does every kernel field,
+/// every output field and every field of a full input, plus the `input_data` of compact inputs (an empty
+/// `ExecutionStack` encodes to, and decodes from, empty bytes). The proto form carries no version for a compact
+/// input, nor for the spent output behind a full input, so both come back as V0 (`get_current_version`). Only V0 is
+/// valid on any network, so a valid block is unchanged; a block that used another version fails later on `input_mr`
+/// rather than with a version error.
+///
+/// Failures are reported as `InvalidArgument("Malformed block: ..")`, obscured unless `report_error_flag` is set.
+fn normalise_block_via_p2p_proto(block: Block, report_error_flag: bool) -> Result<Block, Status> {
+    let malformed = |e: String| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Malformed block: {e}")),
+        )
+    };
+    let proto = tari_core::proto::core::Block::try_from(block).map_err(malformed)?;
+    Block::try_from(proto).map_err(malformed)
+}
+
+/// Normalises a transaction submitted through any node entry point by round-tripping it through the P2P protobuf
+/// conversion (`Transaction` <-> `tari_core::proto::types::Transaction`), i.e. the conversion that transactions
+/// received from peers are decoded with.
+///
+/// As for blocks (see [`normalise_block_via_p2p_proto`]), the P2P conversion is the canonical decode-time validator
+/// for every transaction submission entry point (gRPC and HTTP JSON-RPC `submit_transaction`), so the mempool is
+/// never handed a transaction that a peer could not have sent. The round-trip does not alter a valid transaction:
+/// the offsets and every kernel, output and input field survive, with the same V0 normalisation of compact-input and
+/// spent-output versions described there.
+///
+/// Failures are reported as `InvalidArgument("Malformed transaction: ..")`, obscured unless `report_error_flag` is
+/// set.
+fn normalise_transaction_via_p2p_proto(
+    transaction: Transaction,
+    report_error_flag: bool,
+) -> Result<Transaction, Status> {
+    let malformed = |e: String| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Malformed transaction: {e}")),
+        )
+    };
+    let proto = tari_core::proto::types::Transaction::try_from(transaction).map_err(malformed)?;
+    Transaction::try_from(proto).map_err(malformed)
+}
+
+/// Decodes the block of a gRPC `submit_block` request: the gRPC conversion, then [`normalise_block_via_p2p_proto`].
+fn decode_submit_block_request(request: tari_rpc::Block, report_error_flag: bool) -> Result<Block, Status> {
+    let block = Block::try_from(request).map_err(|e| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Invalid block provided: {e}")),
+        )
+    })?;
+    normalise_block_via_p2p_proto(block, report_error_flag)
+}
+
+/// Decodes the transaction of a gRPC `submit_transaction` request: the gRPC conversion, then
+/// [`normalise_transaction_via_p2p_proto`].
+fn decode_submit_transaction_request(
+    request: tari_rpc::SubmitTransactionRequest,
+    report_error_flag: bool,
+) -> Result<Transaction, Status> {
+    let txn: Transaction = request
+        .transaction
+        .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?
+        .try_into()
+        .map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Invalid transaction provided: {e}")),
+            )
+        })?;
+    normalise_transaction_via_p2p_proto(txn, report_error_flag)
+}
+
+/// Decodes the header and body blobs of a `submit_block_blob` request into a [`Block`].
+///
+/// The blobs are borsh-decoded and the resulting block is then normalised through the P2P protobuf conversion by
+/// [`normalise_block_via_p2p_proto`], so this entry point accepts exactly the blocks a peer could send.
+fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bool) -> Result<Block, Status> {
+    let malformed = |e: String| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Malformed block: {e}")),
+        )
+    };
+    let mut header_bytes = header_blob;
+    let mut body_bytes = body_blob;
+    trace!(target: LOG_TARGET, "doing header");
+    let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
+    trace!(target: LOG_TARGET, "doing body");
+    let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?;
+    normalise_block_via_p2p_proto(Block::new(header, body), report_error_flag)
+}
+
+/// Rejects a batch query that asks for more than `MAX_ALLOWED_QUERY_SIZE` items, so that a single call can never force
+/// the node into an unbounded number of database lookups. `item_name` is used in the error message, e.g. "hashes".
+fn check_query_size(len: usize, item_name: &str, report_error_flag: bool) -> Result<(), Status> {
+    if len > MAX_ALLOWED_QUERY_SIZE {
+        return Err(obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!(
+                "Exceeded maximum allowed query {item_name}. Requested: {len}, max: {MAX_ALLOWED_QUERY_SIZE}"
+            )),
+        ));
+    }
+    Ok(())
+}
+
+/// Caps the heights of a `GetTokensInCirculation` request at `GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS`, silently
+/// dropping the rest. The heights are copied into a new vector so the (possibly much larger) decoded request buffer is
+/// freed as soon as this returns; collecting from `into_iter()` would reuse the request's allocation in place.
+fn cap_tokens_in_circulation_heights(heights: Vec<u64>) -> Vec<u64> {
+    heights
+        .iter()
+        .take(GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS)
+        .copied()
+        .collect()
+}
+
+/// The heights a `GetTokensInCirculation` request asks for, in request order, given the capped request heights. An
+/// empty request asks for the tip, and any height above the tip rejects the whole request so that the cost of a
+/// request is bounded by the chain rather than chosen by the caller.
+fn tokens_in_circulation_heights(heights: Vec<u64>, tip: u64, report_error_flag: bool) -> Result<Vec<u64>, Status> {
+    if heights.is_empty() {
+        return Ok(vec![tip]);
+    }
+    if let Some(height) = heights.iter().find(|h| **h > tip) {
+        return Err(obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Height {height} is above the chain tip {tip}")),
+        ));
+    }
+    Ok(heights)
+}
+
+/// Looks up the token values for `height` in `values`, which must be sorted by height with no duplicates.
+fn value_at_height_response(values: &[TokenValuesAtHeight], height: u64) -> Option<tari_rpc::ValueAtHeightResponse> {
+    let index = values.binary_search_by_key(&height, |v| v.height).ok()?;
+    let value = values.get(index)?;
+    Some(tari_rpc::ValueAtHeightResponse {
+        circulating_supply: value.circulating_supply.into(),
+        height: value.height,
+        mined_rewards: value.mined_rewards.into(),
+        spendable_rewards: value.spendable_rewards.into(),
+        spendable_pre_mine: value.spendable_pre_mine.into(),
+        total_spendable: value.total_spendable.into(),
+        total_pre_mine: value.total_pre_mine.into(),
+        time_locked_pre_mine: value.time_locked_pre_mine.into(),
+    })
+}
+
 pub async fn get_heights(
     request: &tari_rpc::HeightRequest,
     handler: LocalNodeCommsInterface,
@@ -241,7 +416,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetSideChainUtxosStream = mpsc::Receiver<Result<tari_rpc::GetSideChainUtxosResponse, Status>>;
-    type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::GetTemplateRegistrationResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
@@ -307,11 +481,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
 
+        let consensus_rules = self.consensus_rules.clone();
+
         debug!(target: LOG_TARGET, "Starting GetNetworkDifficulty request from {start_height} to {end_height}");
         task::spawn(async move {
             for (start, end) in page_iter {
+                // The adjusted difficulty of a block depends on the run of same-algorithm blocks before it, so every
+                // page also reads the headers just before it to seed the backoff run.
+                let lookback_start = start.saturating_sub(MAX_BACKOFF_RUN_LOOKBACK as u64);
                 // headers are returned by height
-                let headers = match handler.get_headers(start..=end).await {
+                let headers = match handler.get_headers(lookback_start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {err:?}");
@@ -325,6 +504,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
+                let headers = adjusted_target_difficulties_in_range(headers, start, &consensus_rules);
+
                 if headers.is_empty() {
                     let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
                         report_error_flag,
@@ -333,7 +514,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                for chain_header in &headers {
+                for (chain_header, adjusted_difficulty) in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
@@ -401,6 +582,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         pow_algo: pow_algo.as_u64(),
                         num_coinbases: coinbases.len() as u64,
                         coinbase_extras: coinbases.iter().map(|c| c.features.coinbase_extra.to_vec()).collect(),
+                        adjusted_difficulty: Some(adjusted_difficulty.as_u64()),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
@@ -423,7 +605,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         _request: Request<tari_rpc::GetNetworkStateRequest>,
     ) -> Result<Response<tari_rpc::GetNetworkStateResponse>, Status> {
-        trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
+        self.check_method_enabled(GrpcMethod::GetNetworkState)?;
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetNetworkState");
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
         let metadata = handler.get_metadata().await.map_err(|e| {
@@ -459,9 +642,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Sha3x: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -488,9 +673,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Monero RandomX: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -518,9 +705,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Tari RandomX: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
-                    let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
+                    // The *unadjusted* target tracks the real hash rate; the adjusted one carries the same-algorithm
+                    // backoff and would inflate the estimate by up to the backoff cap.
+                    let estimated_hash_rate = target_difficulty.base.as_u64().checked_div(target_time).unwrap_or(0);
                     self.data_cache
                         .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                         .await;
@@ -548,9 +737,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 "Could not get target difficulty for Cuckaroo: {e}"
                             );
                         })
-                        .unwrap_or(Difficulty::min());
+                        .unwrap_or(AdjustedTarget::unadjusted(Difficulty::min()));
                     let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
+                    // The *unadjusted* target tracks the real hash rate; see above.
                     let estimated_hash_rate_scaled = target_difficulty
+                        .base
                         .as_u64()
                         .saturating_mul(NANOS_PER_UNIT) // We have to add scaling as this value can be < 1
                         .checked_div(target_time)
@@ -587,7 +778,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let liveness_results = self.tari_pulse.as_ref().map(|handle| handle.get_liveness_checks());
         let empty_vec = Vec::new();
-        let liveness_results_ref = liveness_results.as_ref().map(|guard| &**guard).unwrap_or(&empty_vec);
+        let liveness_results_ref = liveness_results.as_deref().unwrap_or(&empty_vec);
 
         let mut liveness = Vec::new();
         for data in liveness_results_ref {
@@ -740,7 +931,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Sorting::Desc => {
                     let from = match tip.overflowing_sub(num_headers) {
                         (_, true) => 0,
-                        (res, false) => res + 1,
+                        (res, false) => res.saturating_add(1),
                     };
                     (from..=tip, true)
                 },
@@ -751,7 +942,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
                         (_, true) => 0,
-                        (res, false) => res + 1,
+                        (res, false) => res.saturating_add(1),
                     };
                     (from..=from_height, true)
                 },
@@ -1157,6 +1348,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar and signature arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn get_new_block_template_with_coinbases(
         &self,
         request: Request<tari_rpc::GetNewBlockTemplateWithCoinbasesRequest>,
@@ -1257,19 +1450,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut total_shares = 0u128;
         for coinbase in &coinbases {
-            total_shares += u128::from(coinbase.value);
+            total_shares = total_shares.saturating_add(u128::from(coinbase.value));
         }
         let mut cur_share_sum = 0u128;
         let mut prev_coinbase_value = 0u128;
         for coinbase in &mut coinbases {
-            cur_share_sum += u128::from(coinbase.value);
+            cur_share_sum = cur_share_sum.saturating_add(u128::from(coinbase.value));
             coinbase.value = u64::try_from(
                 (cur_share_sum.saturating_mul(reward))
                     .checked_div(total_shares)
                     .ok_or_else(|| {
                         obscure_error_if_true(report_error_flag, Status::internal("total shares are zero".to_string()))
-                    })? -
-                    prev_coinbase_value,
+                    })?
+                    .saturating_sub(prev_coinbase_value),
             )
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1277,7 +1470,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Single coinbase fees exceeded u64".to_string()),
                 )
             })?;
-            prev_coinbase_value += u128::from(coinbase.value);
+            prev_coinbase_value = prev_coinbase_value.saturating_add(u128::from(coinbase.value));
         }
 
         let key_manager = KeyManager::new_random().map_err(|e| {
@@ -1452,6 +1645,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar and signature arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     async fn get_new_block_with_coinbases(
         &self,
         request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
@@ -1511,7 +1706,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut amount = 0u64;
         for coinbase in &coinbases {
-            amount += coinbase.value;
+            amount = amount.saturating_add(coinbase.value);
         }
 
         if amount != reward.as_u64() {
@@ -1805,13 +2000,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        let block = Block::try_from(request).map_err(|e| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!("Invalid block provided: {e}")),
-            )
-        })?;
+        let block = decode_submit_block_request(request.into_inner(), report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -1842,17 +2031,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Received block blob from miner: {request:?}");
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "request: {request:?}");
-        let mut header_bytes = request.header_blob.as_slice();
-        let mut body_bytes = request.body_blob.as_slice();
-        trace!(target: LOG_TARGET, "doing header");
-
-        let header = BorshDeserialize::deserialize(&mut header_bytes)
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-        trace!(target: LOG_TARGET, "doing body");
-        let body = BorshDeserialize::deserialize(&mut body_bytes)
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-
-        let block = Block::new(header, body);
+        let block = decode_block_blob(&request.header_blob, &request.body_blob, report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -1880,17 +2059,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
-        let request = request.into_inner();
-        let txn: Transaction = request
-            .transaction
-            .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?
-            .try_into()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Invalid transaction provided: {e}")),
-                )
-            })?;
+        let txn = decode_submit_transaction_request(request.into_inner(), report_error_flag)?;
         trace!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
@@ -1917,6 +2086,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
             },
@@ -2000,6 +2170,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredTimeLocked |
             TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
@@ -2059,58 +2230,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for GetBlocks: {:?}", request.heights
         );
 
-        let mut heights = request.heights;
-        if heights.is_empty() {
-            let mut handler = self.node_service.clone();
-            if let Ok(tip) = handler.get_metadata().await {
-                heights.push(tip.best_block_height());
-            }
-        }
+        let heights = resolve_requested_heights(self.node_service.clone(), request.heights, report_error_flag).await?;
 
-        heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
-        heights.sort_unstable();
-        // unreachable panic: `heights` is not empty
-        let start = *heights.first().expect("unreachable");
-        let end = *heights.last().expect("unreachable");
-
-        let mut handler = self.node_service.clone();
-        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        let page_iter = NonOverlappingIntegerPairIter::new(start, end.saturating_add(1), GET_BLOCKS_PAGE_SIZE)
+        // Only fetch the heights that were actually requested: sparse requests are grouped into maximal contiguous
+        // runs and each run is paged individually, so the number of blocks hydrated is bounded by the number of
+        // requested heights and not by the span between the lowest and highest requested height.
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
-        task::spawn(async move {
-            for (start, end) in page_iter {
-                let blocks = match handler.get_blocks(start..=end, false).await {
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {err:?}"
-                        );
-                        return;
-                    },
-                    Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
-                };
 
-                for block in blocks {
-                    trace!(
-                        target: LOG_TARGET,
-                        "GetBlock GRPC sending block #{}",
-                        block.header().height
-                    );
-                    let result = block.try_into().map_err(|err| {
-                        obscure_error_if_true(
-                            report_error_flag,
-                            Status::internal(format!("Could not provide block: {err}")),
-                        )
-                    });
-                    if tx.send(result).await.is_err() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "[get_blocks] Request was cancelled while sending a response"
-                        );
-                    }
-                }
-            }
-        });
+        let handler = self.node_service.clone();
+        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(stream_blocks(handler, pages, tx, report_error_flag));
 
         trace!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
         Ok(Response::new(rx))
@@ -2158,6 +2288,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
         let request = request.into_inner();
+        check_query_size(request.signatures.len(), "signatures", report_error_flag)?;
 
         let kernels = request
             .signatures
@@ -2214,6 +2345,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
         let request = request.into_inner();
+        check_query_size(request.commitments.len(), "commitments", report_error_flag)?;
 
         let outputs = request
             .commitments
@@ -2253,6 +2385,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         target: LOG_TARGET,
                         "[search_utxos] Request was cancelled while sending a response"
                     );
+                    return;
                 }
             }
         });
@@ -2270,6 +2403,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
         let request = request.into_inner();
+        check_query_size(request.hashes.len(), "hashes", report_error_flag)?;
 
         let hashes = request
             .hashes
@@ -2471,88 +2605,82 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetTokensInCirculation)?;
         let report_error_flag = self.report_error_flag();
         trace!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
-        let request = request.into_inner();
-        let mut heights = request.heights;
-        if heights.is_empty() {
-            let mut handler = self.node_service.clone();
-            if let Ok(tip) = handler.get_metadata().await {
-                heights.push(tip.best_block_height());
-            }
-        }
-        heights = heights
-            .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
-            .collect();
-        let consensus_manager = BaseNodeConsensusManager::builder(self.network.as_network())
-            .build()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::unknown(format!("Could not retrieve consensus manager '{e}'")),
-                )
-            })?;
+        // Cap the heights before awaiting anything, so the decoded request buffer is not held across the await
+        let heights = cap_tokens_in_circulation_heights(request.into_inner().heights);
+        let tip = self
+            .node_service
+            .clone()
+            .get_metadata()
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+            .best_block_height();
+        let heights = tokens_in_circulation_heights(heights, tip, report_error_flag)?;
+        let mut unique_heights = heights.clone();
+        let consensus_rules = self.consensus_rules.clone();
 
-        let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
+        let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_CHANNEL_SIZE);
         task::spawn(async move {
-            let mut page: Vec<u64> = heights
-                .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
-                .collect();
-            while !page.is_empty() {
-                let values = page
-                    .clone()
-                    .into_iter()
-                    .map(|height| {
-                        let circulating_supply = consensus_manager.total_tokens_circulating_at_height(height)?.into();
-                        let mined_rewards = consensus_manager.block_rewards_mined_at_height(height)?.into();
-                        let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height)?.into();
-                        let spendable_pre_mine = consensus_manager.pre_mine_spendable_at_height(height)?.into();
-                        let total_spendable = consensus_manager.total_tokens_spendable_at_height(height)?.into();
-                        let total_pre_mine = consensus_manager.total_pre_mine_in_genesis_block().into();
-                        let time_locked_pre_mine = consensus_manager.time_locked_pre_mine(height)?.into();
-
-                        Ok(tari_rpc::ValueAtHeightResponse {
-                            circulating_supply,
-                            height,
-                            mined_rewards,
-                            spendable_rewards,
-                            spendable_pre_mine,
-                            total_spendable,
-                            total_pre_mine,
-                            time_locked_pre_mine,
-                        })
-                    })
-                    .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();
-                let result_size = match values {
-                    Ok(values) => {
-                        let values_len = values.len();
-                        for value in values {
-                            if tx.send(Ok(value)).await.is_err() {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "[get_tokens_in_circulation] Request was cancelled while sending a response"
-                                );
-                                return;
-                            }
-                        }
-                        values_len
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {e:?}"
-                        );
-                        let _ignore = tx.send(Err(obscure_error_if_true(
+            // Sorting the heights and walking the emission schedule is CPU bound, so keep it off the async runtime
+            // workers. The calculation stops early if the client goes away.
+            let cancel_tx = tx.clone();
+            let values = match task::spawn_blocking(move || {
+                unique_heights.sort_unstable();
+                unique_heights.dedup();
+                consensus_rules.token_values_at_heights(&unique_heights, || cancel_tx.is_closed())
+            })
+            .await
+            {
+                Ok(Ok(values)) => values,
+                Ok(Err(_)) if tx.is_closed() => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[get_tokens_in_circulation] Request was cancelled while calculating token values"
+                    );
+                    return;
+                },
+                Ok(Err(e)) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Could not calculate token values: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
                             report_error_flag,
-                            Status::internal(format!("Error communicating with local base node: {e}")),
-                        )));
+                            Status::internal(format!("Could not calculate token values: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "[get_tokens_in_circulation] Token value task failed: {e}");
+                    let _ignore = tx
+                        .send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Token value task failed: {e}")),
+                        )))
+                        .await;
+                    return;
+                },
+            };
+
+            // Stream in request order, repeating duplicates, as the values were computed once per unique height
+            for height in heights {
+                let response = match value_at_height_response(&values, height) {
+                    Some(response) => response,
+                    None => {
+                        let _ignore = tx
+                            .send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Token values for height {height} not found")),
+                            )))
+                            .await;
                         return;
                     },
                 };
-                if result_size < GET_TOKENS_IN_CIRCULATION_PAGE_SIZE {
-                    break;
+                if tx.send(Ok(response)).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[get_tokens_in_circulation] Request was cancelled while sending a response"
+                    );
+                    return;
                 }
-                page = heights
-                    .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
-                    .collect();
             }
         });
 
@@ -2904,87 +3032,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    async fn get_template_registrations(
-        &self,
-        request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
-    ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        self.check_method_enabled(GrpcMethod::GetTemplateRegistrations)?;
-        let request = request.into_inner();
-        let report_error_flag = self.report_error_flag();
-        trace!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
-
-        let (mut tx, rx) = mpsc::channel(10);
-
-        let start_hash = Some(request.start_hash)
-            .filter(|x| !x.is_empty())
-            .map(FixedHash::try_from)
-            .transpose()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Invalid start_hash '{e}'")),
-                )
-            })?;
-
-        let mut node_service = self.node_service.clone();
-
-        let start_height = match start_hash {
-            Some(hash) => {
-                let header = node_service
-                    .get_header_by_hash(hash)
-                    .await
-                    .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?;
-                header.map(|h| h.height()).ok_or_else(|| {
-                    obscure_error_if_true(report_error_flag, Status::not_found("Start hash not found"))
-                })?
-            },
-            None => 0,
-        };
-
-        if request.count == 0 {
-            return Ok(Response::new(rx));
-        }
-
-        let end_height = start_height.checked_add(request.count).ok_or_else(|| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Request start height + count overflows u64"),
-            )
-        })?;
-
-        task::spawn(async move {
-            let template_registrations = match node_service.get_template_registrations(start_height, end_height).await {
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Base node service error: {err}");
-                    return;
-                },
-                Ok(data) => data,
-            };
-
-            for template_registration in template_registrations {
-                let registration = template_registration.registration_data().into();
-
-                let resp = tari_rpc::GetTemplateRegistrationResponse {
-                    utxo_hash: template_registration.output_hash.to_vec(),
-                    registration: Some(registration),
-                };
-
-                if tx.send(Ok(resp)).await.is_err() {
-                    trace!(
-                        target: LOG_TARGET,
-                        "[get_template_registrations] Client has disconnected before stream completed"
-                    );
-                    return;
-                }
-            }
-        });
-        trace!(
-            target: LOG_TARGET,
-            "Sending GetTemplateRegistrations response stream to client"
-        );
-        Ok(Response::new(rx))
-    }
-
     #[allow(clippy::too_many_lines)]
     async fn get_side_chain_utxos(
         &self,
@@ -2993,7 +3040,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::GetSideChainUtxos)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
-        trace!(target: LOG_TARGET, "Incoming GRPC request for GetTemplateRegistrations");
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetSideChainUtxos");
 
         let (mut tx, rx) = mpsc::channel(10);
 
@@ -3024,7 +3071,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let start_height = start_header.height();
         let end_height = start_height
-            .checked_add(request.count - 1)
+            .checked_add(request.count.saturating_sub(1))
             .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
 
         task::spawn(async move {
@@ -3071,7 +3118,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         if tx.send(Ok(resp)).await.is_err() {
                             trace!(
                                 target: LOG_TARGET,
-                                "[get_template_registrations] Client has disconnected before stream completed"
+                                "[get_side_chain_utxos] Client has disconnected before stream completed"
                             );
                             return;
                         }
@@ -3101,7 +3148,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
         trace!(
             target: LOG_TARGET,
-            "Sending GetTemplateRegistrations response stream to client"
+            "Sending GetSideChainUtxos response stream to client"
         );
         Ok(Response::new(rx))
     }
@@ -3119,6 +3166,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for SearchPaymentReferencesViaOutputHash: {} hashes",
             request.hashes.len()
         );
+        check_query_size(request.hashes.len(), "hashes", report_error_flag)?;
 
         let hashes = request
             .hashes
@@ -3206,6 +3254,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Incoming GRPC request for SearchPaymentReferences: {} PayRefs",
             request.payment_reference_hex.len()
         );
+        check_query_size(
+            request
+                .payment_reference_hex
+                .len()
+                .saturating_add(request.payment_reference_bytes.len()),
+            "payment references",
+            report_error_flag,
+        )?;
 
         let (mut tx, rx) = mpsc::channel(100);
         let mut node_service = self.node_service.clone();
@@ -3406,4 +3462,341 @@ async fn get_block_group(
         value,
         calc_type: calc_type_response,
     }))
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
+    use tari_core::blocks::genesis_block::get_genesis_block;
+    use tari_script::{ExecutionStack, StackItem};
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        transaction_components::{
+            KernelFeatures,
+            SideChainFeature,
+            SideChainFeatureData,
+            TransactionInput,
+            TransactionInputVersion,
+            ValidatorNodeExit,
+        },
+    };
+
+    use super::*;
+
+    /// A signed side-chain validator node exit feature.
+    fn validator_node_exit_feature() -> SideChainFeature {
+        SideChainFeature {
+            data: SideChainFeatureData::ValidatorNodeExit(ValidatorNodeExit::signed(
+                &PrivateKey::default(),
+                Network::MainNet.as_byte(),
+                None,
+                VnEpoch(0),
+                VnEpoch(1),
+            )),
+            sidechain_id: None,
+        }
+    }
+
+    /// The mainnet genesis block with the given side-chain feature attached to its first output.
+    fn genesis_with_sidechain_feature(feature: SideChainFeature) -> Block {
+        let block = mainnet_genesis();
+        let (inputs, mut outputs, kernels) = block.body.dissolve();
+        outputs.first_mut().unwrap().features.sidechain_feature = Some(feature);
+        Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels))
+    }
+
+    /// A transaction made of the mainnet genesis outputs and kernels plus a compact input with an empty
+    /// `ExecutionStack` (what a compact input carries when its `input_data` was not supplied).
+    fn genesis_transaction() -> Transaction {
+        let block = mainnet_genesis();
+        let input = TransactionInput::new_with_output_hash(
+            FixedHash::zero(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+        );
+        let (_, outputs, kernels) = block.body.dissolve();
+        Transaction::new(
+            vec![input],
+            outputs,
+            kernels,
+            block.header.total_kernel_offset,
+            block.header.total_script_offset,
+        )
+    }
+
+    #[test]
+    fn a_valid_block_round_trips_unchanged_through_the_p2p_proto() {
+        for block in [
+            mainnet_genesis(),
+            genesis_with_sidechain_feature(validator_node_exit_feature()),
+        ] {
+            let normalised = normalise_block_via_p2p_proto(block.clone(), true).unwrap();
+            assert_eq!(normalised, block);
+            assert_eq!(normalised.hash(), block.hash());
+            assert_eq!(to_blobs(&normalised), to_blobs(&block));
+        }
+    }
+
+    #[test]
+    fn a_valid_transaction_round_trips_unchanged_through_the_p2p_proto() {
+        let tx = genesis_transaction();
+        assert!(!tx.body.outputs().is_empty());
+        assert!(!tx.body.kernels().is_empty());
+
+        let normalised = normalise_transaction_via_p2p_proto(tx.clone(), true).unwrap();
+
+        assert_eq!(normalised, tx);
+        assert_eq!(normalised.offset, tx.offset);
+        assert_eq!(normalised.script_offset, tx.script_offset);
+        assert_eq!(
+            normalised.body.inputs().first().map(|i| &i.input_data),
+            Some(&ExecutionStack::default())
+        );
+    }
+
+    fn to_blobs(block: &Block) -> (Vec<u8>, Vec<u8>) {
+        (
+            borsh::to_vec(&block.header).unwrap(),
+            borsh::to_vec(&block.body).unwrap(),
+        )
+    }
+
+    fn mainnet_genesis() -> Block {
+        get_genesis_block(Network::MainNet).block().clone()
+    }
+
+    #[test]
+    fn a_valid_block_blob_round_trips_unchanged() {
+        let block = mainnet_genesis();
+        assert!(!block.body.outputs().is_empty());
+        assert!(!block.body.kernels().is_empty());
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        assert_eq!(decoded, block);
+        assert_eq!(decoded.hash(), block.hash());
+        assert_eq!(to_blobs(&decoded), (header_blob, body_blob));
+    }
+
+    #[test]
+    fn the_input_data_of_a_compact_input_survives_the_round_trip() {
+        let block = mainnet_genesis();
+        let input = TransactionInput::new_with_output_hash(
+            FixedHash::zero(),
+            ExecutionStack::new(vec![StackItem::Number(42)]),
+            ComAndPubSignature::default(),
+        );
+        let (_, outputs, kernels) = block.body.dissolve();
+        let block = Block::new(block.header, AggregateBody::new_unsorted(vec![input], outputs, kernels));
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        assert_eq!(decoded, block);
+        assert_eq!(
+            decoded.body.inputs().first().map(|i| &i.input_data),
+            Some(&ExecutionStack::new(vec![StackItem::Number(42)]))
+        );
+    }
+
+    // Since unknown kernel feature bits are also rejected by the borsh decoder, this test now fails on the borsh
+    // step rather than on the proto round-trip. Most checks the P2P decoders
+    // (`tari_core::proto::{block_header, transaction, sidechain_feature}`) apply have a borsh counterpart:
+    // - canonical `total_kernel_offset` / `total_script_offset` scalars and 32-byte compressed commitments and keys
+    //   (the tari_crypto borsh impls call the same `from_canonical_bytes`);
+    // - known `PowAlgorithm`, kernel / input / output / output-features versions, `OutputType` and `RangeProofType`
+    //   (all `#[borsh(use_discriminant = true)]`, so unknown discriminants fail);
+    // - `KernelFeatures::from_bits`, the `PowData` / `CoinBaseExtra` / `MaxSizeString` / covenant length bounds,
+    //   `EncryptedData::from_bytes` minimum length, and `TariScript::from_bytes` / `ExecutionStack::from_bytes` (the
+    //   borsh decoders of those types apply the same checks, including the `MAX_SCRIPT_BYTES` cap on scripts).
+    // `minotari_app_grpc/tests/decoder_parity.rs` checks, for a fixed set of sample values of the fields it lists, that
+    // serde_json and both protobuf families (and borsh and bincode, where a sample can be expressed in them) make the
+    // same accept or reject decision on a block or transaction. Fields and values it does not sample are not checked.
+    #[test]
+    fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
+        let block = mainnet_genesis();
+        let (inputs, outputs, mut kernels) = block.body.dissolve();
+        kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
+        let block = Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels));
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let err = decode_block_blob(&header_blob, &body_blob, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(err.message().starts_with("Malformed block: "), "{}", err.message());
+
+        let err = decode_block_blob(&header_blob, &body_blob, false).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert_eq!(err.message(), "Error has occurred. Details are obscured.");
+    }
+
+    #[test]
+    fn a_truncated_blob_is_rejected_as_invalid_argument() {
+        let (header_blob, body_blob) = to_blobs(&mainnet_genesis());
+
+        let (_, truncated_header) = header_blob.split_last().unwrap();
+        let (_, truncated_body) = body_blob.split_last().unwrap();
+
+        let err = decode_block_blob(truncated_header, &body_blob, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        let err = decode_block_blob(&header_blob, truncated_body, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    /// A transaction like [`genesis_transaction`] whose compact input has version V1. Serde and borsh carry the version
+    /// of a compact input but neither protobuf family does, so the P2P round-trip turns it into V0: a block or
+    /// transaction that skipped the round-trip would keep V1, which no peer could have sent.
+    fn transaction_with_a_v1_compact_input() -> Transaction {
+        let tx = genesis_transaction();
+        let (mut inputs, outputs, kernels) = tx.body.dissolve();
+        inputs.first_mut().unwrap().version = TransactionInputVersion::V1;
+        Transaction::new(inputs, outputs, kernels, tx.offset, tx.script_offset)
+    }
+
+    fn first_input_version(body: &AggregateBody) -> TransactionInputVersion {
+        body.inputs().first().unwrap().version
+    }
+
+    /// A block whose first kernel has an unknown feature bit, which the P2P conversion rejects
+    fn block_with_an_unknown_kernel_feature_bit() -> Block {
+        let block = mainnet_genesis();
+        let (inputs, outputs, mut kernels) = block.body.dissolve();
+        kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
+        Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels))
+    }
+
+    #[test]
+    fn submit_block_blob_normalises_a_v1_compact_input_to_v0() {
+        let block = mainnet_genesis();
+        let tx = transaction_with_a_v1_compact_input();
+        let block = Block::new(block.header, tx.body);
+        assert_eq!(first_input_version(&block.body), TransactionInputVersion::V1);
+        let (header_blob, body_blob) = to_blobs(&block);
+
+        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+
+        // Fails if `decode_block_blob` stops round-tripping through the P2P proto
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+    }
+
+    /// The gRPC conversion currently makes the same accept or reject decision as the P2P one on every value
+    /// `minotari_app_grpc/tests/decoder_parity.rs` samples, and neither carries the compact input version, so these
+    /// tests pass with or without the P2P round-trip in `decode_submit_block_request`. They pin the handler's decode
+    /// step as a whole; the round-trip is there for fields the parity tests do not sample.
+    #[test]
+    fn submit_block_decodes_through_the_p2p_proto() {
+        let block = mainnet_genesis();
+        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block.clone()).unwrap(), true).unwrap();
+        assert_eq!(decoded, block);
+
+        let tx = transaction_with_a_v1_compact_input();
+        let block = Block::new(mainnet_genesis().header, tx.body);
+        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block).unwrap(), true).unwrap();
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+
+        let request = tari_rpc::Block::try_from(block_with_an_unknown_kernel_feature_bit()).unwrap();
+        let err = decode_submit_block_request(request, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn submit_transaction_decodes_through_the_p2p_proto() {
+        let request = |tx: Transaction| tari_rpc::SubmitTransactionRequest {
+            transaction: Some(tari_rpc::Transaction::try_from(tx).unwrap()),
+        };
+        let tx = genesis_transaction();
+        assert_eq!(
+            decode_submit_transaction_request(request(tx.clone()), true).unwrap(),
+            tx
+        );
+
+        let decoded = decode_submit_transaction_request(request(transaction_with_a_v1_compact_input()), true).unwrap();
+        assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
+
+        let block = block_with_an_unknown_kernel_feature_bit();
+        let tx = Transaction::new(
+            vec![],
+            block.body.outputs().clone(),
+            block.body.kernels().clone(),
+            block.header.total_kernel_offset,
+            block.header.total_script_offset,
+        );
+        let err = decode_submit_transaction_request(request(tx), true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        let err = decode_submit_transaction_request(tari_rpc::SubmitTransactionRequest { transaction: None }, true)
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn tokens_in_circulation_heights_are_bounded_by_the_tip() {
+        let err = tokens_in_circulation_heights(vec![5, 11, 3], 10, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(err.message().contains("11"));
+        assert!(err.message().contains("10"));
+
+        let err = tokens_in_circulation_heights(vec![u64::MAX], 10, true).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        assert_eq!(tokens_in_circulation_heights(vec![], 10, true).unwrap(), vec![10]);
+        assert_eq!(tokens_in_circulation_heights(vec![10, 0, 10], 10, true).unwrap(), vec![
+            10, 0, 10
+        ]);
+    }
+
+    #[test]
+    fn tokens_in_circulation_heights_are_capped_in_a_fresh_vector() {
+        let heights = cap_tokens_in_circulation_heights(vec![1; GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS + 1]);
+        assert_eq!(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+        assert!(heights.capacity() <= GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS);
+
+        assert_eq!(cap_tokens_in_circulation_heights(vec![3, 1, 3]), vec![3, 1, 3]);
+        assert!(cap_tokens_in_circulation_heights(vec![]).is_empty());
+    }
+
+    #[test]
+    fn tokens_in_circulation_streams_in_request_order() {
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap();
+        let heights = tokens_in_circulation_heights(vec![1000, 5, 20_000, 5, 0, 1000], 20_000, true).unwrap();
+        let mut unique_heights = heights.clone();
+        unique_heights.sort_unstable();
+        unique_heights.dedup();
+        let values = consensus_manager
+            .token_values_at_heights(&unique_heights, || false)
+            .unwrap();
+
+        let responses = heights
+            .iter()
+            .map(|height| value_at_height_response(&values, *height).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(responses.iter().map(|r| r.height).collect::<Vec<_>>(), vec![
+            1000, 5, 20_000, 5, 0, 1000
+        ]);
+        for response in responses {
+            let height = response.height;
+            assert_eq!(response, tari_rpc::ValueAtHeightResponse {
+                circulating_supply: consensus_manager
+                    .total_tokens_circulating_at_height(height)
+                    .unwrap()
+                    .into(),
+                height,
+                mined_rewards: consensus_manager.block_rewards_mined_at_height(height).unwrap().into(),
+                spendable_rewards: consensus_manager
+                    .block_rewards_spendable_at_height(height)
+                    .unwrap()
+                    .into(),
+                spendable_pre_mine: consensus_manager.pre_mine_spendable_at_height(height).unwrap().into(),
+                total_spendable: consensus_manager
+                    .total_tokens_spendable_at_height(height)
+                    .unwrap()
+                    .into(),
+                total_pre_mine: consensus_manager.total_pre_mine_in_genesis_block().into(),
+                time_locked_pre_mine: consensus_manager.time_locked_pre_mine(height).unwrap().into(),
+            });
+        }
+
+        assert!(value_at_height_response(&values, 6).is_none());
+    }
 }

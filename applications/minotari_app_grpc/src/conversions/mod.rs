@@ -25,6 +25,7 @@ pub mod aggregate_body;
 pub mod base_node_state;
 pub mod block;
 pub mod block_header;
+pub mod burn_output_proof;
 pub mod chain_metadata;
 pub mod com_and_pub_signature;
 pub mod commitment_signature;

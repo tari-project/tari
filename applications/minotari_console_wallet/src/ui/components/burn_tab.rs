@@ -166,24 +166,39 @@ impl BurnTab {
         match self.burn_input_mode {
             BurnInputMode::None => (),
             BurnInputMode::ClaimPublicKey => f.set_cursor(
-                vert_chunks[1].x + self.claim_public_key_field.width() as u16 + 1,
-                vert_chunks[1].y + 1,
+                vert_chunks[1]
+                    .x
+                    .saturating_add(self.claim_public_key_field.width() as u16)
+                    .saturating_add(1),
+                vert_chunks[1].y.saturating_add(1),
             ),
             BurnInputMode::SidechainKey => f.set_cursor(
-                vert_chunks[2].x + self.sidechain_key_field.width() as u16 + 1,
-                vert_chunks[2].y + 1,
+                vert_chunks[2]
+                    .x
+                    .saturating_add(self.sidechain_key_field.width() as u16)
+                    .saturating_add(1),
+                vert_chunks[2].y.saturating_add(1),
             ),
             BurnInputMode::Amount => f.set_cursor(
-                amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
-                amount_fee_layout[0].y + 1,
+                amount_fee_layout[0]
+                    .x
+                    .saturating_add(self.amount_field.width() as u16)
+                    .saturating_add(1),
+                amount_fee_layout[0].y.saturating_add(1),
             ),
             BurnInputMode::Fee => f.set_cursor(
-                amount_fee_layout[1].x + self.fee_field.width() as u16 + 1,
-                amount_fee_layout[1].y + 1,
+                amount_fee_layout[1]
+                    .x
+                    .saturating_add(self.fee_field.width() as u16)
+                    .saturating_add(1),
+                amount_fee_layout[1].y.saturating_add(1),
             ),
             BurnInputMode::PaymentId => f.set_cursor(
-                vert_chunks[4].x + self.payment_id_field.width() as u16 + 1,
-                vert_chunks[4].y + 1,
+                vert_chunks[4]
+                    .x
+                    .saturating_add(self.payment_id_field.width() as u16)
+                    .saturating_add(1),
+                vert_chunks[4].y.saturating_add(1),
             ),
         }
     }
@@ -234,7 +249,7 @@ impl BurnTab {
 
         for item in windowed_view {
             column0_items.push(ListItem::new(Span::raw(item.proof.claim_public_key.to_hex())));
-            column1_items.push(ListItem::new(Span::raw(if item.encoded_merkle_proof.is_some() {
+            column1_items.push(ListItem::new(Span::raw(if item.burn_output_proof.is_some() {
                 "✅"
             } else {
                 "⏳️"

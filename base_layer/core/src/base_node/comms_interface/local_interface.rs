@@ -30,7 +30,7 @@ use tari_common_types::{
 use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::{
-    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::PowAlgorithm,
     transaction_components::{TransactionKernel, TransactionOutput},
 };
 use tokio::sync::broadcast;
@@ -44,13 +44,8 @@ use crate::{
         comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
     },
-    chain_storage::{
-        InputMinedInfo,
-        MinedInfo,
-        OutputMinedInfo,
-        TemplateRegistrationEntry,
-        ValidatorNodeRegistrationInfo,
-    },
+    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, ValidatorNodeRegistrationInfo},
+    proof_of_work::AdjustedTarget,
 };
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
@@ -90,10 +85,12 @@ impl LocalNodeCommsInterface {
         }
     }
 
+    /// Returns both the unadjusted target difficulty and the backoff adjusted target for the next block. Miners must
+    /// clear the adjusted target; anything estimating hash rate from the target must use the unadjusted one.
     pub async fn get_target_difficulty_for_next_block(
         &mut self,
         algo: PowAlgorithm,
-    ) -> Result<Difficulty, CommsInterfaceError> {
+    ) -> Result<AdjustedTarget, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetTargetDifficultyNextBlock(algo))
@@ -351,24 +348,6 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::GetValidatorNode(vn) => Ok(vn),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_template_registrations(
-        &mut self,
-        start_height: u64,
-        end_height: u64,
-    ) -> Result<Vec<TemplateRegistrationEntry>, CommsInterfaceError> {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchTemplateRegistrations {
-                start_height,
-                end_height,
-            })
-            .await??
-        {
-            NodeCommsResponse::FetchTemplateRegistrationsResponse(template_registrations) => Ok(template_registrations),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

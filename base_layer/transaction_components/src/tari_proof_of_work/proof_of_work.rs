@@ -31,7 +31,15 @@ use tari_utilities::hex::Hex;
 use crate::tari_proof_of_work::proof_of_work_algorithm::PowAlgorithm;
 
 /// This is the maximum size of the proof of work data that can be included in a block header. This is used to prev
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
 pub const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
+/// The proof of work data of a block header, at most [`NOT_BEFORE_PROOF_BYTES_SIZE`] bytes.
+///
+/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
+/// a node can decode at all and is a flag-day (hard) fork.
+/// It must stay `>=` every per-algorithm pow data size accepted by header validation.
 pub type PowData = MaxSizeBytes<{ NOT_BEFORE_PROOF_BYTES_SIZE }>;
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
@@ -67,7 +75,7 @@ impl ProofOfWork {
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     #[allow(deprecated)]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.pow_data.len() + 1);
+        let mut buf = Vec::with_capacity(self.pow_data.len().saturating_add(1));
         buf.put_u8(self.pow_algo as u8);
         buf.put_slice(&self.pow_data);
         buf

@@ -142,8 +142,24 @@ pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String,
     Ok((session_id, out_dir))
 }
 
+/// Verify that the session ID is a single, safe path component. Session IDs may be read from a session info file
+/// supplied by another party, so this guards against path traversal (e.g. '..' or an absolute path) when the ID is
+/// joined onto the output directory. The same character set as the alias validation is enforced.
+pub(crate) fn validate_session_id(session_id: &str) -> Result<(), CommandError> {
+    if session_id.is_empty() {
+        return Err(CommandError::InvalidArgument("Session ID cannot be empty".to_string()));
+    }
+    if session_id.chars().any(|c| !c.is_alphanumeric() && c != '_') {
+        return Err(CommandError::InvalidArgument(format!(
+            "Session ID '{session_id}' contains invalid characters! Only alphanumeric and '_' are allowed."
+        )));
+    }
+    Ok(())
+}
+
 /// Return the output directory for the session
 pub(crate) fn out_dir(session_id: &str) -> Result<PathBuf, CommandError> {
+    validate_session_id(session_id)?;
     let base_dir = dirs_next::document_dir().ok_or(CommandError::InvalidArgument(
         "Could not find cache directory".to_string(),
     ))?;
@@ -226,4 +242,44 @@ pub(crate) fn get_file_name(stem: &str, suffix: Option<String>) -> String {
     file_name.push('.');
     file_name.push_str(FILE_EXTENSION);
     file_name
+}
+
+#[cfg(test)]
+mod test {
+    use super::validate_session_id;
+
+    #[test]
+    fn it_accepts_valid_session_ids() {
+        for session_id in ["20240101120000", "20240101120000_alice", "abc123", "_"] {
+            assert!(
+                validate_session_id(session_id).is_ok(),
+                "'{session_id}' should be valid"
+            );
+        }
+    }
+
+    #[test]
+    fn it_rejects_session_ids_that_are_not_a_single_path_component() {
+        for session_id in [
+            "",
+            "..",
+            "../",
+            "../..",
+            "../../../etc",
+            "..\\..\\windows",
+            "/etc/passwd",
+            "\\\\server\\share",
+            "C:\\Windows",
+            "some/nested/dir",
+            "session id",
+            "session.id",
+            "session-id",
+            "session\0id",
+        ] {
+            assert!(
+                validate_session_id(session_id).is_err(),
+                "'{session_id}' should be invalid"
+            );
+        }
+    }
 }

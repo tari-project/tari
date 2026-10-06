@@ -145,7 +145,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                 target: LOG_TARGET,
                 "sqlite profile - fetch key_manager: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -172,7 +172,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                 target: LOG_TARGET,
                 "sqlite profile - write Insert key manager: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
@@ -196,7 +196,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                 .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
             let mut bytes: [u8; 8] = [0u8; 8];
             bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Already checked"));
-            let index = u64::from_le_bytes(bytes) + 1;
+            let index = u64::from_le_bytes(bytes).saturating_add(1);
             km.primary_key_index = index.to_le_bytes().to_vec();
             let km = km
                 .encrypt(&cipher)
@@ -207,7 +207,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                     target: LOG_TARGET,
                     "sqlite profile - increment_key_index: lock {} + db_op {} = {} ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -240,7 +240,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                     target: LOG_TARGET,
                     "sqlite profile - set_key_index: lock {} + db_op {} = {} ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -279,7 +279,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                     target: LOG_TARGET,
                     "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
                     acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().saturating_sub(acquire_lock).as_millis(),
                     start.elapsed().as_millis()
                 );
             }
@@ -304,7 +304,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
                 target: LOG_TARGET,
                 "sqlite profile - get_imported_key: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }

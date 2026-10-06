@@ -154,7 +154,12 @@ impl EmissionSchedule {
             if !n.chars().skip(2).all(|i| i.is_ascii_digit()) {
                 return None;
             }
-            let arr = n.chars().skip(2).map(|i| i as u8 - 48).collect::<Vec<u8>>();
+            // Every character is checked to be an ASCII digit above, so this cannot underflow.
+            let arr = n
+                .chars()
+                .skip(2)
+                .map(|i| (i as u8).saturating_sub(b'0'))
+                .collect::<Vec<u8>>();
             Some(arr)
         }
         // Multiply a vector of decimal fractional digits by 2. The bool indicates whether the result was greater than
@@ -163,10 +168,14 @@ impl EmissionSchedule {
             let len = num.len();
             let mut carry_last = 0u8;
             for i in 0..len {
-                let index = len - 1 - i;
+                let index = len.saturating_sub(1).saturating_sub(i);
                 let carry = (*num.get(index).expect("should exists") >= 5).into();
-                *num.get_mut(index).expect("Should exists") =
-                    (2 * *num.get(index).expect("should exists")) % 10 + carry_last;
+                *num.get_mut(index).expect("Should exists") = num
+                    .get(index)
+                    .expect("should exists")
+                    .saturating_mul(2)
+                    .rem_euclid(10)
+                    .saturating_add(carry_last);
                 carry_last = carry;
             }
             carry_last > 0
@@ -189,10 +198,11 @@ impl EmissionSchedule {
                 exact = false;
                 break;
             }
-            index += 1;
+            index = index.saturating_add(1);
         }
         if exact {
-            result.push(index - 1);
+            // `index` starts at 1 and only ever increases, so this cannot underflow.
+            result.push(index.saturating_sub(1));
         }
         let result = result.into_iter().map(u64::from).collect();
         Some(result)
@@ -248,6 +258,11 @@ impl<'a> EmissionRate<'a> {
         self.reward
     }
 
+    // The decay parameters are derived from a decay factor `k < 1`, so the sum of the shifted terms
+    // is always strictly less than the reward and the subtraction cannot underflow. Native
+    // subtraction is kept so that a malformed schedule panics (see `overflow-checks` in the release
+    // profile) rather than silently emitting a wrong reward.
+    #[allow(clippy::arithmetic_side_effects)]
     fn next_decay_reward(&self) -> MicroMinotari {
         let r = self.reward.as_u64();
         self.schedule
@@ -265,10 +280,10 @@ impl<'a> EmissionRate<'a> {
     fn next_reward(&mut self) {
         // Inflation phase
         if self.epoch > 0 {
-            self.epoch_counter += 1;
+            self.epoch_counter = self.epoch_counter.saturating_add(1);
             if self.epoch_counter >= self.schedule.epoch_length {
                 self.epoch_counter = 0;
-                self.epoch += 1;
+                self.epoch = self.epoch.saturating_add(1);
                 self.reward = self.new_tail_emission();
             }
         } else {
@@ -293,8 +308,12 @@ impl<'a> EmissionRate<'a> {
             10_000u128;
         #[allow(clippy::cast_possible_truncation)]
         let epoch_issuance = epoch_issuance as u64; // intentionally allow rounding via truncation
-        let reward = epoch_issuance / self.schedule.epoch_length; // in uT
-        MicroMinotari::from((reward / 1_000_000) * 1_000_000) // truncate to nearest whole XTR
+        // in uT; a zero epoch length is a misconfigured consensus schedule, which must not be
+        // papered over with a silently wrong reward.
+        let reward = epoch_issuance
+            .checked_div(self.schedule.epoch_length)
+            .expect("Emission schedule epoch length must be non-zero");
+        MicroMinotari::from((reward / 1_000_000).saturating_mul(1_000_000)) // truncate to nearest whole XTR
     }
 }
 
@@ -302,7 +321,7 @@ impl Iterator for EmissionRate<'_> {
     type Item = (u64, MicroMinotari, MicroMinotari);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.block_num += 1;
+        self.block_num = self.block_num.saturating_add(1);
         if self.block_num == 1 {
             self.reward = self.schedule.initial;
             self.supply = self.supply.checked_add(self.reward)?;

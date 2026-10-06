@@ -45,19 +45,59 @@ pub enum KeyManagerError {
     EncryptionFailed(String),
     #[error("Invalid key id string: `{0}`")]
     InvalidKeyId(String),
+    #[error("Invalid key branch: `{0}`")]
+    InvalidKeyBranch(String),
     #[error("Unexpected error: `{0}`")]
     UnexpectedError(String),
+    #[error(
+        "A script offset over {script_keys} contributing script key(s) and {sender_offset_keys} sender offset key(s) \
+         would leave one side of the sum unblinded by a term the caller cannot compute. Both counts must be at least \
+         one, and every script key id must contribute (`TariKeyId::Zero` does not)."
+    )]
+    UnblindedScriptOffset {
+        script_keys: usize,
+        sender_offset_keys: usize,
+    },
+    #[error(
+        "None of the {script_keys} script key(s) in this script offset were derived on the ledger device, so the \
+         reply would be a sender offset private key the device just generated. Outputs recovered by an older build \
+         carry a random script key that the device cannot derive; re-run wallet recovery to replace them."
+    )]
+    NoDeviceScriptKeys { script_keys: usize },
+    #[error(
+        "The ledger device derives at most {max} sender offset keys in one exchange, but {requested} were requested"
+    )]
+    TooManySenderOffsetKeys { requested: usize, max: usize },
+    #[error(
+        "The ephemeral nonce handle counter is exhausted. This is not a full store - a full store evicts its oldest \
+         entry - it is the one case that must refuse, because re-issuing a handle that an earlier nonce still answers \
+         to would allow that nonce to be signed with twice."
+    )]
+    EphemeralNonceHandlesExhausted,
+    #[error(
+        "Ephemeral nonce handle `{handle}` was never issued, has already been signed with, or was evicted to make \
+         room for a newer reservation. A nonce may only ever be used once: two signatures over different challenges \
+         under one nonce give up the private key."
+    )]
+    UnknownEphemeralNonce { handle: u64 },
+    #[error("The ephemeral nonce store lock is poisoned")]
+    EphemeralNonceStorePoisoned,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
     RangeProofError(String),
     #[error("EncryptedData error: `{0}`")]
     EncryptedDataError(#[from] EncryptedDataError),
+    #[error("The commitment does not open to the value and mask")]
+    InvalidMask,
 }
 
 impl From<RangeProofError> for KeyManagerError {
     fn from(e: RangeProofError) -> Self {
-        KeyManagerError::RangeProofError(e.to_string())
+        match e {
+            RangeProofError::InvalidMask {} => KeyManagerError::InvalidMask,
+            e => KeyManagerError::RangeProofError(e.to_string()),
+        }
     }
 }
 

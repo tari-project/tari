@@ -28,6 +28,7 @@ use tari_test_utils::unpack_enum;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot},
+    time,
     time::timeout,
 };
 
@@ -44,7 +45,7 @@ use crate::{
     },
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
-    peer_manager::PeerFeatures,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager},
     protocol::ProtocolId,
     test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
@@ -85,7 +86,7 @@ fn dial_addresses_follow_transport_preference_order() -> Result<(), Box<dyn Erro
 #[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let peer_manager = build_peer_manager(&create_test_peer())?;
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
@@ -116,7 +117,7 @@ async fn smoke() {
     // asserts the emitted events are correct, opens a substream, sends a small message over the substream,
     // receives and checks the message and then disconnects and shuts down.
     let (event_tx, mut event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -214,33 +215,41 @@ async fn smoke() {
     in_stream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, *b"HELLO");
 
+    // Each side persists the other while the connection is established, but the write does not
+    // happen inline with the `PeerConnected` event this test waited on, so poll rather than read
+    // once. This used to be read after `shutdown.trigger()` below, which raced the write against
+    // teardown and made the test flaky on slow machines.
+    let peer2 = find_peer_eventually(&peer_manager1, node_identity2.node_id(), "listener").await;
+    let peer1 = find_peer_eventually(&peer_manager2, node_identity1.node_id(), "dialer").await;
+
+    assert_eq!(&peer1.public_key, node_identity1.public_key());
+    assert_eq!(&peer2.public_key, node_identity2.public_key());
+
     // Disconnect conn1
     conn1.disconnect(Minimized::No, "unit test").await.unwrap();
     // conn2.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();
 
-    let peer2 = peer_manager1
-        .find_by_node_id(node_identity2.node_id())
-        .await
-        .unwrap()
-        .unwrap();
-    let peer1 = peer_manager2
-        .find_by_node_id(node_identity1.node_id())
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(&peer1.public_key, node_identity1.public_key());
-    assert_eq!(&peer2.public_key, node_identity2.public_key());
-
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+/// Wait for `node_id` to appear in `peer_manager`, which the connection handshake writes
+/// asynchronously.
+async fn find_peer_eventually(peer_manager: &PeerManager, node_id: &NodeId, side: &str) -> Peer {
+    for _ in 0..100 {
+        if let Some(peer) = peer_manager.find_by_node_id(node_id).await.unwrap() {
+            return peer;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("{side} never persisted peer {node_id}");
 }
 
 #[tokio::test]
 async fn banned() {
     let (event_tx, mut event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -314,7 +323,7 @@ async fn banned() {
 #[tokio::test]
 async fn excluded_yes() {
     let (event_tx, _event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -383,7 +392,7 @@ async fn excluded_yes() {
 #[tokio::test]
 async fn excluded_no() {
     let (event_tx, _event_rx) = mpsc::channel(10);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
@@ -441,6 +450,72 @@ async fn excluded_no() {
     // Check that the dial failed. We're checking that the dial attempt was never made.
     let res = reply_rx.await.unwrap();
     assert!(res.is_ok());
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn dialer_does_not_wedge_when_connection_manager_stops_draining_events() {
+    // Regression test for the ConnectionManager <-> Dialer deadlock.
+    //
+    // The dialer publishes a PeerConnectFailed event for every failed dial. If that publish is
+    // allowed to block indefinitely on a full event channel, the dialer stops draining its own
+    // request channel — and the ConnectionManager, which is the only consumer of the event channel,
+    // is itself blocked pushing into that request channel. Neither select! can drain the other and
+    // the node stays isolated until it is restarted.
+    //
+    // Here we emulate a ConnectionManager that has stopped consuming events by never reading from
+    // event_rx, and assert the dialer keeps servicing dial requests regardless.
+    const NUM_DIALS: usize = 10;
+
+    // Capacity 1 stands in for the real (32-deep) event channel; it fills on the first dial result.
+    let (event_tx, _event_rx) = mpsc::channel(1);
+    let shutdown = Shutdown::new();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config = NoiseConfig::new(node_identity.clone());
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
+    let (request_tx, request_rx) = mpsc::channel(NUM_DIALS);
+
+    let dialer = Dialer::new(
+        ConnectionManagerConfig::default(),
+        node_identity.clone(),
+        peer_manager,
+        MemoryTransport,
+        noise_config,
+        ConstantBackoff::new(Duration::from_millis(1)),
+        request_rx,
+        event_tx,
+        shutdown.to_signal(),
+    );
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    // Every one of these peers advertises a memory address nothing is listening on, so each dial
+    // fails and produces exactly the event that used to wedge the dialer.
+    let mut replies = Vec::with_capacity(NUM_DIALS);
+    for i in 0..NUM_DIALS {
+        let mut peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        peer.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![format!("/memory/{}", 60000 + i).parse().unwrap()],
+            &PeerAddressSource::Config,
+        );
+        let (reply_tx, reply_rx) = oneshot::channel();
+        request_tx
+            .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+            .await
+            .unwrap();
+        replies.push(reply_rx);
+    }
+
+    // Before the fix the dialer parked on the second event publish and these never resolved.
+    for (i, reply_rx) in replies.into_iter().enumerate() {
+        let result = timeout(Duration::from_secs(60), reply_rx)
+            .await
+            .unwrap_or_else(|_| panic!("dialer stopped servicing requests at dial {i}"))
+            .unwrap();
+        assert!(result.is_err(), "expected dial {i} to an unbound address to fail");
+    }
 
     shutdown.trigger();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();

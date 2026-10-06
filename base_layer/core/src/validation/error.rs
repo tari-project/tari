@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
-use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     BanPeriod,
     BanReason,
@@ -49,6 +48,8 @@ pub enum ValidationError {
     MaturityError,
     #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
     BlockTooLarge { actual_weight: u64, max_weight: u64 },
+    #[error("The block body is {actual_bytes} bytes, above the maximum of {max_bytes} bytes")]
+    BlockBodyTooManyBytes { actual_bytes: usize, max_bytes: usize },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
     #[error("Contains an unknown input")]
@@ -114,20 +115,25 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
-    #[error("Sidechain proof invalid: `{0}`")]
-    SidechainProofInvalid(#[from] SidechainProofValidationError),
-    #[error("Sidechain eviction proof submitted for unregistered validator {validator_pk}")]
-    SidechainEvictionProofValidatorNotFound { validator_pk: String },
-    #[error(
-        "Sidechain eviction proof invalid: given epoch {epoch} is greater than the epoch at tip height {tip_height}"
-    )]
-    SidechainEvictionProofInvalidEpoch { epoch: VnEpoch, tip_height: u64 },
     #[error("Validator node already registered: {public_key}")]
     ValidatorNodeAlreadyRegistered { public_key: String },
     #[error("Block body contains more than one validator node registration for the same validator node: {public_key}")]
     DuplicateValidatorNodeRegistration { public_key: String },
+    #[error("Block body contains more than one validator node exit for the same validator node: {public_key}")]
+    DuplicateValidatorNodeExit { public_key: String },
     #[error("Validator node {public_key} not registered: {details}")]
     ValidatorNodeNotRegistered { public_key: String, details: String },
+    #[error(
+        "Validator node exit {public_key} activation epoch {exit_activation_epoch} does not match the registered \
+         activation epoch {registered_activation_epoch}"
+    )]
+    ValidatorNodeExitActivationEpochMismatch {
+        public_key: String,
+        exit_activation_epoch: VnEpoch,
+        registered_activation_epoch: VnEpoch,
+    },
+    #[error("Validator node exits are not permitted: the maximum number of exits per epoch is zero")]
+    ValidatorNodeExitNotPermitted,
     #[error("Validator registration {public_key} invalid: max epoch {max_epoch} < current epoch {current_epoch}")]
     ValidatorNodeRegistrationMaxEpoch {
         public_key: String,
@@ -167,6 +173,7 @@ impl ValidationError {
             err @ ValidationError::BlockError(_) |
             err @ ValidationError::MaturityError |
             err @ ValidationError::BlockTooLarge { .. } |
+            err @ ValidationError::BlockBodyTooManyBytes { .. } |
             err @ ValidationError::UnknownInputs(_) |
             err @ ValidationError::UnknownInput |
             err @ ValidationError::TransactionError(_) |
@@ -180,6 +187,8 @@ impl ValidationError {
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
+            // A sync peer whose chain contains a block we hold as bad. (Block propagation, where the peer only relays
+            // a hash, maps this to `CommsInterfaceError::KnownBadBlock` instead, which is not a ban.)
             err @ ValidationError::BadBlockFound { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
@@ -189,12 +198,12 @@ impl ValidationError {
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::InvalidSerializedPublicKey(_) |
-            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
-            err @ ValidationError::SidechainProofInvalid(_) |
-            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
             err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
             err @ ValidationError::DuplicateValidatorNodeRegistration { .. } |
+            err @ ValidationError::DuplicateValidatorNodeExit { .. } |
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
+            err @ ValidationError::ValidatorNodeExitActivationEpochMismatch { .. } |
+            err @ ValidationError::ValidatorNodeExitNotPermitted |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
             err @ ValidationError::AggregatedBodyValidationError(_) |
@@ -212,5 +221,45 @@ impl ValidationError {
             ValidationError::HeaderHashMismatch(_) |
             ValidationError::HeaderHeightMismatch(_) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::base_node::{
+        comms_interface::CommsInterfaceError,
+        sync::{BlockHeaderSyncError, BlockSyncError},
+    };
+
+    /// A block we hold as bad gets a sync peer whose chain contains it banned, but not a peer that only relays it
+    #[test]
+    fn a_bad_block_memo_hit_bans_sync_peers_but_not_relaying_peers() {
+        let memo_hit = || ValidationError::BadBlockFound {
+            hash: "hash".to_string(),
+            reason: "reason".to_string(),
+        };
+        let long = Some(BanPeriod::Long);
+        assert_eq!(memo_hit().get_ban_reason().map(|r| r.ban_duration), long);
+        // Header sync
+        assert_eq!(
+            BlockHeaderSyncError::ValidationFailed(memo_hit())
+                .get_ban_reason()
+                .map(|r| r.ban_duration),
+            long
+        );
+        // Block sync
+        assert_eq!(
+            BlockSyncError::ValidationError(memo_hit())
+                .get_ban_reason()
+                .map(|r| r.ban_duration),
+            long
+        );
+        // Block propagation
+        let relayed = CommsInterfaceError::KnownBadBlock {
+            hash: "hash".to_string(),
+            reason: "reason".to_string(),
+        };
+        assert!(relayed.get_ban_reason().is_none());
     }
 }

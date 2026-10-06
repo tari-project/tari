@@ -26,12 +26,19 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
+use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, UncompressedPublicKey};
 use tari_transaction_components::{
+    helpers::borsh::SerializedSize,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
 use tari_utilities::{ByteArray, hex::Hex};
+
+/// Whether a list contains the same item twice
+fn has_duplicates<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(items.len());
+    items.iter().any(|item| !seen.insert(item))
+}
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
@@ -40,6 +47,8 @@ use tari_utilities::{ByteArray, hex::Hex};
 pub struct FeePriority(Vec<u8>);
 
 impl FeePriority {
+    // Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn new(transaction: &Transaction, insert_epoch: u64, weight: u64) -> Result<Self, TransactionError> {
         let fee_per_byte = transaction
             .body
@@ -52,7 +61,7 @@ impl FeePriority {
         // to right and the unconfirmed pool expects the lowest priority to be sorted lowest to highest in the
         // BTreeMap
         let fee_priority = fee_per_byte.to_be_bytes();
-        let age_priority = (u64::MAX - insert_epoch).to_be_bytes();
+        let age_priority = u64::MAX.saturating_sub(insert_epoch).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
         priority
@@ -91,6 +100,23 @@ pub struct PrioritizedTransaction {
     pub priority: FeePriority,
     pub fee_per_byte: u64,
     pub weight: u64,
+    /// The borsh-serialized size of the transaction body in bytes, computed once on insert. Used as an estimate of
+    /// the bytes the transaction adds to a block body.
+    pub body_size: usize,
+    /// The hashes of the outputs this transaction spends, computed once on insert, so that conflict checks during
+    /// block template selection are set lookups rather than hashing
+    pub input_hashes: Vec<HashOutput>,
+    /// The hashes of the outputs this transaction produces, computed once on insert
+    pub output_hashes: Vec<HashOutput>,
+    /// The (compressed) commitments of the outputs this transaction produces, as 32-byte keys, computed once on insert
+    pub output_commitments: Vec<FixedHash>,
+    /// The excess signature scalars of this transaction's kernels (the key of the pool's signature index)
+    pub kernel_signatures: Vec<PrivateKey>,
+    /// The (compressed) excesses of this transaction's kernels, as 32-byte keys, computed once on insert
+    pub kernel_excesses: Vec<FixedHash>,
+    /// Whether this transaction on its own spends an output twice, or repeats an output, commitment, kernel signature
+    /// or kernel excess (computed once on insert): it can never be in a valid block
+    pub has_internal_duplicates: bool,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
 
@@ -102,6 +128,42 @@ impl PrioritizedTransaction {
         dependent_outputs: Option<Vec<HashOutput>>,
     ) -> Result<PrioritizedTransaction, TransactionError> {
         let weight = transaction.calculate_weight(weighting)?;
+        let body_size = transaction
+            .body
+            .get_serialized_size()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let input_hashes: Vec<HashOutput> = transaction
+            .body
+            .inputs()
+            .iter()
+            .map(|input| input.output_hash())
+            .collect();
+        let output_hashes: Vec<HashOutput> = transaction.body.outputs().iter().map(|output| output.hash()).collect();
+        let output_commitments = transaction
+            .body
+            .outputs()
+            .iter()
+            .map(|output| FixedHash::try_from(output.commitment.as_bytes()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let kernel_signatures: Vec<PrivateKey> = transaction
+            .body
+            .kernels()
+            .iter()
+            .map(|kernel| kernel.excess_sig.get_signature().clone())
+            .collect();
+        let kernel_excesses = transaction
+            .body
+            .kernels()
+            .iter()
+            .map(|kernel| FixedHash::try_from(kernel.excess.as_bytes()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+        let has_internal_duplicates = has_duplicates(&input_hashes) ||
+            has_duplicates(&output_hashes) ||
+            has_duplicates(&output_commitments) ||
+            has_duplicates(&kernel_signatures) ||
+            has_duplicates(&kernel_excesses);
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -117,6 +179,13 @@ impl PrioritizedTransaction {
                 .checked_div(weight)
                 .ok_or(TransactionError::ZeroWeight)?,
             weight,
+            body_size,
+            input_hashes,
+            output_hashes,
+            output_commitments,
+            kernel_signatures,
+            kernel_excesses,
+            has_internal_duplicates,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
         })
@@ -136,6 +205,8 @@ impl Display for PrioritizedTransaction {
 
 #[cfg(test)]
 mod tests {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
     use tari_transaction_components::{
         key_manager::KeyManager,
         tari_amount::{MicroMinotari, T, uT},
@@ -212,6 +283,28 @@ mod tests {
         ) {
             Ok(_) => panic!("Empty transaction should not be valid"),
             Err(e) => assert_eq!(e, TransactionError::ZeroWeight),
+        }
+    }
+
+    #[tokio::test]
+    async fn priority_is_by_real_weight() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let weighting = TransactionWeight::latest();
+        for (inputs, outputs) in [(1, 1), (2, 1), (5, 2), (12, 1), (40, 1)] {
+            let (tx, _, _) = create_tx(10 * T, 5 * uT, 0, inputs, 0, outputs, Default::default(), &key_manager)
+                .expect("Failed to get tx");
+            let weight = tx.calculate_weight(&weighting).unwrap();
+            let fee = tx.body.get_total_fee().unwrap().as_u64();
+            let ptx = PrioritizedTransaction::new(0, &weighting, Arc::new(tx), None).unwrap();
+            // Unchanged: priority and fee per gram use the real weight, however byte-heavy the transaction is
+            assert_eq!(ptx.weight, weight);
+            assert_eq!(
+                ptx.fee_per_byte,
+                fee * 1000 / weight,
+                "{inputs} input(s), {outputs} output(s)"
+            );
+            let expected = FeePriority::new(&ptx.transaction, 0, weight).unwrap();
+            assert_eq!(ptx.priority.0.get(..8), expected.0.get(..8));
         }
     }
 }

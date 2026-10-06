@@ -162,7 +162,10 @@ where
                     }
                 },
                 Err(err) => {
-                    current_address_idx = (current_address_idx + 1) % self.addresses.len();
+                    current_address_idx = current_address_idx
+                        .saturating_add(1)
+                        .checked_rem(self.addresses.len())
+                        .unwrap_or(0);
                     self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                     warn!(
                         target: LOG_TARGET,

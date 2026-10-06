@@ -1136,7 +1136,8 @@ fn search_kernels_request_schema() -> Value {
                 "items": {
                     "type": "object"
                 },
-                "description": "Kernel signatures to search for"
+                "maxItems": 512,
+                "description": "Kernel signatures to search for (at most 512 per request)"
             }
         },
         "required": ["signatures"],
@@ -1154,7 +1155,8 @@ fn search_utxos_request_schema() -> Value {
                     "type": "string",
                     "format": "byte"
                 },
-                "description": "UTXO commitments to search for"
+                "maxItems": 512,
+                "description": "UTXO commitments to search for (at most 512 per request)"
             }
         },
         "required": ["commitments"],
@@ -1172,7 +1174,8 @@ fn fetch_matching_utxos_request_schema() -> Value {
                     "type": "string",
                     "format": "byte"
                 },
-                "description": "UTXO hashes to fetch"
+                "maxItems": 512,
+                "description": "UTXO hashes to fetch (at most 512 per request)"
             }
         },
         "required": ["hashes"],

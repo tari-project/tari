@@ -134,7 +134,6 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetSideChainUtxosStream = mpsc::Receiver<Result<tari_rpc::GetSideChainUtxosResponse, Status>>;
-    type GetTemplateRegistrationsStream = mpsc::Receiver<Result<tari_rpc::GetTemplateRegistrationResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
@@ -398,13 +397,6 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
         &self,
         _request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        Err(self.get_not_available_status())
-    }
-
-    async fn get_template_registrations(
-        &self,
-        _request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
-    ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
         Err(self.get_not_available_status())
     }
 

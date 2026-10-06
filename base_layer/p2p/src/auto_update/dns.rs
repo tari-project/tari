@@ -99,7 +99,7 @@ impl DnsSoftwareUpdate {
         match best_update {
             Some(best_update) => {
                 // Check that a majority of URLs agree
-                let majority = self.config.update_uris.len() / 2 + 1;
+                let majority = (self.config.update_uris.len() / 2).saturating_add(1);
                 let count = records
                     .iter()
                     .flatten()

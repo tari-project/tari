@@ -33,7 +33,6 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_max_size::MaxSizeBytes;
-use tari_sidechain::EvictionProof;
 
 use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transaction_components::{
@@ -46,7 +45,12 @@ use crate::transaction_components::{
     side_chain::SideChainFeature,
 };
 
-/// Coinbase outputs are allowed to have metadata, but it has the following length limit
+/// Coinbase outputs are allowed to have metadata, but it has the following length limit.
+///
+/// The bound (258 bytes) is consensus critical: it is applied at decode time, so changing it changes which blocks and
+/// transactions a node can decode at all and is a flag-day (hard) fork.
+/// It must stay `>=` every network's `coinbase_output_features_extra_max_length`, which is the (smaller) validation
+/// rule; see `decode_bounds_cover_every_consensus_limit` in `consensus_constants.rs`.
 pub type CoinBaseExtra = MaxSizeBytes<258>;
 
 /// Options for UTXO's
@@ -148,24 +152,6 @@ impl OutputFeatures {
         }
     }
 
-    /// Creates template registration output features
-    pub fn for_template_registration(
-        template_registration: CodeTemplateRegistration,
-        sidechain_deployment_key: Option<&PrivateKey>,
-    ) -> OutputFeatures {
-        let sidechain_id =
-            sidechain_deployment_key.map(|k| SideChainId::sign(k, template_registration.sidechain_id_message()));
-
-        OutputFeatures {
-            output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::CodeTemplateRegistration(template_registration),
-                sidechain_id,
-            }),
-            ..Default::default()
-        }
-    }
-
     pub fn for_validator_node_registration(
         signature: ValidatorNodeSignature,
         claim_public_key: CompressedPublicKey,
@@ -187,31 +173,16 @@ impl OutputFeatures {
     pub fn for_validator_node_exit(
         signature: ValidatorNodeSignature,
         sidechain_deployment_key: Option<&PrivateKey>,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
     ) -> OutputFeatures {
-        let exit = ValidatorNodeExit::new(signature, max_epoch);
+        let exit = ValidatorNodeExit::new(signature, activation_epoch, max_epoch);
         let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
 
         OutputFeatures {
             output_type: OutputType::ValidatorNodeExit,
             sidechain_feature: Some(SideChainFeature {
                 data: SideChainFeatureData::ValidatorNodeExit(exit),
-                sidechain_id,
-            }),
-            ..Default::default()
-        }
-    }
-
-    pub fn for_validator_node_eviction(
-        eviction_proof: EvictionProof,
-        sidechain_deployment_key: Option<&PrivateKey>,
-    ) -> OutputFeatures {
-        let sidechain_id =
-            sidechain_deployment_key.map(|k| SideChainId::sign(k, eviction_proof.sidechain_id_message()));
-        OutputFeatures {
-            output_type: OutputType::SidechainProof,
-            sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
                 sidechain_id,
             }),
             ..Default::default()

@@ -191,6 +191,27 @@ listener_self_liveness_check_interval = 15
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
 #cull_oldest_peer_rpc_connection_on_full = true
+# How long, in seconds, an RPC session may sit without receiving a request before the server closes it and reclaims its
+# slot in `rpc_max_simultaneous_sessions`. Time spent servicing a request does not count towards this. A peer that
+# disappears without closing its substream would otherwise hold its session forever. (default value = 600).
+#rpc_idle_session_timeout = 600
+# The longest deadline, in seconds, the RPC server will honour from a client. The deadline bounds a single service call
+# and the gap between two messages of a streaming response, so without a ceiling a peer can switch off those timeouts
+# entirely. Requests asking for more are clamped to this, not rejected; a request that then runs past it gets a Timeout
+# status. Values below the 1 second minimum client deadline are floored at it. (default value = 600).
+#rpc_maximum_client_deadline = 600
+
+# Enable proactive (recovery) dialing in the comms connectivity manager. The DHT peer pool owns the steady-state
+# connection count; the proactive dialer only runs when this node has fewer than `proactive_dialing_floor`
+# connections, i.e. when the pool cannot recover unaided (cold start, total isolation, seed re-dial). Setting this
+# to false is the kill switch for that subsystem. (default value = true)
+#proactive_dialing_enabled = true
+# The connection count below which the proactive dialer is allowed to run. This is a floor, not a target: it must
+# stay strictly below the DHT peer pool size (`dht.num_neighbouring_nodes` + `dht.num_random_nodes`, 12 by
+# default) or the dialer becomes a second steady-state connection-count controller fighting the pool on the same
+# refresh tick. A floor set at or above the pool size is clamped below it at startup, with a warning.
+# (default value = 8)
+#proactive_dialing_floor = 8
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -308,6 +329,17 @@ database_url = "data/base_node/dht.db"
 # making sybil attacks costly. This setting does not guarantee this ratio is maintained.
 # Currently, it only emits a warning if the ratio is below this setting. Default: 0.1 (10%)
 #connectivity.minimum_desired_tcpv4_node_ratio = 0.1
+# The peer pool counts as starved while connected outbound-dialled pool peers are below this fraction of the pool
+# target (num_neighbouring_nodes + num_random_nodes). Inbound peers do not count. Default: 0.5
+#connectivity.pool_starved_threshold_ratio = 0.5
+# The number of consecutive update_interval ticks the pool must be starved before a peer rebootstrap (re-resolve
+# seeds, sync peers from seeds and connected peers) is requested. Default: 3
+#connectivity.pool_starved_ticks = 3
+# The first rebootstrap fires immediately. While the pool stays starved, the cooldown between rebootstraps starts
+# at rebootstrap_cooldown_min (at least 60) and doubles each time up to rebootstrap_cooldown_max, +/-25% jitter.
+# Default: 10 mins and 2 hours
+#connectivity.rebootstrap_cooldown_min = 600 # 10 * 60
+#connectivity.rebootstrap_cooldown_max = 7_200 # 2 * 60 * 60
 
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
@@ -352,6 +384,12 @@ database_url = "data/base_node/dht.db"
 #network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
+# How long to remember that peers were synced from a connected peer before syncing from it again when it
+# reconnects. (Default: 1 hour)
+#network_discovery.on_connect_resync_ttl = 3_600 # 60 * 60
+# The maximum number of connected peers to request peers from during a rebootstrap, outbound ones first. At most 20.
+# (Default: 5)
+#network_discovery.rebootstrap_connected_peers = 5
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 #ban_duration = 21_600 # 6 * 60 * 60

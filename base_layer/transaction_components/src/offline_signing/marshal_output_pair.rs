@@ -27,14 +27,14 @@ use crate::{transaction_builder::OutputPair, transaction_components::Transaction
 pub struct MarshalOutputPair {
     pub output_pair: OutputPair,
     pub encrypted_kernel_nonce: String,
-    pub encrypted_sender_offset_key: Option<String>,
+    pub encrypted_sender_offset_key: String,
     pub encrypted_output_commitment_mask: String,
 }
 
 impl MarshalOutputPair {
     pub fn marshal(output_pair: OutputPair) -> Result<Self, TransactionError> {
         let encrypted_kernel_nonce = output_pair.kernel_nonce.to_string();
-        let encrypted_sender_offset_key = output_pair.sender_offset_key_id.as_ref().map(|key| key.to_string());
+        let encrypted_sender_offset_key = output_pair.sender_offset_key_id.to_string();
         let encrypted_output_commitment_mask = output_pair.output.commitment_mask_key_id().to_string();
 
         Ok(MarshalOutputPair {

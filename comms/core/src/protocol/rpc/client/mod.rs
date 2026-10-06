@@ -52,10 +52,10 @@ use futures::{
 };
 use log::*;
 use prost::Message;
-use tari_shutdown::{Shutdown, ShutdownSignal, oneshot_trigger::OneshotSignal};
+use tari_shutdown::{Shutdown, ShutdownReason, ShutdownSignal, oneshot_trigger::OneshotSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{Mutex, mpsc, oneshot, watch},
+    sync::{mpsc, oneshot, watch},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -325,7 +325,7 @@ pub struct RpcClientConfig {
 impl RpcClientConfig {
     /// Returns the timeout including the configured grace period
     pub fn timeout_with_grace_period(&self) -> Option<Duration> {
-        self.deadline.map(|d| d + self.deadline_grace_period)
+        self.deadline.map(|d| d.saturating_add(self.deadline_grace_period))
     }
 
     /// Returns the handshake timeout
@@ -348,7 +348,8 @@ impl Default for RpcClientConfig {
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
     last_request_latency_rx: watch::Receiver<Option<Duration>>,
-    shutdown: Arc<Mutex<Shutdown>>,
+    /// Shared by every clone: `close` on any clone shuts the session down, as does dropping the last clone.
+    shutdown: Shutdown,
 }
 
 impl ClientConnector {
@@ -360,13 +361,18 @@ impl ClientConnector {
         Self {
             inner: sender,
             last_request_latency_rx,
-            shutdown: Arc::new(Mutex::new(shutdown)),
+            shutdown,
         }
     }
 
+    /// Close the RPC session immediately. Any in-flight server stream is cut off and its receiver sees the end of the
+    /// stream.
+    ///
+    /// This differs from dropping the last `ClientConnector`/`RpcClient` clone: a drop lets in-flight streams run
+    /// until the server ends them (a streaming response holds no client clone, so callers commonly drop the client
+    /// while still reading the stream), and only then stops the worker.
     pub async fn close(&mut self) {
-        let mut lock = self.shutdown.lock().await;
-        lock.trigger();
+        self.shutdown.trigger();
     }
 
     pub fn get_last_request_latency(&mut self) -> Option<Duration> {
@@ -430,6 +436,9 @@ struct RpcClientWorker<TSubstream> {
     next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
     protocol_id: ProtocolId,
+    /// Resolves on `ClientConnector::close` (`ShutdownReason::Triggered`) or when the last client handle drops
+    /// (`ShutdownReason::Dropped`). Both stop the worker between requests, but only `Triggered` interrupts an
+    /// in-flight server stream.
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
     session_state: Arc<AtomicBool>,
@@ -727,12 +736,18 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let mut terminate_signal_fut = terminate_signal
             .map(|f| f.boxed())
             .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
+        // Watched while waiting for each frame, so an explicit `close()` interrupts a stream that is waiting on a slow
+        // frame rather than taking effect only once the next frame arrives.
+        let mut close_signal = self.shutdown_signal.clone();
         loop {
-            if self.shutdown_signal.is_triggered() {
+            // Only an explicit `close()` cuts a stream short. When the last client handle is dropped
+            // (`ShutdownReason::Dropped`) the stream is still being read by its `ClientStreaming` receiver, so let it
+            // finish; the main loop's select on `shutdown_signal` stops the worker afterwards.
+            if self.shutdown_signal.reason() == Some(ShutdownReason::Triggered) {
                 debug!(
                     target: LOG_TARGET,
-                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream \
-                     early",
+                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector explicitly closed. Quitting \
+                     stream early",
                     self.node_id,
                     self.protocol_name(),
                     self.stream_id(),
@@ -749,9 +764,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 tokio::pin!(resp_fut);
                 let closed_fut = response_tx.closed();
                 tokio::pin!(closed_fut);
+                // Resolves only for an explicit `close()`. A `Dropped` resolution must not interrupt the stream (see
+                // above), so in that case this stays pending and the stream is read to the end.
+                let explicit_close_fut = async {
+                    (&mut close_signal).await;
+                    if close_signal.reason() != Some(ShutdownReason::Triggered) {
+                        future::pending::<()>().await;
+                    }
+                };
 
                 tokio::select! {
                     biased;
+                    _ = explicit_close_fut => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "(stream={stream_id}) Client connector explicitly closed while waiting for a response to \
+                             request {request_id}. Quitting stream early",
+                        );
+                        break;
+                    }
                     node_id = &mut terminate_signal_fut => {
                         debug!(
                             target: LOG_TARGET,
@@ -778,7 +809,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
                     if let Some(t) = time_to_first_msg {
-                        let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
+                        let _ = self
+                            .last_request_latency_tx
+                            .send(Some(partial_latency.saturating_add(t)));
                     }
                     trace!(
                         target: LOG_TARGET,
@@ -902,7 +935,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let protocol_name = self.protocol_name().to_string();
 
         let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
-        let mut num_ignored = 0;
+        let mut num_ignored = 0usize;
         let resp = loop {
             match reader.read_response().await {
                 Ok(resp) => {
@@ -925,7 +958,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         target: LOG_TARGET,
                         "Possible delayed response received for previous request {actual}"
                     );
-                    num_ignored += 1;
+                    num_ignored = num_ignored.saturating_add(1);
 
                     // Be lenient for a number of messages that may have been buffered to come through for the previous
                     // request.
@@ -948,8 +981,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         // We dont want request id of zero because that is the default for varint on protobuf, so it is possible for the
         // entire message to be zero bytes (WriteZero IO error)
         if next_id == 0 {
-            next_id += 1;
-            self.next_request_id += 1;
+            next_id = next_id.wrapping_add(1);
+            self.next_request_id = self.next_request_id.wrapping_add(1);
         }
         next_id
     }

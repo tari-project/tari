@@ -27,16 +27,16 @@
 //! GetNewBlockTemplateTool and expand mining capabilities.
 
 use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
     GetNewBlockTemplateWithCoinbasesRequest,
     NewBlockCoinbase,
     NewBlockTemplateRequest,
     PowAlgo,
+    pow_algo::PowAlgos,
 };
 use minotari_mcp_common::{McpError, McpResult, McpTool};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Request};
+use serde_json::{Value, json};
+use tonic::{Request, transport::Channel};
 
 /// Tool for getting a new block template (existing implementation, enhanced)
 #[derive(Clone)]
@@ -96,7 +96,7 @@ impl McpTool for GetNewBlockTemplateTool {
             _ => {
                 return Err(McpError::invalid_request(
                     "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
-                ))
+                ));
             },
         };
 
@@ -297,7 +297,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             _ => {
                 return Err(McpError::invalid_request(
                     "Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string(),
-                ))
+                ));
             },
         };
 
@@ -535,11 +535,8 @@ impl McpTool for MiningAnalysisTool {
                         };
 
                         // Calculate estimated time to find block
-                        let time_to_block = if hash_rate > 0 {
-                            miner_data.target_difficulty / hash_rate
-                        } else {
-                            0
-                        };
+                        let time_to_block = miner_data.target_difficulty.checked_div(hash_rate).unwrap_or(0);
+                        let total_reward = miner_data.reward.saturating_add(miner_data.total_fees);
 
                         algo_analysis.push(json!({
                             "algorithm": algo_name,
@@ -547,15 +544,11 @@ impl McpTool for MiningAnalysisTool {
                             "target_difficulty": miner_data.target_difficulty,
                             "block_reward": miner_data.reward,
                             "total_fees": miner_data.total_fees,
-                            "total_reward": miner_data.reward + miner_data.total_fees,
+                            "total_reward": total_reward,
                             "estimated_time_to_block_seconds": time_to_block,
-                            "estimated_blocks_per_day": if time_to_block > 0 {
-                                86400 / time_to_block
-                            } else {
-                                0
-                            },
+                            "estimated_blocks_per_day": 86400u64.checked_div(time_to_block).unwrap_or(0),
                             "profitability_score": if miner_data.target_difficulty > 0 {
-                                ((miner_data.reward + miner_data.total_fees) as f64 / miner_data.target_difficulty as f64 * 1000000.0).round()
+                                (total_reward as f64 / miner_data.target_difficulty as f64 * 1000000.0).round()
                             } else {
                                 0.0
                             },

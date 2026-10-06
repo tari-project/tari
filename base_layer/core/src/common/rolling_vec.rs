@@ -102,7 +102,7 @@ impl<T> Extend<T> for RollingVec<T> {
         let skip = if lower > self.capacity() {
             // If the iterator will emit more than the capacity, skip over the first elements that will be pushed out of
             // the rolling window
-            lower - self.capacity()
+            lower.saturating_sub(self.capacity())
         } else {
             0
         };

@@ -29,16 +29,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 // Import the actual gRPC clients
-use minotari_node_grpc_client::{grpc::Empty, BaseNodeGrpcClient};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
 use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
-use serde_json::{json, Value};
-use tonic::{transport::Channel, Status};
+use serde_json::{Value, json};
+use tonic::{Status, transport::Channel};
 
 use crate::{
-    grpc_executor::{NodeGrpcClient, WalletGrpcClient},
-    parameter_converter::ConversionRegistry,
     McpError,
     McpResult,
+    grpc_executor::{NodeGrpcClient, WalletGrpcClient},
+    parameter_converter::ConversionRegistry,
 };
 
 /// Add conversion from tonic::Status to McpError

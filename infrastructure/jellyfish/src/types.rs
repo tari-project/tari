@@ -108,15 +108,86 @@ pub fn jmt_node_hash2(d1: &TreeHash, d2: &TreeHash) -> TreeHash {
     jmt_node_hasher().chain(d1).chain(d2).finalize_into_array().into()
 }
 
+// Leaf and internal node hashes use distinct labels so that a leaf can never be passed off as an internal node (or
+// vice versa) in a proof, since both hash two 32-byte values.
+fn jmt_leaf_hash(key: &LeafKey, value_hash: &TreeHash) -> TreeHash {
+    tari_hasher32::<JmtHashDomain>("Leaf")
+        .chain(&key.bytes)
+        .chain(value_hash)
+        .finalize_into_array()
+        .into()
+}
+
+fn jmt_internal_hash(left: &TreeHash, right: &TreeHash) -> TreeHash {
+    tari_hasher32::<JmtHashDomain>("Internal")
+        .chain(left)
+        .chain(right)
+        .finalize_into_array()
+        .into()
+}
+
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/proof/definition.rs#L182
+/// The maximum number of siblings in a proof, i.e. the bit length of a [`LeafKey`].
+pub const MAX_PROOF_SIBLINGS: usize = 256;
+
 /// A more detailed version of `SparseMerkleProof` with the only difference that all the leaf
 /// siblings are explicitly set as `SparseMerkleLeafNode` instead of its hash value.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize)]
 pub struct SparseMerkleProofExt {
     leaf: Option<SparseMerkleLeafNode>,
     /// All siblings in this proof, including the default ones. Siblings are ordered from the bottom
     /// level to the root level.
+    #[serde(deserialize_with = "deserialize_bounded_siblings")]
     siblings: Vec<NodeInProof>,
+}
+
+// Rejects oversized proofs as soon as the length is read, rather than decoding every sibling and failing in `verify`.
+impl BorshDeserialize for SparseMerkleProofExt {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let leaf = Option::<SparseMerkleLeafNode>::deserialize_reader(reader)?;
+        let len = usize::try_from(u32::deserialize_reader(reader)?)
+            .map_err(|_| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, "sibling count overflow"))?;
+        if len > MAX_PROOF_SIBLINGS {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                format!("SparseMerkleProofExt has {len} siblings, max is {MAX_PROOF_SIBLINGS}"),
+            ));
+        }
+        let mut siblings = Vec::with_capacity(len);
+        for _ in 0..len {
+            siblings.push(NodeInProof::deserialize_reader(reader)?);
+        }
+        Ok(Self { leaf, siblings })
+    }
+}
+
+fn deserialize_bounded_siblings<'de, D>(deserializer: D) -> Result<Vec<NodeInProof>, D::Error>
+where D: serde::Deserializer<'de> {
+    struct BoundedVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for BoundedVisitor {
+        type Value = Vec<NodeInProof>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "a sequence of at most {MAX_PROOF_SIBLINGS} siblings")
+        }
+
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut siblings = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(MAX_PROOF_SIBLINGS));
+            while let Some(sibling) = seq.next_element()? {
+                if siblings.len() == MAX_PROOF_SIBLINGS {
+                    return Err(serde::de::Error::invalid_length(
+                        MAX_PROOF_SIBLINGS.saturating_add(1),
+                        &self,
+                    ));
+                }
+                siblings.push(sibling);
+            }
+            Ok(siblings)
+        }
+    }
+
+    deserializer.deserialize_seq(BoundedVisitor)
 }
 
 impl SparseMerkleProofExt {
@@ -165,7 +236,7 @@ impl SparseMerkleProofExt {
         element_key: &LeafKey,
         element_value: Option<&TreeHash>,
     ) -> Result<(), JmtProofVerifyError> {
-        if self.siblings.len() > 256 {
+        if self.siblings.len() > MAX_PROOF_SIBLINGS {
             return Err(JmtProofVerifyError::TooManySiblings {
                 num_siblings: self.siblings.len(),
             });
@@ -216,7 +287,12 @@ impl SparseMerkleProofExt {
         let actual_root_hash = self
             .siblings
             .iter()
-            .zip(element_key.iter_bits().rev().skip(256 - self.siblings.len()))
+            .zip(
+                element_key
+                    .iter_bits()
+                    .rev()
+                    .skip(MAX_PROOF_SIBLINGS.saturating_sub(self.siblings.len())),
+            )
             .fold(current_hash, |hash, (sibling_node, bit)| {
                 if bit {
                     SparseMerkleInternalNode::new(sibling_node.hash(), hash).hash()
@@ -372,7 +448,7 @@ impl SparseMerkleLeafNode {
     }
 
     pub fn hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.key.bytes, &self.value_hash)
+        jmt_leaf_hash(&self.key, &self.value_hash)
     }
 }
 
@@ -390,7 +466,7 @@ impl SparseMerkleInternalNode {
     }
 
     fn hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.left_child, &self.right_child)
+        jmt_internal_hash(&self.left_child, &self.right_child)
     }
 }
 
@@ -420,14 +496,14 @@ impl<'a> LeafKeyBitIterator<'a> {
     fn new(leaf_key: LeafKeyRef<'a>) -> Self {
         LeafKeyBitIterator {
             leaf_key_bytes: leaf_key.bytes,
-            pos: (0..leaf_key.bytes.len() * 8),
+            pos: (0..leaf_key.bytes.len().saturating_mul(8)),
         }
     }
 
     /// Returns the `index`-th bit in the bytes.
     fn get_bit(&self, index: usize) -> Option<bool> {
         let pos = index / 8;
-        let bit = 7 - index % 8;
+        let bit = 7usize.saturating_sub(index % 8);
         Some((self.leaf_key_bytes.get(pos)? >> bit) & 1 != 0)
     }
 }
@@ -483,9 +559,19 @@ impl IteratedLeafKey for LeafKeyRef<'_> {
 pub type Version = u64;
 
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/nibble/mod.rs#L20
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct Nibble(u8);
+
+impl<'de> Deserialize<'de> for Nibble {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let nibble = <u8 as Deserialize>::deserialize(deserializer)?;
+        if nibble >= 16 {
+            return Err(serde::de::Error::custom(format!("Nibble out of range: {nibble}")));
+        }
+        Ok(Self(nibble))
+    }
+}
 
 impl From<u8> for Nibble {
     fn from(nibble: u8) -> Self {
@@ -509,6 +595,7 @@ impl fmt::LowerHex for Nibble {
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/nibble/nibble_path/mod.rs#L22
 /// NibblePath defines a path in Merkle tree in the unit of nibble (4 bits).
 #[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(try_from = "NibblePathRaw")]
 pub struct NibblePath {
     /// Indicates the total number of nibbles in bytes. Either `bytes.len() * 2 - 1` or
     /// `bytes.len() * 2`.
@@ -518,6 +605,30 @@ pub struct NibblePath {
     /// The underlying bytes that stores the path, 2 nibbles per byte. If the number of nibbles is
     /// odd, the second half of the last byte must be 0.
     bytes: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct NibblePathRaw {
+    num_nibbles: usize,
+    bytes: Vec<u8>,
+}
+
+impl TryFrom<NibblePathRaw> for NibblePath {
+    type Error = String;
+
+    fn try_from(raw: NibblePathRaw) -> Result<Self, Self::Error> {
+        let NibblePathRaw { num_nibbles, bytes } = raw;
+        if num_nibbles.div_ceil(2) != bytes.len() {
+            return Err(format!(
+                "NibblePath has {num_nibbles} nibbles but {} bytes",
+                bytes.len()
+            ));
+        }
+        if !num_nibbles.is_multiple_of(2) && bytes.last().is_some_and(|b| b & 0x0F != 0) {
+            return Err("NibblePath with odd number of nibbles must have a zero last nibble".to_string());
+        }
+        Ok(Self { num_nibbles, bytes })
+    }
 }
 
 /// Supports debug format by concatenating nibbles literally. For example, [0x12, 0xa0] with 3
@@ -559,7 +670,7 @@ impl FromIterator<Nibble> for NibblePath {
 impl NibblePath {
     /// Creates a new `NibblePath` from a vector of bytes assuming each byte has 2 nibbles.
     pub fn new_even(bytes: Vec<u8>) -> Self {
-        let num_nibbles = bytes.len() * 2;
+        let num_nibbles = bytes.len().saturating_mul(2);
         NibblePath { num_nibbles, bytes }
     }
 
@@ -570,7 +681,7 @@ impl NibblePath {
             0,
             "Last nibble must be 0."
         );
-        let num_nibbles = bytes.len() * 2 - 1;
+        let num_nibbles = bytes.len().saturating_mul(2).saturating_sub(1);
         NibblePath { num_nibbles, bytes }
     }
 
@@ -581,7 +692,7 @@ impl NibblePath {
         } else {
             *self.bytes.get_mut(self.num_nibbles / 2).expect("Should exist") |= u8::from(nibble);
         }
-        self.num_nibbles += 1;
+        self.num_nibbles = self.num_nibbles.saturating_add(1);
     }
 
     /// Pops a nibble from the end of the nibble path.
@@ -596,7 +707,7 @@ impl NibblePath {
             self.bytes.pop().map(|byte| Nibble::from(byte >> 4))
         };
         if poped_nibble.is_some() {
-            self.num_nibbles -= 1;
+            self.num_nibbles = self.num_nibbles.saturating_sub(1);
         }
         poped_nibble
     }
@@ -614,11 +725,11 @@ impl NibblePath {
 
     /// Get the i-th bit.
     fn get_bit(&self, i: usize) -> Option<bool> {
-        if i < self.num_nibbles * 4 {
+        if i >= self.num_nibbles.saturating_mul(4) {
             return None;
         }
         let pos = i / 8;
-        let bit = 7 - i % 8;
+        let bit = 7usize.saturating_sub(i % 8);
         Some(((self.bytes.get(pos)? >> bit) & 1) != 0)
     }
 
@@ -633,7 +744,7 @@ impl NibblePath {
     pub fn bits(&self) -> NibbleBitIterator<'_> {
         NibbleBitIterator {
             nibble_path: self,
-            pos: (0..self.num_nibbles * 4),
+            pos: (0..self.num_nibbles.saturating_mul(4)),
         }
     }
 
@@ -771,7 +882,7 @@ impl<'a> NibbleIterator<'a> {
     pub fn bits(&self) -> NibbleBitIterator<'a> {
         NibbleBitIterator {
             nibble_path: self.nibble_path,
-            pos: (self.pos.start * 4..self.pos.end * 4),
+            pos: (self.pos.start.saturating_mul(4)..self.pos.end.saturating_mul(4)),
         }
     }
 
@@ -784,7 +895,7 @@ impl<'a> NibbleIterator<'a> {
     /// Get the number of nibbles that this iterator covers.
     pub fn num_nibbles(&self) -> usize {
         assert!(self.start <= self.pos.end); // invariant
-        self.pos.end - self.start
+        self.pos.end.saturating_sub(self.start)
     }
 
     /// Return `true` if the iteration is over.
@@ -939,6 +1050,7 @@ pub struct Child {
 
 impl Child {
     pub fn new(hash: TreeHash, version: Version, node_type: NodeType) -> Self {
+        debug_assert!(!matches!(node_type, NodeType::Null), "Child cannot be Null");
         Self {
             hash,
             version,
@@ -954,7 +1066,8 @@ impl Child {
         match self.node_type {
             NodeType::Leaf => 1,
             NodeType::Internal { leaf_count } => leaf_count,
-            NodeType::Null => unreachable!("Child cannot be Null"),
+            // Rejected on deserialization and never constructed by the tree
+            NodeType::Null => 0,
         }
     }
 }
@@ -968,6 +1081,7 @@ pub(crate) type Children = IndexMap<Nibble, Child>;
 /// Though we choose the same internal node structure as that of Patricia Merkle tree, the root hash
 /// computation logic is similar to a 4-level sparse Merkle tree except for some customizations.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "InternalNodeRaw")]
 pub struct InternalNode {
     /// Up to 16 children.
     children: Children,
@@ -975,11 +1089,46 @@ pub struct InternalNode {
     leaf_count: usize,
 }
 
+#[derive(Deserialize)]
+struct InternalNodeRaw {
+    children: Children,
+    leaf_count: usize,
+}
+
+impl TryFrom<InternalNodeRaw> for InternalNode {
+    type Error = String;
+
+    fn try_from(raw: InternalNodeRaw) -> Result<Self, Self::Error> {
+        let InternalNodeRaw {
+            mut children,
+            leaf_count,
+        } = raw;
+        let mut expected_leaf_count = 0usize;
+        for (nibble, child) in &children {
+            if matches!(child.node_type, NodeType::Null) {
+                return Err(format!("InternalNode child {nibble:x} is Null"));
+            }
+            expected_leaf_count = expected_leaf_count
+                .checked_add(child.leaf_count())
+                .ok_or("InternalNode leaf count overflow")?;
+        }
+        if leaf_count != expected_leaf_count {
+            return Err(format!(
+                "InternalNode leaf count {leaf_count} does not match children leaf count {expected_leaf_count}"
+            ));
+        }
+        children.sort_keys();
+        Ok(Self { children, leaf_count })
+    }
+}
+
 impl InternalNode {
     /// Creates a new Internal node.
     pub fn new(mut children: Children) -> Self {
         children.sort_keys();
-        let leaf_count = children.values().map(Child::leaf_count).sum();
+        let leaf_count = children
+            .values()
+            .fold(0usize, |acc, child| acc.saturating_add(child.leaf_count()));
         Self { children, leaf_count }
     }
 
@@ -1038,11 +1187,11 @@ impl InternalNode {
     /// Given a range [start, start + width), returns the sub-bitmap of that range.
     fn range_bitmaps(start: u8, width: u8, bitmaps: (u16, u16)) -> (u16, u16) {
         assert!(start < 16 && width.count_ones() == 1 && start.is_multiple_of(width));
-        assert!(width <= 16 && (start + width) <= 16);
+        assert!(width <= 16 && start.saturating_add(width) <= 16);
         // A range with `start == 8` and `width == 4` will generate a mask 0b0000111100000000.
         // use as converting to smaller integer types when 'width == 16'
         #[allow(clippy::cast_possible_truncation)]
-        let mask = (((1u32 << width) - 1) << start) as u16;
+        let mask = ((1u32 << width).saturating_sub(1) << start) as u16;
         (bitmaps.0 & mask, bitmaps.1 & mask)
     }
 
@@ -1063,7 +1212,7 @@ impl InternalNode {
         } else {
             let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
             let right_child = self.merkle_hash(
-                start + width / 2,
+                start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
             );
@@ -1094,11 +1243,9 @@ impl InternalNode {
             if matches!(only_child.node_type, NodeType::Leaf) {
                 let only_child_node_key = node_key.gen_child_node_key(only_child.version, only_child_index);
                 match tree_reader.get_node(&only_child_node_key)? {
-                    Node::Internal(_) => {
-                        unreachable!("Corrupted internal node: in-memory leaf child is internal node on disk")
-                    },
                     Node::Leaf(leaf_node) => NodeInProof::Leaf(SparseMerkleLeafNode::from(leaf_node)),
-                    Node::Null => unreachable!("Child cannot be Null"),
+                    // Corrupted internal node: in-memory leaf child is not a leaf on disk
+                    Node::Internal(_) | Node::Null => return Err(JmtStorageError::InconsistentState),
                 }
             } else {
                 NodeInProof::Other(only_child.hash)
@@ -1106,7 +1253,7 @@ impl InternalNode {
         } else {
             let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
             let right_child = self.merkle_hash(
-                start + width / 2,
+                start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
             );
@@ -1271,7 +1418,7 @@ impl<P> LeafNode<P> {
     /// changes within a sparse merkle tree (consider 2 trees, both containing a single element with
     /// the same value, but stored under different keys - we want their root hashes to differ).
     pub fn leaf_hash(&self) -> TreeHash {
-        jmt_node_hash2(&self.leaf_key.bytes, &self.value_hash)
+        jmt_leaf_hash(&self.leaf_key, &self.value_hash)
     }
 }
 
@@ -1377,4 +1524,79 @@ pub enum JmtStorageError {
 
     #[error("Attempted to find an index that does not exist in the tree")]
     IndexNotFound,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn proof_with_siblings(n: usize) -> SparseMerkleProofExt {
+        SparseMerkleProofExt::new(None, vec![NodeInProof::Other(TreeHash::zero()); n])
+    }
+
+    #[test]
+    fn it_rejects_proofs_with_too_many_siblings() {
+        let ok = proof_with_siblings(MAX_PROOF_SIBLINGS);
+        let bytes = borsh::to_vec(&ok).unwrap();
+        assert_eq!(borsh::from_slice::<SparseMerkleProofExt>(&bytes).unwrap(), ok);
+        let json = serde_json::to_string(&ok).unwrap();
+        assert_eq!(serde_json::from_str::<SparseMerkleProofExt>(&json).unwrap(), ok);
+
+        let too_many = proof_with_siblings(MAX_PROOF_SIBLINGS + 1);
+        let bytes = borsh::to_vec(&too_many).unwrap();
+        borsh::from_slice::<SparseMerkleProofExt>(&bytes).unwrap_err();
+        let json = serde_json::to_string(&too_many).unwrap();
+        serde_json::from_str::<SparseMerkleProofExt>(&json).unwrap_err();
+
+        // Huge declared length with no data is rejected without allocating
+        let mut bytes = borsh::to_vec(&Option::<SparseMerkleLeafNode>::None).unwrap();
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        borsh::from_slice::<SparseMerkleProofExt>(&bytes).unwrap_err();
+    }
+
+    #[test]
+    fn it_rejects_out_of_range_nibbles() {
+        assert_eq!(serde_json::from_str::<Nibble>("15").unwrap(), Nibble::from(15));
+        serde_json::from_str::<Nibble>("16").unwrap_err();
+    }
+
+    #[test]
+    fn it_validates_deserialized_internal_nodes() {
+        let mut children = Children::new();
+        children.insert(Nibble::from(3), Child::new(TreeHash::zero(), 1, NodeType::Leaf));
+        children.insert(
+            Nibble::from(1),
+            Child::new(TreeHash::zero(), 1, NodeType::Internal { leaf_count: 2 }),
+        );
+        let node = InternalNode::new(children);
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(serde_json::from_value::<InternalNode>(json.clone()).unwrap(), node);
+
+        let mut bad_count = json.clone();
+        *bad_count.pointer_mut("/leaf_count").unwrap() = 4.into();
+        serde_json::from_value::<InternalNode>(bad_count).unwrap_err();
+
+        let mut null_child = json;
+        *null_child.pointer_mut("/children/3/node_type").unwrap() = "Null".into();
+        serde_json::from_value::<InternalNode>(null_child).unwrap_err();
+    }
+
+    #[test]
+    fn it_validates_deserialized_nibble_paths() {
+        let path: NibblePath = [1u8, 2, 3].into_iter().map(Nibble::from).collect();
+        let json = serde_json::to_value(&path).unwrap();
+        assert_eq!(serde_json::from_value::<NibblePath>(json).unwrap(), path);
+
+        let bad_len = serde_json::json!({ "num_nibbles": 5, "bytes": [0x12] });
+        serde_json::from_value::<NibblePath>(bad_len).unwrap_err();
+        let bad_tail = serde_json::json!({ "num_nibbles": 3, "bytes": [0x12, 0x34] });
+        serde_json::from_value::<NibblePath>(bad_tail).unwrap_err();
+    }
+
+    #[test]
+    fn it_iterates_nibble_path_bits() {
+        let path: NibblePath = [0xau8, 0x5].into_iter().map(Nibble::from).collect();
+        let bits = path.bits().collect::<Vec<_>>();
+        assert_eq!(bits, [true, false, true, false, false, true, false, true]);
+    }
 }

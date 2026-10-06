@@ -23,7 +23,11 @@
 use std::{
     path::PathBuf,
     ptr::null,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use libc::c_void;
@@ -43,7 +47,6 @@ use super::ffi::{
 use crate::{
     TariWorld,
     ffi::{self},
-    get_port,
 };
 
 #[derive(Debug)]
@@ -57,14 +60,15 @@ pub struct WalletFFI {
 }
 
 impl WalletFFI {
-    fn spawn(
-        world: &mut TariWorld,
-        name: String,
-        seed_words_ptr: *const c_void,
-        base_dir: PathBuf,
-        base_node_address: String,
-    ) -> Self {
-        let id = get_port(world, 18000..18499).unwrap().to_string();
+    fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf, base_node_address: String) -> Self {
+        // A unique label for this FFI wallet's working directory and log lines. This used to call
+        // `get_port(world, 18000..18499)`, which burned a real port from the *base node p2p* range
+        // without going through `PortPool` — so the pool could hand the same port to a base node.
+        // Nothing here is a socket, so a plain counter is both correct and collision-free.
+        let id = {
+            static NEXT_FFI_WALLET_ID: AtomicUsize = AtomicUsize::new(1);
+            NEXT_FFI_WALLET_ID.fetch_add(1, Ordering::Relaxed).to_string()
+        };
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{name}_id_{id}"));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
         let comms_config = ffi::WalletDbConfig::create(base_dir);
@@ -182,7 +186,6 @@ pub fn spawn_wallet_ffi(
     base_node_address: String,
 ) {
     let wallet_ffi = WalletFFI::spawn(
-        world,
         wallet_name.clone(),
         seed_words_ptr,
         world.current_base_dir.clone().expect("Base dir on world"),

@@ -33,25 +33,52 @@ use crate::transaction_components::ValidatorNodeSignature;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeExit {
     signature: ValidatorNodeSignature,
-    /// The maximum epoch for which this registration is valid. Base nodes will reject any registration that is
-    /// submitted after max_epoch. Assuming the epoch is selected sensibly, this mitigates against replay attacks.
+    /// The activation epoch of the registration being exited. This is part of the signed message, binding the exit
+    /// to one specific registration instance of the validator node, and must match the activation epoch recorded
+    /// for the validator node on chain.
+    activation_epoch: VnEpoch,
+    /// The maximum epoch for which this exit is valid. Base nodes will reject any exit that is submitted after
+    /// max_epoch. Assuming the epoch is selected sensibly, this mitigates against replay attacks.
     max_epoch: VnEpoch,
 }
 
 impl ValidatorNodeExit {
-    pub fn new(signature: ValidatorNodeSignature, max_epoch: VnEpoch) -> Self {
-        Self { signature, max_epoch }
-    }
-
-    pub fn signed(secret_key: &PrivateKey, sidechain_pk: Option<&CompressedPublicKey>, max_epoch: VnEpoch) -> Self {
+    pub fn new(signature: ValidatorNodeSignature, activation_epoch: VnEpoch, max_epoch: VnEpoch) -> Self {
         Self {
-            signature: ValidatorNodeSignature::sign_for_exit(secret_key, sidechain_pk, max_epoch),
+            signature,
+            activation_epoch,
             max_epoch,
         }
     }
 
-    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
-        self.signature.is_valid_exit_signature_for(sidechain_pk, self.max_epoch)
+    pub fn signed(
+        secret_key: &PrivateKey,
+        network: u8,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        activation_epoch: VnEpoch,
+        max_epoch: VnEpoch,
+    ) -> Self {
+        Self {
+            signature: ValidatorNodeSignature::sign_for_exit(
+                secret_key,
+                network,
+                sidechain_pk,
+                activation_epoch,
+                max_epoch,
+            ),
+            activation_epoch,
+            max_epoch,
+        }
+    }
+
+    /// Returns true if the signature is valid for the given network byte and sidechain public key.
+    pub fn is_valid_signature_for(&self, network: u8, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
+        self.signature
+            .is_valid_exit_signature_for(network, sidechain_pk, self.activation_epoch, self.max_epoch)
+    }
+
+    pub fn activation_epoch(&self) -> VnEpoch {
+        self.activation_epoch
     }
 
     pub fn public_key(&self) -> &CompressedPublicKey {
@@ -78,32 +105,57 @@ mod test {
 
     use super::*;
 
+    const NETWORK: u8 = 0x10;
+
     mod is_valid_signature_for {
         use super::*;
 
         #[test]
         fn it_returns_true_for_valid_signature() {
             let sk = PrivateKey::random(&mut rand::rng());
-            let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
-            assert!(exit.is_valid_signature_for(None));
+            let exit = ValidatorNodeExit::signed(&sk, NETWORK, None, VnEpoch(0), VnEpoch(1));
+            assert!(exit.is_valid_signature_for(NETWORK, None));
+        }
+
+        #[test]
+        fn it_returns_false_for_another_network() {
+            let sk = PrivateKey::random(&mut rand::rng());
+            let exit = ValidatorNodeExit::signed(&sk, NETWORK, None, VnEpoch(0), VnEpoch(1));
+            assert!(!exit.is_valid_signature_for(0x24, None));
         }
 
         #[test]
         fn it_returns_false_if_epoch_is_malleated() {
             let sk = PrivateKey::random(&mut rand::rng());
-            let exit = ValidatorNodeExit::new(ValidatorNodeSignature::sign_for_exit(&sk, None, VnEpoch(1)), VnEpoch(2));
-            assert!(!exit.is_valid_signature_for(None));
+            let exit = ValidatorNodeExit::new(
+                ValidatorNodeSignature::sign_for_exit(&sk, NETWORK, None, VnEpoch(0), VnEpoch(1)),
+                VnEpoch(0),
+                VnEpoch(2),
+            );
+            assert!(!exit.is_valid_signature_for(NETWORK, None));
+        }
+
+        #[test]
+        fn it_returns_false_if_activation_epoch_is_malleated() {
+            let sk = PrivateKey::random(&mut rand::rng());
+            let exit = ValidatorNodeExit::new(
+                ValidatorNodeSignature::sign_for_exit(&sk, NETWORK, None, VnEpoch(0), VnEpoch(1)),
+                VnEpoch(1),
+                VnEpoch(1),
+            );
+            assert!(!exit.is_valid_signature_for(NETWORK, None));
         }
 
         #[test]
         fn it_returns_false_for_zero_signature() {
             let sk = PrivateKey::random(&mut rand::rng());
-            let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
+            let exit = ValidatorNodeExit::signed(&sk, NETWORK, None, VnEpoch(0), VnEpoch(1));
             let exit = ValidatorNodeExit::new(
                 ValidatorNodeSignature::new(exit.public_key().clone(), CompressedSignature::default()),
+                VnEpoch(0),
                 VnEpoch(1),
             );
-            assert!(!exit.is_valid_signature_for(None));
+            assert!(!exit.is_valid_signature_for(NETWORK, None));
         }
     }
 }

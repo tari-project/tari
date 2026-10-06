@@ -37,19 +37,23 @@ use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{StateInfo, StatusInfo, events_and_states::ListeningInfo},
     chain_storage::BlockchainDatabaseConfig,
-    consensus::BaseNodeConsensusManager,
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proto,
-    validation::transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
+    validation::{
+        ValidationError,
+        transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
+    },
 };
 use tari_p2p::{P2pConfig, services::liveness::LivenessConfig, tari_message::TariMessageType};
-use tari_script::script;
+use tari_script::{ExecutionStack, Opcode, ScriptError, TariScript, script};
 use tari_test_utils::async_assert_eventually;
 use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     fee::Fee,
-    key_manager::{KeyManager, TransactionKeyManagerInterface, TxoStage},
+    helpers::borsh::SerializedSize,
+    key_manager::{KeyManager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface, TxoStage},
     tari_amount::{MicroMinotari, T, uT},
     tari_proof_of_work::Difficulty,
     test_helpers::{
@@ -66,6 +70,7 @@ use tari_transaction_components::{
         OutputFeatures,
         OutputType,
         RangeProofType,
+        SpentOutput,
         Transaction,
         TransactionKernel,
         TransactionKernelVersion,
@@ -86,7 +91,7 @@ use crate::helpers::{
         generate_new_block,
     },
     nodes::create_network_with_multiple_base_nodes_with_config,
-    sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
+    sample_blockchains::{consensus_constants, create_new_blockchain, create_new_blockchain_with_constants},
 };
 
 #[tokio::test]
@@ -1278,9 +1283,20 @@ async fn consensus_validation_large_tx() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let script_offset = key_manager
-        .get_script_offset(&input_script_keys, &sender_offsets)
-        .unwrap();
+    // Build the script offset by hand - sum(script keys) - sum(sender offset keys) - because this transaction is
+    // assembled manually rather than through the key manager's transaction builder.
+    // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    let script_offset = {
+        let mut so = PrivateKey::default();
+        for script_key_id in &input_script_keys {
+            so = so + key_manager.get_private_key(script_key_id).unwrap();
+        }
+        for sender_offset_key_id in &sender_offsets {
+            so = so - key_manager.get_private_key(sender_offset_key_id).unwrap();
+        }
+        so
+    };
     let mut tx = Transaction::new(inputs, outputs, kernels, offset, script_offset);
     tx.body.sort();
 
@@ -1426,9 +1442,20 @@ async fn validation_reject_min_fee() {
         .build()
         .unwrap();
     let kernels = vec![kernel];
-    let script_offset = key_manager
-        .get_script_offset(&input_script_keys, &sender_offsets)
-        .unwrap();
+    // Build the script offset by hand - sum(script keys) - sum(sender offset keys) - because this transaction is
+    // assembled manually rather than through the key manager's transaction builder.
+    // Ristretto scalar arithmetic, not integer arithmetic: these operators cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
+    let script_offset = {
+        let mut so = PrivateKey::default();
+        for script_key_id in &input_script_keys {
+            so = so + key_manager.get_private_key(script_key_id).unwrap();
+        }
+        for sender_offset_key_id in &sender_offsets {
+            so = so - key_manager.get_private_key(sender_offset_key_id).unwrap();
+        }
+        so
+    };
     let mut tx = Transaction::new(inputs, vec![tx_output], kernels, offset, script_offset);
     tx.body.sort();
 
@@ -1816,4 +1843,158 @@ async fn block_event_and_reorg_event_handling() {
             .unwrap(),
         TxStorageResponse::ReorgPool
     );
+}
+
+/// A script larger than the consensus maximum of 512 bytes, which fails if it is executed
+fn oversized_failing_script() -> TariScript {
+    let mut ops = vec![Opcode::PushHash(Box::new([0u8; 32])); 16];
+    ops.push(Opcode::Return);
+    TariScript::new(ops).unwrap()
+}
+
+#[tokio::test]
+async fn mempool_rejects_oversized_input_script_before_execution() {
+    let network = Network::LocalNet;
+    // The chain itself accepts larger scripts, so that an output with an oversized script can be mined
+    let chain_constants = consensus_constants(network).with_max_script_byte_size(4096).build();
+    let (mut store, mut blocks, mut outputs, chain_consensus, key_manager) =
+        create_new_blockchain_with_constants(network, chain_constants);
+
+    let script = oversized_failing_script();
+    let script_size = script.get_serialized_size().unwrap();
+    assert!(script_size > 512);
+    assert_eq!(script.execute(&ExecutionStack::default()), Err(ScriptError::Return));
+
+    let mut schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![5 * T]);
+    schema.script = script.clone();
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![schema],
+        &chain_consensus,
+        &key_manager,
+    )
+    .unwrap();
+    let oversized_output = outputs[1].iter().find(|o| o.script() == &script).unwrap().clone();
+
+    // The mempool uses the real limit
+    let mempool_constants = consensus_constants(network).build();
+    assert_eq!(mempool_constants.max_script_byte_size(), 512);
+    let mempool_consensus = BaseNodeConsensusManagerBuilder::new(network)
+        .add_consensus_constants(mempool_constants)
+        .with_block(blocks[0].clone())
+        .build()
+        .unwrap();
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        mempool_consensus.clone(),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_consensus, Box::new(mempool_validator));
+
+    let (tx, _) = spend_utxos(txn_schema!(from: vec![oversized_output], to: vec![1 * T]), &key_manager);
+    let response = mempool.insert(Arc::new(tx)).await.unwrap();
+    // The input script is rejected for its size, not for failing when executed
+    let expected = ValidationError::from(AggregatedBodyValidationError::TariScriptExceedsMaxSize {
+        max_script_size: 512,
+        actual_script_size: script_size,
+    })
+    .to_string();
+    assert_eq!(response, TxStorageResponse::NotStored(Some(expected)));
+    assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn mempool_checks_pool_parents_before_internal_validation() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network);
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
+    )];
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager,
+        &key_manager,
+    )
+    .unwrap();
+
+    let (parent, parent_outputs) = spend_utxos(
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    let (child, _) = spend_utxos(
+        txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+
+    // The child spends an output that is neither in the chain nor in the mempool yet. It is rejected as an orphan
+    // without being validated internally, which would otherwise have rejected it for its invalid script offset.
+    let mut invalid_child = child.clone();
+    invalid_child.script_offset = PrivateKey::from(1u64);
+    let response = mempool.insert(Arc::new(invalid_child.clone())).await.unwrap();
+    assert_eq!(response, TxStorageResponse::NotStoredOrphan);
+
+    let response = mempool.insert(Arc::new(parent)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+
+    // With the parent in the mempool, the internal validation of the child is performed
+    let response = mempool.insert(Arc::new(invalid_child)).await.unwrap();
+    assert!(
+        matches!(&response, TxStorageResponse::NotStored(Some(msg)) if msg.contains("script offset")),
+        "{response:?}"
+    );
+
+    // An input that does not spend the mempool output exactly as it was created (here, with a different script that
+    // would fail if executed) does not match it, and is rejected without being executed
+    let mut inputs = child.body.inputs().clone();
+    match &mut inputs[0].spent_output {
+        SpentOutput::OutputData { script, .. } => *script = script!(Return).unwrap(),
+        SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+    }
+    let mismatched_child = Transaction::new(
+        inputs,
+        child.body.outputs().clone(),
+        child.body.kernels().clone(),
+        child.offset.clone(),
+        child.script_offset.clone(),
+    );
+    let response = mempool.insert(Arc::new(mismatched_child)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::NotStoredOrphan);
+    assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+
+    let response = mempool.insert(Arc::new(child)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+
+    // A transaction spending both an output in the chain and an output in the mempool is accepted
+    let (parent2, parent2_outputs) = spend_utxos(
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    let response = mempool.insert(Arc::new(parent2)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+    let (grandchild, _) = spend_utxos(
+        txn_schema!(from: vec![parent2_outputs[0].clone(), outputs[1][2].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    let response = mempool.insert(Arc::new(grandchild)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+    assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 4);
 }

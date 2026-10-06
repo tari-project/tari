@@ -50,7 +50,7 @@ use minotari_mcp_common::{
     StartupDiagnostics,
     TariProcessLauncher,
 };
-use minotari_node_grpc_client::{grpc::base_node_client::BaseNodeClient, BaseNodeGrpcClient};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use tonic::transport::{Channel, Endpoint};
 
 use crate::{
@@ -355,7 +355,7 @@ impl NodeMcpServer {
             }
 
             tokio::time::sleep(Duration::from_secs(5)).await;
-            attempts += 1;
+            attempts = attempts.saturating_add(1);
         }
 
         launcher_handle.abort();

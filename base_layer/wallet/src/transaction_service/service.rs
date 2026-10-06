@@ -31,7 +31,6 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{StreamExt, pin_mut, stream::FuturesUnordered};
 use log::*;
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -58,7 +57,6 @@ use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_max_size::MaxSizeString;
 use tari_script::{
     CompressedCheckSigSchnorrSignature,
     ExecutionStack,
@@ -71,16 +69,15 @@ use tari_script::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
     TransactionBuilderError,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    fee::Fee,
+    fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{SerializedKeyString, TariKeyId},
+    key_manager::{SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
@@ -93,13 +90,17 @@ use tari_transaction_components::{
             sign_locked_withdraw_multisig_transaction,
         },
     },
+    transaction_builder::{
+        PendingOutput,
+        RecipientKeys,
+        RecipientMetadataSignature,
+        RecipientScriptKey,
+        RecipientSpec,
+    },
     transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
         EncryptedData,
         KernelFeatures,
         OutputFeatures,
-        TemplateType,
         Transaction,
         TransactionError,
         TransactionOutput,
@@ -107,7 +108,6 @@ use tari_transaction_components::{
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{public_key_to_output_encryption_key, public_key_to_output_spending_key},
     },
     tx_outputs_to_tx_id,
 };
@@ -426,15 +426,14 @@ where
                     let temp_tx_id = TxId::new_random();
 
                     // let override the payment_id if the address says we should
-                    if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+                    if let Some(address_payment_id) = address_payment_id(&destination) {
                         debug!(
                             target: LOG_TARGET,
                             "Address contains memo, overriding memo {} with {:?}",
-                            payment_id, destination.get_memo_field_payment_id_bytes()
+                            payment_id, address_payment_id
                         );
-                        payment_id =
-                            MemoField::new_open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
-                                .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
+                        payment_id = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
+                            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
                     }
 
                     // Prepare sender part of the transaction
@@ -478,6 +477,7 @@ where
                     }];
 
                     let res = prepare_one_sided_transaction_for_signing(
+                        &self.resources.transaction_key_manager_service,
                         temp_tx_id,
                         tx_builder,
                         &recipients,
@@ -542,6 +542,7 @@ where
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
 
                     let response = prepare_deposit_multisig_transaction(
+                        &self.resources.transaction_key_manager_service,
                         temp_tx_id,
                         tx_builder,
                         request.amount,
@@ -573,7 +574,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(request.utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources
@@ -628,19 +629,23 @@ where
                     let script = push_pubkey_script(&Default::default());
 
                     let output_features = OutputFeatures::default();
-                    let features_and_scripts_byte_size = consensus_constants
-                        .transaction_weight_params()
-                        .round_up_features_and_scripts_size(
-                            output_features
-                                .get_serialized_size()
-                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                                script
-                                    .get_serialized_size()
-                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                                Covenant::default()
-                                    .get_serialized_size()
-                                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
-                        );
+                    // The whole input goes to a single recipient output with no change output, and that output
+                    // carries the memo built below in its encrypted data. The memo cannot be built yet because it
+                    // carries the fee we are about to calculate, so measure a copy built with a zero fee - see
+                    // `addressed_output_memo`. Leaving the memo out here cannot be balanced by the builder at all.
+                    let measured_memo = addressed_output_memo(
+                        MemoField::default(),
+                        request.recipient_address.clone(),
+                        MicroMinotari::zero(),
+                        TxType::PaymentToOther,
+                    )?;
+                    let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+                        consensus_constants.transaction_weight_params(),
+                        &output_features,
+                        &script,
+                        &Covenant::default(),
+                        &measured_memo,
+                    )?;
 
                     let fee: MicroMinotari =
                         fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
@@ -659,16 +664,15 @@ where
                     tx_builder.with_fee_per_gram(fee_per_gram);
                     tx_builder.with_lock_height(0);
 
-                    let payment_id = MemoField::new_address_and_data(
+                    let payment_id = addressed_output_memo(
+                        MemoField::default(),
                         request.recipient_address.clone(),
                         fee,
-                        true,
                         TxType::PaymentToOther,
-                        vec![],
-                    )
-                    .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+                    )?;
                     let tx_id = TxId::new_random();
                     let response = prepare_withdraw_multisig_transaction(
+                        &self.resources.transaction_key_manager_service,
                         tx_id,
                         tx_builder,
                         total_amount,
@@ -727,13 +731,9 @@ where
                     let mut request = request;
 
                     for pair_output in &mut request.info.inputs.iter_mut() {
-                        let view_key = key_manager.get_view_key();
                         let spend_key = key_manager.get_spend_key();
 
-                        let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
-                            private_key: view_key.key_id.clone().into(),
-                            public_key: pair_output.sender_offset_public_key().clone(),
-                        };
+                        let commitment_mask_key_id = pair_output.commitment_mask_key_id().clone();
                         let script_pubkey = key_manager
                             .stealth_address_script_spending_key(&commitment_mask_key_id, &spend_key.pub_key)?;
                         let script_key = TariKeyId::Derived {
@@ -1064,6 +1064,7 @@ where
                 validator_node_public_key,
                 validator_node_signature,
                 sidechain_deployment_key,
+                activation_epoch,
                 max_epoch,
                 selection_criteria,
                 fee_per_gram,
@@ -1077,70 +1078,8 @@ where
                             validator_node_signature,
                             sidechain_deployment_key,
                             selection_criteria,
+                            activation_epoch,
                             max_epoch,
-                            fee_per_gram,
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(tx_id))
-                }
-                .await
-            },
-
-            TransactionServiceRequest::RegisterCodeTemplate {
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                fee_per_gram,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let payment_id = MemoField::new_open(
-                        format!("Template Registration: {template_name}").into_bytes(),
-                        TxType::CodeTemplateRegistration,
-                    )
-                    .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-                    let (tx_id, template_address) = self
-                        .register_code_template(
-                            fee_per_gram,
-                            template_name,
-                            template_version,
-                            template_type,
-                            build_info,
-                            binary_sha,
-                            binary_url,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
-                            payment_id,
-                            transaction_broadcast_join_handles,
-                        )
-                        .await?;
-                    Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
-                        tx_id,
-                        template_address,
-                    })
-                }
-                .await
-            },
-
-            TransactionServiceRequest::SubmitValidatorEvictionProof {
-                amount,
-                proof,
-                fee_per_gram,
-                payment_id,
-                sidechain_deployment_key,
-            } => {
-                async {
-                    let tx_id = self
-                        .submit_validator_eviction_proof(
-                            amount,
-                            proof,
-                            sidechain_deployment_key,
-                            UtxoSelectionCriteria::default(),
                             fee_per_gram,
                             payment_id,
                             transaction_broadcast_join_handles,
@@ -1317,6 +1256,15 @@ where
                         },
                         Completed(completed_tx) => {
                             let tx_id = completed_tx.tx_id;
+                            // The imported record is decoded from client JSON, which bypasses
+                            // `CompletedTransaction::new`; reject the status `new` rejects. The other fields
+                            // `new` derives (e.g. `transaction_signature`) are kept as supplied, a known
+                            // import trust gap tracked separately.
+                            if completed_tx.status == LegacyTransactionStatus::Coinbase {
+                                return Err(TransactionServiceError::TransactionStorageError(
+                                    TransactionStorageError::CoinbaseNotSupported,
+                                ));
+                            }
                             check_transaction_size(&completed_tx.transaction, tx_id)?;
                             self.db.insert_completed_transaction(tx_id, completed_tx)?;
                             tx_id
@@ -1576,7 +1524,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources
@@ -1627,7 +1575,7 @@ where
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(utxo_commitment.clone());
 
-                    query.status.push(OutputStatus::Unspent);
+                    query.status = vec![OutputStatus::Unspent];
 
                     let utxos = self
                         .resources
@@ -2026,6 +1974,8 @@ where
 
     /// Creates an encumbered uninitialized transaction
     #[allow(clippy::too_many_lines)]
+    // Ristretto point/scalar arithmetic on keys and offsets, not integer arithmetic: cannot overflow.
+    #[allow(clippy::arithmetic_side_effects)]
     pub async fn finalized_aggregate_encumbed_tx(
         &mut self,
         tx_id: TxId,
@@ -2102,6 +2052,15 @@ where
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
+            if input.script().is_ok_and(|script| script.is_context_sensitive()) {
+                // The script reads the block height, and the wallet can only evaluate it at its last scanned height;
+                // the base node will evaluate it at the height of the block that spends it, which may differ.
+                warn!(
+                    target: LOG_TARGET,
+                    "TxId: {tx_id}: validating a height-dependent input script against the wallet's last scanned \
+                     height {last_seen_tip_height}; the result may differ when the transaction is mined"
+                );
+            }
             input_keys = input_keys +
                 input
                     .run_and_verify_script(&factory, Some(context))
@@ -2195,7 +2154,8 @@ where
 
         let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
 
-        let height = tip_height + (24 * 30);
+        const BLOCKS_PER_DAY: u64 = 24 * 30;
+        let height = tip_height.saturating_add(BLOCKS_PER_DAY);
 
         // lets create the HTLC script
         let script = script!(
@@ -2235,75 +2195,27 @@ where
 
         tx_builder.with_tx_type(TxType::ClaimAtomicSwap);
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
-
-        let shared_secret = self
-            .resources
-            .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                destination
-                    .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        temp_tx_id,
-                        TransactionServiceError::InvalidAddress("Missing public view key".to_string()),
-                    ))?,
-            )?;
-        let spending_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
-
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(encryption_private_key, None)?;
-
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(spending_key, None)?;
-
-        let minimum_value_promise = MicroMinotari::zero();
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(output_features)
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&encryption_key),
-                payment_id.clone(),
-            )?
-            .with_input_data(ExecutionStack::default())
-            .with_covenant(covenant)
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(self.resources.transaction_key_manager_service.get_spend_key().key_id)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-            )
-            .unwrap()
-            .try_build(&self.resources.transaction_key_manager_service)
-            .unwrap();
-
-        tx_builder.add_recipient(
-            destination.clone(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
+        // The HTLC output is declared, not built: its sender offset key is only reserved once the builder knows how
+        // many outputs the transaction has, because one `get_script_offset` call for the whole transaction is what
+        // keeps both sides of that sum blinded. The claim script is explicit and the script key is this wallet's
+        // spend key, because this wallet is the one that can execute the refund branch.
+        tx_builder.with_recipient_spec(
+            RecipientSpec::stealth(destination.clone(), amount, output_features, payment_id.clone())
+                .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+                .with_script(script)
+                .with_covenant(covenant)
+                .with_script_key(RecipientScriptKey::OwnSpendKey)
+                .with_metadata_signature(RecipientMetadataSignature::Unverified),
         )?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         // Finalize
         let finalized = tx_builder.build()?;
+        let output = finalized
+            .spec_outputs
+            .first()
+            .cloned()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The HTLC output was not built".to_string()))?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2382,9 +2294,9 @@ where
         }
         let temp_tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
-        if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
-            payment_id = MemoField::new_open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+        if let Some(address_payment_id) = address_payment_id(&dest_address) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, address_payment_id);
+            payment_id = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
                 .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
         }
 
@@ -2442,6 +2354,7 @@ where
             payment_id.clone(),
         )?;
         tx_builder.with_memo(payment_id.clone());
+        tx_builder.reserve_sender_offset_keys(&[])?;
         let finalized = tx_builder.build()?;
 
         // Finalize
@@ -2518,6 +2431,15 @@ where
         // Prepare sender part of the transaction
         let script = push_pubkey_script(&Default::default());
         let covenant = Covenant::default();
+        // Every recipient output below carries this memo in its encrypted data, so the input selection has to be
+        // charged for it. The real memo carries the fee, which is not known until the inputs are selected, so a
+        // zero-fee copy is measured here - see `addressed_output_memo`.
+        let measured_memo = addressed_output_memo(
+            payment_id.clone(),
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            TxType::CoinJoin,
+        )?;
         let mut tx_builder = self
             .resources
             .output_manager_service
@@ -2528,6 +2450,7 @@ where
                 fee,
                 script,
                 covenant,
+                measured_memo,
             )
             .await?;
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
@@ -2539,29 +2462,34 @@ where
             dest_address.to_hex(), tx_builder.get_total_input_value()?
         );
 
-        let payment_id = payment_id
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                true,
-                fee_estimate,
-                Some(TxType::CoinJoin),
-            )
-            .map_err(TransactionServiceError::InvalidPaymentId)?;
+        let payment_id = addressed_output_memo(
+            payment_id,
+            self.resources.one_sided_tari_address.clone(),
+            fee_estimate,
+            TxType::CoinJoin,
+        )?;
         trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Note: Division by zero is checked during 'prepare_range_limited_coin_join_transaction_to_send'
-        let number_of_outputs =
-            usize::try_from(amount_without_fee.as_u64() / range_limit_criteria.target_minimum_amount)
-                .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
-                .max(1);
+        let number_of_outputs = usize::try_from(
+            amount_without_fee
+                .as_u64()
+                .checked_div(range_limit_criteria.target_minimum_amount)
+                .unwrap_or(0),
+        )
+        .map_err(|_e| OutputManagerError::ConversionError("number_of_outputs".to_string()))?
+        .max(1);
         let mut values = vec![MicroMinotari(range_limit_criteria.target_minimum_amount); number_of_outputs];
         // Note: 'amount_without_fee >= target_minimum_amount' is checked during
         //       'prepare_range_limited_coin_join_transaction_to_send'
-        let residual = amount_without_fee
-            .as_u64()
-            .saturating_sub(range_limit_criteria.target_minimum_amount * number_of_outputs as u64);
-        values.get_mut(0).expect("index exists").0 += residual;
+        let residual = amount_without_fee.as_u64().saturating_sub(
+            range_limit_criteria
+                .target_minimum_amount
+                .saturating_mul(number_of_outputs as u64),
+        );
+        let first = values.get_mut(0).expect("index exists");
+        first.0 = first.0.saturating_add(residual);
 
         for value in values {
             tx_builder.add_stealth_recipient(
@@ -2572,6 +2500,7 @@ where
             )?;
         }
         tx_builder.with_memo(payment_id.clone()).with_tx_type(TxType::CoinJoin);
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         // Finalize
         let finalized = tx_builder.build()?;
@@ -2671,56 +2600,33 @@ where
 
         // Prepare receiver part of the transaction
 
-        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
-        // KDFs to produce the spending, rewind, and encryption keys
-        let sender_offset_private_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, Some(LedgerKeyBranch::OneSidedSenderOffset))?;
-
-        let shared_secret = self
-            .resources
-            .transaction_key_manager_service
-            .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key.key_id,
-                dest_address
-                    .public_view_key()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        temp_tx_id,
-                        TransactionServiceError::OneSidedTransactionError("Missing public view key".to_string()),
-                    ))?,
-            )?;
-        let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)
-            .map_err(|e| TransactionServiceProtocolError::new(temp_tx_id, e.into()))?;
-        let commitment_mask_key_id = &self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key.clone(), None)?;
-
-        let script_spending_key = self
-            .resources
-            .transaction_key_manager_service
-            .stealth_address_script_spending_key(commitment_mask_key_id, dest_address.public_spend_key())?;
-        let script = push_pubkey_script(&script_spending_key);
-
-        let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(encryption_private_key, None)?;
-
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .create_encrypted_key(commitment_mask_private_key, None)?;
-
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key.key_id)?;
-        let amount = tx_builder.get_total_input_value()?;
-        let fee = tx_builder.get_fee_estimate_without_change()?;
+        // The whole wallet goes to one output, so the fee has to be known before the amount is - and the output does
+        // not exist yet at that point, because its sender offset key is only reserved once the builder knows how many
+        // outputs the transaction has.
         let minimum_value_promise = MicroMinotari::zero();
+        let placeholder_memo = MemoField::new_address_and_data(
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            true,
+            TxType::PaymentToOther,
+            vec![],
+        )
+        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+        let output_size = recipient_output_features_and_scripts_size(
+            self.resources
+                .consensus_manager
+                .consensus_constants(0)
+                .transaction_weight_params(),
+            &OutputFeatures::default(),
+            &push_pubkey_script(&Default::default()),
+            &Covenant::default(),
+            &placeholder_memo,
+        )?;
+        let fee = tx_builder.get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), output_size)])?;
+        let amount = tx_builder
+            .get_total_input_value()?
+            .checked_sub(fee)
+            .ok_or_else(|| TransactionServiceError::ServiceError("Not enough to cover the fee".to_string()))?;
         let payment_id = MemoField::new_address_and_data(
             self.resources.one_sided_tari_address.clone(),
             fee,
@@ -2729,33 +2635,25 @@ where
             vec![],
         )
         .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(Default::default())
-            .with_script(script)
-            .encrypt_data_for_recovery(
-                &self.resources.transaction_key_manager_service,
-                Some(&encryption_key),
-                payment_id.clone(),
-            )?
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(minimum_value_promise)
-            .sign_metadata_signature_user_verified(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-                &dest_address,
-            )?
-            .try_build(&self.resources.transaction_key_manager_service)?;
 
-        tx_builder.add_recipient(
-            dest_address.clone(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id),
-            Some(encryption_key),
+        tx_builder.with_recipient_spec(
+            RecipientSpec::stealth(
+                dest_address.clone(),
+                amount,
+                OutputFeatures::default(),
+                payment_id.clone(),
+            )
+            .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+            .with_minimum_value_promise(minimum_value_promise),
         )?;
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
+        let output = finalized
+            .spec_outputs
+            .first()
+            .cloned()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The scrape output was not built".to_string()))?;
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
@@ -2882,9 +2780,9 @@ where
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         for (address, amount, memo) in &mut destinations {
             self.verify_send(address, TariAddressFeatures::create_one_sided_only())?;
-            if address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address.get_memo_field_payment_id_bytes());
-                *memo = MemoField::new_open(address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther)
+            if let Some(address_payment_id) = address_payment_id(address) {
+                debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", memo, address_payment_id);
+                *memo = MemoField::new_open(address_payment_id, TxType::PaymentToOther)
                     .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
             }
             *memo = memo
@@ -2911,14 +2809,18 @@ where
                 .round_up_features_and_scripts_size(
                     OutputFeatures::default()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        TariScript::default()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        Covenant::new()
-                            .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        memo.get_size(),
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
+                        .saturating_add(
+                            TariScript::default()
+                                .get_serialized_size()
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        )
+                        .saturating_add(
+                            Covenant::new()
+                                .get_serialized_size()
+                                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+                        )
+                        .saturating_add(memo.get_size()),
                 );
             let fee_calc = Fee::new(
                 *self
@@ -2928,8 +2830,7 @@ where
                     .transaction_weight_params(),
             );
             let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, features_and_scripts_byte_size);
-            total_send += *amount;
-            total_send += default_output_fee;
+            total_send = total_send.saturating_add(*amount).saturating_add(default_output_fee);
         }
 
         // Prepare sender part of the transaction
@@ -2955,6 +2856,7 @@ where
 
             tx_builder.add_stealth_recipient(address.clone(), *amount, output_features.clone(), memo.clone())?;
         }
+        tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
 
@@ -3095,7 +2997,7 @@ where
             .resources
             .transaction_key_manager_service
             .get_next_commitment_mask_and_script_key()?;
-        let (sender_offset_private_key, stealth_claim_public_key) =
+        let (derived_sender_offset_key, stealth_claim_public_key) =
             if let Some(ref account_public_key) = claim_public_key {
                 let r = self
                     .resources
@@ -3105,13 +3007,9 @@ where
                     .resources
                     .transaction_key_manager_service
                     .compute_stealth_claim_public_key(&r.key_id, account_public_key)?;
-                (r, Some(c))
+                (Some(r), Some(c))
             } else {
-                let r = self
-                    .resources
-                    .transaction_key_manager_service
-                    .get_random_key(None, None)?;
-                (r, None)
+                (None, None)
             };
 
         let output_features = match stealth_claim_public_key.as_ref() {
@@ -3168,52 +3066,94 @@ where
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
 
-        // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can
-        // decrypt with DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account
-        // secret). The L1 wallet does not rely on decrypting `encrypted_data` to recover its own
-        // burns on a seed-only rescan — it traces them via the spent input outputs it owns. For
-        // plain burns there is no L2 to decrypt, so fall back to the L1 view key.
-        let recovery_key_id = if let Some(ref cp) = claim_public_key {
-            TariKeyId::DHEncryptedData {
-                public_key: cp.clone(),
-                private_key: sender_offset_private_key.key_id.clone().into(),
-            }
-        } else {
-            self.resources.transaction_key_manager_service.get_view_key().key_id
+        // Both burn shapes publish a `Nop` script and a burn output type; what differs is where the sender offset
+        // key comes from.
+        let burn_features_and_scripts_size = recipient_output_features_and_scripts_size(
+            self.resources
+                .consensus_manager
+                .consensus_constants(0)
+                .transaction_weight_params(),
+            &output_features,
+            &script!(Nop)?,
+            &Covenant::default(),
+            &payment_id,
+        )?;
+
+        match derived_sender_offset_key {
+            // An L2-bound burn's `r` is derived from the commitment mask so the burn proof can be rebuilt from seed
+            // alone, so it cannot come from the builder's reservation. The output is built here around that key, and
+            // what it contributes to the script offset is registered by hand. Such a burn therefore relies on its
+            // change output to fold in the input script keys, and will not build without one.
+            Some(r) => {
+                let r_private = self
+                    .resources
+                    .transaction_key_manager_service
+                    .key_manager()
+                    .get_private_key(&r.key_id)?;
+                // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+                #[allow(clippy::arithmetic_side_effects)]
+                let negated_r = PrivateKey::default() - r_private;
+                tx_builder.with_host_derived_partial_script_offset(negated_r);
+
+                // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can decrypt with
+                // DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account secret). The L1 wallet does
+                // not rely on decrypting `encrypted_data` to recover its own burns on a seed-only rescan - it traces
+                // them via the spent input outputs it owns.
+                let recovery_key_id = TariKeyId::DHEncryptedData {
+                    public_key: claim_public_key.clone().ok_or_else(|| {
+                        TransactionServiceError::ServiceError(
+                            "An L2 bound burn must have a claim public key".to_string(),
+                        )
+                    })?,
+                    private_key: r.key_id.clone().into(),
+                };
+                let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
+                    .with_features(output_features)
+                    .with_script(script!(Nop)?)
+                    .with_input_data(Default::default())
+                    .with_sender_offset_public_key(r.pub_key.clone())
+                    .with_script_key(TariKeyId::Zero)
+                    .with_minimum_value_promise(MicroMinotari::zero())
+                    .encrypt_data_for_recovery(
+                        &self.resources.transaction_key_manager_service,
+                        Some(&recovery_key_id),
+                        payment_id.clone(),
+                    )?
+                    .sign_metadata_signature(&self.resources.transaction_key_manager_service, &r.key_id)?
+                    .try_build(&self.resources.transaction_key_manager_service)?;
+
+                tx_builder.reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
+                    amount,
+                    burn_features_and_scripts_size,
+                )])?;
+                tx_builder.add_recipient(Default::default(), output, r.key_id.clone(), Some(recovery_key_id))?;
+            },
+            // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender
+            // offset key comes from the builder's single reservation like any other output.
+            None => {
+                tx_builder.with_recipient_spec(
+                    RecipientSpec::to_self(amount, output_features, payment_id.clone())
+                        .with_script(script!(Nop)?)
+                        .with_script_key(RecipientScriptKey::Zero),
+                )?;
+                tx_builder.reserve_sender_offset_keys(&[])?;
+            },
         };
-        let mut output_builder = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
-            .with_features(output_features)
-            .with_script(script!(Nop)?)
-            .with_input_data(Default::default())
-            .with_sender_offset_public_key(sender_offset_private_key.pub_key.clone())
-            .with_script_key(TariKeyId::Zero)
-            .with_minimum_value_promise(MicroMinotari::zero());
-
-        output_builder = output_builder.encrypt_data_for_recovery(
-            &self.resources.transaction_key_manager_service,
-            Some(&recovery_key_id),
-            payment_id.clone(),
-        )?;
-
-        let output = output_builder
-            .sign_metadata_signature(
-                &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key.key_id,
-            )?
-            .try_build(&self.resources.transaction_key_manager_service)?;
-
-        tx_builder.add_recipient(
-            Default::default(),
-            output.clone(),
-            Some(sender_offset_private_key.key_id.clone()),
-            Some(recovery_key_id),
-        )?;
 
         let finalized = tx_builder.build()?;
+        // Either shape puts exactly one recipient output on the transaction, and this is the published version of
+        // it - the builder rewrites the encrypted data with the final fee - so it is what the wallet stores and what
+        // the burn proof is built from.
+        let burned_output = finalized
+            .sent_outputs
+            .first()
+            .ok_or_else(|| TransactionServiceError::ServiceError("The burn output was not built".to_string()))?
+            .output
+            .clone();
 
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(temp_tx_id, output, None)
+            .add_output_with_tx_id(temp_tx_id, burned_output, None)
             .await?;
 
         let change = finalized.change.map(|change| vec![change]);
@@ -3306,7 +3246,9 @@ where
                 kernel_excess: burn_kernel.excess.as_bytes().to_vec(),
                 kernel_excess_nonce: burn_kernel.excess_sig.get_compressed_public_nonce().to_vec(),
                 kernel_excess_signature: burn_kernel.excess_sig.get_signature().to_vec(),
-                sender_offset_public_key: sender_offset_private_key.pub_key.clone(),
+                // The key that was actually published on the burn output. For an L2 bound burn that is the
+                // seed-derived `r`, which is what makes the proof reconstructible after recovery.
+                sender_offset_public_key: tx_output.output.sender_offset_public_key().clone(),
             };
 
             self.db.insert_burn_proof(
@@ -3342,6 +3284,7 @@ where
             .as_ref()
             .map(CompressedPublicKey::from_secret_key);
         if !signature.is_valid_registration_signature_for(
+            self.resources.network.as_byte(),
             sidechain_pk.as_ref(),
             &validator_node_claim_public_key,
             max_epoch,
@@ -3418,6 +3361,7 @@ where
         validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
+        activation_epoch: VnEpoch,
         max_epoch: VnEpoch,
         fee_per_gram: MicroMinotari,
         payment_id: MemoField,
@@ -3429,12 +3373,21 @@ where
         let sidechain_pk = sidechain_deployment_key
             .as_ref()
             .map(CompressedPublicKey::from_secret_key);
-        if !signature.is_valid_exit_signature_for(sidechain_pk.as_ref(), max_epoch) {
+        if !signature.is_valid_exit_signature_for(
+            self.resources.network.as_byte(),
+            sidechain_pk.as_ref(),
+            activation_epoch,
+            max_epoch,
+        ) {
             return Err(TransactionServiceError::InvalidValidatorNodeSignature);
         }
 
-        let output_features =
-            OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
+        let output_features = OutputFeatures::for_validator_node_exit(
+            signature,
+            sidechain_deployment_key.as_ref(),
+            activation_epoch,
+            max_epoch,
+        );
 
         let (fee, transaction, tx_id) = self
             .resources
@@ -3487,160 +3440,6 @@ where
         .await?;
 
         Ok(tx_id)
-    }
-
-    async fn submit_validator_eviction_proof(
-        &mut self,
-        amount: MicroMinotari,
-        eviction_proof: EvictionProof,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
-
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                amount,
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-
-        // Notify that the transaction was successfully resolved.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-        let all_outputs = transaction
-            .body
-            .outputs()
-            .iter()
-            .map(|o| o.hash())
-            .collect::<Vec<HashOutput>>();
-        let lock_height = CompletedTransaction::calculate_lock_height(&transaction);
-        let mut final_payment_id = payment_id.clone();
-        final_payment_id.set_fee(fee);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                self.resources.one_sided_tari_address.clone(),
-                amount,
-                fee,
-                transaction,
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Inbound,
-                None,
-                None,
-                final_payment_id,
-                vec![],
-                all_outputs,
-                vec![],
-                lock_height,
-            )?,
-        )
-        .await?;
-
-        Ok(tx_id)
-    }
-
-    async fn register_code_template(
-        &mut self,
-        fee_per_gram: MicroMinotari,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: FixedHash,
-        binary_url: MaxSizeString<255>,
-        sidechain_deployment_key: Option<PrivateKey>,
-        selection_criteria: UtxoSelectionCriteria,
-        payment_id: MemoField,
-
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
-        let author_key_id = TariKeyId::CodeTemplateAuthor;
-        let author_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&author_key_id)?;
-        let nonce = self
-            .resources
-            .transaction_key_manager_service
-            .get_random_key(None, None)?;
-        let mut template_registration = CodeTemplateRegistration {
-            author_public_key: author_key.clone(),
-            author_signature: CompressedSignature::default(),
-            template_name,
-            template_version,
-            template_type,
-            build_info,
-            binary_sha,
-            binary_url,
-        };
-
-        let signature_message = template_registration.create_signature_message(&nonce.pub_key);
-
-        let author_sig = self
-            .resources
-            .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key_id, &nonce.key_id, &signature_message)
-            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-
-        template_registration.author_signature = author_sig;
-
-        let output_features =
-            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
-        let (fee, transaction, tx_id) = self
-            .resources
-            .output_manager_service
-            .create_pay_to_self_transaction(
-                0.into(),
-                selection_criteria,
-                output_features,
-                fee_per_gram,
-                None,
-                payment_id.clone(),
-                MicroMinotari::zero(),
-            )
-            .await?;
-        let template_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type.is_template_registration())
-            .ok_or_else(|| {
-                TransactionServiceError::ServiceError(format!(
-                    "Transaction {tx_id} did not contain a template registration utxo"
-                ))
-            })?;
-        let template_address = template_output.hash();
-
-        self.submit_transaction_to_self(
-            transaction_broadcast_join_handles,
-            tx_id,
-            transaction,
-            fee,
-            0.into(),
-            payment_id,
-        )
-        .await?;
-        Ok((tx_id, template_address))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -3957,9 +3756,13 @@ where
             self.resources.config.clone(),
             self.event_publisher.clone(),
             self.resources.output_manager_service.clone(),
+            self.resources.shutdown_signal.clone(),
         );
 
         let validation_in_progress = self.validation_in_progress.clone();
+        // The protocol holds the wallet database and does remote I/O: stop it on shutdown rather than let it run on
+        // after the wallet's shutdown drain has completed
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
 
@@ -3971,20 +3774,25 @@ where
                 );
                 TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
             })?;
-            let mut num_resets = 0;
+            let mut num_resets = 0usize;
             'outer: loop {
                 let local_run = protocol.clone();
                 let exec_fut = local_run.execute();
                 tokio::pin!(exec_fut);
                 loop {
                     tokio::select! {
+                        biased;
+                        _ = shutdown.wait() => {
+                            debug!(target: LOG_TARGET, "Transaction Validation Protocol (Id: {id}) stopped by shutdown signal");
+                            return Err(TransactionServiceProtocolError::new(id, TransactionServiceError::Shutdown));
+                        },
                         result = &mut exec_fut => {
                            return result;
                         },
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
-                                num_resets += 1;
+                                num_resets = num_resets.saturating_add(1);
                                 // We limit the number of resets to avoid infinite loops, if the block validation takes longer than new blocks coming in, we want to at least finish the validation
                                 if num_resets < 1{
                                     continue 'outer;
@@ -4303,7 +4111,7 @@ where
         let payment_id = original_transaction.payment_id.clone();
 
         let original_inputs = original_transaction.get_input_commitments_from_completed_transaction()?;
-        let fee = original_transaction.fee + fee_increase;
+        let fee = original_transaction.fee.saturating_add(fee_increase);
 
         // Calculate transaction weight and fee_per_gram from total fee using original transaction
         let num_inputs = original_inputs.len();
@@ -4393,7 +4201,7 @@ where
         for output in all_outputs {
             match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
                 Ok((amount, _, _)) => {
-                    total_amount += amount;
+                    total_amount = total_amount.saturating_add(amount);
                     spendable_outputs.push(output.commitment().clone());
                 },
                 Err(_) => {
@@ -4734,4 +4542,48 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
 pub struct TransactionSendResult {
     pub tx_id: TxId,
     pub transaction_status: LegacyTransactionStatus,
+}
+
+/// The payment id that an address asks to be sent with, which then overrides the user's memo. An empty payment id
+/// never overrides the memo, even when the address has the `PAYMENT_ID` flag set.
+fn address_payment_id(address: &TariAddress) -> Option<Vec<u8>> {
+    let payment_id = address.get_memo_field_payment_id_bytes();
+    if address.features().contains(TariAddressFeatures::PAYMENT_ID) && !payment_id.is_empty() {
+        Some(payment_id)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::dammsum::compute_checksum;
+
+    use super::*;
+
+    #[test]
+    fn only_a_non_empty_address_payment_id_overrides_the_memo() {
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        assert_eq!(address_payment_id(&address), None);
+
+        let with_id = address.with_memo_field_payment_id(vec![1, 2, 3]).unwrap();
+        assert_eq!(address_payment_id(&with_id), Some(vec![1, 2, 3]));
+
+        // A decoded address with the flag set and an empty payment id
+        let mut bytes = address.to_vec();
+        let last = bytes.len().saturating_sub(1);
+        if let Some(features) = bytes.get_mut(1) {
+            *features |= TariAddressFeatures::PAYMENT_ID.as_u8();
+        }
+        let checksum = compute_checksum(bytes.get(..last).unwrap());
+        if let Some(byte) = bytes.get_mut(last) {
+            *byte = checksum;
+        }
+        let flag_only = TariAddress::from_bytes(&bytes).unwrap();
+        assert!(flag_only.features().contains(TariAddressFeatures::PAYMENT_ID));
+        assert_eq!(address_payment_id(&flag_only), None);
+    }
 }

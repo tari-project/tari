@@ -21,6 +21,9 @@
 # URL to monerod (you can add your own server here or use public nodes from https://monero.fail/), only if
 # 'use_dynamic_fail_data = false' or if the server at 'monero_fail_url' is not available 
 # (default: The 'monerod_url = [ # mainnet ...' list below)
+# SECURITY: the proxy builds Monero block templates from the monerod it talks to. A public or untrusted monerod can
+# return a template that pays the Monero block reward to someone else; run your own monerod if you can. Credentials
+# (monerod_username / monerod_password) sent to an http:// URL travel in cleartext; use https:// for remote nodes.
 
 #monerod_url = [# stagenet
 #    "http://stagenet.xmr-tw.org:38081",
@@ -68,7 +71,8 @@
 # Username for curl. (default = "")
 #monerod_username = ""
 
-# Password for curl. (default = "")
+# Password for curl. (default = "") Sent in cleartext over http:// URLs. Prefer the environment variable
+# TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD over storing it in this file.
 #monerod_password = ""
 
 # If authentication is being used for curl. (default = false)
