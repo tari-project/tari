@@ -7842,7 +7842,6 @@ dependencies = [
  "env_logger",
  "futures 0.3.32",
  "futures-test",
- "futures-util",
  "lmdb-zero",
  "log",
  "once_cell",
