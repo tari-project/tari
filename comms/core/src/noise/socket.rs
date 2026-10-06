@@ -294,6 +294,11 @@ where TSocket: AsyncRead + Unpin
                 ReadState::ReadFrameLen => {
                     let len_bytes = self.buffers.read_unconsumed().get(..2).and_then(|b| b.try_into().ok());
                     if let Some(len_bytes) = len_bytes {
+                        // Frames parsed from the read-ahead buffer don't touch the socket, so they would never
+                        // spend tokio's cooperative budget. Charge it once per frame so that a peer sending a
+                        // flood of (e.g. empty) frames can't keep this task from yielding.
+                        let coop = ready!(tokio::task::coop::poll_proceed(context));
+                        coop.made_progress();
                         let frame_len = u16::from_be_bytes(len_bytes);
                         self.buffers.read_consume(2);
                         // Empty Frame
@@ -1239,5 +1244,28 @@ mod test {
 
         let err = socket.read(&mut buf).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[tokio::test]
+    async fn empty_frame_flood_yields_to_the_scheduler() {
+        let (mut sender, receiver) = transport_states();
+        let (mock, MockPeer { inbound: in_tx, .. }) = MockSocket::new();
+        let mut socket = NoiseSocket::new(mock, receiver);
+
+        // 100k empty frames (zero length prefixes) followed by one real frame, all in one chunk
+        let mut chunk = vec![0u8; 200_000];
+        chunk.extend(wire_frame(&mut sender, b"after the flood"));
+        in_tx.send(chunk).unwrap();
+        drop(in_tx);
+
+        // Each buffered frame spends coop budget, so a single poll yields before draining the flood
+        let mut buf = [0u8; 15];
+        {
+            let mut read = std::pin::pin!(socket.read(&mut buf));
+            assert!(futures::poll!(read.as_mut()).is_pending());
+        }
+
+        socket.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"after the flood");
     }
 }
