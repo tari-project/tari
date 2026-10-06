@@ -57,7 +57,7 @@ use super::{BlockchainCheckStatus, MinedInfo, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{BlockAccumulatedData, UpdateBlockAccumulatedData},
     chain_storage::{
-        BlockAddResult,
+        AddBlockOutcome,
         BlockchainBackend,
         BlockchainDatabase,
         ChainStorageError,
@@ -301,7 +301,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     //---------------------------------- Block --------------------------------------------//
-    make_async_fn!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
+    make_async_fn!(add_block(block: Arc<Block>) -> AddBlockOutcome, "add_block");
 
     make_async_fn!(cleanup_orphans() -> (), "cleanup_orphans");
 

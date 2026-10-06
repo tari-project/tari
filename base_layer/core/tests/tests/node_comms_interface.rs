@@ -29,6 +29,7 @@ use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
 use tari_core::{
     base_node::comms_interface::{
+        BlockEvent,
         CommsInterfaceError,
         GetNewBlockTemplateRequest,
         InboundNodeCommsHandlers,
@@ -626,7 +627,7 @@ async fn inbound_get_block_from_all_chains_serves_small_orphans_hydrated() {
         &key_manager,
     )
     .unwrap();
-    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     assert!(
         store
@@ -798,7 +799,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
     let orphan = Block::new(orphan_header, orphan.body);
-    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     let err = handlers
         .handle_block(unknown_spend(orphan.hash()), None)
@@ -933,7 +934,7 @@ async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
     assert!(!store.chain_block_or_orphan_block_exists(honest.hash()).unwrap());
 
     // The honest block is still accepted
-    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(honest)).unwrap() else {
+    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(honest)).unwrap().result else {
         panic!("the honest block was not added");
     };
 
@@ -991,7 +992,7 @@ fn honest_chain(
     let network = Network::LocalNet;
     let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
     let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
-    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap() else {
+    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap().result else {
         panic!("H0 was not added");
     };
     let tx = spend_genesis_output(&outputs, &key_manager);
@@ -1042,30 +1043,99 @@ fn announce_with_a_transaction(block: &Block) -> NewBlock {
 }
 
 /// A held orphan whose body was never checked against its header fails when an honest relayer completes its chain. The
-/// orphan is not marked bad, and the relayer, whose block was fine, is not banned.
+/// orphan is not marked bad, and the relayer, whose block was fine, is not banned: its block becomes the tip.
 #[tokio::test]
 async fn a_held_orphan_with_a_fake_body_does_not_get_the_relayer_of_its_parent_banned() {
     let (store, rules, key_manager, h0, h1) = honest_chain(false);
     let fake_h1 = with_swapped_kernel(&h1, &rules, &key_manager);
-    let result = store.add_block(Arc::new(fake_h1)).unwrap();
+    let result = store.add_block(Arc::new(fake_h1)).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
 
     let mut handlers = new_handlers(&store, new_mempool(), rules);
-    let err = handlers
+    handlers
         .handle_block(h0.block().clone(), Some(NodeId::default()))
         .await
-        .unwrap_err();
-    assert!(
-        matches!(
-            &err,
-            CommsInterfaceError::ChainStorageError(ChainStorageError::UnverifiedHeldBlockInvalid { hash, .. })
-                if *hash == h1.hash()
-        ),
-        "{err:?}"
-    );
-    assert!(err.get_ban_reason().is_none());
+        .unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), h0.hash());
     assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
     assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+}
+
+/// F-1: our chain G, an honest H0 on G, and X on H0, whose body matches its header but which claims too much in its
+/// coinbase. X is held as an orphan when H0 arrives.
+fn honest_parent_with_an_invalid_held_child()
+-> (BlockchainDatabase<TempDatabase>, BaseNodeConsensusManager, Block, Block) {
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, key_manager) = create_new_blockchain(network);
+    let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+    let BlockAddResult::Ok(h0_chain_block) = store.add_block(Arc::new(h0.clone())).unwrap().result else {
+        panic!("H0 was not added");
+    };
+    let x = prepare_block_with_extra_coinbase(&store, &h0_chain_block, vec![], &rules, &key_manager, T);
+    store.rewind_to_height(0).unwrap();
+    store.cleanup_all_orphans().unwrap();
+    assert!(!store.chain_block_or_orphan_block_exists(h0.hash()).unwrap());
+    let result = store.add_block(Arc::new(x.clone())).unwrap().result;
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    (store, rules, h0, x)
+}
+
+/// Q holds back X and sends it first; honest P then relays H0, which links X. H0 is valid and stronger than our chain,
+/// so it becomes the tip. X fails on its own account: it is recorded as bad and dropped, and P is not to blame.
+#[tokio::test]
+async fn a_held_invalid_child_does_not_get_the_relayer_of_its_parent_banned() {
+    let (store, _, h0, x) = honest_parent_with_an_invalid_held_child();
+    let outcome = store.add_block(Arc::new(h0.clone())).unwrap();
+    let BlockAddResult::Ok(tip) = &outcome.result else {
+        panic!("H0 was not added: {}", outcome.result);
+    };
+    assert_eq!(*tip.hash(), h0.hash());
+    assert_eq!(outcome.rejected.len(), 1);
+    assert_eq!(outcome.rejected[0].hash, x.hash());
+    assert!(!outcome.rejected[0].blame_sender);
+    assert!(store.bad_block_exists(x.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(x.hash()).unwrap());
+
+    // Through the handler, the relayer gets no error, so nothing to be banned for
+    let (store, rules, h0, _) = honest_parent_with_an_invalid_held_child();
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    handlers
+        .handle_block(h0.clone(), Some(NodeId::default()))
+        .await
+        .unwrap();
+    assert_eq!(*store.fetch_tip_header().unwrap().hash(), h0.hash());
+}
+
+/// The same with H0 mined locally: the mempool is told H0 was added, and is not told it failed, which would clear
+/// H0's transactions from it.
+#[tokio::test]
+async fn a_held_invalid_child_does_not_fail_a_locally_mined_parent() {
+    let (store, rules, h0, _) = honest_parent_with_an_invalid_held_child();
+    let (block_event_sender, mut block_events) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
+    let (connectivity, _) = create_connectivity_mock();
+    let mut handlers = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        new_mempool(),
+        rules,
+        OutboundNodeCommsInterface::new(request_sender, block_sender),
+        connectivity,
+        RandomXFactory::new(2),
+    );
+
+    handlers.handle_block(h0.clone(), None).await.unwrap();
+
+    let mut events = vec![];
+    while let Ok(event) = block_events.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.len(), 1, "{events:?}");
+    let BlockEvent::ValidBlockAdded(block, BlockAddResult::Ok(_)) = &*events[0] else {
+        panic!("expected H0 to be added, got {}", events[0]);
+    };
+    assert_eq!(block.hash(), h0.hash());
 }
 
 fn assert_banned_and_not_stored(err: &CommsInterfaceError, store: &BlockchainDatabase<TempDatabase>, hash: FixedHash) {
@@ -1170,7 +1240,7 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
     let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T]);
     let (txs, f1_outputs) = schema_to_transaction(&[schema], &key_manager);
     let f1 = prepare_block(&store, &blocks[0], vec![(*txs[0]).clone()], &rules, &key_manager);
-    let BlockAddResult::Ok(f1_chain_block) = store.add_block(Arc::new(f1.clone())).unwrap() else {
+    let BlockAddResult::Ok(f1_chain_block) = store.add_block(Arc::new(f1.clone())).unwrap().result else {
         panic!("F1 was not added");
     };
     let schema = txn_schema!(from: vec![f1_outputs[0].clone()], to: vec![MicroMinotari::from(5_000)]);
@@ -1189,7 +1259,7 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
     )
     .unwrap();
     if !store.chain_block_or_orphan_block_exists(f1.hash()).unwrap() {
-        let result = store.add_block(Arc::new(f1.clone())).unwrap();
+        let result = store.add_block(Arc::new(f1.clone())).unwrap().result;
         assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     }
 

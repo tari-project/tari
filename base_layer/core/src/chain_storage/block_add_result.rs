@@ -22,8 +22,11 @@
 
 use std::{fmt, sync::Arc};
 
+use tari_common_types::types::FixedHash;
 use tari_node_components::blocks::ChainBlock;
 use tari_utilities::hex::Hex;
+
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
@@ -105,6 +108,49 @@ impl BlockAddResult {
             BlockAddResult::Ok(_) => panic!("Expected reorg result, but was Ok()"),
             BlockAddResult::BlockExists => panic!("Expected reorg result, but was BlockExists"),
             BlockAddResult::OrphanBlock => panic!("Expected reorg result, but was OrphanBlock"),
+        }
+    }
+}
+
+/// What `add_block` did: the net change to the main chain, and every held block that failed body validation on the way.
+///
+/// A reorg can fail on a block other than the one being added, a held orphan that the new block linked to the main
+/// chain. The node then keeps the strongest valid chain it holds and tries the next strongest orphan tip, so a single
+/// call can both change the chain and reject blocks.
+#[derive(Debug)]
+pub struct AddBlockOutcome {
+    /// The net change from the tip the call started at, over every reorg it attempted
+    pub result: BlockAddResult,
+    /// The blocks that failed body validation, in the order they failed
+    pub rejected: Vec<RejectedBlock>,
+}
+
+/// A block that failed body validation during a reorg. It, and every orphan built on it, has been dropped.
+#[derive(Debug)]
+pub struct RejectedBlock {
+    pub hash: FixedHash,
+    pub height: u64,
+    pub error: ValidationError,
+    /// Whether the peer that sent the block being added is at fault. It is if the block that failed is the block being
+    /// added, or an ancestor of it whose body is the one its header commits to: an honest peer never holds a chain
+    /// built on a block that is invalid as mined. It is not for a descendant of the block being added (which a peer
+    /// can hold back and send us first), nor for any block whose body was never checked against its header.
+    pub blame_sender: bool,
+}
+
+impl RejectedBlock {
+    /// The error to report this rejection with, when `candidate_hash` is the block being added. The block being added
+    /// is reported with its own validation error, as it always was; an ancestor is reported by its own hash.
+    pub fn into_error(self, candidate_hash: FixedHash) -> ChainStorageError {
+        if self.hash == candidate_hash {
+            ChainStorageError::ValidationError { source: self.error }
+        } else {
+            ChainStorageError::AncestorBlockInvalid {
+                candidate: candidate_hash,
+                hash: self.hash,
+                height: self.height,
+                source: self.error,
+            }
         }
     }
 }

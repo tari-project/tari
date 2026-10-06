@@ -192,7 +192,7 @@ fn reorg_rewinds_burn_and_spend_blocks() {
     // and applies the fork. A reorg that hit the SMT bug would surface here as an Err.
     let mut reorg_removed = 0usize;
     for b in &ob[2..] {
-        match store.add_block(b.to_arc_block()).unwrap() {
+        match store.add_block(b.to_arc_block()).unwrap().result {
             BlockAddResult::ChainReorg { removed, .. } => reorg_removed = removed.len(),
             other => {
                 assert!(

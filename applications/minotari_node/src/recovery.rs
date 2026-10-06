@@ -186,9 +186,18 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             .map_err(|e| anyhow!("Could not get block from recovery db: {e}"))?
             .into_block();
         trace!(target: LOG_TARGET, "Adding block: {block}");
-        db.add_block(Arc::new(block))
+        let block_hash = block.hash();
+        let outcome = db
+            .add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {counter}, reason: {e}"))?;
+        // The block, or a block it builds on, failed even though the chain changed
+        if let Some(rejection) = outcome.rejected.into_iter().find(|rejection| rejection.blame_sender) {
+            return Err(anyhow!(
+                "Stopped recovery at height {counter}, reason: {}",
+                rejection.into_error(block_hash)
+            ));
+        }
 
         readiness_status_handler.send_readiness_status(ReadinessState::RecoveringRebuildingDatabase);
 

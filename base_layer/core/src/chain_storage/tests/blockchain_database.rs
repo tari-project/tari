@@ -106,7 +106,7 @@ fn add_many_chained_blocks(
             &wallet_payment_address,
         );
 
-        db.add_block(block.clone()).unwrap().assert_added();
+        db.add_block(block.clone()).unwrap().result.assert_added();
         prev_block = block.clone();
         blocks.push(block);
         outputs.push(coinbase_utxo);
@@ -637,7 +637,7 @@ mod validator_node_merkle_root {
             &script_key_id,
             &wallet_payment_address,
         );
-        db.add_block(block).unwrap().assert_added();
+        db.add_block(block).unwrap().result.assert_added();
 
         let consts = db.consensus_constants().unwrap();
         let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
@@ -687,7 +687,7 @@ mod validator_node_merkle_root {
             &script_key_id,
             &wallet_payment_address,
         );
-        db.add_block(block).unwrap().assert_added();
+        db.add_block(block).unwrap().result.assert_added();
 
         let consts = db.consensus_constants().unwrap();
         let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager);
@@ -829,7 +829,7 @@ mod validator_node_exit {
                 &script_key_id,
                 &wallet_payment_address,
             );
-            self.db.add_block(block).unwrap().assert_added();
+            self.db.add_block(block).unwrap().result.assert_added();
             self.spendable.push(coinbase);
         }
 

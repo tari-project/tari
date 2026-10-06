@@ -113,7 +113,7 @@ async fn async_add_new_block() {
 
     let new_block = db.prepare_new_block(new_block).unwrap();
     let db = AsyncBlockchainDb::new(db);
-    let result = db.add_block(new_block.clone().into()).await.unwrap();
+    let result = db.add_block(new_block.clone().into()).await.unwrap().result;
     let block = db.fetch_block(1, true).await.unwrap();
     match result {
         BlockAddResult::Ok(_) => assert_eq!(Block::from(block).hash(), new_block.hash()),
