@@ -72,6 +72,8 @@ pub enum RpcError {
     RemotePeerExceededMaxChunkCount { expected: usize },
     #[error("Request body was too large. Expected <= {expected} but got {got}")]
     MaxRequestSizeExceeded { got: usize, expected: usize },
+    #[error("Streamed response was too large. Expected <= {expected} but got {got}")]
+    MaxResponseSizeExceeded { got: usize, expected: usize },
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
 }
@@ -93,6 +95,7 @@ impl RpcError {
             RpcError::HandshakeError(RpcHandshakeError::TimedOut) |
             RpcError::ServerClosedRequest |
             RpcError::UnexpectedAckResponse |
+            RpcError::MaxResponseSizeExceeded { .. } |
             RpcError::ResponseIdDidNotMatchRequest { .. } => true,
 
             // Some of these may be caused by the server, but not with 100% certainty

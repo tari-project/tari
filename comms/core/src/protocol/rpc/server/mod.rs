@@ -646,6 +646,9 @@ struct ActivePeerRpcService<TSvc, TCommsProvider> {
     comms_provider: TCommsProvider,
     logging_context_string: Arc<String>,
     stop_rx: tokio::sync::watch::Receiver<()>,
+    /// Looked up once per session rather than for every streamed message.
+    #[cfg(feature = "metrics")]
+    outbound_response_bytes: tari_metrics::Histogram,
 }
 
 impl<TSvc, TCommsProvider> ActivePeerRpcService<TSvc, TCommsProvider>
@@ -671,6 +674,8 @@ where
                 String::from_utf8_lossy(&protocol)
             )),
 
+            #[cfg(feature = "metrics")]
+            outbound_response_bytes: metrics::outbound_response_bytes(&protocol),
             config,
             protocol,
             node_id,
@@ -953,7 +958,7 @@ where
         );
 
         let service_call = log_timing(
-            self.logging_context_string.clone(),
+            &self.logging_context_string,
             request_id,
             "service call",
             self.service.call(req),
@@ -1021,6 +1026,7 @@ where
         String::from_utf8_lossy(&self.protocol)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn process_body(
         &mut self,
         request_id: u32,
@@ -1042,78 +1048,110 @@ where
                 if !message.status.is_ok() {
                     metrics::status_error_counter(&protocol, message.status).inc();
                 }
-                message.to_proto()
-            })
-            .map(|resp| Bytes::from(resp.to_encoded_bytes()));
+                message.to_encoded_bytes()
+            });
 
+        let logging_context = self.logging_context_string.clone();
+        // The next item, pulled from the stream and encoded while the previous one was being sent. `Some(None)` means
+        // the stream ended during that send.
+        let mut prefetched: Option<Option<Bytes>> = None;
         loop {
-            let next_item = log_timing(
-                self.logging_context_string.clone(),
-                request_id,
-                "message read",
-                stream.next(),
-            );
-            let timeout = time::sleep(deadline);
-
-            tokio::select! {
-                // Check if the client interrupted the outgoing stream
-                Err(err) = self.check_interruptions() => {
-                    match err {
-                        err @ RpcServerError::ClientInterruptedStream => {
-                            debug!(target: LOG_TARGET, "Stream was interrupted by client: {}", err);
-                            break;
-                        },
-                        err => {
-                            error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
-                            return Err(err);
-                        },
+            let next = match prefetched.take() {
+                Some(Some(msg)) => {
+                    // Give an interruption that arrived during the previous send the same chance it has in the
+                    // select below. The prefetched item is dropped unsent.
+                    if let Err(err) = self.check_interruptions().await {
+                        match err {
+                            err @ RpcServerError::ClientInterruptedStream => {
+                                debug!(target: LOG_TARGET, "Stream was interrupted by client: {}", err);
+                                break;
+                            },
+                            err => {
+                                error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
+                                return Err(err);
+                            },
+                        }
                     }
+                    Some(msg)
                 },
-                msg = next_item => {
-                     match msg {
-                         Some(msg) => {
-                            #[cfg(feature = "metrics")]
-                            metrics::outbound_response_bytes(&self.protocol).observe(msg.len() as f64);
-                            trace!(
+                Some(None) => None,
+                None => {
+                    let next_item = log_timing(&logging_context, request_id, "message read", stream.next());
+                    let timeout = time::sleep(deadline);
+
+                    tokio::select! {
+                        // Check if the client interrupted the outgoing stream
+                        Err(err) = self.check_interruptions() => {
+                            match err {
+                                err @ RpcServerError::ClientInterruptedStream => {
+                                    debug!(target: LOG_TARGET, "Stream was interrupted by client: {}", err);
+                                    break;
+                                },
+                                err => {
+                                    error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
+                                    return Err(err);
+                                },
+                            }
+                        },
+                        msg = next_item => msg,
+
+                        _ = timeout => {
+                             debug!(
                                 target: LOG_TARGET,
-                                "({}) Sending body len = {}",
+                                "({}) Failed to return result within client deadline ({:.0?})",
                                 self.logging_context_string,
-                                msg.len()
+                                deadline
                             );
 
-                            // Bounded because this sits outside the `timeout` branch below: it is
-                            // the yamux window that backs up here, so a peer that opens a stream
-                            // and then stops draining it parks this task - and the session slot it
-                            // holds - with no timer running anywhere. The outer `run()` loop cannot
-                            // rescue it either; its idle timer does not tick while a request is
-                            // being handled. On elapse the peer is mid-frame, so the substream can
-                            // no longer be trusted for a subsequent request and the session ends.
-                            self.send_with_deadline(msg, deadline).await?;
-                        },
-                        None => {
-                            trace!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
+                            #[cfg(feature = "metrics")]
+                            metrics::error_counter(
+                                &self.protocol,
+                                &RpcServerError::ReadStreamExceededDeadline,
+                            )
+                            .inc();
                             break;
-                        },
-                    }
+                        }
+                    } // end select!
                 },
+            };
 
-                _ = timeout => {
-                     debug!(
-                        target: LOG_TARGET,
-                        "({}) Failed to return result within client deadline ({:.0?})",
-                        self.logging_context_string,
-                        deadline
-                    );
+            let Some(msg) = next else {
+                trace!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
+                break;
+            };
 
-                    #[cfg(feature = "metrics")]
-                    metrics::error_counter(
-                        &self.protocol,
-                        &RpcServerError::ReadStreamExceededDeadline,
-                    )
-                    .inc();
-                    break;
+            #[cfg(feature = "metrics")]
+            self.outbound_response_bytes.observe(msg.len() as f64);
+            trace!(
+                target: LOG_TARGET,
+                "({}) Sending body len = {}",
+                self.logging_context_string,
+                msg.len()
+            );
+
+            // Bounded because this sits outside the `timeout` branch above: it is the yamux window that backs up
+            // here, so a peer that opens a stream and then stops draining it parks this task - and the session slot
+            // it holds - with no timer running anywhere. The outer `run()` loop cannot rescue it either; its idle
+            // timer does not tick while a request is being handled. On elapse the peer is mid-frame, so the
+            // substream can no longer be trusted for a subsequent request and the session ends.
+            let send = self.send_with_deadline(msg, deadline);
+            tokio::pin!(send);
+            // While the send is in flight, pull and encode the next item. At most one item is held, so a session whose
+            // peer stops reading holds one extra encoded item, for no longer than the send deadline. If the send
+            // finishes first, the pending pull is dropped (a stream loses nothing when `next()` is cancelled) and the
+            // top of the loop waits for it as before, under a fresh per-item deadline.
+            loop {
+                tokio::select! {
+                    biased;
+                    result = &mut send => {
+                        result?;
+                        break;
+                    },
+                    next = stream.next(), if prefetched.is_none() => {
+                        prefetched = Some(next);
+                    },
                 }
-            } // end select!
+            }
         } // end loop
         Ok(())
     }
@@ -1181,7 +1219,15 @@ where
     }
 }
 
-async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_id: u32, tag: &str, fut: F) -> R {
+fn is_trace_enabled() -> bool {
+    log_enabled!(target: LOG_TARGET, log::Level::Trace) || tracing::enabled!(target: LOG_TARGET, Level::TRACE)
+}
+
+async fn log_timing<R, F: Future<Output = R>>(context_str: &str, request_id: u32, tag: &str, fut: F) -> R {
+    // Called for every streamed message, so only pay for the span and the timing when they will be logged
+    if !is_trace_enabled() {
+        return fut.await;
+    }
     let t = Instant::now();
     let span = span!(Level::TRACE, "rpc::internal::timing", request_id, tag);
     let ret = fut.instrument(span).await;

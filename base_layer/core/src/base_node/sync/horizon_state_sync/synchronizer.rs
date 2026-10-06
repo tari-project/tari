@@ -327,7 +327,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
-            .with_deadline_grace_period(Duration::from_secs(5));
+            .with_deadline_grace_period(Duration::from_secs(5))
+            // Kernels and outputs are small, so let the client buffer many while they are validated
+            .with_stream_buffer_size(100)
+            .with_max_response_size(self.max_streamed_item_size());
 
         // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
         let mut client = tokio::time::timeout(
@@ -437,6 +440,32 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .commit()
             .await?;
         Ok((1, sync_to_header.clone()))
+    }
+
+    /// The largest kernel or output (each streamed one at a time) a peer can legitimately send. A non-coinbase
+    /// output's features, script, covenant and payment id are charged `features_and_scripts_bytes_per_gram` bytes per
+    /// gram of block weight, so they cannot exceed `max_block_transaction_weight * features_and_scripts_bytes_per_gram`
+    /// bytes. The rest of an output (commitment, range proof, keys, signature, encrypted data) and an entire kernel are
+    /// small and fixed-size, and coinbase outputs (which are not weighed) have their script and features extra capped
+    /// far below this, so 64 KiB of margin covers them and the protobuf overhead.
+    fn max_streamed_item_size(&self) -> usize {
+        let max_weighed_bytes = self
+            .rules
+            .consensus_constants_vec()
+            .iter()
+            .map(|c| {
+                c.max_block_transaction_weight().saturating_mul(
+                    c.transaction_weight_params()
+                        .params()
+                        .features_and_scripts_bytes_per_gram
+                        .get(),
+                )
+            })
+            .max()
+            .unwrap_or(0);
+        usize::try_from(max_weighed_bytes)
+            .unwrap_or(usize::MAX)
+            .saturating_add(64 * 1024)
     }
 
     async fn sync_kernels_and_outputs(

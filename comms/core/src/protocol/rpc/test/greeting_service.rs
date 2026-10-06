@@ -172,9 +172,15 @@ impl GreetingRpc for GreetingService {
         let (tx, rx) = mpsc::channel(1);
         let item = std::iter::repeat_n(0u8, item_size as usize).collect::<Vec<_>>();
         tokio::spawn(async move {
-            for _ in 0..num_items {
+            for i in 0..num_items {
                 time::sleep(Duration::from_millis(delay_ms)).await;
-                if tx.send(Ok(item.clone())).await.is_err() {
+                // Stamp the item index (u32 LE) into the first 4 bytes so that tests can check the order. Items smaller
+                // than that are left as zeros.
+                let mut item = item.clone();
+                if let Some(prefix) = item.get_mut(..4) {
+                    prefix.copy_from_slice(&i.to_le_bytes());
+                }
+                if tx.send(Ok(item)).await.is_err() {
                     log::info!("stream was interrupted");
                     break;
                 }
