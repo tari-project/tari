@@ -85,8 +85,9 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header, constants)
-            .inspect_err(|e| warn!(target: LOG_TARGET, "{}", pow_rejection_message(&header.hash(), header, e)))?;
+        check_pow_data(header, constants).inspect_err(
+            |e| warn!(target: LOG_TARGET, "{}", pow_rejection_message(&header.hash(), header, false, e)),
+        )?;
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,
@@ -843,7 +844,7 @@ mod test {
             "{err:?}"
         );
         let ban_reason = err.get_ban_reason().expect("malformed pow data is bannable").reason;
-        let message = pow_rejection_message(&header.hash(), &header, &err);
+        let message = pow_rejection_message(&header.hash(), &header, false, &err);
 
         assert!(message.contains(&header.hash().to_hex()), "{message}");
         assert!(message.contains("Sha3"), "{message}");

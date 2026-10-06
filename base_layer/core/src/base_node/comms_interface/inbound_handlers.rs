@@ -728,13 +728,13 @@ where B: BlockchainBackend + 'static
         }
 
         // The ban that follows a rejected proof of work records the peer and the error but not the block, so name
-        // both here
+        // both here. The header is not linked to our chain yet, so its height is only the peer's claim.
         let log_pow_rejection = |e: &CommsInterfaceError| {
             if e.get_ban_reason().is_some() {
                 warn!(
                     target: LOG_TARGET,
                     "{} (from peer {})",
-                    helpers::pow_rejection_message(&block_hash, &new_block.header, e),
+                    helpers::pow_rejection_message(&block_hash, &new_block.header, true, e),
                     source_peer
                 );
             }

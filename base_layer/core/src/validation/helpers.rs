@@ -142,7 +142,7 @@ pub fn check_target_difficulty(
                 warn!(
                     target: LOG_TARGET,
                     "{}",
-                    pow_rejection_message(&block_header.hash(), block_header, e)
+                    pow_rejection_message(&block_header.hash(), block_header, false, e)
                 );
             }
         })?;
@@ -195,19 +195,29 @@ fn achieved_difficulty(
 /// The most characters of the error text [`pow_rejection_message`] includes.
 const MAX_POW_REJECTION_ERROR_CHARS: usize = 512;
 
-/// The log line for a header whose proof of work could not be verified. The ban reason for the same error is only the
-/// error itself, so this is what ties a ban to a block. `hash` is the header's hash, passed in because some callers
-/// already have it. It carries the fixed-size header fields and the error, never the pow data, and the error text is
-/// capped at [`MAX_POW_REJECTION_ERROR_CHARS`], so it stays bounded whatever the peer sent.
-pub(crate) fn pow_rejection_message(hash: &FixedHash, header: &BlockHeader, err: &dyn Display) -> String {
+/// The log line for a header whose proof of work could not be verified, naming the block by hash, height and
+/// algorithm. Where the rejection leads to a ban, the ban reason is only the error itself, so this line is what lets
+/// the ban be matched to a block; not every caller bans. `hash` is the header's hash, passed in because some callers
+/// already have it. `height_is_claimed` is for a header not yet linked to our chain, whose height is only what the peer
+/// says it is. The line carries the fixed-size header fields and the error, never the pow data, and the error text is
+/// capped at [`MAX_POW_REJECTION_ERROR_CHARS`], so this line stays bounded whatever the peer sent. The cap applies to
+/// this line only, not to the ban reason or other logs of the same error.
+pub(crate) fn pow_rejection_message(
+    hash: &FixedHash,
+    header: &BlockHeader,
+    height_is_claimed: bool,
+    err: &dyn Display,
+) -> String {
     let mut err = err.to_string();
     if let Some((cut, _)) = err.char_indices().nth(MAX_POW_REJECTION_ERROR_CHARS) {
         err.truncate(cut);
         err.push_str("...");
     }
+    let height = if height_is_claimed { "claimed height" } else { "height" };
     format!(
-        "Proof of work for block {} at height {} ({}) was rejected: {}",
+        "Proof of work for block {} at {} {} ({}) was rejected: {}",
         hash.to_hex(),
+        height,
         header.height,
         header.pow_algo(),
         err
@@ -637,7 +647,7 @@ mod test {
                     "{err:?}"
                 );
                 let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
-                let message = pow_rejection_message(&header.hash(), &header, &err);
+                let message = pow_rejection_message(&header.hash(), &header, false, &err);
 
                 assert!(message.contains(&header.hash().to_hex()), "{message}");
                 assert!(message.contains("RandomXMonero"), "{message}");
@@ -659,7 +669,7 @@ mod test {
                 }
             }
             let header = BlockHeader::new(0);
-            let message = pow_rejection_message(&header.hash(), &header, &LongError);
+            let message = pow_rejection_message(&header.hash(), &header, false, &LongError);
             let (_, err) = message.split_once("was rejected: ").unwrap();
             assert_eq!(err, format!("{}...", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS)));
 
@@ -670,11 +680,21 @@ mod test {
                     write!(f, "{}", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS))
                 }
             }
-            let message = pow_rejection_message(&header.hash(), &header, &ShortError);
+            let message = pow_rejection_message(&header.hash(), &header, false, &ShortError);
             assert!(
                 message.ends_with(&"é".repeat(MAX_POW_REJECTION_ERROR_CHARS)),
                 "{message}"
             );
+        }
+
+        #[test]
+        fn it_says_when_the_height_is_only_claimed() {
+            let mut header = BlockHeader::new(0);
+            header.height = 42;
+            let message = pow_rejection_message(&header.hash(), &header, false, &"err");
+            assert!(message.contains(" at height 42 "), "{message}");
+            let message = pow_rejection_message(&header.hash(), &header, true, &"err");
+            assert!(message.contains(" at claimed height 42 "), "{message}");
         }
     }
 
