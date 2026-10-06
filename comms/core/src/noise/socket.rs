@@ -328,6 +328,11 @@ where TSocket: AsyncRead + Unpin
                 ReadState::ReadFrame { frame_len } => {
                     let frame_len = usize::from(frame_len);
                     if self.buffers.read_available() >= frame_len {
+                        // As with the length prefix, a buffered frame is decrypted without touching the socket.
+                        // Charge the coop budget for it as well, so a peer packing many small frames into the
+                        // buffer gets no more decryption work per poll than one socket read per frame allowed.
+                        let coop = ready!(tokio::task::coop::poll_proceed(context));
+                        coop.made_progress();
                         let NoiseBuffers {
                             read_ahead,
                             read_start,
@@ -687,6 +692,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .into_transport_mode()
             .map_err(|err| io::Error::other(format!("Invalid snow state: {err}")))?;
 
+        // The read-ahead buffer carried over here may already hold bytes the remote sent after its last
+        // handshake message. They are only ever ciphertext and are decrypted lazily, with the transport state, on
+        // the next read. Nothing may drain or decrypt them before the caller has verified the remote static key.
         Ok(NoiseSocket {
             state: transport_state,
             ..self.socket
@@ -1267,5 +1275,51 @@ mod test {
 
         socket.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"after the flood");
+    }
+
+    #[tokio::test]
+    async fn buffered_frame_flood_yields_to_the_scheduler() {
+        let (mut sender, receiver) = transport_states();
+        let (mock, MockPeer { inbound: in_tx, .. }) = MockSocket::new();
+        let mut socket = NoiseSocket::new(mock, receiver);
+
+        // Many small non-empty frames, all buffered by one read
+        let mut chunk = Vec::new();
+        for _ in 0..1000 {
+            chunk.extend(wire_frame(&mut sender, b"x"));
+        }
+        in_tx.send(chunk).unwrap();
+        drop(in_tx);
+
+        // Read one frame at a time within a single task poll until the coop budget runs out. Each buffered frame
+        // charges the budget twice (length prefix and body), as two socket reads per frame did before the
+        // read-ahead buffer, so tokio's per-poll budget (128) is spent after about 64 frames.
+        let frames_in_one_poll = std::future::poll_fn(|cx| {
+            let mut frames = 0usize;
+            loop {
+                let mut byte = [0u8; 1];
+                let mut read_buf = ReadBuf::new(&mut byte);
+                match Pin::new(&mut socket).poll_read(cx, &mut read_buf) {
+                    Poll::Ready(result) => {
+                        result.unwrap();
+                        assert_eq!(read_buf.filled(), b"x");
+                        frames = frames.saturating_add(1);
+                    },
+                    Poll::Pending => return Poll::Ready(frames),
+                }
+            }
+        })
+        .await;
+        assert!(frames_in_one_poll > 0);
+        assert!(
+            frames_in_one_poll < 100,
+            "{frames_in_one_poll} frames decrypted in one poll"
+        );
+
+        // The remaining frames are still read correctly
+        let mut rest = Vec::new();
+        socket.read_to_end(&mut rest).await.unwrap();
+        assert_eq!(frames_in_one_poll.saturating_add(rest.len()), 1000);
+        assert!(rest.iter().all(|b| *b == b'x'));
     }
 }
