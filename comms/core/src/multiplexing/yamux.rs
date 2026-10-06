@@ -717,6 +717,102 @@ mod test {
     }
 
     #[tokio::test]
+    async fn open_stream_completes_after_ack_backlog_clears() {
+        // yamux::MAX_ACK_BACKLOG, the number of un-ACKed outbound streams at which poll_new_outbound waits
+        const MAX_ACK_BACKLOG: usize = 256;
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+
+        // Open the full backlog. The listener accepts each stream straight away, so its inbound queue stays well under
+        // the cap, but never writes on them, so none are ACKed.
+        let mut outbound = Vec::with_capacity(MAX_ACK_BACKLOG);
+        let mut inbound = Vec::with_capacity(MAX_ACK_BACKLOG);
+        for _ in 0..MAX_ACK_BACKLOG {
+            let mut stream = dialer_control.open_stream().await.unwrap();
+            stream.write_all(b"hello").await.unwrap();
+            outbound.push(stream);
+            let stream = tokio::time::timeout(Duration::from_secs(10), listener.incoming.next())
+                .await
+                .unwrap()
+                .unwrap();
+            inbound.push(stream);
+        }
+
+        let mut control = dialer_control.clone();
+        let mut open_task = tokio::spawn(async move { control.open_stream().await });
+        let result = tokio::time::timeout(Duration::from_millis(100), &mut open_task).await;
+        assert!(result.is_err(), "open_stream should wait while the ACK backlog is full");
+
+        // The listener's first frame on a stream ACKs it
+        inbound.first_mut().unwrap().write_all(b"ack").await.unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(10), open_task).await;
+        assert!(result.expect("open_stream deadlocked").unwrap().is_ok());
+
+        let result = tokio::time::timeout(Duration::from_secs(10), async {
+            let mut buf = [0u8; 3];
+            outbound.first_mut().unwrap().read_exact(&mut buf).await.unwrap();
+            assert_eq!(&buf, b"ack");
+        })
+        .await;
+        assert!(result.is_ok(), "existing substream stalled");
+    }
+
+    #[tokio::test]
+    async fn excess_inbound_streams_are_reset() {
+        // At most this many inbound streams can be held: the worker's queue, the incoming channel and one in flight
+        const MAX_HELD: usize = super::MAX_QUEUED_INBOUND_STREAMS + 10 + 1;
+        const NUM_EXCESS: usize = 25;
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+
+        let mut dialer_substream = dialer_control.open_stream().await.unwrap();
+        dialer_substream.write_all(b"first").await.unwrap();
+        let mut listener_substream = listener.incoming.next().await.unwrap();
+        let mut buf = [0u8; 5];
+        listener_substream.read_exact(&mut buf).await.unwrap();
+
+        // Open streams that are never accepted
+        let mut unaccepted = Vec::with_capacity(MAX_HELD + NUM_EXCESS);
+        for _ in 0..MAX_HELD + NUM_EXCESS {
+            let mut stream = dialer_control.open_stream().await.unwrap();
+            stream.write_all(b"hello").await.unwrap();
+            unaccepted.push(stream);
+        }
+
+        // Streams are held in order, so at least the last NUM_EXCESS streams must have been reset
+        for stream in unaccepted.iter_mut().skip(MAX_HELD) {
+            let mut buf = [0u8; 1];
+            let result = tokio::time::timeout(Duration::from_secs(10), stream.read(&mut buf))
+                .await
+                .expect("excess stream was not reset");
+            assert!(matches!(result, Ok(0) | Err(_)), "unexpected read result {result:?}");
+        }
+
+        let result = tokio::time::timeout(Duration::from_secs(10), async {
+            dialer_substream.write_all(b"ping").await.unwrap();
+            let mut buf = [0u8; 4];
+            listener_substream.read_exact(&mut buf).await.unwrap();
+            assert_eq!(&buf, b"ping");
+            listener_substream.write_all(b"pong").await.unwrap();
+            dialer_substream.read_exact(&mut buf).await.unwrap();
+            assert_eq!(&buf, b"pong");
+        })
+        .await;
+        assert!(result.is_ok(), "existing substream stalled");
+    }
+
+    #[tokio::test]
     async fn send_big_message() -> io::Result<()> {
         #[allow(non_upper_case_globals)]
         static MiB: usize = 1 << 20;
