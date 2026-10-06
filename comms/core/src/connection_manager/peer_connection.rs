@@ -65,6 +65,7 @@ use crate::{
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECTION_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -812,18 +813,24 @@ impl PeerConnectionActor {
         self.request_rx.close();
 
         // Only emit closed event once
-        if let Err(e) = self.control.close().await {
-            match e {
-                YamuxControlError::ConnectionClosed => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "On disconnect: (Peer = {}) Connection already closed ({})",
-                        self.peer_node_id.short_str(),
-                        e
-                    );
-                },
-                e => trace!(target: LOG_TARGET, "On disconnect: ({e})"),
-            }
+        match time::timeout(CONNECTION_CLOSE_TIMEOUT, self.control.close()).await {
+            Ok(Ok(())) => {},
+            Ok(Err(YamuxControlError::ConnectionClosed)) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "On disconnect: (Peer = {}) Connection already closed",
+                    self.peer_node_id.short_str(),
+                );
+            },
+            Ok(Err(e)) => trace!(target: LOG_TARGET, "On disconnect: ({e})"),
+            // Carry on: once this actor exits it drops the incoming substream receiver, which makes the yamux
+            // worker close the connection
+            Err(_) => warn!(
+                target: LOG_TARGET,
+                "On disconnect: (Peer = {}) Timed out after {:.0?} waiting for the connection to close",
+                self.peer_node_id.short_str(),
+                CONNECTION_CLOSE_TIMEOUT
+            ),
         }
 
         if !silent {
