@@ -31,6 +31,7 @@ pub use lmdb_db::{
     create_readonly_lmdb_environment,
     create_recovery_lmdb_database,
     get_all_database_names,
+    get_legacy_database_names,
 };
 use serde::{Deserialize, Serialize};
 pub use stats_collector::{DatabaseStats, MigrationPhase};

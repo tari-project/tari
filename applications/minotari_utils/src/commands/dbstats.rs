@@ -29,11 +29,11 @@ use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
 use clap::Args;
 use csv;
-use lmdb_zero::{Database, DatabaseOptions, ReadTransaction};
+use lmdb_zero::{Database, DatabaseOptions, LmdbResultExt, ReadTransaction};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tabled::{Table, Tabled, settings::Style};
-use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names};
+use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names, get_legacy_database_names};
 
 use crate::{cli::Cli, config::AppConfig};
 
@@ -202,8 +202,8 @@ impl DbStatsArgs {
 
         // Default to ~/.tari/mainnet if no network dir specified
         let network_dir = self.network_dir.clone().unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".tari").join("mainnet")
+            let home = dirs_next::home_dir().unwrap_or_else(|| PathBuf::from("."));
+            home.join(".tari").join("mainnet")
         });
 
         if !network_dir.exists() {
@@ -472,9 +472,7 @@ fn get_directory_size(dir: &Path) -> Result<u64> {
 
 fn find_base_node_lmdb_database(databases: &[ComponentDatabaseInfo]) -> Option<&ComponentDatabaseInfo> {
     databases.iter().find(|db| {
-        db.component == "Base Node" &&
-            db.db_type == "LMDB" &&
-            (db.path.contains("data/base_node/db") || db.path.contains("data\\base_node\\db"))
+        db.component == "Base Node" && db.db_type == "LMDB" && db.path.replace('\\', "/").contains("data/base_node/db")
     })
 }
 
@@ -498,17 +496,15 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     let mut databases = Vec::new();
     let page_size = env_stat.psize as usize;
 
-    // Get the authoritative list of database names from Tari core, plus a few V1/legacy names
-    // so we can inspect older databases that have not yet been migrated to the V2 schema.
+    // Get the authoritative list of database names from Tari core, plus the retired names so that older
+    // databases that have not yet been migrated can be inspected too
     let mut db_names = get_all_database_names();
-    for legacy in ["jmt_node_data", "jmt_value_data", "jmt_unique_key_data"] {
-        db_names.push(legacy);
-    }
+    db_names.extend(get_legacy_database_names());
 
     // Get statistics for each database
     for db_name in db_names {
-        match Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
-            Ok(database) => match ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
+        match Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()).to_opt() {
+            Ok(Some(database)) => match ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
                 Ok(db_stat) => {
                     let total_pages = db_stat
                         .leaf_pages
@@ -531,6 +527,8 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
                 },
                 Err(e) => eprintln!("  [warn] db_stat failed for '{db_name}': {e}"),
             },
+            // Not every database exists, e.g. legacy databases on a migrated node
+            Ok(None) => {},
             Err(e) => eprintln!("  [warn] Database::open failed for '{db_name}': {e}"),
         }
     }
@@ -649,4 +647,59 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
         tables,
         summary,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use lmdb_zero::{EnvBuilder, WriteTransaction, open, put};
+
+    use super::*;
+
+    fn lmdb_info(path: &str) -> ComponentDatabaseInfo {
+        ComponentDatabaseInfo {
+            component: "Base Node".to_string(),
+            name: "db".to_string(),
+            db_type: "LMDB".to_string(),
+            total_size: 0,
+            path: path.to_string(),
+        }
+    }
+
+    #[test]
+    fn it_finds_the_base_node_lmdb_database_with_either_path_separator() {
+        let unix = [lmdb_info("/home/user/.tari/mainnet/data/base_node/db")];
+        assert!(find_base_node_lmdb_database(&unix).is_some());
+
+        let windows = [lmdb_info("C:\\Users\\user\\.tari\\mainnet\\data\\base_node\\db")];
+        assert!(find_base_node_lmdb_database(&windows).is_some());
+
+        let other = [lmdb_info("/home/user/.tari/mainnet/data/base_node/peer_db")];
+        assert!(find_base_node_lmdb_database(&other).is_none());
+    }
+
+    #[test]
+    fn it_includes_legacy_databases_and_skips_missing_ones() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().to_str().unwrap();
+        {
+            let env = unsafe {
+                let mut builder = EnvBuilder::new().unwrap();
+                builder.set_maxdbs(5).unwrap();
+                builder.open(path, open::Flags::empty(), 0o600).unwrap()
+            };
+            let db = Database::open(
+                &env,
+                Some("jmt_node_data"),
+                &DatabaseOptions::new(lmdb_zero::db::CREATE),
+            )
+            .unwrap();
+            let txn = WriteTransaction::new(&env).unwrap();
+            txn.access().put(&db, b"key", b"value", put::Flags::empty()).unwrap();
+            txn.commit().unwrap();
+        }
+
+        let stats = collect_database_stats(temp_dir.path()).unwrap();
+        let found: Vec<_> = stats.databases.iter().map(|d| (d.name.as_str(), d.entries)).collect();
+        assert_eq!(found, [("jmt_node_data", 1)]);
+    }
 }
