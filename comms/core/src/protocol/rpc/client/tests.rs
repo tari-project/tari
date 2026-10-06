@@ -206,3 +206,41 @@ mod last_request_latency {
         }
     }
 }
+
+mod stream_buffer_size {
+    use super::*;
+    use crate::protocol::rpc::client::{RpcClientBuilder, RpcClientConfig};
+
+    #[test]
+    fn it_defaults_to_five() {
+        assert_eq!(RpcClientConfig::default().stream_buffer_size, 5);
+        let builder = RpcClientBuilder::<GreetingClient>::new();
+        assert_eq!(builder.config.stream_buffer_size, 5);
+    }
+
+    #[test]
+    fn it_is_set_by_the_builder() {
+        let builder = RpcClientBuilder::<GreetingClient>::new().with_stream_buffer_size(100);
+        assert_eq!(builder.config.stream_buffer_size, 100);
+    }
+
+    #[tokio::test]
+    async fn a_zero_buffer_size_still_streams() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new().with_stream_buffer_size(0))
+            .await
+            .unwrap();
+        let resp = client
+            .slow_stream(SlowStreamRequest {
+                num_items: 10,
+                item_size: 10,
+                delay_ms: 1,
+            })
+            .await
+            .unwrap();
+        let items = resp.collect::<Vec<_>>().await;
+        assert_eq!(items.len(), 10);
+        assert!(items.iter().all(|r| r.is_ok()));
+    }
+}

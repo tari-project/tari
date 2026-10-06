@@ -990,3 +990,47 @@ async fn oversized_messages_during_a_stream_are_ignored() {
     }
     assert_eq!(items, NUM_ITEMS);
 }
+
+/// When the client reads slowly, sends block on the yamux window and the server holds the next item while it waits.
+/// Every item must still arrive exactly once, followed by the end of the stream.
+#[tokio::test]
+async fn a_slow_reader_receives_every_item_of_a_prefetched_stream() {
+    const NUM_ITEMS: u32 = 20;
+    const ITEM_SIZE: u32 = 1024 * 1024;
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(10))
+        .with_stream_buffer_size(1)
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: ITEM_SIZE,
+            delay_ms: 0,
+        })
+        .await
+        .unwrap();
+
+    let mut num_items = 0;
+    while let Some(item) = resp.next().await {
+        assert_eq!(item.unwrap().len(), ITEM_SIZE as usize);
+        num_items += 1;
+        time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(num_items, NUM_ITEMS);
+
+    // The session is still usable afterwards
+    let resp = client
+        .say_hello(SayHelloRequest {
+            name: "Ruby".to_string(),
+            language: 0,
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.greeting, "Sawubona Ruby");
+}

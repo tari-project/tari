@@ -271,7 +271,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
-            .with_deadline_grace_period(Duration::from_secs(5));
+            .with_deadline_grace_period(Duration::from_secs(5))
+            // Headers are small, so let the client buffer many while they are validated
+            .with_stream_buffer_size(100);
         // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
         let mut client = tokio::time::timeout(
             self.config.rpc_deadline,

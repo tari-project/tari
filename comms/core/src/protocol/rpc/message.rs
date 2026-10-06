@@ -23,8 +23,9 @@
 use std::{convert::TryFrom, fmt, time::Duration};
 
 use bitflags::bitflags;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use log::warn;
+use prost::encoding;
 
 use super::RpcError;
 use crate::{
@@ -267,13 +268,42 @@ pub struct RpcResponse {
 }
 
 impl RpcResponse {
-    pub fn to_proto(&self) -> proto::rpc::RpcResponse {
-        proto::rpc::RpcResponse {
-            request_id: self.request_id,
-            status: self.status as u32,
-            flags: self.flags.bits().into(),
-            payload: self.payload.to_vec(),
+    /// Encodes this response exactly as the prost-generated `proto::rpc::RpcResponse` would, but writes the payload
+    /// straight into a single buffer instead of first copying it into the proto's `Vec<u8>`. As prost does, fields
+    /// holding their default value (0 or an empty payload) are not written.
+    pub fn to_encoded_bytes(&self) -> Bytes {
+        let request_id = self.request_id;
+        let status = self.status as u32;
+        let flags = u32::from(self.flags.bits());
+
+        let mut len = 0usize;
+        if request_id != 0 {
+            len = len.saturating_add(encoding::uint32::encoded_len(1, &request_id));
         }
+        if status != 0 {
+            len = len.saturating_add(encoding::uint32::encoded_len(2, &status));
+        }
+        if flags != 0 {
+            len = len.saturating_add(encoding::uint32::encoded_len(3, &flags));
+        }
+        if !self.payload.is_empty() {
+            len = len.saturating_add(encoding::bytes::encoded_len(10, &self.payload));
+        }
+
+        let mut buf = BytesMut::with_capacity(len);
+        if request_id != 0 {
+            encoding::uint32::encode(1, &request_id, &mut buf);
+        }
+        if status != 0 {
+            encoding::uint32::encode(2, &status, &mut buf);
+        }
+        if flags != 0 {
+            encoding::uint32::encode(3, &flags, &mut buf);
+        }
+        if !self.payload.is_empty() {
+            encoding::bytes::encode(10, &self.payload, &mut buf);
+        }
+        buf.freeze()
     }
 
     pub fn exceeded_message_size(self) -> RpcResponse {
@@ -347,6 +377,91 @@ impl proto::rpc::RpcSessionReply {
             None => Err(HandshakeRejectReason::Unknown(
                 "handshake reply did not contain a session result",
             )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::message::MessageExt;
+
+    fn to_proto(resp: &RpcResponse) -> proto::rpc::RpcResponse {
+        proto::rpc::RpcResponse {
+            request_id: resp.request_id,
+            status: resp.status as u32,
+            flags: resp.flags.bits().into(),
+            payload: resp.payload.to_vec(),
+        }
+    }
+
+    #[test]
+    fn rpc_response_encoding_matches_prost() {
+        let cases = vec![
+            RpcResponse {
+                request_id: 0,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::empty(),
+                payload: Bytes::new(),
+            },
+            RpcResponse {
+                request_id: 12,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::empty(),
+                payload: Bytes::new(),
+            },
+            RpcResponse {
+                request_id: 1,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::FIN,
+                payload: Bytes::from_static(b"last"),
+            },
+            RpcResponse {
+                request_id: 1,
+                status: RpcStatusCode::MalformedResponse,
+                flags: RpcMessageFlags::FIN | RpcMessageFlags::ACK,
+                payload: Bytes::from_static(b"error details"),
+            },
+            RpcResponse {
+                request_id: u32::MAX,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::empty(),
+                payload: Bytes::from_static(&[0u8]),
+            },
+            RpcResponse {
+                request_id: u32::MAX - 1,
+                status: RpcStatusCode::General,
+                flags: RpcMessageFlags::FIN,
+                payload: Bytes::new(),
+            },
+            RpcResponse {
+                request_id: 0,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::empty(),
+                payload: Bytes::from_static(b"payload only"),
+            },
+            RpcResponse {
+                request_id: 65_535,
+                status: RpcStatusCode::Ok,
+                flags: RpcMessageFlags::empty(),
+                payload: Bytes::from(vec![0xa5u8; 1024 * 1024 + 7]),
+            },
+        ];
+
+        for resp in cases {
+            let expected = to_proto(&resp).to_encoded_bytes();
+            let actual = resp.to_encoded_bytes();
+            assert_eq!(
+                actual.as_ref(),
+                expected.as_slice(),
+                "encoding mismatch for request_id={}, status={:?}, flags={:?}, payload_len={}",
+                resp.request_id,
+                resp.status,
+                resp.flags,
+                resp.payload.len()
+            );
+            // The buffer was sized exactly
+            assert_eq!(actual.len(), prost::Message::encoded_len(&to_proto(&resp)));
         }
     }
 }

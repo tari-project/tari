@@ -268,6 +268,15 @@ impl<TClient> RpcClientBuilder<TClient> {
         self
     }
 
+    /// Set the number of streamed responses that are buffered for the caller before the client stops reading from
+    /// the substream. A larger buffer lets the server keep sending while the caller processes earlier responses.
+    /// Values below 1 are treated as 1.
+    /// Default: 5
+    pub fn with_stream_buffer_size(mut self, size: usize) -> Self {
+        self.config.stream_buffer_size = size;
+        self
+    }
+
     /// Set the protocol ID associated with this client. This is used for logging purposes only.
     pub fn with_protocol_id(mut self, protocol_id: ProtocolId) -> Self {
         self.protocol_id = Some(protocol_id);
@@ -320,6 +329,8 @@ pub struct RpcClientConfig {
     pub deadline: Option<Duration>,
     pub deadline_grace_period: Duration,
     pub handshake_timeout: Duration,
+    /// The number of streamed responses buffered for the caller per request
+    pub stream_buffer_size: usize,
 }
 
 impl RpcClientConfig {
@@ -340,6 +351,7 @@ impl Default for RpcClientConfig {
             deadline: Some(Duration::from_secs(120)),
             deadline_grace_period: Duration::from_secs(60),
             handshake_timeout: Duration::from_secs(90),
+            stream_buffer_size: 5,
         }
     }
 }
@@ -442,6 +454,9 @@ struct RpcClientWorker<TSubstream> {
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
     session_state: Arc<AtomicBool>,
+    /// Looked up once per connector rather than for every received message.
+    #[cfg(feature = "metrics")]
+    inbound_response_bytes: tari_metrics::Histogram,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -467,6 +482,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             next_request_id: 0,
             ready_tx: Some(ready_tx),
             last_request_latency_tx,
+            #[cfg(feature = "metrics")]
+            inbound_response_bytes: metrics::inbound_response_bytes(&protocol_id),
             protocol_id,
             shutdown_signal,
             terminate_signal,
@@ -706,7 +723,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             );
         }
 
-        let (response_tx, response_rx) = mpsc::channel(5);
+        let (response_tx, response_rx) = mpsc::channel(self.config.stream_buffer_size.max(1));
         if let Err(mut rx) = reply.send(response_rx) {
             warn!(
                 target: LOG_TARGET,
@@ -932,7 +949,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         request_id: u16,
     ) -> Result<(proto::rpc::RpcResponse, Option<Duration>), RpcError> {
         let stream_id = self.stream_id();
-        let protocol_name = self.protocol_name().to_string();
 
         let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
         let mut num_ignored = 0usize;
@@ -943,11 +959,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         target: LOG_TARGET,
                         "(stream: {}, {}) Received body len = {}",
                         stream_id,
-                        protocol_name,
+                        // Only evaluated when trace logging is enabled
+                        String::from_utf8_lossy(&self.protocol_id),
                         reader.bytes_read()
                     );
                     #[cfg(feature = "metrics")]
-                    metrics::inbound_response_bytes(&self.protocol_id).observe(reader.bytes_read() as f64);
+                    self.inbound_response_bytes.observe(reader.bytes_read() as f64);
                     let time_to_first_msg = reader.time_to_first_msg();
                     break (resp, time_to_first_msg);
                 },
