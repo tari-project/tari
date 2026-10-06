@@ -52,7 +52,10 @@ const MAX_PAYLOAD_LENGTH: usize = u16::MAX as usize; // 65535
 
 // The maximum number of bytes that we can buffer is 16 bytes less than u16::max_value() because
 // encrypted messages include a tag along with the payload.
-const MAX_WRITE_BUFFER_LENGTH: usize = u16::MAX as usize - 16; // 65519
+pub(crate) const MAX_WRITE_BUFFER_LENGTH: usize = u16::MAX as usize - 16; // 65519
+
+// Every frame on the wire is prefixed with its length as a big-endian u16.
+const FRAME_LEN_PREFIX_LENGTH: usize = 2;
 
 /// Collection of buffers used for buffering data during the various read/write states of a
 /// NoiseSocket
@@ -64,9 +67,10 @@ struct NoiseBuffers {
     read_decrypted: [u8; MAX_PAYLOAD_LENGTH],
     /// Unencrypted data intended to be written to the wire
     write_decrypted: [u8; MAX_WRITE_BUFFER_LENGTH],
-    /// Encrypted data to write to the wire (produced by having snow encrypt the `write_decrypted`
-    /// buffer)
-    write_encrypted: [u8; MAX_PAYLOAD_LENGTH],
+    /// Length-prefixed encrypted frame to write to the wire (produced by having snow encrypt the
+    /// `write_decrypted` buffer after the length prefix). The prefix and frame are written together so that a frame
+    /// costs one write rather than two.
+    write_encrypted: [u8; FRAME_LEN_PREFIX_LENGTH + MAX_PAYLOAD_LENGTH],
 }
 
 impl NoiseBuffers {
@@ -75,7 +79,7 @@ impl NoiseBuffers {
             read_encrypted: [0; MAX_PAYLOAD_LENGTH],
             read_decrypted: [0; MAX_PAYLOAD_LENGTH],
             write_decrypted: [0; MAX_WRITE_BUFFER_LENGTH],
-            write_encrypted: [0; MAX_PAYLOAD_LENGTH],
+            write_encrypted: [0; FRAME_LEN_PREFIX_LENGTH + MAX_PAYLOAD_LENGTH],
         }
     }
 }
@@ -111,13 +115,7 @@ enum WriteState {
     Init,
     /// Buffer provided data
     BufferData { offset: usize },
-    /// Write frame length to the wire
-    WriteFrameLen {
-        frame_len: u16,
-        buf: [u8; 2],
-        offset: usize,
-    },
-    /// Write encrypted frame to the wire
+    /// Write the length-prefixed encrypted frame to the wire
     WriteEncryptedFrame { frame_len: u16, offset: usize },
     /// Flush the underlying socket
     Flush,
@@ -458,16 +456,14 @@ where TSocket: AsyncWrite + Unpin
                                 )));
                             },
                         };
-                        match self.state.write_message(bytes, &mut self.buffers.write_encrypted) {
+                        let (len_prefix, frame) = self.buffers.write_encrypted.split_at_mut(FRAME_LEN_PREFIX_LENGTH);
+                        match self.state.write_message(bytes, frame) {
                             Ok(encrypted_len) => {
-                                let frame_len = encrypted_len
+                                let frame_len: u16 = encrypted_len
                                     .try_into()
                                     .map_err(|_| io::Error::other("offset should be able to fit in u16"))?;
-                                self.write_state = WriteState::WriteFrameLen {
-                                    frame_len,
-                                    buf: u16::to_be_bytes(frame_len),
-                                    offset: 0,
-                                };
+                                len_prefix.copy_from_slice(&frame_len.to_be_bytes());
+                                self.write_state = WriteState::WriteEncryptedFrame { frame_len, offset: 0 };
                             },
                             Err(e) => {
                                 warn!(target: LOG_TARGET, "Encryption Error: {e}");
@@ -482,26 +478,15 @@ where TSocket: AsyncWrite + Unpin
                         return Poll::Ready(Ok(Some(bytes_buffered)));
                     }
                 },
-                WriteState::WriteFrameLen {
-                    frame_len,
-                    ref buf,
-                    ref mut offset,
-                } => match ready!(poll_write_all(context, Pin::new(&mut self.socket), buf, offset)) {
-                    Ok(()) => {
-                        self.write_state = WriteState::WriteEncryptedFrame { frame_len, offset: 0 };
-                    },
-                    Err(e) => {
-                        if e.kind() == io::ErrorKind::WriteZero {
-                            self.write_state = WriteState::Eof;
-                        }
-                        return Poll::Ready(Err(e));
-                    },
-                },
                 WriteState::WriteEncryptedFrame {
                     frame_len,
                     ref mut offset,
                 } => {
-                    let bytes = match self.buffers.write_encrypted.get(..(frame_len as usize)) {
+                    let bytes = match self
+                        .buffers
+                        .write_encrypted
+                        .get(..FRAME_LEN_PREFIX_LENGTH.saturating_add(frame_len as usize))
+                    {
                         Some(bytes) => bytes,
                         None => {
                             return Poll::Ready(Err(io::Error::new(
@@ -729,6 +714,11 @@ impl From<TransportState> for NoiseState {
 
 #[cfg(test)]
 mod test {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
     use futures::future::join;
     use snow::{Builder, Error, Keypair, params::NoiseParams};
 
@@ -888,6 +878,156 @@ mod test {
         let mut buf_receive = vec![0; MAX_PAYLOAD_LENGTH * 2 + 1024];
         b.read_exact(&mut buf_receive).await?;
         assert_eq!(&buf_receive[..], &buf_send[..]);
+
+        Ok(())
+    }
+
+    /// Wraps a socket and counts the calls to `poll_write`
+    struct WriteCountingSocket {
+        inner: MemorySocket,
+        num_writes: Arc<AtomicUsize>,
+    }
+
+    impl AsyncRead for WriteCountingSocket {
+        fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for WriteCountingSocket {
+        fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+            self.num_writes.fetch_add(1, Ordering::SeqCst);
+            Pin::new(&mut self.inner).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_shutdown(cx)
+        }
+    }
+
+    #[tokio::test]
+    async fn one_write_per_frame() -> io::Result<()> {
+        let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid protocol name");
+        let dialer_keypair = Builder::new(parameters.clone()).generate_keypair().unwrap();
+        let listener_keypair = Builder::new(parameters.clone()).generate_keypair().unwrap();
+        let dialer_session = Builder::new(parameters.clone())
+            .local_private_key(&dialer_keypair.private)
+            .build_initiator()
+            .unwrap();
+        let listener_session = Builder::new(parameters)
+            .local_private_key(&listener_keypair.private)
+            .build_responder()
+            .unwrap();
+
+        let (dialer_socket, listener_socket) = MemorySocket::new_pair();
+        let num_writes = Arc::new(AtomicUsize::new(0));
+        let dialer_socket = WriteCountingSocket {
+            inner: dialer_socket,
+            num_writes: num_writes.clone(),
+        };
+        let dialer = Handshake::new(dialer_socket, dialer_session, Duration::from_secs(1));
+        let listener = Handshake::new(listener_socket, listener_session, Duration::from_secs(1));
+        let (a, b) = join(dialer.perform_handshake(), listener.perform_handshake()).await;
+        let (mut a, mut b) = (a?, b?);
+
+        // The initiator sends two handshake messages, one write each
+        assert_eq!(num_writes.swap(0, Ordering::SeqCst), 2);
+
+        a.write_all(b"one frame").await?;
+        a.flush().await?;
+        assert_eq!(num_writes.swap(0, Ordering::SeqCst), 1);
+
+        // Enough data to fill two frames and start a third
+        let buf_send = vec![7u8; MAX_WRITE_BUFFER_LENGTH * 2 + 100];
+        a.write_all(&buf_send).await?;
+        a.flush().await?;
+        assert_eq!(num_writes.swap(0, Ordering::SeqCst), 3);
+
+        let mut buf_receive = [0u8; 9];
+        b.read_exact(&mut buf_receive).await?;
+        assert_eq!(&buf_receive, b"one frame");
+        let mut buf_receive = vec![0u8; buf_send.len()];
+        b.read_exact(&mut buf_receive).await?;
+        assert_eq!(buf_receive, buf_send);
+
+        Ok(())
+    }
+
+    /// Wraps a socket and accepts only a few bytes per `poll_write`, returning `Pending` on every third call
+    struct ShortWriteSocket {
+        inner: MemorySocket,
+        num_calls: usize,
+    }
+
+    impl AsyncRead for ShortWriteSocket {
+        fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for ShortWriteSocket {
+        fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+            self.num_calls = self.num_calls.wrapping_add(1);
+            // Sizes of 1 and 7 split the 2-byte length prefix and straddle the prefix/ciphertext boundary
+            let max_len = match self.num_calls % 3 {
+                0 => {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                },
+                1 => 1,
+                _ => 7,
+            };
+            let len = cmp::min(buf.len(), max_len);
+            Pin::new(&mut self.inner).poll_write(cx, buf.get(..len).unwrap_or(buf))
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_shutdown(cx)
+        }
+    }
+
+    #[tokio::test]
+    async fn partial_writes_resume_mid_frame() -> io::Result<()> {
+        let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid protocol name");
+        let dialer_keypair = Builder::new(parameters.clone()).generate_keypair().unwrap();
+        let listener_keypair = Builder::new(parameters.clone()).generate_keypair().unwrap();
+        let dialer_session = Builder::new(parameters.clone())
+            .local_private_key(&dialer_keypair.private)
+            .build_initiator()
+            .unwrap();
+        let listener_session = Builder::new(parameters)
+            .local_private_key(&listener_keypair.private)
+            .build_responder()
+            .unwrap();
+
+        let (dialer_socket, listener_socket) = MemorySocket::new_pair();
+        let dialer_socket = ShortWriteSocket {
+            inner: dialer_socket,
+            num_calls: 0,
+        };
+        let dialer = Handshake::new(dialer_socket, dialer_session, Duration::from_secs(1));
+        let listener = Handshake::new(listener_socket, listener_session, Duration::from_secs(1));
+        let (a, b) = join(dialer.perform_handshake(), listener.perform_handshake()).await;
+        let (mut a, mut b) = (a?, b?);
+
+        // Enough data to fill two frames and start a third, with varying bytes so reordering would be caught
+        let buf_send = (0..MAX_WRITE_BUFFER_LENGTH * 2 + 100)
+            .map(|i| u8::try_from(i % 251).unwrap())
+            .collect::<Vec<_>>();
+        a.write_all(&buf_send).await?;
+        a.flush().await?;
+
+        let mut buf_receive = vec![0u8; buf_send.len()];
+        b.read_exact(&mut buf_receive).await?;
+        assert_eq!(buf_receive, buf_send);
 
         Ok(())
     }

@@ -28,7 +28,12 @@ use tokio::sync::broadcast;
 
 use super::BaseNodeSyncRpcService;
 use crate::{
-    base_node::{BaseNodeSyncService, LocalNodeCommsInterface},
+    base_node::{
+        BaseNodeSyncService,
+        LocalNodeCommsInterface,
+        comms_interface::BlockEvent,
+        sync::BlockchainSyncConfig,
+    },
     chain_storage::BlockchainDatabase,
     proto::base_node::{SyncBlocksRequest, SyncUtxosRequest},
     test_helpers::{
@@ -38,6 +43,16 @@ use crate::{
 };
 
 fn setup() -> (
+    BaseNodeSyncRpcService<TempDatabase>,
+    BlockchainDatabase<TempDatabase>,
+    RpcRequestMock,
+) {
+    setup_with_block_batch_size(BlockchainSyncConfig::default().rpc_block_batch_size)
+}
+
+fn setup_with_block_batch_size(
+    block_batch_size: usize,
+) -> (
     BaseNodeSyncRpcService<TempDatabase>,
     BlockchainDatabase<TempDatabase>,
     RpcRequestMock,
@@ -52,6 +67,7 @@ fn setup() -> (
     let service = BaseNodeSyncRpcService::new(
         db.clone().into(),
         LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+        block_batch_size,
     );
     (service, db, request_mock)
 }
@@ -110,6 +126,71 @@ mod sync_blocks {
         blocks.iter().zip(["B", "C", "D", "E"]).for_each(|(block, name)| {
             assert_eq!(*chain.get(name).unwrap().hash(), block.hash);
         });
+    }
+
+    #[tokio::test]
+    async fn it_streams_all_blocks_for_any_batch_size() {
+        // A batch size of 0 is clamped to 1, and batch sizes that do not divide the range evenly or exceed it must
+        // still stream every block exactly once
+        for block_batch_size in [0, 1, 3, 10] {
+            let (service, db, rpc_request_mock) = setup_with_block_batch_size(block_batch_size);
+
+            let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+
+            let msg = SyncBlocksRequest {
+                start_hash: chain.get("A").unwrap().hash().to_vec(),
+                end_hash: chain.get("E").unwrap().hash().to_vec(),
+            };
+            let req = rpc_request_mock.request_with_context(Default::default(), msg);
+            let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
+            let blocks = convert_mpsc_to_stream(&mut streaming)
+                .map(|block| block.unwrap())
+                .collect::<Vec<_>>()
+                .await;
+
+            assert_eq!(blocks.len(), 4, "block_batch_size = {block_batch_size}");
+            blocks.iter().zip(["B", "C", "D", "E"]).for_each(|(block, name)| {
+                assert_eq!(*chain.get(name).unwrap().hash(), block.hash);
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn it_sends_conflict_on_reorg() {
+        let request_mock = RpcRequestMock::new(create_peer_manager());
+        let db = create_new_blockchain();
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let local_interface = LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx);
+        let service = BaseNodeSyncRpcService::new(
+            db.clone().into(),
+            local_interface.clone(),
+            BlockchainSyncConfig::default().rpc_block_batch_size,
+        );
+
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+
+        let msg = SyncBlocksRequest {
+            start_hash: chain.get("A").unwrap().hash().to_vec(),
+            end_hash: chain.get("E").unwrap().hash().to_vec(),
+        };
+        let req = request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
+
+        // The sync worker is spawned but has not yet run on this single threaded runtime, so it sees this rewind
+        // before sending any blocks
+        let removed = vec![chain.get("C").unwrap().clone()];
+        assert_eq!(
+            local_interface.publish_block_event(BlockEvent::BlockSyncRewind(removed)),
+            1
+        );
+
+        let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 1);
+        let err = responses.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        assert_eq!(err.details(), "Reorg at height 3 detected");
     }
 }
 
