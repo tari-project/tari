@@ -3747,10 +3747,11 @@ struct CandidateBlock {
 /// A reorg onto the strongest orphan tip can fail on any block of the fork chain. The blocks before it are valid, so
 /// they are kept if they alone are stronger than the chain they replaced and go back into the orphan pool otherwise,
 /// and the failed block is dropped with every orphan built on it (see `swap_to_strongest_orphan_tip`). Another tip may
-/// then be the strongest, so this repeats until no orphan tip is stronger than the main chain. Every failed attempt
-/// deletes at least the block that failed, and every refused one at least the lowest block of its fork, so it ends;
-/// the number of attempts is bounded by the orphan pool, and every failed one cost whoever made it a block's worth of
-/// proof of work.
+/// then be the strongest, so this repeats until no orphan tip is stronger than the main chain, or until a block fails
+/// for a reason that is not its own fault (a local storage error, say), which could recur on every fork. Every failed
+/// attempt deletes at least the block that failed, and every refused one at least the lowest block of its fork, so it
+/// ends; the number of attempts is bounded by the orphan pool, and every failed one cost whoever made it a block's
+/// worth of proof of work.
 ///
 /// `candidate` is the block being added, if any. A failure is blamed on its sender only if the block that failed is
 /// that block with the body its sender just sent, or that block or an ancestor of it with a body that matches its
@@ -3801,8 +3802,13 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
                 added: attempt_added,
                 rejected: rejection,
             } => {
+                // A verdict that is not the block's fault (a local storage error, say) can recur for every fork we
+                // try, so one such fault must not run through every stronger tip we hold: stop here. The failed
+                // block's subtree has been dropped, as it always was on any error, so the next block does not pin on
+                // it either.
+                let is_local_fault = !is_block_fault(&rejection.error);
                 rejected.push(rejection);
-                (attempt_removed, attempt_added, false)
+                (attempt_removed, attempt_added, is_local_fault)
             },
         };
         // Blocks are removed from the tip down, so a removed block is either the last one an earlier attempt added,
@@ -4010,11 +4016,13 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
             };
             // The block that failed, or a block built on it, is the block being added. Its sender is to blame if the
             // body that failed is the one it sent us, or if that body is the one the block was mined with (then the
-            // block is invalid as mined, and an honest peer never relays it or builds on it).
-            let blame_sender = candidate.is_some_and(|candidate| {
-                (candidate.hash == hash && candidate.body_received) ||
-                    (body_verified && subtree.contains(&candidate.hash))
-            });
+            // block is invalid as mined, and an honest peer never relays it or builds on it). Either way only for a
+            // verdict that is the block's fault: one that is ours (a storage error, say) proves nothing about it.
+            let blame_sender = is_block_fault(&source) &&
+                candidate.is_some_and(|candidate| {
+                    (candidate.hash == hash && candidate.body_received) ||
+                        (body_verified && subtree.contains(&candidate.hash))
+                });
             let mut txn = DbTransaction::new();
             for orphan_hash in subtree.iter().rev() {
                 txn.delete_orphan(*orphan_hash);
@@ -4054,6 +4062,14 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
             Err(e)
         },
     }
+}
+
+/// Whether a body validation verdict is the block's fault, rather than ours (a storage error, say, or a malformed
+/// query). The same split as `get_ban_reason`: a verdict that is not the block's fault is not a ban.
+/// (`verdict_can_change` also treats two ban-carrying header errors as changeable; they cannot come out of body
+/// validation.)
+fn is_block_fault(err: &ValidationError) -> bool {
+    err.get_ban_reason().is_some()
 }
 
 /// Log a reorg, and record it if `config.track_reorgs` is set
@@ -6765,9 +6781,10 @@ mod test {
         use super::*;
         use crate::test_helpers::blockchain::create_store_with_consensus_and_validators;
 
-        /// A body validator that fails exactly the blocks in its list, with a consensus error, which is a long ban
+        /// A body validator that fails exactly the blocks in its lists: the first with a consensus error, which is a
+        /// long ban, and the second with a storage error, which is not the block's fault
         #[derive(Clone, Default)]
-        struct FailsBlocks(Arc<RwLock<Vec<HashOutput>>>);
+        struct FailsBlocks(Arc<RwLock<Vec<HashOutput>>>, Arc<RwLock<Vec<HashOutput>>>);
 
         impl<B: BlockchainBackend> CandidateBlockValidator<B> for FailsBlocks {
             fn validate_body_with_metadata(
@@ -6778,6 +6795,10 @@ mod test {
             ) -> Result<(), ValidationError> {
                 if self.0.read().unwrap().contains(block.hash()) {
                     Err(ValidationError::ConsensusError("failed for the test".to_string()))
+                } else if self.1.read().unwrap().contains(block.hash()) {
+                    Err(ValidationError::FatalStorageError(
+                        "a local fault for the test".to_string(),
+                    ))
                 } else {
                     Ok(())
                 }
@@ -6851,6 +6872,11 @@ mod test {
 
             fn fail(&self, block: &Arc<ChainBlock>) {
                 self.failing.0.write().unwrap().push(*block.hash());
+            }
+
+            /// Validating `block` fails for a reason that is ours, not the block's
+            fn fault_on(&self, block: &Arc<ChainBlock>) {
+                self.failing.1.write().unwrap().push(*block.hash());
             }
 
             fn tip_hash(&self) -> HashOutput {
@@ -7331,6 +7357,65 @@ mod test {
             assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
             assert!(h.is_bad(&held));
             assert!(!h.is_orphan(&held));
+            assert_eq!(h.tip_hash(), *a.hash());
+        }
+
+        /// A local fault (here a storage error) while validating X says nothing about X or about who sent Y. X's
+        /// subtree is dropped, as on any error, but nobody is blamed, and no other fork is tried in the same call, so
+        /// a fault that recurs cannot run through every stronger fork we hold.
+        #[tokio::test]
+        async fn a_local_fault_blames_nobody_and_stops_the_retries() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            h.forget_above(2);
+            let w = h.build("W");
+            h.add(&w);
+            let w2 = h.build_with_difficulty("W2", 3);
+            h.forget_above(1);
+            h.fault_on(&x);
+
+            for block in [&x2, &x, &w2, &w] {
+                h.add(block).result.assert_orphaned();
+            }
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            assert!(matches!(
+                outcome.rejected[0].error,
+                ValidationError::FatalStorageError(_)
+            ));
+            assert!(!h.is_bad(&x));
+            assert!(!h.is_orphan(&x));
+            assert!(!h.is_orphan(&x2));
+            // W <- W2 is stronger than Y alone, but is not tried in this call
+            assert!(h.is_orphan_tip(&w2));
+            assert!(h.is_orphan(&w));
+            assert_eq!(h.tip_hash(), *y.hash());
+        }
+
+        /// A local fault on the block being added itself: no chain change, nobody to blame, so no error (an error
+        /// would be reported as the block being invalid)
+        #[tokio::test]
+        async fn a_local_fault_on_the_block_being_added_is_not_its_fault() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.fault_on(&y);
+
+            let outcome = h.add(&y);
+
+            outcome.result.assert_orphaned();
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), false)]);
+            assert!(!h.is_bad(&y));
+            assert!(!h.is_orphan(&y));
             assert_eq!(h.tip_hash(), *a.hash());
         }
 

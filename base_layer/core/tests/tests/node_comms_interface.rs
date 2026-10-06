@@ -25,7 +25,10 @@ use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use tari_common::configuration::Network;
-use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{FixedHash, PrivateKey},
+};
 use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
 use tari_core::{
     base_node::comms_interface::{
@@ -55,6 +58,7 @@ use tari_core::{
         create_consensus_rules,
     },
     validation::{
+        CandidateBlockValidator,
         HeaderChainContext,
         HeaderChainLinkedValidator,
         ValidatedHeader,
@@ -1289,6 +1293,70 @@ async fn a_blamed_rejection_with_a_chain_change_publishes_both_and_bans() {
     assert_eq!(block.hash(), c.hash());
     // C is not on our chain, so it is not propagated
     assert!(propagated.try_recv().is_err());
+}
+
+/// A body validator whose every verdict is a local fault (a storage error), which says nothing about the block
+struct FaultyBodyValidator;
+
+impl CandidateBlockValidator<TempDatabase> for FaultyBodyValidator {
+    fn validate_body_with_metadata(
+        &self,
+        _: &TempDatabase,
+        _: &ChainBlock,
+        _: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        Err(ValidationError::FatalStorageError(
+            "a local fault for the test".to_string(),
+        ))
+    }
+
+    fn validate_body_at_height(&self, _: &TempDatabase, _: &ChainBlock) -> Result<(), ValidationError> {
+        Ok(())
+    }
+}
+
+/// A locally mined block that fails for a reason that is ours is not reported as invalid: the mempool is not told it
+/// failed (which would clear its transactions), and a peer sending it would not be banned
+#[tokio::test]
+async fn a_local_fault_does_not_report_the_block_as_invalid() {
+    let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
+    let validators = Validators::new(FaultyBodyValidator, MockValidator::new(true), MockValidator::new(true));
+    let store = create_store_with_consensus_and_validators_and_config(
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+    );
+    let block = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+    let (block_event_sender, mut block_events) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, mut propagated) = mpsc::unbounded_channel();
+    let (connectivity, _) = create_connectivity_mock();
+    let mut handlers = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        new_mempool(),
+        rules,
+        OutboundNodeCommsInterface::new(request_sender, block_sender),
+        connectivity,
+        RandomXFactory::new(2),
+    );
+
+    handlers.handle_block(block.clone(), None).await.unwrap();
+
+    let mut events = vec![];
+    while let Ok(event) = block_events.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert!(
+        matches!(&*events[0], BlockEvent::ValidBlockAdded(_, BlockAddResult::OrphanBlock)),
+        "{}",
+        events[0]
+    );
+    assert!(propagated.try_recv().is_err());
+    assert_eq!(store.get_height().unwrap(), 0);
+    assert!(!store.bad_block_exists(block.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(block.hash()).unwrap());
 }
 
 fn assert_banned_and_not_stored(err: &CommsInterfaceError, store: &BlockchainDatabase<TempDatabase>, hash: FixedHash) {
