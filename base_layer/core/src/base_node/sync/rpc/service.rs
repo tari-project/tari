@@ -212,10 +212,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                                     reorg_block.height(),
                                     peer_node_id
                                 );
-                                let _result = tx.send(Err(RpcStatus::conflict(&format!(
-                                    "Reorg at height {} detected",
-                                    reorg_block.height()
-                                ))));
+                                let _result = tx
+                                    .send(Err(RpcStatus::conflict(&format!(
+                                        "Reorg at height {} detected",
+                                        reorg_block.height()
+                                    ))))
+                                    .await;
                                 return;
                             }
                         }
