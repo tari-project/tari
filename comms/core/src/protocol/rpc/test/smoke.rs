@@ -992,7 +992,7 @@ async fn oversized_messages_during_a_stream_are_ignored() {
 }
 
 /// When the client reads slowly, sends block on the yamux window and the server holds the next item while it waits.
-/// Every item must still arrive exactly once, followed by the end of the stream.
+/// Every item must still arrive exactly once and in order, followed by the end of the stream.
 #[tokio::test]
 async fn a_slow_reader_receives_every_item_of_a_prefetched_stream() {
     const NUM_ITEMS: u32 = 20;
@@ -1016,13 +1016,15 @@ async fn a_slow_reader_receives_every_item_of_a_prefetched_stream() {
         .await
         .unwrap();
 
-    let mut num_items = 0;
+    // `slow_stream` stamps each item's index into its first 4 bytes
+    let mut indices = Vec::new();
     while let Some(item) = resp.next().await {
-        assert_eq!(item.unwrap().len(), ITEM_SIZE as usize);
-        num_items += 1;
+        let item = item.unwrap();
+        assert_eq!(item.len(), ITEM_SIZE as usize);
+        indices.push(u32::from_le_bytes(item[..4].try_into().unwrap()));
         time::sleep(Duration::from_millis(20)).await;
     }
-    assert_eq!(num_items, NUM_ITEMS);
+    assert_eq!(indices, (0..NUM_ITEMS).collect::<Vec<_>>());
 
     // The session is still usable afterwards
     let resp = client
