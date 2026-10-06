@@ -410,9 +410,9 @@ where B: BlockchainBackend + 'static
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                     }
-                    // A block on a chain we cannot check yet, or one we already hold as bad, is dropped as expected.
-                    // (A reorg that fails on an orphan the sender is not to blame for does not come back as an error
-                    // at all; `HeldBlockInvalid` never leaves `add_block`, and is listed here only in case it does.)
+                    // A block on a chain we cannot check yet, one we already hold as bad, or one a reorg dropped
+                    // without its sender being to blame (`HeldBlockInvalid`, which is not a ban), is dropped as
+                    // expected.
                     let expected = matches!(
                         &e,
                         BaseNodeServiceError::CommsInterfaceError(
