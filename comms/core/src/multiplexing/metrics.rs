@@ -30,3 +30,11 @@ pub static TOTAL_BYTES_READ: Lazy<IntCounter> = Lazy::new(|| {
 pub static TOTAL_BYTES_WRITTEN: Lazy<IntCounter> = Lazy::new(|| {
     tari_metrics::register_int_counter("comms::substream::total_bytes_written", "The total outbound bytes").unwrap()
 });
+
+pub static INBOUND_SUBSTREAMS_DROPPED: Lazy<IntCounter> = Lazy::new(|| {
+    tari_metrics::register_int_counter(
+        "comms::substream::inbound_dropped",
+        "The number of inbound substreams reset because too many were waiting to be accepted",
+    )
+    .unwrap()
+});
