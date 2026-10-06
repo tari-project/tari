@@ -57,3 +57,58 @@ impl From<FeePerGramStat> for proto::MempoolFeePerGramStat {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use prost::Message;
+    use tari_common_types::types::{ComAndPubSignature, FixedHash};
+    use tari_comms::protocol::rpc::max_response_payload_size;
+    use tari_node_components::blocks::BlockHeader;
+    use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, MAX_STACK_SIZE, StackItem};
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        consensus::consensus_constants::MAX_BLOCK_BODY_BYTES,
+        helpers::borsh::SerializedSize,
+        transaction_components::{SpentOutput, TransactionInput},
+    };
+
+    use super::*;
+
+    /// A compact input carrying the largest possible `input_data`
+    fn max_input_data_input() -> TransactionInput {
+        let input_data = ExecutionStack::new(vec![
+            StackItem::Signature(CompressedCheckSigSchnorrSignature::default());
+            MAX_STACK_SIZE
+        ]);
+        TransactionInput::new_current_version(
+            SpentOutput::OutputHash(FixedHash::zero()),
+            input_data,
+            ComAndPubSignature::default(),
+        )
+    }
+
+    /// A block body at the consensus byte limit, made of maximum `input_data` inputs, must fit in a single block sync
+    /// RPC response (one `BlockBodyResponse` per block).
+    #[test]
+    fn a_block_body_at_the_byte_limit_fits_in_one_rpc_response() {
+        let input = max_input_data_input();
+        let input_size = input.get_serialized_size().unwrap();
+        let empty_size = AggregateBody::empty().compact_serialized_size().unwrap();
+        // The most inputs that fit within the limit, plus one: this body is just over the limit, so it bounds the
+        // encoding of any body at or under the limit from above.
+        let num_inputs = (MAX_BLOCK_BODY_BYTES - empty_size) / input_size + 1;
+        let body = AggregateBody::new_unsorted(vec![input; num_inputs], vec![], vec![]);
+        let body_size = body.compact_serialized_size().unwrap();
+        assert!(body_size > MAX_BLOCK_BODY_BYTES);
+        assert!(body_size - MAX_BLOCK_BODY_BYTES < input_size);
+
+        let block = Block::new(BlockHeader::new(0), body);
+        let response = proto::BlockBodyResponse::try_from(block).unwrap();
+        let encoded_len = response.encoded_len();
+        assert!(
+            encoded_len <= max_response_payload_size(),
+            "{encoded_len} bytes does not fit in an RPC response of {} bytes",
+            max_response_payload_size()
+        );
+    }
+}

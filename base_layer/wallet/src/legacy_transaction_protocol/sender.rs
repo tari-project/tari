@@ -40,6 +40,7 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         WalletOutput,
         covenants::Covenant,
+        memo_field::deserialize_legacy_unchecked,
     },
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTariKeyId;
@@ -97,7 +98,9 @@ pub(super) struct RawTransactionInfo {
     pub total_sender_nonce: CompressedPublicKey,
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
-    /// A user payment ID for the sender/receiver
+    /// A user payment ID for the sender/receiver. Read without the `Open` / `Raw` memo size limits, see
+    /// `deserialize_legacy_unchecked`.
+    #[serde(deserialize_with = "deserialize_legacy_unchecked")]
     pub payment_id: MemoField,
     /// The senders address
     pub sender_address: TariAddress,
@@ -115,7 +118,9 @@ pub struct SingleRoundSenderData {
     pub public_nonce: CompressedPublicKey,
     /// Metadata used to construct the transaction kernel
     pub metadata: TransactionMetadata,
-    /// A user payment ID for the sender/receiver
+    /// A user payment ID for the sender/receiver. Read without the `Open` / `Raw` memo size limits, see
+    /// `deserialize_legacy_unchecked`.
+    #[serde(deserialize_with = "deserialize_legacy_unchecked")]
     pub payment_id: MemoField,
     /// The output's features
     pub features: OutputFeatures,
@@ -559,5 +564,32 @@ impl fmt::Display for SenderState {
             ),
             Failed(err) => write!(f, "Failed({err:?})"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_transaction_components::transaction_components::{MemoField, memo_field::TxType};
+
+    use super::SingleRoundSenderData;
+
+    #[test]
+    fn a_legacy_record_with_an_oversized_memo_still_loads() {
+        let oversized = MemoField::open_unchecked(vec![1u8; 1000], TxType::PaymentToOther);
+        // The memo decoders themselves reject it
+        let json = serde_json::to_string(&oversized).unwrap();
+        assert!(serde_json::from_str::<MemoField>(&json).is_err());
+
+        let data = SingleRoundSenderData {
+            payment_id: oversized,
+            ..Default::default()
+        };
+        let encoded = bincode::serialize(&data).unwrap();
+        let decoded = bincode::deserialize::<SingleRoundSenderData>(&encoded).unwrap();
+        assert_eq!(decoded, data);
+        // The encoding is unchanged
+        assert_eq!(bincode::serialize(&decoded).unwrap(), encoded);
+        let json = serde_json::to_string(&data).unwrap();
+        assert_eq!(serde_json::from_str::<SingleRoundSenderData>(&json).unwrap(), data);
     }
 }

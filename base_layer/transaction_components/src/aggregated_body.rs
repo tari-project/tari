@@ -27,7 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, PrivateKey, UncompressedCommitment};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_utilities::hex::Hex;
@@ -35,6 +35,7 @@ use tari_utilities::hex::Hex;
 use crate::{
     MicroMinotari,
     crypto_factories::CryptoFactories,
+    helpers::borsh::SerializedSize,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -55,7 +56,12 @@ pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 pub struct AggregateBody {
     /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
     /// has been called. This may be false even if all components are sorted.
+    ///
+    /// The flag is part of the serde encoding, so the serde decoders still read it, but a decoded body is never
+    /// trusted to be sorted: the flag always decodes as `false`, as it does in borsh (where it is skipped) and in
+    /// the protobuf conversions.
     #[borsh(skip)]
+    #[serde(deserialize_with = "deserialize_sorted_flag")]
     sorted: bool,
     /// List of inputs spent by the transaction.
     inputs: Vec<TransactionInput>,
@@ -414,6 +420,20 @@ impl AggregateBody {
             .map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
 
+    /// The borsh-serialised size, in bytes, of this body in its compact form, i.e. with every input reduced to the hash
+    /// of the output it spends. Blocks are stored and synced in this form, so the result is the same whether the inputs
+    /// of this body are compact or hydrated.
+    pub fn compact_serialized_size(&self) -> std::io::Result<usize> {
+        // The u32 length prefix of the inputs vector
+        let mut size = size_of::<u32>();
+        for input in &self.inputs {
+            size = size.saturating_add(input.to_compact().get_serialized_size()?);
+        }
+        size = size.saturating_add(self.outputs.get_serialized_size()?);
+        size = size.saturating_add(self.kernels.get_serialized_size()?);
+        Ok(size)
+    }
+
     pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {
         Ok(self
             .outputs
@@ -490,6 +510,12 @@ impl AggregateBody {
     }
 }
 
+/// Reads the `sorted` flag of an encoded [`AggregateBody`] and discards it, see the field docs
+fn deserialize_sorted_flag<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    <bool as Deserialize>::deserialize(deserializer)?;
+    Ok(false)
+}
+
 impl PartialEq for AggregateBody {
     fn eq(&self, other: &Self) -> bool {
         self.kernels == other.kernels && self.inputs == other.inputs && self.outputs == other.outputs
@@ -534,6 +560,89 @@ mod test {
 
     use super::*;
     use crate::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion, covenants::Covenant};
+
+    #[test]
+    fn compact_serialized_size_measures_the_compact_form() {
+        let input = TransactionInput::new_with_output_data(
+            TransactionInputVersion::get_current_version(),
+            OutputFeatures::default(),
+            CompressedCommitment::default(),
+            TariScript::default(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+            CompressedPublicKey::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            ComAndPubSignature::default(),
+            FixedHash::zero(),
+            0.into(),
+        );
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::default(),
+            0.into(),
+            0,
+            CompressedCommitment::default(),
+            CompressedSignature::default(),
+            None,
+        );
+        let hydrated = AggregateBody::new_unsorted(
+            vec![input.clone(), input.clone()],
+            vec![TransactionOutput::default()],
+            vec![kernel.clone()],
+        );
+        let compact = AggregateBody::new_unsorted(
+            vec![input.to_compact(), input.to_compact()],
+            vec![TransactionOutput::default()],
+            vec![kernel],
+        );
+
+        let expected = borsh::to_vec(&compact).unwrap().len();
+        assert_eq!(compact.compact_serialized_size().unwrap(), expected);
+        assert_eq!(hydrated.compact_serialized_size().unwrap(), expected);
+        assert!(hydrated.get_serialized_size().unwrap() > expected);
+    }
+
+    #[test]
+    fn a_decoded_body_is_never_trusted_to_be_sorted() {
+        // Kernels are ordered by their excess signature
+        let kernel = |nonce: u64| {
+            TransactionKernel::new_current_version(
+                KernelFeatures::default(),
+                0.into(),
+                0,
+                CompressedCommitment::default(),
+                CompressedSignature::new(CompressedPublicKey::default(), PrivateKey::from(nonce)),
+                None,
+            )
+        };
+        let mut really_sorted = AggregateBody::new_unsorted(vec![], vec![], vec![kernel(1), kernel(2)]);
+        really_sorted.sort();
+        let mut kernels = really_sorted.kernels().clone();
+        kernels.reverse();
+        // Claims to be sorted, but is not
+        let claimed = AggregateBody::new_sorted_unchecked(vec![], vec![], kernels);
+        assert!(claimed.sorted);
+
+        let json = serde_json::to_string(&claimed).unwrap();
+        assert!(json.contains(r#""sorted":true"#), "{json}");
+        let encoded = bincode::serialize(&claimed).unwrap();
+        for mut decoded in [
+            serde_json::from_str::<AggregateBody>(&json).unwrap(),
+            bincode::deserialize::<AggregateBody>(&encoded).unwrap(),
+        ] {
+            assert!(!decoded.sorted);
+            assert!(!decoded.is_sorted());
+            // The encoding is unchanged: only the decoded flag differs
+            decoded.sorted = true;
+            assert_eq!(serde_json::to_string(&decoded).unwrap(), json);
+            assert_eq!(bincode::serialize(&decoded).unwrap(), encoded);
+            // `sort()` is no longer a no-op on it
+            decoded.sorted = false;
+            assert_ne!(decoded.kernels(), really_sorted.kernels());
+            decoded.sort();
+            assert_eq!(decoded.kernels(), really_sorted.kernels());
+        }
+    }
 
     #[test]
     fn test_sorted() {

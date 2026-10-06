@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.1.0-pre.0](https://github.com/tari-project/tari/compare/v6.0.1-pre.2...v6.1.0-pre.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sidechain:** commit to a transaction merkle root from protocol version 1 (#8076)
+* tari_common hardening (#8075)
+* update tari_crypto to 0.24 and return errors instead of Ok(false) from verification functions (#8074)
+* tari_hashing audit remediation (#8071)
+
+### Features
+
+* display the TIP-004 backoff adjusted target difficulty ([#8070](https://github.com/tari-project/tari/issues/8070)) ([e943cd2](https://github.com/tari-project/tari/commit/e943cd2f3f570212263c16481986c6f789e9dcf3))
+* **sidechain:** commit to a transaction merkle root from protocol version 1 ([#8076](https://github.com/tari-project/tari/issues/8076)) ([827b85d](https://github.com/tari-project/tari/commit/827b85d0887e746d66a6a22f585b950c1e1be240))
+
+
+### Bug Fixes
+
+* enforce decoder parity across serde, borsh and both protobuf families ([#8077](https://github.com/tari-project/tari/issues/8077)) ([bfda797](https://github.com/tari-project/tari/commit/bfda797d53f38b05a1bbdfd0f33cb67b4b4cb68f)), closes [#8058](https://github.com/tari-project/tari/issues/8058) [#6686](https://github.com/tari-project/tari/issues/6686) [/github.com/tari-project/tari/pull/8077#discussion_r4182090837](https://github.com/tari-project//github.com/tari-project/tari/pull/8077/issues/discussion_r4182090837)
+* tari script hardening ([#8065](https://github.com/tari-project/tari/issues/8065)) ([bc8ab3c](https://github.com/tari-project/tari/commit/bc8ab3cc53634615c0b7124c661cedcf97bbdd57))
+* tari_common hardening ([#8075](https://github.com/tari-project/tari/issues/8075)) ([22dbca2](https://github.com/tari-project/tari/commit/22dbca27fcab4c55683644012ae190e132f5883b)), closes [/github.com/tari-project/tari/pull/8075#discussion_r4166886971](https://github.com/tari-project//github.com/tari-project/tari/pull/8075/issues/discussion_r4166886971) [/github.com/tari-project/tari/pull/8075#discussion_r4166886981](https://github.com/tari-project//github.com/tari-project/tari/pull/8075/issues/discussion_r4166886981)
+* tari_hashing audit remediation ([#8071](https://github.com/tari-project/tari/issues/8071)) ([ddc22a2](https://github.com/tari-project/tari/commit/ddc22a26ead57bfdce56213023af58451c9ed5bf))
+* update tari_crypto to 0.24 and return errors instead of Ok(false) from verification functions ([#8074](https://github.com/tari-project/tari/issues/8074)) ([2907aa9](https://github.com/tari-project/tari/commit/2907aa95eecf4477ae033157503ab9113c5f457b))
+* **wallet:** consistent address and memo sizing ([#8068](https://github.com/tari-project/tari/issues/8068)) ([44a6373](https://github.com/tari-project/tari/commit/44a6373ff371ddf111f803bc32690deb9dfc9c40)), closes [/github.com/tari-project/tari/pull/8068#discussion_r4153796636](https://github.com/tari-project//github.com/tari-project/tari/pull/8068/issues/discussion_r4153796636)
+
 ### [6.0.1-pre.2](https://github.com/tari-project/tari/compare/v6.0.1-pre.1...v6.0.1-pre.2) (2026-09-30)
 
 

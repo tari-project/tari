@@ -34,7 +34,7 @@ use crate::{
     chain_storage::{BlockchainBackend, ChainStorageError, TargetDifficulties, async_db::AsyncBlockchainDb},
     common::rolling_vec::RollingVec,
     consensus::BaseNodeConsensusManager,
-    proof_of_work::randomx_factory::RandomXFactory,
+    proof_of_work::{monero_rx::MergeMineError, randomx_factory::RandomXFactory},
     validation::{
         DifficultyCalculator,
         HeaderChainContext,
@@ -189,9 +189,11 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // chain dependent verdict must not outlive the sync that made it: discard the header and ban the peer,
             // and let a later sync judge it on its own chain.
             ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) |
-            // We dont want to mark a block as bad for internal failures
+            // We dont want to mark a block as bad for internal failures, including a local RandomX VM build failure
+            // (for example a failed cache allocation), which says nothing about the header
             ValidationError::FatalStorageError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_)) |
             // We dont have to mark the block twice
             ValidationError::BadBlockFound { .. } => Ok(()),
             _ => {
@@ -391,7 +393,10 @@ mod test {
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
-    use crate::test_helpers::blockchain::{TempDatabase, create_new_blockchain};
+    use crate::{
+        proof_of_work::randomx_factory::RandomXVMFactoryError,
+        test_helpers::blockchain::{TempDatabase, create_new_blockchain},
+    };
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
@@ -486,6 +491,37 @@ mod test {
             next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
+        }
+
+        /// A RandomX VM that could not be built is a local failure and must not be recorded as a bad block, while a
+        /// verdict about the header alone still is.
+        #[tokio::test]
+        async fn it_does_not_blacklist_a_randomx_vm_build_failure() {
+            let (validator, db, tip) = setup_with_headers(1).await;
+            let header = BlockHeader::from_previous(tip.header());
+            let err = ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(
+                RandomXVMFactoryError::PoisonedLockError,
+            ));
+            validator
+                .blacklist_unless_verdict_can_change(&header, &err)
+                .await
+                .unwrap();
+            let (is_bad_block, reason) = db.bad_block_exists(header.hash()).await.unwrap();
+            assert!(
+                !is_bad_block,
+                "a RandomX VM build failure must not be blacklisted: {reason}"
+            );
+
+            let err = ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce);
+            validator
+                .blacklist_unless_verdict_can_change(&header, &err)
+                .await
+                .unwrap();
+            let (is_bad_block, _) = db.bad_block_exists(header.hash()).await.unwrap();
+            assert!(
+                is_bad_block,
+                "an invalid nonce is the header's own fault and must be blacklisted"
+            );
         }
 
         #[tokio::test]

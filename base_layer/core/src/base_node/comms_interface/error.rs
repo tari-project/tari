@@ -75,6 +75,16 @@ pub enum CommsInterfaceError {
     InvalidRequest { request: &'static str, details: String },
     #[error("Peer sent invalid full block {hash}: {details}")]
     InvalidFullBlock { hash: FixedHash, details: String },
+    #[error("Block {hash} is already known to be bad: {reason}")]
+    KnownBadBlock { hash: String, reason: String },
+    #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
+    UnknownSpentOutputs {
+        hash: FixedHash,
+        details: String,
+        /// Whether the block's parent is a held orphan, and its chain was searched for the outputs all the way back to
+        /// main chain state whose outputs we hold completely
+        fork_searched_to_main_chain: bool,
+    },
     #[error("Invalid merge mined block: {0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Invalid difficulty: {0}")]
@@ -90,7 +100,13 @@ impl CommsInterfaceError {
         match self {
             err @ CommsInterfaceError::UnexpectedApiResponse |
             err @ CommsInterfaceError::RequestTimedOut |
-            err @ CommsInterfaceError::TransportChannelError(_) => Some(BanReason {
+            err @ CommsInterfaceError::TransportChannelError(_) |
+            // The block builds on a fork we hold completely, which we searched, and it spends an output that is not on
+            // it
+            err @ CommsInterfaceError::UnknownSpentOutputs {
+                fork_searched_to_main_chain: true,
+                ..
+            } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Short,
             }),
@@ -114,6 +130,14 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
+            CommsInterfaceError::KnownBadBlock { .. } |
+            // A block on a chain we do not hold completely: honest peers relay such blocks across forks, so it says
+            // nothing about the peer
+            CommsInterfaceError::UnknownSpentOutputs {
+                fork_searched_to_main_chain: false,
+                ..
+            } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }

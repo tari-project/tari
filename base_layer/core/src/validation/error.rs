@@ -48,6 +48,8 @@ pub enum ValidationError {
     MaturityError,
     #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
     BlockTooLarge { actual_weight: u64, max_weight: u64 },
+    #[error("The block body is {actual_bytes} bytes, above the maximum of {max_bytes} bytes")]
+    BlockBodyTooManyBytes { actual_bytes: usize, max_bytes: usize },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
     #[error("Contains an unknown input")]
@@ -171,6 +173,7 @@ impl ValidationError {
             err @ ValidationError::BlockError(_) |
             err @ ValidationError::MaturityError |
             err @ ValidationError::BlockTooLarge { .. } |
+            err @ ValidationError::BlockBodyTooManyBytes { .. } |
             err @ ValidationError::UnknownInputs(_) |
             err @ ValidationError::UnknownInput |
             err @ ValidationError::TransactionError(_) |
@@ -184,6 +187,8 @@ impl ValidationError {
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
+            // A sync peer whose chain contains a block we hold as bad. (Block propagation, where the peer only relays
+            // a hash, maps this to `CommsInterfaceError::KnownBadBlock` instead, which is not a ban.)
             err @ ValidationError::BadBlockFound { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
@@ -216,5 +221,45 @@ impl ValidationError {
             ValidationError::HeaderHashMismatch(_) |
             ValidationError::HeaderHeightMismatch(_) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::base_node::{
+        comms_interface::CommsInterfaceError,
+        sync::{BlockHeaderSyncError, BlockSyncError},
+    };
+
+    /// A block we hold as bad gets a sync peer whose chain contains it banned, but not a peer that only relays it
+    #[test]
+    fn a_bad_block_memo_hit_bans_sync_peers_but_not_relaying_peers() {
+        let memo_hit = || ValidationError::BadBlockFound {
+            hash: "hash".to_string(),
+            reason: "reason".to_string(),
+        };
+        let long = Some(BanPeriod::Long);
+        assert_eq!(memo_hit().get_ban_reason().map(|r| r.ban_duration), long);
+        // Header sync
+        assert_eq!(
+            BlockHeaderSyncError::ValidationFailed(memo_hit())
+                .get_ban_reason()
+                .map(|r| r.ban_duration),
+            long
+        );
+        // Block sync
+        assert_eq!(
+            BlockSyncError::ValidationError(memo_hit())
+                .get_ban_reason()
+                .map(|r| r.ban_duration),
+            long
+        );
+        // Block propagation
+        let relayed = CommsInterfaceError::KnownBadBlock {
+            hash: "hash".to_string(),
+            reason: "reason".to_string(),
+        };
+        assert!(relayed.get_ban_reason().is_none());
     }
 }

@@ -401,11 +401,35 @@ where B: BlockchainBackend + 'static
                             BanPeriod::Long => long_ban,
                         };
                         let _drop = connectivity_requester
-                            .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
+                            .ban_peer_until(source_peer.node_id.clone(), duration, ban_reason.reason)
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                     }
-                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {e}")
+                    // A block on a chain we cannot check yet, one we already hold as bad, or a reorg that failed on an
+                    // orphan someone else sent us, is dropped as expected
+                    let expected = matches!(
+                        &e,
+                        BaseNodeServiceError::CommsInterfaceError(
+                            CommsInterfaceError::UnknownSpentOutputs { .. } |
+                                CommsInterfaceError::KnownBadBlock { .. } |
+                                CommsInterfaceError::ChainStorageError(
+                                    ChainStorageError::UnverifiedHeldBlockInvalid { .. }
+                                )
+                        )
+                    );
+                    if expected {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Dropped incoming block message from peer {}: {e}",
+                            source_peer.node_id
+                        );
+                    } else {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to handle incoming block message from peer {}: {e}",
+                            source_peer.node_id
+                        );
+                    }
                 },
             }
         });

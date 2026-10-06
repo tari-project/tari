@@ -63,9 +63,9 @@ struct EmojiSet;
  * Encrypted value, mask and payment id of a transaction output.
  *
  * `STATIC_ENCRYPTED_DATA_SIZE_TOTAL <= len() <= MAX_ENCRYPTED_DATA_SIZE` is an invariant of this type: every
- * constructor, and every decoder (serde and borsh, see the hand written `Deserialize` and `BorshDeserialize`
- * implementations below), routes through [`EncryptedData::from_bytes`]. Decoders must not be derived, as a derived
- * decoder would only enforce the upper bound of the inner `MaxSizeBytes` and accept values that are too short.
+ * constructor, and every decoder (serde and borsh, generated from the [`ValidatedDecode`] implementation below),
+ * routes through [`EncryptedData::from_bytes`]. Decoders must not be derived, as a derived decoder would only enforce
+ * the upper bound of the inner `MaxSizeBytes` and accept values that are too short.
  */
 struct EncryptedData;
 

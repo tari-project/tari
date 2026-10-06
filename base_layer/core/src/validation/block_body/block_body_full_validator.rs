@@ -37,7 +37,7 @@ use crate::{
         ValidationError,
         aggregate_body::{AggregateBodyChainLinkedValidator, hydrate_compact_inputs},
         block_body::block_body_partial_validator::BlockBodyPartialValidator,
-        helpers::check_mmr_roots,
+        helpers::{check_block_body_size, check_mmr_roots},
     },
 };
 
@@ -81,6 +81,10 @@ impl BlockBodyFullValidator {
         if let Some(metadata) = metadata_option {
             validate_block_metadata(block, metadata)?;
         }
+
+        // The size check is cheap, so it runs before the chain-linked checks (scripts and database lookups). The
+        // internal consistency validator below repeats it, for its callers that do not come through here.
+        check_block_body_size(block, self.consensus_manager.consensus_constants(block.header.height))?;
 
         // validate the block body against the current db
         self.aggregate_body_chain_validator
@@ -158,6 +162,8 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
     /// so that it can be stored. The block is consumed and mutated in place, so nothing is cloned into the returned
     /// block.
     fn validate_body(&self, backend: &B, mut block: Block) -> Result<Block, ValidationError> {
+        // Reject an oversized body before any per-input database work
+        check_block_body_size(&block, self.consensus_manager.consensus_constants(block.header.height))?;
         hydrate_compact_inputs(&mut block.body, backend)?;
 
         self.validate(backend, &block, None)?;

@@ -28,4 +28,5 @@ pub use base_node_consensus_manager::{
     BaseConsensusBuilderError,
     BaseNodeConsensusManager,
     BaseNodeConsensusManagerBuilder,
+    TokenValuesAtHeight,
 };

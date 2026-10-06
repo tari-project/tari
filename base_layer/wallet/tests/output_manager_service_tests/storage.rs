@@ -1226,6 +1226,75 @@ async fn test_migrate_legacy_output_key_ids_roundtrip() {
     );
 }
 
+/// A legacy `derived.managed.comms.0` key id converts to `TariKeyId::Derived { key: "spend_key" }`, whose string form
+/// `derived.spend_key` has a single-token nested key. The row must load through the lazy read path, survive the
+/// migration write-back and load again, and the resulting output must round-trip through its serde decoder (offline
+/// signing JSON, gRPC `from_json`).
+#[tokio::test]
+async fn test_legacy_derived_spend_key_reads_migrates_and_reads_again() {
+    use std::str::FromStr;
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let uo = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(2000),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo.clone(), &key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(kmo.hash, true)]).unwrap();
+
+    let legacy_key_str = "derived.managed.comms.0";
+    {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        diesel::update(outputs::table.filter(outputs::commitment.eq(&kmo.commitment.to_vec())))
+            .set(outputs::spending_key.eq(legacy_key_str))
+            .execute(&mut conn)
+            .unwrap();
+    }
+    let expected = TariKeyId::Derived {
+        key: "spend_key".into(),
+    };
+    let load = || {
+        let unspent = db.fetch_sorted_unspent_outputs(&key_manager).unwrap();
+        let output = unspent
+            .into_iter()
+            .find(|o| o.hash == kmo.hash)
+            .expect("the output must load");
+        output.wallet_output
+    };
+
+    // Lazy read: the current parser rejects the legacy string, the legacy fallback converts it
+    let wallet_output = load();
+    assert_eq!(wallet_output.commitment_mask_key_id(), &expected);
+    let json = serde_json::to_string(&wallet_output).unwrap();
+    let decoded: tari_transaction_components::transaction_components::WalletOutput =
+        serde_json::from_str(&json).expect("the converted output must decode from JSON");
+    assert_eq!(decoded.commitment_mask_key_id(), &expected);
+
+    // Migration write-back, as `migrate_legacy_output_keys` does it
+    let found = db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap();
+    assert_eq!(found.len(), 1);
+    let (output_id, found_spending, found_script) = found.into_iter().next().unwrap();
+    assert!(TariKeyId::from_str(&found_spending).is_err());
+    let legacy_id = LegacyTariKeyId::from_str(&found_spending).unwrap();
+    let current_id = key_manager.convert_legacy_tari_key_id_to_current(&legacy_id).unwrap();
+    assert_eq!(current_id, expected);
+    assert_eq!(current_id.to_string(), "derived.spend_key");
+    assert_eq!(TariKeyId::from_str(&current_id.to_string()).unwrap(), expected);
+    db.update_output_key_ids(output_id, current_id.to_string(), found_script)
+        .unwrap();
+    assert!(db.fetch_outputs_with_legacy_key_ids(0, 100).unwrap().is_empty());
+
+    // Read again, now through the current parser
+    assert_eq!(load().commitment_mask_key_id(), &expected);
+}
+
 /// Status of the output with the given commitment, read straight from the table.
 fn stored_status(connection: &WalletDbConnection, kmo: &DbWalletOutput) -> OutputStatus {
     let mut conn = connection.get_pooled_connection().unwrap();

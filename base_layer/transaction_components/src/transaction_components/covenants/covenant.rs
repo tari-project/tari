@@ -22,9 +22,9 @@
 
 use std::io::{self, Write};
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use integer_encoding::{VarIntReader, VarIntWriter};
-use tari_max_size::MaxSizeVec;
+use borsh::BorshSerialize;
+use integer_encoding::VarIntWriter;
+use tari_max_size::{EncodedBytes, MaxSizeVec, ValidatedDecode, impl_validated_decode};
 
 use super::decoder::CovenantDecodeError;
 use crate::{
@@ -88,25 +88,18 @@ impl BorshSerialize for Covenant {
     }
 }
 
-impl BorshDeserialize for Covenant {
-    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
-    where R: io::Read {
-        let len = reader.read_varint()?;
-        if len > MAX_COVENANT_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Larger than max covenant bytes".to_string(),
-            ));
-        }
-        let mut data = Vec::with_capacity(len);
-        for _ in 0..len {
-            data.push(u8::deserialize_reader(reader)?);
-        }
-        let covenant = Self::from_bytes(&mut data.as_slice())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        Ok(covenant)
+/// serde: a hex string or a byte array; borsh: the bytes behind a varint length prefix of at most
+/// [`MAX_COVENANT_BYTES`]. Both decoders then apply [`Covenant::from_bytes`].
+impl ValidatedDecode for Covenant {
+    type Error = CovenantDecodeError;
+    type Raw = EncodedBytes<MAX_COVENANT_BYTES>;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        Self::from_bytes(&mut raw.as_bytes())
     }
 }
+
+impl_validated_decode!(Covenant);
 
 impl Covenant {
     pub fn new() -> Self {

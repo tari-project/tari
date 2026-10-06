@@ -38,3 +38,5 @@ mod bytes;
 pub use bytes::{MaxSizeBytes, MaxSizeBytesError};
 mod vec;
 pub use vec::{MaxSizeVec, MaxSizeVecError};
+pub mod validated_decode;
+pub use validated_decode::{EncodedBytes, ValidatedDecode};

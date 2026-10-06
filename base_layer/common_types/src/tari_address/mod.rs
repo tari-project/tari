@@ -43,7 +43,10 @@ use thiserror::Error;
 
 use crate::{
     emoji::EMOJI,
-    tari_address::{dual_address::DualAddress, single_address::SingleAddress},
+    tari_address::{
+        dual_address::{DualAddress, LegacyDualAddress},
+        single_address::{LegacySingleAddress, SingleAddress},
+    },
     types::CompressedPublicKey,
 };
 
@@ -444,19 +447,20 @@ impl<'de> Visitor<'de> for TariAddressVisitorLegacy {
         let entry = map.next_entry::<String, serde_json::Value>()?;
         let (variant, value) = entry.ok_or_else(|| M::Error::custom("expected a single key for enum variant"))?;
 
-        let address = match variant.as_str() {
+        // The legacy map only carries the raw fields. They are encoded to bytes and decoded with `from_bytes`, so
+        // this path accepts exactly the addresses every other decoder accepts.
+        let bytes = match variant.as_str() {
             "Dual" => {
-                let inner: DualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
-                TariAddress::Dual(Box::new(inner))
+                let fields: LegacyDualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                fields.into_unchecked_bytes()
             },
             "Single" => {
-                let inner: SingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
-                TariAddress::Single(Box::new(inner))
+                let fields: LegacySingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                fields.into_unchecked_bytes()
             },
             other => return Err(M::Error::unknown_variant(other, &["Dual", "Single"])),
         };
-        // The legacy map bypasses the byte decoder, so run the address through it to apply the same checks
-        TariAddress::from_bytes(&address.to_vec()).map_err(M::Error::custom)
+        TariAddress::from_bytes(&bytes).map_err(M::Error::custom)
     }
 }
 
@@ -1407,6 +1411,44 @@ mod test {
         }}"#;
         let err = serde_json::from_str::<TariAddress>(single).unwrap_err();
         assert!(err.to_string().contains("Invalid features"), "{}", err);
+    }
+
+    #[test]
+    fn legacy_map_accepts_exactly_what_from_bytes_accepts() {
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let single = TariAddress::new_single_address_with_interactive_only(spend_key, Network::MainNet).unwrap();
+        let payment_id_flag = TariAddressFeatures::PAYMENT_ID.as_u8();
+        let samples = [
+            random_dual_address(None).to_vec(),
+            random_dual_address(Some(vec![1, 2, 3])).to_vec(),
+            random_dual_address(Some(vec![0xff; MAX_PAYMENT_ID_SIZE])).to_vec(),
+            single.to_vec(),
+            // The flag with an empty payment id is valid
+            with_feature_byte(
+                random_dual_address(None).to_vec(),
+                TariAddressFeatures::default().as_u8() | payment_id_flag,
+            ),
+            // A payment id without the flag, and a single address with the flag, are not
+            forged_dual_address_bytes(10),
+            with_feature_byte(single.to_vec(), single.features().as_u8() | payment_id_flag),
+        ];
+        for bytes in samples {
+            // The lenient decoder accepts all of the samples, so it can produce their legacy map form
+            let fields = match TariAddress::from_bytes_lenient(&bytes).unwrap() {
+                TariAddress::Dual(address) => serde_json::json!({ "Dual": address }),
+                TariAddress::Single(address) => serde_json::json!({ "Single": address }),
+            };
+            let expected = TariAddress::from_bytes(&bytes).ok();
+            let from_map = serde_json::from_value::<TariAddress>(fields.clone()).ok();
+            let from_json_string = serde_json::from_value::<TariAddress>(fields.to_string().into()).ok();
+            let from_borsh = borsh::from_slice::<TariAddress>(&borsh::to_vec(&bytes).unwrap()).ok();
+            assert_eq!(from_map, expected, "{fields}");
+            assert_eq!(from_json_string, expected, "{fields}");
+            assert_eq!(from_borsh, expected, "{fields}");
+            if let Some(address) = expected {
+                assert_eq!(address.to_vec(), bytes);
+            }
+        }
     }
 
     #[test]
