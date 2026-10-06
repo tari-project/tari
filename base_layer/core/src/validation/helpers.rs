@@ -574,17 +574,34 @@ mod test {
         use tari_transaction_components::tari_proof_of_work::PowData;
 
         use super::*;
+        use crate::proof_of_work::monero_rx::MergeMineError;
+
+        /// Maximum-size RandomXM pow data that fails to deserialize at various depths
+        fn unparseable_monero_pow_data() -> Vec<Vec<u8>> {
+            let max_size = PowData::default().max_size();
+            // A well formed Monero header, RandomX key, transaction count, merkle root and empty coinbase merkle
+            // proof, so that decoding gets as far as the coinbase prefix before running into 0xff bytes
+            let mut deep = vec![0x0c, 0x0c, 0x00];
+            deep.extend([0u8; 32]);
+            deep.extend([0u8; 4]);
+            deep.push(32);
+            deep.extend([1u8; 32]);
+            deep.extend([1u8, 0]);
+            deep.extend([0u8; 32]);
+            deep.extend([0u8, 0]);
+            deep.resize(max_size, 0xff);
+            vec![vec![0x00; max_size], vec![0x01; max_size], vec![0xff; max_size], deep]
+        }
 
         #[test]
         fn it_names_the_block_and_algorithm_of_a_rejected_randomxm_header() {
             let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
             let randomx_factory = RandomXFactory::default();
-            let max_size = PowData::default().max_size();
-            for fill in [0x00u8, 0x01, 0xff] {
+            for pow_data in unparseable_monero_pow_data() {
                 let mut header = BlockHeader::new(0);
                 header.height = 10;
                 header.pow.pow_algo = PowAlgorithm::RandomXM;
-                header.pow.pow_data = PowData::try_from(vec![fill; max_size]).unwrap();
+                header.pow.pow_data = PowData::try_from(pow_data).unwrap();
 
                 let err = check_target_difficulty(
                     &header,
@@ -595,6 +612,12 @@ mod test {
                     FixedHash::zero(),
                 )
                 .unwrap_err();
+                // The decode failure itself, whose text is built from the decoder's error and so is the part that
+                // could depend on what the peer sent
+                assert!(
+                    matches!(&err, ValidationError::MergeMineError(MergeMineError::DeserializeError(e)) if e.contains("(expected the")),
+                    "{err:?}"
+                );
                 let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
                 let message = pow_rejection_message(&header, &err);
 

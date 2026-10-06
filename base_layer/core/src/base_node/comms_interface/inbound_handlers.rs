@@ -727,15 +727,28 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
+        // The ban that follows a rejected proof of work records the peer and the error but not the block, so name
+        // both here
+        let log_pow_rejection = |e: &CommsInterfaceError| {
+            if e.get_ban_reason().is_some() {
+                warn!(
+                    target: LOG_TARGET,
+                    "{} (from peer {})",
+                    helpers::pow_rejection_message(&new_block.header, e),
+                    source_peer
+                );
+            }
+        };
+
         // GHSA-3qmx-q9pv-f3m4. The canonical `pow_data` test reads at most one byte and needs no chain state, so it
         // runs before the existence and bad-block lookups, before `fetch_last_chain_header` and the backwards chain
         // walk in `check_min_block_difficulty`, and before the RandomX VM hash. A zero-extended variant is free for
         // an attacker to mint, so it must be as close to free for us to discard.
         if new_block.header.pow_algo() == PowAlgorithm::RandomXT {
             let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-            check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data()).map_err(
-                |e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)),
-            )?;
+            check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data())
+                .map_err(|e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)))
+                .inspect_err(log_pow_rejection)?;
         }
 
         // Lets check if the block exists before we try and ask for a complete block
@@ -749,18 +762,9 @@ where B: BlockchainBackend + 'static
         // blocks are not free to make, and that they are more expensive to make then they are to validate. As
         // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        if let Err(e) = self.check_min_block_difficulty(&new_block).await {
-            // The ban that follows records the peer and the error but not the block, so name both here
-            if e.get_ban_reason().is_some() {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} (from peer {})",
-                    helpers::pow_rejection_message(&new_block.header, &e),
-                    source_peer
-                );
-            }
-            return Err(e);
-        }
+        self.check_min_block_difficulty(&new_block)
+            .await
+            .inspect_err(log_pow_rejection)?;
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the

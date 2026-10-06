@@ -41,7 +41,7 @@ use crate::{
         HeaderChainLinkedValidator,
         ValidatedHeader,
         ValidationError,
-        helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
+        helpers::{check_header_timestamp_greater_than_median, check_target_difficulty, pow_rejection_message},
     },
 };
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
@@ -85,7 +85,8 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header, constants)?;
+        check_pow_data(header, constants)
+            .inspect_err(|e| warn!(target: LOG_TARGET, "{}", pow_rejection_message(header, e)))?;
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,
@@ -821,6 +822,34 @@ mod test {
         };
         let res = check_pow_data_inner(&pow, 0, 9, 9, false);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn a_header_with_malformed_pow_data_is_named_by_block_and_algorithm() {
+        use tari_common::configuration::Network;
+        use tari_transaction_components::tari_proof_of_work::PowData;
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut header = BlockHeader::new(0);
+        header.pow.pow_algo = PowAlgorithm::Sha3x;
+        header.pow.pow_data = PowData::try_from(vec![0xff; PowData::default().max_size()]).unwrap();
+
+        let err = check_pow_data(&header, rules.consensus_constants(0)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ValidationError::ProofOfWorkError(PowError::Sha3HeaderNonEmptyPowBytes)
+            ),
+            "{err:?}"
+        );
+        let ban_reason = err.get_ban_reason().expect("malformed pow data is bannable").reason;
+        let message = pow_rejection_message(&header, &err);
+
+        assert!(message.contains(&header.hash().to_hex()), "{message}");
+        assert!(message.contains("Sha3"), "{message}");
+        // The ban record carries the same error, which is what ties the two together
+        assert!(message.contains(&ban_reason), "{message}");
+        assert!(message.len() < 512, "{} bytes: {message}", message.len());
     }
 
     #[test]
