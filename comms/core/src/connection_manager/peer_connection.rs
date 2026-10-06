@@ -823,8 +823,9 @@ impl PeerConnectionActor {
                 );
             },
             Ok(Err(e)) => trace!(target: LOG_TARGET, "On disconnect: ({e})"),
-            // Carry on: once this actor exits it drops the incoming substream receiver, which makes the yamux
-            // worker close the connection
+            // Carry on: the yamux worker bounds its own close and drops the socket when that times out. If the
+            // worker has not taken the close request yet, this actor exiting drops the incoming substream receiver,
+            // which also makes the worker close the connection.
             Err(_) => warn!(
                 target: LOG_TARGET,
                 "On disconnect: (Peer = {}) Timed out after {:.0?} waiting for the connection to close",

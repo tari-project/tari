@@ -252,6 +252,8 @@ impl From<yamux::StreamId> for stream_id::Id {
 const MAX_QUEUED_INBOUND_STREAMS: usize = 64;
 /// The minimum time between warnings about reset inbound substreams
 const INBOUND_DROP_WARN_INTERVAL: Duration = Duration::from_secs(10);
+/// The maximum time to wait for the connection to close. The worker exits and drops the socket after this.
+const CONNECTION_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum WorkerExit {
     /// The yamux connection closed or failed
@@ -534,7 +536,18 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         }
 
         self.is_closed = true;
-        if let Err(err) = poll_fn(|cx| connection.poll_close(cx)).await {
+        // Closing only writes, so a peer that stops reading would otherwise keep the connection open forever
+        let Ok(result) = tokio::time::timeout(CONNECTION_CLOSE_TIMEOUT, poll_fn(|cx| connection.poll_close(cx))).await
+        else {
+            warn!(
+                target: LOG_TARGET,
+                "Peer ({}) yamux connection did not close within {:.0?}",
+                self.peer_connection_info,
+                CONNECTION_CLOSE_TIMEOUT
+            );
+            return Err(ConnectionError::Io(io::ErrorKind::TimedOut.into()));
+        };
+        if let Err(err) = result {
             match err {
                 ConnectionError::Io(ref io_err)
                     if io_err.kind() == io::ErrorKind::ConnectionReset ||
@@ -864,6 +877,27 @@ mod test {
         assert!(result.expect("close was starved").is_ok());
 
         flood.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_completes_when_peer_stops_reading() {
+        // The peer end is never read, so the connection's writes back up once this small buffer is full
+        let (socket, _peer) = tokio::io::duplex(64);
+        let yamux =
+            Yamux::upgrade_connection(socket, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+        let mut control = yamux.get_yamux_control();
+
+        let mut substream = control.open_stream().await.unwrap();
+        let writer = tokio::spawn(async move {
+            let _ignore = substream.write_all(&[0u8; 64 * 1024]).await;
+        });
+        tokio::task::yield_now().await;
+
+        // Time is paused and advances when every task is idle, so this does not wait in real time
+        let result = tokio::time::timeout(super::CONNECTION_CLOSE_TIMEOUT * 2, control.close()).await;
+        assert!(result.is_ok(), "close did not return");
+
+        writer.abort();
     }
 
     #[tokio::test]
