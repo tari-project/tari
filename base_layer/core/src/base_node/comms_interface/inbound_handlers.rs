@@ -734,7 +734,7 @@ where B: BlockchainBackend + 'static
                 warn!(
                     target: LOG_TARGET,
                     "{} (from peer {})",
-                    helpers::pow_rejection_message(&new_block.header, e),
+                    helpers::pow_rejection_message(&block_hash, &new_block.header, e),
                     source_peer
                 );
             }

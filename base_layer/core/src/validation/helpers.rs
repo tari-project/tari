@@ -135,8 +135,17 @@ pub fn check_target_difficulty(
     consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
-    let achieved = achieved_difficulty(block_header, randomx_factory, gen_hash, consensus, tari_vm_key)
-        .inspect_err(|e| warn!(target: LOG_TARGET, "{}", pow_rejection_message(block_header, e)))?;
+    let achieved =
+        achieved_difficulty(block_header, randomx_factory, gen_hash, consensus, tari_vm_key).inspect_err(|e| {
+            // A failure that is not the peer's fault (e.g. building a RandomX VM) says nothing about the block
+            if e.get_ban_reason().is_some() {
+                warn!(
+                    target: LOG_TARGET,
+                    "{}",
+                    pow_rejection_message(&block_header.hash(), block_header, e)
+                );
+            }
+        })?;
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
@@ -183,13 +192,22 @@ fn achieved_difficulty(
     Ok(achieved)
 }
 
+/// The most characters of the error text [`pow_rejection_message`] includes.
+const MAX_POW_REJECTION_ERROR_CHARS: usize = 512;
+
 /// The log line for a header whose proof of work could not be verified. The ban reason for the same error is only the
-/// error itself, so this is what ties a ban to a block. It carries the fixed-size header fields and the error, never
-/// the pow data, so it stays bounded whatever the peer sent.
-pub(crate) fn pow_rejection_message(header: &BlockHeader, err: &dyn Display) -> String {
+/// error itself, so this is what ties a ban to a block. `hash` is the header's hash, passed in because some callers
+/// already have it. It carries the fixed-size header fields and the error, never the pow data, and the error text is
+/// capped at [`MAX_POW_REJECTION_ERROR_CHARS`], so it stays bounded whatever the peer sent.
+pub(crate) fn pow_rejection_message(hash: &FixedHash, header: &BlockHeader, err: &dyn Display) -> String {
+    let mut err = err.to_string();
+    if let Some((cut, _)) = err.char_indices().nth(MAX_POW_REJECTION_ERROR_CHARS) {
+        err.truncate(cut);
+        err.push_str("...");
+    }
     format!(
         "Proof of work for block {} at height {} ({}) was rejected: {}",
-        header.hash().to_hex(),
+        hash.to_hex(),
         header.height,
         header.pow_algo(),
         err
@@ -619,7 +637,7 @@ mod test {
                     "{err:?}"
                 );
                 let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
-                let message = pow_rejection_message(&header, &err);
+                let message = pow_rejection_message(&header.hash(), &header, &err);
 
                 assert!(message.contains(&header.hash().to_hex()), "{message}");
                 assert!(message.contains("RandomXMonero"), "{message}");
@@ -629,6 +647,34 @@ mod test {
                 assert!(message.len() < 512, "{} bytes: {message}", message.len());
                 assert!(ban_reason.len() < 256, "{} bytes: {ban_reason}", ban_reason.len());
             }
+        }
+
+        #[test]
+        fn it_caps_the_error_text() {
+            struct LongError;
+            impl Display for LongError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    // Multi-byte characters, so that a byte based cut would land inside one
+                    write!(f, "{}", "é".repeat(10_000))
+                }
+            }
+            let header = BlockHeader::new(0);
+            let message = pow_rejection_message(&header.hash(), &header, &LongError);
+            let (_, err) = message.split_once("was rejected: ").unwrap();
+            assert_eq!(err, format!("{}...", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS)));
+
+            // An error at the cap is left alone
+            struct ShortError;
+            impl Display for ShortError {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "{}", "é".repeat(MAX_POW_REJECTION_ERROR_CHARS))
+                }
+            }
+            let message = pow_rejection_message(&header.hash(), &header, &ShortError);
+            assert!(
+                message.ends_with(&"é".repeat(MAX_POW_REJECTION_ERROR_CHARS)),
+                "{message}"
+            );
         }
     }
 
