@@ -33,6 +33,7 @@ mod error;
 pub use error::NoiseError;
 
 mod socket;
+pub(crate) use socket::MAX_WRITE_BUFFER_LENGTH;
 pub use socket::NoiseSocket;
 use tari_utilities::{Hidden, hidden_type, safe_array::SafeArray};
 use zeroize::Zeroize;

@@ -52,7 +52,7 @@ const MAX_PAYLOAD_LENGTH: usize = u16::MAX as usize; // 65535
 
 // The maximum number of bytes that we can buffer is 16 bytes less than u16::max_value() because
 // encrypted messages include a tag along with the payload.
-const MAX_WRITE_BUFFER_LENGTH: usize = u16::MAX as usize - 16; // 65519
+pub(crate) const MAX_WRITE_BUFFER_LENGTH: usize = u16::MAX as usize - 16; // 65519
 
 // Every frame on the wire is prefixed with its length as a big-endian u16.
 const FRAME_LEN_PREFIX_LENGTH: usize = 2;

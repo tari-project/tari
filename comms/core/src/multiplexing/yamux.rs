@@ -35,6 +35,7 @@ use yamux::{ConnectionError, FrameDecodeError, Mode};
 use crate::{
     connection_manager::{ConnectionDirection, PeerConnectionInfo},
     multiplexing::YamuxControlError,
+    noise,
     stream_id,
     stream_id::StreamId,
     utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
@@ -42,10 +43,26 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
+/// Size of the yamux frame header (not exported by the yamux crate)
+const YAMUX_HEADER_LENGTH: usize = 12;
+
+/// The largest yamux data frame payload that, together with its header, fits exactly into one noise frame. Receivers
+/// accept frame bodies of up to 1 MiB, so this is compatible with every node running yamux 0.13.
+const YAMUX_SPLIT_SEND_SIZE: usize = noise::MAX_WRITE_BUFFER_LENGTH - YAMUX_HEADER_LENGTH; // 65507
+
 pub struct Yamux {
     control: Control,
     incoming: IncomingSubstreams,
     substream_counter: AtomicRefCounter,
+}
+
+fn yamux_config() -> yamux::Config {
+    // The receive window is left at the defaults: the 256 KiB starting window is fixed by the yamux spec, and
+    // auto-tuning already grows it up to 1 GiB per connection across 512 streams. The default split send size of 16
+    // KiB sends many small frames for large messages, so frames are sized to fill one noise frame each.
+    let mut config = yamux::Config::default();
+    config.set_split_send_size(YAMUX_SPLIT_SEND_SIZE);
+    config
 }
 
 impl Yamux {
@@ -63,7 +80,7 @@ impl Yamux {
             ConnectionDirection::Outbound => Mode::Client,
         };
 
-        let config = yamux::Config::default();
+        let config = yamux_config();
 
         let substream_counter = AtomicRefCounter::new();
         let connection = yamux::Connection::new(socket.compat(), config, mode);
@@ -443,8 +460,20 @@ mod test {
     use crate::{
         connection_manager::{ConnectionDirection, PeerConnectionInfo},
         memsocket::MemorySocket,
-        multiplexing::yamux::Yamux,
+        multiplexing::yamux::{Yamux, yamux_config},
     };
+
+    #[test]
+    fn yamux_frames_fill_one_noise_frame() {
+        let config = format!("{:?}", yamux_config());
+        assert!(config.contains("split_send_size: 65507"), "{config}");
+        // Window defaults are unchanged
+        assert!(
+            config.contains("max_connection_receive_window: Some(1073741824)"),
+            "{config}"
+        );
+        assert!(config.contains("max_num_streams: 512"), "{config}");
+    }
 
     #[tokio::test]
     async fn open_substream() -> io::Result<()> {
