@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, sync::Arc};
+
 use futures::StreamExt;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::{RpcStatusCode, mock::RpcRequestMock};
@@ -109,6 +111,31 @@ fn setup_with(
         block_batch_size,
     );
     (service, db, request_mock)
+}
+
+/// Creates a main chain of 105 blocks (B1 to B105), more than one chunk of headers, so that streaming it makes the
+/// header prefetch refetch.
+fn create_chain_longer_than_a_header_chunk(
+    db: &BlockchainDatabase<TempDatabase>,
+) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
+    let num_blocks = 105;
+    let mut specs = Vec::with_capacity(num_blocks);
+    for i in 1..=num_blocks {
+        let name = if i == 1 {
+            "B1->GB".to_string()
+        } else {
+            format!("B{}->B{}", i, i.saturating_sub(1))
+        };
+        specs.push(
+            BlockSpec::builder()
+                .with_name(Box::leak(name.into_boxed_str()))
+                .finish(),
+        );
+    }
+    let (names, chain) =
+        create_main_chain_with_range_proof_type(db, BlockSpecs::from(specs), Some(RangeProofType::RevealedValue));
+    assert_eq!(chain.get(names.last().unwrap()).unwrap().height(), num_blocks as u64);
+    (names, chain)
 }
 
 mod sync_blocks {
@@ -333,6 +360,47 @@ mod sync_utxos {
         assert!(terminator.txo.is_none());
         assert_eq!(terminator.mined_header, block_e.hash().to_vec());
     }
+
+    #[tokio::test]
+    async fn it_streams_all_outputs_in_order_across_header_chunks() {
+        let (service, db, rpc_request_mock) = setup();
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        let first_block = chain.get(names.first().unwrap()).unwrap();
+        let last_block = chain.get(names.last().unwrap()).unwrap();
+
+        let mut expected = Vec::new();
+        for name in &names {
+            let block = chain.get(name).unwrap();
+            assert!(block.block().body.inputs().is_empty());
+            for output in block.block().body.outputs() {
+                expected.push((output.commitment.as_bytes().to_vec(), block.hash().to_vec()));
+            }
+        }
+
+        let msg = SyncUtxosRequest {
+            start_header_hash: first_block.hash().to_vec(),
+            end_header_hash: last_block.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+        let mut responses = convert_mpsc_to_stream(&mut streaming)
+            .map(|resp| resp.unwrap())
+            .collect::<Vec<_>>()
+            .await;
+
+        let terminator = responses.pop().unwrap();
+        assert!(terminator.txo.is_none());
+        assert_eq!(terminator.mined_header, last_block.hash().to_vec());
+
+        let streamed = responses
+            .into_iter()
+            .map(|resp| match resp.txo {
+                Some(Txo::Output(output)) => (output.commitment.unwrap().data, resp.mined_header),
+                other => panic!("Expected an unspent output, got {:?}", other),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(streamed, expected);
+    }
 }
 
 mod sync_kernels {
@@ -342,25 +410,8 @@ mod sync_kernels {
     async fn it_streams_all_kernels_in_order_across_header_chunks() {
         let (service, db, rpc_request_mock) = setup();
 
-        // More than one chunk of headers so that the header prefetch has to refetch
-        let num_blocks = 105;
-        let mut specs = Vec::with_capacity(num_blocks);
-        for i in 1..=num_blocks {
-            let name = if i == 1 {
-                "B1->GB".to_string()
-            } else {
-                format!("B{}->B{}", i, i - 1)
-            };
-            specs.push(
-                BlockSpec::builder()
-                    .with_name(Box::leak(name.into_boxed_str()))
-                    .finish(),
-            );
-        }
-        let (names, chain) =
-            create_main_chain_with_range_proof_type(&db, BlockSpecs::from(specs), Some(RangeProofType::RevealedValue));
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
         let last_block = chain.get(names.last().unwrap()).unwrap();
-        assert_eq!(last_block.height(), num_blocks as u64);
 
         let mut expected = Vec::new();
         for name in &names {

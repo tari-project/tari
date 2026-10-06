@@ -245,20 +245,25 @@ where B: BlockchainBackend + 'static
             }
 
             // Look up all the spent outputs for this block in one call. Each entry is the last-mined entry for the
-            // spent output, which may be indexed under several headers.
-            let input_hashes = inputs_in_block
-                .iter()
-                .map(|input| input.output_hash())
-                .collect::<Vec<_>>();
-            let mined_infos = self
-                .db
-                .fetch_outputs_mined_info(input_hashes)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
+            // spent output, which may be indexed under several headers. Blocks without inputs skip the call.
+            let mined_infos = if inputs_in_block.is_empty() {
+                Vec::new()
+            } else {
+                let input_hashes = inputs_in_block
+                    .iter()
+                    .map(|input| input.output_hash())
+                    .collect::<Vec<_>>();
+                let mined_infos = self
+                    .db
+                    .fetch_outputs_mined_info(input_hashes)
+                    .await
+                    .rpc_status_internal_error(LOG_TARGET)?;
+                if tx.is_closed() {
+                    debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
+                    break;
+                }
+                mined_infos
+            };
 
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
             for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {
