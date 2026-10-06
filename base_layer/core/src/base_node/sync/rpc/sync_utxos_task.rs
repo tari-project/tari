@@ -45,6 +45,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
+/// The number of headers fetched from the database at a time while streaming
+pub(super) const HEADER_CHUNK_SIZE: u64 = 100;
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
@@ -170,6 +172,7 @@ where B: BlockchainBackend + 'static
         // do we emit the terminator below; an early break (peer left, send failed) must not, so that
         // a truncated stream is not mistaken for a complete one by the consumer.
         let mut reached_end = false;
+        let mut header_chunk = Vec::new().into_iter();
         loop {
             let timer = Instant::now();
             let current_header_hash = current_header.hash();
@@ -200,12 +203,14 @@ where B: BlockchainBackend + 'static
                     continue;
                 }
                 if !spent {
-                    match proto::types::TransactionOutput::try_from(output.clone()) {
+                    let output_hash = output.hash();
+                    let output_commitment = output.commitment.clone();
+                    match proto::types::TransactionOutput::try_from(output) {
                         Ok(tx_ouput) => {
                             trace!(
                                 target: LOG_TARGET,
                                 "Unspent TXO (commitment '{}') to peer",
-                                output.commitment.to_hex()
+                                output_commitment.to_hex()
                             );
                             outputs.push(Ok(SyncUtxosResponse {
                                 txo: Some(Txo::Output(tx_ouput)),
@@ -215,7 +220,7 @@ where B: BlockchainBackend + 'static
                         Err(e) => {
                             return Err(RpcStatus::general(&format!(
                                 "Output '{}' RPC conversion error ({})",
-                                output.hash().to_hex(),
+                                output_hash.to_hex(),
                                 e
                             )));
                         },
@@ -239,16 +244,29 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let mut inputs = Vec::with_capacity(inputs_in_block.len());
-            for input in inputs_in_block {
-                // The spent output may be indexed under several headers; take the last-mined entry.
-                let mut mined_infos = self
+            // Look up all the spent outputs for this block in one call. Each entry is the last-mined entry for the
+            // spent output, which may be indexed under several headers. Blocks without inputs skip the call.
+            let mined_infos = if inputs_in_block.is_empty() {
+                Vec::new()
+            } else {
+                let input_hashes = inputs_in_block
+                    .iter()
+                    .map(|input| input.output_hash())
+                    .collect::<Vec<_>>();
+                let mined_infos = self
                     .db
-                    .fetch_outputs(input.output_hash())
+                    .fetch_outputs_mined_info(input_hashes)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?;
-                mined_infos.sort_by_key(|o| o.mined_height);
-                let mined_info = mined_infos.into_iter().next_back();
+                if tx.is_closed() {
+                    debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
+                    break;
+                }
+                mined_infos
+            };
+
+            let mut inputs = Vec::with_capacity(inputs_in_block.len());
+            for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {
                 if let Some(info) = &mined_info &&
                     info.mined_height >= start_header.height
                 {
@@ -310,17 +328,26 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            current_header = self
-                .db
-                .fetch_header(next_height)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?
-                .ok_or_else(|| {
-                    RpcStatus::general(&format!(
-                        "Potential data consistency issue: header {} not found",
-                        next_height
-                    ))
-                })?;
+            let next_header = match header_chunk.next() {
+                Some(header) => Some(header),
+                None => {
+                    // Prefetch the next chunk of headers. The chunk stops early at the first missing header.
+                    let chunk_end = next_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_header.height);
+                    header_chunk = self
+                        .db
+                        .fetch_headers(next_height..=chunk_end)
+                        .await
+                        .rpc_status_internal_error(LOG_TARGET)?
+                        .into_iter();
+                    header_chunk.next()
+                },
+            };
+            current_header = next_header.ok_or_else(|| {
+                RpcStatus::general(&format!(
+                    "Potential data consistency issue: header {} not found",
+                    next_height
+                ))
+            })?;
         }
 
         // Always send a final terminator response tagged with the end header. It carries no TXO, so the

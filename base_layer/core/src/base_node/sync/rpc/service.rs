@@ -48,7 +48,10 @@ use crate::{
         comms_interface::{BlockEvent, BlockEvent::BlockSyncRewind},
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
-            rpc::{BaseNodeSyncService, sync_utxos_task::SyncUtxosTask},
+            rpc::{
+                BaseNodeSyncService,
+                sync_utxos_task::{HEADER_CHUNK_SIZE, SyncUtxosTask},
+            },
         },
     },
     chain_storage::{BlockAddResult, BlockchainBackend, async_db::AsyncBlockchainDb},
@@ -512,6 +515,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         task::spawn(async move {
             // Move session token into task
             let peer_node_id = session_token;
+            let mut header_chunk = Vec::new().into_iter();
             while current_height <= end_height {
                 if tx.is_closed() {
                     break;
@@ -562,10 +566,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 current_height = current_height.saturating_add(1);
 
                 if current_height <= end_height {
-                    let res = db
-                        .fetch_header(current_height)
-                        .await
-                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                    let res = match header_chunk.next() {
+                        Some(header) => Ok(Some(header)),
+                        None => {
+                            // Prefetch the next chunk of headers. The chunk stops early at the first missing header.
+                            let chunk_end = current_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_height);
+                            db.fetch_headers(current_height..=chunk_end)
+                                .await
+                                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
+                                .map(|headers| {
+                                    header_chunk = headers.into_iter();
+                                    header_chunk.next()
+                                })
+                        },
+                    };
                     match res {
                         Ok(Some(header)) => {
                             current_header_hash = header.hash();
