@@ -119,7 +119,7 @@ impl TestBlockchain {
     }
 
     pub fn add_raw_block(&mut self, block_name: &str, block: Block) -> Result<BlockAddResult, ChainStorageError> {
-        let res = self.store.add_block(Arc::new(block))?;
+        let res = self.store.add_block(Arc::new(block))?.result;
         if let BlockAddResult::Ok(ref b) = res {
             self.hash_to_block.insert(*b.hash(), block_name.to_string());
             self.blocks.insert(

@@ -25,10 +25,14 @@ use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use tari_common::configuration::Network;
-use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{FixedHash, PrivateKey},
+};
 use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
 use tari_core::{
     base_node::comms_interface::{
+        BlockEvent,
         CommsInterfaceError,
         GetNewBlockTemplateRequest,
         InboundNodeCommsHandlers,
@@ -48,12 +52,21 @@ use tari_core::{
     },
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::randomx_factory::RandomXFactory,
+    proof_of_work::{AchievedTargetDifficulty, AdjustedTarget, randomx_factory::RandomXFactory, sha3x_difficulty},
     test_helpers::{
         blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
     },
-    validation::{ValidationError, mocks::MockValidator, transaction::TransactionChainLinkedValidator},
+    validation::{
+        CandidateBlockValidator,
+        HeaderChainContext,
+        HeaderChainLinkedValidator,
+        ValidatedHeader,
+        ValidationError,
+        block_body::BlockBodyFullValidator,
+        mocks::MockValidator,
+        transaction::TransactionChainLinkedValidator,
+    },
 };
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock, NewBlock};
 use tari_script::{ExecutionStack, script};
@@ -78,6 +91,7 @@ use tari_transaction_components::{
     },
     txn_schema,
 };
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{
@@ -626,7 +640,7 @@ async fn inbound_get_block_from_all_chains_serves_small_orphans_hydrated() {
         &key_manager,
     )
     .unwrap();
-    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     assert!(
         store
@@ -798,7 +812,7 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     let mut orphan_header = orphan.header.clone();
     orphan_header.prev_hash = FixedHash::from([5u8; 32]);
     let orphan = Block::new(orphan_header, orphan.body);
-    let result = store.add_block(Arc::new(orphan.clone())).unwrap();
+    let result = store.add_block(Arc::new(orphan.clone())).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     let err = handlers
         .handle_block(unknown_spend(orphan.hash()), None)
@@ -933,7 +947,7 @@ async fn only_a_block_whose_body_matches_its_header_is_marked_bad() {
     assert!(!store.chain_block_or_orphan_block_exists(honest.hash()).unwrap());
 
     // The honest block is still accepted
-    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(honest)).unwrap() else {
+    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(honest)).unwrap().result else {
         panic!("the honest block was not added");
     };
 
@@ -991,7 +1005,7 @@ fn honest_chain(
     let network = Network::LocalNet;
     let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
     let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
-    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap() else {
+    let BlockAddResult::Ok(h0) = store.add_block(Arc::new(h0)).unwrap().result else {
         panic!("H0 was not added");
     };
     let tx = spend_genesis_output(&outputs, &key_manager);
@@ -1042,30 +1056,330 @@ fn announce_with_a_transaction(block: &Block) -> NewBlock {
 }
 
 /// A held orphan whose body was never checked against its header fails when an honest relayer completes its chain. The
-/// orphan is not marked bad, and the relayer, whose block was fine, is not banned.
+/// orphan is not marked bad, and the relayer, whose block was fine, is not banned: its block becomes the tip.
 #[tokio::test]
 async fn a_held_orphan_with_a_fake_body_does_not_get_the_relayer_of_its_parent_banned() {
     let (store, rules, key_manager, h0, h1) = honest_chain(false);
     let fake_h1 = with_swapped_kernel(&h1, &rules, &key_manager);
-    let result = store.add_block(Arc::new(fake_h1)).unwrap();
+    let result = store.add_block(Arc::new(fake_h1)).unwrap().result;
     assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
 
     let mut handlers = new_handlers(&store, new_mempool(), rules);
-    let err = handlers
+    handlers
         .handle_block(h0.block().clone(), Some(NodeId::default()))
         .await
+        .unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), h0.hash());
+    assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+}
+
+/// F-1: our chain G, an honest H0 on G, and X on H0, whose body matches its header but which claims too much in its
+/// coinbase. X is held as an orphan when H0 arrives.
+fn honest_parent_with_an_invalid_held_child()
+-> (BlockchainDatabase<TempDatabase>, BaseNodeConsensusManager, Block, Block) {
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, key_manager) = create_new_blockchain(network);
+    let h0 = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+    let BlockAddResult::Ok(h0_chain_block) = store.add_block(Arc::new(h0.clone())).unwrap().result else {
+        panic!("H0 was not added");
+    };
+    let x = prepare_block_with_extra_coinbase(&store, &h0_chain_block, vec![], &rules, &key_manager, T);
+    store.rewind_to_height(0).unwrap();
+    store.cleanup_all_orphans().unwrap();
+    assert!(!store.chain_block_or_orphan_block_exists(h0.hash()).unwrap());
+    let result = store.add_block(Arc::new(x.clone())).unwrap().result;
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    (store, rules, h0, x)
+}
+
+/// Q holds back X and sends it first; honest P then relays H0, which links X. H0 is valid and stronger than our chain,
+/// so it becomes the tip. X fails on its own account: it is recorded as bad and dropped, and P is not to blame.
+#[tokio::test]
+async fn a_held_invalid_child_does_not_get_the_relayer_of_its_parent_banned() {
+    let (store, _, h0, x) = honest_parent_with_an_invalid_held_child();
+    let outcome = store.add_block(Arc::new(h0.clone())).unwrap();
+    let BlockAddResult::Ok(tip) = &outcome.result else {
+        panic!("H0 was not added: {}", outcome.result);
+    };
+    assert_eq!(*tip.hash(), h0.hash());
+    assert_eq!(outcome.rejected.len(), 1);
+    assert_eq!(outcome.rejected[0].hash, x.hash());
+    assert!(!outcome.rejected[0].blame_sender);
+    assert!(store.bad_block_exists(x.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(x.hash()).unwrap());
+
+    // Through the handler, the relayer gets no error, so nothing to be banned for
+    let (store, rules, h0, _) = honest_parent_with_an_invalid_held_child();
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    handlers
+        .handle_block(h0.clone(), Some(NodeId::default()))
+        .await
+        .unwrap();
+    assert_eq!(*store.fetch_tip_header().unwrap().hash(), h0.hash());
+}
+
+/// The same with H0 mined locally: the mempool is told H0 was added, and is not told it failed, which would clear
+/// H0's transactions from it.
+#[tokio::test]
+async fn a_held_invalid_child_does_not_fail_a_locally_mined_parent() {
+    let (store, rules, h0, _) = honest_parent_with_an_invalid_held_child();
+    let (block_event_sender, mut block_events) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded_channel();
+    let (connectivity, _) = create_connectivity_mock();
+    let mut handlers = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        new_mempool(),
+        rules,
+        OutboundNodeCommsInterface::new(request_sender, block_sender),
+        connectivity,
+        RandomXFactory::new(2),
+    );
+
+    handlers.handle_block(h0.clone(), None).await.unwrap();
+
+    let mut events = vec![];
+    while let Ok(event) = block_events.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.len(), 1, "{events:?}");
+    let BlockEvent::ValidBlockAdded(block, BlockAddResult::Ok(_)) = &*events[0] else {
+        panic!("expected H0 to be added, got {}", events[0]);
+    };
+    assert_eq!(block.hash(), h0.hash());
+}
+
+/// A header validator that accepts every header and credits it with the proof of work it actually carries, so that a
+/// test can make one block outweigh several
+struct PowCreditingHeaderValidator;
+
+impl HeaderChainLinkedValidator<TempDatabase> for PowCreditingHeaderValidator {
+    fn validate(
+        &self,
+        _db: &TempDatabase,
+        header: &BlockHeader,
+        _prev_header: &BlockHeader,
+        _prev_timestamps: &[EpochTime],
+        _target_difficulty: Option<AdjustedTarget>,
+        _chain_context: HeaderChainContext<'_>,
+    ) -> Result<ValidatedHeader, ValidationError> {
+        let achieved = sha3x_difficulty(header)?;
+        Ok(ValidatedHeader {
+            achieved_target: AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3x, achieved, achieved, achieved)
+                .expect("achieved == target"),
+            monero_seed: None,
+        })
+    }
+}
+
+/// Our chain G <- T1 <- T2 <- T3, and a fork V <- Y <- C on T1 where V alone outweighs T2 <- T3, Y's body matches its
+/// header but claims too much in its coinbase, and C builds on Y. V and Y are held, never tried, when C arrives.
+// Overflow in test code panics, which is the desired failure mode for a test.
+#[allow(clippy::arithmetic_side_effects)]
+fn a_stronger_fork_with_an_invalid_block_in_it() -> (
+    BlockchainDatabase<TempDatabase>,
+    BaseNodeConsensusManager,
+    ChainBlock,
+    Block,
+    Block,
+    Block,
+) {
+    let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
+    let validators = Validators::new(
+        BlockBodyFullValidator::new(rules.clone(), true),
+        PowCreditingHeaderValidator,
+        MockValidator::new(true),
+    );
+    let store = create_store_with_consensus_and_validators_and_config(
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+    );
+    let one = Difficulty::min();
+    let (t1, _) = append_block(&store, &blocks[0], vec![], &rules, one, &key_manager).unwrap();
+
+    let mut v = prepare_block(&store, &t1, vec![], &rules, &key_manager);
+    find_header_with_achieved_difficulty(&mut v.header, Difficulty::from_u64(4).unwrap());
+    let BlockAddResult::Ok(v_chain_block) = store.add_block(Arc::new(v.clone())).unwrap().result else {
+        panic!("V was not added");
+    };
+    let y = prepare_block_with_extra_coinbase(&store, &v_chain_block, vec![], &rules, &key_manager, T);
+    let mut c_header = y.header.clone();
+    c_header.prev_hash = y.hash();
+    c_header.height = y.header.height + 1;
+    c_header.timestamp = EpochTime::from(y.header.timestamp.as_u64() + 1);
+    find_header_with_achieved_difficulty(&mut c_header, one);
+    let c = Block::new(c_header, AggregateBody::empty());
+
+    // Our chain: T1 and five more blocks, more than V <- Y. V and Y are held as orphans.
+    store.rewind_to_height(1).unwrap();
+    store.cleanup_all_orphans().unwrap();
+    let mut ours = vec![];
+    let mut prev = t1.clone();
+    for _ in 0..5 {
+        let (block, _) = append_block(&store, &prev, vec![], &rules, one, &key_manager).unwrap();
+        ours.push(block.clone());
+        prev = block;
+    }
+    let result = store.add_block(Arc::new(v.clone())).unwrap().result;
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+    let result = store.add_block(Arc::new(y.clone())).unwrap().result;
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+
+    // Our chain then falls back to T3 (as after a rewind), leaving V alone stronger than our tip but untried
+    store.rewind_to_height(3).unwrap();
+    let mut txn = DbTransaction::new();
+    for block in ours.iter().skip(2).rev() {
+        txn.delete_orphan(*block.hash());
+    }
+    store.write(txn).unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), ours[1].hash());
+    (store, rules, t1, v, y, c)
+}
+
+/// C's sender relayed a chain with an invalid block, Y, in it, so it is banned for Y. V before it is valid and stronger
+/// than our chain, so the chain changes to V too, and that is published before the failure.
+#[tokio::test]
+async fn a_blamed_rejection_with_a_chain_change_publishes_both_and_bans() {
+    let (store, rules, _, v, y, c) = a_stronger_fork_with_an_invalid_block_in_it();
+    let (block_event_sender, mut block_events) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, mut propagated) = mpsc::unbounded_channel();
+    let (connectivity, _) = create_connectivity_mock();
+    let mut handlers = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        new_mempool(),
+        rules,
+        OutboundNodeCommsInterface::new(request_sender, block_sender),
+        connectivity,
+        RandomXFactory::new(2),
+    );
+
+    let err = handlers
+        .handle_block(c.clone(), Some(NodeId::default()))
+        .await
         .unwrap_err();
+
     assert!(
         matches!(
             &err,
-            CommsInterfaceError::ChainStorageError(ChainStorageError::UnverifiedHeldBlockInvalid { hash, .. })
-                if *hash == h1.hash()
+            CommsInterfaceError::ChainStorageError(ChainStorageError::AncestorBlockInvalid { hash, .. })
+                if *hash == y.hash()
         ),
         "{err:?}"
     );
-    assert!(err.get_ban_reason().is_none());
-    assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
-    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+    let ban_reason = err.get_ban_reason().unwrap();
+    assert_eq!(ban_reason.ban_duration, BanPeriod::Long);
+    assert!(ban_reason.reason.contains(&y.hash().to_hex()), "{}", ban_reason.reason);
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), &v.hash());
+    assert!(store.bad_block_exists(y.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(c.hash()).unwrap());
+
+    let mut events = vec![];
+    while let Ok(event) = block_events.try_recv() {
+        events.push(event);
+    }
+    assert_eq!(events.len(), 2, "{events:?}");
+    let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { added, .. }) = &*events[0] else {
+        panic!("expected the reorg to V first, got {}", events[0]);
+    };
+    assert_eq!(added.iter().map(|b| *b.hash()).collect::<Vec<_>>(), vec![v.hash()]);
+    let BlockEvent::AddBlockValidationFailed { block, .. } = &*events[1] else {
+        panic!("expected C to fail second, got {}", events[1]);
+    };
+    assert_eq!(block.hash(), c.hash());
+    // C is not on our chain, so it is not propagated
+    assert!(propagated.try_recv().is_err());
+}
+
+/// A body validator whose every verdict is a local fault (a storage error), which says nothing about the block
+struct FaultyBodyValidator;
+
+impl CandidateBlockValidator<TempDatabase> for FaultyBodyValidator {
+    fn validate_body_with_metadata(
+        &self,
+        _: &TempDatabase,
+        _: &ChainBlock,
+        _: &ChainMetadata,
+    ) -> Result<(), ValidationError> {
+        Err(ValidationError::FatalStorageError(
+            "a local fault for the test".to_string(),
+        ))
+    }
+
+    fn validate_body_at_height(&self, _: &TempDatabase, _: &ChainBlock) -> Result<(), ValidationError> {
+        Ok(())
+    }
+}
+
+/// A block whose own body fails for a reason that is ours is reported as not added, but not as invalid: the error is
+/// not a ban, and no `AddBlockValidationFailed` is published. A locally mined one does get `AddBlockErrored`, so that
+/// the mempool clears its transactions (a transaction that breaks every template is cleared that way); one from a peer
+/// gets no event at all.
+#[tokio::test]
+async fn a_local_fault_does_not_report_the_block_as_invalid() {
+    for source_peer in [None, Some(NodeId::default())] {
+        let (_, blocks, _, rules, key_manager) = create_new_blockchain(Network::LocalNet);
+        let validators = Validators::new(FaultyBodyValidator, MockValidator::new(true), MockValidator::new(true));
+        let store = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            validators,
+            BlockchainDatabaseConfig::default(),
+        );
+        let block = prepare_block(&store, &blocks[0], vec![], &rules, &key_manager);
+        let (block_event_sender, mut block_events) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, mut propagated) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            store.clone().into(),
+            new_mempool(),
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(2),
+        );
+
+        let err = handlers
+            .handle_block(block.clone(), source_peer.clone())
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(
+                &err,
+                CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { hash, .. })
+                    if *hash == block.hash()
+            ),
+            "{err:?}"
+        );
+        assert!(err.get_ban_reason().is_none());
+        let mut events = vec![];
+        while let Ok(event) = block_events.try_recv() {
+            events.push(event);
+        }
+        if source_peer.is_none() {
+            assert_eq!(events.len(), 1, "{events:?}");
+            let BlockEvent::AddBlockErrored {
+                block: errored,
+                source_peer: None,
+            } = &*events[0]
+            else {
+                panic!("expected AddBlockErrored for the local block, got {}", events[0]);
+            };
+            assert_eq!(errored.hash(), block.hash());
+        } else {
+            assert!(events.is_empty(), "{events:?}");
+        }
+        assert!(propagated.try_recv().is_err());
+        assert_eq!(store.get_height().unwrap(), 0);
+        assert!(!store.bad_block_exists(block.hash()).unwrap().0);
+        assert!(!store.chain_block_or_orphan_block_exists(block.hash()).unwrap());
+    }
 }
 
 fn assert_banned_and_not_stored(err: &CommsInterfaceError, store: &BlockchainDatabase<TempDatabase>, hash: FixedHash) {
@@ -1170,7 +1484,7 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
     let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T]);
     let (txs, f1_outputs) = schema_to_transaction(&[schema], &key_manager);
     let f1 = prepare_block(&store, &blocks[0], vec![(*txs[0]).clone()], &rules, &key_manager);
-    let BlockAddResult::Ok(f1_chain_block) = store.add_block(Arc::new(f1.clone())).unwrap() else {
+    let BlockAddResult::Ok(f1_chain_block) = store.add_block(Arc::new(f1.clone())).unwrap().result else {
         panic!("F1 was not added");
     };
     let schema = txn_schema!(from: vec![f1_outputs[0].clone()], to: vec![MicroMinotari::from(5_000)]);
@@ -1189,7 +1503,7 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
     )
     .unwrap();
     if !store.chain_block_or_orphan_block_exists(f1.hash()).unwrap() {
-        let result = store.add_block(Arc::new(f1.clone())).unwrap();
+        let result = store.add_block(Arc::new(f1.clone())).unwrap().result;
         assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
     }
 

@@ -22,8 +22,11 @@
 
 use std::{fmt, sync::Arc};
 
+use tari_common_types::types::FixedHash;
 use tari_node_components::blocks::ChainBlock;
 use tari_utilities::hex::Hex;
+
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockAddResult {
@@ -105,6 +108,67 @@ impl BlockAddResult {
             BlockAddResult::Ok(_) => panic!("Expected reorg result, but was Ok()"),
             BlockAddResult::BlockExists => panic!("Expected reorg result, but was BlockExists"),
             BlockAddResult::OrphanBlock => panic!("Expected reorg result, but was OrphanBlock"),
+        }
+    }
+}
+
+/// What `add_block` did: the net change to the main chain, and every held block that failed body validation on the way.
+///
+/// A reorg can fail on a block other than the one being added, a held orphan that the new block linked to the main
+/// chain. The node then keeps the strongest valid chain it holds and tries the next strongest orphan tip, so a single
+/// call can both change the chain and reject blocks.
+#[derive(Debug)]
+pub struct AddBlockOutcome {
+    /// The net change from the tip the call started at, over every reorg it attempted
+    pub result: BlockAddResult,
+    /// The blocks that failed body validation, in the order they failed
+    pub rejected: Vec<RejectedBlock>,
+}
+
+/// A block that failed body validation during a reorg. It, and every orphan built on it, has been dropped.
+// Four independent facts about the failure, each read on its own by a different caller
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug)]
+pub struct RejectedBlock {
+    pub hash: FixedHash,
+    pub height: u64,
+    pub error: ValidationError,
+    /// Whether the peer that sent the block being added is at fault. It is if the block that failed is the block
+    /// being added, with the body that peer just sent, or the block being added or an ancestor of it with a body that
+    /// is the one its header commits to: an honest peer never holds a chain built on a block that is invalid as mined.
+    /// It is not for a descendant of the block being added (which a peer can hold back and send us first), nor for a
+    /// body we already held, and never checked against its header, when the block was sent again.
+    pub blame_sender: bool,
+    /// Whether the body that failed is the one its header commits to
+    pub body_verified: bool,
+    /// Whether the block being added was dropped with this block: it is this block, or built on it
+    pub dropped_candidate: bool,
+    /// Whether the body that failed is the one the sender of the block being added just sent: the block that failed is
+    /// the block being added, and it was not already held
+    pub sent_body_failed: bool,
+}
+
+impl RejectedBlock {
+    /// The error to report this rejection with, when `candidate_hash` is the block being added. If its sender is to
+    /// blame, the block being added is reported with its own validation error, as it always was, and an ancestor by its
+    /// own hash. If not, it is reported as `HeldBlockInvalid`, which is not a ban.
+    pub fn into_error(self, candidate_hash: FixedHash) -> ChainStorageError {
+        if !self.blame_sender {
+            ChainStorageError::HeldBlockInvalid {
+                hash: self.hash,
+                body_verified: self.body_verified,
+                sent_body_failed: self.sent_body_failed,
+                source: self.error,
+            }
+        } else if self.hash == candidate_hash {
+            ChainStorageError::ValidationError { source: self.error }
+        } else {
+            ChainStorageError::AncestorBlockInvalid {
+                candidate: candidate_hash,
+                hash: self.hash,
+                height: self.height,
+                source: self.error,
+            }
         }
     }
 }

@@ -396,7 +396,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     let mut block = db.prepare_new_block(template)?;
     block.header.nonce = rand::rng().next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    let res = db.add_block(Arc::new(block))?;
+    let res = db.add_block(Arc::new(block))?.result;
     match res {
         BlockAddResult::Ok(b) => Ok((b.as_ref().clone(), coinbase_output)),
         BlockAddResult::BlockExists => Err(ChainStorageError::InvalidOperation("Block already exists".to_string())),
@@ -499,7 +499,7 @@ pub fn generate_block<B: BlockchainBackend>(
     let prev_block = blocks.last().unwrap();
     let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, None, key_manager).0;
     let new_block = db.prepare_new_block(template)?;
-    let result = db.add_block(new_block.into());
+    let result = db.add_block(new_block.into()).map(|outcome| outcome.result);
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
     }
@@ -519,7 +519,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     let mut new_block = db.prepare_new_block(template)?;
     new_block.header.nonce = rand::rng().next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
-    let result = db.add_block(new_block.into());
+    let result = db.add_block(new_block.into()).map(|outcome| outcome.result);
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
     }
@@ -546,7 +546,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         achieved_difficulty,
     );
     let new_block = db.prepare_new_block(template)?;
-    let result = db.add_block(new_block.into())?;
+    let result = db.add_block(new_block.into())?.result;
     if let BlockAddResult::Ok(ref b) = result {
         prev_blocks.push(b.as_ref().clone());
     }

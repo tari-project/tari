@@ -171,18 +171,18 @@ fn build_chain_from_json(data: &TestChainData) -> BlockchainDatabase<TempDatabas
 fn populate_chain(db: BlockchainDatabase<TempDatabase>, data: &TestChainData) -> BlockchainDatabase<TempDatabase> {
     // Add shared blocks B1..B5 (canonical indices 1..=5)
     for block in &data.canonical_blocks[1..=5] {
-        db.add_block(Arc::new(block.clone())).unwrap().assert_added();
+        db.add_block(Arc::new(block.clone())).unwrap().result.assert_added();
     }
 
     // Add original main-chain blocks B6..B10 (these will be reorged out later)
     for block in &data.reorged_blocks {
-        db.add_block(Arc::new(block.clone())).unwrap().assert_added();
+        db.add_block(Arc::new(block.clone())).unwrap().result.assert_added();
     }
 
     // Add fork blocks F6'..F15' (canonical indices 6..=15) - triggers the reorg
     let mut reorg_happened = false;
     for block in &data.canonical_blocks[6..] {
-        let result = db.add_block(Arc::new(block.clone())).unwrap();
+        let result = db.add_block(Arc::new(block.clone())).unwrap().result;
         if result.is_chain_reorg() {
             reorg_happened = true;
         }
@@ -323,7 +323,7 @@ fn generate_fixtures() {
                 &script_key_id,
                 &wallet_payment_address,
             );
-            db.add_block(block.clone()).unwrap().assert_added();
+            db.add_block(block.clone()).unwrap().result.assert_added();
             prev_block = block.clone();
             blocks.push(block);
             outputs.push(coinbase);
@@ -345,14 +345,14 @@ fn generate_fixtures() {
     let fork_db = create_new_blockchain();
     let fork_key_manager = KeyManager::new_random().unwrap();
     for block in &shared_blocks {
-        fork_db.add_block(block.clone()).unwrap().assert_added();
+        fork_db.add_block(block.clone()).unwrap().result.assert_added();
     }
     let (fork_blocks, _) = add_chained_blocks(10, &fork_db, &fork_key_manager);
 
     // Trigger reorg
     let mut reorg_happened = false;
     for fork_block in &fork_blocks {
-        let result = db.add_block(fork_block.clone()).unwrap();
+        let result = db.add_block(fork_block.clone()).unwrap().result;
         if result.is_chain_reorg() {
             reorg_happened = true;
         }

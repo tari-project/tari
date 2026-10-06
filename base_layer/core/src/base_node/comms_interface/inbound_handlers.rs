@@ -68,12 +68,14 @@ use crate::{
         local_interface::BlockEventSender,
     },
     chain_storage::{
+        AddBlockOutcome,
         BlockAddResult,
         BlockchainBackend,
         ChainStorageError,
         DbKey,
         DbValue,
         MinedInfo,
+        RejectedBlock,
         async_db::AsyncBlockchainDb,
         body_matches_header,
         inputs_and_outputs_match_header,
@@ -185,6 +187,42 @@ fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
         Some(bytes) if bytes.saturating_add(DHT_ENVELOPE_ALLOWANCE) <= max_frame_length => block,
         _ => block.to_compact(),
     }
+}
+
+/// Log the blocks that failed while `block` was added that its sender is not to blame for, and return the one that
+/// dropped `block` itself, if any (it is the one its sender is to blame for, if there is one). A held block that failed
+/// on its own account says nothing about who sent `block`, so it is only logged. It is already dropped, and recorded as
+/// bad if its body matches its header.
+fn log_unblamed_rejections(
+    block: &Block,
+    source_peer: Option<&NodeId>,
+    rejected: Vec<RejectedBlock>,
+) -> Option<RejectedBlock> {
+    let mut dropped_block = None;
+    for rejection in rejected {
+        if rejection.blame_sender {
+            dropped_block = Some(rejection);
+        } else {
+            if rejection.dropped_candidate && dropped_block.is_none() {
+                dropped_block = Some(rejection);
+                continue;
+            }
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) from {} linked held block #{} ({}), which failed validation and was dropped. The sender \
+                 is not to blame: {}",
+                block.header.height,
+                block.hash().to_hex(),
+                source_peer
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<local request>".to_string()),
+                rejection.height,
+                rejection.hash.to_hex(),
+                rejection.error
+            );
+        }
+    }
+    dropped_block
 }
 
 /// Events that can be published on the Validated Block Event Stream
@@ -1248,7 +1286,10 @@ where B: BlockchainBackend + 'static
         let add_block_result = self.blockchain_db.add_block(block.clone()).await;
         // Create block event on block event stream
         match add_block_result {
-            Ok(block_add_result) => {
+            Ok(AddBlockOutcome {
+                result: block_add_result,
+                rejected,
+            }) => {
                 debug!(
                     target: LOG_TARGET,
                     "Block #{} ({}) added ({}) to blockchain in {:.2?}",
@@ -1258,17 +1299,27 @@ where B: BlockchainBackend + 'static
                     timer.elapsed()
                 );
 
-                let should_propagate = match &block_add_result {
-                    BlockAddResult::Ok(_) => true,
-                    BlockAddResult::BlockExists => false,
-                    BlockAddResult::OrphanBlock => false,
-                    BlockAddResult::ChainReorg { .. } => true,
-                };
+                // The chain can change without this block becoming part of it: a reorg that failed on another block
+                // keeps the strongest valid chain, which need not include this one. Only a block on our chain is
+                // propagated.
+                let should_propagate = block_add_result
+                    .added_blocks()
+                    .iter()
+                    .any(|added| *added.hash() == block_hash);
 
+                // A metrics failure must not stop the chain change from being published, or a ban from being reported
                 #[cfg(feature = "metrics")]
-                self.update_block_result_metrics(&block_add_result).await?;
+                if let Err(e) = self.update_block_result_metrics(&block_add_result).await {
+                    warn!(target: LOG_TARGET, "Failed to update block metrics: {e}");
+                }
 
-                self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
+                // Listeners such as the mempool take a single added block from the event rather than the result, so
+                // the event names the block that was actually added.
+                let added_block = match &block_add_result {
+                    BlockAddResult::Ok(added) => added.to_arc_block(),
+                    _ => block.clone(),
+                };
+                self.publish_block_event(BlockEvent::ValidBlockAdded(added_block, block_add_result));
 
                 if should_propagate {
                     debug!(
@@ -1276,7 +1327,7 @@ where B: BlockchainBackend + 'static
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
                     );
-                    let exclude_peers = source_peer.into_iter().collect();
+                    let exclude_peers = source_peer.iter().cloned().collect();
                     let new_block_msg = NewBlock::from(&*block);
                     if let Err(e) = self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await {
                         warn!(
@@ -1286,6 +1337,16 @@ where B: BlockchainBackend + 'static
                         );
                     }
                 }
+
+                // The block was dropped, but the chain changed as well (the blocks before the one that failed were
+                // valid and stronger). The change is published above, and the failure is reported as if nothing had
+                // changed: as an invalid block if the sender is to blame, and otherwise as `HeldBlockInvalid`, without
+                // a ban or an event.
+                if let Some(rejection) = log_unblamed_rejections(&block, source_peer.as_ref(), rejected) {
+                    let e = rejection.into_error(block_hash);
+                    self.report_invalid_block(block, source_peer, &e);
+                    return Err(e.into());
+                }
                 Ok(block_hash)
             },
 
@@ -1294,22 +1355,12 @@ where B: BlockchainBackend + 'static
                 source: ValidationError::BadBlockFound { hash, reason },
             }) => Err(CommsInterfaceError::KnownBadBlock { hash, reason }),
 
-            Err(e @ ChainStorageError::ValidationError { .. }) => {
-                #[cfg(feature = "metrics")]
-                {
-                    let block_hash = block.hash();
-                    metrics::rejected_blocks(block.header.height, &block_hash).inc();
-                }
-                warn!(
-                    target: LOG_TARGET,
-                    "Peer {} sent an invalid block: {}",
-                    source_peer
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "<local request>".to_string()),
-                    e
-                );
-                self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
+            Err(
+                e @ (ChainStorageError::ValidationError { .. } |
+                ChainStorageError::AncestorBlockInvalid { .. } |
+                ChainStorageError::HeldBlockInvalid { .. }),
+            ) => {
+                self.report_invalid_block(block, source_peer, &e);
                 Err(e.into())
             },
 
@@ -1334,6 +1385,58 @@ where B: BlockchainBackend + 'static
                 Err(e.into())
             },
         }
+    }
+
+    /// Record that `block`, from `source_peer`, was rejected for `error`. `error` is a `ValidationError` for the block
+    /// itself or an `AncestorBlockInvalid` for an ancestor, which the sender is to blame for, and the metric names
+    /// whichever block was invalid. Or it is `HeldBlockInvalid`: the block was dropped with a block that failed during
+    /// a reorg, but its sender is not to blame (the body that failed may not be the one it sent, or the verdict was
+    /// a fault of ours). That is only logged: no metric and no event, as `AddBlockValidationFailed` or
+    /// `AddBlockErrored` would make the mempool clear a local block's transactions for a failure that is not
+    /// theirs.
+    ///
+    /// The one exception is a locally mined block whose own body failed for a fault of ours: `AddBlockErrored` is
+    /// published for it, as for any other local block that fails for a reason other than a validation error, so that
+    /// the mempool clears its transactions. A transaction that breaks every template it is in is cleared that way.
+    fn report_invalid_block(&self, block: Arc<Block>, source_peer: Option<NodeId>, error: &ChainStorageError) {
+        if let ChainStorageError::HeldBlockInvalid { sent_body_failed, .. } = error {
+            if *sent_body_failed && source_peer.is_none() {
+                self.publish_block_event(BlockEvent::AddBlockErrored {
+                    block: block.clone(),
+                    source_peer: None,
+                });
+            }
+            warn!(
+                target: LOG_TARGET,
+                "Block #{} ({}) from {} not added: {}",
+                block.header.height,
+                block.hash().to_hex(),
+                source_peer
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "<local request>".to_string()),
+                error
+            );
+            return;
+        }
+        #[cfg(feature = "metrics")]
+        {
+            let (height, hash) = match error {
+                ChainStorageError::AncestorBlockInvalid { hash, height, .. } => (*height, *hash),
+                _ => (block.header.height, block.hash()),
+            };
+            metrics::rejected_blocks(height, &hash).inc();
+        }
+        warn!(
+            target: LOG_TARGET,
+            "Peer {} sent an invalid block: {}",
+            source_peer
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "<local request>".to_string()),
+            error
+        );
+        self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
     }
 
     async fn hydrate_block(&mut self, block: Block) -> Result<Arc<Block>, CommsInterfaceError> {

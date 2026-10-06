@@ -33,7 +33,7 @@ pub mod async_db;
 
 mod block_add_result;
 
-pub use block_add_result::BlockAddResult;
+pub use block_add_result::{AddBlockOutcome, BlockAddResult, RejectedBlock};
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 

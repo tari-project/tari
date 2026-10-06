@@ -22,7 +22,7 @@
 use std::{
     cmp,
     cmp::{Ordering, max, min},
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
@@ -106,6 +106,7 @@ use crate::{
         genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
     },
     chain_storage::{
+        AddBlockOutcome,
         BlockAddResult,
         BlockchainBackend,
         DbBasicStats,
@@ -115,6 +116,7 @@ use crate::{
         MmrTree,
         Optional,
         OrNotFound,
+        RejectedBlock,
         Reorg,
         TargetDifficulties,
         consts::{
@@ -1901,17 +1903,21 @@ where B: BlockchainBackend
     ///
     /// An error is returned if
     /// * there was a problem accessing the database,
-    /// * the validation fails
+    /// * the validation fails, and the main chain did not change
     ///
-    /// Otherwise the function returns successfully.
-    /// A successful return value can be one of
+    /// Otherwise the function returns successfully, with the outcome's `result` one of
     ///   * `BlockExists`: the block has already been added; No action was taken.
-    ///   * `Ok`: The block was added and all validation checks passed
-    ///   * `OrphanBlock`: The block did not form part of the main chain and was added as an orphan.
-    ///   * `ChainReorg`: The block was added, which resulted in a chain-reorg.
+    ///   * `Ok`: One block was added to the main chain, and all validation checks passed
+    ///   * `OrphanBlock`: The main chain did not change. The block was added as an orphan.
+    ///   * `ChainReorg`: The main chain was reorganised.
     ///
-    /// If an error does occur while writing the new block parts, all changes are reverted before returning.
-    pub fn add_block(&self, candidate_block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
+    /// `result` is the net change from the tip before the call. The block that was added need not be part of it: a
+    /// reorg can fail on another block, after which the node keeps the strongest valid chain it holds. The blocks that
+    /// failed are listed in the outcome's `rejected`, each with whether the sender of this block is to blame for it.
+    ///
+    /// If an error does occur while writing the new block parts, all changes are reverted before returning. Once the
+    /// main chain has changed, an error is never returned: the change is.
+    pub fn add_block(&self, candidate_block: Arc<Block>) -> Result<AddBlockOutcome, ChainStorageError> {
         let timer = Instant::now();
 
         let block_hash = candidate_block.hash();
@@ -1953,7 +1959,10 @@ where B: BlockchainBackend
         // process of processing an incoming block and now getting a write-lock on the database. Block-sync will
         // download the body for us, so we can safely exit here.
         if db.contains(&DbKey::HeaderHash(block_hash))? {
-            return Ok(BlockAddResult::BlockExists);
+            return Ok(AddBlockOutcome {
+                result: BlockAddResult::BlockExists,
+                rejected: vec![],
+            });
         }
         let (is_bad_block, reason) = db.bad_block_exists(block_hash)?;
         if is_bad_block {
@@ -1970,7 +1979,7 @@ where B: BlockchainBackend
         // work is done as soon as we can link it to the main chain. Full block validation only happens
         // when the proof of work is higher than the main chain and we want to add the block to the main
         // chain.
-        let block_add_result = add_block(
+        let outcome = add_block(
             &mut *db,
             &self.config,
             &self.consensus_manager,
@@ -1980,13 +1989,18 @@ where B: BlockchainBackend
             candidate_block,
         )?;
 
-        // If blocks were added and the node is in pruned mode, perform pruning
-        if block_add_result.was_chain_modified() {
-            info!(
-                target: LOG_TARGET,
-                "Best chain is now at height: {}",
-                db.fetch_chain_metadata()?.best_block_height()
-            );
+        // If blocks were added and the node is in pruned mode, perform pruning. The chain change is already committed
+        // here, so a failure from now on is logged rather than returned: returning it would hide the change (and any
+        // rejected block) from the caller.
+        if outcome.result.was_chain_modified() {
+            match db.fetch_chain_metadata() {
+                Ok(metadata) => info!(
+                    target: LOG_TARGET,
+                    "Best chain is now at height: {}",
+                    metadata.best_block_height()
+                ),
+                Err(e) => warn!(target: LOG_TARGET, "Failed to fetch chain metadata after adding a block: {e}"),
+            }
             // Skip inline pruning if background pruning is already handling it
             if self.is_background_pruning.load(atomic::Ordering::SeqCst) {
                 debug!(
@@ -1994,7 +2008,11 @@ where B: BlockchainBackend
                     "Background pruning is active, skipping inline prune_database_if_needed."
                 );
             } else {
-                prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
+                if let Err(e) =
+                    prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)
+                {
+                    warn!(target: LOG_TARGET, "Failed to prune the database after adding a block: {e}");
+                }
             }
         }
 
@@ -2005,10 +2023,11 @@ where B: BlockchainBackend
 
         debug!(
             target: LOG_TARGET,
-            "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}",
-            new_height, timer.elapsed().saturating_sub(after_lock), block_add_result
+            "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}, {} block(s) \
+             rejected",
+            new_height, timer.elapsed().saturating_sub(after_lock), outcome.result, outcome.rejected.len()
         );
-        Ok(block_add_result)
+        Ok(outcome)
     }
 
     /// Clean out the entire orphan pool
@@ -2189,16 +2208,20 @@ where B: BlockchainBackend
     /// chain to the highest pow chain
     /// This is typically used when an attempted sync failed to sync to the expected height and
     /// we are not sure if the new chain is higher than the old one.
-    pub fn swap_to_highest_pow_chain(&self) -> Result<(), ChainStorageError> {
+    ///
+    /// Returns the net change to the main chain, and the blocks that failed on the way, for the caller to publish.
+    pub fn swap_to_highest_pow_chain(&self) -> Result<AddBlockOutcome, ChainStorageError> {
         let mut db = self.db_write_access()?;
+        // No block is being added, so a block that fails here is nobody's fault that we could act on. Each failure is
+        // logged where it happens.
         swap_to_highest_pow_chain(
             &mut *db,
             &self.config,
             &self.consensus_manager,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
-        )?;
-        Ok(())
+            None,
+        )
     }
 
     pub fn fetch_horizon_data(&self) -> Result<HorizonData, ChainStorageError> {
@@ -2755,9 +2778,9 @@ fn add_block<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     candidate_block: Arc<Block>,
     // smt_writer: &mut LmdbTreeWriter,
-) -> Result<BlockAddResult, ChainStorageError> {
+) -> Result<AddBlockOutcome, ChainStorageError> {
     let candidate_hash = candidate_block.hash();
-    let result = handle_possible_reorg(
+    let mut outcome = handle_possible_reorg(
         db,
         config,
         consensus_manager,
@@ -2766,15 +2789,30 @@ fn add_block<T: BlockchainBackend>(
         chain_strength_comparer,
         candidate_block,
         // smt,
-    );
-    match result {
-        // The block being added is to blame for its own body, whether or not it matches its header. Only a held
-        // block (an orphan) with an unverified body is not attributed to whoever sent the block being added.
-        Err(ChainStorageError::UnverifiedHeldBlockInvalid { hash, source }) if hash == candidate_hash => {
-            Err(ChainStorageError::ValidationError { source })
-        },
-        result => result,
+    )?;
+    // When the main chain did not change and the block being added was dropped, the failure is the whole story, so it
+    // is returned as an error: the block was not accepted. If its sender is to blame that is the error it always was
+    // (or `AncestorBlockInvalid`); if not, `HeldBlockInvalid`, which is not a ban. After a chain change the rejection
+    // is reported in the outcome instead, because the change has to reach the caller too. The blamed rejection
+    // comes first: at most one rejection can be to blame, as the first block to blame that fails takes the
+    // candidate down.
+    if !outcome.result.was_chain_modified() {
+        let index = outcome
+            .rejected
+            .iter()
+            .position(|rejection| rejection.blame_sender)
+            .or_else(|| {
+                outcome
+                    .rejected
+                    .iter()
+                    .position(|rejection| rejection.dropped_candidate)
+            });
+        if let Some(index) = index {
+            let rejection = outcome.rejected.swap_remove(index);
+            return Err(rejection.into_error(candidate_hash));
+        }
     }
+    Ok(outcome)
 }
 
 /// Adds a new block onto the chain tip and sets it to the best block.
@@ -3521,13 +3559,24 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     candidate_block: Arc<Block>,
     // smt_writer: &mut LmdbTreeWriter,
-) -> Result<BlockAddResult, ChainStorageError> {
+) -> Result<AddBlockOutcome, ChainStorageError> {
     let timer = Instant::now();
     let height = candidate_block.header.height;
     let hash = candidate_block.header.hash();
-    insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
+    let candidate_body_received =
+        insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(db, config, consensus_manager, block_validator, chain_strength_comparer);
+    let res = swap_to_highest_pow_chain(
+        db,
+        config,
+        consensus_manager,
+        block_validator,
+        chain_strength_comparer,
+        Some(CandidateBlock {
+            hash,
+            body_received: candidate_body_received,
+        }),
+    );
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -3539,32 +3588,32 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     res
 }
 
-/// Reorganize the main chain with the provided fork chain, starting at the specified height.
-/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height highest to lowest).
+/// Validate and add the blocks of a fork chain on top of the current tip, which the caller has rewound to the fork
+/// point.
+///
+/// Every block is committed as soon as it validates, so on an error the blocks before the one that failed are left
+/// on the main chain, and it is up to the caller to keep them or restore the previous chain. A block that fails body
+/// validation is returned as `ChainStorageError::HeldBlockInvalid`, whichever block of the chain it is, with whether
+/// its body is the one its header commits to. The failed block is left in the orphan pool, for the caller to delete
+/// together with everything built on it.
+///
+/// `validated` holds the blocks that already passed body validation earlier in the same call; they are not validated
+/// again (see `swap_to_highest_pow_chain`), and every block that passes is added to it.
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn CandidateBlockValidator<T>,
-    fork_hash: HashOutput,
     new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
-) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
-    let removed_blocks = rewind_to_hash(backend, fork_hash)?;
-    debug!(
-        target: LOG_TARGET,
-        "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
-        new_chain_from_fork.len(),
-        fork_hash,
-        removed_blocks
-            .iter()
-            .map(|b| b.height().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    for (i, block) in new_chain_from_fork.iter().enumerate() {
-        let mut txn = DbTransaction::new();
+    validated: &mut HashSet<HashOutput>,
+) -> Result<(), ChainStorageError> {
+    for block in new_chain_from_fork {
         let block_hash = *block.hash();
-        txn.delete_orphan(block_hash);
         let chain_metadata = backend.fetch_chain_metadata()?;
-        if let Err(e) = block_validator.validate_body_with_metadata(backend, block, &chain_metadata) {
+        let result = if validated.contains(&block_hash) {
+            Ok(())
+        } else {
+            block_validator.validate_body_with_metadata(backend, block, &chain_metadata)
+        };
+        if let Err(e) = result {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -3574,14 +3623,16 @@ fn reorganize_chain<T: BlockchainBackend>(
             );
             // Only a block whose body is the one its header commits to is memoised as bad. The body of an orphan was
             // supplied by a peer and never checked against the header, so a fake body under an honest header must
-            // not get the honest block blacklisted. The orphan is deleted either way (above), so the honest block
-            // can be fetched again.
+            // not get the honest block blacklisted. The orphan is deleted either way (by the caller), so the honest
+            // block can be fetched again.
             let body_matches = body_matches_header(backend, block.block()).unwrap_or(false);
             if e.get_ban_reason()
                 .is_some_and(|reason| reason.ban_duration != BanPeriod::Short)
             {
                 if body_matches {
+                    let mut txn = DbTransaction::new();
                     txn.insert_bad_block(block.header().hash(), block.header().height, e.to_string());
+                    backend.write(txn)?;
                 } else {
                     debug!(
                         target: LOG_TARGET,
@@ -3591,42 +3642,25 @@ fn reorganize_chain<T: BlockchainBackend>(
                     );
                 }
             }
-            // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
-            // remaining blocks as well.
-            for block in new_chain_from_fork.iter().skip(i.saturating_add(1)) {
-                txn.delete_orphan(*block.hash());
-            }
-            backend.write(txn)?;
-
-            info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
-            // Whoever sent this body is at fault, but that may not be who sent the block being added: see `add_block`
-            if !body_matches {
-                return Err(ChainStorageError::UnverifiedHeldBlockInvalid {
-                    hash: block_hash,
-                    source: e,
-                });
-            }
-            return Err(e.into());
+            return Err(ChainStorageError::HeldBlockInvalid {
+                hash: block_hash,
+                body_verified: body_matches,
+                // Who sent the body is the caller's to work out
+                sent_body_failed: false,
+                source: e,
+            });
         }
 
+        validated.insert(block_hash);
+        let mut txn = DbTransaction::new();
+        txn.delete_orphan(block_hash);
         insert_best_block(&mut txn, block.clone())?;
-
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
-        // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
-        // good state before returning.
-        if let Err(e) = backend.write(txn) {
-            warn!(
-                target: LOG_TARGET,
-                "Failed to commit reorg chain: {e:?}. Restoring last chain."
-            );
-
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
-            return Err(e);
-        }
+        // (e.g. does not catch a double spend). The caller restores the chain.
+        backend.write(txn)?;
     }
 
-    Ok(removed_blocks)
+    Ok(())
 }
 
 /// The GHSA-3qmx-q9pv-f3m4 deep reorg anchor as `swap_to_highest_pow_chain` applies it. Returns `true` if the
@@ -3724,19 +3758,197 @@ fn orphan_subtree_hashes<T: BlockchainBackend>(
     Ok(ordered)
 }
 
+/// The block being added, as far as blame for a failed reorg is concerned
+#[derive(Clone, Copy)]
+struct CandidateBlock {
+    hash: HashOutput,
+    /// Whether the body held for the block is the one its sender just sent. If the block was already held, the body
+    /// held for it may have come from someone else.
+    body_received: bool,
+}
+
+/// Swap the main chain to the strongest valid chain the database holds, and return the net change.
+///
+/// A reorg onto the strongest orphan tip can fail on any block of the fork chain. The blocks before it are valid, so
+/// they are kept if they alone are stronger than the chain they replaced and go back into the orphan pool otherwise,
+/// and the failed block is dropped with every orphan built on it (see `swap_to_strongest_orphan_tip`). Another tip may
+/// then be the strongest, so this repeats until no orphan tip is stronger than the main chain, or until a block fails
+/// for a reason that is not its own fault (a local storage error, say), which could recur on every fork. Every failed
+/// attempt deletes at least the block that failed, and every refused one at least the lowest block of its fork, so it
+/// ends; the number of attempts is bounded by the orphan pool, and every failed one cost whoever made it a block's
+/// worth of proof of work.
+///
+/// `candidate` is the block being added, if any. A failure is blamed on its sender only if the block that failed is
+/// that block with the body its sender just sent, or that block or an ancestor of it with a body that matches its
+/// header.
+///
+/// A block that passed body validation in an earlier attempt is not validated again when a later attempt applies it.
+/// That is sound because the verdict is a function of the block and the chain it is applied on, and both are the same:
+/// - the block's hash fixes its parent, so it is always applied on top of the same chain, and the chain state the
+///   validator reads (the UTXO set, kernels, the seed height index and so on) is a function of that chain alone, since
+///   every rewind undoes it exactly; nothing prunes the database while the write lock is held;
+/// - the hash covers only the header, but the body is the same too: a validated block is committed to the main chain
+///   (after `delete_orphan`), and if it is rewound later in the call, `rewind_to_height` puts that same stored body
+///   back in the orphan pool. Nothing else writes an orphan with that hash while the write lock is held.
+///
+/// Without this an attacker holding n invalid tips on top of a k block prefix that is not stronger than our chain had
+/// the prefix validated n times in one call.
 fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
     consensus_manager: &BaseNodeConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
-    // smt_writer: &mut LmdbTreeWriter,
-) -> Result<BlockAddResult, ChainStorageError> {
+    candidate: Option<CandidateBlock>,
+) -> Result<AddBlockOutcome, ChainStorageError> {
+    // The net change from the tip we started at: added lowest first, removed highest first, as in `BlockAddResult`
+    let mut added: Vec<Arc<ChainBlock>> = Vec::new();
+    let mut removed: Vec<Arc<ChainBlock>> = Vec::new();
+    let mut rejected: Vec<RejectedBlock> = Vec::new();
+    let mut validated = HashSet::new();
+    let starting_tip = *db.fetch_tip_header()?.hash();
+    loop {
+        let attempt = match swap_to_strongest_orphan_tip(
+            db,
+            config,
+            consensus_manager,
+            block_validator,
+            chain_strength_comparer,
+            candidate,
+            &mut validated,
+        ) {
+            Ok(attempt) => attempt,
+            // An earlier attempt changed the main chain, or dropped the block being added (and may have found its
+            // sender to blame), and that must reach the caller rather than this error. The tip that failed is still
+            // in the orphan pool and is tried again on the next block.
+            Err(e)
+                if !added.is_empty() ||
+                    !removed.is_empty() ||
+                    rejected.iter().any(|rejection| rejection.dropped_candidate) =>
+            {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to swap to the strongest orphan tip after an earlier attempt in the same call: {e}"
+                );
+                // The attempt that failed should have restored the chain it started from, but it failed, so check
+                // that the database is where the earlier attempts left it before reporting their change. If it is
+                // not, the change cannot be reported correctly, and the node needs attention.
+                let expected_tip = match (added.last(), removed.last()) {
+                    (Some(block), _) => *block.hash(),
+                    (None, Some(block)) => block.header().prev_hash,
+                    (None, None) => starting_tip,
+                };
+                let actual_tip = *db.fetch_tip_header()?.hash();
+                if actual_tip != expected_tip {
+                    error!(
+                        target: LOG_TARGET,
+                        "After a failed reorg attempt the tip is {actual_tip}, not {expected_tip} as expected. The \
+                         chain change of this call cannot be reported; the node's database needs attention."
+                    );
+                    return Err(ChainStorageError::DataInconsistencyDetected {
+                        function: "swap_to_highest_pow_chain",
+                        details: format!(
+                            "tip is {actual_tip} after a failed reorg attempt ({e}), expected {expected_tip}"
+                        ),
+                    });
+                }
+                break;
+            },
+            Err(e) => return Err(e),
+        };
+        let (attempt_removed, attempt_added, is_done) = match attempt {
+            SwapAttempt::NoStrongerTip => (vec![], vec![], true),
+            SwapAttempt::Refused => (vec![], vec![], false),
+            SwapAttempt::Reorged {
+                removed: attempt_removed,
+                added: attempt_added,
+            } => (attempt_removed, attempt_added, true),
+            SwapAttempt::Failed {
+                removed: attempt_removed,
+                added: attempt_added,
+                rejected: rejection,
+            } => {
+                // A verdict that is not the block's fault (a local storage error, say) can recur for every fork we
+                // try, so one such fault must not run through every stronger tip we hold: stop here. The failed
+                // block's subtree has been dropped, as it always was on any error, so the next block does not pin on
+                // it either.
+                let is_local_fault = !is_block_fault(&rejection.error);
+                rejected.push(rejection);
+                (attempt_removed, attempt_added, is_local_fault)
+            },
+        };
+        // Blocks are removed from the tip down, so a removed block is either the last one an earlier attempt added,
+        // which undoes that, or the next one down on the chain we started with.
+        for block in attempt_removed {
+            if added.last().is_some_and(|last| last.hash() == block.hash()) {
+                added.pop();
+            } else {
+                removed.push(block);
+            }
+        }
+        // Likewise a block added back on top of the chain we started with undoes its removal
+        for block in attempt_added {
+            if removed.last().is_some_and(|last| last.hash() == block.hash()) {
+                removed.pop();
+            } else {
+                added.push(block);
+            }
+        }
+        if is_done {
+            break;
+        }
+    }
+
+    // A reorg is required when any blocks are removed or more than one are added
+    // see https://github.com/tari-project/tari/issues/2101
+    let result = if !removed.is_empty() || added.len() > 1 {
+        BlockAddResult::ChainReorg { added, removed }
+    } else {
+        match added.pop() {
+            Some(block) => BlockAddResult::Ok(block),
+            None => BlockAddResult::OrphanBlock,
+        }
+    };
+    Ok(AddBlockOutcome { result, rejected })
+}
+
+/// What one attempt to swap to the strongest orphan tip did
+enum SwapAttempt {
+    /// No orphan tip is stronger than the main chain. Nothing changed.
+    NoStrongerTip,
+    /// The strongest tip's fork was refused by the GHSA-3qmx-q9pv-f3m4 deep reorg anchor and dropped. Nothing else
+    /// changed.
+    Refused,
+    /// The main chain was swapped to the strongest tip
+    Reorged {
+        removed: Vec<Arc<ChainBlock>>,
+        added: Vec<Arc<ChainBlock>>,
+    },
+    /// A block of the fork chain failed validation and was dropped with every orphan built on it. If the blocks before
+    /// it were stronger than the chain they replaced they are on the main chain, and `removed` and `added` say so;
+    /// otherwise both are empty and the chain is as it was.
+    Failed {
+        removed: Vec<Arc<ChainBlock>>,
+        added: Vec<Arc<ChainBlock>>,
+        rejected: RejectedBlock,
+    },
+}
+
+#[allow(clippy::too_many_lines)]
+fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
+    db: &mut T,
+    config: &BlockchainDatabaseConfig,
+    consensus_manager: &BaseNodeConsensusManager,
+    block_validator: &dyn CandidateBlockValidator<T>,
+    chain_strength_comparer: &dyn ChainStrengthComparer,
+    candidate: Option<CandidateBlock>,
+    validated: &mut HashSet<HashOutput>,
+) -> Result<SwapAttempt, ChainStorageError> {
     let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
     if strongest_orphan_tips.is_empty() {
         // we have no orphan chain tips, we are on the best tip we have, so lets return ok
         remove_non_canonical_headers(db)?;
-        return Ok(BlockAddResult::OrphanBlock);
+        return Ok(SwapAttempt::NoStrongerTip);
     }
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
     let best_fork_header =
@@ -3771,7 +3983,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
                 tip_header.hash(),
             );
             remove_non_canonical_headers(db)?;
-            return Ok(BlockAddResult::OrphanBlock);
+            return Ok(SwapAttempt::NoStrongerTip);
         },
     }
 
@@ -3789,55 +4001,201 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     // anchored separately, in `HeaderSynchronizer::determine_sync_status`.
     if refuse_reorg_below_ghsa_activation(db, consensus_manager, &tip_header, &best_fork_header, &reorg_chain)? {
         remove_non_canonical_headers(db)?;
-        return Ok(BlockAddResult::OrphanBlock);
+        return Ok(SwapAttempt::Refused);
     }
 
-    let num_added_blocks = reorg_chain.len();
     // Note: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
-    let num_removed_blocks = removed_blocks.len();
+    let removed_blocks = rewind_to_hash(db, fork_hash)?;
+    debug!(
+        target: LOG_TARGET,
+        "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
+        reorg_chain.len(),
+        fork_hash,
+        removed_blocks
+            .iter()
+            .map(|b| b.height().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    match reorganize_chain(db, block_validator, &reorg_chain, validated) {
+        Ok(()) => {
+            let added_blocks = Vec::from(reorg_chain);
+            log_and_track_reorg(db, config, &tip_header, &added_blocks, &removed_blocks);
+            Ok(SwapAttempt::Reorged {
+                removed: removed_blocks,
+                added: added_blocks,
+            })
+        },
+        Err(ChainStorageError::HeldBlockInvalid {
+            hash,
+            body_verified,
+            source,
+            ..
+        }) => {
+            let failed_index = reorg_chain
+                .iter()
+                .position(|block| *block.hash() == hash)
+                .ok_or_else(|| {
+                    ChainStorageError::UnexpectedResult(format!("Failed block {hash} is not in the reorg chain"))
+                })?;
+            let failed_height = reorg_chain
+                .get(failed_index)
+                .map(|block| block.height())
+                .unwrap_or_default();
+            let applied = reorg_chain.iter().take(failed_index).cloned().collect::<Vec<_>>();
 
+            // The blocks before the failed one are valid. If they alone are a stronger chain than the one they
+            // replaced, they are the strongest valid chain we know of so far, so they stay; nothing is validated
+            // twice. Otherwise the previous chain goes back, and rewinding the valid blocks puts them back in the
+            // orphan pool with their tip, where they can still win once something is built on them.
+            let keep_applied = applied.last().is_some_and(|last| {
+                chain_strength_comparer.compare(&last.to_chain_header(), &tip_header) == Ordering::Greater
+            });
+            let (removed, added) = if keep_applied {
+                info!(
+                    target: LOG_TARGET,
+                    "Keeping {} validated block(s) of a failed reorg, they are stronger than the previous chain.",
+                    applied.len()
+                );
+                log_and_track_reorg(db, config, &tip_header, &applied, &removed_blocks);
+                (removed_blocks, applied)
+            } else {
+                info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
+                restore_reorged_chain(db, fork_hash, removed_blocks)?;
+                (vec![], vec![])
+            };
+
+            // Drop the failed block and every orphan built on it, not just the rest of the linking chain: a sibling
+            // branch left behind would point at a parent that is gone, and the next swap that picked it would fail
+            // `get_orphan_link_main_chain` (see `refuse_reorg_below_ghsa_activation`). Children go before their
+            // parents, so no deleted block is promoted to a tip; deleting the failed block itself promotes its parent
+            // if that is an orphan, which is the tip of the valid blocks put back above.
+            //
+            // If the valid blocks were kept the main chain has already changed, and a storage error from here on must
+            // not hide that change behind an error, so it is logged instead. At worst the failed block's descendants
+            // are left behind, as they were before.
+            let subtree = match orphan_subtree_hashes(db, hash) {
+                Ok(subtree) => subtree,
+                Err(e) if keep_applied => {
+                    error!(target: LOG_TARGET, "Failed to find the orphans built on failed block {hash}: {e}");
+                    vec![hash]
+                },
+                Err(e) => return Err(e),
+            };
+            // The block that failed, or a block built on it, is the block being added. Its sender is to blame if the
+            // body that failed is the one it sent us, or if that body is the one the block was mined with (then the
+            // block is invalid as mined, and an honest peer never relays it or builds on it). Either way only for a
+            // verdict that is the block's fault: one that is ours (a storage error, say) proves nothing about it.
+            let blame_sender = is_block_fault(&source) &&
+                candidate.is_some_and(|candidate| {
+                    (candidate.hash == hash && candidate.body_received) ||
+                        (body_verified && subtree.contains(&candidate.hash))
+                });
+            let mut txn = DbTransaction::new();
+            for orphan_hash in subtree.iter().rev() {
+                txn.delete_orphan(*orphan_hash);
+            }
+            match db.write(txn) {
+                Ok(()) => {},
+                Err(e) if keep_applied => {
+                    error!(target: LOG_TARGET, "Failed to drop failed block {hash} and the orphans built on it: {e}");
+                },
+                Err(e) => return Err(e),
+            }
+            warn!(
+                target: LOG_TARGET,
+                "Block #{failed_height} ({hash}) failed validation during a reorg and was dropped with {} orphan(s) \
+                 built on it (body verified: {body_verified}, sender of the block being added to blame: \
+                 {blame_sender}): {source}",
+                subtree.len().saturating_sub(1),
+            );
+
+            Ok(SwapAttempt::Failed {
+                removed,
+                added,
+                rejected: RejectedBlock {
+                    hash,
+                    height: failed_height,
+                    error: source,
+                    blame_sender,
+                    body_verified,
+                    dropped_candidate: candidate.is_some_and(|candidate| subtree.contains(&candidate.hash)),
+                    sent_body_failed: candidate
+                        .is_some_and(|candidate| candidate.hash == hash && candidate.body_received),
+                },
+            })
+        },
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to commit reorg chain: {e:?}. Restoring last chain."
+            );
+            restore_reorged_chain(db, fork_hash, removed_blocks)?;
+            Err(e)
+        },
+    }
+}
+
+/// Whether a body validation verdict is the block's fault, rather than ours (a storage error, say, or a malformed
+/// query). The same split as `get_ban_reason`: a verdict that is not the block's fault is not a ban.
+///
+/// `verdict_can_change` also treats two ban-carrying header errors as changeable. One of them, `OldSeedHash`, does come
+/// out of body validation (`BlockBodyFullValidator::check_monero_seed_height`), and here it is the block's fault: the
+/// seed height index is rewound with the chain, so when the block is validated on top of its own parent the verdict
+/// is a fact about the block's own chain, and it cannot change. (`verdict_can_change` is for header verdicts reached
+/// against some other chain's view.) The other, `InvalidTimestampFutureTimeLimit`, is a header check only.
+fn is_block_fault(err: &ValidationError) -> bool {
+    err.get_ban_reason().is_some()
+}
+
+/// Log a reorg, and record it if `config.track_reorgs` is set
+fn log_and_track_reorg<T: BlockchainBackend>(
+    db: &mut T,
+    config: &BlockchainDatabaseConfig,
+    previous_tip: &ChainHeader,
+    added: &[Arc<ChainBlock>],
+    removed: &[Arc<ChainBlock>],
+) {
+    let num_added_blocks = added.len();
+    let num_removed_blocks = removed.len();
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
-    if num_removed_blocks > 0 || num_added_blocks > 1 {
-        if config.track_reorgs {
-            let mut txn = DbTransaction::new();
-            txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
-            if let Err(e) = db.write(txn) {
-                error!(target: LOG_TARGET, "Failed to track reorg: {e}");
-            }
-        }
-
-        log!(
-            target: LOG_TARGET,
-            if num_removed_blocks > 1 {
-                Level::Warn
-            } else {
-                Level::Info
-            }, // We want a warning if the number of removed blocks is at least 2.
-            "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
-             blocks to remove: {}, to add: {}.",
-            tip_header.header().height,
-            best_fork_header.header().height,
-            tip_header.accumulated_data().total_accumulated_difficulty,
-            tip_header.accumulated_data().hash,
-            best_fork_header.accumulated_data().total_accumulated_difficulty,
-            best_fork_header.accumulated_data().hash,
-            num_removed_blocks,
-            num_added_blocks,
-        );
-        Ok(BlockAddResult::ChainReorg {
-            removed: removed_blocks,
-            added: reorg_chain.into(),
-        })
-    } else {
+    if num_removed_blocks == 0 && num_added_blocks <= 1 {
         trace!(
             target: LOG_TARGET,
             "No reorg required. Number of blocks to remove: {num_removed_blocks}, to add: {num_added_blocks}."
         );
-        // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
-        Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
+        return;
     }
+    if config.track_reorgs {
+        let mut txn = DbTransaction::new();
+        txn.insert_reorg(Reorg::from_reorged_blocks(&added.iter().cloned().collect(), removed));
+        if let Err(e) = db.write(txn) {
+            error!(target: LOG_TARGET, "Failed to track reorg: {e}");
+        }
+    }
+
+    let new_tip = added.last();
+    log!(
+        target: LOG_TARGET,
+        if num_removed_blocks > 1 {
+            Level::Warn
+        } else {
+            Level::Info
+        }, // We want a warning if the number of removed blocks is at least 2.
+        "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
+         blocks to remove: {}, to add: {}.",
+        previous_tip.header().height,
+        new_tip.map(|b| b.height()).unwrap_or_default(),
+        previous_tip.accumulated_data().total_accumulated_difficulty,
+        previous_tip.accumulated_data().hash,
+        new_tip
+            .map(|b| b.accumulated_data().total_accumulated_difficulty)
+            .unwrap_or_default(),
+        new_tip.map(|b| b.accumulated_data().hash).unwrap_or_default(),
+        num_removed_blocks,
+        num_added_blocks,
+    );
 }
 
 // Trim non-canonical headers above best-block height, but keep aligned banked headers.
@@ -3878,17 +4236,21 @@ fn remove_non_canonical_headers<T: BlockchainBackend>(db: &mut T) -> Result<usiz
     Ok(0)
 }
 
+/// Rewind the blocks a failed reorg added and put `previous_chain` back on top of `to_hash`.
+///
+/// The blocks the reorg added had all passed validation (the one that failed was never added), and the rewind puts
+/// them back in the orphan pool, with the highest as a tip, so they can still become the main chain later.
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
 ) -> Result<(), ChainStorageError> {
-    let invalid_chain = rewind_to_hash(db, to_hash)?;
+    let reorged_chain = rewind_to_hash(db, to_hash)?;
     debug!(
         target: LOG_TARGET,
         "Removed {} blocks during chain restore: {:?}.",
-        invalid_chain.len(),
-        invalid_chain
+        reorged_chain.len(),
+        reorged_chain
             .iter()
             .map(|block| block.accumulated_data().hash)
             .collect::<Vec<_>>(),
@@ -3937,19 +4299,22 @@ fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     Ok((FixedHash::from(*current_header.hash()), 0))
 }
 
-/// Insert the provided block into the orphan pool and returns any new tips that were created.
+/// Insert the provided block into the orphan pool and record any new tips that were created.
+///
+/// Returns whether the block's body was stored by this call. It is not if the block was already held: the hash only
+/// covers the header, so the body held for it may be one someone else sent, and it is that body a reorg validates.
 #[allow(clippy::too_many_lines)]
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
     validator: &dyn HeaderChainLinkedValidator<T>,
     rules: &BaseNodeConsensusManager,
-) -> Result<(), ChainStorageError> {
+) -> Result<bool, ChainStorageError> {
     let hash = candidate_block.hash();
 
     // There cannot be any _new_ tips if we've seen this orphan block before
     if db.contains(&DbKey::OrphanBlock(hash))? {
-        return Ok(());
+        return Ok(false);
     }
 
     let mut txn = DbTransaction::new();
@@ -3993,7 +4358,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                     txn.insert_orphan(candidate_block);
                 }
                 db.write(txn)?;
-                return Ok(());
+                return Ok(true);
             },
         },
     };
@@ -4085,7 +4450,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     }
 
     db.write(txn)?;
-    Ok(())
+    Ok(true)
 }
 
 // Find the tip set of any orphans that have hash as an ancestor
@@ -6368,7 +6733,8 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
-        .unwrap();
+        .unwrap()
+        .result;
         result.assert_orphaned();
 
         // Test adding a duplicate orphan
@@ -6381,7 +6747,8 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
-        .unwrap();
+        .unwrap()
+        .result;
         result.assert_orphaned();
 
         let result = handle_possible_reorg(
@@ -6393,7 +6760,8 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("D2").unwrap().to_arc_block(),
         )
-        .unwrap();
+        .unwrap()
+        .result;
         result.assert_orphaned();
 
         let tip = access.fetch_last_header().unwrap();
@@ -6408,7 +6776,8 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("C2").unwrap().to_arc_block(),
         )
-        .unwrap();
+        .unwrap()
+        .result;
         result.assert_reorg(3, 2);
 
         let tip = access.fetch_last_header().unwrap();
@@ -6444,10 +6813,12 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("E2").unwrap().to_arc_block(),
         )
-        .unwrap();
+        .unwrap()
+        .result;
         result.assert_orphaned();
 
-        let _error = handle_possible_reorg(
+        // D2 is the block being added and fails, so its sender is to blame. (`add_block` reports that as an error.)
+        let outcome = handle_possible_reorg(
             &mut *access,
             &Default::default(),
             &db.consensus_manager,
@@ -6456,13 +6827,879 @@ mod test {
             &*chain_strength_comparer,
             reorg_chain.get("D2").unwrap().to_arc_block(),
         )
-        .unwrap_err();
+        .unwrap();
+        outcome.result.assert_orphaned();
+        assert_eq!(outcome.rejected.len(), 1);
+        assert_eq!(outcome.rejected[0].hash, *reorg_chain.get("D2").unwrap().hash());
+        assert!(outcome.rejected[0].blame_sender);
+        // E2 was built on it, so it is gone too
+        assert!(
+            !access
+                .contains(&DbKey::OrphanBlock(*reorg_chain.get("E2").unwrap().hash()))
+                .unwrap()
+        );
 
         // Restored chain
         let tip = access.fetch_last_header().unwrap();
         assert_eq!(&tip, mainchain.get("D").unwrap().header());
 
         check_whole_chain(&mut access);
+    }
+
+    /// A reorg that fails on a block of the fork chain: the node keeps the strongest valid chain it holds, drops the
+    /// failed block with everything built on it, and blames the sender of the block being added only for that block or
+    /// an ancestor of it whose body matches its header.
+    mod failed_reorg {
+        use std::sync::RwLock;
+
+        use tari_transaction_components::aggregated_body::AggregateBody;
+
+        use super::*;
+        use crate::test_helpers::blockchain::create_store_with_consensus_and_validators;
+
+        /// A body validator that fails exactly the blocks in its lists: the first with a consensus error, which is a
+        /// long ban, and the second with a storage error, which is not the block's fault. The third list records every
+        /// block it is asked to validate.
+        #[derive(Clone, Default)]
+        struct FailsBlocks(
+            Arc<RwLock<Vec<HashOutput>>>,
+            Arc<RwLock<Vec<HashOutput>>>,
+            Arc<RwLock<Vec<HashOutput>>>,
+        );
+
+        impl<B: BlockchainBackend> CandidateBlockValidator<B> for FailsBlocks {
+            fn validate_body_with_metadata(
+                &self,
+                _: &B,
+                block: &ChainBlock,
+                _: &ChainMetadata,
+            ) -> Result<(), ValidationError> {
+                self.2.write().unwrap().push(*block.hash());
+                if self.0.read().unwrap().contains(block.hash()) {
+                    Err(ValidationError::ConsensusError("failed for the test".to_string()))
+                } else if self.1.read().unwrap().contains(block.hash()) {
+                    Err(ValidationError::FatalStorageError(
+                        "a local fault for the test".to_string(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+
+            fn validate_body_at_height(&self, _: &B, _: &ChainBlock) -> Result<(), ValidationError> {
+                Ok(())
+            }
+        }
+
+        /// Every block is credited with the proof of work it carries, which is 1 unless a test asks for more, and the
+        /// strongest chain is the one with the most of it, so mostly the longest one; two chains with the same work
+        /// are equal.
+        struct Harness {
+            db: BlockchainDatabase<TempDatabase>,
+            failing: FailsBlocks,
+        }
+
+        impl Harness {
+            fn new() -> Self {
+                let network = Network::LocalNet;
+                let rules = BaseNodeConsensusManager::builder(network)
+                    .add_consensus_constants(ConsensusConstantsBuilder::new(network).build())
+                    .on_ties(strongest_chain().by_sha3x_difficulty().build())
+                    .build()
+                    .unwrap();
+                let failing = FailsBlocks::default();
+                let validators =
+                    Validators::new(failing.clone(), PowCreditingHeaderValidator, MockValidator::new(true));
+                let db = create_store_with_consensus_and_validators(rules, validators);
+                Self { db, failing }
+            }
+
+            /// A block on our tip, which the block's header commits to its body against. It is not added.
+            fn build(&self, name: &'static str) -> Arc<ChainBlock> {
+                self.build_with_difficulty(name, 1)
+            }
+
+            /// As `build`, mined to `difficulty`
+            fn build_with_difficulty(&self, name: &'static str, difficulty: u64) -> Arc<ChainBlock> {
+                let height = self.db.get_height().unwrap();
+                let tip = Arc::new(
+                    self.db
+                        .fetch_block(height, true)
+                        .unwrap()
+                        .try_into_chain_block()
+                        .unwrap(),
+                );
+                let (_, blocks) =
+                    create_chained_blocks(&self.db, &[(leaked(format!("{name}->GB")), difficulty, 120)], tip);
+                blocks.get(name).unwrap().clone()
+            }
+
+            fn add(&self, block: &Arc<ChainBlock>) -> AddBlockOutcome {
+                self.db.add_block(block.to_arc_block()).unwrap()
+            }
+
+            /// Rewind to `height`, and forget the blocks that were above it: they are not in the orphan pool either
+            fn forget_above(&self, height: u64) {
+                self.db.rewind_to_height(height).unwrap();
+                self.db.cleanup_all_orphans().unwrap();
+                assert!(
+                    self.db
+                        .db_read_access()
+                        .unwrap()
+                        .fetch_strongest_orphan_chain_tips()
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+
+            fn fail(&self, block: &Arc<ChainBlock>) {
+                self.failing.0.write().unwrap().push(*block.hash());
+            }
+
+            /// How many times the body of `block` was validated
+            fn validations_of(&self, block: &Arc<ChainBlock>) -> usize {
+                self.failing
+                    .2
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .filter(|hash| *hash == block.hash())
+                    .count()
+            }
+
+            /// Validating `block` fails for a reason that is ours, not the block's
+            fn fault_on(&self, block: &Arc<ChainBlock>) {
+                self.failing.1.write().unwrap().push(*block.hash());
+            }
+
+            fn tip_hash(&self) -> HashOutput {
+                *self.db.fetch_tip_header().unwrap().hash()
+            }
+
+            fn is_orphan(&self, block: &Arc<ChainBlock>) -> bool {
+                self.db
+                    .db_read_access()
+                    .unwrap()
+                    .contains(&DbKey::OrphanBlock(*block.hash()))
+                    .unwrap()
+            }
+
+            fn is_orphan_tip(&self, block: &Arc<ChainBlock>) -> bool {
+                self.db
+                    .db_read_access()
+                    .unwrap()
+                    .fetch_orphan_chain_tip_by_hash(block.hash())
+                    .unwrap()
+                    .is_some()
+            }
+
+            fn is_bad(&self, block: &Arc<ChainBlock>) -> bool {
+                self.db.bad_block_exists(*block.hash()).unwrap().0
+            }
+        }
+
+        fn hashes(blocks: &[Arc<ChainBlock>]) -> Vec<HashOutput> {
+            blocks.iter().map(|block| *block.hash()).collect()
+        }
+
+        /// The block's header with no body, which is not the body the header commits to
+        fn without_body(block: &Arc<ChainBlock>) -> Arc<Block> {
+            Arc::new(Block::new(block.header().clone(), AggregateBody::empty()))
+        }
+
+        /// F-1. Q holds back X, mined on Y, whose body matches its header but is invalid, and sends it first. P then
+        /// relays Y, which links X. Y is valid and stronger than our chain, so it becomes the tip; X is dropped and
+        /// recorded as bad, and P is not to blame.
+        #[tokio::test]
+        async fn a_held_invalid_child_does_not_stop_its_parent_or_blame_its_sender() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.forget_above(1);
+            h.fail(&x);
+
+            h.add(&x).result.assert_orphaned();
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(outcome.rejected.len(), 1);
+            assert_eq!(outcome.rejected[0].hash, *x.hash());
+            assert_eq!(outcome.rejected[0].height, x.height());
+            assert!(!outcome.rejected[0].blame_sender);
+            assert_eq!(h.tip_hash(), *y.hash());
+            assert!(h.is_bad(&x));
+            assert!(!h.is_orphan(&x));
+        }
+
+        /// As above, but Y alone is only as strong as our chain, so our chain stays. Y is not lost: it is back in the
+        /// orphan pool as a tip, and a later child of it reorgs to it as usual.
+        #[tokio::test]
+        async fn a_valid_parent_that_is_not_stronger_goes_back_to_the_orphan_pool() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            let y2 = h.build("Y2");
+            h.forget_above(1);
+            let b = h.build("B");
+            h.add(&b);
+            h.fail(&x);
+
+            h.add(&x).result.assert_orphaned();
+            let outcome = h.add(&y);
+
+            outcome.result.assert_orphaned();
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            assert_eq!(h.tip_hash(), *b.hash());
+            assert!(h.is_orphan(&y));
+            assert!(h.is_orphan_tip(&y));
+            assert!(!h.is_orphan(&x));
+            assert!(h.is_bad(&x));
+
+            let outcome = h.add(&y2);
+            assert!(outcome.rejected.is_empty());
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*y.hash(), *y2.hash()]);
+            assert_eq!(hashes(&removed), vec![*b.hash()]);
+            assert_eq!(h.tip_hash(), *y2.hash());
+        }
+
+        /// X has two branches built on it. When X fails, both go with it; a branch left behind would point at a parent
+        /// that is gone, and the next block would fail `get_orphan_link_main_chain` with `InvalidOperation`.
+        #[tokio::test]
+        async fn every_branch_built_on_the_failed_block_is_dropped() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let c1 = h.build("C1");
+            let c2 = h.build("C2");
+            h.add(&c2);
+            let d2 = h.build("D2");
+            h.forget_above(1);
+            h.fail(&x);
+
+            for block in [&d2, &c2, &c1, &x] {
+                h.add(block).result.assert_orphaned();
+            }
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            for block in [&x, &c1, &c2, &d2] {
+                assert!(!h.is_orphan(block));
+                assert!(!h.is_orphan_tip(block));
+            }
+            assert!(
+                h.db.db_read_access()
+                    .unwrap()
+                    .fetch_strongest_orphan_chain_tips()
+                    .unwrap()
+                    .is_empty()
+            );
+
+            // The node keeps accepting blocks
+            let z = h.build("Z");
+            assert_eq!(h.add(&z).result.assert_added().hash(), z.hash());
+        }
+
+        /// After X's branch is dropped, another tip built on Y is the strongest, and it is reorged to in the same call.
+        /// The result is the net change from the tip the call started at, even though the first attempt restored it.
+        #[tokio::test]
+        async fn the_next_strongest_tip_is_tried_in_the_same_call() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build("X2");
+            h.add(&x2);
+            let x3 = h.build("X3");
+            h.forget_above(2);
+            let w = h.build("W");
+            h.add(&w);
+            let w2 = h.build("W2");
+            h.forget_above(1);
+            let b = h.build("B");
+            h.add(&b);
+            h.fail(&x);
+
+            for block in [&x3, &x2, &x, &w2, &w] {
+                h.add(block).result.assert_orphaned();
+            }
+            let outcome = h.add(&y);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*y.hash(), *w.hash(), *w2.hash()]);
+            assert_eq!(hashes(&removed), vec![*b.hash()]);
+            assert_eq!(h.tip_hash(), *w2.hash());
+            for block in [&x, &x2, &x3] {
+                assert!(!h.is_orphan(block));
+            }
+        }
+
+        /// The sender of C is to blame for C itself, and for an ancestor of C whose body matches its header, but not
+        /// for an ancestor whose body was never checked against its header.
+        #[tokio::test]
+        async fn the_sender_is_blamed_for_its_block_and_its_verified_ancestors_only() {
+            // A main chain G <- A <- B, and Y <- C on A: Y alone is only as strong as B, so it is held unvalidated
+            // until C arrives
+            fn setup() -> (Harness, Arc<ChainBlock>, Arc<ChainBlock>, Arc<ChainBlock>) {
+                let h = Harness::new();
+                let a = h.build("A");
+                h.add(&a);
+                let y = h.build("Y");
+                h.add(&y);
+                let c = h.build("C");
+                h.forget_above(1);
+                let b = h.build("B");
+                h.add(&b);
+                (h, b, y, c)
+            }
+
+            // An ancestor whose body matches its header: the sender relayed an invalid chain
+            let (h, b, y, c) = setup();
+            h.fail(&y);
+            let outcome = h.add(&y);
+            outcome.result.assert_orphaned();
+            assert!(outcome.rejected.is_empty());
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+            let ChainStorageError::AncestorBlockInvalid {
+                candidate,
+                hash,
+                height,
+                ..
+            } = &err
+            else {
+                panic!("expected AncestorBlockInvalid, got {err:?}");
+            };
+            assert_eq!((*candidate, *hash, *height), (*c.hash(), *y.hash(), y.height()));
+            let ban_reason = err.get_ban_reason().unwrap();
+            assert_eq!(ban_reason.ban_duration, BanPeriod::Long);
+            assert!(ban_reason.reason.contains(&y.hash().to_hex()), "{}", ban_reason.reason);
+            assert_eq!(h.tip_hash(), *b.hash());
+            assert!(h.is_bad(&y));
+            assert!(!h.is_orphan(&c));
+
+            // An ancestor whose body does not match its header: someone else may have sent us that body
+            let (h, b, y, c) = setup();
+            h.fail(&y);
+            h.db.add_block(without_body(&y)).unwrap().result.assert_orphaned();
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+            assert_dropped_without_blame(&err, &y);
+            assert_eq!(h.tip_hash(), *b.hash());
+            assert!(!h.is_bad(&y));
+            assert!(!h.is_orphan(&y));
+            assert!(!h.is_orphan(&c));
+
+            // The block itself, whether or not its body matches its header
+            let (h, _, y, c) = setup();
+            h.fail(&y);
+            h.fail(&c);
+            h.add(&y).result.assert_orphaned();
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+            // Y fails first, as C's ancestor
+            assert!(matches!(err, ChainStorageError::AncestorBlockInvalid { .. }), "{err:?}");
+            let (h, _, y, c) = setup();
+            h.fail(&c);
+            h.add(&y).result.assert_orphaned();
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+            assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+            assert!(h.is_bad(&c));
+            let (h, _, y, c) = setup();
+            h.fail(&c);
+            h.add(&y).result.assert_orphaned();
+            let err = h.db.add_block(without_body(&c)).unwrap_err();
+            assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+            assert!(!h.is_bad(&c));
+        }
+
+        /// V <- Y <- C on a fork, with V alone stronger than our tip. Y's body matches its header and is invalid, and C
+        /// is the block being added: its sender relayed an invalid chain and is to blame, but V is valid and stronger,
+        /// so the chain changes to V as well, and the outcome carries both.
+        #[tokio::test]
+        async fn a_blamed_rejection_is_reported_alongside_a_chain_change() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let v = h.build_with_difficulty("V", 5);
+            h.add(&v);
+            let y = h.build("Y");
+            h.add(&y);
+            let c = h.build("C");
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            // V and Y are held: with 6 blocks above A our chain is stronger than V <- Y, so they are never tried
+            h.add(&v).result.assert_orphaned();
+            h.add(&y).result.assert_orphaned();
+            // Our chain then falls back to B2 (as after a rewind), leaving V alone stronger than our tip but untried
+            h.db.rewind_to_height(3).unwrap();
+            let mut txn = DbTransaction::new();
+            for block in ours.iter().skip(2).rev() {
+                txn.delete_orphan(*block.hash());
+            }
+            h.db.write(txn).unwrap();
+            assert_eq!(h.tip_hash(), *ours[1].hash());
+            h.fail(&y);
+
+            let outcome = h.add(&c);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), true)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to V, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*v.hash()]);
+            assert_eq!(hashes(&removed), vec![*ours[1].hash(), *ours[0].hash()]);
+            assert_eq!(h.tip_hash(), *v.hash());
+            assert!(h.is_bad(&y));
+            assert!(!h.is_orphan(&y));
+            assert!(!h.is_orphan(&c));
+        }
+
+        /// Puts `ours` back on top of A (height 1), then outweighs everything with six more blocks on top so that
+        /// whatever is held next is never tried. Returns those six, to be dropped with `fall_back_to_height_3`.
+        fn outweigh_with_our_chain(h: &Harness, ours: &[&Arc<ChainBlock>]) -> Vec<Arc<ChainBlock>> {
+            h.forget_above(1);
+            for block in ours {
+                h.add(block).result.assert_added();
+            }
+            ["B3", "B4", "B5", "B6", "B7", "B8"]
+                .into_iter()
+                .map(|name| {
+                    let block = h.build(name);
+                    h.add(&block).result.assert_added();
+                    block
+                })
+                .collect()
+        }
+
+        /// Our chain falls back to B2 at height 3 (as after a rewind), and the blocks above it are forgotten, leaving
+        /// what is held untried
+        fn fall_back_to_height_3(h: &Harness, extra: &[Arc<ChainBlock>]) {
+            h.db.rewind_to_height(3).unwrap();
+            let mut txn = DbTransaction::new();
+            for block in extra.iter().rev() {
+                txn.delete_orphan(*block.hash());
+            }
+            h.db.write(txn).unwrap();
+        }
+
+        /// As `a_blamed_rejection_is_reported_alongside_a_chain_change`, but Y fails for a fault of ours: the chain
+        /// still changes to V, and C is still dropped, but nobody is blamed. The outcome is not an error, as the change
+        /// has to reach the caller, and says that C was dropped.
+        #[tokio::test]
+        async fn a_dropped_block_is_reported_alongside_a_chain_change_without_blame() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let v = h.build_with_difficulty("V", 5);
+            h.add(&v);
+            let y = h.build("Y");
+            h.add(&y);
+            let c = h.build("C");
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            h.add(&v).result.assert_orphaned();
+            h.add(&y).result.assert_orphaned();
+            fall_back_to_height_3(&h, &ours[2..]);
+            h.fault_on(&y);
+
+            let outcome = h.add(&c);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*y.hash(), false)]);
+            assert!(outcome.rejected[0].dropped_candidate);
+            let BlockAddResult::ChainReorg { added, .. } = outcome.result else {
+                panic!("expected a reorg to V, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*v.hash()]);
+            assert_eq!(h.tip_hash(), *v.hash());
+            assert!(!h.is_bad(&y));
+            assert!(!h.is_orphan(&c));
+        }
+
+        /// One call keeps the valid prefix of a failed reorg, then reorgs to another tip that forks below both that
+        /// prefix and the tip we started at. The net result has neither the kept-then-rewound prefix block nor
+        /// anything else twice: our blocks above the fork removed, the other tip's blocks added.
+        ///
+        /// Our chain A <- B <- B2. Y (on B2) <- X (invalid) <- X2 is linked by Y. Z1 <- Z2 on A is held, untried,
+        /// and outweighs Y alone but not Y <- X <- X2. (A tip is indexed with the work of the block that linked it,
+        /// so Z2 is indexed with Z1's and X2 with Y's; that is what makes X2's chain the one tried first.)
+        #[tokio::test]
+        async fn a_kept_prefix_rewound_by_a_lower_fork_is_in_neither_list() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            h.forget_above(1);
+            let z1 = h.build("Z1");
+            h.add(&z1);
+            let z2 = h.build_with_difficulty("Z2", 5);
+            let extra = outweigh_with_our_chain(&h, &[&b, &b2]);
+            for block in [&z2, &z1, &x2, &x] {
+                h.add(block).result.assert_orphaned();
+            }
+            fall_back_to_height_3(&h, &extra);
+            assert_eq!(h.tip_hash(), *b2.hash());
+            h.fail(&x);
+
+            let outcome = h.add(&y);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to Z2, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*z1.hash(), *z2.hash()]);
+            assert_eq!(hashes(&removed), vec![*b2.hash(), *b.hash()]);
+            assert_eq!(h.tip_hash(), *z2.hash());
+        }
+
+        /// One call keeps the valid prefix of a failed reorg, which removed some of our blocks, then reorgs to a tip
+        /// that extends our original chain. The removed blocks come back, so they are in neither list, and nor is
+        /// the kept-then-rewound prefix: the net result is just the extension.
+        ///
+        /// Our chain A <- B <- B2. Y (on A) <- X (invalid) <- X2 is linked by Y, and Y alone outweighs B <- B2.
+        /// K1 <- K2 on B2 is held, untried, and outweighs Y alone but not Y <- X <- X2.
+        #[tokio::test]
+        async fn removed_blocks_that_come_back_are_in_neither_list() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            let k1 = h.build("K1");
+            h.add(&k1);
+            let k2 = h.build_with_difficulty("K2", 3);
+            h.forget_above(1);
+            let y = h.build_with_difficulty("Y", 3);
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            let extra = outweigh_with_our_chain(&h, &[&b, &b2]);
+            for block in [&k2, &k1, &x2, &x] {
+                h.add(block).result.assert_orphaned();
+            }
+            fall_back_to_height_3(&h, &extra);
+            assert_eq!(h.tip_hash(), *b2.hash());
+            h.fail(&x);
+
+            let outcome = h.add(&y);
+
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to K2, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*k1.hash(), *k2.hash()]);
+            assert!(removed.is_empty(), "{:?}", hashes(&removed));
+            assert_eq!(h.tip_hash(), *k2.hash());
+        }
+
+        /// H on A, held while our chain A <- B <- B2 outweighs it, and then left stronger than our tip and untried
+        /// when our chain falls back to A
+        fn held_block_left_untried(h: &Harness, held: &Arc<Block>, b: &Arc<ChainBlock>, b2: &Arc<ChainBlock>) {
+            h.db.add_block(held.clone()).unwrap().result.assert_orphaned();
+            h.db.rewind_to_height(1).unwrap();
+            let mut txn = DbTransaction::new();
+            txn.delete_orphan(*b2.hash());
+            txn.delete_orphan(*b.hash());
+            h.db.write(txn).unwrap();
+        }
+
+        /// Q sends H with a body of its own, which is held. When P later sends the real H, the reorg validates the
+        /// body that is held, not P's, so P is not to blame: H is reported as not added, but not as a ban. The held H
+        /// is not marked bad, and is dropped, so the real H can be fetched again.
+        #[tokio::test]
+        async fn a_held_fake_body_does_not_get_the_sender_of_the_real_block_blamed() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let held = h.build("H");
+            h.forget_above(1);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            held_block_left_untried(&h, &without_body(&held), &b, &b2);
+            h.fail(&held);
+
+            let err = h.db.add_block(held.to_arc_block()).unwrap_err();
+
+            assert_dropped_without_blame(&err, &held);
+            // The body that failed is not the one just sent, so a local block is not reported as failed either
+            assert!(matches!(err, ChainStorageError::HeldBlockInvalid {
+                sent_body_failed: false,
+                ..
+            }));
+            assert!(!h.is_bad(&held));
+            assert!(!h.is_orphan(&held));
+            assert_eq!(h.tip_hash(), *a.hash());
+        }
+
+        /// The same, but the body held for H is the one its header commits to, and it is invalid: whoever sends H
+        /// again sent an invalid block, so it is to blame.
+        #[tokio::test]
+        async fn a_held_verified_invalid_body_still_gets_the_sender_blamed() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let held = h.build("H");
+            h.forget_above(1);
+            let b = h.build("B");
+            h.add(&b);
+            let b2 = h.build("B2");
+            h.add(&b2);
+            held_block_left_untried(&h, &held.to_arc_block(), &b, &b2);
+            h.fail(&held);
+
+            let err = h.db.add_block(held.to_arc_block()).unwrap_err();
+
+            assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+            assert!(h.is_bad(&held));
+            assert!(!h.is_orphan(&held));
+            assert_eq!(h.tip_hash(), *a.hash());
+        }
+
+        /// A local fault (here a storage error) while validating X says nothing about X or about who sent Y. X's
+        /// subtree is dropped, as on any error, but nobody is blamed, and no other fork is tried in the same call, so
+        /// a fault that recurs cannot run through every stronger fork we hold.
+        #[tokio::test]
+        async fn a_local_fault_blames_nobody_and_stops_the_retries() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.add(&x);
+            let x2 = h.build_with_difficulty("X2", 5);
+            h.forget_above(2);
+            let w = h.build("W");
+            h.add(&w);
+            let w2 = h.build_with_difficulty("W2", 3);
+            h.forget_above(1);
+            h.fault_on(&x);
+
+            for block in [&x2, &x, &w2, &w] {
+                h.add(block).result.assert_orphaned();
+            }
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            assert!(matches!(
+                outcome.rejected[0].error,
+                ValidationError::FatalStorageError(_)
+            ));
+            assert!(!h.is_bad(&x));
+            assert!(!h.is_orphan(&x));
+            assert!(!h.is_orphan(&x2));
+            // W <- W2 is stronger than Y alone, but is not tried in this call
+            assert!(h.is_orphan_tip(&w2));
+            assert!(h.is_orphan(&w));
+            assert_eq!(h.tip_hash(), *y.hash());
+        }
+
+        /// A local fault on the block being added itself: no chain change, and nobody to blame, so the block is
+        /// reported as not added, with an error that is not a ban
+        #[tokio::test]
+        async fn a_local_fault_on_the_block_being_added_is_not_its_fault() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let y = h.build("Y");
+            h.fault_on(&y);
+
+            let err = h.db.add_block(y.to_arc_block()).unwrap_err();
+
+            assert_dropped_without_blame(&err, &y);
+            assert!(matches!(err, ChainStorageError::HeldBlockInvalid {
+                sent_body_failed: true,
+                ..
+            }));
+            assert!(!h.is_bad(&y));
+            assert!(!h.is_orphan(&y));
+            assert_eq!(h.tip_hash(), *a.hash());
+        }
+
+        /// The block was dropped with `failed`, its sender not to blame: a `HeldBlockInvalid` error, which is no ban
+        fn assert_dropped_without_blame(err: &ChainStorageError, failed: &Arc<ChainBlock>) {
+            let ChainStorageError::HeldBlockInvalid { hash, .. } = err else {
+                panic!("expected HeldBlockInvalid, got {err:?}");
+            };
+            assert_eq!(hash, failed.hash());
+            assert!(err.get_ban_reason().is_none());
+        }
+
+        /// Three invalid tips X1, X2 and X3 on a two block prefix P1 <- P2 that is only as strong as our chain A <- B
+        /// <- B2. Each is tried in turn in the one call, and the prefix is applied for each, but its bodies are
+        /// validated once.
+        #[tokio::test]
+        async fn a_prefix_shared_by_several_failed_tips_is_validated_once() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let p1 = h.build("P1");
+            h.add(&p1);
+            let p2 = h.build("P2");
+            h.add(&p2);
+            let tips = [h.build("X1"), h.build("X2"), h.build("X3")];
+            h.forget_above(1);
+            for name in ["B", "B2"] {
+                let block = h.build(name);
+                h.add(&block);
+            }
+            for tip in &tips {
+                h.fail(tip);
+            }
+
+            // P2 links the tips, so they are all indexed with P2's work, as is P2 when each failed tip is dropped
+            for block in [&p1].into_iter().chain(&tips) {
+                h.add(block).result.assert_orphaned();
+            }
+            // Count only what the call below validates
+            h.failing.2.write().unwrap().clear();
+            let outcome = h.add(&p2);
+
+            outcome.result.assert_orphaned();
+            assert_eq!(outcome.rejected.len(), 3);
+            assert_eq!(h.validations_of(&p1), 1);
+            assert_eq!(h.validations_of(&p2), 1);
+            for tip in &tips {
+                assert_eq!(h.validations_of(tip), 1);
+                assert!(!h.is_orphan(tip));
+            }
+            assert!(h.is_orphan_tip(&p2));
+        }
+
+        /// Our chain A <- B <- B2, held on A a heavy Z2 whose parent Z1 has gone from the orphan pool, so that trying
+        /// it fails `get_orphan_link_main_chain` with an error. Z2 is indexed with Z1's work, so a block on B2 is tried
+        /// first.
+        fn with_a_dangling_heavy_tip(h: &Harness) -> (Arc<ChainBlock>, Arc<ChainBlock>) {
+            let a = h.build("A");
+            h.add(&a);
+            let z1 = h.build("Z1");
+            h.add(&z1);
+            let z2 = h.build_with_difficulty("Z2", 5);
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6", "B7", "B8"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            h.add(&z2).result.assert_orphaned();
+            h.add(&z1).result.assert_orphaned();
+            fall_back_to_height_3(h, &ours[2..]);
+            let mut txn = DbTransaction::new();
+            txn.delete_orphan(*z1.hash());
+            h.db.write(txn).unwrap();
+            (ours[1].clone(), z2)
+        }
+
+        /// An error in a later attempt does not swallow the blame found in an earlier one
+        #[tokio::test]
+        async fn an_error_after_a_blamed_failure_keeps_the_blame() {
+            let h = Harness::new();
+            let (b2, _) = with_a_dangling_heavy_tip(&h);
+            let c = h.build("C");
+            h.fail(&c);
+
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+
+            assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+            assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+            assert_eq!(h.tip_hash(), *b2.hash());
+        }
+
+        /// An error in a later attempt does not hide the chain change of an earlier one, and the change reported is
+        /// where the database actually is
+        #[tokio::test]
+        async fn an_error_after_a_chain_change_reports_the_change() {
+            let h = Harness::new();
+            let (_, _) = with_a_dangling_heavy_tip(&h);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build("X");
+            h.forget_above(3);
+            h.fail(&x);
+            h.add(&x).result.assert_orphaned();
+
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            assert_eq!(h.tip_hash(), *y.hash());
+        }
+
+        /// The public swap reports the change it made, for the caller to publish
+        #[tokio::test]
+        async fn the_public_swap_returns_the_change() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let v = h.build_with_difficulty("V", 5);
+            h.forget_above(1);
+            let mut ours = vec![];
+            for name in ["B", "B2", "B3", "B4", "B5", "B6"] {
+                let block = h.build(name);
+                h.add(&block);
+                ours.push(block);
+            }
+            h.add(&v).result.assert_orphaned();
+            fall_back_to_height_3(&h, &ours[2..]);
+
+            let outcome = h.db.swap_to_highest_pow_chain().unwrap();
+
+            let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
+                panic!("expected a reorg to V, got {}", outcome.result);
+            };
+            assert_eq!(hashes(&added), vec![*v.hash()]);
+            assert_eq!(hashes(&removed), vec![*ours[1].hash(), *ours[0].hash()]);
+            assert_eq!(h.tip_hash(), *v.hash());
+        }
+
+        fn hashes_of_rejected(outcome: &AddBlockOutcome) -> Vec<(HashOutput, bool)> {
+            outcome
+                .rejected
+                .iter()
+                .map(|rejection| (rejection.hash, rejection.blame_sender))
+                .collect()
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -6793,6 +8030,7 @@ mod test {
                 reorg_chain.get(&name).unwrap().to_arc_block(),
             )
             .unwrap()
+            .result
             .assert_orphaned();
         }
         handle_possible_reorg(
@@ -6805,6 +8043,7 @@ mod test {
             reorg_chain.get(&linking_block).unwrap().to_arc_block(),
         )
         .unwrap()
+        .result
     }
 
     /// The activation height that makes the fixture's tip land exactly on the anchor's engagement height: the
@@ -6985,7 +8224,10 @@ mod test {
         // `swap_to_highest_pow_chain` can find - it outweighs our chain, `get_orphan_link_main_chain` cannot
         // reach the main chain from it because its parent was deleted, and the resulting `InvalidOperation`
         // comes back out of `add_block`.
-        db.add_block(next_next_block.to_arc_block()).unwrap().assert_orphaned();
+        db.add_block(next_next_block.to_arc_block())
+            .unwrap()
+            .result
+            .assert_orphaned();
         db.add_block(next_block.to_arc_block()).unwrap();
         assert_eq!(
             db.get_chain_metadata().unwrap().best_block_height(),
@@ -7286,6 +8528,7 @@ mod test {
                 &*self.chain_strength_comparer,
                 block,
             )
+            .map(|outcome| outcome.result)
         }
     }
 

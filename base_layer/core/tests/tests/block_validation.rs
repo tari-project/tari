@@ -148,13 +148,13 @@ async fn test_monero_blocks() {
 
     // Now we have block 1, lets add monero data to it
     add_monero_test_data(&mut block_1, seed1, &cm);
-    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap());
+    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap().result);
     // Now lets add a second faulty block using the same seed hash
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, None, &key_manager);
     let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
 
     add_monero_test_data(&mut block_2, seed1, &cm);
-    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap());
+    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap().result);
     // Now lets add a third faulty block using the same seed hash. This should fail.
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, None, &key_manager);
     let mut block_3 = db.prepare_new_block(block_3_t).unwrap();
@@ -207,7 +207,7 @@ async fn test_monero_blocks() {
     };
     // lets fix block3
     block_3.header.nonce = 0;
-    assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap());
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap().result);
 }
 
 /// The RandomXM seed age rule must be enforced at *header* validation time, not only at block body validation. A
@@ -269,13 +269,13 @@ async fn test_monero_seed_height_enforced_at_header_validation() {
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
     // First use of `seed1`: its first seen height is its own height, so `seed_used_height` is 0 and it is accepted
     add_monero_test_data(&mut block_1, seed1, &cm);
-    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap());
+    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap().result);
 
     // Re-use of `seed1` one block later is exactly on the `max_randomx_seed_height` limit and is still accepted
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, None, &key_manager);
     let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
     add_monero_test_data(&mut block_2, seed1, &cm);
-    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap());
+    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap().result);
 
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, None, &key_manager);
     let block_3 = db.prepare_new_block(block_3_t).unwrap();
@@ -352,7 +352,7 @@ async fn test_monero_seed_height_enforced_at_header_validation() {
             chain_context(cb_2.header()),
         )
         .unwrap();
-    assert_block_add_result_added(&db.add_block(Arc::new(block_3_fresh_seed)).unwrap());
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3_fresh_seed)).unwrap().result);
     assert_eq!(db.get_height().unwrap(), 3);
 }
 

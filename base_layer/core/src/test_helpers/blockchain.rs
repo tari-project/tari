@@ -992,7 +992,7 @@ impl TestBlockchain {
 
     pub fn add_blocks(&self, blocks: Vec<Arc<ChainBlock>>) -> Result<(), ChainStorageError> {
         for block in blocks {
-            let result = self.db.add_block(block.to_arc_block())?;
+            let result = self.db.add_block(block.to_arc_block())?.result;
             assert!(result.is_added());
         }
         Ok(())
@@ -1033,7 +1033,7 @@ impl TestBlockchain {
         name: &'static str,
         block: Arc<ChainBlock>,
     ) -> Result<BlockAddResult, ChainStorageError> {
-        let result = self.db.add_block(block.to_arc_block())?;
+        let result = self.db.add_block(block.to_arc_block())?.result;
         self.chain.push((name, block));
         Ok(result)
     }

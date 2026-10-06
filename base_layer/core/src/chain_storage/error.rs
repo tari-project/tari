@@ -105,14 +105,30 @@ pub enum ChainStorageError {
         #[from]
         source: ValidationError,
     },
-    /// A block other than the one being added, whose body was never shown to be the one its header commits to (an
-    /// orphan a peer sent us), failed validation during a reorg. That says nothing about the peer that sent the block
-    /// being added, so it is not a ban.
-    #[error(
-        "Held block {hash} failed validation during a reorg, but its body may not be the one it was mined with: \
-         {source}"
-    )]
-    UnverifiedHeldBlockInvalid { hash: FixedHash, source: ValidationError },
+    /// A block of a fork chain failed body validation during a reorg. `body_verified` says whether its body is the one
+    /// its header commits to; an orphan's body was supplied by a peer and is only checked then.
+    ///
+    /// `add_block` returns this when the block being added was dropped with the failed block (it is that block, or
+    /// built on it) but its sender is not to blame: the body that failed may not be the one the sender sent, or the
+    /// verdict was a fault of ours (a storage error, say) rather than the block's. So it is never a ban.
+    #[error("Block {hash} failed validation during a reorg and was dropped (body verified: {body_verified}): {source}")]
+    HeldBlockInvalid {
+        hash: FixedHash,
+        body_verified: bool,
+        /// The block that failed is the block being added, with the body its sender just sent, and the verdict was a
+        /// fault of ours. For a locally mined block that is still worth telling the mempool about.
+        sent_body_failed: bool,
+        source: ValidationError,
+    },
+    /// The block being added builds on a block whose body matches its header and is invalid, so whoever sent it
+    /// relayed or mined an invalid chain.
+    #[error("Block {candidate} rejected: ancestor #{height} ({hash}) failed: {source}")]
+    AncestorBlockInvalid {
+        candidate: FixedHash,
+        hash: FixedHash,
+        height: u64,
+        source: ValidationError,
+    },
     #[error("The MMR root for {0} in the provided block header did not match the MMR root in the database")]
     MismatchedMmrRoot(MmrTree),
     #[error("An invalid block was submitted to the database: {0}")]
@@ -186,6 +202,19 @@ impl ChainStorageError {
         match self {
             ChainStorageError::ProofOfWorkError { source: e } => e.get_ban_reason(),
             ChainStorageError::ValidationError { source: e } => e.get_ban_reason(),
+            // The ban reason names the invalid block, not the one that was sent
+            ChainStorageError::AncestorBlockInvalid {
+                candidate,
+                hash,
+                height,
+                source,
+            } => source.get_ban_reason().map(|reason| BanReason {
+                reason: format!(
+                    "Block {candidate} builds on invalid block #{height} ({hash}): {}",
+                    reason.reason
+                ),
+                ban_duration: reason.ban_duration,
+            }),
             err @ ChainStorageError::UnspendableInput |
             err @ ChainStorageError::MerkleMountainRangeError { .. } |
             err @ ChainStorageError::MismatchedMmrRoot(_) |
@@ -230,7 +259,7 @@ impl ChainStorageError {
             _err @ ChainStorageError::PayRefIndexNotAvailable { .. } |
             _err @ ChainStorageError::BlockBodyPruned { .. } |
             _err @ ChainStorageError::AccDataMigrationStillInProgress |
-            _err @ ChainStorageError::UnverifiedHeldBlockInvalid { .. } => None,
+            _err @ ChainStorageError::HeldBlockInvalid { .. } => None,
         }
     }
 }
