@@ -749,7 +749,18 @@ where B: BlockchainBackend + 'static
         // blocks are not free to make, and that they are more expensive to make then they are to validate. As
         // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block).await?;
+        if let Err(e) = self.check_min_block_difficulty(&new_block).await {
+            // The ban that follows records the peer and the error but not the block, so name both here
+            if e.get_ban_reason().is_some() {
+                warn!(
+                    target: LOG_TARGET,
+                    "{} (from peer {})",
+                    helpers::pow_rejection_message(&new_block.header, &e),
+                    source_peer
+                );
+            }
+            return Err(e);
+        }
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the

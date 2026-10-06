@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, fmt::Display};
 
 use log::*;
 use tari_common_types::{epoch::VnEpoch, types::FixedHash};
@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_transaction_components::{
     consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
-    tari_proof_of_work::{PowAlgorithm, PowError},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
 
@@ -135,20 +135,8 @@ pub fn check_target_difficulty(
     consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
-    let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
-        PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
-        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
-        PowAlgorithm::Cuckaroo => {
-            let constants = consensus.consensus_constants(block_header.height);
-            cuckaroo_difficulty(
-                block_header,
-                constants.cuckaroo_cycle_length(),
-                constants.cuckaroo_edge_bits(),
-                constants.bipartite_cuckaroo_verification(),
-            )?
-        },
-    };
+    let achieved = achieved_difficulty(block_header, randomx_factory, gen_hash, consensus, tari_vm_key)
+        .inspect_err(|e| warn!(target: LOG_TARGET, "{}", pow_rejection_message(block_header, e)))?;
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target.base, target.adjusted, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
@@ -169,6 +157,43 @@ pub fn check_target_difficulty(
             ))
         },
     }
+}
+
+fn achieved_difficulty(
+    block_header: &BlockHeader,
+    randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
+    consensus: &BaseNodeConsensusManager,
+    tari_vm_key: FixedHash,
+) -> Result<Difficulty, ValidationError> {
+    let achieved = match block_header.pow_algo() {
+        PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
+        PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
+        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
+        PowAlgorithm::Cuckaroo => {
+            let constants = consensus.consensus_constants(block_header.height);
+            cuckaroo_difficulty(
+                block_header,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+                constants.bipartite_cuckaroo_verification(),
+            )?
+        },
+    };
+    Ok(achieved)
+}
+
+/// The log line for a header whose proof of work could not be verified. The ban reason for the same error is only the
+/// error itself, so this is what ties a ban to a block. It carries the fixed-size header fields and the error, never
+/// the pow data, so it stays bounded whatever the peer sent.
+pub(crate) fn pow_rejection_message(header: &BlockHeader, err: &dyn Display) -> String {
+    format!(
+        "Proof of work for block {} at height {} ({}) was rejected: {}",
+        header.hash().to_hex(),
+        header.height,
+        header.pow_algo(),
+        err
+    )
 }
 
 /// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
@@ -541,6 +566,46 @@ mod test {
         fn it_returns_false_when_duplicate_and_unsorted() {
             let v = [4, 2, 3, 0, 4];
             assert!(!is_all_unique_and_sorted(&v));
+        }
+    }
+
+    mod pow_rejection_message {
+        use tari_common::configuration::Network;
+        use tari_transaction_components::tari_proof_of_work::PowData;
+
+        use super::*;
+
+        #[test]
+        fn it_names_the_block_and_algorithm_of_a_rejected_randomxm_header() {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+            let randomx_factory = RandomXFactory::default();
+            let max_size = PowData::default().max_size();
+            for fill in [0x00u8, 0x01, 0xff] {
+                let mut header = BlockHeader::new(0);
+                header.height = 10;
+                header.pow.pow_algo = PowAlgorithm::RandomXM;
+                header.pow.pow_data = PowData::try_from(vec![fill; max_size]).unwrap();
+
+                let err = check_target_difficulty(
+                    &header,
+                    AdjustedTarget::unadjusted(Difficulty::min()),
+                    &randomx_factory,
+                    &FixedHash::zero(),
+                    &rules,
+                    FixedHash::zero(),
+                )
+                .unwrap_err();
+                let ban_reason = err.get_ban_reason().expect("unparseable pow data is bannable").reason;
+                let message = pow_rejection_message(&header, &err);
+
+                assert!(message.contains(&header.hash().to_hex()), "{message}");
+                assert!(message.contains("RandomXMonero"), "{message}");
+                // The ban record carries the same error, which is what ties the two together
+                assert!(message.contains(&ban_reason), "{message}");
+                // Neither grows with the pow data
+                assert!(message.len() < 512, "{} bytes: {message}", message.len());
+                assert!(ban_reason.len() < 256, "{} bytes: {ban_reason}", ban_reason.len());
+            }
         }
     }
 
