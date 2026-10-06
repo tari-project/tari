@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{Stream, channel::oneshot, task::Context};
+use futures::{FutureExt, Stream, channel::oneshot, task::Context};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,
@@ -300,10 +300,10 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         }
     }
 
-    /// Runs the worker until the connection closes. `incoming_closed` is a sender for the incoming substream channel,
+    /// Runs the worker until the connection closes. `incoming_tx` is a sender for the incoming substream channel,
     /// used to detect that the receiver has been dropped.
-    async fn run(mut self, mut connection: yamux::Connection<TSocket>, incoming_closed: mpsc::Sender<yamux::Stream>) {
-        let incoming_closed = incoming_closed.closed();
+    async fn run(mut self, mut connection: yamux::Connection<TSocket>, incoming_tx: mpsc::Sender<yamux::Stream>) {
+        let incoming_closed = incoming_tx.closed();
         tokio::pin!(incoming_closed);
 
         let exit = poll_fn(|cx| self.poll_worker(cx, &mut connection, incoming_closed.as_mut())).await;
@@ -312,7 +312,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
             // Ignore: the caller may have given up
             let _ignore = reply.send(Err(ConnectionError::Closed));
         }
-        self.pending_inbound.clear();
 
         match exit {
             WorkerExit::ConnectionClosed => {
@@ -322,6 +321,14 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                     self.counter.get(),
                     self.peer_connection_info,
                 );
+                // Hand over streams accepted before the connection closed, their buffered data is still readable.
+                // This must not wait, so streams that do not fit in the channel are dropped.
+                let _ignore = poll_fn(|cx| self.incoming_substreams.poll_send_done(cx)).now_or_never();
+                for stream in self.pending_inbound.drain(..) {
+                    if incoming_tx.try_send(stream).is_err() {
+                        break;
+                    }
+                }
             },
             WorkerExit::IncomingClosed => {
                 debug!(
@@ -331,10 +338,12 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                     self.counter.get(),
                     self.peer_connection_info,
                 );
+                self.pending_inbound.clear();
                 // Ignore: we already log the error variant in self.close
                 let _ignore = self.close(&mut connection).await;
             },
             WorkerExit::CloseRequested(reply) => {
+                self.pending_inbound.clear();
                 if reply.send(self.close(&mut connection).await).is_err() {
                     warn!(target: LOG_TARGET, "Request to close substream was aborted before reply was sent");
                 }
@@ -342,7 +351,9 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         }
     }
 
-    /// Drives the connection and serves the queues. The connection is polled first on every wake-up, because
+    /// Drives the connection and serves the queues. Requests and the inbound queue are served before the connection
+    /// is polled, because reading from the socket spends the task's tokio budget, after which channel polls return
+    /// `Pending`. The connection is polled on every wake-up that does not exit the worker, because
     /// `poll_next_inbound` performs all reads and writes for every substream on the connection.
     fn poll_worker<F: Future<Output = ()>>(
         &mut self,
@@ -350,9 +361,38 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         connection: &mut yamux::Connection<TSocket>,
         incoming_closed: Pin<&mut F>,
     ) -> Poll<WorkerExit> {
+        // Move requests to the local queue straight away so that a slow open never blocks request intake
+        while !self.is_request_rx_closed {
+            match self.request_rx.poll_recv(cx) {
+                Poll::Ready(Some(YamuxRequest::OpenStream { reply })) => self.pending_outbound.push_back(reply),
+                Poll::Ready(Some(YamuxRequest::Close { reply })) => {
+                    return Poll::Ready(WorkerExit::CloseRequested(reply));
+                },
+                Poll::Ready(None) => self.is_request_rx_closed = true,
+                Poll::Pending => break,
+            }
+        }
+
+        if incoming_closed.poll(cx).is_ready() {
+            return Poll::Ready(WorkerExit::IncomingClosed);
+        }
+
+        if !self.flush_inbound(cx) {
+            return Poll::Ready(WorkerExit::IncomingClosed);
+        }
+
+        let mut num_new_inbound = 0usize;
         loop {
+            // Give the queue a chance to drain after a burst of new streams
+            if num_new_inbound >= MAX_QUEUED_INBOUND_STREAMS {
+                cx.waker().wake_by_ref();
+                break;
+            }
             match connection.poll_next_inbound(cx) {
-                Poll::Ready(Some(Ok(stream))) => self.queue_inbound_stream(stream),
+                Poll::Ready(Some(Ok(stream))) => {
+                    self.queue_inbound_stream(stream);
+                    num_new_inbound = num_new_inbound.saturating_add(1);
+                },
                 Poll::Ready(Some(Err(err))) => {
                     self.log_connection_error(&err);
                     self.is_closed = true;
@@ -371,35 +411,8 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
             }
         }
 
-        // Hand queued inbound streams to the receiver without waiting on the channel
-        loop {
-            match self.incoming_substreams.poll_send_done(cx) {
-                Poll::Ready(Ok(())) => {},
-                Poll::Ready(Err(_)) => return Poll::Ready(WorkerExit::IncomingClosed),
-                Poll::Pending => break,
-            }
-            let Some(stream) = self.pending_inbound.pop_front() else {
-                break;
-            };
-            if self.incoming_substreams.start_send(stream).is_err() {
-                return Poll::Ready(WorkerExit::IncomingClosed);
-            }
-        }
-
-        if incoming_closed.poll(cx).is_ready() {
+        if !self.flush_inbound(cx) {
             return Poll::Ready(WorkerExit::IncomingClosed);
-        }
-
-        // Move requests to the local queue straight away so that a slow open never blocks request intake
-        while !self.is_request_rx_closed {
-            match self.request_rx.poll_recv(cx) {
-                Poll::Ready(Some(YamuxRequest::OpenStream { reply })) => self.pending_outbound.push_back(reply),
-                Poll::Ready(Some(YamuxRequest::Close { reply })) => {
-                    return Poll::Ready(WorkerExit::CloseRequested(reply));
-                },
-                Poll::Ready(None) => self.is_request_rx_closed = true,
-                Poll::Pending => break,
-            }
         }
 
         // poll_new_outbound registers its own waker, which is woken when the remote ACKs a stream
@@ -426,6 +439,24 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         }
 
         Poll::Pending
+    }
+
+    /// Hands queued inbound streams to the receiver without waiting on the channel. Returns false if the receiver
+    /// has been dropped.
+    fn flush_inbound(&mut self, cx: &mut Context<'_>) -> bool {
+        loop {
+            match self.incoming_substreams.poll_send_done(cx) {
+                Poll::Ready(Ok(())) => {},
+                Poll::Ready(Err(_)) => return false,
+                Poll::Pending => return true,
+            }
+            let Some(stream) = self.pending_inbound.pop_front() else {
+                return true;
+            };
+            if self.incoming_substreams.start_send(stream).is_err() {
+                return false;
+            }
+        }
     }
 
     fn queue_inbound_stream(&mut self, stream: yamux::Stream) {
@@ -810,6 +841,29 @@ mod test {
         })
         .await;
         assert!(result.is_ok(), "existing substream stalled");
+    }
+
+    #[tokio::test]
+    async fn requests_are_served_while_socket_is_backlogged() {
+        let (socket, mut raw) = tokio::io::duplex(1 << 20);
+        let yamux =
+            Yamux::upgrade_connection(socket, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+        let mut control = yamux.get_yamux_control();
+
+        // A window update for an unknown stream is ignored by yamux, but costs a socket read. Keeping the socket
+        // backlogged makes the worker spend its tokio budget on reads in every poll.
+        let window_update = [0u8, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+        let batch = window_update.repeat(4096);
+        let flood = tokio::spawn(async move { while raw.write_all(&batch).await.is_ok() {} });
+        tokio::task::yield_now().await;
+
+        let result = tokio::time::timeout(Duration::from_secs(10), control.open_stream()).await;
+        assert!(result.expect("open_stream was starved").is_ok());
+
+        let result = tokio::time::timeout(Duration::from_secs(10), control.close()).await;
+        assert!(result.expect("close was starved").is_ok());
+
+        flood.abort();
     }
 
     #[tokio::test]
