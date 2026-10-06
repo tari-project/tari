@@ -42,6 +42,7 @@ use tari_core::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
         service::BaseNodeServiceInitializer,
+        sync::BlockchainSyncConfig,
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
@@ -385,6 +386,7 @@ async fn setup_base_node_services(
     let rpc_server = rpc_server.add_service(base_node::create_base_node_sync_rpc_service(
         blockchain_db.clone().into(),
         base_node_service,
+        BlockchainSyncConfig::default().rpc_block_batch_size,
     ));
     let mut comms = comms
         .add_protocol_extension(rpc_server)

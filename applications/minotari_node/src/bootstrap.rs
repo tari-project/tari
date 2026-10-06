@@ -214,6 +214,10 @@ where B: BlockchainBackend + 'static
             self.db.into(),
             &p2p_config,
             &self.app_config.base_node.http_wallet_query_service,
+            base_node_config
+                .state_machine
+                .blockchain_sync_config
+                .rpc_block_batch_size,
             self.interrupt_signal.clone(),
             http_cache_cfg,
         )
@@ -283,6 +287,7 @@ where B: BlockchainBackend + 'static
         db: AsyncBlockchainDb<B>,
         p2p_config: &P2pConfig,
         wallet_query_service_config: &WalletHttpServiceConfig,
+        sync_rpc_block_batch_size: usize,
         shutdown_signal: ShutdownSignal,
         http_cache_cfg: HttpCacheConfig,
     ) -> UnspawnedCommsNode {
@@ -302,6 +307,7 @@ where B: BlockchainBackend + 'static
             .add_service(base_node::create_base_node_sync_rpc_service(
                 db.clone(),
                 base_node_service,
+                sync_rpc_block_batch_size,
             ))
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),

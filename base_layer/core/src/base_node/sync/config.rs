@@ -59,6 +59,12 @@ pub struct BlockchainSyncConfig {
     /// The maximum reorg depth allowed during header synchronization.
     #[serde(default = "max_reorg_depth_allowed")]
     pub max_reorg_depth_allowed: usize,
+    /// The number of blocks the sync RPC server reads ahead of a syncing peer. Each session holds up to about twice
+    /// this many blocks in memory. A value of 0 is treated as 1. There is no upper bound: with blocks of up to 7 MiB
+    /// (`MAX_BLOCK_BODY_BYTES`) and up to `rpc_max_simultaneous_sessions` syncing peers, the worst case is roughly
+    /// sessions x 2 x batch size x 7 MiB.
+    #[serde(default = "default_rpc_block_batch_size")]
+    pub rpc_block_batch_size: usize,
 }
 
 fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
@@ -70,6 +76,10 @@ fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
 
 fn max_reorg_depth_allowed() -> usize {
     10000
+}
+
+fn default_rpc_block_batch_size() -> usize {
+    10
 }
 
 impl Default for BlockchainSyncConfig {
@@ -85,6 +95,7 @@ impl Default for BlockchainSyncConfig {
             rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
             num_initial_sync_rounds_seed_bootstrap: default_num_initial_sync_rounds_seed_bootstrap(),
             max_reorg_depth_allowed: max_reorg_depth_allowed(),
+            rpc_block_batch_size: default_rpc_block_batch_size(),
         }
     }
 }

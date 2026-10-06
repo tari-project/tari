@@ -127,6 +127,12 @@ blockchain_sync_config.max_latency_increase = 10
 blockchain_sync_config.rpc_deadline = 240
 # The maximum allowed reorg depth which a node will accept
 # blockchain_sync_config.max_reorg_depth_allowed = 1000
+# The number of blocks the sync RPC server reads ahead of a syncing peer. Higher values improve sync throughput at the
+# cost of memory: each sync session holds up to about twice this many blocks. A value of 0 is treated as 1.
+# There is no upper bound. A block can be up to 7 MiB and up to `rpc_max_simultaneous_sessions` (default 100) peers can
+# sync at once, so the worst case is roughly sessions x 2 x batch size x 7 MiB (about 14 GiB at the defaults).
+# [default = 10]
+#blockchain_sync_config.rpc_block_batch_size = 10
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0

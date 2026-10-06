@@ -92,6 +92,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     base_node_service: LocalNodeCommsInterface,
+    block_batch_size: usize,
 ) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db, base_node_service))
+    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db, base_node_service, block_batch_size))
 }
