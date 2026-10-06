@@ -347,6 +347,17 @@ pub fn get_all_database_names() -> Vec<&'static str> {
     ]
 }
 
+/// Returns the names of retired LMDB databases that may still exist in databases that have not yet been migrated.
+/// These are not opened by a running node, but diagnostic tools can use them to inspect older databases.
+pub fn get_legacy_database_names() -> Vec<&'static str> {
+    vec![
+        LMDB_DB_TEMPLATE_REGISTRATIONS,
+        LMDB_DB_JMT_VALUE_DATA_V1,
+        LMDB_DB_JMT_NODE_DATA_V1,
+        LMDB_DB_JMT_UNIQUE_KEY_DATA,
+    ]
+}
+
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Core database creation logic shared between public functions.

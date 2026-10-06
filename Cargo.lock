@@ -4694,6 +4694,7 @@ dependencies = [
  "bytesize",
  "clap",
  "csv",
+ "dirs-next 1.0.2",
  "env_logger",
  "lmdb-zero",
  "rusqlite",
