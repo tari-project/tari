@@ -131,10 +131,11 @@ pub struct RejectedBlock {
     pub hash: FixedHash,
     pub height: u64,
     pub error: ValidationError,
-    /// Whether the peer that sent the block being added is at fault. It is if the block that failed is the block being
-    /// added, or an ancestor of it whose body is the one its header commits to: an honest peer never holds a chain
-    /// built on a block that is invalid as mined. It is not for a descendant of the block being added (which a peer
-    /// can hold back and send us first), nor for any block whose body was never checked against its header.
+    /// Whether the peer that sent the block being added is at fault. It is if the block that failed is the block
+    /// being added, with the body that peer just sent, or the block being added or an ancestor of it with a body that
+    /// is the one its header commits to: an honest peer never holds a chain built on a block that is invalid as mined.
+    /// It is not for a descendant of the block being added (which a peer can hold back and send us first), nor for a
+    /// body we already held, and never checked against its header, when the block was sent again.
     pub blame_sender: bool,
 }
 
