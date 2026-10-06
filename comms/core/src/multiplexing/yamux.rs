@@ -250,6 +250,8 @@ impl From<yamux::StreamId> for stream_id::Id {
 
 /// The maximum number of inbound substreams that may wait to be accepted. Further inbound substreams are reset.
 const MAX_QUEUED_INBOUND_STREAMS: usize = 64;
+/// The maximum number of outbound substream requests that may wait to open. Further requests fail straight away.
+const MAX_PENDING_OUTBOUND_STREAMS: usize = 64;
 /// The minimum time between warnings about reset inbound substreams
 const INBOUND_DROP_WARN_INTERVAL: Duration = Duration::from_secs(10);
 /// The maximum time to wait for the connection to close. The worker exits and drops the socket after this.
@@ -378,7 +380,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         // Move requests to the local queue straight away so that a slow open never blocks request intake
         while !self.is_request_rx_closed {
             match self.request_rx.poll_recv(cx) {
-                Poll::Ready(Some(YamuxRequest::OpenStream { reply })) => self.pending_outbound.push_back(reply),
+                Poll::Ready(Some(YamuxRequest::OpenStream { reply })) => self.queue_outbound_request(reply),
                 Poll::Ready(Some(YamuxRequest::Close { reply })) => {
                     return Poll::Ready(WorkerExit::CloseRequested(reply));
                 },
@@ -471,6 +473,25 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                 return false;
             }
         }
+    }
+
+    fn queue_outbound_request(&mut self, reply: oneshot::Sender<yamux::Result<Substream>>) {
+        if self.pending_outbound.len() >= MAX_PENDING_OUTBOUND_STREAMS {
+            // Callers that gave up do not count
+            self.pending_outbound.retain(|reply| !reply.is_canceled());
+        }
+        if self.pending_outbound.len() >= MAX_PENDING_OUTBOUND_STREAMS {
+            debug!(
+                target: LOG_TARGET,
+                "Peer ({}) has {} outbound substream requests waiting to open. Rejecting new request",
+                self.peer_connection_info,
+                self.pending_outbound.len(),
+            );
+            // Ignore: the caller may have given up
+            let _ignore = reply.send(Err(ConnectionError::TooManyStreams));
+            return;
+        }
+        self.pending_outbound.push_back(reply);
     }
 
     fn queue_inbound_stream(&mut self, stream: yamux::Stream) {
@@ -817,6 +838,49 @@ mod test {
         })
         .await;
         assert!(result.is_ok(), "existing substream stalled");
+    }
+
+    #[tokio::test]
+    async fn excess_waiting_open_requests_are_rejected() {
+        // yamux::MAX_ACK_BACKLOG, the number of un-ACKed outbound streams at which poll_new_outbound waits
+        const MAX_ACK_BACKLOG: usize = 256;
+        let (dialer, listener) = MemorySocket::new_pair();
+
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+        let mut dialer_control = dialer.get_yamux_control();
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
+
+        // Fill the ACK backlog so that further opens wait
+        let mut outbound = Vec::with_capacity(MAX_ACK_BACKLOG);
+        let mut inbound = Vec::with_capacity(MAX_ACK_BACKLOG);
+        for _ in 0..MAX_ACK_BACKLOG {
+            let mut stream = dialer_control.open_stream().await.unwrap();
+            stream.write_all(b"hello").await.unwrap();
+            outbound.push(stream);
+            let stream = tokio::time::timeout(Duration::from_secs(10), listener.incoming.next())
+                .await
+                .unwrap()
+                .unwrap();
+            inbound.push(stream);
+        }
+
+        // One more than may wait. Only the request that does not fit can complete.
+        let opens = (0..=super::MAX_PENDING_OUTBOUND_STREAMS)
+            .map(|_| {
+                let mut control = dialer_control.clone();
+                tokio::spawn(async move { control.open_stream().await })
+            })
+            .collect::<Vec<_>>();
+        let (result, _, rest) = tokio::time::timeout(Duration::from_secs(10), futures::future::select_all(opens))
+            .await
+            .expect("excess open request was not rejected");
+        assert!(result.unwrap().is_err());
+        for open in rest {
+            assert!(!open.is_finished());
+            open.abort();
+        }
     }
 
     #[tokio::test]
