@@ -30,6 +30,10 @@ use crate::{proto, traits::OrOptional};
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
+/// The most bytes of a peer's error details that are kept. The details come from the peer and end up in logs and in
+/// stored ban reasons, so a peer must not be able to make them arbitrarily large.
+const MAX_PEER_DETAILS_BYTES: usize = 512;
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub struct RpcStatus {
     code: RpcStatusCode,
@@ -173,9 +177,20 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
             return RpcStatus::ok();
         }
 
+        // Slice the bytes before decoding, so that a huge payload is never converted in full. Control characters
+        // (including newlines) are replaced so that the details cannot forge log lines.
+        let prefix = resp.payload.get(..MAX_PEER_DETAILS_BYTES).unwrap_or(&resp.payload);
+        let mut details = String::from_utf8_lossy(prefix)
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect::<String>();
+        if resp.payload.len() > MAX_PEER_DETAILS_BYTES {
+            details.push_str(&format!("… (truncated, {} bytes)", resp.payload.len()));
+        }
+
         RpcStatus {
             code: status_code,
-            details: String::from_utf8_lossy(&resp.payload).to_string(),
+            details,
         }
     }
 }
@@ -290,6 +305,57 @@ impl From<u32> for RpcStatusCode {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn response(status: RpcStatusCode, payload: Vec<u8>) -> proto::rpc::RpcResponse {
+        proto::rpc::RpcResponse {
+            request_id: 1,
+            status: status as u32,
+            flags: 0,
+            payload,
+        }
+    }
+
+    #[test]
+    fn peer_details_are_bounded() {
+        // Invalid UTF-8 expands to 3 bytes per byte when decoded lossily
+        let resp = response(RpcStatusCode::General, vec![0xff; 8 * 1024 * 1024]);
+        let status = RpcStatus::from(&resp);
+        assert_eq!(status.as_status_code(), RpcStatusCode::General);
+        assert!(
+            status.details().len() <= 3 * MAX_PEER_DETAILS_BYTES + 64,
+            "{}",
+            status.details().len()
+        );
+        assert!(
+            status
+                .details()
+                .ends_with(&format!("(truncated, {} bytes)", 8 * 1024 * 1024))
+        );
+    }
+
+    #[test]
+    fn short_peer_details_are_unchanged() {
+        let resp = response(RpcStatusCode::NotFound, b"What does 'x' mean?".to_vec());
+        let status = RpcStatus::from(&resp);
+        assert_eq!(status.as_status_code(), RpcStatusCode::NotFound);
+        assert_eq!(status.details(), "What does 'x' mean?");
+
+        // Exactly at the limit is not truncated
+        let resp = response(RpcStatusCode::General, vec![b'a'; MAX_PEER_DETAILS_BYTES]);
+        assert_eq!(RpcStatus::from(&resp).details(), "a".repeat(MAX_PEER_DETAILS_BYTES));
+    }
+
+    #[test]
+    fn control_characters_in_peer_details_are_replaced() {
+        let resp = response(RpcStatusCode::General, b"line 1\nFAKE LOG LINE\r\x1b[31m".to_vec());
+        assert_eq!(RpcStatus::from(&resp).details(), "line 1 FAKE LOG LINE  [31m");
+    }
+
+    #[test]
+    fn an_ok_response_is_ok() {
+        let resp = response(RpcStatusCode::Ok, vec![0xff; 1024]);
+        assert_eq!(RpcStatus::from(&resp), RpcStatus::ok());
+    }
 
     #[test]
     fn rpc_status_code_conversions() {

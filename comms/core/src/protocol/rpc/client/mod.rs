@@ -888,7 +888,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
             // Check the size before the item is queued for the caller: with a deep stream buffer, oversized items are
             // what a peer would use to make this client hold a lot of memory. The final (FIN) response is never
-            // queued behind others, so it is only bounded by the frame size.
+            // queued behind others, so it is only bounded by the frame size. That lets a peer add at most one
+            // frame-sized OK item with FIN set per stream, whose payload `ClientStreaming` discards unread.
             let is_fin = resp.flags().map(|flags| flags.is_fin()).unwrap_or(false);
             if !is_fin && resp.payload.len() > self.config.max_response_size {
                 let err = RpcError::MaxResponseSizeExceeded {
