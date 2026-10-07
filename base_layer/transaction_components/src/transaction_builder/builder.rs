@@ -84,11 +84,14 @@ enum BuilderPhase {
 /// Flows that cannot express an output as a [`RecipientSpec`] - because the published sender offset key is only one
 /// share of an aggregate, or because the output arrived fully formed from an untrusted payload - declare it here
 /// and attach it afterwards with [`TransactionBuilder::with_output`] or [`TransactionBuilder::add_recipient`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingOutput {
     value: MicroMinotari,
     features_and_scripts_size: usize,
     takes_reserved_key: bool,
+    /// Set when the output will be attached with [`TransactionBuilder::add_recipient`], so the change memo measured
+    /// at the reservation can name it and count its hash the way the memo `build` writes will.
+    recipient: Option<TariAddress>,
 }
 
 /// The declared size of an output that already exists, measured the same way the fee calculation measures one.
@@ -105,7 +108,17 @@ impl PendingOutput {
             value,
             features_and_scripts_size,
             takes_reserved_key: true,
+            recipient: None,
         }
+    }
+
+    /// Mark the output as one that will be attached with [`TransactionBuilder::add_recipient`] for `address`.
+    ///
+    /// The change memo names the first recipient and lists the sent output hashes, so a reservation that does not
+    /// know about a recipient attached after it would measure the change output too small and under-pay the fee.
+    pub fn for_recipient(mut self, address: TariAddress) -> Self {
+        self.recipient = Some(address);
+        self
     }
 
     /// An output that publishes a sender offset key the caller derived itself and registered with
@@ -115,6 +128,7 @@ impl PendingOutput {
             value,
             features_and_scripts_size,
             takes_reserved_key: false,
+            recipient: None,
         }
     }
 
@@ -154,6 +168,17 @@ impl PendingOutput {
     pub fn from_output(output: &WalletOutput) -> Result<Self, TransactionBuilderError> {
         Ok(Self::new(output.value(), measure_output(output)?))
     }
+}
+
+/// Refuse a fee and change decision that emits no change output.
+fn require_change(fee_and_change: &FeeAndChange) -> Result<(), TransactionBuilderError> {
+    if fee_and_change.change.is_none() {
+        return Err(TransactionBuilderError::OfflineTransactionRequiresChange {
+            remainder: fee_and_change.remainder,
+            change_fee: fee_and_change.change_fee,
+        });
+    }
+    Ok(())
 }
 
 /// The fee and change the reservation committed the transaction to.
@@ -198,6 +223,8 @@ pub struct TransactionBuilder<KM> {
     change_sender_offset_key: Option<TariKeyAndId>,
     /// The binding fee and change amount, fixed when the keys were reserved.
     fee_and_change: Option<FeeAndChange>,
+    /// Refuse to reserve any key if the transaction would carry no change output.
+    change_required: bool,
     /// How many outputs of each kind were attached before the reservation, so that `build` can tell which ones
     /// arrived afterwards and check them against what was declared.
     custom_outputs_before_reserve: usize,
@@ -252,6 +279,7 @@ where KM: TransactionKeyManagerInterface
             spec_sender_offset_keys: Vec::new(),
             change_sender_offset_key: None,
             fee_and_change: None,
+            change_required: false,
             custom_outputs_before_reserve: 0,
             recipient_outputs_before_reserve: 0,
             declared_pending_outputs: 0,
@@ -381,6 +409,10 @@ where KM: TransactionKeyManagerInterface
         }
 
         let fee_and_change = self.decide_fee_and_change(pending_outputs)?;
+        // Refuse before `get_script_offset` mints any sender offset key.
+        if self.change_required {
+            require_change(&fee_and_change)?;
+        }
         let extra = pending_outputs.iter().filter(|o| o.takes_reserved_key).count();
         let count = self
             .recipient_specs
@@ -422,21 +454,22 @@ where KM: TransactionKeyManagerInterface
         Ok(caller_keys)
     }
 
-    /// Fail unless the reservation committed this transaction to a change output.
+    /// Make [`Self::reserve_sender_offset_keys`] fail with
+    /// [`TransactionBuilderError::OfflineTransactionRequiresChange`], before any sender offset key is minted, if the
+    /// transaction would carry no change output.
     ///
-    /// The offline signer calls this straight after the reservation, before any output is signed. See
-    /// [`crate::offline_signing::models::SignedTransaction`] for why it refuses to sign without change.
-    pub fn require_change_output(&self) -> Result<(), TransactionBuilderError> {
-        let fee_and_change = self
-            .fee_and_change
-            .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;
-        if fee_and_change.change.is_none() {
-            return Err(TransactionBuilderError::OfflineTransactionRequiresChange {
-                remainder: fee_and_change.remainder,
-                change_fee: fee_and_change.change_fee,
-            });
-        }
-        Ok(())
+    /// The offline signer sets this; see [`crate::offline_signing::models::SignedTransaction`] for why it refuses to
+    /// sign without change.
+    pub fn with_change_required(&mut self) -> &mut Self {
+        self.change_required = true;
+        self
+    }
+
+    /// Fail with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if reserving now, with `pending`
+    /// declared, would leave the transaction without a change output. This makes the same decision
+    /// [`Self::reserve_sender_offset_keys`] would, without reserving anything.
+    pub fn check_change_output(&self, pending: &[PendingOutput]) -> Result<(), TransactionBuilderError> {
+        require_change(&self.decide_fee_and_change(pending)?)
     }
 
     /// Register a partial script offset the host derived itself.
@@ -599,8 +632,10 @@ where KM: TransactionKeyManagerInterface
 
     /// The fee a change output would add to this transaction. A change output is only emitted when what is left
     /// over after the outputs and the fee without change is larger than this.
-    pub fn get_change_output_fee(&self) -> Result<MicroMinotari, TransactionBuilderError> {
-        self.change_output_fee()
+    ///
+    /// `pending` is what the reservation will be told follows it.
+    pub fn get_change_output_fee(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
+        self.change_output_fee(pending)
     }
 
     fn fee_estimate_without_change(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -744,21 +779,21 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// The weight induced fee a change output would add.
-    fn change_output_fee(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+    fn change_output_fee(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         Ok(match self.fee_per_gram {
             Some(fee_per_gram) => {
-                fee_weighting.calculate(fee_per_gram, 0, 0, 1, self.change_features_and_scripts_size()?)
+                fee_weighting.calculate(fee_per_gram, 0, 0, 1, self.change_features_and_scripts_size(pending)?)
             },
             None => 0.into(),
         })
     }
 
-    fn change_features_and_scripts_size(&self) -> Result<usize, TransactionBuilderError> {
+    fn change_features_and_scripts_size(&self, pending: &[PendingOutput]) -> Result<usize, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let temp_script = script!(PushPubKey(Box::default()))?;
         let change_payment_id_size = self
-            .create_change_memo(MicroMinotari(0))
+            .create_change_memo(MicroMinotari(0), pending)
             .map(|m| m.get_size())
             .unwrap_or(0);
         let size = OutputFeatures::default()
@@ -795,7 +830,7 @@ where KM: TransactionKeyManagerInterface
                     sent: combined_sent,
                 })?;
 
-        let change_fee = self.change_output_fee()?;
+        let change_fee = self.change_output_fee(pending)?;
         let (fee, change) = match remainder.checked_sub(change_fee) {
             // Not enough to cover a change output, so the remainder goes to the fee.
             None | Some(MicroMinotari(0)) => (add_fee(fee_without_change, remainder)?, None),
@@ -810,7 +845,13 @@ where KM: TransactionKeyManagerInterface
         })
     }
 
-    fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
+    /// `pending` holds the outputs declared to the reservation that have not been attached yet; `build` passes none,
+    /// because by then they are all recipient outputs.
+    fn create_change_memo(
+        &self,
+        amount: MicroMinotari,
+        pending: &[PendingOutput],
+    ) -> Result<MemoField, TransactionBuilderError> {
         let mut memo = MemoField::new_transaction_info(
             TariAddress::default(),
             MicroMinotari::default(),
@@ -825,11 +866,17 @@ where KM: TransactionKeyManagerInterface
         )
         .map_err(TransactionBuilderError::InvalidMemo)?;
 
-        // we only set for the first output, otherwise the extra data gets too large
+        // we only set for the first output, otherwise the extra data gets too large. `build` appends the pending
+        // recipients and then the spec outputs to the recipient outputs, so this is the order they will be in.
+        let pending_recipients = pending
+            .iter()
+            .filter_map(|p| p.recipient.as_ref().map(|address| (p.value, address.clone())))
+            .collect::<Vec<_>>();
         let first_recipient = self
             .recipient_outputs
             .first()
             .map(|r| (r.output.output.value(), r.recipient_address.clone()))
+            .or_else(|| pending_recipients.first().cloned())
             .or_else(|| self.recipient_specs.first().map(|s| (s.amount, s.destination.clone())));
         if let Some((value, address)) = first_recipient {
             memo.transaction_info_set_amount(value);
@@ -857,10 +904,11 @@ where KM: TransactionKeyManagerInterface
         for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.output.output_hash());
         }
-        // A spec's output does not exist yet, but its hash occupies the same space in the memo as any other. The
-        // reservation charges for this memo and the change decision it makes is binding, so the memo it measures has
-        // to be the same size as the one `build` writes - by which time every spec has become a recipient output.
-        for _ in &self.recipient_specs {
+        // A spec's or a pending recipient's output does not exist yet, but its hash occupies the same space in the
+        // memo as any other. The reservation charges for this memo and the change decision it makes is binding, so
+        // the memo it measures has to be the same size as the one `build` writes - by which time every one of them
+        // has become a recipient output.
+        for _ in 0..pending_recipients.len().saturating_add(self.recipient_specs.len()) {
             sent_hashes.push(FixedHash::zero());
         }
         // if its too much outputs, we dont track this
@@ -1020,7 +1068,7 @@ where KM: TransactionKeyManagerInterface
     ) -> Result<OutputPair, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key()?;
-        let memo = self.create_change_memo(amount)?;
+        let memo = self.create_change_memo(amount, &[])?;
         let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
         let input_data = ExecutionStack::default();
 
@@ -1601,6 +1649,7 @@ impl<KM> Debug for TransactionBuilder<KM> {
             spec_sender_offset_keys: _,
             change_sender_offset_key: _,
             fee_and_change: _,
+            change_required: _,
             custom_outputs_before_reserve: _,
             recipient_outputs_before_reserve: _,
             declared_pending_outputs: _,

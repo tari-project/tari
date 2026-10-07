@@ -89,6 +89,7 @@ use tari_transaction_components::{
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
+        one_sided_signer::{multisig_pending_output, withdraw_pending_output},
     },
     transaction_builder::{
         PendingOutput,
@@ -452,10 +453,25 @@ where
                             },
                         )
                         .unwrap_or(payment_id);
+                    // The signer declares the recipient as a stealth spec, which weighs and names itself in the
+                    // change memo exactly like this declaration does.
+                    let height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let recipient_output = PendingOutput::measured(
+                        self.resources
+                            .consensus_manager
+                            .consensus_constants(height)
+                            .transaction_weight_params(),
+                        amount,
+                        &output_features,
+                        &script,
+                        &covenant,
+                        &payment_id,
+                    )?
+                    .for_recipient(destination.clone());
                     let tx_builder = self
                         .resources
                         .output_manager_service
-                        .prepare_transaction_to_send(
+                        .prepare_offline_transaction_to_send(
                             temp_tx_id,
                             amount,
                             selection_criteria,
@@ -464,6 +480,7 @@ where
                             script,
                             covenant,
                             payment_id.clone(),
+                            vec![recipient_output],
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
@@ -516,10 +533,20 @@ where
                         user_data.clone(),
                     )
                     .map_err(|e| TransactionServiceError::Other(format!("Failed to create MemoField: {}", e)))?;
+                    let height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+                    let recipient_output = multisig_pending_output(
+                        self.resources.consensus_manager.consensus_constants(height),
+                        &request.recipient_address,
+                        request.amount,
+                        &output_features,
+                        &temp_payment_id,
+                        request.party_number,
+                        request.public_keys.len(),
+                    )?;
                     let tx_builder = self
                         .resources
                         .output_manager_service
-                        .prepare_transaction_to_send(
+                        .prepare_offline_transaction_to_send(
                             temp_tx_id,
                             request.amount,
                             UtxoSelectionCriteria::default(),
@@ -528,6 +555,7 @@ where
                             script,
                             covenant,
                             temp_payment_id,
+                            vec![recipient_output],
                         )
                         .await?;
                     let fee = tx_builder.get_fee_estimate_without_change()?;
@@ -657,8 +685,21 @@ where
 
                     // The offline signer refuses to sign a transaction without a change output (see
                     // `SignedTransaction`), so the recipient gets the input less the fee and the cost of a change
-                    // output, and one microminotari of change comes back to this wallet.
-                    let change_fee = tx_builder.get_change_output_fee()?;
+                    // output, and one microminotari of change comes back to this wallet. The change output's fee is
+                    // measured the way the signer measures it, with the memo and the recipient declared; the memo's
+                    // fee field is fixed width, so the zero-fee copy measures the same.
+                    tx_builder.with_memo(measured_memo.clone());
+                    let measured_recipient = PaymentRecipient {
+                        amount: MicroMinotari::zero(),
+                        output_features: output_features.clone(),
+                        address: request.recipient_address.clone(),
+                        payment_id: measured_memo.clone(),
+                    };
+                    let change_fee = tx_builder.get_change_output_fee(&[withdraw_pending_output(
+                        consensus_constants,
+                        &measured_recipient,
+                        &measured_memo,
+                    )?])?;
                     let fee = fee_without_change
                         .checked_add(change_fee)
                         .ok_or(TransactionServiceError::Other("Fee overflow".into()))?;

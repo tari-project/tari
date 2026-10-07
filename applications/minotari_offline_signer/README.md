@@ -69,8 +69,9 @@ minotari_offline_signer sign \
 ```
 
 The signer only signs transactions that leave a change output. A payload that spends its inputs exactly, such as a
-send-all or sweep, is refused, because with no change output the signed result would let the online (view key)
-wallet work out the spend key. Prepare it again with a slightly smaller amount.
+send-all or sweep, is refused, because with no change output the script offset of the signed transaction, together
+with what the online (view key) wallet already knows, would let that wallet work out the spend key. Prepare it again
+with a slightly smaller amount.
 
 ### Clear Stored Keys
 

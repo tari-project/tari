@@ -23,6 +23,7 @@
 use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
+    tari_address::TariAddress,
     transaction::TxId,
     types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
@@ -39,6 +40,7 @@ use crate::{
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
         OneSidedTransactionInfo,
+        PaymentRecipient,
         SignedTransaction,
         TransactionMetadata,
     },
@@ -59,8 +61,12 @@ use crate::{
 /// The script cannot be built until the sender offset key it derives its ephemeral keys from has been reserved, but
 /// the reservation needs the weight of every output it is charging for. A placeholder of the same shape - one
 /// `CheckMultiSigVerify` over `key_count` keys followed by one `PushPubKey` - serialises to the same size.
-fn multisig_pending_output(
+///
+/// The online wallet uses it too, so that its fee and change estimate for the deposit is the one the signer will
+/// commit to.
+pub fn multisig_pending_output(
     consensus_constants: &ConsensusConstants,
+    recipient: &TariAddress,
     amount: MicroMinotari,
     features: &OutputFeatures,
     memo: &MemoField,
@@ -85,7 +91,28 @@ fn multisig_pending_output(
             &Covenant::default(),
             memo,
         )?,
-    ))
+    )
+    .for_recipient(recipient.clone()))
+}
+
+/// The declaration of a multisig withdrawal's recipient output, the way the withdrawal signer makes it. The online
+/// wallet uses it too, so that its fee and change estimate for the withdrawal is the one the signer will commit to.
+pub fn withdraw_pending_output(
+    consensus_constants: &ConsensusConstants,
+    recipient: &PaymentRecipient,
+    memo: &MemoField,
+) -> Result<PendingOutput, TransactionBuilderError> {
+    Ok(PendingOutput::new(
+        recipient.amount,
+        recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            &recipient.output_features,
+            &push_pubkey_script(&Default::default()),
+            &Covenant::default(),
+            memo,
+        )?,
+    )
+    .for_recipient(recipient.address.clone()))
 }
 
 /// This is the message containing the public data that the Receiver will send back to the Sender
@@ -113,6 +140,8 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     } else {
         tx_builder.with_fee(info.fee);
     }
+    // Refuse, before any sender offset key is minted, a transaction without change: see `SignedTransaction`.
+    tx_builder.with_change_required();
 
     for uo in info.inputs {
         tx_builder.with_input(uo)?;
@@ -128,6 +157,8 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
             recipient.payment_id.clone(),
         )?;
     }
+    // The change memo carries the payment id, and the reservation has to measure the memo `build` will write.
+    tx_builder.with_memo(info.payment_id.clone());
     // The payload's outputs arrive fully formed, so they cannot be specs; they are declared here instead, because
     // the single reservation has to charge for every output the transaction will carry.
     let pending = info
@@ -136,8 +167,6 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         .map(PendingOutput::from_output)
         .collect::<Result<Vec<_>, _>>()?;
     let sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?;
-    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
-    tx_builder.require_change_output()?;
     for (mut uo, sender_offset_key) in info.outputs.into_iter().zip(sender_offset_keys) {
         uo.set_sender_offset_public_key(sender_offset_key.pub_key.clone());
         // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
@@ -146,7 +175,6 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         uo.set_metadata_signature(Default::default());
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-    tx_builder.with_memo(info.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
     let FinalizedTransaction {
         transaction,
@@ -184,6 +212,8 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     } else {
         tx_builder.with_fee(info.base.fee);
     }
+    // Refuse, before any sender offset key is minted, a transaction without change: see `SignedTransaction`.
+    tx_builder.with_change_required();
 
     for uo in std::mem::take(&mut info.base.inputs) {
         tx_builder.with_input(uo)?;
@@ -204,8 +234,12 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     // Every output this transaction will carry is declared up front, because the sender offset keys are reserved in
     // a single call: splitting the reservation would leave the later calls with no input script keys to fold in, and
     // their replies would be bare sender offset private keys.
+    // The change memo names the recipient and carries the payment id, so both are declared before the reservation
+    // measures it.
+    tx_builder.with_memo(info.base.payment_id.clone());
     let mut pending = vec![multisig_pending_output(
         &constants,
+        &recipient.address,
         recipient.amount,
         &recipient.output_features,
         &info.payment_id,
@@ -216,8 +250,6 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         pending.push(PendingOutput::from_output(uo)?);
     }
     let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
-    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
-    tx_builder.require_change_output()?;
 
     let sender_offset = sender_offset_keys
         .next()
@@ -237,7 +269,6 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     }
     tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
 
-    tx_builder.with_memo(info.base.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
     let FinalizedTransaction {
         transaction,
@@ -335,6 +366,8 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     } else {
         tx_builder.with_fee(info.fee);
     }
+    // Refuse, before any sender offset key is minted, a transaction without change: see `SignedTransaction`.
+    tx_builder.with_change_required();
 
     for uo in std::mem::take(&mut info.inputs) {
         tx_builder.with_input(uo)?;
@@ -351,23 +384,14 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         .ok_or(TransactionBuilderError::NoRecipients)?
         .clone();
 
-    // As above: one reservation for every output, declared before any key exists.
-    let mut pending = vec![PendingOutput::new(
-        recipient.amount,
-        recipient_output_features_and_scripts_size(
-            constants.transaction_weight_params(),
-            &recipient.output_features,
-            &push_pubkey_script(&Default::default()),
-            &Covenant::default(),
-            &info.payment_id,
-        )?,
-    )];
+    // As above: one reservation for every output, declared before any key exists, and the memo and the recipient
+    // declared before the reservation measures the change memo.
+    tx_builder.with_memo(info.payment_id.clone());
+    let mut pending = vec![withdraw_pending_output(&constants, &recipient, &info.payment_id)?];
     for uo in &info.outputs {
         pending.push(PendingOutput::from_output(uo)?);
     }
     let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
-    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
-    tx_builder.require_change_output()?;
 
     let sender_offset = sender_offset_keys
         .next()
@@ -387,7 +411,6 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     }
     tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
 
-    tx_builder.with_memo(info.payment_id.clone());
     let finalized_tx = tx_builder.build()?;
     let FinalizedTransaction {
         transaction,

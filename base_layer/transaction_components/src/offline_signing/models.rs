@@ -278,16 +278,22 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 /// # Every signed transaction carries a change output
 ///
 /// The offline signer refuses to sign any payload that would produce no change output, and returns
-/// [`crate::TransactionBuilderError::OfflineTransactionRequiresChange`] instead, before anything is signed. The online
-/// wallet has to prepare the transaction again with a smaller amount.
+/// [`crate::TransactionBuilderError::OfflineTransactionRequiresChange`] instead, before any sender offset key is
+/// generated. The online wallet refuses to prepare such a payload in the first place; if one arrives anyway it has to
+/// be prepared again with a smaller amount.
 ///
-/// The rule protects the spend key from the online wallet, which holds the view key. The recipient outputs in
-/// `outputs` carry their sender offset key ids, and those ids are wrapped under the view key. The online wallet
-/// already knows the input commitment masks, and the transaction publishes
-/// `script offset = sum(input script keys) - sum(sender offset keys)` where every input script key is
-/// `H(mask) + spend key`. With no change output every term but the spend key is known to the online wallet, so it
-/// could solve for it. The change output's sender offset key is generated and used inside the signer and never leaves
-/// it (`change_output` carries only its public key), which leaves the online wallet one unknown short.
+/// The rule closes one way for the online wallet, which holds the view key, to recover the spend key: through the
+/// script offset of a transaction without change. The transaction publishes
+/// `script offset = sum(input script keys) - sum(sender offset keys)`, and every input script key is
+/// `H(mask) + spend key` with a mask the online wallet knows. The recipient outputs in `outputs` carry their sender
+/// offset key ids, which are wrapped under the view key, so the online wallet can learn those sender offset keys. The
+/// change output's sender offset key is generated and used inside the signer and never leaves it (`change_output`
+/// carries only its public key), so with a change output present that sum always has a term the online wallet cannot
+/// learn, and it cannot solve for the spend key. Outputs that arrived fully formed in the payload also have their
+/// sender offset keys replaced inside the signer, and those are not returned either; the rule does not rely on them.
+///
+/// This only addresses recovery through the script offset. It does not, on its own, make the signed result safe to
+/// hand to a host that is trying to extract the spend key by other means.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedTransaction {
     pub transaction: Transaction,

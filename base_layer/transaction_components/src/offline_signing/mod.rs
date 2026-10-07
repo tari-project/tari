@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub mod marshal_output_pair;
 pub mod models;
 pub mod offline_signer;
 pub mod one_sided_signer;
@@ -73,6 +72,7 @@ mod test {
             PaymentRecipient,
             models::SignedOneSidedTransactionResult,
             offline_signer::sign_locked_transaction,
+            one_sided_signer::{multisig_pending_output, withdraw_pending_output},
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
@@ -314,8 +314,9 @@ mod test {
                 MemoField::new_empty(),
             )
             .unwrap();
+        probe.with_memo(MemoField::new_empty());
         let fee = probe.get_fee_estimate_without_change().unwrap();
-        let change_fee = probe.get_change_output_fee().unwrap();
+        let change_fee = probe.get_change_output_fee(&[]).unwrap();
         assert!(change_fee > MicroMinotari::zero());
 
         // Inputs equal to amount plus fee: nothing is left for change.
@@ -858,9 +859,27 @@ mod test {
         let validator = TransactionInternalConsistencyValidator::new(false, rules.clone(), factories);
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
 
+        // The fee the signer charged is exactly the online estimate for the same declaration, change memo included.
+        let mut probe = tx_builder.clone();
+        probe.with_memo(payment_id.clone());
+        let pending = multisig_pending_output(
+            rules.consensus_constants(0),
+            &bob_address,
+            amount,
+            &output_features,
+            &payment_id,
+            party_number,
+            multisignature_participiants.len(),
+        )
+        .unwrap();
+        let change_fee = probe.get_change_output_fee(std::slice::from_ref(&pending)).unwrap();
+        let fee_without_change = probe.get_fee_estimate_with(&[pending]).unwrap();
+        assert_eq!(
+            signed.signed_transaction.transaction.body.kernels()[0].fee,
+            fee_without_change + change_fee
+        );
+
         // The same deposit, sized to spend every input exactly, leaves no change and must be refused.
-        let change_fee = tx_builder.get_change_output_fee().unwrap();
-        let fee_without_change = signed.signed_transaction.transaction.body.kernels()[0].fee - change_fee;
         let init = prepare_deposit_multisig_transaction(
             &alice_view_key_manager,
             TxId::new_random(),
@@ -1097,7 +1116,20 @@ mod test {
             init,
         )
         .unwrap_err();
-        let change_fee = tx_builder.get_change_output_fee().unwrap();
+        // Measured the way the signer measures it: with the memo and the recipient declared.
+        let mut probe = tx_builder.clone();
+        probe.with_memo(output_payment_id.clone());
+        let recipient = PaymentRecipient {
+            amount: MicroMinotari::zero(),
+            output_features: output_features.clone(),
+            address: bob_address.clone(),
+            payment_id: output_payment_id.clone(),
+        };
+        let change_fee = probe
+            .get_change_output_fee(&[
+                withdraw_pending_output(consensus_constants, &recipient, &output_payment_id).unwrap(),
+            ])
+            .unwrap();
         assert!(
             matches!(
                 err,

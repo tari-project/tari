@@ -454,6 +454,7 @@ where
                 script,
                 covenant,
                 memo,
+                required_change,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -464,6 +465,7 @@ where
                     script,
                     covenant,
                     memo,
+                    required_change,
                 )
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
@@ -1133,6 +1135,7 @@ where
         recipient_script: TariScript,
         recipient_covenant: Covenant,
         recipient_memo_field: MemoField,
+        required_change: Option<Vec<PendingOutput>>,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1174,6 +1177,15 @@ where
             input_selection.as_final_fee(),
             input_selection.num_selected(),
         );
+
+        // A payload for the offline signer must leave change, and the selection may not have left any: an exact
+        // match, or `force_change_output` finding no extra input. Ask the builder, set up as the signer will set up
+        // its own, so this is the decision the signer will make - and refuse before any input is encumbered.
+        if let Some(pending) = required_change {
+            let mut probe = builder.clone();
+            probe.with_memo(recipient_memo_field);
+            probe.check_change_output(&pending)?;
+        }
 
         self.resources
             .db
