@@ -1,0 +1,5 @@
+error: the error type of an RPC method must be `RpcStatus`
+  --> tests/ui/non_rpc_status_error.rs:12:75
+   |
+12 |     async fn hello(&self, request: Request<u32>) -> Result<Response<u32>, String>;
+   |                                                                           ^^^^^^

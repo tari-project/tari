@@ -1,0 +1,5 @@
+error: method must be greater than 0 in #[rpc(...)] attribute for method `hello`
+  --> tests/ui/method_zero.rs:11:20
+   |
+11 |     #[rpc(method = 0)]
+   |                    ^

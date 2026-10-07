@@ -1,0 +1,5 @@
+error: method number `7` is reserved and must not be used (method `goodbye`)
+  --> tests/ui/reserved_method.rs:18:20
+   |
+18 |     #[rpc(method = 7)]
+   |                    ^

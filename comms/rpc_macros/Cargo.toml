@@ -26,3 +26,4 @@ futures = "0.3.5"
 prost = "0.13.3"
 tokio = { workspace = true, features = ["macros"] }
 tower-service = "0.3"
+trybuild = "1.0"

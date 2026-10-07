@@ -1,0 +1,7 @@
+error: #[tari_rpc(...)] requires `server_struct = <Name>`
+ --> tests/ui/missing_server_struct.rs:9:1
+  |
+9 | #[tari_rpc(protocol_name = b"/test/1", client_struct = TestClient)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `tari_rpc` (in Nightly builds, run with -Z macro-backtrace for more info)

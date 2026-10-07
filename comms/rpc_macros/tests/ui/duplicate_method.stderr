@@ -1,0 +1,5 @@
+error: duplicate method number `1` in #[rpc(...)] attribute (already used by `hello`)
+  --> tests/ui/duplicate_method.rs:13:20
+   |
+13 |     #[rpc(method = 1)]
+   |                    ^
