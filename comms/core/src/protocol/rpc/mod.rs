@@ -63,6 +63,9 @@ pub const fn max_response_payload_size() -> usize {
 mod body;
 pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 
+pub mod decode_guard;
+pub use decode_guard::DEFAULT_MAX_DECODE_ITEMS;
+
 mod context;
 
 mod server;
@@ -107,6 +110,7 @@ pub mod __macro_reexports {
             rpc::{
                 Body,
                 ClientStreaming,
+                DEFAULT_MAX_DECODE_ITEMS,
                 IntoBody,
                 RpcClient,
                 RpcClientBuilder,

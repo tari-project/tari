@@ -169,9 +169,9 @@ impl RpcCodeGenerator {
                 let var = if is_unit { quote!(()) } else { quote!(request) };
 
                 let body = if m.is_server_streaming {
-                    quote!(self.inner.server_streaming(#var, #method_num).await)
+                    quote!(self.inner.server_streaming(#var, #method_num, #dep_mod::DEFAULT_MAX_DECODE_ITEMS).await)
                 } else {
-                    quote!(self.inner.request_response(#var, #method_num).await)
+                    quote!(self.inner.request_response(#var, #method_num, #dep_mod::DEFAULT_MAX_DECODE_ITEMS).await)
                 };
 
                 let ok_type = if m.is_server_streaming {

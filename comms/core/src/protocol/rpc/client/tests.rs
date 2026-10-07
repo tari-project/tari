@@ -314,6 +314,7 @@ mod max_response_size {
         // The caller gets an error in place of the item, and nothing after it
         assert_eq!(items.len(), 1);
         let err = items.into_iter().next().unwrap().unwrap_err();
+        unpack_enum!(RpcError::RequestFailed(err) = err);
         assert_eq!(err.as_status_code(), RpcStatusCode::ProtocolError);
         assert!(err.details().contains("too large"), "{}", err.details());
 

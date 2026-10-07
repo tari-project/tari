@@ -78,6 +78,7 @@ use crate::{
             RpcServerError,
             RpcStatus,
             body::ClientStreaming,
+            decode_guard,
             message::{BaseRequest, RpcMessageFlags},
         },
     },
@@ -144,8 +145,10 @@ impl RpcClient {
         Ok(Self { connector })
     }
 
-    /// Perform a single request and single response
-    pub async fn request_response<T, R, M>(&mut self, request: T, method: M) -> Result<R, RpcError>
+    /// Perform a single request and single response. The response is rejected with
+    /// [RpcError::DecodeBudgetExceeded] before decoding if it carries more than `max_items` embedded items (see
+    /// [crate::protocol::rpc::decode_guard]).
+    pub async fn request_response<T, R, M>(&mut self, request: T, method: M, max_items: usize) -> Result<R, RpcError>
     where
         T: prost::Message,
         R: prost::Message + Default + std::fmt::Debug,
@@ -156,13 +159,22 @@ impl RpcClient {
 
         let mut resp = self.call_inner(request).await?;
         let resp = resp.recv().await.ok_or(RpcError::ServerClosedRequest)??;
-        let resp = R::decode(resp.into_message())?;
+        let resp = resp.into_message();
+        decode_guard::check_decode_budget(&resp, max_items)?;
+        let resp = R::decode(resp)?;
 
         Ok(resp)
     }
 
-    /// Perform a single request and streaming response
-    pub async fn server_streaming<T, M, R>(&mut self, request: T, method: M) -> Result<ClientStreaming<R>, RpcError>
+    /// Perform a single request and streaming response. Each streamed item is rejected with
+    /// [RpcError::DecodeBudgetExceeded] before decoding if it carries more than `max_items` embedded items (see
+    /// [crate::protocol::rpc::decode_guard]).
+    pub async fn server_streaming<T, M, R>(
+        &mut self,
+        request: T,
+        method: M,
+        max_items: usize,
+    ) -> Result<ClientStreaming<R>, RpcError>
     where
         T: prost::Message,
         R: prost::Message + Default,
@@ -173,7 +185,7 @@ impl RpcClient {
 
         let resp = self.call_inner(request).await?;
 
-        Ok(ClientStreaming::new(resp))
+        Ok(ClientStreaming::new(resp, max_items))
     }
 
     /// Close the RPC session. Any subsequent calls will error.

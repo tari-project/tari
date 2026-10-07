@@ -74,6 +74,8 @@ pub enum RpcError {
     MaxRequestSizeExceeded { got: usize, expected: usize },
     #[error("Streamed response was too large. Expected <= {expected} but got {got}")]
     MaxResponseSizeExceeded { got: usize, expected: usize },
+    #[error("Message carries too many embedded items to decode: at least {items}, allowed {max}")]
+    DecodeBudgetExceeded { items: usize, max: usize },
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
 }
@@ -96,6 +98,7 @@ impl RpcError {
             RpcError::ServerClosedRequest |
             RpcError::UnexpectedAckResponse |
             RpcError::MaxResponseSizeExceeded { .. } |
+            RpcError::DecodeBudgetExceeded { .. } |
             RpcError::ResponseIdDidNotMatchRequest { .. } => true,
 
             // Some of these may be caused by the server, but not with 100% certainty

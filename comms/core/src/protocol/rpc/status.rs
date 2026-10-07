@@ -161,6 +161,7 @@ impl From<RpcError> for RpcStatus {
     fn from(err: RpcError) -> Self {
         match err {
             RpcError::DecodeError(_) => Self::bad_request("Failed to decode request"),
+            RpcError::DecodeBudgetExceeded { .. } => Self::bad_request("Request exceeds the decode budget"),
             RpcError::RequestFailed(status) => status,
             err => {
                 error!(target: LOG_TARGET, "Internal error: {err}");

@@ -50,7 +50,18 @@ pub struct Request<T> {
 }
 
 impl Request<Bytes> {
-    pub fn decode<T: prost::Message + Default>(mut self) -> Result<Request<T>, RpcError> {
+    /// Decodes the request message, allowing at most [rpc::DEFAULT_MAX_DECODE_ITEMS] embedded items.
+    pub fn decode<T: prost::Message + Default>(self) -> Result<Request<T>, RpcError> {
+        self.decode_with_max_items(rpc::DEFAULT_MAX_DECODE_ITEMS)
+    }
+
+    /// Decodes the request message, first checking that it carries at most `max_items` embedded items (see
+    /// [rpc::decode_guard]). A request over the budget is rejected before prost allocates anything for it.
+    pub fn decode_with_max_items<T: prost::Message + Default>(
+        mut self,
+        max_items: usize,
+    ) -> Result<Request<T>, RpcError> {
+        rpc::decode_guard::check_decode_budget(&self.inner.message, max_items)?;
         let message = T::decode(&mut self.inner.message)?;
         Ok(Request {
             context: self.context,

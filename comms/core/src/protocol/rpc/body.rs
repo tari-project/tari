@@ -37,7 +37,7 @@ use tokio::sync::mpsc;
 use crate::{
     Bytes,
     message::MessageExt,
-    protocol::rpc::{Response, RpcStatus},
+    protocol::rpc::{Response, RpcError, RpcStatus, decode_guard},
 };
 
 pub trait IntoBody {
@@ -261,23 +261,31 @@ impl<T: prost::Message + 'static> IntoBody for Streaming<T> {
     }
 }
 
+/// The client side of a streaming response. Each item is checked against the decode budget (see
+/// [crate::protocol::rpc::decode_guard]) before it is decoded.
+///
+/// Errors are [RpcError]s: an error status sent by the server is [RpcError::RequestFailed], an item that fails to
+/// decode is [RpcError::DecodeError] and an item over the decode budget is [RpcError::DecodeBudgetExceeded].
 #[derive(Debug)]
 pub struct ClientStreaming<T> {
     inner: mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>,
+    max_items: usize,
     _out: PhantomData<T>,
 }
 
 impl<T> ClientStreaming<T> {
-    pub fn new(inner: mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>) -> Self {
+    /// Creates a client stream that rejects any item carrying more than `max_items` embedded items.
+    pub fn new(inner: mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, max_items: usize) -> Self {
         Self {
             inner,
+            max_items,
             _out: PhantomData,
         }
     }
 }
 
 impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
-    type Item = Result<T, RpcStatus>;
+    type Item = Result<T, RpcError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(Pin::new(&mut self.inner).poll_recv(cx)) {
@@ -287,10 +295,12 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
                 if resp.flags.is_fin() {
                     return Poll::Ready(None);
                 }
-                let result = T::decode(resp.into_message()).map_err(Into::into);
+                let bytes = resp.into_message();
+                let result = decode_guard::check_decode_budget(&bytes, self.max_items)
+                    .and_then(|()| T::decode(bytes).map_err(RpcError::from));
                 Poll::Ready(Some(result))
             },
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
+            Some(Err(status)) => Poll::Ready(Some(Err(RpcError::RequestFailed(status)))),
             None => Poll::Ready(None),
         }
     }

@@ -39,6 +39,7 @@ use crate::{
     protocol::{
         ProtocolId,
         rpc::{
+            DEFAULT_MAX_DECODE_ITEMS,
             Request,
             Response,
             RpcError,
@@ -155,7 +156,9 @@ impl MockRpcClient {
         request: T,
         method: RpcMethod,
     ) -> Result<R, RpcError> {
-        self.inner.request_response(request, method).await
+        self.inner
+            .request_response(request, method, DEFAULT_MAX_DECODE_ITEMS)
+            .await
     }
 
     #[allow(dead_code)]
@@ -164,7 +167,9 @@ impl MockRpcClient {
         request: T,
         method: RpcMethod,
     ) -> Result<ClientStreaming<R>, RpcError> {
-        self.inner.server_streaming(request, method).await
+        self.inner
+            .server_streaming(request, method, DEFAULT_MAX_DECODE_ITEMS)
+            .await
     }
 }
 
