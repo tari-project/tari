@@ -22,6 +22,11 @@
 
 //! Imports of code generated from protobuf files
 
+/// The decode budget for transactions, blocks and base node responses received over messaging (see
+/// `tari_comms::decode_budget`): the same as the RPC block-body budget. A messaging frame is up to 8 MiB, so without it
+/// a single frame of empty inputs decodes into about 1 GB.
+pub const MESSAGE_MAX_DECODE_ITEMS: usize = 262_144;
+
 pub mod transaction;
 mod types_impls;
 

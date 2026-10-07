@@ -30,7 +30,7 @@ use tari_node_components::blocks::NewBlock;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::map_decode,
+    services::utils::{map_decode, map_decode_with_max_items},
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -111,7 +111,9 @@ where T: BlockchainBackend
     ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::BaseNodeServiceResponse>)
+            .map(map_decode_with_max_items::<proto::BaseNodeServiceResponse>(
+                shared_protos::MESSAGE_MAX_DECODE_ITEMS,
+            ))
     }
 
     /// Create a stream of raw 'New Block` messages. The messages are decoded off the service loop, on a blocking
@@ -134,7 +136,9 @@ pub enum ExtractBlockError {
 /// frame size), converts the header and the coinbase outputs and kernels, and parses every kernel excess signature
 /// scalar canonically. It must be run on a blocking thread.
 pub(crate) fn extract_block(msg: &PeerMessage) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
-    let new_block = match msg.decode_message::<shared_protos::core::NewBlock>() {
+    let new_block = match msg
+        .decode_message_with_max_items::<shared_protos::core::NewBlock>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)
+    {
         Ok(block) => block,
         Err(e) => {
             return DomainMessage {
@@ -241,6 +245,38 @@ mod test {
 
     use super::*;
     use crate::test_helpers::create_peer_message;
+
+    /// `key, length` header of field `tag`
+    fn len_header(tag: u32, len: usize) -> Vec<u8> {
+        let mut buf = Vec::new();
+        prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, &mut buf);
+        prost::encoding::encode_varint(len as u64, &mut buf);
+        buf
+    }
+
+    #[test]
+    fn an_over_budget_new_block_message_is_a_decode_error() {
+        // A frame of empty `NewBlock.coinbase_outputs` (tag 3), built from wire bytes
+        let body = len_header(3, 0).repeat(4_000_000);
+        let msg = create_peer_message(TariMessageType::NewBlock, body);
+        let decoded = extract_block(&msg);
+        assert!(
+            matches!(&decoded.inner, Err(ExtractBlockError::DecodeError(err)) if err.to_string().contains("decode budget"))
+        );
+    }
+
+    #[test]
+    fn an_over_budget_base_node_response_is_a_decode_error() {
+        // `BaseNodeServiceResponse.fetch_mempool_transactions_by_excess_sigs_response` (tag 7) holding a frame of empty
+        // `transactions` (tag 1)
+        let transactions = len_header(1, 0).repeat(4_000_000);
+        let mut body = len_header(7, transactions.len());
+        body.extend_from_slice(&transactions);
+        let msg = create_peer_message(TariMessageType::BaseNodeResponse, body);
+        let decoded =
+            map_decode_with_max_items::<proto::BaseNodeServiceResponse>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)(msg);
+        assert!(matches!(&decoded.inner, Err(err) if err.to_string().contains("decode budget")));
+    }
 
     #[test]
     fn malformed_new_block_messages_are_errors() {

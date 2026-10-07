@@ -83,7 +83,7 @@ impl MempoolServiceInitializer {
 /// Decode an inbound transaction message. Returns `None` (after logging a warning) if the message cannot be decoded or
 /// the transaction is ill-formed. This is CPU-bound, and must be run on a blocking thread.
 pub(crate) fn extract_transaction(msg: &PeerMessage) -> Option<DomainMessage<Transaction>> {
-    match msg.decode_message::<proto::types::Transaction>() {
+    match msg.decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS) {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
@@ -149,5 +149,37 @@ impl ServiceInitializer for MempoolServiceInitializer {
         });
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_p2p::tari_message::TariMessageType;
+
+    use super::*;
+    use crate::test_helpers::create_peer_message;
+
+    /// `key, length` header of field `tag`
+    fn len_header(tag: u32, len: usize) -> Vec<u8> {
+        let mut buf = Vec::new();
+        prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, &mut buf);
+        prost::encoding::encode_varint(len as u64, &mut buf);
+        buf
+    }
+
+    #[test]
+    fn a_transaction_message_of_empty_inputs_is_rejected_before_decoding() {
+        // Nearly a whole 8 MiB messaging frame of empty `Transaction.body.inputs`: two bytes each on the wire, a whole
+        // struct each once decoded (~1 GB). Built from wire bytes, since building the structs would cost the same.
+        let inputs = len_header(1, 0).repeat(4_000_000);
+        let mut body = len_header(2, inputs.len());
+        body.extend_from_slice(&inputs);
+        let msg = create_peer_message(TariMessageType::NewTransaction, body);
+
+        let err = msg
+            .decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap_err();
+        assert!(err.to_string().contains("decode budget"), "{err}");
+        assert!(extract_transaction(&msg).is_none());
     }
 }

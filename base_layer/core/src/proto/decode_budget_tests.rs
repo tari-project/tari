@@ -311,6 +311,33 @@ mod max_size_payloads {
         assert_eq!(err.max, BODY_MAX_ITEMS);
     }
 
+    /// A max-size transaction, and a max-size `NewBlock` (1,000 fully populated coinbase outputs and a kernel excess
+    /// signature for every kernel that fits), pass the messaging decode budget.
+    #[test]
+    fn max_size_messages_pass_the_messaging_budget() {
+        use tari_p2p::tari_message::TariMessageType;
+
+        use crate::test_helpers::create_peer_message;
+
+        let tx = prost::Message::encode_to_vec(&transaction(Bytes::random().body(MAX_INPUTS, 1, 1)));
+        let msg = create_peer_message(TariMessageType::NewTransaction, tx);
+        msg.decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap();
+
+        let mut bytes = Bytes::random();
+        let block = proto::core::NewBlock {
+            header: Some(proto::core::BlockHeader::default()),
+            coinbase_kernels: vec![bytes.kernel()],
+            coinbase_outputs: (0..1_000).map(|_| bytes.output()).collect(),
+            kernel_excess_sigs: (0..MAX_KERNELS).map(|_| bytes.take(32)).collect(),
+        };
+        let msg = create_peer_message(TariMessageType::NewBlock, prost::Message::encode_to_vec(&block));
+        let decoded = msg
+            .decode_message_with_max_items::<proto::core::NewBlock>(proto::MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap();
+        assert_eq!(decoded.kernel_excess_sigs.len(), MAX_KERNELS);
+    }
+
     /// The budget of the hash-batch query methods (fetch_matching_utxos, utxo_query, query_deleted, find_chain_split)
     const QUERY_MAX_ITEMS: usize = 65_536;
 
