@@ -41,7 +41,10 @@
 
 use std::sync::OnceLock;
 
-use minotari_ledger_wallet_common::common_types::Instruction;
+use minotari_ledger_wallet_common::{
+    common_types::{Instruction, LedgerKeyBranch},
+    script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+};
 use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_public_key,
     ledger_get_public_spend_key,
@@ -50,6 +53,7 @@ use minotari_ledger_wallet_comms::accessor_methods::{
 use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
+    oracle,
     scenarios::{
         Approval,
         Scenario,
@@ -61,9 +65,16 @@ use crate::{
         fail,
         require,
     },
-    seeds::SeedId,
+    seeds::{SeedId, seed_bytes},
     simulator,
-    vectors::{ACCOUNT_WRAP_VECTOR, DERIVATION_VECTORS, DerivationVector, DeviceCall, EXPECTED_VECTOR_COUNT},
+    vectors::{
+        ACCOUNT_WRAP_VECTOR,
+        DERIVATION_VECTORS,
+        DerivationVector,
+        DeviceCall,
+        EXPECTED_VECTOR_COUNT,
+        key_type_for,
+    },
 };
 
 pub const MODULE: ScenarioModule = ScenarioModule {
@@ -97,6 +108,12 @@ const SCENARIOS: &[Scenario] = &[
         covers: &[Instruction::GetPublicKey],
         approval: Approval::NotNeeded,
         run: the_account_wraps_at_u32,
+    },
+    Scenario {
+        name: "the key index uses all 64 bits: x and 2^63 | x are different keys, and x < 2^32 has not moved",
+        covers: &[Instruction::GetPublicKey],
+        approval: Approval::NotNeeded,
+        run: the_index_does_not_wrap,
     },
 ];
 
@@ -310,4 +327,40 @@ fn the_account_wraps_at_u32(_context: &ScenarioContext<'_>) -> ScenarioResult {
              changes which key every large account addresses"
         )
     })
+}
+
+/// Acceptance: the key index is not reduced modulo 2^32 any more, and indexes below 2^32 kept their keys.
+///
+/// `derive_from_bip32_key` used to put the whole `u64` index into one path element, which `make_bip32_path` parsed
+/// into a wrapping `u32` - so `PreMine 2^63 | x` was the pre-mine script key at `x`, and a device-drawn random base
+/// index had 32 random bits, not 64. The index is now split across two elements. Two halves, both asked of the
+/// device:
+///
+/// * `x` and `2^63 | x` on `PreMine` are **different** public keys - a pre-mine sender offset key is not the script key
+///   at the index below it, and a `GetScriptOffset` base cannot be matched by a host in 2^16 calls;
+/// * `x` below 2^32 still matches the oracle, whose pinned old-path test shows the path for such an index is unchanged.
+fn the_index_does_not_wrap(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let seed = identify_seed()?;
+    let branch = LedgerKeyBranch::PreMine;
+    let account = 0;
+
+    for x in [0u64, 7, 12_345, u64::from(u32::MAX)] {
+        let low = ledger_get_public_key(account, x, branch).context(|| format!("GetPublicKey for PreMine {x}"))?;
+        let high_index = PRE_MINE_SENDER_OFFSET_INDEX_BIT | x;
+        let high = ledger_get_public_key(account, high_index, branch)
+            .context(|| format!("GetPublicKey for PreMine {high_index}"))?;
+        require(low != high, || {
+            format!(
+                "PreMine {x} and PreMine {high_index} are the same key: the device is still reducing the index modulo \
+                 2^32"
+            )
+        })?;
+
+        let expected = oracle::derive_public_key(seed_bytes(seed).as_ref(), account, x, key_type_for(branch))
+            .map_err(|e| fail(format!("the oracle could not derive PreMine {x}: {e:?}")))?;
+        require(low == expected, || {
+            format!("PreMine {x} no longer matches the oracle: an index below 2^32 moved")
+        })?;
+    }
+    Ok(())
 }

@@ -90,21 +90,37 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
 }
 
 /// Derive a secret key from a BIP32 path. In case of an error, display an interactive message on the device.
+///
+/// The path is `m/44'/{coin}'/{account}'/{index_hi}/{index_lo}'/{key_type}`, where `index_hi` and `index_lo` are the
+/// high and low 32 bits of the `u64` index.
+///
+/// `make_bip32_path` parses each element of the path string into a `u32` with `acc * 10 + digit`, which wraps in a
+/// release build. The index used to be written whole into the hardened element, with a constant `0` in front of it,
+/// so only `index mod 2^32` reached the derivation: indexes 2^32 apart named the same key, and a "random `u64`" index
+/// drawn on the device was really 32 random bits. That let a host repeat `GetScriptOffset` until two replies named
+/// the same sender offset key and difference them. Splitting the index across two elements makes all 64 bits count.
+///
+/// For every index below 2^32 `index_hi` is `0`, so the path is byte for byte the one the old construction built and
+/// no such key moves. Keys at indexes of 2^32 and above do move. The account element still wraps at 2^32; that is
+/// unchanged.
 pub fn derive_from_bip32_key(
     u64_account: u64,
     u64_index: u64,
     u64_key_type: KeyType,
 ) -> Result<RistrettoSecretKey, AppSW> {
     let account = u64_to_string(u64_account);
-    let index = u64_to_string(u64_index);
+    let index_hi = u64_to_string(u64_index >> 32);
+    let index_lo = u64_to_string(u64_index & 0xFFFF_FFFF);
     let key_type = u64_to_string(u64_key_type.as_byte() as u64);
 
     let mut bip32_path = "m/44'/".to_string();
     bip32_path.push_str(&BIP32_COIN_TYPE.to_string());
     bip32_path.push_str(&"'/");
     bip32_path.push_str(&account);
-    bip32_path.push_str(&"'/0/");
-    bip32_path.push_str(&index);
+    bip32_path.push_str(&"'/");
+    bip32_path.push_str(&index_hi);
+    bip32_path.push_str(&"/");
+    bip32_path.push_str(&index_lo);
     bip32_path.push_str(&"'/");
     bip32_path.push_str(&key_type);
     let path: [u32; 6] = make_bip32_path(bip32_path.as_bytes());
