@@ -73,7 +73,7 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                 }
             }
             if arms.is_empty() {
-                TokenStream::new()
+                no_embedded_messages(&module)
             } else {
                 quote! {
                     // Not every arm uses `contents`
@@ -105,10 +105,14 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                     arms.push(quote!(#tag => budget.charge_message::<#ty>(contents),));
                 }
             }
+            // A oneof or enum is never a payload of its own, so `count_messages` counts nothing
+            let count_messages = no_embedded_messages(&module);
             if arms.is_empty() {
-                TokenStream::new()
+                count_messages
             } else {
                 quote! {
+                    #count_messages
+
                     fn count_oneof_field(
                         tag: u32,
                         contents: &[u8],
@@ -135,6 +139,18 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
             #body
         }
     })
+}
+
+/// A `count_messages` that counts nothing, for types without embedded messages
+fn no_embedded_messages(module: &TokenStream) -> TokenStream {
+    quote! {
+        fn count_messages(
+            _buf: &[u8],
+            _budget: &mut #module::Budget,
+        ) -> ::std::result::Result<(), #module::DecodeBudgetExceeded> {
+            ::std::result::Result::Ok(())
+        }
+    }
 }
 
 /// Reads the `#[prost(...)]` attribute(s) of a field or oneof variant.

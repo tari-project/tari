@@ -106,32 +106,37 @@ impl Budget {
     }
 }
 
-/// Counts the message instances decoding a protobuf payload would allocate. Implemented with
-/// `#[derive(tari_comms_rpc_macros::DecodeBudget)]` for prost types; the defaults (count nothing) suit scalar types.
+/// Counts the allocations decoding a protobuf payload would make prost perform.
+///
+/// Do not implement this by hand for message types; derive it with `#[derive(tari_comms_rpc_macros::DecodeBudget)]`
+/// (every tari protobuf type already has it). A hand-written `count_messages` that does not walk every message-typed
+/// field silently switches the guard off for that type. `count_messages` has no default for the same reason: an empty
+/// `impl DecodeBudget for X {}` does not compile.
 pub trait DecodeBudget {
     /// Walks the fields of one encoded instance of this message in `buf`, charging `budget` for every embedded message.
-    fn count_messages(_buf: &[u8], _budget: &mut Budget) -> Result<(), DecodeBudgetExceeded> {
-        Ok(())
-    }
+    fn count_messages(buf: &[u8], budget: &mut Budget) -> Result<(), DecodeBudgetExceeded>;
 
     /// For prost oneof enums: charges the length-delimited field `tag` (holding `contents`) if it is one of this
-    /// oneof's message variants.
+    /// oneof's message variants. Not used for any other type.
     fn count_oneof_field(_tag: u32, _contents: &[u8], _budget: &mut Budget) -> Result<(), DecodeBudgetExceeded> {
         Ok(())
     }
 }
 
-impl DecodeBudget for () {}
-impl DecodeBudget for bool {}
-impl DecodeBudget for u32 {}
-impl DecodeBudget for u64 {}
-impl DecodeBudget for i32 {}
-impl DecodeBudget for i64 {}
-impl DecodeBudget for f32 {}
-impl DecodeBudget for f64 {}
-impl DecodeBudget for String {}
-impl DecodeBudget for Vec<u8> {}
-impl DecodeBudget for bytes::Bytes {}
+/// Implements [DecodeBudget] for payload types that contain no embedded messages
+macro_rules! impl_no_embedded_messages {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl DecodeBudget for $ty {
+                fn count_messages(_buf: &[u8], _budget: &mut Budget) -> Result<(), DecodeBudgetExceeded> {
+                    Ok(())
+                }
+            }
+        )*
+    };
+}
+
+impl_no_embedded_messages!((), bool, u32, u64, i32, i64, f32, f64, String, Vec<u8>, bytes::Bytes);
 
 /// Checks that decoding `buf` as a `T` allocates at most `max_items` embedded message instances. Returns the number
 /// counted.
