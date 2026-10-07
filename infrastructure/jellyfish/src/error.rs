@@ -27,4 +27,39 @@ pub enum JmtProofVerifyError {
         actual_root_hash: TreeHash,
         expected_root_hash: TreeHash,
     },
+    #[error(
+        "Expected root hash is the empty-tree root, which proves the absence of any key. Use \
+         `verify_exclusion_or_empty_tree` if the root is authenticated for this specific tree."
+    )]
+    EmptyTreeRoot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Nibble out of range: {0}")]
+pub struct NibbleOutOfRange(pub u8);
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NibblePathError {
+    #[error("An odd-length NibblePath must have at least one byte")]
+    EmptyOddPath,
+    #[error("NibblePath with odd number of nibbles must have a zero last nibble")]
+    NonZeroTrailingNibble,
+    #[error("Cannot truncate NibblePath of {num_nibbles} nibbles to {len} nibbles")]
+    TruncateBeyondLength { len: usize, num_nibbles: usize },
+    #[error("NibblePath has {num_nibbles} nibbles, max is {max}")]
+    TooLong { num_nibbles: usize, max: usize },
+    #[error("NibblePath has {num_nibbles} nibbles but {num_bytes} bytes")]
+    LengthMismatch { num_nibbles: usize, num_bytes: usize },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum InternalNodeError {
+    #[error("InternalNode child is Null")]
+    NullChild,
+    #[error("InternalNode has no children")]
+    NoChildren,
+    #[error("InternalNode has a single leaf child, which must be collapsed into the leaf")]
+    SingleLeafChild,
+    #[error("InternalNode leaf count overflow")]
+    LeafCountOverflow,
 }

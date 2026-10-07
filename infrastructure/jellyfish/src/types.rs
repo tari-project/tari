@@ -90,7 +90,12 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::hash_domain;
 use tari_hashing::layer2::{TariDomainHasher, tari_hasher32};
 
-use crate::{TreeHash, bit_iter::BitIterator, error::JmtProofVerifyError, store::TreeStoreReader};
+use crate::{
+    TreeHash,
+    bit_iter::BitIterator,
+    error::{InternalNodeError, JmtProofVerifyError, NibbleOutOfRange, NibblePathError},
+    store::TreeStoreReader,
+};
 
 hash_domain!(JmtHashDomain, "com.tari.jmt", 0);
 
@@ -130,8 +135,24 @@ fn jmt_internal_hash(left: &TreeHash, right: &TreeHash) -> TreeHash {
 /// The maximum number of siblings in a proof, i.e. the bit length of a [`LeafKey`].
 pub const MAX_PROOF_SIBLINGS: usize = 256;
 
+/// The maximum number of nibbles in a [`NibblePath`], i.e. the nibble length of a [`LeafKey`].
+pub const MAX_NIBBLE_PATH_LEN: usize = 64;
+
 /// A more detailed version of `SparseMerkleProof` with the only difference that all the leaf
 /// siblings are explicitly set as `SparseMerkleLeafNode` instead of its hash value.
+///
+/// # Trust
+/// A proof only means something against a root hash that the caller has authenticated independently for the specific
+/// tree **and version** being proved (e.g. from a signed header). The proof contents ([`Self::leaf`],
+/// [`Self::siblings`]) are untrusted until one of the `verify_*` methods returns `Ok`. An exclusion proof shows that a
+/// key is absent at that root; it does not show that the key was destroyed or never existed. Proving destruction also
+/// needs an inclusion proof at an earlier authenticated root.
+///
+/// # Malleability
+/// The encoding is not canonical: a sibling [`NodeInProof::Leaf(l)`](NodeInProof::Leaf) verifies identically to
+/// [`NodeInProof::Other(l.hash())`](NodeInProof::Other), so several different byte strings prove the same fact. Proof
+/// bytes, and any hash over them, are not an identity. Key dedup, replay protection or caching on
+/// `(root, key, value_hash)` instead.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize)]
 pub struct SparseMerkleProofExt {
     leaf: Option<SparseMerkleLeafNode>,
@@ -196,18 +217,23 @@ impl SparseMerkleProofExt {
         Self { leaf, siblings }
     }
 
-    /// Returns the leaf node in this proof.
+    /// Returns the leaf node in this proof. Untrusted until a `verify_*` method returns `Ok` against an authenticated
+    /// root.
     pub fn leaf(&self) -> Option<SparseMerkleLeafNode> {
         self.leaf.clone()
     }
 
-    /// Returns the list of siblings in this proof.
+    /// Returns the list of siblings in this proof. Untrusted until a `verify_*` method returns `Ok` against an
+    /// authenticated root.
     pub fn siblings(&self) -> &[NodeInProof] {
         &self.siblings
     }
 
     /// Verifies an element whose key is `element_key` and value is `element_value` exists in the Sparse Merkle Tree
-    /// using the provided proof
+    /// using the provided proof.
+    ///
+    /// `expected_root_hash` must be authenticated independently for the specific tree and version being proved; see
+    /// the type-level docs.
     pub fn verify_inclusion(
         &self,
         expected_root_hash: &TreeHash,
@@ -218,11 +244,47 @@ impl SparseMerkleProofExt {
     }
 
     /// Verifies the proof is a valid non-inclusion proof that shows this key doesn't exist in the tree.
+    ///
+    /// `expected_root_hash` must be authenticated independently for the specific tree and version being proved; see
+    /// the type-level docs. This proves "absent at this root", not "destroyed" or "never existed".
+    ///
+    /// Returns [`JmtProofVerifyError::EmptyTreeRoot`] if `expected_root_hash` is
+    /// [`SPARSE_MERKLE_PLACEHOLDER_HASH`]: that is the root of an empty tree, so any key is trivially absent, and a
+    /// root field that defaults to zero would otherwise accept an empty proof for any key. Use
+    /// [`Self::verify_exclusion_or_empty_tree`] only when the root is bound to the specific tree by its own
+    /// authenticated context.
     pub fn verify_exclusion(
         &self,
         expected_root_hash: &TreeHash,
         element_key: &LeafKey,
     ) -> Result<(), JmtProofVerifyError> {
+        if *expected_root_hash == SPARSE_MERKLE_PLACEHOLDER_HASH {
+            return Err(JmtProofVerifyError::EmptyTreeRoot);
+        }
+        self.verify(expected_root_hash, element_key, None)
+    }
+
+    /// Like [`Self::verify_exclusion`], but also accepts the empty-tree root
+    /// ([`SPARSE_MERKLE_PLACEHOLDER_HASH`]) with an empty proof (no leaf, no siblings). Any other proof against the
+    /// empty-tree root is rejected with [`JmtProofVerifyError::RootHashMismatch`].
+    ///
+    /// Only use this when `expected_root_hash` is bound to the specific tree and version by its own authenticated
+    /// context (e.g. a tree whose every key was deleted legitimately has the empty root), never when a root field
+    /// could default to zero.
+    pub fn verify_exclusion_or_empty_tree(
+        &self,
+        expected_root_hash: &TreeHash,
+        element_key: &LeafKey,
+    ) -> Result<(), JmtProofVerifyError> {
+        if *expected_root_hash == SPARSE_MERKLE_PLACEHOLDER_HASH {
+            if self.leaf.is_none() && self.siblings.is_empty() {
+                return Ok(());
+            }
+            return Err(JmtProofVerifyError::RootHashMismatch {
+                actual_root_hash: self.compute_root_hash(element_key),
+                expected_root_hash: *expected_root_hash,
+            });
+        }
         self.verify(expected_root_hash, element_key, None)
     }
 
@@ -280,12 +342,24 @@ impl SparseMerkleProofExt {
             },
         }
 
+        let actual_root_hash = self.compute_root_hash(element_key);
+        if actual_root_hash != *expected_root_hash {
+            return Err(JmtProofVerifyError::RootHashMismatch {
+                actual_root_hash,
+                expected_root_hash: *expected_root_hash,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Folds the leaf (or the placeholder) up through the siblings along `element_key`'s path.
+    fn compute_root_hash(&self, element_key: &LeafKey) -> TreeHash {
         let current_hash = self
             .leaf
-            .clone()
+            .as_ref()
             .map_or(SPARSE_MERKLE_PLACEHOLDER_HASH, |leaf| leaf.hash());
-        let actual_root_hash = self
-            .siblings
+        self.siblings
             .iter()
             .zip(
                 element_key
@@ -299,16 +373,7 @@ impl SparseMerkleProofExt {
                 } else {
                     SparseMerkleInternalNode::new(hash, sibling_node.hash()).hash()
                 }
-            });
-
-        if actual_root_hash != *expected_root_hash {
-            return Err(JmtProofVerifyError::RootHashMismatch {
-                actual_root_hash,
-                expected_root_hash: *expected_root_hash,
-            });
-        }
-
-        Ok(())
+            })
     }
 }
 
@@ -357,6 +422,10 @@ pub struct SparseMerkleProof {
     siblings: Vec<TreeHash>,
 }
 
+/// A sibling in a [`SparseMerkleProofExt`].
+///
+/// Not canonical: `Leaf(l)` and `Other(l.hash())` verify identically, so proof bytes are not an identity. See the
+/// malleability note on [`SparseMerkleProofExt`].
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum NodeInProof {
     Leaf(SparseMerkleLeafNode),
@@ -533,7 +602,7 @@ impl IteratedLeafKey for LeafKey {
     }
 
     fn get_nibble(&self, index: usize) -> Option<Nibble> {
-        Some(Nibble::from(if index.is_multiple_of(2) {
+        Some(Nibble::from_masked(if index.is_multiple_of(2) {
             self.bytes.get(index / 2)? >> 4
         } else {
             self.bytes.get(index / 2)? & 0x0F
@@ -547,7 +616,7 @@ impl IteratedLeafKey for LeafKeyRef<'_> {
     }
 
     fn get_nibble(&self, index: usize) -> Option<Nibble> {
-        Some(Nibble::from(if index.is_multiple_of(2) {
+        Some(Nibble::from_masked(if index.is_multiple_of(2) {
             self.bytes.get(index / 2)? >> 4
         } else {
             self.bytes.get(index / 2)? & 0x0F
@@ -566,17 +635,25 @@ pub struct Nibble(u8);
 impl<'de> Deserialize<'de> for Nibble {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let nibble = <u8 as Deserialize>::deserialize(deserializer)?;
+        Self::try_from(nibble).map_err(serde::de::Error::custom)
+    }
+}
+
+impl TryFrom<u8> for Nibble {
+    type Error = NibbleOutOfRange;
+
+    fn try_from(nibble: u8) -> Result<Self, Self::Error> {
         if nibble >= 16 {
-            return Err(serde::de::Error::custom(format!("Nibble out of range: {nibble}")));
+            return Err(NibbleOutOfRange(nibble));
         }
         Ok(Self(nibble))
     }
 }
 
-impl From<u8> for Nibble {
-    fn from(nibble: u8) -> Self {
-        assert!(nibble < 16, "Nibble out of range: {nibble}");
-        Self(nibble)
+impl Nibble {
+    /// Keeps the low 4 bits of `n`. Only for values that are `< 16` by construction.
+    pub(crate) const fn from_masked(n: u8) -> Self {
+        Self(n & 0x0F)
     }
 }
 
@@ -614,18 +691,24 @@ struct NibblePathRaw {
 }
 
 impl TryFrom<NibblePathRaw> for NibblePath {
-    type Error = String;
+    type Error = NibblePathError;
 
     fn try_from(raw: NibblePathRaw) -> Result<Self, Self::Error> {
         let NibblePathRaw { num_nibbles, bytes } = raw;
+        if num_nibbles > MAX_NIBBLE_PATH_LEN {
+            return Err(NibblePathError::TooLong {
+                num_nibbles,
+                max: MAX_NIBBLE_PATH_LEN,
+            });
+        }
         if num_nibbles.div_ceil(2) != bytes.len() {
-            return Err(format!(
-                "NibblePath has {num_nibbles} nibbles but {} bytes",
-                bytes.len()
-            ));
+            return Err(NibblePathError::LengthMismatch {
+                num_nibbles,
+                num_bytes: bytes.len(),
+            });
         }
         if !num_nibbles.is_multiple_of(2) && bytes.last().is_some_and(|b| b & 0x0F != 0) {
-            return Err("NibblePath with odd number of nibbles must have a zero last nibble".to_string());
+            return Err(NibblePathError::NonZeroTrailingNibble);
         }
         Ok(Self { num_nibbles, bytes })
     }
@@ -646,7 +729,7 @@ impl fmt::Display for NibblePath {
             .bytes
             .iter()
             .flat_map(|b| [b >> 4, b & 15])
-            .map(|b| char::from_digit(u32::from(b), 16).unwrap())
+            .filter_map(|b| char::from_digit(u32::from(b), 16))
             .take(self.num_nibbles);
 
         for ch in hex_chars {
@@ -674,23 +757,26 @@ impl NibblePath {
         NibblePath { num_nibbles, bytes }
     }
 
-    /// Similar to `new()` but asserts that the bytes have one less nibble.
-    pub fn new_odd(bytes: Vec<u8>) -> Self {
-        assert_eq!(
-            bytes.last().expect("Should have odd number of nibbles.") & 0x0F,
-            0,
-            "Last nibble must be 0."
-        );
+    /// Similar to `new_even()` but the bytes have one less nibble: the low nibble of the last byte is padding and
+    /// must be zero.
+    pub fn new_odd(bytes: Vec<u8>) -> Result<Self, NibblePathError> {
+        let last = bytes.last().ok_or(NibblePathError::EmptyOddPath)?;
+        if last & 0x0F != 0 {
+            return Err(NibblePathError::NonZeroTrailingNibble);
+        }
         let num_nibbles = bytes.len().saturating_mul(2).saturating_sub(1);
-        NibblePath { num_nibbles, bytes }
+        Ok(NibblePath { num_nibbles, bytes })
     }
 
     /// Adds a nibble to the end of the nibble path.
     pub fn push(&mut self, nibble: Nibble) {
         if self.num_nibbles.is_multiple_of(2) {
             self.bytes.push(u8::from(nibble) << 4);
+        } else if let Some(last_byte) = self.bytes.last_mut() {
+            // An odd path always has a last byte with a zero low nibble (enforced by every constructor)
+            *last_byte |= u8::from(nibble);
         } else {
-            *self.bytes.get_mut(self.num_nibbles / 2).expect("Should exist") |= u8::from(nibble);
+            // Not reachable: an odd path has at least one byte
         }
         self.num_nibbles = self.num_nibbles.saturating_add(1);
     }
@@ -701,10 +787,10 @@ impl NibblePath {
             self.bytes.last_mut().map(|last_byte| {
                 let nibble = *last_byte & 0x0F;
                 *last_byte &= 0xF0;
-                Nibble::from(nibble)
+                Nibble::from_masked(nibble)
             })
         } else {
-            self.bytes.pop().map(|byte| Nibble::from(byte >> 4))
+            self.bytes.pop().map(|byte| Nibble::from_masked(byte >> 4))
         };
         if poped_nibble.is_some() {
             self.num_nibbles = self.num_nibbles.saturating_sub(1);
@@ -714,12 +800,11 @@ impl NibblePath {
 
     /// Returns the last nibble.
     pub fn last(&self) -> Option<Nibble> {
-        let last_byte_option = self.bytes.last();
+        let last_byte = self.bytes.last()?;
         if self.num_nibbles.is_multiple_of(2) {
-            last_byte_option.map(|last_byte| Nibble::from(*last_byte & 0x0F))
+            Some(Nibble::from_masked(*last_byte))
         } else {
-            let last_byte = last_byte_option.expect("Last byte must exist if num_nibbles is odd.");
-            Some(Nibble::from(*last_byte >> 4))
+            Some(Nibble::from_masked(*last_byte >> 4))
         }
     }
 
@@ -735,8 +820,8 @@ impl NibblePath {
 
     /// Get the i-th nibble.
     pub fn get_nibble(&self, i: usize) -> Option<Nibble> {
-        Some(Nibble::from(
-            (self.bytes.get(i / 2)? >> (if i % 2 == 1 { 0 } else { 4 })) & 0xF,
+        Some(Nibble::from_masked(
+            self.bytes.get(i / 2)? >> (if i % 2 == 1 { 0 } else { 4 }),
         ))
     }
 
@@ -772,13 +857,22 @@ impl NibblePath {
         self.bytes
     }
 
-    pub fn truncate(&mut self, len: usize) {
-        assert!(len <= self.num_nibbles);
+    /// Shortens the path to its first `len` nibbles.
+    pub fn truncate(&mut self, len: usize) -> Result<(), NibblePathError> {
+        if len > self.num_nibbles {
+            return Err(NibblePathError::TruncateBeyondLength {
+                len,
+                num_nibbles: self.num_nibbles,
+            });
+        }
         self.num_nibbles = len;
         self.bytes.truncate(len.div_ceil(2));
-        if !len.is_multiple_of(2) {
-            *self.bytes.last_mut().expect("must exist.") &= 0xF0;
+        if !len.is_multiple_of(2) &&
+            let Some(last_byte) = self.bytes.last_mut()
+        {
+            *last_byte &= 0xF0;
         }
+        Ok(())
     }
 }
 
@@ -860,7 +954,7 @@ impl Peekable for NibbleIterator<'_> {
 
 impl<'a> NibbleIterator<'a> {
     fn new(nibble_path: &'a NibblePath, start: usize, end: usize) -> Self {
-        assert!(start <= end);
+        debug_assert!(start <= end);
         Self {
             nibble_path,
             pos: (start..end),
@@ -894,7 +988,7 @@ impl<'a> NibbleIterator<'a> {
 
     /// Get the number of nibbles that this iterator covers.
     pub fn num_nibbles(&self) -> usize {
-        assert!(self.start <= self.pos.end); // invariant
+        debug_assert!(self.start <= self.pos.end); // invariant
         self.pos.end.saturating_sub(self.start)
     }
 
@@ -1008,11 +1102,11 @@ impl NodeKey {
         Self::new(version, node_nibble_path)
     }
 
-    /// Generates parent node key at the same version based on this node key.
-    pub fn gen_parent_node_key(&self) -> Self {
+    /// Generates parent node key at the same version based on this node key. Returns `None` for the root.
+    pub fn gen_parent_node_key(&self) -> Option<Self> {
         let mut node_nibble_path = self.nibble_path().clone();
-        assert!(node_nibble_path.pop().is_some(), "Current node key is root.",);
-        Self::new(self.version, node_nibble_path)
+        node_nibble_path.pop()?;
+        Some(Self::new(self.version, node_nibble_path))
     }
 }
 
@@ -1049,13 +1143,16 @@ pub struct Child {
 }
 
 impl Child {
-    pub fn new(hash: TreeHash, version: Version, node_type: NodeType) -> Self {
-        debug_assert!(!matches!(node_type, NodeType::Null), "Child cannot be Null");
-        Self {
+    /// Creates a child, rejecting [`NodeType::Null`].
+    pub fn try_new(hash: TreeHash, version: Version, node_type: NodeType) -> Result<Self, InternalNodeError> {
+        if matches!(node_type, NodeType::Null) {
+            return Err(InternalNodeError::NullChild);
+        }
+        Ok(Self {
             hash,
             version,
             node_type,
-        }
+        })
     }
 
     pub fn is_leaf(&self) -> bool {
@@ -1099,37 +1196,40 @@ impl TryFrom<InternalNodeRaw> for InternalNode {
     type Error = String;
 
     fn try_from(raw: InternalNodeRaw) -> Result<Self, Self::Error> {
-        let InternalNodeRaw {
-            mut children,
-            leaf_count,
-        } = raw;
-        let mut expected_leaf_count = 0usize;
-        for (nibble, child) in &children {
-            if matches!(child.node_type, NodeType::Null) {
-                return Err(format!("InternalNode child {nibble:x} is Null"));
-            }
-            expected_leaf_count = expected_leaf_count
-                .checked_add(child.leaf_count())
-                .ok_or("InternalNode leaf count overflow")?;
-        }
-        if leaf_count != expected_leaf_count {
+        let InternalNodeRaw { children, leaf_count } = raw;
+        let node = InternalNode::try_new(children).map_err(|e| e.to_string())?;
+        if leaf_count != node.leaf_count {
             return Err(format!(
-                "InternalNode leaf count {leaf_count} does not match children leaf count {expected_leaf_count}"
+                "InternalNode leaf count {leaf_count} does not match children leaf count {}",
+                node.leaf_count
             ));
         }
-        children.sort_keys();
-        Ok(Self { children, leaf_count })
+        Ok(node)
     }
 }
 
 impl InternalNode {
     /// Creates a new Internal node.
-    pub fn new(mut children: Children) -> Self {
+    ///
+    /// Rejects a `Null` child, no children, and a single leaf child (which the tree always collapses into the leaf
+    /// itself, and which would hash identically to it). A single internal child is allowed.
+    pub fn try_new(mut children: Children) -> Result<Self, InternalNodeError> {
+        let mut leaf_count = 0usize;
+        for child in children.values() {
+            if matches!(child.node_type, NodeType::Null) {
+                return Err(InternalNodeError::NullChild);
+            }
+            leaf_count = leaf_count
+                .checked_add(child.leaf_count())
+                .ok_or(InternalNodeError::LeafCountOverflow)?;
+        }
+        match children.values().next() {
+            None => return Err(InternalNodeError::NoChildren),
+            Some(child) if children.len() == 1 && child.is_leaf() => return Err(InternalNodeError::SingleLeafChild),
+            Some(_) => {},
+        }
         children.sort_keys();
-        let leaf_count = children
-            .values()
-            .fold(0usize, |acc, child| acc.saturating_add(child.leaf_count()));
-        Self { children, leaf_count }
+        Ok(Self { children, leaf_count })
     }
 
     pub fn leaf_count(&self) -> usize {
@@ -1180,14 +1280,15 @@ impl InternalNode {
             }
         }
         // `leaf_bitmap` must be a subset of `existence_bitmap`.
-        assert_eq!(existence_bitmap | leaf_bitmap, existence_bitmap);
+        debug_assert_eq!(existence_bitmap | leaf_bitmap, existence_bitmap);
         (existence_bitmap, leaf_bitmap)
     }
 
     /// Given a range [start, start + width), returns the sub-bitmap of that range.
     fn range_bitmaps(start: u8, width: u8, bitmaps: (u16, u16)) -> (u16, u16) {
-        assert!(start < 16 && width.count_ones() == 1 && start.is_multiple_of(width));
-        assert!(width <= 16 && start.saturating_add(width) <= 16);
+        // `start` and `width` only ever come from crate-internal constants
+        debug_assert!(start < 16 && width.count_ones() == 1 && start.is_multiple_of(width));
+        debug_assert!(width <= 16 && start.saturating_add(width) <= 16);
         // A range with `start == 8` and `width == 4` will generate a mask 0b0000111100000000.
         // use as converting to smaller integer types when 'width == 16'
         #[allow(clippy::cast_possible_truncation)]
@@ -1205,10 +1306,10 @@ impl InternalNode {
         } else if width == 1 || (range_existence_bitmap.count_ones() == 1 && range_leaf_bitmap != 0) {
             // Only 1 leaf child under this subtree or reach the lowest level
             #[allow(clippy::cast_possible_truncation)]
-            let only_child_index = Nibble::from(range_existence_bitmap.trailing_zeros() as u8);
+            let only_child_index = Nibble::from_masked(range_existence_bitmap.trailing_zeros() as u8);
+            // The bitmaps are generated from `children` itself, so the child always exists
             self.child(only_child_index)
-                .expect("Corrupted internal node: existence_bitmap inconsistent")
-                .hash
+                .map_or(SPARSE_MERKLE_PLACEHOLDER_HASH, |child| child.hash)
         } else {
             let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
             let right_child = self.merkle_hash(
@@ -1236,10 +1337,8 @@ impl InternalNode {
         } else if width == 1 || (range_existence_bitmap.count_ones() == 1 && range_leaf_bitmap != 0) {
             // Only 1 leaf child under this subtree or reach the lowest level
             #[allow(clippy::cast_possible_truncation)]
-            let only_child_index = Nibble::from(range_existence_bitmap.trailing_zeros() as u8);
-            let only_child = self
-                .child(only_child_index)
-                .expect("Corrupted internal node: existence_bitmap inconsistent");
+            let only_child_index = Nibble::from_masked(range_existence_bitmap.trailing_zeros() as u8);
+            let only_child = self.child(only_child_index).ok_or(JmtStorageError::InconsistentState)?;
             if matches!(only_child.node_type, NodeType::Leaf) {
                 let only_child_node_key = node_key.gen_child_node_key(only_child.version, only_child_index);
                 match tree_reader.get_node(&only_child_node_key)? {
@@ -1325,21 +1424,19 @@ impl InternalNode {
                 // `None` because it's existence indirectly proves the n-th child doesn't exist.
                 // Please read proof format for details.
                 #[allow(clippy::cast_possible_truncation)]
-                let only_child_index = Nibble::from(range_existence_bitmap.trailing_zeros() as u8);
+                let only_child_index = Nibble::from_masked(range_existence_bitmap.trailing_zeros() as u8);
+                let only_child_version = self
+                    .child(only_child_index)
+                    .ok_or(JmtStorageError::InconsistentState)?
+                    .version;
                 return Ok((
-                    {
-                        let only_child_version = self
-                            .child(only_child_index)
-                            // Should be guaranteed by the self invariants, but these are not easy to express at the moment
-                            .expect("Corrupted internal node: child_bitmap inconsistent")
-                            .version;
-                        Some(node_key.gen_child_node_key(only_child_version, only_child_index))
-                    },
+                    Some(node_key.gen_child_node_key(only_child_version, only_child_index)),
                     siblings,
                 ));
             }
         }
-        unreachable!("Impossible to get here without returning even at the lowest level.")
+        // Not reachable: the lowest level (`width == 1`) always returns above
+        Err(JmtStorageError::InconsistentState)
     }
 }
 
@@ -1532,6 +1629,12 @@ pub enum JmtStorageError {
     },
 }
 
+impl From<InternalNodeError> for JmtStorageError {
+    fn from(_: InternalNodeError) -> Self {
+        JmtStorageError::InconsistentState
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1560,21 +1663,102 @@ mod tests {
         borsh::from_slice::<SparseMerkleProofExt>(&bytes).unwrap_err();
     }
 
+    fn nibble(n: u8) -> Nibble {
+        Nibble::try_from(n).unwrap()
+    }
+
+    fn leaf_child() -> Child {
+        Child::try_new(TreeHash::zero(), 1, NodeType::Leaf).unwrap()
+    }
+
+    fn internal_child(leaf_count: usize) -> Child {
+        Child::try_new(TreeHash::zero(), 1, NodeType::Internal { leaf_count }).unwrap()
+    }
+
+    fn children(entries: Vec<(u8, Child)>) -> Children {
+        entries.into_iter().map(|(n, child)| (nibble(n), child)).collect()
+    }
+
     #[test]
     fn it_rejects_out_of_range_nibbles() {
-        assert_eq!(serde_json::from_str::<Nibble>("15").unwrap(), Nibble::from(15));
+        assert_eq!(serde_json::from_str::<Nibble>("15").unwrap(), nibble(15));
         serde_json::from_str::<Nibble>("16").unwrap_err();
+        assert_eq!(u8::from(Nibble::try_from(15u8).unwrap()), 15);
+        assert_eq!(Nibble::try_from(16u8).unwrap_err(), NibbleOutOfRange(16));
+    }
+
+    #[test]
+    fn it_builds_odd_nibble_paths_fallibly() {
+        assert_eq!(NibblePath::new_odd(vec![]).unwrap_err(), NibblePathError::EmptyOddPath);
+        assert_eq!(
+            NibblePath::new_odd(vec![0x12]).unwrap_err(),
+            NibblePathError::NonZeroTrailingNibble
+        );
+        let path = NibblePath::new_odd(vec![0x10]).unwrap();
+        assert_eq!(path.num_nibbles(), 1);
+        assert_eq!(path.last(), Some(nibble(1)));
+    }
+
+    #[test]
+    fn it_truncates_nibble_paths_fallibly() {
+        let mut path = NibblePath::new_even(vec![0x12, 0x34]);
+        assert_eq!(path.truncate(5).unwrap_err(), NibblePathError::TruncateBeyondLength {
+            len: 5,
+            num_nibbles: 4
+        });
+        path.truncate(4).unwrap();
+        assert_eq!(path, NibblePath::new_even(vec![0x12, 0x34]));
+        // An odd length zeroes the trailing nibble
+        path.truncate(3).unwrap();
+        assert_eq!(path.bytes(), &[0x12, 0x30]);
+        assert_eq!(path, NibblePath::new_odd(vec![0x12, 0x30]).unwrap());
+        path.truncate(0).unwrap();
+        assert!(path.is_empty());
+    }
+
+    #[test]
+    fn it_returns_no_parent_for_the_root() {
+        let root = NodeKey::new_empty_path(1);
+        assert_eq!(root.gen_parent_node_key(), None);
+        let child = NodeKey::new(1, NibblePath::new_odd(vec![0xa0]).unwrap());
+        assert_eq!(child.gen_parent_node_key(), Some(root));
+    }
+
+    #[test]
+    fn it_validates_internal_node_children() {
+        assert_eq!(
+            Child::try_new(TreeHash::zero(), 1, NodeType::Null).unwrap_err(),
+            InternalNodeError::NullChild
+        );
+        let null_child = Child {
+            hash: TreeHash::zero(),
+            version: 1,
+            node_type: NodeType::Null,
+        };
+        assert_eq!(
+            InternalNode::try_new(children(vec![(0, leaf_child()), (1, null_child)])).unwrap_err(),
+            InternalNodeError::NullChild
+        );
+        assert_eq!(
+            InternalNode::try_new(Children::new()).unwrap_err(),
+            InternalNodeError::NoChildren
+        );
+        assert_eq!(
+            InternalNode::try_new(children(vec![(0, leaf_child())])).unwrap_err(),
+            InternalNodeError::SingleLeafChild
+        );
+        let node = InternalNode::try_new(children(vec![(4, internal_child(2))])).unwrap();
+        assert_eq!(node.leaf_count(), 2);
+        let node = InternalNode::try_new(children(vec![(4, leaf_child()), (2, leaf_child())])).unwrap();
+        assert_eq!(node.leaf_count(), 2);
+        assert_eq!(node.children_sorted().map(|(n, _)| u8::from(*n)).collect::<Vec<_>>(), [
+            2, 4
+        ]);
     }
 
     #[test]
     fn it_validates_deserialized_internal_nodes() {
-        let mut children = Children::new();
-        children.insert(Nibble::from(3), Child::new(TreeHash::zero(), 1, NodeType::Leaf));
-        children.insert(
-            Nibble::from(1),
-            Child::new(TreeHash::zero(), 1, NodeType::Internal { leaf_count: 2 }),
-        );
-        let node = InternalNode::new(children);
+        let node = InternalNode::try_new(children(vec![(3, leaf_child()), (1, internal_child(2))])).unwrap();
         let json = serde_json::to_value(&node).unwrap();
         assert_eq!(serde_json::from_value::<InternalNode>(json.clone()).unwrap(), node);
 
@@ -1585,11 +1769,22 @@ mod tests {
         let mut null_child = json;
         *null_child.pointer_mut("/children/3/node_type").unwrap() = "Null".into();
         serde_json::from_value::<InternalNode>(null_child).unwrap_err();
+
+        let no_children = serde_json::json!({ "children": {}, "leaf_count": 0 });
+        let err = serde_json::from_value::<InternalNode>(no_children).unwrap_err();
+        assert!(err.to_string().contains("no children"), "{err}");
+
+        let single_leaf = InternalNode {
+            children: children(vec![(3, leaf_child())]),
+            leaf_count: 1,
+        };
+        let err = serde_json::from_value::<InternalNode>(serde_json::to_value(&single_leaf).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("single leaf child"), "{err}");
     }
 
     #[test]
     fn it_validates_deserialized_nibble_paths() {
-        let path: NibblePath = [1u8, 2, 3].into_iter().map(Nibble::from).collect();
+        let path: NibblePath = [1u8, 2, 3].into_iter().map(nibble).collect();
         let json = serde_json::to_value(&path).unwrap();
         assert_eq!(serde_json::from_value::<NibblePath>(json).unwrap(), path);
 
@@ -1600,8 +1795,59 @@ mod tests {
     }
 
     #[test]
+    fn it_rejects_nibble_paths_longer_than_a_leaf_key() {
+        let max = serde_json::json!({ "num_nibbles": 64, "bytes": vec![0x11u8; 32] });
+        let path = serde_json::from_value::<NibblePath>(max).unwrap();
+        assert_eq!(path.num_nibbles(), MAX_NIBBLE_PATH_LEN);
+
+        let too_long = NibblePathRaw {
+            num_nibbles: 65,
+            bytes: [vec![0x11u8; 32], vec![0x10]].concat(),
+        };
+        assert_eq!(NibblePath::try_from(too_long).unwrap_err(), NibblePathError::TooLong {
+            num_nibbles: 65,
+            max: MAX_NIBBLE_PATH_LEN
+        });
+        let mut bytes = vec![0x11u8; 32];
+        bytes.push(0x10);
+        let too_long = serde_json::json!({ "num_nibbles": 65, "bytes": bytes });
+        let err = serde_json::from_value::<NibblePath>(too_long).unwrap_err();
+        assert!(err.to_string().contains("max is 64"), "{err}");
+    }
+
+    #[test]
+    fn it_rejects_exclusion_against_the_empty_tree_root_unless_asked() {
+        let key = LeafKey::new(jmt_node_hash(&1u64));
+        let empty = SparseMerkleProofExt::new(None, vec![]);
+        let zero = TreeHash::zero();
+        assert!(matches!(
+            empty.verify_exclusion(&zero, &key),
+            Err(JmtProofVerifyError::EmptyTreeRoot)
+        ));
+        empty.verify_exclusion_or_empty_tree(&zero, &key).unwrap();
+
+        let with_sibling = SparseMerkleProofExt::new(None, vec![NodeInProof::Other(jmt_node_hash(&2u64))]);
+        assert!(matches!(
+            with_sibling.verify_exclusion_or_empty_tree(&zero, &key),
+            Err(JmtProofVerifyError::RootHashMismatch { .. })
+        ));
+        let other_key = LeafKey::new(jmt_node_hash(&3u64));
+        let with_leaf = SparseMerkleProofExt::new(Some(SparseMerkleLeafNode::new(other_key, zero)), vec![]);
+        assert!(matches!(
+            with_leaf.verify_exclusion_or_empty_tree(&zero, &key),
+            Err(JmtProofVerifyError::RootHashMismatch { .. })
+        ));
+
+        // A non-empty root still goes through the full check
+        let root = SparseMerkleLeafNode::new(other_key, zero).hash();
+        with_leaf.verify_exclusion(&root, &key).unwrap();
+        with_leaf.verify_exclusion_or_empty_tree(&root, &key).unwrap();
+        empty.verify_exclusion_or_empty_tree(&root, &key).unwrap_err();
+    }
+
+    #[test]
     fn it_iterates_nibble_path_bits() {
-        let path: NibblePath = [0xau8, 0x5].into_iter().map(Nibble::from).collect();
+        let path: NibblePath = [0xau8, 0x5].into_iter().map(nibble).collect();
         let bits = path.bits().collect::<Vec<_>>();
         assert_eq!(bits, [true, false, true, false, false, true, false, true]);
     }

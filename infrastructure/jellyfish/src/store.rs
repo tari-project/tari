@@ -22,6 +22,11 @@ pub trait TreeStoreWriter<P> {
 
     /// Marks the given tree part for a (potential) future removal by an arbitrary external pruning
     /// process.
+    ///
+    /// The tree emits stale nodes as [`StaleNodeIndex`](crate::StaleNodeIndex)`{ node_key, stale_since_version }` in
+    /// [`TreeUpdateBatch::stale_node_index_batch`](crate::TreeUpdateBatch::stale_node_index_batch); record each one as
+    /// [`StaleTreeNode::Node(node_key)`](StaleTreeNode::Node). [`StaleTreeNode::Subtree`] marks a node and all of its
+    /// descendants, and is only for a store-driven prune of a whole version range.
     fn record_stale_tree_node(&mut self, part: StaleTreeNode) -> Result<(), JmtStorageError>;
 }
 

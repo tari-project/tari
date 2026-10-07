@@ -23,9 +23,26 @@ impl<P> MemoryTreeStore<P> {
         }
     }
 
+    /// Removes every recorded stale node. A [`StaleTreeNode::Subtree`] removes the node and all of its descendants.
     pub fn clear_stale_nodes(&mut self) {
         for stale in self.stale_nodes.drain(..) {
-            self.nodes.remove(stale.as_node_key());
+            match stale {
+                StaleTreeNode::Node(key) => {
+                    self.nodes.remove(&key);
+                },
+                StaleTreeNode::Subtree(key) => {
+                    // Iterative so that a deep (or corrupt) tree cannot overflow the stack. Each removed node yields
+                    // its children, and a removed key is never visited again, so this terminates.
+                    let mut stack = vec![key];
+                    while let Some(key) = stack.pop() {
+                        if let Some(Node::Internal(internal_node)) = self.nodes.remove(&key).map(TreeNode::into_node) {
+                            for (nibble, child) in internal_node.into_children() {
+                                stack.push(key.gen_child_node_key(child.version, nibble));
+                            }
+                        }
+                    }
+                },
+            }
         }
     }
 }
