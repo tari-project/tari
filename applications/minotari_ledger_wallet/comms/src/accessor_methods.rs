@@ -862,10 +862,10 @@ pub fn ledger_get_one_sided_metadata_signature(
     let address_bytes = receiver_address.to_vec();
     let request = GetOneSidedMetadataSignatureRequest::new(
         account,
-        u64::from(network.as_byte()),
-        u64::from(txo_version),
+        network.as_byte(),
+        txo_version,
         sender_offset_key_index,
-        u64::from(sender_offset_branch.as_byte()),
+        sender_offset_branch.as_byte(),
         value,
         key_field(commitment_mask)?,
         &address_bytes,
@@ -886,11 +886,7 @@ pub fn ledger_get_one_sided_metadata_signature(
             address_bytes.len(),
             request.encoded_len(),
             GetOneSidedMetadataSignatureRequest::MAX_SIZE,
-            address_bytes.len().saturating_sub(
-                request
-                    .encoded_len()
-                    .saturating_sub(GetOneSidedMetadataSignatureRequest::MAX_SIZE)
-            )
+            GetOneSidedMetadataSignatureRequest::MAX_ADDRESS_SIZE
         )));
     }
     verify_ledger_application()?;
@@ -994,10 +990,11 @@ mod test {
         assert!(error.contains("account 1 on the device"), "{error}");
     }
 
-    /// An address too long for one APDU is refused with its length and the limit, before the wire.
+    /// An address with an 82 byte payment ID (149 bytes) fits one APDU; one too long is refused with its length and
+    /// the limit, before the wire.
     #[test]
     fn an_address_too_long_for_one_apdu_is_refused() {
-        let receiver = dual_address(80);
+        let receiver = dual_address(100);
         let error = sign(
             PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7,
             LedgerKeyBranch::PreMine,
@@ -1008,5 +1005,16 @@ mod test {
             error.contains(&format!("the receiver address is {} bytes", receiver.to_vec().len())),
             "{error}"
         );
+        assert!(error.contains("can be at most 162 bytes"), "{error}");
+
+        // 149 bytes gets past the size check, to the transport (which this test does not have).
+        let receiver = dual_address(82);
+        assert_eq!(receiver.to_vec().len(), 149);
+        let error = sign(
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7,
+            LedgerKeyBranch::PreMine,
+            &receiver,
+        );
+        assert!(!error.contains("a single APDU carries"), "{error}");
     }
 }

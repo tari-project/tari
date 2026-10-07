@@ -259,10 +259,10 @@ fn bad_p1_p2_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
 }
 
 /// The smallest `GetOneSidedMetadataSignature` payload the device will look at, from the handler's own comment:
-/// `account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + sender_offset_branch(8) + value(8) +
+/// `account(8) + network(1) + txo_version(1) + sender_offset_key_index(8) + sender_offset_branch(1) + value(8) +
 /// commitment_mask(32) + address_size(2) + min_address(67) + message(32)`, less the two bytes the device has always
 /// been short by.
-const METADATA_SIGNATURE_MINIMUM: usize = 179;
+const METADATA_SIGNATURE_MINIMUM: usize = 158;
 
 /// Acceptance: a payload one byte short, or one byte long, is `WrongApduLength`.
 ///

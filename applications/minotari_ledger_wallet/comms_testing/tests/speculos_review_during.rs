@@ -102,10 +102,10 @@ fn metadata_request(mask: &[u8; 32], address: &[u8], message: &[u8; 32], network
     Command::from_request(
         &GetOneSidedMetadataSignatureRequest::new(
             ACCOUNT,
-            u64::from(network),
+            network,
             0,
             SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            LedgerKeyBranch::OneSidedSenderOffset.as_byte(),
             VALUE,
             mask,
             address,

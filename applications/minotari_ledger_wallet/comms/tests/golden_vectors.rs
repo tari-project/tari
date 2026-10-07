@@ -14,9 +14,9 @@
 //! the migration and afterwards.
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
-//! application version bump. It is never a test fix. (Example: `sender_offset_branch` in
-//! `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` shipped with application `6.1.1-pre.0`, and `MIN_LEDGER_APP_VERSION`
-//! moved to `6.1.1-pre.0` with it.)
+//! application version bump. It is never a test fix. (Example: `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` gained
+//! `sender_offset_branch` and narrowed `network` and `txo_version` to one byte each in application `6.1.1-pre.0`,
+//! and `MIN_LEDGER_APP_VERSION` moved to `6.1.1-pre.0` with it.)
 //!
 //! # What is covered
 //!
@@ -115,6 +115,10 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 /// Little endian `01 02 03 04 05 06 07 08` on the wire, so the account is recognisable in every vector.
 const ACCOUNT: u64 = 0x0807_0605_0403_0201;
+/// `ACCOUNT` is 2^32 or more, which the legacy nonce instruction refuses from application 6.1.1-pre.0 (it names the
+/// same keys as its low word). The legacy vector therefore uses this account instead - a wire format change made
+/// with that version, not a test fix.
+const LEGACY_ACCOUNT: u64 = 0x0403_0201;
 /// Little endian `18 17 16 15 14 13 12 11`.
 const INDEX: u64 = 0x1112_1314_1516_1718;
 /// Little endian `21 22 23 24 25 26 27 28`.
@@ -271,12 +275,12 @@ const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST: &str = concat!(
     "11",                                                               // ins
     "00",                                                               // p1
     "00",                                                               // p2
-    "b8",                                                               // lc
+    "a3",                                                               // lc
     "0102030405060708",                                                 // account
-    "2600000000000000",                                                 // network (Esmeralda, widened to u64)
-    "0100000000000000",                                                 // txo_version (widened to u64)
+    "26",                                                               // network (Esmeralda, one byte)
+    "01",                                                               // txo_version (one byte)
     "4142434445464748",                                                 // sender_offset_key_index
-    "0600000000000000",                                                 // sender_offset_branch (OneSidedSenderOffset)
+    "06",                                                               // sender_offset_branch (OneSidedSenderOffset)
     "87d6120000000000",                                                 // value
     "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
     "4600",                                                             // address_size (70, u16)
@@ -312,7 +316,7 @@ const GET_RAW_SCHNORR_SIGNATURE_LEGACY_NONCE_REQUEST: &str = concat!(
     "00",                                                               // p1
     "00",                                                               // p2
     "68",                                                               // lc
-    "0102030405060708",                                                 // account
+    "0102030400000000",                                                 // account (LEGACY_ACCOUNT, below 2^32)
     "1817161514131211",                                                 // key_index
     "0900000000000000",                                                 // key_branch (PreMine)
     "2122232425262728",                                                 // nonce_index
@@ -689,7 +693,7 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
     // --- GetRawSchnorrSignatureLegacyNonce
     device.expect(vec![unhex(SCHNORR_REPLY)]);
     let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
-        ACCOUNT,
+        LEGACY_ACCOUNT,
         INDEX,
         LedgerKeyBranch::PreMine,
         NONCE_INDEX,
@@ -874,10 +878,10 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         GetOneSidedMetadataSignatureRequest::decode(&metadata),
         Ok(GetOneSidedMetadataSignatureRequest::new(
             ACCOUNT,
-            u64::from(NETWORK.as_byte()),
-            u64::from(TXO_VERSION),
+            NETWORK.as_byte(),
+            TXO_VERSION,
             SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            LedgerKeyBranch::OneSidedSenderOffset.as_byte(),
             VALUE,
             &mask,
             &address,
@@ -908,7 +912,7 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
     assert_eq!(
         GetRawSchnorrSignatureLegacyNonceRequest::decode(&payload(GET_RAW_SCHNORR_SIGNATURE_LEGACY_NONCE_REQUEST)),
         Ok(GetRawSchnorrSignatureLegacyNonceRequest {
-            account: ACCOUNT,
+            account: LEGACY_ACCOUNT,
             key_index: INDEX,
             key_branch: u64::from(LedgerKeyBranch::PreMine.as_byte()),
             nonce_index: NONCE_INDEX,

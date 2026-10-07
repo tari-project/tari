@@ -62,9 +62,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
     let account = head.account;
-    // A `u64` on the wire but a single byte in the hash label: reject rather than truncate.
-    let network = u8::try_from(head.network).map_err(|_| AppSW::WrongApduLength)?;
-    let txo_version = head.txo_version;
+    // A single byte on the wire since 6.1.1-pre.0, as it is in the hash label, so there is nothing to truncate.
+    let network = head.network;
+    let txo_version = u64::from(head.txo_version);
     let sender_offset_key_index = head.sender_offset_key_index;
     // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine spend's is on
     // `PreMine`, because `GetScriptOffset` issues it in pre-mine mode. Nothing else is a sender offset key, and the
@@ -73,11 +73,11 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     //
     // A `PreMine` sender offset key always has `PRE_MINE_SENDER_OFFSET_INDEX_BIT` set and a pre-mine script key never
     // does, so `is_sender_offset_key` also keeps this instruction from being pointed at a pre-mine script key.
-    let sender_offset_branch = branch_key_from_u64(head.sender_offset_branch)?;
+    let sender_offset_branch = branch_key_from_u64(u64::from(head.sender_offset_branch))?;
     if !is_sender_offset_key(sender_offset_branch, sender_offset_key_index) {
         return Err(AppSW::BadBranchKey);
     }
-    let sender_offset_key_type = KeyType::from_branch_key(head.sender_offset_branch)?;
+    let sender_offset_key_type = KeyType::from_branch_key(u64::from(head.sender_offset_branch))?;
     let value_u64 = head.value;
     let value = Minotari::new(head.value);
 
