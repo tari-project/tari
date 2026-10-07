@@ -40,6 +40,7 @@ use crate::{
         ProtocolId,
         rpc::{
             DEFAULT_MAX_DECODE_ITEMS,
+            DecodeBudget,
             Request,
             Response,
             RpcError,
@@ -151,7 +152,7 @@ impl NamedProtocolService for MockRpcClient {
 }
 
 impl MockRpcClient {
-    pub async fn request_response<T: prost::Message, R: prost::Message + Default>(
+    pub async fn request_response<T: prost::Message, R: prost::Message + Default + DecodeBudget>(
         &mut self,
         request: T,
         method: RpcMethod,
@@ -162,7 +163,7 @@ impl MockRpcClient {
     }
 
     #[allow(dead_code)]
-    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default>(
+    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default + DecodeBudget>(
         &mut self,
         request: T,
         method: RpcMethod,

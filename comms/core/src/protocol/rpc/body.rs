@@ -36,8 +36,9 @@ use tokio::sync::mpsc;
 
 use crate::{
     Bytes,
+    decode_budget::{DecodeBudget, check_decode_budget},
     message::MessageExt,
-    protocol::rpc::{Response, RpcError, RpcStatus, decode_guard},
+    protocol::rpc::{Response, RpcError, RpcStatus},
 };
 
 pub trait IntoBody {
@@ -262,7 +263,7 @@ impl<T: prost::Message + 'static> IntoBody for Streaming<T> {
 }
 
 /// The client side of a streaming response. Each item is checked against the decode budget (see
-/// [crate::protocol::rpc::decode_guard]) before it is decoded.
+/// [crate::decode_budget]) before it is decoded.
 ///
 /// Errors are [RpcError]s: an error status sent by the server is [RpcError::RequestFailed], an item that fails to
 /// decode is [RpcError::DecodeError] and an item over the decode budget is [RpcError::DecodeBudgetExceeded].
@@ -274,7 +275,7 @@ pub struct ClientStreaming<T> {
 }
 
 impl<T> ClientStreaming<T> {
-    /// Creates a client stream that rejects any item carrying more than `max_items` embedded items.
+    /// Creates a client stream that rejects any item carrying more than `max_items` embedded message instances.
     pub fn new(inner: mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, max_items: usize) -> Self {
         Self {
             inner,
@@ -284,7 +285,7 @@ impl<T> ClientStreaming<T> {
     }
 }
 
-impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
+impl<T: prost::Message + Default + DecodeBudget + Unpin> Stream for ClientStreaming<T> {
     type Item = Result<T, RpcError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -296,8 +297,9 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
                     return Poll::Ready(None);
                 }
                 let bytes = resp.into_message();
-                let result = decode_guard::check_decode_budget(&bytes, self.max_items)
-                    .and_then(|()| T::decode(bytes).map_err(RpcError::from));
+                let result = check_decode_budget::<T>(&bytes, self.max_items)
+                    .map_err(RpcError::from)
+                    .and_then(|_| T::decode(bytes).map_err(RpcError::from));
                 Poll::Ready(Some(result))
             },
             Some(Err(status)) => Poll::Ready(Some(Err(RpcError::RequestFailed(status)))),

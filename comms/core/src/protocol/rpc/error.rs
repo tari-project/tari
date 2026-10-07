@@ -29,6 +29,7 @@ use super::{RpcStatus, handshake::RpcHandshakeError, server::RpcServerError};
 use crate::{
     PeerConnectionError,
     connectivity::ConnectivityError,
+    decode_budget::DecodeBudgetExceeded,
     peer_manager::PeerManagerError,
     proto::rpc as rpc_proto,
     traits::OrOptional,
@@ -78,6 +79,15 @@ pub enum RpcError {
     DecodeBudgetExceeded { items: usize, max: usize },
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
+}
+
+impl From<DecodeBudgetExceeded> for RpcError {
+    fn from(err: DecodeBudgetExceeded) -> Self {
+        RpcError::DecodeBudgetExceeded {
+            items: err.items,
+            max: err.max,
+        }
+    }
 }
 
 impl RpcError {

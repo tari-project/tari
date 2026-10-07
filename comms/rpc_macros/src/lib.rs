@@ -6,6 +6,7 @@ use proc_macro::TokenStream;
 #[macro_use]
 mod macros;
 
+mod decode_budget;
 mod expand;
 mod generator;
 mod method_info;
@@ -71,10 +72,11 @@ mod options;
 /// `rpc` attribute
 /// - `method` (required) is a unique, non-zero number that identifies each function within the service. Once a `method`
 ///   is used it should never be reused (think protobuf field numbers).
-/// - `max_items` (optional) is the decode budget for the method: the maximum number of embedded protobuf items its
-///   request, its response or each item of its response stream may carry. The server checks requests against it before
-///   decoding them and the generated client checks responses. Defaults to
-///   `tari_comms::protocol::rpc::DEFAULT_MAX_DECODE_ITEMS`.
+/// - `max_items` (optional) is the decode budget for the method: the maximum number of embedded message instances its
+///   request, its response or each item of its response stream may carry (see `tari_comms::decode_budget`). Request and
+///   response types must implement `DecodeBudget` (derive it with `#[derive(DecodeBudget)]`). The server checks
+///   requests against it before decoding them and the generated client checks responses. Defaults to
+///   `tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS`.
 ///
 /// Every RPC method must have the form `async fn name(&self, request: Request<T>) -> Result<Response<U>, RpcStatus>`
 /// or `async fn name(&self, request: Request<T>) -> Result<Streaming<U>, RpcStatus>`. Anything else is a compile error.
@@ -83,4 +85,16 @@ pub fn tari_rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let options = syn::parse_macro_input!(attr as options::RpcTraitOptions);
     let target_trait = syn::parse_macro_input!(item as syn::ItemTrait);
     expand::expand_trait(target_trait, options).into()
+}
+
+/// `#[derive(DecodeBudget)]` implements `tari_comms::decode_budget::DecodeBudget` for a prost message, oneof or enum.
+///
+/// It reads the `#[prost(...)]` field attributes (as emitted by prost-build) and generates a walker over the encoded
+/// message that charges one instance for each message-typed field (optional, repeated, map values and oneof variants)
+/// and descends into it with that type's own walker. `bytes`, `string` and scalar fields are never entered.
+/// `tari_common::build::ProtobufCompiler` adds this derive to every tari protobuf type.
+#[proc_macro_derive(DecodeBudget, attributes(prost))]
+pub fn derive_decode_budget(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    decode_budget::expand(&input).into()
 }

@@ -248,7 +248,7 @@ impl GreetingRpc for SlowGreetingService {
         unimplemented!()
     }
 }
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SlowStreamRequest {
     #[prost(uint32, tag = "1")]
     pub num_items: u32,
@@ -258,7 +258,7 @@ pub struct SlowStreamRequest {
     pub delay_ms: u64,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloRequest {
     #[prost(string, tag = "1")]
     pub name: String,
@@ -266,7 +266,7 @@ pub struct SayHelloRequest {
     pub language: u32,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloResponse {
     #[prost(string, tag = "1")]
     pub greeting: String,

@@ -178,6 +178,11 @@ impl ProtobufCompiler {
 
         let mut config = prost_build::Config::new();
 
+        // Every tari protobuf type (messages, oneofs and enums) gets a decode-budget walker, so RPC payloads can be
+        // checked before they are decoded. Crates compiling protos with this builder must depend on `tari_comms` and
+        // `tari_comms_rpc_macros`.
+        config.type_attribute(".", "#[derive(::tari_comms_rpc_macros::DecodeBudget)]");
+
         for (k, v) in &self.type_attributes {
             config.type_attribute(k, v);
         }

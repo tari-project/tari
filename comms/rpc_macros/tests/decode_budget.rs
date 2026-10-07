@@ -32,24 +32,24 @@ use tari_comms_rpc_macros::tari_rpc;
 use tari_test_utils::unpack_enum;
 use tokio::sync::mpsc;
 
-#[derive(Clone, PartialEq, prost::Message)]
+#[derive(Clone, PartialEq, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct Empty {}
 
 /// A message whose elements cost two bytes each on the wire but a whole struct each when decoded
-#[derive(Clone, PartialEq, prost::Message)]
+#[derive(Clone, PartialEq, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct Bomb {
     #[prost(message, repeated, tag = "1")]
     pub items: Vec<Empty>,
 }
 
-#[derive(Clone, PartialEq, prost::Message)]
+#[derive(Clone, PartialEq, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct Item {
     #[prost(bytes, tag = "1")]
     pub data: Vec<u8>,
 }
 
 /// A message with many legitimate (non-empty) elements
-#[derive(Clone, PartialEq, prost::Message)]
+#[derive(Clone, PartialEq, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct Items {
     #[prost(message, repeated, tag = "1")]
     pub items: Vec<Item>,
@@ -164,7 +164,7 @@ async fn the_server_rejects_a_bomb_before_the_handler_runs() {
 async fn the_server_applies_the_per_method_budget() {
     let (mut client, calls, _guard) = setup().await;
 
-    // 200,000 items in 100,000 legitimate elements: over the default budget, within the method's own
+    // 100,000 legitimate elements: over the default budget, within the method's own
     let err = client.take_items(items(100_000)).await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
     assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);

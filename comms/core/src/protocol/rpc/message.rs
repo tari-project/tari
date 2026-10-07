@@ -29,6 +29,7 @@ use prost::encoding;
 
 use super::RpcError;
 use crate::{
+    decode_budget::{DecodeBudget, check_decode_budget},
     proto,
     proto::rpc::rpc_session_reply::SessionResult,
     protocol::{
@@ -50,18 +51,18 @@ pub struct Request<T> {
 }
 
 impl Request<Bytes> {
-    /// Decodes the request message, allowing at most [rpc::DEFAULT_MAX_DECODE_ITEMS] embedded items.
-    pub fn decode<T: prost::Message + Default>(self) -> Result<Request<T>, RpcError> {
+    /// Decodes the request message, allowing at most [rpc::DEFAULT_MAX_DECODE_ITEMS] embedded message instances.
+    pub fn decode<T: prost::Message + Default + DecodeBudget>(self) -> Result<Request<T>, RpcError> {
         self.decode_with_max_items(rpc::DEFAULT_MAX_DECODE_ITEMS)
     }
 
-    /// Decodes the request message, first checking that it carries at most `max_items` embedded items (see
-    /// [rpc::decode_guard]). A request over the budget is rejected before prost allocates anything for it.
-    pub fn decode_with_max_items<T: prost::Message + Default>(
+    /// Decodes the request message, first checking that it carries at most `max_items` embedded message instances
+    /// (see [crate::decode_budget]). A request over the budget is rejected before prost allocates anything for it.
+    pub fn decode_with_max_items<T: prost::Message + Default + DecodeBudget>(
         mut self,
         max_items: usize,
     ) -> Result<Request<T>, RpcError> {
-        rpc::decode_guard::check_decode_budget(&self.inner.message, max_items)?;
+        check_decode_budget::<T>(&self.inner.message, max_items)?;
         let message = T::decode(&mut self.inner.message)?;
         Ok(Request {
             context: self.context,

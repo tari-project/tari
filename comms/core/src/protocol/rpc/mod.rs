@@ -43,7 +43,7 @@ pub const RPC_MAX_FRAME_SIZE: usize = crate::protocol::messaging::MAX_FRAME_LENG
 ///
 /// This byte cap does not bound decode memory on its own: prost allocates a full struct per embedded message, so a
 /// small payload of empty elements can decode into many times its size. The bound on decode memory is the item budget
-/// enforced by [decode_guard] before every decode, together with the server's session limits.
+/// enforced by [crate::decode_budget] before every decode, together with the server's session limits.
 pub const RPC_MAX_REQUEST_SIZE: usize = 6 * 1024 * 1024;
 const _: () = assert!(RPC_MAX_REQUEST_SIZE <= RPC_MAX_FRAME_SIZE);
 
@@ -66,8 +66,7 @@ pub const fn max_response_payload_size() -> usize {
 mod body;
 pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 
-pub mod decode_guard;
-pub use decode_guard::DEFAULT_MAX_DECODE_ITEMS;
+pub use crate::decode_budget::{DEFAULT_MAX_DECODE_ITEMS, DecodeBudget};
 
 mod context;
 
