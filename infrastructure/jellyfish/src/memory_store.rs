@@ -1,7 +1,11 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-use std::{collections::HashMap, fmt, fmt::Debug};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    fmt,
+    fmt::Debug,
+};
 
 use crate::{JmtStorageError, Node, NodeKey, StaleTreeNode, TreeNode, TreeStoreReader, TreeStoreWriter};
 
@@ -37,9 +41,13 @@ impl<P: Clone> TreeStoreReader<P> for MemoryTreeStore<P> {
 
 impl<P> TreeStoreWriter<P> for MemoryTreeStore<P> {
     fn insert_node(&mut self, key: NodeKey, node: Node<P>) -> Result<(), JmtStorageError> {
-        let node = TreeNode::new_latest(node);
-        self.nodes.insert(key, node);
-        Ok(())
+        match self.nodes.entry(key) {
+            Entry::Occupied(entry) => Err(JmtStorageError::Conflict(entry.key().clone())),
+            Entry::Vacant(entry) => {
+                entry.insert(TreeNode::new_latest(node));
+                Ok(())
+            },
+        }
     }
 
     fn record_stale_tree_node(&mut self, stale: StaleTreeNode) -> Result<(), JmtStorageError> {
@@ -62,5 +70,23 @@ impl<P: Debug> fmt::Display for MemoryTreeStore<P> {
             writeln!(f, "    {}", stale.as_node_key())?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{LeafKey, LeafNode, jmt_node_hash};
+
+    #[test]
+    fn insert_node_refuses_to_overwrite() {
+        let mut mem = MemoryTreeStore::<u64>::new();
+        let key = NodeKey::new_empty_path(1);
+        let first = Node::Leaf(LeafNode::new(LeafKey::new(jmt_node_hash(&1)), jmt_node_hash(&10), 1, 1));
+        mem.insert_node(key.clone(), first.clone()).unwrap();
+
+        let err = mem.insert_node(key.clone(), Node::Null).unwrap_err();
+        assert!(matches!(&err, JmtStorageError::Conflict(k) if *k == key), "{err:?}");
+        assert_eq!(mem.get_node(&key).unwrap(), first);
     }
 }

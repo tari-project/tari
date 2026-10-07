@@ -195,6 +195,14 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         persisted_version: Option<Version>,
         version: Version,
     ) -> Result<(TreeHash, TreeUpdateBatch<P>), JmtStorageError> {
+        // Writing at or below the persisted version would record live nodes as stale and write their replacements
+        // under the same keys, so pruning the stale index would delete the live tree.
+        if let Some(persisted_version) = persisted_version.filter(|p| version <= *p) {
+            return Err(JmtStorageError::NonMonotonicVersion {
+                persisted_version,
+                version,
+            });
+        }
         let value_set = value_set.into_iter().collect::<BTreeMap<_, _>>();
         let deduped_and_sorted_kvs = value_set.iter().map(|(k, v)| (k, v.as_ref())).collect::<Vec<_>>();
 
@@ -782,7 +790,14 @@ pub struct StaleNodeIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SparseMerkleLeafNode, StaleTreeNode, TreeStoreWriter, jmt_node_hash, memory_store::MemoryTreeStore};
+    use crate::{
+        SparseMerkleLeafNode,
+        StaleTreeNode,
+        TreeNode,
+        TreeStoreWriter,
+        jmt_node_hash,
+        memory_store::MemoryTreeStore,
+    };
 
     fn leaf_key(seed: u64) -> LeafKey {
         LeafKey::new(jmt_node_hash(&seed))
@@ -887,7 +902,8 @@ mod tests {
     #[test]
     fn it_errors_on_null_node_below_root() {
         let (mut mem, _, k2) = two_leaf_tree();
-        mem.insert_node(leaf_node_key(&k2), Node::Null).unwrap();
+        // Corrupt the store directly: `insert_node` refuses to overwrite.
+        mem.nodes.insert(leaf_node_key(&k2), TreeNode::new_latest(Node::Null));
         let err = JellyfishMerkleTree::new(&mem)
             .batch_put_value_set([(k2, Some((jmt_node_hash(&12), ())))], None, Some(1), 2)
             .unwrap_err();
@@ -898,7 +914,8 @@ mod tests {
     fn it_errors_on_proof_when_leaf_child_is_not_a_leaf_in_storage() {
         let (mut mem, k1, k2) = two_leaf_tree();
         for corrupt in [Node::Null, InternalNode::new(Default::default()).into()] {
-            mem.insert_node(leaf_node_key(&k2), corrupt).unwrap();
+            // Corrupt the store directly: `insert_node` refuses to overwrite.
+            mem.nodes.insert(leaf_node_key(&k2), TreeNode::new_latest(corrupt));
             let err = JellyfishMerkleTree::new(&mem)
                 .get_with_proof(k1.as_ref(), 1)
                 .unwrap_err();
@@ -940,5 +957,60 @@ mod tests {
         // Forged non-inclusion of keys that are in the tree
         forged.verify_exclusion(&root, &a.0).unwrap_err();
         forged.verify_exclusion(&root, &b.0).unwrap_err();
+    }
+
+    #[test]
+    fn it_rejects_a_version_equal_to_the_persisted_version() {
+        // The store is empty, so any read would fail with `NotFound` instead.
+        let mem = MemoryTreeStore::<()>::new();
+        let err = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(leaf_key(1), Some((jmt_node_hash(&10), ())))], None, Some(5), 5)
+            .unwrap_err();
+        assert!(
+            matches!(err, JmtStorageError::NonMonotonicVersion {
+                persisted_version: 5,
+                version: 5
+            }),
+            "{err:?}"
+        );
+        assert!(mem.nodes.is_empty());
+        assert!(mem.stale_nodes.is_empty());
+    }
+
+    #[test]
+    fn it_rejects_a_version_below_the_persisted_version() {
+        let mem = MemoryTreeStore::<()>::new();
+        let err = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(leaf_key(1), Some((jmt_node_hash(&10), ())))], None, Some(5), 4)
+            .unwrap_err();
+        assert!(
+            matches!(err, JmtStorageError::NonMonotonicVersion {
+                persisted_version: 5,
+                version: 4
+            }),
+            "{err:?}"
+        );
+        assert!(mem.nodes.is_empty());
+    }
+
+    #[test]
+    fn it_accepts_the_next_version() {
+        let mut mem = MemoryTreeStore::<()>::new();
+        let (_, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(leaf_key(1), Some((jmt_node_hash(&10), ())))], None, None, 5)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        let (_, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(leaf_key(2), Some((jmt_node_hash(&11), ())))], None, Some(5), 6)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        let (value, _) = JellyfishMerkleTree::new(&mem)
+            .get_with_proof(leaf_key(2).as_ref(), 6)
+            .unwrap();
+        assert!(value.is_some());
     }
 }

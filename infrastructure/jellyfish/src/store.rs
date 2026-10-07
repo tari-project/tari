@@ -14,6 +14,10 @@ pub trait TreeStoreReader<P> {
 /// Implementers are able to insert nodes to a tree store.
 pub trait TreeStoreWriter<P> {
     /// Inserts the node under a new, unique key (i.e. never an update).
+    ///
+    /// Implementations must return [`JmtStorageError::Conflict`] if a node already exists under `key`. The tree's
+    /// stale-node bookkeeping relies on nodes never being overwritten: an overwritten key may also be in the stale
+    /// index, and pruning it would delete the live node.
     fn insert_node(&mut self, key: NodeKey, node: Node<P>) -> Result<(), JmtStorageError>;
 
     /// Marks the given tree part for a (potential) future removal by an arbitrary external pruning
