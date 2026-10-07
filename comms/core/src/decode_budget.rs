@@ -149,6 +149,20 @@ pub fn check_decode_budget<T: DecodeBudget + ?Sized>(
     Ok(budget.items())
 }
 
+/// Decodes `buf` as a `T` after checking (with [check_decode_budget]) that it carries at most `max_items` embedded
+/// message instances. An over-budget payload is reported as a `prost::DecodeError`, so callers handle it exactly like
+/// any other undecodable payload.
+pub fn decode_with_max_items<T>(buf: &[u8], max_items: usize) -> Result<T, prost::DecodeError>
+where T: prost::Message + Default + DecodeBudget {
+    check_decode_budget::<T>(buf, max_items).map_err(|err| {
+        prost::DecodeError::new(format!(
+            "message exceeds the decode budget ({} embedded items, at most {} allowed)",
+            err.items, err.max
+        ))
+    })?;
+    T::decode(buf)
+}
+
 /// Calls `f(tag, contents, budget)` for every length-delimited field in `buf`, skipping all other fields (including
 /// groups, as prost does). Stops (with `Ok`) at the first malformed field.
 pub fn walk_len_fields<F>(buf: &[u8], budget: &mut Budget, f: F) -> Result<(), DecodeBudgetExceeded>

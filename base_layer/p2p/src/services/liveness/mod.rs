@@ -79,11 +79,16 @@ pub use crate::proto::liveness::MetadataKey;
 use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
-    services::{liveness::state::LivenessState, utils::map_decode},
+    services::{liveness::state::LivenessState, utils::map_decode_with_max_items},
     tari_message::TariMessageType,
 };
 
 const LOG_TARGET: &str = "p2p::services::liveness";
+
+/// The decode budget (see `tari_comms::decode_budget`) for an inbound `PingPongMessage`. Its only list is the
+/// `metadata` map, which is charged one item per entry and legitimately holds one entry per `MetadataKey` (two today).
+/// Without it, one 8 MiB messaging frame decodes into a map of ~1M entries.
+pub const PING_PONG_MAX_DECODE_ITEMS: usize = 64;
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
@@ -107,7 +112,7 @@ impl LivenessInitializer {
     fn ping_stream(&self) -> impl Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>> + use<> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::PingPong, "Liveness")
-            .map(map_decode::<PingPongMessage>)
+            .map(map_decode_with_max_items::<PingPongMessage>(PING_PONG_MAX_DECODE_ITEMS))
     }
 }
 
@@ -155,5 +160,49 @@ impl ServiceInitializer for LivenessInitializer {
 
         debug!(target: LOG_TARGET, "Liveness service initialized");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod decode_budget_test {
+    use std::collections::HashMap;
+
+    use prost::Message;
+    use tari_comms::decode_budget::decode_with_max_items;
+
+    use super::*;
+    use crate::proto::liveness::PingPong;
+
+    fn ping_with_metadata(metadata: HashMap<i32, Vec<u8>>) -> Vec<u8> {
+        PingPongMessage {
+            ping_pong: PingPong::Ping as i32,
+            nonce: 1,
+            metadata,
+        }
+        .encode_to_vec()
+    }
+
+    #[test]
+    fn a_ping_with_too_many_metadata_entries_is_rejected_before_decoding_it() {
+        let flood = ping_with_metadata(
+            (0..=i32::try_from(PING_PONG_MAX_DECODE_ITEMS).unwrap())
+                .map(|k| (k, Vec::new()))
+                .collect(),
+        );
+        // Prost alone accepts it
+        assert!(PingPongMessage::decode(flood.as_slice()).is_ok());
+        let err = decode_with_max_items::<PingPongMessage>(&flood, PING_PONG_MAX_DECODE_ITEMS).unwrap_err();
+        assert!(err.to_string().contains("decode budget"), "unexpected error: {err}");
+
+        // A ping carrying every metadata key decodes
+        let ping = ping_with_metadata(
+            [
+                (MetadataKey::ChainMetadata as i32, vec![1u8; 128]),
+                (MetadataKey::ContactsLiveness as i32, Vec::new()),
+            ]
+            .into(),
+        );
+        let decoded = decode_with_max_items::<PingPongMessage>(&ping, PING_PONG_MAX_DECODE_ITEMS).unwrap();
+        assert_eq!(decoded.metadata.len(), 2);
     }
 }

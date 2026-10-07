@@ -38,6 +38,12 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{proto::dht::JoinMessage, rpc::UnvalidatedPeerInfo};
 
+/// The decode budget (see `tari_comms::decode_budget`) for a DHT envelope body and for the join and discovery messages
+/// it carries. Their only lists are the envelope's parts (two for every message this node sends) and the claimed peer
+/// addresses (at most `max_permitted_peer_addresses_per_claim`, 5 by default), so this is far above anything
+/// legitimate. Without it, one 8 MiB messaging frame of empty parts or addresses decodes into ~4M `Vec`s.
+pub const DHT_MESSAGE_MAX_DECODE_ITEMS: usize = 1_024;
+
 #[allow(clippy::all, clippy::pedantic)]
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");
@@ -180,5 +186,68 @@ impl From<&IdentitySignature> for common::IdentitySignature {
             public_nonce: identity_sig.signature().get_compressed_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at().timestamp(),
         }
+    }
+}
+
+#[cfg(test)]
+mod decode_budget_test {
+    use tari_comms::{message::MessageError, wrap_in_envelope_body};
+
+    use super::{
+        DHT_MESSAGE_MAX_DECODE_ITEMS,
+        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
+    };
+
+    fn is_decode_budget_error(err: &MessageError) -> bool {
+        err.to_string().contains("decode budget")
+    }
+
+    /// Join and discovery messages claiming more addresses than the decode budget allows are rejected before prost
+    /// decodes them; ones at the configured address limit (5 by default) and at the budget decode.
+    #[test]
+    fn join_and_discovery_messages_over_the_decode_budget_are_rejected() {
+        let addresses = |count: usize| vec![b"/ip4/127.0.0.1/tcp/18189".to_vec(); count];
+
+        for count in [5, DHT_MESSAGE_MAX_DECODE_ITEMS] {
+            let body = wrap_in_envelope_body!(JoinMessage {
+                addresses: addresses(count),
+                ..Default::default()
+            });
+            let join = body
+                .decode_part_with_max_items::<JoinMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
+                .unwrap()
+                .unwrap();
+            assert_eq!(join.addresses.len(), count);
+        }
+
+        let flood = vec![Vec::new(); DHT_MESSAGE_MAX_DECODE_ITEMS + 1];
+        let join = wrap_in_envelope_body!(JoinMessage {
+            addresses: flood.clone(),
+            ..Default::default()
+        });
+        let discovery = wrap_in_envelope_body!(DiscoveryMessage {
+            addresses: flood.clone(),
+            ..Default::default()
+        });
+        let discovery_response = wrap_in_envelope_body!(DiscoveryResponseMessage {
+            addresses: flood,
+            ..Default::default()
+        });
+
+        // Prost alone accepts them
+        assert!(join.decode_part::<JoinMessage>(0).unwrap().is_some());
+
+        let err = join
+            .decode_part_with_max_items::<JoinMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap_err();
+        assert!(is_decode_budget_error(&err), "unexpected error: {err}");
+        let err = discovery
+            .decode_part_with_max_items::<DiscoveryMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap_err();
+        assert!(is_decode_budget_error(&err), "unexpected error: {err}");
+        let err = discovery_response
+            .decode_part_with_max_items::<DiscoveryResponseMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
+            .unwrap_err();
+        assert!(is_decode_budget_error(&err), "unexpected error: {err}");
     }
 }

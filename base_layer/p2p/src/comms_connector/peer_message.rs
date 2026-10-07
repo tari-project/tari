@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{
-    decode_budget::{DecodeBudget, check_decode_budget},
+    decode_budget::{DecodeBudget, decode_with_max_items},
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
@@ -55,13 +55,7 @@ impl PeerMessage {
     /// message.
     pub fn decode_message_with_max_items<T>(&self, max_items: usize) -> Result<T, prost::DecodeError>
     where T: prost::Message + Default + DecodeBudget {
-        check_decode_budget::<T>(&self.body, max_items).map_err(|err| {
-            prost::DecodeError::new(format!(
-                "message exceeds the decode budget ({} embedded items, at most {} allowed)",
-                err.items, err.max
-            ))
-        })?;
-        self.decode_message()
+        decode_with_max_items(&self.body, max_items)
     }
 
     pub fn origin_node_id(&self) -> NodeId {

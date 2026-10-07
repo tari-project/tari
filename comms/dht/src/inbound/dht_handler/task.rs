@@ -43,6 +43,7 @@ use crate::{
     outbound::{OutboundMessageRequester, SendMessageParams},
     peer_validator::PeerValidator,
     proto::{
+        DHT_MESSAGE_MAX_DECODE_ITEMS,
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
@@ -180,7 +181,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let join_msg = self
             .ban_on_offence(
                 &authenticated_pk,
-                body.decode_part::<JoinMessage>(0)
+                body.decode_part_with_max_items::<JoinMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
@@ -310,7 +311,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let discover_msg = self
             .ban_on_offence(
                 authenticated_origin,
-                msg.decode_part::<DiscoveryResponseMessage>(0)
+                msg.decode_part_with_max_items::<DiscoveryResponseMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
@@ -373,7 +374,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let discover_msg = self
             .ban_on_offence(
                 authenticated_pk,
-                msg.decode_part::<DiscoveryMessage>(0)
+                msg.decode_part_with_max_items::<DiscoveryMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
