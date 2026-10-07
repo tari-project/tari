@@ -672,7 +672,11 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                         ));
                     }
                 },
-                Node::Leaf(_) => {},
+                Node::Leaf(leaf_node) => {
+                    if !leaf_key_has_prefix(leaf_node.leaf_key(), key.nibble_path()) {
+                        return Err(JmtStorageError::InconsistentState);
+                    }
+                },
                 // Null only represents the empty tree, so it can only be the root
                 Node::Null => {
                     if !key.nibble_path().is_empty() {
@@ -1231,6 +1235,17 @@ mod tests {
     }
 
     #[test]
+    fn it_errors_on_a_misplaced_leaf_in_get_all_nodes_referenced() {
+        let (mut mem, k1, _) = two_leaf_tree();
+        let misplaced = Node::new_leaf(key_in_other_bucket(&k1), jmt_node_hash(&10), (), 1);
+        mem.nodes.insert(leaf_node_key(&k1), TreeNode::new_latest(misplaced));
+        let err = JellyfishMerkleTree::new(&mem)
+            .get_all_nodes_referenced(NodeKey::new_empty_path(1))
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+    }
+
+    #[test]
     fn it_accepts_a_null_root_in_get_all_nodes_referenced() {
         let mut mem = MemoryTreeStore::<()>::new();
         let (_, diff) = JellyfishMerkleTree::new(&mem).batch_put_value_set([], None, 1).unwrap();
@@ -1286,6 +1301,32 @@ mod tests {
             .unwrap();
         mem.clear_stale_nodes();
         assert!(mem.nodes.is_empty(), "{mem}");
+    }
+
+    #[test]
+    fn it_clears_a_stale_subtree_overlapping_stale_nodes_from_the_memory_store() {
+        let keys = three_level_keys();
+        let root = NodeKey::new_empty_path(1);
+        // The internal node under the root, on the path shared by the first two keys
+        let internal = root.gen_child_node_key(1, keys[0].get_nibble(0).unwrap());
+        for stale_first in [root.clone(), internal] {
+            let mut mem = MemoryTreeStore::<()>::new();
+            let values = keys.map(|k| (k, Some((jmt_node_hash(&10), ()))));
+            let (_, diff) = JellyfishMerkleTree::new(&mem)
+                .batch_put_value_set(values, None, 1)
+                .unwrap();
+            for (k, v) in diff.node_batch {
+                mem.insert_node(k, v).unwrap();
+            }
+            assert!(mem.nodes.contains_key(&stale_first));
+
+            mem.record_stale_tree_node(StaleTreeNode::Node(stale_first.clone()))
+                .unwrap();
+            mem.record_stale_tree_node(StaleTreeNode::Subtree(root.clone()))
+                .unwrap();
+            mem.clear_stale_nodes();
+            assert!(mem.nodes.is_empty(), "{stale_first:?}: {mem}");
+        }
     }
 
     #[test]

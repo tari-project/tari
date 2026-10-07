@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::{HashMap, HashSet, hash_map::Entry},
     fmt,
     fmt::Debug,
 };
@@ -26,24 +26,35 @@ impl<P> MemoryTreeStore<P> {
     /// Removes every recorded stale node. A [`StaleTreeNode::Subtree`] removes the node and all of its descendants,
     /// even those still shared with a newer root; see [`TreeStoreWriter::record_stale_tree_node`].
     pub fn clear_stale_nodes(&mut self) {
+        // Collect every key before removing any, so that a node removed by one record can not hide the descendants
+        // of an overlapping `Subtree` record.
+        let mut to_remove = HashSet::new();
+        let mut expanded = HashSet::new();
         for stale in self.stale_nodes.drain(..) {
             match stale {
                 StaleTreeNode::Node(key) => {
-                    self.nodes.remove(&key);
+                    to_remove.insert(key);
                 },
                 StaleTreeNode::Subtree(key) => {
-                    // Iterative so that a deep (or corrupt) tree cannot overflow the stack. Each removed node yields
-                    // its children, and a removed key is never visited again, so this terminates.
+                    // Iterative so that a deep (or corrupt) tree cannot overflow the stack. A key is only expanded
+                    // the first time it is seen, so this terminates.
                     let mut stack = vec![key];
                     while let Some(key) = stack.pop() {
-                        if let Some(Node::Internal(internal_node)) = self.nodes.remove(&key).map(TreeNode::into_node) {
-                            for (nibble, child) in internal_node.into_children() {
-                                stack.push(key.gen_child_node_key(child.version, nibble));
+                        if !expanded.insert(key.clone()) {
+                            continue;
+                        }
+                        if let Some(Node::Internal(internal_node)) = self.nodes.get(&key).map(TreeNode::as_node) {
+                            for (nibble, child) in internal_node.children_sorted() {
+                                stack.push(key.gen_child_node_key(child.version, *nibble));
                             }
                         }
+                        to_remove.insert(key);
                     }
                 },
             }
+        }
+        for key in to_remove {
+            self.nodes.remove(&key);
         }
     }
 }
