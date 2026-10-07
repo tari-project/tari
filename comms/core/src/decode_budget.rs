@@ -406,13 +406,19 @@ mod test {
         len_field(tag, &[]).repeat(count)
     }
 
-    /// Elements that fill a 6 MiB request
-    const FLOOD_ELEMENTS: usize = 3 * 1024 * 1024 - 8;
+    /// The RPC request size cap. This module is compiled without the `rpc` feature too, so it keeps its own copy of
+    /// `protocol::rpc::RPC_MAX_REQUEST_SIZE`, tied to the real one when that exists.
+    const MAX_REQUEST_SIZE: usize = 6 * 1024 * 1024;
+    #[cfg(feature = "rpc")]
+    const _: () = assert!(MAX_REQUEST_SIZE == crate::protocol::rpc::RPC_MAX_REQUEST_SIZE);
+
+    /// Elements that fill a request up to the size cap, leaving room for the enclosing headers
+    const FLOOD_ELEMENTS: usize = MAX_REQUEST_SIZE / 2 - 8;
 
     #[test]
     fn it_rejects_a_flat_flood() {
         let flood = empty_elements(1, FLOOD_ELEMENTS);
-        assert!(flood.len() <= crate::protocol::rpc::RPC_MAX_REQUEST_SIZE);
+        assert!(flood.len() <= MAX_REQUEST_SIZE);
         let err = check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
         assert_eq!(err, DecodeBudgetExceeded {
             items: DEFAULT_MAX_DECODE_ITEMS + 1,
