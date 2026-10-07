@@ -319,7 +319,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                         let public_msg = msg
                             .decryption_result
                             .unwrap()
-                            .decode_part::<String>(1)
+                            .decode_part_with_max_items::<String>(1, 0)
                             .unwrap()
                             .unwrap();
                         println!(

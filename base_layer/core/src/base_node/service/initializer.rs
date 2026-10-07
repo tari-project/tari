@@ -296,7 +296,7 @@ mod test {
         // Prost alone accepts a flood just over the budget. Only that one is decoded: prost-decoding the full-frame
         // flood below would cost ~135 MB, and the lib tests run in parallel.
         let just_over = request_of_empty_sigs(shared_protos::MESSAGE_MAX_DECODE_ITEMS + 1);
-        assert!(just_over.decode_message::<proto::BaseNodeServiceRequest>().is_ok());
+        assert!(<proto::BaseNodeServiceRequest as prost::Message>::decode(just_over.body.as_slice()).is_ok());
         let decoded = map_decode_with_max_items::<proto::BaseNodeServiceRequest>(
             shared_protos::MESSAGE_MAX_DECODE_ITEMS,
         )(just_over);

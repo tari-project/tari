@@ -43,6 +43,9 @@ pub struct PeerMessage {
 }
 
 impl PeerMessage {
+    /// Decodes the body with no decode budget. Not for messages from peers: a message of empty repeated elements can
+    /// decode into far more memory than its size.
+    #[deprecated(note = "use the _with_max_items variant, which bounds what decoding can allocate")]
     pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
     where T: prost::Message + Default {
         let msg = T::decode(self.body.as_slice())?;

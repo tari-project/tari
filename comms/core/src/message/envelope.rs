@@ -86,6 +86,7 @@ impl EnvelopeBody {
 
     /// Decodes a part of the message body and returns the result. If the part index is out of range Ok(None) is
     /// returned
+    #[deprecated(note = "use the _with_max_items variant, which bounds what decoding can allocate")]
     pub fn decode_part<T>(&self, index: usize) -> Result<Option<T>, MessageError>
     where T: prost::Message + Default {
         match self.parts.get(index) {
@@ -132,7 +133,12 @@ mod test {
         };
 
         // Prost alone accepts the flood
-        assert_eq!(body.decode_part::<EnvelopeBody>(0).unwrap().unwrap().len(), 2_000);
+        assert_eq!(
+            EnvelopeBody::decode(body.parts.first().unwrap().as_slice())
+                .unwrap()
+                .len(),
+            2_000
+        );
         let err = body.decode_part_with_max_items::<EnvelopeBody>(0, 1_000).unwrap_err();
         assert!(err.to_string().contains("decode budget"), "unexpected error: {err}");
 

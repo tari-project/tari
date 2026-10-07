@@ -75,7 +75,8 @@ impl InboundDomainConnector {
             .success_mut()
             .ok_or_else(|| anyhow!("Message failed to decrypt"))?;
         let header = envelope_body
-            .decode_part::<MessageHeader>(0)?
+            // A MessageHeader is two scalars, with no embedded messages or lists, so it gets no budget at all
+            .decode_part_with_max_items::<MessageHeader>(0, 0)?
             .ok_or_else(|| anyhow!("envelope body did not contain a header"))?;
 
         let msg_bytes = envelope_body
@@ -127,7 +128,10 @@ mod test {
 
         let peer_message = block_on(rx.recv()).unwrap();
         assert_eq!(peer_message.message_header.message_type, 123);
-        assert_eq!(peer_message.decode_message::<String>().unwrap(), "my message");
+        assert_eq!(
+            peer_message.decode_message_with_max_items::<String>(0).unwrap(),
+            "my message"
+        );
     }
 
     #[tokio::test]
@@ -143,7 +147,10 @@ mod test {
 
         let peer_message = block_on(rx.recv()).unwrap();
         assert_eq!(peer_message.message_header.message_type, 123);
-        assert_eq!(peer_message.decode_message::<String>().unwrap(), "my message");
+        assert_eq!(
+            peer_message.decode_message_with_max_items::<String>(0).unwrap(),
+            "my message"
+        );
     }
 
     #[tokio::test]

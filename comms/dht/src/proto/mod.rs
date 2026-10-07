@@ -235,7 +235,7 @@ mod decode_budget_test {
         });
 
         // Prost alone accepts them
-        assert!(join.decode_part::<JoinMessage>(0).unwrap().is_some());
+        assert!(<JoinMessage as prost::Message>::decode(join.parts.first().unwrap().as_slice()).is_ok());
 
         let err = join
             .decode_part_with_max_items::<JoinMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
