@@ -126,6 +126,8 @@ impl RpcError {
             RpcError::HandshakeError(RpcHandshakeError::Io(_)) |
             RpcError::HandshakeError(RpcHandshakeError::ClientNoSupportedVersion) |
             RpcError::HandshakeError(RpcHandshakeError::ClientClosed) |
+            // An oversized handshake frame is rejected before decoding; this adds no ban where there was none
+            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }) |
             RpcError::UnknownError(_) => false,
         }
     }

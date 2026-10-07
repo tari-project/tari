@@ -40,6 +40,11 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 /// Currently only v0 is supported
 pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
 
+/// The largest handshake frame either side will decode. A handshake carries a short list of protocol versions (or the
+/// reply to one), so anything near this size is not a real handshake; without a bound the frame could be as large as
+/// the RPC framing allows (8 MiB) and decode into a very long version list.
+pub(super) const MAX_HANDSHAKE_FRAME_SIZE: usize = 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RpcHandshakeError {
     #[error("Failed to decode message: {0}")]
@@ -56,6 +61,19 @@ pub enum RpcHandshakeError {
     Rejected(#[from] HandshakeRejectReason),
     #[error("The client connection is closed")]
     ClientClosed,
+    #[error("Handshake frame was too large: {size} bytes, at most {max} allowed")]
+    FrameTooLarge { size: usize, max: usize },
+}
+
+/// Rejects a handshake frame larger than [MAX_HANDSHAKE_FRAME_SIZE] before it is decoded.
+fn check_frame_size(frame: &BytesMut) -> Result<(), RpcHandshakeError> {
+    if frame.len() > MAX_HANDSHAKE_FRAME_SIZE {
+        return Err(RpcHandshakeError::FrameTooLarge {
+            size: frame.len(),
+            max: MAX_HANDSHAKE_FRAME_SIZE,
+        });
+    }
+    Ok(())
 }
 
 /// Handshake protocol
@@ -82,6 +100,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
+                check_frame_size(&msg)?;
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
@@ -151,6 +170,7 @@ where T: AsyncRead + AsyncWrite + Unpin
         self.framed.flush().await?;
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
+                check_frame_size(&msg)?;
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
                 debug!(target: LOG_TARGET, "Remote server accepted version {}", version);
