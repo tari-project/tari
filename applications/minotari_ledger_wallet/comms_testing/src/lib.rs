@@ -75,8 +75,9 @@
 //!
 //! # Driving and asserting the device's screen
 //!
-//! Exactly one instruction - `GetOneSidedMetadataSignature` - puts a review screen in front of a human and refuses
-//! to answer until somebody presses a button. Three more modules exist to drive and assert that screen:
+//! Two instructions - `GetOneSidedMetadataSignature` and `GetRawSchnorrSignatureLegacyNonce` - put a review screen
+//! in front of a human and refuse to answer until somebody presses a button. Three more modules exist to drive and
+//! assert those screens:
 //!
 //! * [`speculos_api`] - Speculos' HTTP control API: what the device is showing, and how to press it.
 //! * [`review`] - what the device is supposed to be showing, and whether it is.
@@ -98,7 +99,7 @@
 //! * `examples/ledger_demo.rs` runs **the same scenarios with the same assertions** against real hardware.
 //!
 //! A scenario declares whether it needs approval and nothing else varies between them, which is affordable because
-//! exactly one instruction shows a screen. Two supporting modules:
+//! only two instructions show a screen. Two supporting modules:
 //!
 //! * [`raw`] - the only place in this crate that builds an APDU, and the seam a shared wire-format codec would replace.
 //!   Rejection scenarios have to send bytes no accessor method would, because the accessors mirror the device's rules

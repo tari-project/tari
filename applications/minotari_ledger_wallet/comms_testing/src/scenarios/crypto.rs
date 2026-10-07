@@ -107,6 +107,12 @@ const SCENARIOS: &[Scenario] = &[
         run: the_script_offset_is_the_sum_it_claims,
     },
     Scenario {
+        name: "a script offset over pre-mine script keys only is blinded by PreMine sender offset keys",
+        covers: &[Instruction::GetScriptOffset, Instruction::GetPublicKey],
+        approval: Approval::NotNeeded,
+        run: a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine,
+    },
+    Scenario {
         name: "a Diffie-Hellman shared secret is the device's key times the host's point",
         covers: &[Instruction::GetDHSharedSecret, Instruction::GetPublicKey],
         approval: Approval::NotNeeded,
@@ -477,6 +483,63 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
              script key.",
             RistrettoPublicKey::from_secret_key(&script_offset).to_hex(),
             expected.to_hex(),
+        )
+    })
+}
+
+/// Acceptance: a script offset whose only device derived script keys are pre-mine keys - the pre-mine spend flow's
+/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes in the top half of `u64`.
+///
+/// This is what lets pre-mine step 3 sign its metadata signature through the legacy nonce instruction, which signs
+/// `PreMine` keys only. The other half of the rule - a request that folds an alpha derived key keeps
+/// `OneSidedSenderOffset` sender offsets, which the legacy instruction refuses - is
+/// [`the_script_offset_is_the_sum_it_claims`], whose equation only balances on that branch.
+///
+/// Through the accessor, which returns indexes only: the branch is asserted by the equation balancing against the
+/// `PreMine` public keys at those indexes and *not* against the `OneSidedSenderOffset` ones.
+fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let partial_sum = fixtures::random_secret_key();
+    // Genesis output indexes are small; the device draws pre-mine sender offsets from the top half of `u64`.
+    let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
+        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() % 100_000))
+        .collect();
+
+    let (script_offset, sender_offset_indexes) =
+        ledger_get_script_offset(account, &partial_sum, &[], &script_indexes, 1)
+            .context(|| "GetScriptOffset over pre-mine script keys only".to_string())?;
+    let sender_offset_index = match sender_offset_indexes.as_slice() {
+        [index] => *index,
+        other => return Err(super::fail(format!("expected one sender offset index, got {other:?}"))),
+    };
+    require(sender_offset_index >> 63 == 1, || {
+        format!("the pre-mine sender offset index {sender_offset_index} is not in the top half of u64")
+    })?;
+
+    let mut script_side = RistrettoPublicKey::from_secret_key(&partial_sum);
+    for (branch, index) in &script_indexes {
+        let key = ledger_get_public_key(account, *index, *branch)
+            .context(|| format!("GetPublicKey for the pre-mine script key at index {index}"))?;
+        script_side = script_side + key;
+    }
+    let pre_mine_sender_offset = ledger_get_public_key(account, sender_offset_index, LedgerKeyBranch::PreMine)
+        .context(|| "GetPublicKey for the PreMine sender offset key".to_string())?;
+    let one_sided_sender_offset =
+        ledger_get_public_key(account, sender_offset_index, LedgerKeyBranch::OneSidedSenderOffset)
+            .context(|| "GetPublicKey for the OneSidedSenderOffset key at the same index".to_string())?;
+
+    let actual = RistrettoPublicKey::from_secret_key(&script_offset);
+    require(actual == script_side.clone() - pre_mine_sender_offset, || {
+        let on_one_sided = actual == script_side.clone() - one_sided_sender_offset.clone();
+        format!(
+            "the pre-mine script offset is not the script keys minus the PreMine sender offset key at index \
+             {sender_offset_index}. Against the OneSidedSenderOffset key at that index it {} - a device still issuing \
+             pre-mine sender offsets on that branch would leave pre-mine step 3 unable to sign.",
+            if on_one_sided {
+                "does balance"
+            } else {
+                "does not balance either"
+            }
         )
     })
 }

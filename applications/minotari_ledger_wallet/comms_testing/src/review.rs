@@ -3,13 +3,17 @@
 
 //! What the device is supposed to be showing, and whether it is.
 //!
-//! # One instruction shows a review screen
+//! # Two instructions show a review screen
 //!
-//! `GetOneSidedMetadataSignature` is the only handler in the device application that puts anything in front of a
-//! human - see `wallet/src/handlers/get_one_sided_metadata_signature.rs`. Everything else answers without asking.
-//! So this module is not a UI framework; it is a model of one screen, and it is sized accordingly.
+//! `GetOneSidedMetadataSignature` and `GetRawSchnorrSignatureLegacyNonce` are the only handlers in the device
+//! application that put anything in front of a human - see `wallet/src/handlers/get_one_sided_metadata_signature.rs`
+//! and `wallet/src/handlers/get_schnorr_signature.rs`. Everything else answers without asking. So this module is not
+//! a UI framework; it is a model of two screens, and it is sized accordingly. Both use the same titles and buttons,
+//! so the furniture below is shared.
 //!
-//! That screen carries three fields:
+//! The legacy nonce review carries `Purpose`, `Key` and `Nonce`; see [`ExpectedReview::legacy_signature`].
+//!
+//! The metadata signature review carries three fields:
 //!
 //! | Field        | Value                                                          |
 //! |--------------|----------------------------------------------------------------|
@@ -210,6 +214,12 @@ pub const AMOUNT_FIELD: &str = "Amount";
 pub const RECEIVER_FIELD: &str = "Receiver";
 /// The field name the device uses for the payment ID, which it omits entirely when there is no payment ID.
 pub const PAYMENT_ID_FIELD: &str = "Payment ID";
+/// The legacy nonce review's field naming which pre-mine signature is being asked for.
+pub const PURPOSE_FIELD: &str = "Purpose";
+/// The legacy nonce review's field naming the signing key, as `"{branch} {index}"`.
+pub const KEY_FIELD: &str = "Key";
+/// The legacy nonce review's field naming the nonce, as `"{branch} {index}"`.
+pub const NONCE_FIELD: &str = "Nonce";
 
 impl ExpectedReview {
     /// The review `GetOneSidedMetadataSignature` puts up for `value` going to `receiver`.
@@ -243,6 +253,38 @@ impl ExpectedReview {
             absent.push(PAYMENT_ID_FIELD.to_string());
         }
         Self { present, absent }
+    }
+
+    /// The review `GetRawSchnorrSignatureLegacyNonce` puts up before it signs with the `key_branch` key at
+    /// `key_index` and the `nonce_branch` nonce at `nonce_index`.
+    ///
+    /// The purpose line is restated here rather than taken from `legacy_signature_purpose`, for the same reason
+    /// [`minotari_amount`] is a copy: an expectation computed by the device's own function would agree with the device
+    /// by construction. Pre-mine sender offset keys - which sign the metadata signature - are the ones with the top
+    /// bit of their index set; pre-mine script keys are at their genesis output index.
+    pub fn legacy_signature(key_branch: &str, key_index: u64, nonce_branch: &str, nonce_index: u64) -> Self {
+        let purpose = if key_index >> 63 == 1 {
+            "Pre-mine metadata signature"
+        } else {
+            "Pre-mine script signature"
+        };
+        Self {
+            present: vec![
+                ExpectedField {
+                    name: PURPOSE_FIELD.to_string(),
+                    value: purpose.to_string(),
+                },
+                ExpectedField {
+                    name: KEY_FIELD.to_string(),
+                    value: format!("{key_branch} {key_index}"),
+                },
+                ExpectedField {
+                    name: NONCE_FIELD.to_string(),
+                    value: format!("{nonce_branch} {nonce_index}"),
+                },
+            ],
+            absent: Vec::new(),
+        }
     }
 
     /// The fields that must appear, in the order the device draws them.
@@ -866,5 +908,23 @@ mod test {
     #[should_panic(expected = "there is no 'Nonsense' field")]
     fn corrupting_a_field_that_does_not_exist_panics() {
         let _wrong = ExpectedReview::one_sided_metadata_signature(1, RECEIVER, 0).with_field_value("Nonsense", "x");
+    }
+
+    /// The legacy nonce review names the purpose, then the key, then the nonce, and the purpose follows the key
+    /// index: pre-mine sender offset keys are the ones in the top half of `u64`.
+    #[test]
+    fn a_legacy_signature_review_names_purpose_key_and_nonce() {
+        let script = ExpectedReview::legacy_signature("PreMine", 12, "Random", 34);
+        assert_eq!(
+            script.summary(),
+            "Purpose: Pre-mine script signature, Key: PreMine 12, Nonce: Random 34"
+        );
+        let sender_offset_index = (1u64 << 63) | 5;
+        let metadata = ExpectedReview::legacy_signature("PreMine", sender_offset_index, "Random", 34);
+        assert_eq!(
+            metadata.summary(),
+            format!("Purpose: Pre-mine metadata signature, Key: PreMine {sender_offset_index}, Nonce: Random 34")
+        );
+        assert!(metadata.absent().is_empty());
     }
 }

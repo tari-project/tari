@@ -28,7 +28,7 @@ use std::slice;
 
 use minotari_ledger_wallet_common::{
     common_types::{Instruction, LedgerKeyBranch},
-    script_offset::{MAX_SENDER_OFFSET_KEYS, sender_offset_index},
+    script_offset::{MAX_SENDER_OFFSET_KEYS, PRE_MINE_SENDER_OFFSET_INDEX_BIT, sender_offset_index},
 };
 use tari_common_types::types::PrivateKey;
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -117,18 +117,15 @@ fn assert_offset_is_the_difference(offset: &PrivateKey, script_keys: &[TariKeyAn
     );
 }
 
-/// Every sender offset key the device issued is on the sender offset branch, and they are the consecutive walk
-/// `base..base + count` that the reply's single base index names - which is what the wrapper reconstructs them from.
-fn assert_sender_offsets_are_one_walk(sender_offsets: &[TariKeyAndId], count: usize) {
+/// Every sender offset key the device issued is on `branch`, and they are the consecutive walk `base..base + count`
+/// that the reply's single base index names - which is what the wrapper reconstructs them from.
+fn assert_sender_offsets_are_one_walk(sender_offsets: &[TariKeyAndId], count: usize, branch: LedgerKeyBranch) {
     assert_eq!(sender_offsets.len(), count, "asked for {count} sender offset keys");
     let indexes: Vec<u64> = sender_offsets
         .iter()
         .map(|key| match key.key_id {
-            TariKeyId::LedgerKey {
-                branch: LedgerKeyBranch::OneSidedSenderOffset,
-                index,
-            } => index,
-            ref other => panic!("a sender offset key must be a device held OneSidedSenderOffset key, got {other}"),
+            TariKeyId::LedgerKey { branch: b, index } if b == branch => index,
+            ref other => panic!("a sender offset key must be a device held {branch} key, got {other}"),
         })
         .collect();
     let base = *indexes.first().expect("at least one sender offset key");
@@ -182,7 +179,42 @@ fn a_mixed_chunked_script_offset_is_the_script_keys_minus_the_sender_offset_keys
         let (offset, sender_offsets) = result.expect("a mixed, blinded script offset");
 
         assert_one_clean_accumulation(&wire, script_keys.expected_chunks());
-        assert_sender_offsets_are_one_walk(&sender_offsets, sender_offset_count);
+        assert_sender_offsets_are_one_walk(
+            &sender_offsets,
+            sender_offset_count,
+            LedgerKeyBranch::OneSidedSenderOffset,
+        );
+        assert_offset_is_the_difference(&offset, &script_keys.keys, &sender_offsets);
+    });
+}
+
+/// A script offset over pre-mine script keys only - pre-mine spend step 2 - comes back blinded by sender offset keys
+/// on the `PreMine` branch, in the top half of `u64`, and the offset is exactly the difference of the two sums.
+///
+/// That is what lets pre-mine step 3 sign the metadata signature through the legacy nonce instruction, which signs
+/// `PreMine` keys only. Every other test in this module folds an alpha derived key and so gets `OneSidedSenderOffset`
+/// keys, which the legacy instruction refuses; see `minotari_ledger_wallet_common::legacy_nonce`.
+#[test]
+fn a_pre_mine_only_script_offset_is_blinded_by_pre_mine_sender_offset_keys() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let script_keys = ScriptKeys::new(&key_manager, 2, 0, 1);
+        let sender_offset_count = 2;
+
+        let (result, wire) = device.watch(|| key_manager.get_script_offset(&script_keys.ids(), sender_offset_count));
+        let (offset, sender_offsets) = result.expect("a pre-mine script offset");
+
+        assert_one_clean_accumulation(&wire, script_keys.expected_chunks());
+        assert_sender_offsets_are_one_walk(&sender_offsets, sender_offset_count, LedgerKeyBranch::PreMine);
+        for key in &sender_offsets {
+            if let TariKeyId::LedgerKey { index, .. } = key.key_id {
+                assert_ne!(
+                    index & PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+                    0,
+                    "pre-mine sender offset index {index} is not in the top half of u64"
+                );
+            }
+        }
         assert_offset_is_the_difference(&offset, &script_keys.keys, &sender_offsets);
     });
 }
@@ -201,7 +233,7 @@ fn the_largest_sender_offset_count_is_served_and_one_more_is_refused_before_the_
         let (offset, sender_offsets) = key_manager
             .get_script_offset(&script_keys.ids(), max)
             .expect("the device derives up to MAX_SENDER_OFFSET_KEYS sender offset keys in one exchange");
-        assert_sender_offsets_are_one_walk(&sender_offsets, max);
+        assert_sender_offsets_are_one_walk(&sender_offsets, max, LedgerKeyBranch::OneSidedSenderOffset);
         assert_offset_is_the_difference(&offset, &script_keys.keys, &sender_offsets);
 
         let (result, wire) = device.watch(|| key_manager.get_script_offset(&script_keys.ids(), max + 1));

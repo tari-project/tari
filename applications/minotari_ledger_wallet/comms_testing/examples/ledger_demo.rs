@@ -36,14 +36,15 @@
 //!   asserts on values the device returns, including a `GetViewKey` secret scalar.
 //! * **A device that will never hold value.** Those mnemonics are public. Anything sent to an address derived from them
 //!   can be swept by anyone, instantly, with no compromise of your machine.
-//! * A terminal. Exactly one scenario raises a review, and `HumanApprover` asks you two questions about it.
+//! * A terminal. Three scenarios raise reviews, and `HumanApprover` asks you two questions about each.
 //!
-//! # One scenario needs you; the rest do not
+//! # A few scenarios need you; the rest do not
 //!
-//! `GetOneSidedMetadataSignature` is the only handler in the application that puts anything on the screen, so it is
-//! the only scenario you have to answer. Everything else - the malformed APDU probes, the nonce store eviction
-//! probes, the whole legacy nonce whitelist - runs unattended on hardware, which is what makes running the *same*
-//! scenarios on both frontends affordable in the first place.
+//! `GetOneSidedMetadataSignature` and `GetRawSchnorrSignatureLegacyNonce` are the only handlers in the application
+//! that put anything on the screen, so the scenarios that complete one of them are the only ones you have to answer.
+//! Everything else - the malformed APDU probes, the nonce store eviction probes, every legacy nonce refusal - runs
+//! unattended on hardware, which is what makes running the *same* scenarios on both frontends affordable in the
+//! first place.
 //!
 //! # The transport probes at the end, which only hardware can run at all
 //!
