@@ -103,9 +103,10 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     async fn get_mempool_fee_per_gram_stats(&self, count: usize) -> Result<Vec<models::FeePerGramStat>, Self::Error>;
 }
 
-// `max_items` is the decode budget for a method: the most embedded message instances its request, response or each
-// stream item may carry (see `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction (~90k
-// message instances); 65_536 covers the batched queries and streams. The default is 16_384.
+// `max_items` is the decode budget for a method: the most embedded message instances (plus repeated bytes/string
+// elements and packed scalar bytes) its request, response or each stream item may carry (see
+// `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction: 11,242 fully populated inputs
+// are 146,147 instances, ~1.8x headroom. 65_536 covers the batched queries and streams. The default is 16_384.
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1, max_items = 262_144)]
