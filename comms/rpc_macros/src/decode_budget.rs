@@ -16,7 +16,11 @@ enum FieldKind {
     MessageMap(u32),
     /// A oneof field covering these tags
     Oneof(Vec<u32>),
-    /// Anything else (scalars, bytes, strings, enums, maps of scalars): never entered
+    /// A `repeated bytes` or `repeated string` field with this tag: each element is charged, never entered
+    RepeatedBytes(u32),
+    /// A repeated scalar or enum field with this tag: a packed occurrence is charged its byte length
+    RepeatedScalar(u32),
+    /// Anything else (single scalars, bytes, strings, enums, maps of scalars): never entered
     Other,
 }
 
@@ -51,6 +55,12 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                             #(#tags)|* => <#ty as #module::DecodeBudget>::count_oneof_field(tag, contents, budget),
                         });
                     },
+                    FieldKind::RepeatedBytes(tag) => {
+                        arms.push(quote!(#tag => budget.charge_items(1),));
+                    },
+                    FieldKind::RepeatedScalar(tag) => {
+                        arms.push(quote!(#tag => budget.charge_items(contents.len()),));
+                    },
                     FieldKind::Other => {},
                 }
             }
@@ -58,6 +68,8 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                 TokenStream::new()
             } else {
                 quote! {
+                    // Not every arm uses `contents`
+                    #[allow(unused_variables)]
                     fn count_messages(
                         buf: &[u8],
                         budget: &mut #module::Budget,
@@ -121,6 +133,9 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
 fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
     let mut is_message = false;
     let mut is_oneof = false;
+    let mut is_bytes = false;
+    let mut is_scalar = false;
+    let mut is_repeated = false;
     let mut map_of_messages = false;
     let mut tag = None;
     let mut tags = Vec::new();
@@ -139,6 +154,13 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
             };
             match (name.as_str(), value) {
                 ("message", _) => is_message = true,
+                ("bytes" | "string", _) => is_bytes = true,
+                ("repeated", _) => is_repeated = true,
+                (
+                    "int32" | "int64" | "uint32" | "uint64" | "sint32" | "sint64" | "fixed32" | "fixed64" |
+                    "sfixed32" | "sfixed64" | "bool" | "float" | "double" | "enumeration",
+                    _,
+                ) => is_scalar = true,
                 ("oneof", _) => is_oneof = true,
                 ("map", Some(syn::Lit::Str(spec))) => {
                     map_of_messages = spec.value().split(',').nth(1).map(str::trim) == Some("message");
@@ -163,6 +185,8 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
         _ if is_oneof => FieldKind::Oneof(tags),
         Some(tag) if is_message => FieldKind::Message(tag),
         Some(tag) if map_of_messages => FieldKind::MessageMap(tag),
+        Some(tag) if is_repeated && is_bytes => FieldKind::RepeatedBytes(tag),
+        Some(tag) if is_repeated && is_scalar => FieldKind::RepeatedScalar(tag),
         _ => FieldKind::Other,
     })
 }

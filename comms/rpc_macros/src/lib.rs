@@ -91,7 +91,8 @@ pub fn tari_rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// It reads the `#[prost(...)]` field attributes (as emitted by prost-build) and generates a walker over the encoded
 /// message that charges one instance for each message-typed field (optional, repeated, map values and oneof variants)
-/// and descends into it with that type's own walker. `bytes`, `string` and scalar fields are never entered.
+/// and descends into it with that type's own walker. Each element of a repeated `bytes`/`string` field is charged one
+/// item and a packed repeated scalar field its byte length; `bytes`, `string` and scalar contents are never entered.
 /// `tari_common::build::ProtobufCompiler` adds this derive to every tari protobuf type.
 #[proc_macro_derive(DecodeBudget, attributes(prost))]
 pub fn derive_decode_budget(input: TokenStream) -> TokenStream {

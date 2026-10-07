@@ -294,6 +294,32 @@ mod max_size_payloads {
         assert_eq!(err.max, BODY_MAX_ITEMS);
     }
 
+    /// The budget of the hash-batch query methods (fetch_matching_utxos, utxo_query, query_deleted, find_chain_split)
+    const QUERY_MAX_ITEMS: usize = 65_536;
+
+    #[test]
+    fn a_flood_of_empty_hashes_is_rejected() {
+        use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
+
+        // The largest legitimate request: one item per hash
+        let request = proto::base_node::FetchMatchingUtxos {
+            output_hashes: vec![vec![0xaa; 32]; MAX_ALLOWED_QUERY_SIZE],
+        };
+        let payload = prost::Message::encode_to_vec(&request);
+        assert_eq!(
+            check_decode_budget::<proto::base_node::FetchMatchingUtxos>(&payload, QUERY_MAX_ITEMS).unwrap(),
+            MAX_ALLOWED_QUERY_SIZE
+        );
+
+        // Just under the 6 MiB request cap: two bytes per hash on the wire, a whole `Vec` each once decoded
+        let flood = proto::base_node::FetchMatchingUtxos {
+            output_hashes: vec![vec![]; 3_000_000],
+        };
+        let payload = prost::Message::encode_to_vec(&flood);
+        assert!(payload.len() < 6 * 1024 * 1024);
+        check_decode_budget::<proto::base_node::FetchMatchingUtxos>(&payload, QUERY_MAX_ITEMS).unwrap_err();
+    }
+
     /// The flood sits three messages deep (mempool state -> transaction -> body -> inputs), spread over transactions
     /// that are each well within the budget.
     #[test]

@@ -7,15 +7,18 @@
 //! bytes per element on the wire (tag and a zero length) but hundreds of bytes once decoded, so a byte cap alone does
 //! not bound memory: a 6 MiB request of empty elements decodes into several GB.
 //!
-//! [DecodeBudget] counts the message instances a payload would make prost allocate, without allocating anything. It
-//! follows the message schema: `#[derive(DecodeBudget)]` (from `tari_comms_rpc_macros`) generates, for each prost type,
-//! a walker that charges one instance for every length-delimited field whose tag is a message-typed field and descends
-//! into it with that field's own walker. `bytes`, `string`, packed scalar and unknown fields are skipped, never
-//! entered, so attacker-chosen bytes (ciphertexts, script data) are never mistaken for messages. Every tari protobuf
-//! type gets the derive through `tari_common::build::ProtobufCompiler`.
+//! [DecodeBudget] counts the allocations a payload would make prost perform, without allocating anything. It follows
+//! the message schema: `#[derive(DecodeBudget)]` (from `tari_comms_rpc_macros`) generates, for each prost type, a
+//! walker that charges one item for every length-delimited field whose tag is a message-typed field and descends into
+//! it with that field's own walker. Each element of a `repeated bytes`/`repeated string` field is also charged one item
+//! (it is a separate `Vec`/`String` once decoded) and a packed repeated scalar field is charged its byte length (an
+//! upper bound on its element count). The contents of `bytes`, `string`, packed and unknown fields are never entered,
+//! so attacker-chosen bytes (ciphertexts, script data) are never mistaken for messages. Every tari protobuf type gets
+//! the derive through `tari_common::build::ProtobufCompiler`.
 //!
-//! Malformed wire data (an invalid wire type, a truncated varint, a length running past the end) simply stops the
-//! count: prost will reject the payload when it decodes it, so the walk only has to be right for well-formed input.
+//! Unknown groups are skipped the way prost skips them, so they cannot hide what follows. Malformed wire data (an
+//! invalid wire type, a truncated varint, a length running past the end, an unterminated group) simply stops the count:
+//! prost rejects the payload when it decodes it, so the walk only has to be right for well-formed input.
 
 /// The default maximum number of message instances a single RPC payload may carry. Methods that legitimately carry
 /// more (e.g. whole block bodies) raise this with `#[rpc(max_items = N)]`.
@@ -62,6 +65,16 @@ impl Budget {
             items: self.items,
             max: self.max,
         }
+    }
+
+    /// Charges `count` items that are not walked, e.g. the elements of a `repeated bytes` field or (as an upper bound)
+    /// of a packed repeated scalar field.
+    pub fn charge_items(&mut self, count: usize) -> Result<(), DecodeBudgetExceeded> {
+        self.items = self.items.saturating_add(count);
+        if self.items > self.max {
+            return Err(self.exceeded());
+        }
+        Ok(())
     }
 
     /// Charges one instance of message `T`, encoded in `contents`, and walks it.
@@ -130,8 +143,8 @@ pub fn check_decode_budget<T: DecodeBudget + ?Sized>(
     Ok(budget.items())
 }
 
-/// Calls `f(tag, contents, budget)` for every length-delimited field in `buf`, skipping all other fields. Stops (with
-/// `Ok`) at the first malformed field.
+/// Calls `f(tag, contents, budget)` for every length-delimited field in `buf`, skipping all other fields (including
+/// groups, as prost does). Stops (with `Ok`) at the first malformed field.
 pub fn walk_len_fields<F>(buf: &[u8], budget: &mut Budget, mut f: F) -> Result<(), DecodeBudgetExceeded>
 where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
     let mut pos = 0usize;
@@ -166,9 +179,17 @@ where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
                 f(tag, contents, budget)?;
                 len
             },
+            // StartGroup: prost skips a group under an unknown tag and carries on decoding what follows, so the walk
+            // must too. Nothing inside a skipped group is allocated, so nothing in it is charged.
+            3 => {
+                if !skip_group(buf, &mut pos, tag, 0) {
+                    return Ok(());
+                }
+                0
+            },
             // I32
             5 => 4,
-            // Groups (3, 4) are not used by prost-generated messages and 6, 7 are not valid wire types
+            // A stray EndGroup (4) is an error to prost, and 6, 7 are not valid wire types
             _ => return Ok(()),
         };
         match pos.checked_add(skip).filter(|end| *end <= buf.len()) {
@@ -177,6 +198,52 @@ where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
         }
     }
     Ok(())
+}
+
+/// Skips the rest of a group opened with `group_tag`, following prost's `skip_field`: every field up to the EndGroup
+/// with the same tag, including nested groups. Returns false if the group is malformed (unterminated, mismatched,
+/// nested deeper than [MAX_DEPTH]), all of which prost rejects.
+fn skip_group(buf: &[u8], pos: &mut usize, group_tag: u32, depth: usize) -> bool {
+    if depth >= MAX_DEPTH {
+        return false;
+    }
+    loop {
+        let Some(key) = read_varint(buf, pos) else {
+            return false;
+        };
+        let Ok(tag) = u32::try_from(key >> 3) else {
+            return false;
+        };
+        if tag == 0 {
+            return false;
+        }
+        let skip = match key & 0x7 {
+            0 => {
+                if read_varint(buf, pos).is_none() {
+                    return false;
+                }
+                0
+            },
+            1 => 8,
+            2 => match read_varint(buf, pos).and_then(|len| usize::try_from(len).ok()) {
+                Some(len) => len,
+                None => return false,
+            },
+            3 => {
+                if !skip_group(buf, pos, tag, depth.saturating_add(1)) {
+                    return false;
+                }
+                0
+            },
+            4 => return tag == group_tag,
+            5 => 4,
+            _ => return false,
+        };
+        match pos.checked_add(skip).filter(|end| *end <= buf.len()) {
+            Some(end) => *pos = end,
+            None => return false,
+        }
+    }
 }
 
 /// Reads a protobuf base-128 varint at `pos`, advancing `pos` past it. Returns `None` if the buffer ends before the
@@ -243,6 +310,10 @@ mod test {
         text: String,
         #[prost(uint64, repeated, tag = "9")]
         numbers: Vec<u64>,
+        #[prost(bytes = "vec", repeated, tag = "10")]
+        hashes: Vec<Vec<u8>>,
+        #[prost(string, repeated, tag = "11")]
+        names: Vec<String>,
     }
 
     /// A recursive message type
@@ -287,9 +358,16 @@ mod test {
                 .collect(),
             blob: fake_messages(1_000),
             text: "\n\0\n\0".to_string(),
+            // Packed: one byte each, charged by byte length
             numbers: vec![10; 100],
+            // One each, contents not entered
+            hashes: vec![fake_messages(64); 3],
+            names: vec![String::from_utf8(fake_messages(64)).unwrap(); 2],
         };
-        assert_eq!(count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(), 9 + 5 + 6 + 4);
+        assert_eq!(
+            count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
+            9 + 5 + 6 + 4 + 100 + 3 + 2
+        );
 
         let boxed_variant = Outer {
             choice: Some(Choice::Boxed(Box::new(leaf()))),
@@ -327,6 +405,82 @@ mod test {
     }
 
     #[test]
+    fn it_rejects_a_flood_of_bytes_or_string_elements() {
+        // Two bytes each on the wire, a whole `Vec`/`String` each once decoded
+        let flood = Outer {
+            hashes: vec![vec![]; 3 * 1024 * 1024],
+            ..Default::default()
+        };
+        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        let flood = Outer {
+            names: vec![String::new(); 3 * 1024 * 1024],
+            ..Default::default()
+        };
+        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+    }
+
+    #[test]
+    fn it_rejects_a_flood_of_packed_scalars() {
+        // One byte each on the wire, eight once decoded
+        let flood = Outer {
+            numbers: vec![1; 1_000_000],
+            ..Default::default()
+        };
+        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        // The byte length bounds the element count from above
+        let msg = Outer {
+            numbers: vec![u64::MAX; 100],
+            ..Default::default()
+        };
+        assert_eq!(count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(), 1_000);
+    }
+
+    /// An unknown group, which prost skips before carrying on
+    fn group_prefix() -> Vec<u8> {
+        let mut buf = Vec::new();
+        prost::encoding::encode_key(1000, prost::encoding::WireType::StartGroup, &mut buf);
+        prost::encoding::encode_key(1, prost::encoding::WireType::Varint, &mut buf);
+        prost::encoding::encode_varint(7, &mut buf);
+        prost::encoding::encode_key(1000, prost::encoding::WireType::EndGroup, &mut buf);
+        buf
+    }
+
+    fn with_group_prefix(msg: &impl Message) -> Vec<u8> {
+        let mut buf = group_prefix();
+        buf.extend_from_slice(&msg.encode_to_vec());
+        buf
+    }
+
+    #[test]
+    fn a_group_does_not_hide_a_flood() {
+        let flood = Outer {
+            items: vec![Inner::default(); 1_000_000],
+            ..Default::default()
+        };
+        check_decode_budget::<Outer>(&with_group_prefix(&flood), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+
+        // Inside a nested message
+        let mut nested = Vec::new();
+        let inner = with_group_prefix(&inner(1_000_000));
+        prost::encoding::encode_key(2, prost::encoding::WireType::LengthDelimited, &mut nested);
+        prost::encoding::encode_varint(inner.len() as u64, &mut nested);
+        nested.extend_from_slice(&inner);
+        check_decode_budget::<Outer>(&nested, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+
+        // prost really does decode past the group, so the count must too
+        let small = Outer {
+            items: vec![Inner::default(); 10],
+            ..Default::default()
+        };
+        let bytes = with_group_prefix(&small);
+        assert_eq!(Outer::decode(bytes.as_slice()).unwrap(), small);
+        assert_eq!(
+            check_decode_budget::<Outer>(&bytes, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
+            10
+        );
+    }
+
+    #[test]
     fn it_rejects_a_nested_flood() {
         let flood = Outer {
             single: Some(Box::new(inner(100_000))),
@@ -356,22 +510,34 @@ mod test {
         let malformed: &[&[u8]] = &[
             // Field number 0
             &[0x00, 0x01],
-            // Wire types 3, 4, 6 and 7
-            &[0x0b, 0x01],
-            &[0x0c, 0x01],
+            // Wire types 6 and 7
             &[0x0e, 0x01],
             &[0x0f, 0x01],
+            // A stray EndGroup (tag 15)
+            &[0x7c],
+            // An unterminated group, and one closed with the wrong tag (tag 15, closed as 14)
+            &[0x7b, 0x08, 0x01],
+            &[0x7b, 0x74],
             // Truncated varints
             &[0x80],
             &[0x08, 0x80],
             // LEN that runs past the end of the buffer
             &[0x0a, 0x7f, 0x01],
-            // Truncated fixed-width values
-            &[0x09, 0x01],
-            &[0x0d, 0x01],
+            // Truncated fixed-width values (tag 15)
+            &[0x79, 0x01],
+            &[0x7d, 0x01],
         ];
         for bytes in malformed {
             assert_eq!(check_decode_budget::<Outer>(bytes, 0).unwrap(), 0);
+            // Wherever the walk stops early, prost rejects the payload, so nothing after that point is decoded
+            assert!(Outer::decode(*bytes).is_err(), "prost accepted {bytes:02x?}");
+            let mut after_valid_field = Outer {
+                items: vec![Inner::default()],
+                ..Default::default()
+            }
+            .encode_to_vec();
+            after_valid_field.extend_from_slice(bytes);
+            assert!(Outer::decode(after_valid_field.as_slice()).is_err());
         }
         // Counting stops at the first malformed field
         let mut bytes = Outer {
@@ -381,6 +547,7 @@ mod test {
         .encode_to_vec();
         bytes.extend_from_slice(&[0x0f, 0x0a, 0x00]);
         assert_eq!(check_decode_budget::<Outer>(&bytes, 10).unwrap(), 2);
+        assert!(Outer::decode(bytes.as_slice()).is_err());
     }
 
     #[test]
