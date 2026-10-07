@@ -1524,6 +1524,12 @@ pub enum JmtStorageError {
 
     #[error("Attempted to find an index that does not exist in the tree")]
     IndexNotFound,
+
+    #[error("Version {version} must be greater than the persisted version {persisted_version}")]
+    NonMonotonicVersion {
+        persisted_version: Version,
+        version: Version,
+    },
 }
 
 #[cfg(test)]
