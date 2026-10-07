@@ -67,8 +67,11 @@ pub enum NetworkDiscoveryError {
 
 impl NetworkDiscoveryError {
     /// Converts an error read from a `get_peers` response stream. An error status sent by the peer stays an
-    /// [NetworkDiscoveryError::RpcStatus], as it was before stream items carried an [RpcError]; anything else (e.g. an
-    /// item that fails to decode or exceeds the decode budget) is an [NetworkDiscoveryError::RpcError].
+    /// [NetworkDiscoveryError::RpcStatus], as it was before stream items carried an [RpcError], and keeps its Low
+    /// severity. Anything else is an [NetworkDiscoveryError::RpcError]: an item that fails to decode or exceeds the
+    /// decode budget is caused by the server, so it is now a High offence (the long ban). That escalation is
+    /// deliberate: before, such an item reached us as a `BadRequest` status and only drew a Low (short) ban, though
+    /// only a broken or hostile peer sends it.
     pub fn from_stream_error(err: RpcError) -> Self {
         match err {
             RpcError::RequestFailed(status) => NetworkDiscoveryError::RpcStatus(status),

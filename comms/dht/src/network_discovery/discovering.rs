@@ -577,6 +577,22 @@ mod test {
     }
 
     #[test]
+    fn a_bad_get_peers_stream_item_is_a_high_offence_but_a_status_stays_low() {
+        use tari_comms::protocol::rpc::RpcStatus;
+
+        let over_budget = NetworkDiscoveryError::from_stream_error(RpcError::DecodeBudgetExceeded { items: 2, max: 1 });
+        assert!(matches!(offence_severity(&over_budget), Some(OffenceSeverity::High)));
+
+        let undecodable =
+            NetworkDiscoveryError::from_stream_error(RpcError::DecodeError(prost::DecodeError::new("bad item")));
+        assert!(matches!(offence_severity(&undecodable), Some(OffenceSeverity::High)));
+
+        let status = NetworkDiscoveryError::from_stream_error(RpcError::RequestFailed(RpcStatus::bad_request("no")));
+        assert!(matches!(status, NetworkDiscoveryError::RpcStatus(_)));
+        assert!(matches!(offence_severity(&status), Some(OffenceSeverity::Low)));
+    }
+
+    #[test]
     fn a_relayed_claim_that_fails_validation_does_not_end_the_round() {
         // A peer behind NAT, or one we simply cannot use, is skipped for free.
         assert_eq!(
