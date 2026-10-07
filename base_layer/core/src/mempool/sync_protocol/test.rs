@@ -33,6 +33,7 @@ use std::{
 };
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
+use prost::Message;
 use tari_common::configuration::Network;
 use tari_comms::{
     Bytes,
@@ -69,11 +70,13 @@ use crate::{
         MempoolServiceConfig,
         proto,
         sync_protocol::{
+            INVENTORY_INDEXES_MAX_DECODE_ITEMS,
             MAX_FRAME_SIZE,
             MEMPOOL_SYNC_PROTOCOL,
             MempoolPeerProtocol,
             MempoolProtocolError,
             MempoolSyncProtocol,
+            decode_frame,
         },
     },
     proto as shared_proto,
@@ -989,4 +992,62 @@ async fn responder_rejects_a_transaction_frame_of_empty_inputs_before_decoding_i
             );
         }
     }
+}
+
+/// The largest inventory one frame can carry: 32-byte items at 34 wire bytes each
+const MAX_FRAME_INVENTORY_ITEMS: usize = MAX_FRAME_SIZE / 34;
+
+/// An `InventoryIndexes` reply naming every item of the largest inventory a frame can carry decodes under its cap,
+/// with headroom
+#[test]
+fn indexes_for_the_largest_inventory_a_frame_can_carry_round_trip() {
+    let largest_inventory = proto::TransactionInventory {
+        items: vec![vec![0xAA; 32]; MAX_FRAME_INVENTORY_ITEMS],
+    };
+    assert!(largest_inventory.encoded_len() <= MAX_FRAME_SIZE);
+
+    #[allow(clippy::cast_possible_truncation)]
+    let indexes = proto::InventoryIndexes {
+        indexes: (0..MAX_FRAME_INVENTORY_ITEMS as u32).collect(),
+    };
+    let frame = BytesMut::from(indexes.encode_to_vec().as_slice());
+    let charged =
+        tari_comms::decode_budget::check_decode_budget::<proto::InventoryIndexes>(&frame, usize::MAX).unwrap();
+    // At least 3x headroom over the largest honest list
+    assert!(
+        charged.saturating_mul(3) <= INVENTORY_INDEXES_MAX_DECODE_ITEMS,
+        "{charged}"
+    );
+
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let decoded: proto::InventoryIndexes =
+        decode_frame(frame, INVENTORY_INDEXES_MAX_DECODE_ITEMS, peer.node_id()).unwrap();
+    assert_eq!(decoded, indexes);
+}
+
+/// prost accepts `InventoryIndexes.indexes` unpacked (one varint per element), which the budget charges one item per
+/// element: a full frame of them is rejected before prost decodes it
+#[test]
+fn an_unpacked_indexes_flood_is_rejected_before_decoding_it() {
+    // `indexes` (tag 1) as a varint: two bytes per element
+    let element = [0x08, 0x00];
+    // Prost alone accepts unpacked indexes (checked on a small list; never prost-decode a full frame in a test)
+    assert_eq!(
+        proto::InventoryIndexes::decode(element.repeat(1_000).as_slice())
+            .unwrap()
+            .indexes
+            .len(),
+        1_000
+    );
+
+    let flood = element.repeat(MAX_FRAME_SIZE / 2);
+    assert!(flood.len() <= MAX_FRAME_SIZE);
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let err = decode_frame::<proto::InventoryIndexes>(
+        BytesMut::from(flood.as_slice()),
+        INVENTORY_INDEXES_MAX_DECODE_ITEMS,
+        peer.node_id(),
+    )
+    .unwrap_err();
+    assert!(is_decode_budget_error(&err), "unexpected error: {err}");
 }

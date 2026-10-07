@@ -120,6 +120,16 @@ const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 /// Size of a transaction inventory item: a kernel excess signature scalar.
 const INVENTORY_ITEM_SIZE: usize = 32;
 
+/// The decode budget for the `InventoryIndexes` reply. Its only list is a repeated `uint32`, which the budget charges
+/// by byte length when packed and one item per element when unpacked.
+///
+/// The general [`shared_proto::MESSAGE_MAX_DECODE_ITEMS`] (262,144) is too tight for it: the largest inventory one
+/// frame can carry is ~92.5k items (34 wire bytes each), and the packed list of all their indexes is ~261k bytes. And
+/// the item budget adds little here: a list of `u32`s decodes into at most 4 bytes per element, never more than ~4x its
+/// wire size, with no per-element allocation. This cap leaves 3x headroom over the largest honest (packed) list while
+/// still rejecting a full frame of unpacked indexes (~1.57M elements at 2 bytes each).
+const INVENTORY_INDEXES_MAX_DECODE_ITEMS: usize = MAX_FRAME_SIZE / 4;
+
 /// Deadline for a single control message — the transaction inventory and the list of requested
 /// indexes. Both are one bounded frame, so a short deadline is safe.
 const MESSAGE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -582,7 +592,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         self.read_and_insert_transactions_until_complete().await?;
 
-        let missing_items: proto::InventoryIndexes = self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
+        let missing_items: proto::InventoryIndexes = self.read_message(INVENTORY_INDEXES_MAX_DECODE_ITEMS).await?;
         debug!(
             target: LOG_TARGET,
             "Received {} missing transaction index(es) from peer `{}`",
