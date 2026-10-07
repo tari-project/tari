@@ -89,7 +89,8 @@ impl Budget {
         result
     }
 
-    /// Charges one map entry, encoded in `contents`, whose value (tag 2) is a message `V`, and walks the value.
+    /// Charges one map entry, encoded in `contents`, whose value (tag 2) is a message `V`, and walks the value. Entries
+    /// of maps with scalar, bytes or string values are charged with `charge_items(1)` instead.
     pub fn charge_map_entry<V: DecodeBudget + ?Sized>(&mut self, contents: &[u8]) -> Result<(), DecodeBudgetExceeded> {
         self.items = self.items.saturating_add(1);
         if self.items > self.max {
@@ -145,7 +146,15 @@ pub fn check_decode_budget<T: DecodeBudget + ?Sized>(
 
 /// Calls `f(tag, contents, budget)` for every length-delimited field in `buf`, skipping all other fields (including
 /// groups, as prost does). Stops (with `Ok`) at the first malformed field.
-pub fn walk_len_fields<F>(buf: &[u8], budget: &mut Budget, mut f: F) -> Result<(), DecodeBudgetExceeded>
+pub fn walk_len_fields<F>(buf: &[u8], budget: &mut Budget, f: F) -> Result<(), DecodeBudgetExceeded>
+where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
+    walk_fields(buf, budget, &[], f)
+}
+
+/// Like [walk_len_fields], for a message with map fields under `map_tags`. prost decodes a map field without checking
+/// its wire type: whatever the wire type, it reads a length and a map entry. So a field under a map tag is handed to
+/// `f` as length-delimited whatever its wire type says, which keeps the walk in step with prost.
+pub fn walk_fields<F>(buf: &[u8], budget: &mut Budget, map_tags: &[u32], mut f: F) -> Result<(), DecodeBudgetExceeded>
 where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
     let mut pos = 0usize;
     while pos < buf.len() {
@@ -158,7 +167,13 @@ where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
         if tag == 0 {
             return Ok(());
         }
-        let skip = match key & 0x7 {
+        // Wire types 6 and 7 fail prost's key decode, before it looks at the tag
+        let wire_type = key & 0x7;
+        if wire_type > 5 {
+            return Ok(());
+        }
+        let wire_type = if map_tags.contains(&tag) { 2 } else { wire_type };
+        let skip = match wire_type {
             // VARINT
             0 => {
                 if read_varint(buf, &mut pos).is_none() {
@@ -314,6 +329,8 @@ mod test {
         hashes: Vec<Vec<u8>>,
         #[prost(string, repeated, tag = "11")]
         names: Vec<String>,
+        #[prost(map = "int32, bytes", tag = "12")]
+        blobs: HashMap<i32, Vec<u8>>,
     }
 
     /// A recursive message type
@@ -363,10 +380,12 @@ mod test {
             // One each, contents not entered
             hashes: vec![fake_messages(64); 3],
             names: vec![String::from_utf8(fake_messages(64)).unwrap(); 2],
+            // One per entry, values not entered
+            blobs: [(1, fake_messages(64)), (2, fake_messages(64))].into_iter().collect(),
         };
         assert_eq!(
             count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
-            9 + 5 + 6 + 4 + 100 + 3 + 2
+            9 + 5 + 6 + 4 + 100 + 3 + 2 + 2
         );
 
         let boxed_variant = Outer {
@@ -431,6 +450,72 @@ mod test {
         // Two bytes each on the wire, a whole `Vec`/`String` each once decoded
         check_decode_budget::<Outer>(&empty_elements(10, FLOOD_ELEMENTS), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
         check_decode_budget::<Outer>(&empty_elements(11, FLOOD_ELEMENTS), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+    }
+
+    /// prost reads a map field as a length and an entry whatever wire type its key says, so the walk must too
+    #[test]
+    fn a_map_field_is_charged_whatever_its_wire_type() {
+        use prost::encoding::{WireType, encode_key, encode_varint};
+
+        // A `by_name` (tag 5) entry: key "a", value a `Leaf`
+        let mut entry = len_field(1, b"a");
+        entry.extend_from_slice(&len_field(2, &leaf().encode_to_vec()));
+        // Followed by 10 empty `items`, which the walk must not lose track of
+        let tail = empty_elements(1, 10);
+
+        for wire_type in [
+            WireType::Varint,
+            WireType::SixtyFourBit,
+            WireType::LengthDelimited,
+            WireType::StartGroup,
+            WireType::EndGroup,
+            WireType::ThirtyTwoBit,
+        ] {
+            let mut bytes = Vec::new();
+            encode_key(5, wire_type, &mut bytes);
+            encode_varint(entry.len() as u64, &mut bytes);
+            bytes.extend_from_slice(&entry);
+            bytes.extend_from_slice(&tail);
+
+            let decoded = Outer::decode(bytes.as_slice()).unwrap();
+            assert_eq!(decoded.by_name.len(), 1, "{wire_type:?}");
+            assert_eq!(decoded.items.len(), 10, "{wire_type:?}");
+            // Entry, its value and the 10 items
+            assert_eq!(
+                check_decode_budget::<Outer>(&bytes, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
+                12,
+                "{wire_type:?}"
+            );
+        }
+
+        // A flood of `by_name` entries sent as varints is still a flood
+        let mut flood = Vec::new();
+        for _ in 0..100_000 {
+            encode_key(5, WireType::Varint, &mut flood);
+            encode_varint(entry.len() as u64, &mut flood);
+            flood.extend_from_slice(&entry);
+        }
+        check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+    }
+
+    #[test]
+    fn it_rejects_a_flood_of_scalar_map_entries() {
+        // `blobs` (tag 12) entries with distinct keys and empty values: a few bytes each on the wire, a map node each
+        // once decoded
+        let mut flood = Vec::new();
+        for key in 0..100_000u64 {
+            let mut entry = Vec::new();
+            prost::encoding::encode_key(1, prost::encoding::WireType::Varint, &mut entry);
+            prost::encoding::encode_varint(key, &mut entry);
+            flood.extend_from_slice(&len_field(12, &entry));
+        }
+        check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+
+        let msg = Outer {
+            blobs: (0..100).map(|key| (key, vec![])).collect(),
+            ..Default::default()
+        };
+        assert_eq!(count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(), 100);
     }
 
     #[test]

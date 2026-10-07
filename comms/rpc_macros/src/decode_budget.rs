@@ -14,6 +14,8 @@ enum FieldKind {
     Message(u32),
     /// A map field with this tag whose values are messages
     MessageMap(u32),
+    /// A map field with this tag whose values are scalars, bytes or strings
+    ScalarMap(u32),
     /// A oneof field covering these tags
     Oneof(Vec<u32>),
     /// A `repeated bytes` or `repeated string` field with this tag: each element is charged, never entered
@@ -39,6 +41,7 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
     let body = match &input.data {
         Data::Struct(data) => {
             let mut arms = Vec::new();
+            let mut map_tags = Vec::new();
             for field in &data.fields {
                 match field_kind(&field.attrs)? {
                     FieldKind::Message(tag) => {
@@ -47,7 +50,12 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                     },
                     FieldKind::MessageMap(tag) => {
                         let ty = map_value_type(&field.ty)?;
+                        map_tags.push(tag);
                         arms.push(quote!(#tag => budget.charge_map_entry::<#ty>(contents),));
+                    },
+                    FieldKind::ScalarMap(tag) => {
+                        map_tags.push(tag);
+                        arms.push(quote!(#tag => budget.charge_items(1),));
                     },
                     FieldKind::Oneof(tags) => {
                         let ty = inner_type(&field.ty);
@@ -74,7 +82,7 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
                         buf: &[u8],
                         budget: &mut #module::Budget,
                     ) -> ::std::result::Result<(), #module::DecodeBudgetExceeded> {
-                        #module::walk_len_fields(buf, budget, |tag, contents, budget| match tag {
+                        #module::walk_fields(buf, budget, &[#(#map_tags),*], |tag, contents, budget| match tag {
                             #(#arms)*
                             _ => ::std::result::Result::Ok(()),
                         })
@@ -136,6 +144,7 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
     let mut is_bytes = false;
     let mut is_scalar = false;
     let mut is_repeated = false;
+    let mut is_map = false;
     let mut map_of_messages = false;
     let mut tag = None;
     let mut tags = Vec::new();
@@ -163,6 +172,7 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
                 ) => is_scalar = true,
                 ("oneof", _) => is_oneof = true,
                 ("map", Some(syn::Lit::Str(spec))) => {
+                    is_map = true;
                     map_of_messages = spec.value().split(',').nth(1).map(str::trim) == Some("message");
                 },
                 ("tag", Some(lit)) => tag = Some(parse_tag(&lit)?),
@@ -185,6 +195,7 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
         _ if is_oneof => FieldKind::Oneof(tags),
         Some(tag) if is_message => FieldKind::Message(tag),
         Some(tag) if map_of_messages => FieldKind::MessageMap(tag),
+        Some(tag) if is_map => FieldKind::ScalarMap(tag),
         Some(tag) if is_repeated && is_bytes => FieldKind::RepeatedBytes(tag),
         Some(tag) if is_repeated && is_scalar => FieldKind::RepeatedScalar(tag),
         _ => FieldKind::Other,
