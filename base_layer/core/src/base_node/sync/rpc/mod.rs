@@ -51,6 +51,8 @@ use crate::{
 // elements and packed scalar bytes) its request, response or each stream item may carry (see
 // `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction: 11,242 fully populated inputs
 // are 146,147 instances, ~1.8x headroom. 65_536 covers the batched queries and streams. The default is 16_384.
+// `max_request_items` bounds the request on its own where the handler accepts far less than the response may carry:
+// about twice the handler's own count limit (512 hashes or signatures; 1,000 chain-split hashes).
 // Method 7 belonged to a removed method and must not be reused.
 #[tari_rpc(
     protocol_name = b"t/blksync/1",
@@ -77,7 +79,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 4, max_items = 65_536)]
+    #[rpc(method = 4, max_items = 65_536, max_request_items = 2_048)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,

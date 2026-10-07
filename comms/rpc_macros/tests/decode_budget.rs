@@ -71,6 +71,9 @@ pub trait Budget: Send + Sync + 'static {
 
     #[rpc(method = 5)]
     async fn reply_bomb(&self, request: Request<()>) -> Result<Response<Bomb>, RpcStatus>;
+
+    #[rpc(method = 6, max_items = 300_000, max_request_items = 1_000)]
+    async fn take_few_items(&self, request: Request<Items>) -> Result<Response<Items>, RpcStatus>;
 }
 
 #[derive(Clone, Default)]
@@ -125,6 +128,11 @@ impl Budget for BudgetService {
         self.called();
         Ok(Response::new(bomb(100_000)))
     }
+
+    async fn take_few_items(&self, _: Request<Items>) -> Result<Response<Items>, RpcStatus> {
+        self.called();
+        Ok(Response::new(items(100_000)))
+    }
 }
 
 /// The server and connection stop serving when dropped, so tests hold on to them
@@ -171,6 +179,22 @@ async fn the_server_applies_the_per_method_budget() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 
     client.take_many_items(items(100_000)).await.unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn the_server_applies_the_request_budget() {
+    let (mut client, calls, _guard) = setup().await;
+
+    // Over max_request_items, though well within max_items
+    let err = client.take_few_items(items(2_000)).await.unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
+    assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+    // The response still gets the larger max_items
+    let resp = client.take_few_items(items(500)).await.unwrap();
+    assert_eq!(resp.items.len(), 100_000);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 

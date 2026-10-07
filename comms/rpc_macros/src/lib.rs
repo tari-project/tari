@@ -77,6 +77,10 @@ mod options;
 ///   response types must implement `DecodeBudget` (derive it with `#[derive(DecodeBudget)]`). The server checks
 ///   requests against it before decoding them and the generated client checks responses. Defaults to
 ///   `tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS`.
+/// - `max_request_items` (optional) is a separate decode budget for the request only, which the server checks before
+///   decoding it. Defaults to `max_items`. Use it when requests are small but responses large (e.g. a batch query whose
+///   handler accepts a few hundred hashes but returns many outputs), so a request cannot use the response budget. It
+///   may be larger than `max_items`.
 ///
 /// Every RPC method must have the form `async fn name(&self, request: Request<T>) -> Result<Response<U>, RpcStatus>`
 /// or `async fn name(&self, request: Request<T>) -> Result<Streaming<U>, RpcStatus>`. Anything else is a compile error.

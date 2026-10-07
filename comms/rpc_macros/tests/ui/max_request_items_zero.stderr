@@ -1,0 +1,5 @@
+error: max_request_items must be greater than 0
+  --> tests/ui/max_request_items_zero.rs:11:60
+   |
+11 |     #[rpc(method = 1, max_items = 100, max_request_items = 0)]
+   |                                                            ^

@@ -107,6 +107,8 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 // elements and packed scalar bytes) its request, response or each stream item may carry (see
 // `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction: 11,242 fully populated inputs
 // are 146,147 instances, ~1.8x headroom. 65_536 covers the batched queries and streams. The default is 16_384.
+// `max_request_items` bounds the request on its own where the handler accepts far less than the response may carry:
+// about twice the handler's own count limit (512 hashes or signatures; 1,000 chain-split hashes).
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1, max_items = 262_144)]
@@ -118,13 +120,13 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 2)]
     async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
 
-    #[rpc(method = 3, max_items = 65_536)]
+    #[rpc(method = 3, max_items = 65_536, max_request_items = 1_024)]
     async fn transaction_batch_query(
         &self,
         request: Request<Signatures>,
     ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>;
 
-    #[rpc(method = 4, max_items = 65_536)]
+    #[rpc(method = 4, max_items = 65_536, max_request_items = 1_024)]
     async fn fetch_matching_utxos(
         &self,
         request: Request<FetchMatchingUtxos>,
@@ -136,10 +138,10 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 6)]
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 7, max_items = 65_536)]
+    #[rpc(method = 7, max_items = 65_536, max_request_items = 1_024)]
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus>;
 
-    #[rpc(method = 8, max_items = 65_536)]
+    #[rpc(method = 8, max_items = 65_536, max_request_items = 1_024)]
     async fn query_deleted(
         &self,
         request: Request<QueryDeletedRequest>,

@@ -29,6 +29,8 @@ pub struct RpcMethodInfo {
     pub method_num: u32,
     /// The `max_items = M` decode budget, if one was given
     pub max_items: Option<usize>,
+    /// The `max_request_items = R` decode budget for requests, if one was given (defaults to `max_items`)
+    pub max_request_items: Option<usize>,
     pub is_server_streaming: bool,
     /// `T` in `Request<T>`
     pub request_type: syn::Type,

@@ -121,11 +121,14 @@ fn collect_rpc_methods(node: &mut ItemTrait, options: &RpcTraitOptions) -> syn::
 fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<RpcMethodInfo> {
     let mut method_lit = None;
     let mut max_items = None;
+    let mut max_request_items = None;
     attr.parse_nested_meta(|meta| {
         let ident = meta
             .path
             .get_ident()
-            .ok_or_else(|| meta.error("expected `method = <number>` or `max_items = <number>`"))?
+            .ok_or_else(|| {
+                meta.error("expected `method = <number>`, `max_items = <number>` or `max_request_items = <number>`")
+            })?
             .clone();
         let lit: syn::LitInt = meta.value()?.parse()?;
         match ident.to_string().as_str() {
@@ -145,6 +148,16 @@ fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<
                     return Err(syn_error!(lit, "max_items must be greater than 0"));
                 }
                 max_items = Some(value);
+            },
+            "max_request_items" => {
+                if max_request_items.is_some() {
+                    return Err(syn_error!(ident, "`max_request_items` is specified more than once"));
+                }
+                let value = lit.base10_parse::<usize>()?;
+                if value == 0 {
+                    return Err(syn_error!(lit, "max_request_items must be greater than 0"));
+                }
+                max_request_items = Some(value);
             },
             s => return Err(syn_error!(ident, "invalid option `{}` in #[rpc(...)] attribute", s)),
         }
@@ -169,6 +182,7 @@ fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<
         method_lit,
         method_num,
         max_items,
+        max_request_items,
         is_server_streaming,
         request_type,
         return_type,

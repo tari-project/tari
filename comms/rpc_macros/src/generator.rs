@@ -37,12 +37,20 @@ fn dep_mod() -> TokenStream {
     quote!(::tari_comms::protocol::rpc::__macro_reexports)
 }
 
-/// The decode budget for a method: its `max_items`, or the default.
+/// The decode budget for a method's responses and stream items: its `max_items`, or the default.
 fn max_items_tokens(method: &RpcMethodInfo) -> TokenStream {
     let dep_mod = dep_mod();
     match method.max_items {
         Some(max_items) => quote!(#max_items),
         None => quote!(#dep_mod::DEFAULT_MAX_DECODE_ITEMS),
+    }
+}
+
+/// The decode budget for a method's requests: its `max_request_items`, else its `max_items`, else the default.
+fn max_request_items_tokens(method: &RpcMethodInfo) -> TokenStream {
+    match method.max_request_items {
+        Some(max_request_items) => quote!(#max_request_items),
+        None => max_items_tokens(method),
     }
 }
 
@@ -77,7 +85,7 @@ impl RpcCodeGenerator {
             .map(|m| {
                 let method_num = m.method_num;
                 let method_name = &m.method_ident;
-                let max_items = max_items_tokens(m);
+                let max_items = max_request_items_tokens(m);
                 let ret = if m.is_server_streaming {
                     quote!(#dep_mod::Ok(#dep_mod::Response::new(#dep_mod::IntoBody::into_body(resp))))
                 } else {
