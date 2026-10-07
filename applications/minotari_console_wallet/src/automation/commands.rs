@@ -1573,7 +1573,11 @@ pub async fn command_runner(
                     // subtract it back out of the script offset to recover the script private key too. It cannot
                     // reach `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
                     // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
-                    // session. `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope -
+                    // session. A step 2 file written with a ledger app before 6.1.1-pre.0 is invalid for a second
+                    // reason too: its `Random` nonce indexes are at or above 2^32, and those now derive different
+                    // keys (all 64 bits of the index count), so its public nonces no longer match. Redoing step 2
+                    // draws fresh nonces, so there is no nonce reuse hazard in doing so.
+                    // `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope -
                     // pre-mine only, normal spends use device issued handles - and the TODO that closes it.
                     let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.sender_offset_key_id,

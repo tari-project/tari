@@ -595,9 +595,10 @@ const REVIEW_VALUE: u64 = 12_345;
 
 /// Acceptance: the device signs what it showed, and the signature is a valid metadata signature.
 ///
-/// **The one scenario in this suite that needs approval**, on either frontend - on the simulator the buttons are
-/// pressed by [`crate::approver::SpeculosApprover`], on hardware by a human. That is affordable because
-/// `GetOneSidedMetadataSignature` is the only handler in the whole application that puts anything on the screen.
+/// **The one scenario in this module that needs approval**, on either frontend - on the simulator the buttons are
+/// pressed by [`crate::approver::SpeculosApprover`], on hardware by a human. `GetOneSidedMetadataSignature` and
+/// `GetRawSchnorrSignatureLegacyNonce` are the only handlers in the application that put anything on the screen;
+/// the legacy nonce reviews are answered by the `legacy_nonce` scenarios.
 ///
 /// Two independent statements, and the second is the one no other test in this repository makes:
 ///

@@ -251,11 +251,15 @@ rule. So the full construction, given only the seed, is:
 ```
 BIP-39 mnemonic
   → PBKDF2-HMAC-SHA512(salt "mnemonic", 2048 rounds) → 64 byte seed
-  → BIP-32 secp256k1, path m/44'/535348'/{account}'/0/{index}'/{key_type}
+  → BIP-32 secp256k1, path m/44'/535348'/{account}'/{index >> 32}/{index & 0xFFFF_FFFF}'/{key_type}
   → 32 byte private key, right-padded with 32 zero bytes
   → domain separated Blake2b-512, domain "com.tari.minotari_ledger_wallet", label "raw_key"
   → RistrettoSecretKey::from_uniform_bytes  (wide reduction)
 ```
+
+The index is split across two elements so that all 64 bits reach the derivation (from app `6.1.1-pre.0`). For
+every index below 2^32 the high element is `0`, which is exactly the old `.../{account}'/0/{index}'/...` path, so
+those keys did not move; indexes 2^32 apart, which used to name the same key, now name different ones.
 
 **The oracle is buildable, and it is built** — `src/oracle.rs`, from published specifications only, with no
 dependency on a BIP-32 or BIP-39 crate. It is itself checked against BIP-32's own published Test Vector 1 and
