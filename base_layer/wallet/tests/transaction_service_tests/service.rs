@@ -2762,10 +2762,13 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         &measured_memo,
     )
     .unwrap();
-    let fee = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+    // The offline signer only signs a transaction that leaves change, so leave one microminotari of it, as the
+    // wallet's `PrepareWithdrawMultisigTransaction` handler does.
+    let fee = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size) +
+        tx_builder.get_change_output_fee().unwrap();
     let output_payment_id =
         addressed_output_memo(MemoField::default(), own_address.clone(), fee, TxType::PaymentToOther).unwrap();
-    let total_amount = input_amount.checked_sub(fee).unwrap();
+    let total_amount = input_amount - fee - MicroMinotari(1);
 
     let prepared = prepare_withdraw_multisig_transaction(
         key_manager,
@@ -2786,10 +2789,14 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         .sign_one_sided_withdraw_multisig_transaction(prepared)
         .await;
 
-    assert!(
-        result.is_ok(),
-        "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own commitment_mask_key_id, \
-         got: {:?}",
-        result.err()
+    let signed = result.unwrap_or_else(|e| {
+        panic!(
+            "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own \
+             commitment_mask_key_id, got: {e:?}"
+        )
+    });
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
     );
 }

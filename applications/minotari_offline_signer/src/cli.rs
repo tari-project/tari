@@ -70,6 +70,10 @@ pub enum Commands {
     },
 
     /// Sign a one-sided transaction using stored keys
+    ///
+    /// Only transactions that leave a change output are signed. A payload that spends its inputs exactly, such as a
+    /// send-all or sweep, is refused: with no change output the signed result would give the online (view key) wallet
+    /// enough to work out the spend key. Prepare it again with a slightly smaller amount.
     Sign(SignArgs),
 
     /// Check if the signer has been initialized

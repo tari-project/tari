@@ -68,6 +68,10 @@ minotari_offline_signer sign \
     --network mainnet
 ```
 
+The signer only signs transactions that leave a change output. A payload that spends its inputs exactly, such as a
+send-all or sweep, is refused, because with no change output the signed result would let the online (view key)
+wallet work out the spend key. Prepare it again with a slightly smaller amount.
+
 ### Clear Stored Keys
 
 Remove all keys from the keystore:

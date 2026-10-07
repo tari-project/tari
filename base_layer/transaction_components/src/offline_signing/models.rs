@@ -273,6 +273,21 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
     }
 }
 
+/// What the offline signer hands back to the online wallet.
+///
+/// # Every signed transaction carries a change output
+///
+/// The offline signer refuses to sign any payload that would produce no change output, and returns
+/// [`crate::TransactionBuilderError::OfflineTransactionRequiresChange`] instead, before anything is signed. The online
+/// wallet has to prepare the transaction again with a smaller amount.
+///
+/// The rule protects the spend key from the online wallet, which holds the view key. The recipient outputs in
+/// `outputs` carry their sender offset key ids, and those ids are wrapped under the view key. The online wallet
+/// already knows the input commitment masks, and the transaction publishes
+/// `script offset = sum(input script keys) - sum(sender offset keys)` where every input script key is
+/// `H(mask) + spend key`. With no change output every term but the spend key is known to the online wallet, so it
+/// could solve for it. The change output's sender offset key is generated and used inside the signer and never leaves
+/// it (`change_output` carries only its public key), which leaves the online wallet one unknown short.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedTransaction {
     pub transaction: Transaction,

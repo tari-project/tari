@@ -162,6 +162,10 @@ struct FeeAndChange {
     fee: MicroMinotari,
     /// `Some` exactly when a change key was reserved, so `build` must emit a change output for it.
     change: Option<MicroMinotari>,
+    /// What was left over after the outputs and the fee without change, and the fee a change output would add. The
+    /// change decision was made from these two.
+    remainder: MicroMinotari,
+    change_fee: MicroMinotari,
 }
 
 #[derive(Clone)]
@@ -418,6 +422,23 @@ where KM: TransactionKeyManagerInterface
         Ok(caller_keys)
     }
 
+    /// Fail unless the reservation committed this transaction to a change output.
+    ///
+    /// The offline signer calls this straight after the reservation, before any output is signed. See
+    /// [`crate::offline_signing::models::SignedTransaction`] for why it refuses to sign without change.
+    pub fn require_change_output(&self) -> Result<(), TransactionBuilderError> {
+        let fee_and_change = self
+            .fee_and_change
+            .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;
+        if fee_and_change.change.is_none() {
+            return Err(TransactionBuilderError::OfflineTransactionRequiresChange {
+                remainder: fee_and_change.remainder,
+                change_fee: fee_and_change.change_fee,
+            });
+        }
+        Ok(())
+    }
+
     /// Register a partial script offset the host derived itself.
     ///
     /// The only legitimate use is an output whose sender offset key is reconstructible from the wallet seed and is
@@ -574,6 +595,12 @@ where KM: TransactionKeyManagerInterface
     /// recipient's amount is, and the output does not exist yet at that point.
     pub fn get_fee_estimate_with(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
         self.fee_estimate_without_change(pending)
+    }
+
+    /// The fee a change output would add to this transaction. A change output is only emitted when what is left
+    /// over after the outputs and the fee without change is larger than this.
+    pub fn get_change_output_fee(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+        self.change_output_fee()
     }
 
     fn fee_estimate_without_change(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -775,7 +802,12 @@ where KM: TransactionKeyManagerInterface
             Some(change) => (add_fee(fee_without_change, change_fee)?, Some(change)),
         };
 
-        Ok(FeeAndChange { fee, change })
+        Ok(FeeAndChange {
+            fee,
+            change,
+            remainder,
+            change_fee,
+        })
     }
 
     fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
@@ -1218,6 +1250,7 @@ where KM: TransactionKeyManagerInterface
         let FeeAndChange {
             fee: total_fee,
             change: change_amount,
+            ..
         } = self
             .fee_and_change
             .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;

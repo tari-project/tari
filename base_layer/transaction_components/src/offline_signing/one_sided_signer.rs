@@ -99,6 +99,8 @@ pub struct RecipientSignedMessage {
     pub offset: PrivateKey,
 }
 
+/// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
+/// output; see [`SignedTransaction`] for why.
 pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
@@ -134,6 +136,8 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
         .map(PendingOutput::from_output)
         .collect::<Result<Vec<_>, _>>()?;
     let sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?;
+    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
+    tx_builder.require_change_output()?;
     for (mut uo, sender_offset_key) in info.outputs.into_iter().zip(sender_offset_keys) {
         uo.set_sender_offset_public_key(sender_offset_key.pub_key.clone());
         // Whatever signature the payload carried was made against the sender offset key we just replaced, so it can
@@ -165,6 +169,8 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     })
 }
 
+/// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
+/// output; see [`SignedTransaction`] for why.
 pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
@@ -210,6 +216,8 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         pending.push(PendingOutput::from_output(uo)?);
     }
     let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
+    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
+    tx_builder.require_change_output()?;
 
     let sender_offset = sender_offset_keys
         .next()
@@ -312,6 +320,8 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     Ok(output)
 }
 
+/// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
+/// output; see [`SignedTransaction`] for why.
 pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
@@ -356,6 +366,8 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
         pending.push(PendingOutput::from_output(uo)?);
     }
     let mut sender_offset_keys = tx_builder.reserve_sender_offset_keys(&pending)?.into_iter();
+    // Refuse before anything is signed: see `SignedTransaction` for why a transaction without change is never signed.
+    tx_builder.require_change_output()?;
 
     let sender_offset = sender_offset_keys
         .next()

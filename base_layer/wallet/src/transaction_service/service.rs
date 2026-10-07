@@ -629,10 +629,11 @@ where
                     let script = push_pubkey_script(&Default::default());
 
                     let output_features = OutputFeatures::default();
-                    // The whole input goes to a single recipient output with no change output, and that output
-                    // carries the memo built below in its encrypted data. The memo cannot be built yet because it
-                    // carries the fee we are about to calculate, so measure a copy built with a zero fee - see
-                    // `addressed_output_memo`. Leaving the memo out here cannot be balanced by the builder at all.
+                    // The input goes to a single recipient output plus the smallest possible change output, and the
+                    // recipient output carries the memo built below in its encrypted data. The memo cannot be built
+                    // yet because it carries the fee we are about to calculate, so measure a copy built with a zero
+                    // fee - see `addressed_output_memo`. Leaving the memo out here cannot be balanced by the builder
+                    // at all.
                     let measured_memo = addressed_output_memo(
                         MemoField::default(),
                         request.recipient_address.clone(),
@@ -647,22 +648,29 @@ where
                         &measured_memo,
                     )?;
 
-                    let fee: MicroMinotari =
+                    let fee_without_change: MicroMinotari =
                         fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
-
-                    if fee > amount {
-                        return Err(TransactionServiceError::Other(format!(
-                            "insufficient funds: fee: {}, amount: {}",
-                            fee, amount
-                        )));
-                    }
-                    let total_amount = amount
-                        .checked_sub(fee)
-                        .ok_or(TransactionServiceError::Other("Amount too small to cover fee".into()))?;
 
                     tx_builder.with_input(input_wallet_output)?;
                     tx_builder.with_fee_per_gram(fee_per_gram);
                     tx_builder.with_lock_height(0);
+
+                    // The offline signer refuses to sign a transaction without a change output (see
+                    // `SignedTransaction`), so the recipient gets the input less the fee and the cost of a change
+                    // output, and one microminotari of change comes back to this wallet.
+                    let change_fee = tx_builder.get_change_output_fee()?;
+                    let fee = fee_without_change
+                        .checked_add(change_fee)
+                        .ok_or(TransactionServiceError::Other("Fee overflow".into()))?;
+                    let total_amount = amount
+                        .checked_sub(fee)
+                        .and_then(|v| v.checked_sub(MicroMinotari::from(1)))
+                        .ok_or_else(|| {
+                            TransactionServiceError::Other(format!(
+                                "insufficient funds: fee: {}, amount: {}",
+                                fee, amount
+                            ))
+                        })?;
 
                     let payment_id = addressed_output_memo(
                         MemoField::default(),
