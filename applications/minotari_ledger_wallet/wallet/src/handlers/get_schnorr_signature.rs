@@ -3,11 +3,16 @@
 
 use alloc::format;
 
+#[cfg(any(target_os = "stax", target_os = "flex"))]
+use include_gif::include_gif;
 use ledger_device_sdk::io::Comm;
 #[cfg(any(target_os = "stax", target_os = "flex"))]
-use ledger_device_sdk::nbgl::NbglStatus;
+use ledger_device_sdk::nbgl::{Field, NbglGlyph, NbglReview, NbglStatus};
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-use ledger_device_sdk::ui::gadgets::SingleMessage;
+use ledger_device_sdk::ui::{
+    bitmaps::{CROSSMARK, EYE, VALIDATE_14},
+    gadgets::{Field, MultiFieldReview, SingleMessage},
+};
 
 use minotari_ledger_wallet_common::{
     codec::{
@@ -17,7 +22,8 @@ use minotari_ledger_wallet_common::{
         GetScriptSchnorrSignatureRequest,
         SchnorrReply,
     },
-    legacy_nonce::check_legacy_nonce_branches,
+    legacy_nonce::{check_legacy_nonce_branches, legacy_signature_purpose},
+    u64_to_string,
 };
 
 use crate::{
@@ -27,7 +33,7 @@ use crate::{
     hash_domain,
     handlers::get_ephemeral_nonce::{nonce_store_error_to_app_sw, EphemeralNonceCtx},
     utils::{derive_from_bip32_key, get_random_nonce},
-    wire::{invalid_data_length, reply},
+    wire::{invalid_data_length, reply, with_screen},
     AppSW,
     KeyType,
 };
@@ -94,11 +100,13 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// to the device, and it carries the flaw that change fixed: the host picks the nonce index, so it can ask for two
 /// signatures over the same key and nonce with different challenges and solve for the private key.
 ///
-/// It survives for the pre-mine spend flow alone, and `check_legacy_nonce_branches` is what holds it there.
+/// It survives for the pre-mine spend flow alone. `check_legacy_nonce_branches` holds it to `PreMine` keys, and
+/// every request that passes is shown to the user for approval before anything is signed, so a second request for
+/// the same key and nonce is visible.
 ///
-/// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs - including why
-/// allowing the sender offset branch reaches pre-mine script keys as well - the scope of the exposure, and the
-/// TODO that deletes this handler along with everything else on the legacy path.
+/// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
+/// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler
+/// along with everything else on the legacy path.
 pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let request = GetRawSchnorrSignatureLegacyNonceRequest::decode(data).map_err(|_| invalid_data_length())?;
@@ -109,18 +117,70 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     // Signing with a deterministic nonce is equivalent to handing the private key over, so the branches this
     // instruction will touch are held to the ones the pre-mine spend flow actually uses. The whitelist is shared
     // with the host - and unit tested - in `minotari_ledger_wallet_common::legacy_nonce`, so the two cannot drift.
-    // This check is the one that counts; the host's is only there to produce a legible error.
+    // This check is the one that counts; the host's is only there to produce a legible error. It runs before the
+    // review, so a refused request never reaches the screen.
     check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|_| AppSW::BadBranchKey)?;
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.
     let private_key_type = KeyType::from_branch_key(request.key_branch)?;
-    let private_key = derive_from_bip32_key(request.account, request.key_index, private_key_type)?;
-
     let nonce_key_type = KeyType::from_branch_key(request.nonce_branch)?;
-    let private_nonce = derive_from_bip32_key(request.account, request.nonce_index, nonce_key_type)?;
 
-    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, request.challenge) {
+    // Everything used after the review is an owned copy, never a borrow of `data`: on Stax and Flex the review
+    // polls for events, and an APDU arriving meanwhile overwrites the buffer `request` borrows. See `wire`.
+    let account = request.account;
+    let key_index = request.key_index;
+    let nonce_index = request.nonce_index;
+    let challenge: [u8; 64] = *request.challenge;
+
+    let purpose = legacy_signature_purpose(key_index);
+    let key_value = format!("{} {}", private_key_branch.as_str(), u64_to_string(key_index));
+    let nonce_value = format!("{} {}", nonce_branch.as_str(), u64_to_string(nonce_index));
+    let fields = [
+        Field {
+            name: "Purpose",
+            value: purpose,
+        },
+        Field {
+            name: "Key",
+            value: &key_value,
+        },
+        Field {
+            name: "Nonce",
+            value: &nonce_value,
+        },
+    ];
+
+    #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+    {
+        let review = MultiFieldReview::new(
+            &fields,
+            &["Review ", "Transaction"],
+            Some(&EYE),
+            "Approve",
+            Some(&VALIDATE_14),
+            "Reject",
+            Some(&CROSSMARK),
+        );
+        if !with_screen(comm, || review.show()) {
+            return Err(AppSW::UserCancelled);
+        }
+    }
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    {
+        const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+        let review: NbglReview = NbglReview::new()
+            .titles("Review transaction", "", "Sign transaction")
+            .glyph(&TARI);
+        if !with_screen(comm, || review.show(&fields)) {
+            return Err(AppSW::UserCancelled);
+        }
+    }
+
+    let private_key = derive_from_bip32_key(account, key_index, private_key_type)?;
+    let private_nonce = derive_from_bip32_key(account, nonce_index, nonce_key_type)?;
+
+    let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce, &challenge) {
         Ok(sig) => sig,
         Err(_e) => {
             let error_string = "Invalid Challange".to_string();
