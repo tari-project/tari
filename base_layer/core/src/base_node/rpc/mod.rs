@@ -103,11 +103,12 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     async fn get_mempool_fee_per_gram_stats(&self, count: usize) -> Result<Vec<models::FeePerGramStat>, Self::Error>;
 }
 
-// `max_items` is the decode budget for a method (see `tari_comms::protocol::rpc::decode_guard`). 524_288 covers a
-// max-weight block body or transaction (~484k embedded items at most); 131_072 covers the batched queries and streams.
+// `max_items` is the decode budget for a method: the most embedded message instances its request, response or each
+// stream item may carry (see `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction (~90k
+// message instances); 65_536 covers the batched queries and streams. The default is 16_384.
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
-    #[rpc(method = 1, max_items = 524_288)]
+    #[rpc(method = 1, max_items = 262_144)]
     async fn submit_transaction(
         &self,
         request: Request<Transaction>,
@@ -116,13 +117,13 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 2)]
     async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
 
-    #[rpc(method = 3, max_items = 131_072)]
+    #[rpc(method = 3, max_items = 65_536)]
     async fn transaction_batch_query(
         &self,
         request: Request<Signatures>,
     ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>;
 
-    #[rpc(method = 4, max_items = 131_072)]
+    #[rpc(method = 4, max_items = 65_536)]
     async fn fetch_matching_utxos(
         &self,
         request: Request<FetchMatchingUtxos>,
@@ -134,10 +135,10 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 6)]
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 7, max_items = 131_072)]
+    #[rpc(method = 7, max_items = 65_536)]
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus>;
 
-    #[rpc(method = 8, max_items = 131_072)]
+    #[rpc(method = 8, max_items = 65_536)]
     async fn query_deleted(
         &self,
         request: Request<QueryDeletedRequest>,
@@ -152,7 +153,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 10)]
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
 
-    #[rpc(method = 11, max_items = 131_072)]
+    #[rpc(method = 11, max_items = 65_536)]
     async fn sync_utxos_by_block(
         &self,
         request: Request<SyncUtxosByBlockRequest>,

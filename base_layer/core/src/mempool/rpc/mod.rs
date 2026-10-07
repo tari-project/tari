@@ -37,14 +37,15 @@ use crate::{
     },
 };
 
-// `max_items` is the decode budget for a method (see `tari_comms::protocol::rpc::decode_guard`). 524_288 covers a
-// max-weight block body or transaction (~484k embedded items at most); 131_072 covers the batched queries and streams.
+// `max_items` is the decode budget for a method: the most embedded message instances its request, response or each
+// stream item may carry (see `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction (~90k
+// message instances); 65_536 covers the batched queries and streams. The default is 16_384.
 #[tari_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
 pub trait MempoolService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;
 
-    #[rpc(method = 2, max_items = 524_288)]
+    #[rpc(method = 2, max_items = 262_144)]
     async fn get_state(&self, request: Request<()>) -> Result<Response<StateResponse>, RpcStatus>;
 
     #[rpc(method = 3)]
@@ -53,7 +54,7 @@ pub trait MempoolService: Send + Sync + 'static {
         request: Request<Signature>,
     ) -> Result<Response<TxStorage>, RpcStatus>;
 
-    #[rpc(method = 4, max_items = 524_288)]
+    #[rpc(method = 4, max_items = 262_144)]
     async fn submit_transaction(&self, request: Request<Transaction>) -> Result<Response<TxStorage>, RpcStatus>;
 }
 
