@@ -117,29 +117,29 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
     type Error = String;
 
     fn try_from(input: proto::types::TransactionInput) -> Result<Self, Self::Error> {
-        let script_signature = input
+        let script_signature = (*input
             .script_signature
-            .ok_or_else(|| "script_signature not provided".to_string())?
-            .try_into()
-            .map_err(|err: ByteArrayError| err.to_string())?;
+            .ok_or_else(|| "script_signature not provided".to_string())?)
+        .try_into()
+        .map_err(|err: ByteArrayError| err.to_string())?;
 
         // Check if the received Transaction input is in compact form or not
         if let Some(commitment) = input.commitment {
             let commitment = CompressedCommitment::from_canonical_bytes(&commitment.data).map_err(|e| e.to_string())?;
             let features = input
                 .features
-                .map(TryInto::try_into)
+                .map(|features| (*features).try_into())
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
             let sender_offset_public_key =
                 CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
                     .map_err(|err| format!("{err:?}"))?;
 
-            let metadata_signature = input
+            let metadata_signature = (*input
                 .metadata_signature
-                .ok_or_else(|| "Metadata signature not provided".to_string())?
-                .try_into()
-                .map_err(|_| "Metadata signature could not be converted".to_string())?;
+                .ok_or_else(|| "Metadata signature not provided".to_string())?)
+            .try_into()
+            .map_err(|_| "Metadata signature could not be converted".to_string())?;
             let rangeproof_hash = input
                 .rangeproof_hash
                 .try_into()
@@ -184,7 +184,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
             let output_hash = input.output_hash();
             Ok(Self {
                 input_data: input.input_data.to_bytes(),
-                script_signature: Some(input.script_signature.into()),
+                script_signature: Some(Box::new(input.script_signature.into())),
                 output_hash: output_hash.to_vec(),
                 ..Default::default()
             })
@@ -198,13 +198,13 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
             )
             .map_err(|err| err.to_string())?;
             Ok(Self {
-                features: Some(
+                features: Some(Box::new(
                     input
                         .features()
                         .map_err(|_| "Non-compact Transaction input should contain features".to_string())?
                         .clone()
                         .into(),
-                ),
+                )),
                 commitment: Some(
                     input
                         .commitment()
@@ -217,7 +217,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
                     .to_bytes(),
                 input_data: input.input_data.to_bytes(),
-                script_signature: Some(input.script_signature.clone().into()),
+                script_signature: Some(Box::new(input.script_signature.clone().into())),
                 sender_offset_public_key: input
                     .sender_offset_public_key()
                     .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
@@ -231,13 +231,13 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_byte_vec(),
-                metadata_signature: Some(
+                metadata_signature: Some(Box::new(
                     input
                         .metadata_signature()
                         .map_err(|_| "Non-compact Transaction input should contain a metadata_signature".to_string())?
                         .clone()
                         .into(),
-                ),
+                )),
                 rangeproof_hash: input
                     .rangeproof_hash()
                     .map_err(|_| "Non-compact Transaction input should contain a rangeproof hash".to_string())?
@@ -259,7 +259,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
     fn try_from(output: proto::types::TransactionOutput) -> Result<Self, Self::Error> {
         let features = output
             .features
-            .map(TryInto::try_into)
+            .map(|features| (*features).try_into())
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         let commitment = output
@@ -280,11 +280,11 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let script = TariScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
 
-        let metadata_signature = output
+        let metadata_signature = (*output
             .metadata_signature
-            .ok_or_else(|| "Metadata signature not provided".to_string())?
-            .try_into()
-            .map_err(|_| "Metadata signature could not be converted".to_string())?;
+            .ok_or_else(|| "Metadata signature not provided".to_string())?)
+        .try_into()
+        .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
         let mut buffer = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|e| e.to_string())?;
@@ -320,12 +320,12 @@ impl TryFrom<TransactionOutput> for proto::types::TransactionOutput {
             proof_bytes: proof.to_vec(),
         });
         Ok(Self {
-            features: Some(output.features.into()),
+            features: Some(Box::new(output.features.into())),
             commitment: Some(output.commitment.into()),
             range_proof,
             script: output.script.to_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
-            metadata_signature: Some(output.metadata_signature.into()),
+            metadata_signature: Some(Box::new(output.metadata_signature.into())),
             covenant,
             version: output.version as u32,
             encrypted_data: output.encrypted_data.to_byte_vec(),
@@ -340,7 +340,10 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_feature = features.sidechain_feature.map(SideChainFeature::try_from).transpose()?;
+        let sidechain_feature = features
+            .sidechain_feature
+            .map(|feature| SideChainFeature::try_from(*feature))
+            .transpose()?;
 
         let output_type = features
             .output_type
@@ -373,7 +376,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra.to_vec(),
             version: features.version as u32,
-            sidechain_feature: features.sidechain_feature.map(Into::into),
+            sidechain_feature: features.sidechain_feature.map(|feature| Box::new(feature.into())),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }

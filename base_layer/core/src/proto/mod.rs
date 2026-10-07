@@ -45,3 +45,6 @@ pub mod types {
 mod block;
 mod block_header;
 mod sidechain_feature;
+
+#[cfg(test)]
+mod decode_budget_tests;

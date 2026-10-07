@@ -64,6 +64,7 @@ pub struct ProtobufCompiler {
     out_dir: Option<PathBuf>,
     type_attributes: HashMap<&'static str, &'static str>,
     field_attributes: HashMap<&'static str, &'static str>,
+    boxed: Vec<&'static str>,
     proto_paths: Vec<PathBuf>,
     include_paths: Vec<PathBuf>,
     emit_rerun_if_changed_directives: bool,
@@ -76,6 +77,7 @@ impl ProtobufCompiler {
             out_dir: None,
             type_attributes: HashMap::new(),
             field_attributes: HashMap::new(),
+            boxed: Vec::new(),
             proto_paths: Vec::new(),
             include_paths: Vec::new(),
             emit_rerun_if_changed_directives: false,
@@ -96,6 +98,13 @@ impl ProtobufCompiler {
 
     pub fn add_field_attribute(&mut self, path: &'static str, attr: &'static str) -> &mut Self {
         self.field_attributes.insert(path, attr);
+        self
+    }
+
+    /// Generate the message field at `path` (e.g. `.package.Message.field`) as a `Box`. This changes nothing on the
+    /// wire; it keeps large optional sub-messages from inflating the size of the containing struct.
+    pub fn add_boxed(&mut self, path: &'static str) -> &mut Self {
+        self.boxed.push(path);
         self
     }
 
@@ -175,6 +184,10 @@ impl ProtobufCompiler {
 
         for (k, v) in &self.field_attributes {
             config.field_attribute(k, v);
+        }
+
+        for path in &self.boxed {
+            config.boxed(path);
         }
 
         let out_dir = self
