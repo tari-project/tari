@@ -101,6 +101,11 @@ mod not_found;
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro
 pub mod __macro_reexports {
+    pub use std::{
+        boxed::Box,
+        result::Result::{Err, Ok},
+    };
+
     pub use futures::{future, future::BoxFuture};
     pub use tokio::io::{AsyncRead, AsyncWrite};
     pub use tower::Service;

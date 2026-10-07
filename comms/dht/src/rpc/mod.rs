@@ -26,7 +26,7 @@ mod test;
 
 mod service;
 pub use service::DhtRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::protocol::rpc::{Request, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
 use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};

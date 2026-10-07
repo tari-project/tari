@@ -9,7 +9,7 @@ pub use service::BaseNodeWalletRpcService;
 
 pub mod query_service;
 
-use std::{error::Error, fmt::Debug};
+use std::error::Error;
 
 use tari_common_types::types::CompressedCommitment;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};

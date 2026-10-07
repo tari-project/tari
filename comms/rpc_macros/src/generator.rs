@@ -31,6 +31,21 @@ pub struct RpcCodeGenerator {
     rpc_methods: Vec<RpcMethodInfo>,
 }
 
+/// Generated code refers to everything through fully qualified paths so that it does not depend on, or clash with,
+/// what is in scope where the macro is used.
+fn dep_mod() -> TokenStream {
+    quote!(::tari_comms::protocol::rpc::__macro_reexports)
+}
+
+/// The decode budget for a method: its `max_items`, or the default.
+fn max_items_tokens(method: &RpcMethodInfo) -> TokenStream {
+    let dep_mod = dep_mod();
+    match method.max_items {
+        Some(max_items) => quote!(#max_items),
+        None => quote!(#dep_mod::DEFAULT_MAX_DECODE_ITEMS),
+    }
+}
+
 impl RpcCodeGenerator {
     pub fn new(options: RpcTraitOptions, trait_ident: syn::Ident, rpc_methods: Vec<RpcMethodInfo>) -> Self {
         Self {
@@ -51,10 +66,10 @@ impl RpcCodeGenerator {
     }
 
     fn generate_server_code(&self) -> TokenStream {
-        let server_struct = self.options.server_struct.as_ref().unwrap();
+        let server_struct = &self.options.server_struct;
         let trait_ident = &self.trait_ident;
         let protocol_name = &self.options.protocol_name;
-        let dep_mod = quote!(tari_comms::protocol::rpc::__macro_reexports);
+        let dep_mod = dep_mod();
 
         let match_branches = self
             .rpc_methods
@@ -62,18 +77,20 @@ impl RpcCodeGenerator {
             .map(|m| {
                 let method_num = m.method_num;
                 let method_name = &m.method_ident;
+                let max_items = max_items_tokens(m);
                 let ret = if m.is_server_streaming {
-                    quote!(Ok(Response::new(resp.into_body())))
+                    quote!(#dep_mod::Ok(#dep_mod::Response::new(#dep_mod::IntoBody::into_body(resp))))
                 } else {
-                    quote!(Ok(resp.map(IntoBody::into_body)))
+                    quote!(#dep_mod::Ok(resp.map(#dep_mod::IntoBody::into_body)))
                 };
                 quote! {
                     #method_num => {
-                         let fut = async move {
-                            let resp = inner.#method_name(req.decode()?).await?;
+                        let fut = async move {
+                            // The request is checked against the method's decode budget before it is decoded
+                            let resp = inner.#method_name(req.decode_with_max_items(#max_items)?).await?;
                             #ret
                         };
-                        Box::pin(fut)
+                        #dep_mod::Box::pin(fut)
                     },
                 }
             })
@@ -83,46 +100,44 @@ impl RpcCodeGenerator {
             match req.method().id() {
                 #match_branches
 
-                id => Box::pin(#dep_mod::future::ready(Err(RpcStatus::unsupported_method(&format!(
-                    "Method identifier `{}` is not recognised or supported",
-                    id
-                ))))),
+                id => #dep_mod::Box::pin(#dep_mod::future::ready(#dep_mod::Err(#dep_mod::RpcStatus::unsupported_method(
+                    &::std::format!("Method identifier `{}` is not recognised or supported", id)
+                )))),
             }
         };
 
         quote::quote! {
             pub struct #server_struct<T> {
-                inner: std::sync::Arc<T>,
+                inner: ::std::sync::Arc<T>,
             }
 
             impl<T: #trait_ident> #server_struct<T> {
                 pub fn new(service: T) -> Self {
                     Self {
-                        inner: std::sync::Arc::new(service),
+                        inner: ::std::sync::Arc::new(service),
                     }
                 }
             }
 
             impl<T: #trait_ident> #dep_mod::Service<#dep_mod::Request<#dep_mod::Bytes>> for #server_struct<T> {
                 type Error = #dep_mod::RpcStatus;
-                type Future = #dep_mod::BoxFuture<'static, Result<#dep_mod::Response<#dep_mod::Body>, #dep_mod::RpcStatus>>;
+                type Future = #dep_mod::BoxFuture<'static, ::std::result::Result<#dep_mod::Response<#dep_mod::Body>, #dep_mod::RpcStatus>>;
                 type Response = #dep_mod::Response<#dep_mod::Body>;
 
-                fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
-                    std::task::Poll::Ready(Ok(()))
+                fn poll_ready(&mut self, _: &mut ::std::task::Context<'_>) -> ::std::task::Poll<::std::result::Result<(), Self::Error>> {
+                    ::std::task::Poll::Ready(#dep_mod::Ok(()))
                 }
 
                 fn call(&mut self, req: #dep_mod::Request<#dep_mod::Bytes>) -> Self::Future {
-                    use #dep_mod::IntoBody;
-                    let inner = self.inner.clone();
+                    let inner = ::std::clone::Clone::clone(&self.inner);
                     #service_method_select_body
                 }
             }
 
-            impl<T> Clone for #server_struct<T> {
+            impl<T> ::std::clone::Clone for #server_struct<T> {
                 fn clone(&self) -> Self {
                     Self {
-                        inner: self.inner.clone(),
+                        inner: ::std::clone::Clone::clone(&self.inner),
                     }
                 }
             }
@@ -138,23 +153,23 @@ impl RpcCodeGenerator {
                 type Error = #dep_mod::RpcServerError;
                 type Response = Self;
 
-                type Future = #dep_mod::future::Ready<Result<Self::Response, Self::Error>>;
+                type Future = #dep_mod::future::Ready<::std::result::Result<Self::Response, Self::Error>>;
 
-                fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
-                    std::task::Poll::Ready(Ok(()))
+                fn poll_ready(&mut self, _: &mut ::std::task::Context<'_>) -> ::std::task::Poll<::std::result::Result<(), Self::Error>> {
+                    ::std::task::Poll::Ready(#dep_mod::Ok(()))
                 }
 
                 fn call(&mut self, _: #dep_mod::ProtocolId) -> Self::Future {
-                    #dep_mod::future::ready(Ok(self.clone()))
+                    #dep_mod::future::ready(#dep_mod::Ok(::std::clone::Clone::clone(self)))
                 }
             }
         }
     }
 
     fn generate_client_code(&self) -> TokenStream {
-        let client_struct = self.options.client_struct.as_ref().unwrap();
+        let client_struct = &self.options.client_struct;
         let protocol_name = &self.options.protocol_name;
-        let dep_mod = quote!(::tari_comms::protocol::rpc::__macro_reexports);
+        let dep_mod = dep_mod();
 
         let client_methods = self
             .rpc_methods
@@ -164,14 +179,15 @@ impl RpcCodeGenerator {
                 let method_num = m.method_num;
                 let request_type = &m.request_type;
                 let result_type = &m.return_type;
-                let is_unit = m.request_type.as_ref().filter(|ty| is_unit_type(ty)).is_some();
+                let max_items = max_items_tokens(m);
+                let is_unit = is_unit_type(request_type);
 
                 let var = if is_unit { quote!(()) } else { quote!(request) };
 
                 let body = if m.is_server_streaming {
-                    quote!(self.inner.server_streaming(#var, #method_num, #dep_mod::DEFAULT_MAX_DECODE_ITEMS).await)
+                    quote!(self.inner.server_streaming(#var, #method_num, #max_items).await)
                 } else {
-                    quote!(self.inner.request_response(#var, #method_num, #dep_mod::DEFAULT_MAX_DECODE_ITEMS).await)
+                    quote!(self.inner.request_response(#var, #method_num, #max_items).await)
                 };
 
                 let ok_type = if m.is_server_streaming {
@@ -187,7 +203,7 @@ impl RpcCodeGenerator {
                 };
 
                 quote! {
-                    pub async fn #name(&mut self,#params) -> Result<#ok_type, #dep_mod::RpcError> {
+                    pub async fn #name(&mut self, #params) -> ::std::result::Result<#ok_type, #dep_mod::RpcError> {
                         #body
                     }
                 }
@@ -195,28 +211,32 @@ impl RpcCodeGenerator {
             .collect::<TokenStream>();
 
         let client_struct_body = quote! {
-            pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>
-              where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + Unpin + Send + #dep_mod::StreamId + 'static {
-                use #dep_mod::NamedProtocolService;
-                use std::sync::{atomic::AtomicBool, Arc};
+            pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> ::std::result::Result<Self, #dep_mod::RpcError>
+              where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + ::std::marker::Unpin + ::std::marker::Send + #dep_mod::StreamId + 'static {
                 let inner = #dep_mod::RpcClient::connect(
-                    Default::default(), Default::default(), framed, Self::PROTOCOL_NAME.into(), None, Arc::new(AtomicBool::new(true))
+                    ::std::default::Default::default(),
+                    ::std::default::Default::default(),
+                    framed,
+                    ::std::convert::Into::into(<Self as #dep_mod::NamedProtocolService>::PROTOCOL_NAME),
+                    ::std::option::Option::None,
+                    ::std::sync::Arc::new(::std::sync::atomic::AtomicBool::new(true)),
                 ).await?;
-                Ok(Self { inner })
+                #dep_mod::Ok(Self { inner })
             }
 
             pub fn builder() -> #dep_mod::RpcClientBuilder<Self> {
-                use #dep_mod::NamedProtocolService;
-                #dep_mod::RpcClientBuilder::new().with_protocol_id(Self::PROTOCOL_NAME.into())
+                #dep_mod::RpcClientBuilder::new().with_protocol_id(
+                    ::std::convert::Into::into(<Self as #dep_mod::NamedProtocolService>::PROTOCOL_NAME)
+                )
             }
 
             #client_methods
 
-            pub fn get_last_request_latency(&mut self) -> Option<std::time::Duration> {
+            pub fn get_last_request_latency(&mut self) -> ::std::option::Option<::std::time::Duration> {
                 self.inner.get_last_request_latency()
             }
 
-            pub async fn ping(&mut self) -> Result<std::time::Duration, #dep_mod::RpcError> {
+            pub async fn ping(&mut self) -> ::std::result::Result<::std::time::Duration, #dep_mod::RpcError> {
                 self.inner.ping().await
             }
 
@@ -226,7 +246,7 @@ impl RpcCodeGenerator {
         };
 
         quote! {
-            #[derive(Debug, Clone)]
+            #[derive(::std::fmt::Debug, ::std::clone::Clone)]
             pub struct #client_struct {
                 inner: #dep_mod::RpcClient,
             }
@@ -239,7 +259,7 @@ impl RpcCodeGenerator {
                 #client_struct_body
             }
 
-            impl From<#dep_mod::RpcClient> for #client_struct {
+            impl ::std::convert::From<#dep_mod::RpcClient> for #client_struct {
                 fn from(inner: #dep_mod::RpcClient) -> Self {
                     Self { inner }
                 }

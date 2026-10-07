@@ -20,11 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+/// What the macro needs to know about one `#[rpc(...)]` method
 #[derive(Debug, Clone)]
 pub struct RpcMethodInfo {
     pub method_ident: syn::Ident,
+    /// The `method = N` literal, kept for its span
+    pub method_lit: syn::LitInt,
     pub method_num: u32,
+    /// The `max_items = M` decode budget, if one was given
+    pub max_items: Option<usize>,
     pub is_server_streaming: bool,
-    pub request_type: Option<syn::Type>,
-    pub return_type: Option<syn::Type>,
+    /// `T` in `Request<T>`
+    pub request_type: syn::Type,
+    /// `T` in `Response<T>` or `Streaming<T>`
+    pub return_type: syn::Type,
 }
