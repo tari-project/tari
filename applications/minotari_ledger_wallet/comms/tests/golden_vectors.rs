@@ -14,7 +14,9 @@
 //! the migration and afterwards.
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
-//! application version bump. It is never a test fix.
+//! application version bump. It is never a test fix. (Example: `sender_offset_branch` in
+//! `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` shipped with application `6.1.1-pre.0`, and `MIN_LEDGER_APP_VERSION`
+//! moved to `6.1.1-pre.0` with it.)
 //!
 //! # What is covered
 //!

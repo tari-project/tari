@@ -34,10 +34,12 @@ use minotari_ledger_wallet_common::codec::{CLA, Request};
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-/// `GetRawSchnorrSignature` now takes a device issued nonce handle instead of a host chosen nonce index, so older
-/// applications cannot serve this client at all. Keep this in step with the ledger application's `version` in its
-/// `Cargo.toml`.
-pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.6";
+/// `6.1.1-pre.0` is the first application that carries `sender_offset_branch` in `GetOneSidedMetadataSignature`, the
+/// `PreMine`-only legacy nonce whitelist, pre-mine mode in `GetScriptOffset`, and 64 bit key indexes. An older
+/// application would refuse or - worse, for pre-mine step 2 - silently mis-derive the sender offset key, so it is
+/// refused here. (Before that, `5.7.0-pre.6` was the first to take device issued nonce handles.) Keep this in step
+/// with the ledger application's `version` in its `Cargo.toml`.
+pub const MIN_LEDGER_APP_VERSION: &str = "6.1.1-pre.0";
 
 struct HidManager {
     inner: Option<HidApi>,
