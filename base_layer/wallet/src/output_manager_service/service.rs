@@ -1171,11 +1171,23 @@ where
             None => None,
         };
 
+        // The signer weighs the outputs it declares, which for a multisig deposit is a larger script than
+        // `recipient_script`; selecting for less would choose inputs that cannot pay the signer's fee.
+        let (num_outputs, features_and_scripts_byte_size) = match &required_change {
+            Some(pending) => (
+                pending.len(),
+                pending
+                    .iter()
+                    .fold(0usize, |acc, p| acc.saturating_add(p.features_and_scripts_size())),
+            ),
+            None => (1, features_and_scripts_byte_size),
+        };
+
         let input_selection = self.select_utxos(
             amount,
             selection_criteria,
             fee_per_gram,
-            1,
+            num_outputs,
             features_and_scripts_byte_size,
             recipient_memo_field.get_payment_id(),
             offline_change_fee,

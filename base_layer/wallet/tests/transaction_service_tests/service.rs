@@ -3037,3 +3037,92 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
         .unwrap();
     assert!(signed.signed_transaction.change_output.is_some());
 }
+
+/// As [`prepare_one_sided_transaction_for_signing_refuses_a_payload_without_change`], for the multisig deposit: a
+/// deposit that would leave no change is refused online, before any input is encumbered, and one that leaves a
+/// microminotari more than the change output costs prepares and signs with that microminotari as change.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let charlie_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let party_number = 2;
+    let public_keys = vec![
+        charlie_key_manager.get_spend_key().pub_key,
+        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+    ];
+
+    // Walk the amount down from the whole input until the selection stops refusing it for want of funds. The first
+    // amount it accepts leaves less than a change output costs, so it must be refused for want of change.
+    let mut amount = input_value;
+    let (remainder, change_fee) = loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone())
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { remainder, change_fee },
+            ))) => break (remainder, change_fee),
+            other => panic!("expected the deposit to be refused for want of change, got {other:?}"),
+        }
+    };
+    assert!(remainder <= change_fee);
+
+    // Nothing was locked: the input is still available and nothing is pending.
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+
+    // Leaving one microminotari more than the change output costs prepares, and the signer agrees: it signs with that
+    // microminotari as change.
+    let amount = amount + remainder - change_fee - MicroMinotari(1);
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address)
+        .await
+        .unwrap();
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_deposit_multisig_transaction(prepared)
+        .await
+        .unwrap();
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
