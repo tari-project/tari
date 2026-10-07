@@ -3357,3 +3357,63 @@ async fn prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_f
     assert_eq!(balance.available_balance, input_value);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
 }
+
+/// As [`prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_fee`], for the multisig deposit.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let public_keys = vec![
+        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+    ];
+
+    // No transaction pays a fee of a single microminotari, so this amount is below any fee.
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address)
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::TransactionBuilderError(TransactionBuilderError::FeeGreaterThanAmount { .. })
+            ))
+        ),
+        "expected the deposit to be refused for a fee greater than the amount, got {result:?}"
+    );
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}

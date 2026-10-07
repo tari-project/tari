@@ -462,6 +462,41 @@ mod test {
         );
     }
 
+    /// The signer refuses a payload whose fee exceeds the amount it sends, even though it leaves change.
+    #[test]
+    fn offline_sign_refuses_a_fee_greater_than_the_amount() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let err = prepare_and_sign_one_sided(
+            &alice_key_manager,
+            &alice_view_key_manager,
+            &bob_address,
+            MicroMinotari(100_000),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "expected the signer to refuse the fee, got {err:?}"
+        );
+    }
+
     /// A payload carrying a directly-specified output must sign into a *valid* transaction.
     ///
     /// The output arrives with a metadata signature made against a sender offset key the signer does not hold, so the

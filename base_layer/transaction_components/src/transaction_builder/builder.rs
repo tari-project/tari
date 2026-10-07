@@ -1793,6 +1793,74 @@ mod test {
             .expect("the transaction, and therefore its script offset, must be valid");
     }
 
+    /// A builder whose input leaves plenty of change, paying a recipient less than any fee.
+    fn builder_paying_less_than_the_fee(key_manager: &KeyManager) -> TransactionBuilder<KeyManager> {
+        let input = create_test_input(MicroMinotari(100_000), 0, key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        builder
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(1),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap();
+        builder
+    }
+
+    /// With the offline change rule set, a fee greater than the amount is refused by the reservation itself, before
+    /// it mints any sender offset key - the builder is still collecting, so it can still reserve once the rule is
+    /// relaxed - and by the online check that makes the same decision.
+    #[test]
+    fn offline_reservation_refuses_a_fee_greater_than_the_amount_before_minting_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = builder_paying_less_than_the_fee(&key_manager);
+        builder.with_change_required();
+
+        let err = builder.check_offline_payload(&[]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "got {err:?}"
+        );
+        let err = builder.reserve_sender_offset_keys(&[]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "got {err:?}"
+        );
+
+        // Nothing was reserved: a second reservation is accepted rather than refused as a repeat.
+        builder.with_prevent_fee_gt_amount(false);
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+    }
+
+    /// The offline change rule only refuses a fee greater than the amount when the builder is told to.
+    #[test]
+    fn offline_reservation_allows_a_fee_greater_than_the_amount_when_not_prevented() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = builder_paying_less_than_the_fee(&key_manager);
+        builder.with_change_required().with_prevent_fee_gt_amount(false);
+
+        builder.check_offline_payload(&[]).unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        assert_validates(&builder.build().unwrap().transaction);
+    }
+
+    /// Without the offline change rule nothing changes: the reservation goes ahead and `build` refuses the fee.
+    #[test]
+    fn reservation_without_the_offline_rule_leaves_the_fee_check_to_build() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = builder_paying_less_than_the_fee(&key_manager);
+
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "got {err:?}"
+        );
+    }
+
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
     #[test]
     #[allow(clippy::identity_op)]
