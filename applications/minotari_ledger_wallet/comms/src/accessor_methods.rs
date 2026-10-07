@@ -431,7 +431,9 @@ pub fn ledger_get_script_signature(
 /// host already knows, `script_key_indexes` names pre-mine script keys by index and `derived_script_keys` carries
 /// the blinding factors of alpha derived script keys. The device generates `sender_offset_count` sender offset keys
 /// itself and returns the base index it derived them from, so the reply is always blinded by keys the host has
-/// never seen.
+/// never seen. They are on the branch that
+/// [`minotari_ledger_wallet_common::script_offset::sender_offset_branch`] names for `derived_script_keys.len()`:
+/// `PreMine` when there are no alpha derived script keys (the pre-mine spend flow), `OneSidedSenderOffset` otherwise.
 ///
 /// Neither side of the sum may leave the device unblinded by a term the host cannot compute, so the device refuses
 /// a request with no sender offset keys *and* one with no script key it derived itself. Both refusals are mirrored
@@ -668,9 +670,11 @@ pub fn ledger_get_raw_schnorr_signature(
 /// flow, whose nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between -
 /// which the device's RAM backed nonce store cannot serve.
 ///
-/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs - including
-/// why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the exposure, and the
-/// TODO that deletes this function along with the rest of the legacy path.
+/// Only `PreMine` keys are signed, and the device asks the user to approve every request.
+///
+/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs, what it reached
+/// before it was narrowed to `PreMine`, the scope of the exposure, and the TODO that deletes this function along with
+/// the rest of the legacy path.
 pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     account: u64,
     private_key_index: u64,

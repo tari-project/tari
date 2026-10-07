@@ -10,6 +10,8 @@ use minotari_ledger_wallet_common::{
         check_offset_is_blinded,
         parse_script_offset_header,
         script_key_section,
+        sender_offset_base_index,
+        sender_offset_branch,
         sender_offset_index,
     },
 };
@@ -38,6 +40,9 @@ pub struct ScriptOffsetCtx {
     /// a host is free to declare a section and then never send a chunk that falls inside it, so a check on the
     /// declared counts would pass while the script side of the sum was still zero.
     device_script_keys_folded: u64,
+    /// How many of those were alpha derived. None means every script key the device derived was a pre-mine key,
+    /// which is what puts the sender offset keys on the `PreMine` branch - see `sender_offset_branch`.
+    derived_script_keys_folded: u64,
     account: u64,
     total_sender_offset_keys: u64,
     total_script_indexes: u64,
@@ -52,6 +57,7 @@ impl ScriptOffsetCtx {
             device_script_key_sum: RistrettoSecretKey::default(),
             host_partial_script_key_sum: RistrettoSecretKey::default(),
             device_script_keys_folded: 0,
+            derived_script_keys_folded: 0,
             account: 0,
             total_sender_offset_keys: 0,
             total_script_indexes: 0,
@@ -70,6 +76,7 @@ impl ScriptOffsetCtx {
         self.device_script_key_sum = RistrettoSecretKey::default();
         self.host_partial_script_key_sum = RistrettoSecretKey::default();
         self.device_script_keys_folded = 0;
+        self.derived_script_keys_folded = 0;
         self.account = 0;
         self.total_sender_offset_keys = 0;
         self.total_script_indexes = 0;
@@ -183,7 +190,11 @@ pub fn handler_get_script_offset(
             }
             Some(derive_from_bip32_key(offset_ctx.account, index, branch)?)
         },
-        ScriptKeySection::DerivedScriptKey => Some(derive_key_from_alpha(offset_ctx.account, data)?),
+        ScriptKeySection::DerivedScriptKey => {
+            let script_key = derive_key_from_alpha(offset_ctx.account, data)?;
+            offset_ctx.derived_script_keys_folded = offset_ctx.derived_script_keys_folded.saturating_add(1);
+            Some(script_key)
+        },
         // This chunk carries nothing that blinds the reply. A host is free to send one and then terminate, which
         // is why the counter below - not the header - is what the emission check looks at.
         ScriptKeySection::None => None,
@@ -213,10 +224,18 @@ pub fn handler_get_script_offset(
     // 5. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
     //    derived from `base..base + count`, so the host cannot replay a call and difference two replies to strip
     //    the blinding, and no per-key state has to be accumulated on the device.
-    let base_index = get_random_u64();
+    //
+    //    The branch is decided by what was folded, not by what the header declared. With no alpha derived key in
+    //    the sum this is the pre-mine spend flow, and the keys go on `PreMine` - the one branch the legacy nonce
+    //    instruction signs, so that pre-mine step 3 can sign its metadata signature with them. Any reply that folds
+    //    `alpha` stays blinded by `OneSidedSenderOffset` keys, which the legacy instruction refuses; otherwise two
+    //    legacy signatures would give up `k_i`, and `alpha` with it. See `minotari_ledger_wallet_common::legacy_nonce`.
+    let branch = sender_offset_branch(offset_ctx.derived_script_keys_folded);
+    let key_type = KeyType::from_branch_key(u64::from(branch.as_byte()))?;
+    let base_index = sender_offset_base_index(branch, get_random_u64());
     for i in 0..offset_ctx.total_sender_offset_keys {
         let index = sender_offset_index(base_index, i);
-        let sender_offset = derive_from_bip32_key(offset_ctx.account, index, KeyType::OneSidedSenderOffset)?;
+        let sender_offset = derive_from_bip32_key(offset_ctx.account, index, key_type)?;
 
         offset_ctx.sender_offset_sum = &offset_ctx.sender_offset_sum + sender_offset;
     }

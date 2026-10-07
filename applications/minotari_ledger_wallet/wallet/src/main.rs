@@ -132,7 +132,7 @@ const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number b
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum KeyType {
     Spend = 0x01,
     Nonce = 0x02,

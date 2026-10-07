@@ -10,7 +10,10 @@
 //! The byte layout of every chunk is not in here: it is in [`crate::codec`], with every other layout. This module is
 //! the rules about what the decoded values may be.
 
-use crate::codec::{Decode, ScriptOffsetHeaderChunk};
+use crate::{
+    codec::{Decode, ScriptOffsetHeaderChunk},
+    common_types::LedgerKeyBranch,
+};
 
 /// The device draws a single random base index and derives `base..base + count` from it, so the reply is a fixed
 /// size no matter how many keys were asked for. The bound therefore no longer exists to keep the reply inside one
@@ -161,6 +164,46 @@ pub fn check_offset_is_blinded(
 /// Both sides call this, so a base near `u64::MAX` needs no special case on either.
 pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
     base_index.wrapping_add(i)
+}
+
+/// The bit every pre-mine sender offset key index has set, and no pre-mine script key index does.
+///
+/// Pre-mine script keys are named by their output's position in the genesis block, so their indexes are small.
+/// Pre-mine sender offset keys share the `PreMine` branch with them, and are kept apart by drawing their base index
+/// from the top half of `u64` - see [`sender_offset_base_index`]. That is what lets the device tell the user which
+/// pre-mine signature it is being asked for; see `crate::legacy_nonce::legacy_signature_purpose`.
+pub const PRE_MINE_SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
+
+/// The branch the device derives a script offset's sender offset keys on.
+///
+/// `derived_script_keys` is the number of alpha derived script keys folded into the sum. With none, every script key
+/// the device derived was a pre-mine key (the device refuses any other indexed branch), so this is the pre-mine spend
+/// flow and the sender offsets go on the `PreMine` branch. Otherwise they go on `OneSidedSenderOffset`.
+///
+/// This split is what keeps `alpha` out of reach of `GetRawSchnorrSignatureLegacyNonce`. A reply that folds an
+/// alpha derived key is `H(b) + alpha - k_sender`, and the legacy instruction can only sign `PreMine` keys, so its
+/// `k_sender` is never one the legacy instruction can be made to give up. A reply whose `k_sender` *is* on `PreMine`
+/// has no `alpha` in it. See `crate::legacy_nonce`.
+///
+/// Both sides call this - the device to derive the keys, the host to name them - so they cannot drift apart.
+pub fn sender_offset_branch(derived_script_keys: u64) -> LedgerKeyBranch {
+    if derived_script_keys == 0 {
+        LedgerKeyBranch::PreMine
+    } else {
+        LedgerKeyBranch::OneSidedSenderOffset
+    }
+}
+
+/// The base index the device derives sender offset keys from, given a fresh random draw.
+///
+/// On `OneSidedSenderOffset` this is the draw itself. On `PreMine` it is moved into the top half of `u64`, where no
+/// pre-mine script key index is, and kept a quarter of the range below `u64::MAX` so that walking
+/// [`MAX_SENDER_OFFSET_KEYS`] keys from it never wraps back out of that half. That leaves 62 random bits.
+pub fn sender_offset_base_index(branch: LedgerKeyBranch, random: u64) -> u64 {
+    match branch {
+        LedgerKeyBranch::PreMine => PRE_MINE_SENDER_OFFSET_INDEX_BIT | (random >> 2),
+        _ => random,
+    }
 }
 
 /// Parse and validate a `GetScriptOffset` header.
@@ -449,6 +492,50 @@ mod test {
             let index = sender_offset_index(base, i);
             assert!(!seen.contains(&index), "index {index} was derived twice");
             seen.push(index);
+        }
+    }
+
+    /// A request with no alpha derived script key is the pre-mine spend flow, and only that one gets `PreMine`
+    /// sender offsets. Anything that folds `alpha` keeps `OneSidedSenderOffset`, which the legacy instruction cannot
+    /// sign.
+    #[test]
+    fn only_a_request_without_alpha_derived_keys_issues_pre_mine_sender_offsets() {
+        assert_eq!(sender_offset_branch(0), LedgerKeyBranch::PreMine);
+        for derived in [1, 2, MAX_SENDER_OFFSET_KEYS, u64::MAX] {
+            assert_eq!(sender_offset_branch(derived), LedgerKeyBranch::OneSidedSenderOffset);
+        }
+    }
+
+    /// Pre-mine sender offset indexes sit in the top half of `u64`, every one of them, from any draw - so they never
+    /// collide with a pre-mine script key index and the device can label them.
+    #[test]
+    fn pre_mine_sender_offset_indexes_stay_in_the_top_half() {
+        for random in [0, 1, u64::MAX >> 1, u64::MAX - 1, u64::MAX] {
+            let base = sender_offset_base_index(LedgerKeyBranch::PreMine, random);
+            for i in 0..MAX_SENDER_OFFSET_KEYS {
+                let index = sender_offset_index(base, i);
+                assert_ne!(
+                    index & PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+                    0,
+                    "index {index} left the top half"
+                );
+            }
+        }
+        // Different draws still give different bases.
+        assert_ne!(
+            sender_offset_base_index(LedgerKeyBranch::PreMine, 0),
+            sender_offset_base_index(LedgerKeyBranch::PreMine, u64::MAX)
+        );
+    }
+
+    /// Off the pre-mine branch the draw is used as it is.
+    #[test]
+    fn other_sender_offset_bases_are_the_draw() {
+        for random in [0, 7, u64::MAX] {
+            assert_eq!(
+                sender_offset_base_index(LedgerKeyBranch::OneSidedSenderOffset, random),
+                random
+            );
         }
     }
 }
