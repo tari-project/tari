@@ -198,6 +198,19 @@ pub fn sender_offset_branch(derived_script_keys: u64) -> LedgerKeyBranch {
     }
 }
 
+/// Whether `(branch, index)` can be a sender offset key: any `OneSidedSenderOffset` key, or a `PreMine` key with
+/// [`PRE_MINE_SENDER_OFFSET_INDEX_BIT`] set - the only `PreMine` keys `GetScriptOffset` issues as sender offsets.
+///
+/// `GetOneSidedMetadataSignature` signs with the sender offset key it is named, and checks this before its review, so
+/// it cannot be pointed at a pre-mine *script* key (whose index never has the bit). Both sides call it.
+pub fn is_sender_offset_key(branch: LedgerKeyBranch, index: u64) -> bool {
+    match branch {
+        LedgerKeyBranch::OneSidedSenderOffset => true,
+        LedgerKeyBranch::PreMine => index & PRE_MINE_SENDER_OFFSET_INDEX_BIT != 0,
+        LedgerKeyBranch::Random | LedgerKeyBranch::Spend => false,
+    }
+}
+
 /// The base index the device derives sender offset keys from, given a fresh random draw.
 ///
 /// On `OneSidedSenderOffset` this is the draw itself. On `PreMine` it is moved into the top half of `u64`, where no
@@ -544,5 +557,28 @@ mod test {
                 random
             );
         }
+    }
+
+    #[test]
+    fn only_one_sided_or_top_bit_pre_mine_keys_are_sender_offset_keys() {
+        assert!(is_sender_offset_key(LedgerKeyBranch::OneSidedSenderOffset, 0));
+        assert!(is_sender_offset_key(LedgerKeyBranch::OneSidedSenderOffset, u64::MAX));
+        assert!(is_sender_offset_key(
+            LedgerKeyBranch::PreMine,
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7
+        ));
+        assert!(!is_sender_offset_key(LedgerKeyBranch::PreMine, 7));
+        assert!(!is_sender_offset_key(
+            LedgerKeyBranch::PreMine,
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT - 1
+        ));
+        assert!(!is_sender_offset_key(
+            LedgerKeyBranch::Random,
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT
+        ));
+        assert!(!is_sender_offset_key(
+            LedgerKeyBranch::Spend,
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT
+        ));
     }
 }

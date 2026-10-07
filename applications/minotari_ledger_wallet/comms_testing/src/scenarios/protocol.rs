@@ -58,7 +58,7 @@
 
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
-    script_offset::{MAX_SENDER_OFFSET_KEYS, SCRIPT_OFFSET_HEADER_SIZE},
+    script_offset::{MAX_SENDER_OFFSET_KEYS, PRE_MINE_SENDER_OFFSET_INDEX_BIT, SCRIPT_OFFSET_HEADER_SIZE},
 };
 
 use crate::{
@@ -398,11 +398,17 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
         expect_status(&format!("{name} on the spend branch"), &reply, AppSW::BadBranchKey)?;
     }
 
-    // `GetOneSidedMetadataSignature`'s sender offset key may be on `OneSidedSenderOffset` or `PreMine` and nothing
-    // else. Both refusals come before the review, so this stays unattended; a device that drew the review instead
-    // would block here until the scenario timed out.
+    // `GetOneSidedMetadataSignature`'s sender offset key may be on `OneSidedSenderOffset`, or on `PreMine` with the
+    // pre-mine sender offset bit set, and nothing else - a `PreMine` index without the bit is a pre-mine *script* key.
+    // Every refusal comes before the review, so this stays unattended; a device that drew the review instead would
+    // block here until the scenario timed out.
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
-    for branch in [LedgerKeyBranch::Spend, LedgerKeyBranch::Random] {
+    let script_key_index = index & !PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+    for (branch, index) in [
+        (LedgerKeyBranch::Spend, index),
+        (LedgerKeyBranch::Random, index),
+        (LedgerKeyBranch::PreMine, script_key_index),
+    ] {
         let reply = raw::command(
             account,
             Instruction::GetOneSidedMetadataSignature,
@@ -418,9 +424,9 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
             ),
         )
         .send()
-        .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+        .context(|| format!("GetOneSidedMetadataSignature with a {branch} {index} sender offset"))?;
         expect_status(
-            &format!("GetOneSidedMetadataSignature with a {branch} sender offset key"),
+            &format!("GetOneSidedMetadataSignature with sender offset key {branch} {index}"),
             &reply,
             AppSW::BadBranchKey,
         )?;

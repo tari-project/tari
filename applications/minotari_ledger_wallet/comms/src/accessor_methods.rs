@@ -59,6 +59,7 @@ use minotari_ledger_wallet_common::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_script_key_count,
         check_sender_offset_key_count,
+        is_sender_offset_key,
         sender_offset_index,
     },
 };
@@ -802,7 +803,8 @@ pub fn ledger_get_script_schnorr_signature(
 ///
 /// `sender_offset_branch` is the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary output,
 /// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode. The device
-/// refuses any other branch with `BadBranchKey`, before its review; that refusal is mirrored here.
+/// refuses any other branch - and a `PreMine` index without the pre-mine sender offset bit, which would be a pre-mine
+/// script key - with `BadBranchKey`, before its review; that refusal is mirrored here.
 pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
@@ -819,15 +821,12 @@ pub fn ledger_get_one_sided_metadata_signature(
         "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
         account, message.to_hex()
     );
-    if !matches!(
-        sender_offset_branch,
-        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine
-    ) {
+    if !is_sender_offset_key(sender_offset_branch, sender_offset_key_index) {
         return Err(LedgerDeviceError::Processing(format!(
-            "GetOneSidedMetadataSignature: '{sender_offset_branch}' is not a sender offset key branch"
+            "GetOneSidedMetadataSignature: '{sender_offset_branch}' key {sender_offset_key_index} is not a sender \
+             offset key (a OneSidedSenderOffset key, or a PreMine key with the pre-mine sender offset bit set)"
         )));
     }
-    verify_ledger_application()?;
 
     // Ensure the receiver address is valid
     if let TariAddress::Single(_) = receiver_address {
@@ -865,6 +864,23 @@ pub fn ledger_get_one_sided_metadata_signature(
             address_bytes.len()
         ))
     })?;
+    // One APDU, whose length byte the transport fills with `len as u8`: an oversized payload would be truncated on the
+    // wire rather than refused, and arrive at the device as a malformed request. Refuse it here, legibly.
+    if request.encoded_len() > GetOneSidedMetadataSignatureRequest::MAX_SIZE {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: the receiver address is {} bytes, which makes a {} byte request; a single \
+             APDU carries at most {} bytes, so the address (with its payment ID) can be at most {} bytes",
+            address_bytes.len(),
+            request.encoded_len(),
+            GetOneSidedMetadataSignatureRequest::MAX_SIZE,
+            address_bytes.len().saturating_sub(
+                request
+                    .encoded_len()
+                    .saturating_sub(GetOneSidedMetadataSignatureRequest::MAX_SIZE)
+            )
+        )));
+    }
+    verify_ledger_application()?;
 
     match Command::from_request(&request).execute() {
         Ok(result) => {
@@ -894,5 +910,72 @@ pub fn ledger_get_one_sided_metadata_signature(
         Err(e) => Err(LedgerDeviceError::Instruction(format!(
             "GetOneSidedMetadataSignature: {e}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+    use tari_common_types::tari_address::TariAddressFeatures;
+
+    use super::*;
+
+    fn dual_address(payment_id_length: usize) -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
+        TariAddress::new_dual_address(
+            key.clone(),
+            key,
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            (payment_id_length > 0).then(|| vec![0xAB; payment_id_length]),
+        )
+        .unwrap()
+    }
+
+    fn sign(sender_offset_key_index: u64, branch: LedgerKeyBranch, receiver: &TariAddress) -> String {
+        ledger_get_one_sided_metadata_signature(
+            1,
+            Network::Esmeralda,
+            0,
+            1_000,
+            sender_offset_key_index,
+            branch,
+            &PrivateKey::from(42u64),
+            receiver,
+            &[7u8; 32],
+        )
+        .expect_err("refused before the transport is opened")
+        .to_string()
+    }
+
+    /// A `PreMine` sender offset key without the pre-mine sender offset bit is a pre-mine script key, and is refused
+    /// before the wire - as are branches that are never sender offset keys.
+    #[test]
+    fn a_pre_mine_index_without_the_sender_offset_bit_is_refused() {
+        let receiver = dual_address(0);
+        for (index, branch) in [
+            (7, LedgerKeyBranch::PreMine),
+            (PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7, LedgerKeyBranch::Random),
+            (PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7, LedgerKeyBranch::Spend),
+        ] {
+            let error = sign(index, branch, &receiver);
+            assert!(error.contains("is not a sender offset key"), "{error}");
+        }
+    }
+
+    /// An address too long for one APDU is refused with its length and the limit, before the wire.
+    #[test]
+    fn an_address_too_long_for_one_apdu_is_refused() {
+        let receiver = dual_address(80);
+        let error = sign(
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7,
+            LedgerKeyBranch::PreMine,
+            &receiver,
+        );
+        assert!(error.contains("a single APDU carries at most 255 bytes"), "{error}");
+        assert!(
+            error.contains(&format!("the receiver address is {} bytes", receiver.to_vec().len())),
+            "{error}"
+        );
     }
 }

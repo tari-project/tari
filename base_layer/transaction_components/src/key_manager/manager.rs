@@ -642,17 +642,19 @@ impl KeyManager {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine
-            // spend's is on `PreMine`, because `get_script_offset` issues it in pre-mine mode. The device derives the
-            // key on the branch it is sent and refuses any other, and so does this.
+            // spend's is on `PreMine`, because `get_script_offset` issues it in pre-mine mode, at an index with the
+            // pre-mine sender offset bit set. The device derives the key on the branch it is sent and refuses anything
+            // else - a pre-mine script key above all - and so does this.
             let (sender_offset_key_index, sender_offset_branch) = match sender_offset_key_id {
                 TariKeyId::LedgerKey { branch, index }
-                    if matches!(branch, LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine) =>
+                    if minotari_ledger_wallet_common::script_offset::is_sender_offset_key(*branch, *index) =>
                 {
                     (index, *branch)
                 },
-                TariKeyId::LedgerKey { branch, .. } => {
+                TariKeyId::LedgerKey { branch, index } => {
                     return Err(KeyManagerError::LedgerError(format!(
-                        "A one sided metadata signature needs a '{}' or '{}' sender offset key, got '{branch}'",
+                        "A one sided metadata signature needs a sender offset key - a '{}' key, or a '{}' key with \
+                         the pre-mine sender offset bit set - got '{branch}' key {index}",
                         LedgerKeyBranch::OneSidedSenderOffset,
                         LedgerKeyBranch::PreMine
                     )));

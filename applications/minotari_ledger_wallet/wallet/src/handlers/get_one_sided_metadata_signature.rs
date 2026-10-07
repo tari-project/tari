@@ -21,7 +21,7 @@ use ledger_device_sdk::ui::{
 };
 use minotari_ledger_wallet_common::{
     codec::{Decode, OneSidedMetadataSignatureHead},
-    common_types::LedgerKeyBranch,
+    script_offset::is_sender_offset_key,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
@@ -70,12 +70,14 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // `PreMine`, because `GetScriptOffset` issues it in pre-mine mode. Nothing else is a sender offset key, and the
     // request is refused before the review. Signing either branch here is safe: the nonces are drawn on the device,
     // so there is no second signature under one nonce to difference against.
-    let sender_offset_key_type = match branch_key_from_u64(head.sender_offset_branch)? {
-        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine => {
-            KeyType::from_branch_key(head.sender_offset_branch)?
-        },
-        LedgerKeyBranch::Random | LedgerKeyBranch::Spend => return Err(AppSW::BadBranchKey),
-    };
+    //
+    // A `PreMine` sender offset key always has `PRE_MINE_SENDER_OFFSET_INDEX_BIT` set and a pre-mine script key never
+    // does, so `is_sender_offset_key` also keeps this instruction from being pointed at a pre-mine script key.
+    let sender_offset_branch = branch_key_from_u64(head.sender_offset_branch)?;
+    if !is_sender_offset_key(sender_offset_branch, sender_offset_key_index) {
+        return Err(AppSW::BadBranchKey);
+    }
+    let sender_offset_key_type = KeyType::from_branch_key(head.sender_offset_branch)?;
     let value_u64 = head.value;
     let value = Minotari::new(head.value);
 

@@ -70,6 +70,9 @@ pub struct GetOneSidedMetadataSignatureRequest<'a> {
 }
 
 impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
+    /// The most a single APDU can carry: its `Lc` is one byte. The transport builds `Lc` as `len as u8`, so a longer
+    /// payload is not refused there - it is silently truncated - and the host has to refuse it before sending.
+    pub const MAX_SIZE: usize = 255;
     /// The shortest payload the device reads any further than.
     ///
     /// This is **not** the shortest valid payload. That would be the fixed fields, the length prefix, a minimum size
@@ -109,6 +112,14 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
     /// The serialised receiver address.
     pub fn receiver_address(&self) -> &'a [u8] {
         self.receiver_address
+    }
+
+    /// The encoded length, account included - what goes in the APDU's `Lc`. Compare with [`Self::MAX_SIZE`].
+    pub fn encoded_len(&self) -> usize {
+        FIXED_SIZE
+            .saturating_add(ADDRESS_SIZE_SIZE)
+            .saturating_add(self.receiver_address.len())
+            .saturating_add(MESSAGE_SIZE)
     }
 }
 
@@ -258,6 +269,20 @@ mod test {
         assert_eq!(
             GetOneSidedMetadataSignatureRequest::decode(&bytes),
             Ok(request(&address))
+        );
+    }
+
+    #[test]
+    fn the_encoded_length_is_what_is_encoded() {
+        for size in [TARI_DUAL_ADDRESS_MIN_SIZE, 141, 142, TARI_DUAL_ADDRESS_MAX_SIZE] {
+            let address = vec![0xaa; size];
+            let request = request(&address);
+            assert_eq!(request.encoded_len(), request.to_vec().len(), "address of {size} bytes");
+        }
+        // 141 bytes of address is the most a single APDU can carry.
+        assert_eq!(
+            request(&[0xaa; 141]).encoded_len(),
+            GetOneSidedMetadataSignatureRequest::MAX_SIZE
         );
     }
 
