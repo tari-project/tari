@@ -74,7 +74,9 @@ pub enum Commands {
     /// Only transactions that leave a change output are signed. A payload that spends its inputs exactly, such as a
     /// send-all or sweep, is refused: with no change output, the script offset of the signed transaction together
     /// with what the online (view key) wallet already knows would let it work out the spend key. Prepare it again
-    /// with a slightly smaller amount.
+    /// with a slightly smaller amount. This closes one known recovery path only; a view key holder can still produce
+    /// a payload that passes verification, so check every recipient, amount and "Other outputs" entry before
+    /// approving.
     Sign(SignArgs),
 
     /// Check if the signer has been initialized

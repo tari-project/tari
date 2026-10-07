@@ -1086,6 +1086,7 @@ where
             num_outputs,
             features_and_scripts_byte_size.saturating_mul(num_outputs),
             Vec::new(),
+            None,
         ) {
             Ok(v) => Ok(v),
             Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
@@ -1149,15 +1150,6 @@ where
             &recipient_memo_field,
         )?;
 
-        let input_selection = self.select_utxos(
-            amount,
-            selection_criteria,
-            fee_per_gram,
-            1,
-            features_and_scripts_byte_size,
-            recipient_memo_field.get_payment_id(),
-        )?;
-
         let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
@@ -1166,6 +1158,28 @@ where
         builder
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+
+        // For a payload the offline signer will sign, the selection has to size the change output exactly as the
+        // builder will, or it can believe there is change where the signer will find none. The change output's fee
+        // does not depend on the inputs, so it can be measured before they are chosen.
+        let offline_change_fee = match &required_change {
+            Some(pending) => {
+                let mut probe = builder.clone();
+                probe.with_memo(recipient_memo_field.clone());
+                Some(probe.get_change_output_fee(pending)?)
+            },
+            None => None,
+        };
+
+        let input_selection = self.select_utxos(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            1,
+            features_and_scripts_byte_size,
+            recipient_memo_field.get_payment_id(),
+            offline_change_fee,
+        )?;
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone())?;
@@ -1776,6 +1790,7 @@ where
             1,
             features_and_scripts_byte_size,
             Vec::new(),
+            None,
         )?;
 
         // Create builder with no recipients (other than ourselves)
@@ -1917,6 +1932,7 @@ where
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
         recipient_payment_id: Vec<u8>,
+        offline_change_fee: Option<MicroMinotari>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -2000,7 +2016,10 @@ where
         )?;
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
-        let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size);
+        // A payload for the offline signer passes the builder's own measurement of the change output, so that the
+        // selection and the signer agree on whether there is change. Other sends keep the estimate above.
+        let default_output_fee = offline_change_fee
+            .unwrap_or_else(|| fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size));
         let output_fee = fee_calc.calculate(
             fee_per_gram,
             0,
@@ -2013,8 +2032,10 @@ where
         // If `force_change_output` is enabled we may need to add an extra UTXO after branch-and-bound to guarantee a
         // change output. Snapshot the spendable outputs to choose from (branch-and-bound consumes `uo` below), but only
         // for standard selections (we never pull in extra inputs for coin-control selections where the user
-        // deliberately picked the inputs).
-        let force_change_enabled = self.resources.config.force_change_output && selection_criteria.filter.is_standard();
+        // deliberately picked the inputs). A payload for the offline signer always seeks change, because the signer
+        // refuses to sign one without it.
+        let force_change_enabled = (self.resources.config.force_change_output || offline_change_fee.is_some()) &&
+            selection_criteria.filter.is_standard();
         let force_change_pool = if force_change_enabled { uo.clone() } else { Vec::new() };
 
         let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
@@ -2540,6 +2561,7 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
                         .saturating_mul(number_of_splits),
                     Vec::new(),
+                    None,
                 )?;
 
                 self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)

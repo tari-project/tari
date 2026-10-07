@@ -719,6 +719,18 @@ where
                         fee,
                         TxType::PaymentToOther,
                     )?;
+                    // Ask the builder, declared as the signer will declare it, whether this leaves change, so a drift
+                    // from the signer's decision fails here rather than after the operator has approved it.
+                    let declared_recipient = PaymentRecipient {
+                        amount: total_amount,
+                        payment_id: payment_id.clone(),
+                        ..measured_recipient
+                    };
+                    tx_builder.check_change_output(&[withdraw_pending_output(
+                        consensus_constants,
+                        &declared_recipient,
+                        &payment_id,
+                    )?])?;
                     let tx_id = TxId::new_random();
                     let response = prepare_withdraw_multisig_transaction(
                         &self.resources.transaction_key_manager_service,

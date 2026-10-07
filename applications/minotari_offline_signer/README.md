@@ -71,7 +71,9 @@ minotari_offline_signer sign \
 The signer only signs transactions that leave a change output. A payload that spends its inputs exactly, such as a
 send-all or sweep, is refused, because with no change output the script offset of the signed transaction, together
 with what the online (view key) wallet already knows, would let that wallet work out the spend key. Prepare it again
-with a slightly smaller amount.
+with a slightly smaller amount. This closes that one known way of recovering the spend key; it does not make it safe
+to treat the online wallet as untrusted in general, because a view key holder can produce a payload that passes
+verification. Check every recipient, amount and "Other outputs" entry in the summary before approving.
 
 ### Clear Stored Keys
 
@@ -137,7 +139,7 @@ This provides defense-in-depth: even if the OS keystore is compromised, the keys
 
 - **Key protection**: When initializing, avoid passing keys or seed words via command line arguments as they may be visible in shell history. Use the interactive prompt or environment variables instead.
 
-- **Verify before signing**: Always verify the transaction details before signing, especially the recipient addresses and amounts.
+- **Verify before signing**: Always verify the transaction details before signing: every recipient address, every amount and every "Other outputs" entry. Anyone holding the view key can produce a payload that passes the integrity check, and the change-output rule above only closes one known way of recovering the spend key, so the summary is the check that matters.
 
 ## Building
 

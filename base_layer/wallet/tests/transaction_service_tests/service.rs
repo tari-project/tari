@@ -285,6 +285,23 @@ async fn setup_transaction_service_no_comms(
     db_connection: WalletDbConnection,
     config: Option<TransactionServiceConfig>,
 ) -> TransactionServiceNoCommsInterface {
+    setup_transaction_service_no_comms_with_oms_config(
+        factories,
+        db_connection,
+        config,
+        OutputManagerServiceConfig::default(),
+    )
+    .await
+}
+
+/// As [`setup_transaction_service_no_comms`], with the output manager configured by `oms_config`.
+#[allow(clippy::type_complexity)]
+async fn setup_transaction_service_no_comms_with_oms_config(
+    factories: CryptoFactories,
+    db_connection: WalletDbConnection,
+    config: Option<TransactionServiceConfig>,
+    oms_config: OutputManagerServiceConfig,
+) -> TransactionServiceNoCommsInterface {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
@@ -339,7 +356,7 @@ async fn setup_transaction_service_no_comms(
 
     let wallet_connectivity_service_mock = WalletConnectivityHandle::new(mock_http);
     let output_manager_service = OutputManagerService::new(
-        OutputManagerServiceConfig::default(),
+        oms_config,
         oms_request_receiver,
         oms_db.clone(),
         output_manager_service_event_publisher.clone(),
@@ -2914,4 +2931,109 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
         signed.signed_transaction.change_output.map(|o| o.value()),
         Some(MicroMinotari(1))
     );
+}
+
+/// A payload for the offline signer seeks change even when `force_change_output` is off: when the selection lands on
+/// an exact match and the wallet has a spare output, it adds that output rather than leaving the signer nothing to
+/// put change on. Without the spare output the same payment is refused, as above.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let oms_config = OutputManagerServiceConfig {
+        force_change_output: false,
+        ..Default::default()
+    };
+    let mut alice_ts_interface =
+        setup_transaction_service_no_comms_with_oms_config(factories, connection, None, oms_config).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let fee_per_gram = MicroMinotari(1);
+
+    // Find an amount the single input pays for exactly, with nothing left for change.
+    let mut amount = input_value;
+    loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_one_sided_transaction_for_signing(
+                bob_address.clone(),
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram,
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { .. },
+            ))) => break,
+            other => panic!("expected the prepare to be refused for want of change, got {other:?}"),
+        }
+    }
+
+    // A spare output, too small to pay for the amount on its own, so the exact match is still the selection's first
+    // choice.
+    let spare_value = MicroMinotari(100_000);
+    let spare = make_input(
+        &mut rand::rng(),
+        spare_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(spare.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(spare.output_hash(), true)])
+        .unwrap();
+
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            fee_per_gram,
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.info.inputs.len(), 2, "the spare output should have been added");
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_transaction(prepared)
+        .await
+        .unwrap();
+    assert!(signed.signed_transaction.change_output.is_some());
 }
