@@ -158,6 +158,9 @@ pub(crate) const SPEND_STEP_2_SELF: &str = "step_2_for_self";
 pub(crate) const SPEND_STEP_3_SELF: &str = "step_3_for_self";
 pub(crate) const SPEND_STEP_3_PARTIES: &str = "step_3_for_parties";
 pub(crate) const SPEND_STEP_4_LEADER: &str = "step_4_for_leader_from_";
+/// Step 4's record of the outputs it has already signed, so that a run stopped by a full device nonce record can be
+/// resumed without signing any output twice. See `load_step_4_progress`.
+pub(crate) const SPEND_STEP_4_PROGRESS: &str = "step_4_progress";
 
 #[derive(Debug)]
 pub struct SentTransaction {}
@@ -809,6 +812,7 @@ pub async fn command_runner(
                     use_pre_mine_input_file: args.use_pre_mine_input_file,
                 };
 
+                warn_if_step_4_needs_app_restarts(session_info.recipient_info.len());
                 let out_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
                 write_to_json_file(&out_file, true, session_info)?;
                 println!();
@@ -929,6 +933,7 @@ pub async fn command_runner(
                         },
                     };
 
+                warn_if_step_4_needs_app_restarts(session_info.recipient_info.len());
                 println!();
                 let mut outputs_for_leader = Vec::with_capacity(session_info.recipient_info.len());
                 let mut outputs_for_self = Vec::with_capacity(session_info.recipient_info.len());
@@ -1480,6 +1485,27 @@ pub async fn command_runner(
                     break;
                 }
 
+                // Outputs a previous run of this step already signed - stopped, for instance, by a full device nonce
+                // record. They are skipped below *even if the leader's step 3 file has changed since*: signing an
+                // output a second time, over a different challenge, would put two signatures under its
+                // step 2 nonces, which gives up this party's pre-mine keys. The progress file can only
+                // ever prevent a signature.
+                let progress_file = out_dir.join(get_file_name(SPEND_STEP_4_PROGRESS, None));
+                let mut signed = match load_step_4_progress(&progress_file, &session_info, &party_info_indexes) {
+                    Ok(signed) => signed,
+                    Err(e) => {
+                        eprintln!("\nError: {e}\n");
+                        break;
+                    },
+                };
+                if !signed.is_empty() {
+                    println!(
+                        "Resuming step 4: {} of {} outputs were already signed and will not be signed again.",
+                        signed.len(),
+                        party_info_indexes.len()
+                    );
+                }
+
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
                         Ok(outputs) => outputs,
@@ -1490,7 +1516,6 @@ pub async fn command_runner(
                     };
 
                 println!();
-                let mut outputs_for_leader = Vec::with_capacity(party_info_indexed.outputs_for_self.len());
                 let mut error = false;
                 for (i, (leader_info, party_info)) in leader_info_indexed
                     .outputs_for_parties
@@ -1498,6 +1523,15 @@ pub async fn command_runner(
                     .zip(party_info_indexed.outputs_for_self.iter())
                     .enumerate()
                 {
+                    if signed.iter().any(|done| done.output_index == party_info.output_index) {
+                        println!(
+                            "  Output {} was signed by a previous run; skipping ({} of {})",
+                            party_info.output_index,
+                            i.saturating_add(1),
+                            leader_info_indexed.outputs_for_parties.len()
+                        );
+                        continue;
+                    }
                     let embedded_output = match get_embedded_pre_mine_outputs(
                         vec![party_info.output_index],
                         pre_mine_from_file.clone(),
@@ -1533,7 +1567,11 @@ pub async fn command_runner(
                     ) {
                         Ok(signature) => signature,
                         Err(e) => {
-                            eprintln!("\nError: Script signature SignMessage error! {e}\n");
+                            if is_legacy_nonce_store_full(&e) {
+                                eprintln!("\n{STEP_4_STORE_FULL_MESSAGE}\n");
+                            } else {
+                                eprintln!("\nError: Script signature SignMessage error! {e}\n");
+                            }
                             error = true;
                             break;
                         },
@@ -1645,7 +1683,11 @@ pub async fn command_runner(
                     ) {
                         Ok(signature) => signature,
                         Err(e) => {
-                            eprintln!("\nError: Metadata signature SignMessage error! {e}\n");
+                            if is_legacy_nonce_store_full(&e) {
+                                eprintln!("\n{STEP_4_STORE_FULL_MESSAGE}\n");
+                            } else {
+                                eprintln!("\nError: Metadata signature SignMessage error! {e}\n");
+                            }
                             error = true;
                             break;
                         },
@@ -1675,12 +1717,16 @@ pub async fn command_runner(
                         break;
                     }
 
-                    outputs_for_leader.push(Step4OutputsForLeader {
+                    // Recorded before the next output is touched, so that a run stopped from here on never signs this
+                    // output again.
+                    let done = Step4OutputsForLeader {
                         output_index: party_info.output_index,
                         script_signature,
                         metadata_signature,
                         script_offset,
-                    });
+                    };
+                    append_step_4_progress(&progress_file, &session_info, &done)?;
+                    signed.push(done);
 
                     println!(
                         "  Processed {} of {} transactions",
@@ -1692,6 +1738,13 @@ pub async fn command_runner(
                     break;
                 }
 
+                let outputs_for_leader = match merge_step_4_outputs(&party_info_indexes, signed) {
+                    Ok(outputs) => outputs,
+                    Err(e) => {
+                        eprintln!("\nError: {e}\n");
+                        break;
+                    },
+                };
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep4OutputsForLeader {
                     outputs_for_leader,
@@ -3994,6 +4047,105 @@ fn write_audit_to_csv_file(
     Ok(())
 }
 
+/// What step 4 prints when the device's legacy used-nonce record is full.
+const STEP_4_STORE_FULL_MESSAGE: &str = "The Ledger device's record of used pre-mine nonces is full (it holds one app \
+                                         run's worth: 32 outputs). Progress is saved. Restart the Minotari Wallet app \
+                                         on the Ledger device, then re-run this same step 4 command; it will continue \
+                                         from the next output.";
+
+/// Whether a signing error is the device refusing because its legacy used-nonce record is full.
+fn is_legacy_nonce_store_full(error: &impl std::fmt::Display) -> bool {
+    error.to_string().contains("LegacyNonceStoreFull")
+}
+
+/// How many pre-mine outputs one run of the device app can sign in step 4: two legacy signatures each.
+const STEP_4_OUTPUTS_PER_APP_RUN: usize = minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_RECORD_SIZE / 2;
+
+/// How many times the device app will have to be restarted for step 4 to sign `outputs` outputs.
+fn step_4_app_restarts_needed(outputs: usize) -> usize {
+    outputs.div_ceil(STEP_4_OUTPUTS_PER_APP_RUN).saturating_sub(1)
+}
+
+fn warn_if_step_4_needs_app_restarts(outputs: usize) {
+    let restarts = step_4_app_restarts_needed(outputs);
+    if restarts > 0 {
+        println!(
+            "\nWarning: this session has {outputs} outputs. On a Ledger device step 4 can sign \
+             {STEP_4_OUTPUTS_PER_APP_RUN} outputs per run of the Minotari Wallet app, so step 4 will stop {restarts} \
+             time(s) and ask you to restart the app on the device and re-run the same command; it continues where it \
+             stopped.\n"
+        );
+    }
+}
+
+/// Load step 4's progress file: the outputs a previous run already signed. A missing file means nothing was signed.
+///
+/// Line one is the session header, as in every session file; each further line is one signed output. An entry for an
+/// output that is not this party's, or a second entry for one output, is refused as a damaged or edited file - better
+/// to stop than to guess which signature is the real one.
+fn load_step_4_progress(
+    path: &Path,
+    session_info: &PreMineSpendStep1SessionInfo,
+    party_output_indexes: &[usize],
+) -> Result<Vec<Step4OutputsForLeader>, String> {
+    let describe = |e: &dyn std::fmt::Display| format!("step 4 progress file '{}': {e}", path.display());
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(describe(&e)),
+    };
+    let mut lines = contents.lines().filter(|line| !line.trim().is_empty());
+    let Some(header) = lines.next() else {
+        return Ok(Vec::new());
+    };
+    let header: PreMineSpendStep1SessionInfo = serde_json::from_str(header).map_err(|e| describe(&e))?;
+    if &header != session_info {
+        return Err(describe(&"it belongs to a different session"));
+    }
+    let mut signed: Vec<Step4OutputsForLeader> = Vec::new();
+    for line in lines {
+        let output: Step4OutputsForLeader = serde_json::from_str(line).map_err(|e| describe(&e))?;
+        if !party_output_indexes.contains(&output.output_index) {
+            return Err(describe(&format!(
+                "output {} is not one of this party's",
+                output.output_index
+            )));
+        }
+        if signed.iter().any(|done| done.output_index == output.output_index) {
+            return Err(describe(&format!("output {} is recorded twice", output.output_index)));
+        }
+        signed.push(output);
+    }
+    Ok(signed)
+}
+
+/// Append one signed output to step 4's progress file, writing the session header first if the file is new.
+fn append_step_4_progress(
+    path: &Path,
+    session_info: &PreMineSpendStep1SessionInfo,
+    output: &Step4OutputsForLeader,
+) -> Result<(), CommandError> {
+    if !path.exists() {
+        write_json_object_to_file_as_line(path, true, session_info)?;
+    }
+    write_json_object_to_file_as_line(path, false, output)
+}
+
+/// Put the signed outputs in this party's output order for the final step 4 file, refusing if any is missing.
+fn merge_step_4_outputs(
+    party_output_indexes: &[usize],
+    signed: Vec<Step4OutputsForLeader>,
+) -> Result<Vec<Step4OutputsForLeader>, String> {
+    let mut merged = Vec::with_capacity(party_output_indexes.len());
+    for index in party_output_indexes {
+        match signed.iter().find(|done| done.output_index == *index) {
+            Some(done) => merged.push(done.clone()),
+            None => return Err(format!("output {index} has not been signed")),
+        }
+    }
+    Ok(merged)
+}
+
 /// Every nonce key id a pre-mine step 2 self file names must be distinct, within and across outputs.
 ///
 /// Two signatures under one legacy nonce give up the signing key, and with the step 2 script offset two different
@@ -4083,6 +4235,101 @@ fn validate_step_2_self_outputs(outputs: &[Step2OutputsForSelf]) -> Result<(), S
 #[cfg(test)]
 mod test {
     use super::*;
+
+    mod pre_mine_step_4_progress {
+        use super::*;
+
+        fn session() -> PreMineSpendStep1SessionInfo {
+            PreMineSpendStep1SessionInfo {
+                session_id: "abc".to_string(),
+                ..Default::default()
+            }
+        }
+
+        fn signed(output_index: usize) -> Step4OutputsForLeader {
+            Step4OutputsForLeader {
+                output_index,
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn a_missing_progress_file_means_nothing_was_signed() {
+            let dir = tempfile::tempdir().unwrap();
+            let loaded = load_step_4_progress(&dir.path().join("p.json"), &session(), &[1, 2]).unwrap();
+            assert!(loaded.is_empty());
+        }
+
+        /// What is appended is what is loaded back, so a resumed run skips exactly the outputs already signed.
+        #[test]
+        fn appended_outputs_load_back_and_are_skipped() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("p.json");
+            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
+            append_step_4_progress(&path, &session(), &signed(3)).unwrap();
+            let loaded = load_step_4_progress(&path, &session(), &[3, 5, 7]).unwrap();
+            assert_eq!(loaded, vec![signed(7), signed(3)]);
+            assert!(loaded.iter().any(|done| done.output_index == 7));
+            assert!(!loaded.iter().any(|done| done.output_index == 5));
+        }
+
+        #[test]
+        fn a_progress_file_from_another_session_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("p.json");
+            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
+            let other = PreMineSpendStep1SessionInfo {
+                session_id: "xyz".to_string(),
+                ..Default::default()
+            };
+            assert!(load_step_4_progress(&path, &other, &[7]).is_err());
+        }
+
+        #[test]
+        fn a_duplicate_or_foreign_output_in_progress_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("p.json");
+            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
+            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
+            assert!(
+                load_step_4_progress(&path, &session(), &[7])
+                    .unwrap_err()
+                    .contains("twice")
+            );
+
+            let path = dir.path().join("q.json");
+            append_step_4_progress(&path, &session(), &signed(9)).unwrap();
+            assert!(
+                load_step_4_progress(&path, &session(), &[7])
+                    .unwrap_err()
+                    .contains("not one of this party's")
+            );
+        }
+
+        #[test]
+        fn merging_puts_outputs_in_party_order_and_needs_all_of_them() {
+            let merged = merge_step_4_outputs(&[3, 5, 7], vec![signed(7), signed(3), signed(5)]).unwrap();
+            assert_eq!(merged, vec![signed(3), signed(5), signed(7)]);
+            assert!(merge_step_4_outputs(&[3, 5], vec![signed(3)]).is_err());
+        }
+
+        #[test]
+        fn app_restarts_needed_follow_the_record_size() {
+            assert_eq!(STEP_4_OUTPUTS_PER_APP_RUN, 32);
+            assert_eq!(step_4_app_restarts_needed(0), 0);
+            assert_eq!(step_4_app_restarts_needed(32), 0);
+            assert_eq!(step_4_app_restarts_needed(33), 1);
+            assert_eq!(step_4_app_restarts_needed(65), 2);
+        }
+
+        #[test]
+        fn the_store_full_error_is_recognised() {
+            assert!(is_legacy_nonce_store_full(
+                &"Ledger error: GetRawSchnorrSignatureLegacyNonce: LegacyNonceStoreFull - ..."
+            ));
+            assert!(!is_legacy_nonce_store_full(&"LegacyNonceReused"));
+        }
+    }
 
     mod pre_mine_step_2_self_file {
         use minotari_ledger_wallet_common::{

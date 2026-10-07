@@ -210,6 +210,10 @@ pub fn check_legacy_nonce_branches(
 }
 
 /// How many legacy signatures the device remembers per application run. See [`LegacyNonceUse`].
+///
+/// Pre-mine step 4 makes two legacy signatures per output, so this bounds one application run to 32 pre-mine
+/// outputs; step 4 saves its progress and asks for an application restart to continue past that. Kept at 64 because
+/// the device's RAM budget has not been measured for more; an NVM-backed record is the follow-up.
 pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
 
 /// One legacy signature the device has made (or approved and is about to make): which nonce it used, and what for.

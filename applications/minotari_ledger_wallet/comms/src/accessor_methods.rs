@@ -744,7 +744,9 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
             if result.retcode() == AppSW::LegacyNonceStoreFull as u16 {
                 return Err(LedgerDeviceError::Processing(
                     "GetRawSchnorrSignatureLegacyNonce: LegacyNonceStoreFull - the device's record of used legacy \
-                     nonces is full; restart the Minotari Wallet application on the device and continue"
+                     nonces is full (one app run signs at most 32 pre-mine outputs). Pre-mine step 4 has saved its \
+                     progress: restart the Minotari Wallet app on the device, then re-run the same step 4 command and \
+                     it will continue from the next output"
                         .to_string(),
                 ));
             }
