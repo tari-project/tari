@@ -27,7 +27,10 @@ fn boxed_sub_messages_keep_inputs_and_outputs_small() {
 }
 
 mod max_size_payloads {
-    use tari_comms::decode_budget::{DecodeBudget, check_decode_budget};
+    use tari_comms::{
+        decode_budget::{DecodeBudget, check_decode_budget},
+        protocol::rpc::RPC_MAX_REQUEST_SIZE,
+    };
 
     use crate::proto::{
         self,
@@ -280,16 +283,30 @@ mod max_size_payloads {
         check_decode_budget::<proto::types::Transaction>(&tx, BODY_MAX_ITEMS).unwrap();
     }
 
+    /// The wire bytes of field `tag` holding `contents`. Flood tests build their payloads from these rather than from
+    /// decoded structs, which would cost hundreds of MB just to encode.
+    fn len_field(tag: u32, contents: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(contents.len() + 16);
+        prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, &mut buf);
+        prost::encoding::encode_varint(contents.len() as u64, &mut buf);
+        buf.extend_from_slice(contents);
+        buf
+    }
+
+    /// `count` empty elements of the repeated field `tag`: two bytes each on the wire
+    fn empty_elements(tag: u32, count: usize) -> Vec<u8> {
+        len_field(tag, &[]).repeat(count)
+    }
+
+    /// Elements that fill a request up to the 6 MiB request cap, leaving room for the enclosing headers
+    const FLOOD_ELEMENTS: usize = RPC_MAX_REQUEST_SIZE / 2 - 8;
+
     #[test]
     fn a_transaction_of_empty_inputs_is_rejected() {
-        // Just under the 6 MiB request cap: two bytes per input on the wire, a whole struct each once decoded
-        let tx = transaction(proto::types::AggregateBody {
-            inputs: vec![TransactionInput::default(); 3_000_000],
-            outputs: vec![],
-            kernels: vec![],
-        });
-        let payload = prost::Message::encode_to_vec(&tx);
-        assert!(payload.len() < 6 * 1024 * 1024);
+        // A full 6 MiB request: two bytes per input on the wire, a whole struct each once decoded. Transaction.body
+        // is tag 2 and AggregateBody.inputs tag 1.
+        let payload = len_field(2, &empty_elements(1, FLOOD_ELEMENTS));
+        assert!(payload.len() <= RPC_MAX_REQUEST_SIZE);
         let err = check_decode_budget::<proto::types::Transaction>(&payload, BODY_MAX_ITEMS).unwrap_err();
         assert_eq!(err.max, BODY_MAX_ITEMS);
     }
@@ -311,12 +328,10 @@ mod max_size_payloads {
             MAX_ALLOWED_QUERY_SIZE
         );
 
-        // Just under the 6 MiB request cap: two bytes per hash on the wire, a whole `Vec` each once decoded
-        let flood = proto::base_node::FetchMatchingUtxos {
-            output_hashes: vec![vec![]; 3_000_000],
-        };
-        let payload = prost::Message::encode_to_vec(&flood);
-        assert!(payload.len() < 6 * 1024 * 1024);
+        // A full 6 MiB request: two bytes per hash on the wire, a whole `Vec` each once decoded. output_hashes is tag
+        // 1.
+        let payload = empty_elements(1, FLOOD_ELEMENTS);
+        assert!(payload.len() <= RPC_MAX_REQUEST_SIZE);
         check_decode_budget::<proto::base_node::FetchMatchingUtxos>(&payload, QUERY_MAX_ITEMS).unwrap_err();
     }
 
@@ -324,18 +339,15 @@ mod max_size_payloads {
     /// that are each well within the budget.
     #[test]
     fn a_flood_deep_in_the_mempool_state_is_rejected() {
-        let tx = transaction(proto::types::AggregateBody {
-            inputs: vec![TransactionInput::default(); 20_000],
-            outputs: vec![],
-            kernels: vec![],
-        });
-        check_decode_budget::<proto::types::Transaction>(&prost::Message::encode_to_vec(&tx), BODY_MAX_ITEMS).unwrap();
+        // Transaction.body (tag 2) holding 20,000 empty AggregateBody.inputs (tag 1)
+        let tx = len_field(2, &empty_elements(1, 20_000));
+        assert_eq!(
+            check_decode_budget::<proto::types::Transaction>(&tx, BODY_MAX_ITEMS).unwrap(),
+            20_001
+        );
 
-        let state = proto::mempool::StateResponse {
-            unconfirmed_pool: vec![tx; 20],
-            reorg_pool: vec![],
-        };
-        let payload = prost::Message::encode_to_vec(&state);
+        // StateResponse.unconfirmed_pool is tag 1
+        let payload = len_field(1, &tx).repeat(20);
         check_decode_budget::<proto::mempool::StateResponse>(&payload, BODY_MAX_ITEMS).unwrap_err();
     }
 }

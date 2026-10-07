@@ -391,13 +391,29 @@ mod test {
         assert_eq!(count::<Outer>(&msg, 1).unwrap(), 1);
     }
 
+    /// The wire bytes of field `tag` holding `contents`. Flood tests build their payloads from these rather than from
+    /// decoded structs, which would cost hundreds of MB just to encode.
+    fn len_field(tag: u32, contents: &[u8]) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(contents.len().saturating_add(16));
+        prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, &mut buf);
+        prost::encoding::encode_varint(contents.len() as u64, &mut buf);
+        buf.extend_from_slice(contents);
+        buf
+    }
+
+    /// `count` empty elements of the repeated field `tag`: two bytes each on the wire
+    fn empty_elements(tag: u32, count: usize) -> Vec<u8> {
+        len_field(tag, &[]).repeat(count)
+    }
+
+    /// Elements that fill a 6 MiB request
+    const FLOOD_ELEMENTS: usize = 3 * 1024 * 1024 - 8;
+
     #[test]
     fn it_rejects_a_flat_flood() {
-        let flood = Outer {
-            items: vec![Inner::default(); 3 * 1024 * 1024],
-            ..Default::default()
-        };
-        let err = count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        let flood = empty_elements(1, FLOOD_ELEMENTS);
+        assert!(flood.len() <= crate::protocol::rpc::RPC_MAX_REQUEST_SIZE);
+        let err = check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
         assert_eq!(err, DecodeBudgetExceeded {
             items: DEFAULT_MAX_DECODE_ITEMS + 1,
             max: DEFAULT_MAX_DECODE_ITEMS
@@ -407,26 +423,15 @@ mod test {
     #[test]
     fn it_rejects_a_flood_of_bytes_or_string_elements() {
         // Two bytes each on the wire, a whole `Vec`/`String` each once decoded
-        let flood = Outer {
-            hashes: vec![vec![]; 3 * 1024 * 1024],
-            ..Default::default()
-        };
-        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
-        let flood = Outer {
-            names: vec![String::new(); 3 * 1024 * 1024],
-            ..Default::default()
-        };
-        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        check_decode_budget::<Outer>(&empty_elements(10, FLOOD_ELEMENTS), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        check_decode_budget::<Outer>(&empty_elements(11, FLOOD_ELEMENTS), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
     }
 
     #[test]
     fn it_rejects_a_flood_of_packed_scalars() {
         // One byte each on the wire, eight once decoded
-        let flood = Outer {
-            numbers: vec![1; 1_000_000],
-            ..Default::default()
-        };
-        count::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        let flood = len_field(9, &vec![1u8; 2 * FLOOD_ELEMENTS]);
+        check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
         // The byte length bounds the element count from above
         let msg = Outer {
             numbers: vec![u64::MAX; 100],
@@ -453,19 +458,14 @@ mod test {
 
     #[test]
     fn a_group_does_not_hide_a_flood() {
-        let flood = Outer {
-            items: vec![Inner::default(); 1_000_000],
-            ..Default::default()
-        };
-        check_decode_budget::<Outer>(&with_group_prefix(&flood), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        let mut flood = group_prefix();
+        flood.extend_from_slice(&empty_elements(1, FLOOD_ELEMENTS));
+        check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
 
-        // Inside a nested message
-        let mut nested = Vec::new();
-        let inner = with_group_prefix(&inner(1_000_000));
-        prost::encoding::encode_key(2, prost::encoding::WireType::LengthDelimited, &mut nested);
-        prost::encoding::encode_varint(inner.len() as u64, &mut nested);
-        nested.extend_from_slice(&inner);
-        check_decode_budget::<Outer>(&nested, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+        // Inside a nested message: `single` (tag 2) holding a group then a flood of `leaves` (tag 2)
+        let mut inner = group_prefix();
+        inner.extend_from_slice(&empty_elements(2, FLOOD_ELEMENTS));
+        check_decode_budget::<Outer>(&len_field(2, &inner), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
 
         // prost really does decode past the group, so the count must too
         let small = Outer {
