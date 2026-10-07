@@ -778,24 +778,17 @@ where KM: TransactionKeyManagerInterface
         pending.iter().map(|o| o.value).try_fold(total, add)
     }
 
-    /// The weight induced fee a change output would add.
+    /// The weight induced fee a change output would add. Fails if the change memo cannot be built, because then no
+    /// change output can be.
     fn change_output_fee(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
-        let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        Ok(match self.fee_per_gram {
-            Some(fee_per_gram) => {
-                fee_weighting.calculate(fee_per_gram, 0, 0, 1, self.change_features_and_scripts_size(pending)?)
-            },
-            None => 0.into(),
-        })
+        let memo_size = self.create_change_memo(MicroMinotari(0), pending)?.get_size();
+        self.change_output_fee_with_memo_size(memo_size)
     }
 
-    fn change_features_and_scripts_size(&self, pending: &[PendingOutput]) -> Result<usize, TransactionBuilderError> {
+    /// The weight induced fee of a change output whose memo is `memo_size` bytes.
+    fn change_output_fee_with_memo_size(&self, memo_size: usize) -> Result<MicroMinotari, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let temp_script = script!(PushPubKey(Box::default()))?;
-        let change_payment_id_size = self
-            .create_change_memo(MicroMinotari(0), pending)
-            .map(|m| m.get_size())
-            .unwrap_or(0);
         let size = OutputFeatures::default()
             .get_serialized_size()
             .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?
@@ -804,8 +797,12 @@ where KM: TransactionKeyManagerInterface
                     .get_serialized_size()
                     .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
             )
-            .saturating_add(change_payment_id_size);
-        Ok(fee_weighting.weighting().round_up_features_and_scripts_size(size))
+            .saturating_add(memo_size);
+        let size = fee_weighting.weighting().round_up_features_and_scripts_size(size);
+        Ok(match self.fee_per_gram {
+            Some(fee_per_gram) => fee_weighting.calculate(fee_per_gram, 0, 0, 1, size),
+            None => 0.into(),
+        })
     }
 
     /// Decide, once and for all, what this transaction's fee is and whether it carries change.
@@ -830,7 +827,19 @@ where KM: TransactionKeyManagerInterface
                     sent: combined_sent,
                 })?;
 
-        let change_fee = self.change_output_fee(pending)?;
+        let change_fee = match self.change_output_fee(pending) {
+            Ok(change_fee) => change_fee,
+            // The change memo cannot be built, so neither can a change output. That only matters if the remainder
+            // could have paid for one: a change output with an empty memo is the cheapest there can be, so a
+            // remainder no larger than that would have gone to the fee anyway and the transaction is unaffected.
+            Err(e) => {
+                let cheapest_change_fee = self.change_output_fee_with_memo_size(0)?;
+                if remainder > cheapest_change_fee {
+                    return Err(e);
+                }
+                cheapest_change_fee
+            },
+        };
         let (fee, change) = match remainder.checked_sub(change_fee) {
             // Not enough to cover a change output, so the remainder goes to the fee.
             None | Some(MicroMinotari(0)) => (add_fee(fee_without_change, remainder)?, None),

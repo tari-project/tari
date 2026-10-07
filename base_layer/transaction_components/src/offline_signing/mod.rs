@@ -212,14 +212,15 @@ mod test {
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
     }
 
-    /// Prepare a one-sided payment of `amount` to `recipient` from a single input worth `input_value`, and sign it
-    /// with the spend key.
+    /// Prepare a one-sided payment of `amount` to `recipient` from a single input worth `input_value`, carrying
+    /// `payment_id`, and sign it with the spend key.
     fn prepare_and_sign_one_sided(
         spend_key_manager: &KeyManager,
         view_key_manager: &KeyManager,
         recipient: &TariAddress,
         input_value: MicroMinotari,
         amount: MicroMinotari,
+        payment_id: MemoField,
     ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
         let rules = create_consensus_manager();
         let input = create_test_input(input_value, 0, spend_key_manager, vec![], None);
@@ -245,14 +246,14 @@ mod test {
             amount,
             output_features: OutputFeatures::default(),
             address: recipient.clone(),
-            payment_id: MemoField::new_empty(),
+            payment_id: payment_id.clone(),
         }];
         let init = prepare_one_sided_transaction_for_signing(
             view_key_manager,
             TxId::new_random(),
             tx_builder,
             &recipients,
-            MemoField::new_empty(),
+            payment_id,
             own_address,
         )
         .unwrap();
@@ -326,6 +327,7 @@ mod test {
             &bob_address,
             amount + fee,
             amount,
+            MemoField::new_empty(),
         )
         .unwrap_err();
         assert!(
@@ -345,6 +347,7 @@ mod test {
             &bob_address,
             amount + fee + change_fee,
             amount,
+            MemoField::new_empty(),
         )
         .unwrap_err();
         assert!(
@@ -363,6 +366,7 @@ mod test {
             &bob_address,
             amount + fee + change_fee + MicroMinotari(1),
             amount,
+            MemoField::new_empty(),
         )
         .unwrap();
         let signed_tx = &signed.signed_transaction;
@@ -376,6 +380,86 @@ mod test {
         validator
             .validate(&signed_tx.transaction, None, None, u64::MAX)
             .unwrap();
+    }
+
+    /// A payment id that fits the recipient's memo but leaves no room for the change memo, which also carries an
+    /// address, the amounts and the sent output hash, means no change output can be built. The signer must refuse
+    /// it while deciding fee and change, rather than sign the recipient output and fail on the change.
+    #[test]
+    fn offline_sign_refuses_a_payment_id_the_change_memo_cannot_carry() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let payment_id = MemoField::new_open_from_string(&"x".repeat(200), TxType::PaymentToOther).unwrap();
+
+        let err = prepare_and_sign_one_sided(
+            &alice_key_manager,
+            &alice_view_key_manager,
+            &bob_address,
+            MicroMinotari(100_000),
+            MicroMinotari(5000),
+            payment_id.clone(),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::InvalidMemo(_)),
+            "expected the signer to refuse the change memo, got {err:?}"
+        );
+
+        // The refusal comes from the fee and change decision itself, which the reservation makes before it mints any
+        // sender offset key, and which the online wallet asks before it locks any input.
+        let rules = create_consensus_manager();
+        let builder_for = |input_value: MicroMinotari, amount: MicroMinotari| {
+            let mut builder = TransactionBuilder::new(
+                rules.consensus_constants(0).clone(),
+                alice_key_manager.clone(),
+                Network::LocalNet,
+            )
+            .unwrap();
+            builder
+                .with_fee_per_gram(MicroMinotari(20))
+                .with_input(create_test_input(input_value, 0, &alice_key_manager, vec![], None))
+                .unwrap();
+            builder
+                .add_stealth_recipient(
+                    bob_address.clone(),
+                    amount,
+                    OutputFeatures::default(),
+                    payment_id.clone(),
+                )
+                .unwrap();
+            builder.with_memo(payment_id.clone());
+            builder
+        };
+        let err = builder_for(MicroMinotari(100_000), MicroMinotari(5000))
+            .check_change_output(&[])
+            .unwrap_err();
+        assert!(matches!(err, TransactionBuilderError::InvalidMemo(_)), "got {err:?}");
+
+        // A payment that leaves nothing for change never needs the change memo, so it is not refused for it.
+        let fee = builder_for(MicroMinotari(100_000), MicroMinotari(5000))
+            .get_fee_estimate_without_change()
+            .unwrap();
+        let err = builder_for(MicroMinotari(5000) + fee, MicroMinotari(5000))
+            .check_change_output(&[])
+            .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::OfflineTransactionRequiresChange { .. }),
+            "got {err:?}"
+        );
     }
 
     /// A payload carrying a directly-specified output must sign into a *valid* transaction.

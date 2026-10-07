@@ -294,8 +294,8 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 ///
 /// This only addresses recovery through the script offset. It does not make it safe to treat the online wallet as
 /// untrusted in general: anyone holding the view key can produce a payload that passes the integrity check, so the
-/// operator must still check every recipient, amount and "Other outputs" entry in the
-/// [`crate::offline_signing::PayloadSummary`] before approving.
+/// operator must still check every recipient, amount and "Other outputs" entry, and the fee, total spend and change,
+/// in the [`crate::offline_signing::PayloadSummary`] before approving.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedTransaction {
     pub transaction: Transaction,

@@ -2126,7 +2126,19 @@ where
         // `force_change_output`: branch-and-bound found a selection that needs no change (a perfect match or a
         // selection where the surplus was too small to warrant change). Add one extra UTXO so the transaction produces
         // a meaningful change output, then recompute the fee to account for the extra input and the change output.
-        if force_change_enabled && !has_change {
+        //
+        // Branch-and-bound only reports change when the surplus also pays for another input, but the builder makes
+        // change whenever the surplus exceeds the change output's fee. For a payload the offline signer will sign,
+        // ask the builder's question instead, so an extra input is only added when the builder would find no change.
+        let needs_forced_change = match offline_change_fee {
+            Some(change_fee) => {
+                let inputs_fee = input_fee.saturating_mul(MicroMinotari::from(utxos.len() as u64));
+                let fee_without_change = output_fee.saturating_add(inputs_fee).saturating_add(kernel_fee);
+                total_value.saturating_sub(amount).saturating_sub(fee_without_change) <= change_fee
+            },
+            None => !has_change,
+        };
+        if force_change_enabled && needs_forced_change {
             // Exclude the outputs branch-and-bound already selected (matched by commitment) so the forced extra input
             // is never one of the inputs we are already spending.
             let force_change_candidates: Vec<DbWalletOutput> = force_change_pool
@@ -2152,6 +2164,13 @@ where
                         utxos.len(),
                         total_value,
                     );
+                    if offline_change_fee.is_some() && !self.resources.config.force_change_output {
+                        info!(
+                            target: LOG_TARGET,
+                            "Added an extra input so the payload for the offline signer has a change output, although \
+                             force_change_output is off: the offline signer only signs transactions with change"
+                        );
+                    }
                 },
                 None => {
                     debug!(
