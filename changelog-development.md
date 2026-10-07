@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.1.0-pre.1](https://github.com/tari-project/tari/compare/v6.1.0-pre.0...v6.1.0-pre.1) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sidechain:** transaction commands carry their atom bytes (#8072)
+* consensus limit on block body bytes (#8079)
+
+### Features
+
+* rebootstrap peers when the DHT connection pool is starved ([#8082](https://github.com/tari-project/tari/issues/8082)) ([3f1eaef](https://github.com/tari-project/tari/commit/3f1eaeffd00272e47d513ad6f875f18a9997e480))
+* **sidechain:** transaction commands carry their atom bytes ([#8072](https://github.com/tari-project/tari/issues/8072)) ([7fae2c7](https://github.com/tari-project/tari/commit/7fae2c7eb5195e6aa61410afaf187a35fcde926f))
+
+
+### Bug Fixes
+
+* blame the block that failed in a reorg and keep the strongest valid chain ([#8091](https://github.com/tari-project/tari/issues/8091)) ([542ce32](https://github.com/tari-project/tari/commit/542ce32b7510f50d44800e5d155d8119a53aeb63))
+* consensus limit on block body bytes ([#8079](https://github.com/tari-project/tari/issues/8079)) ([0f6b4ca](https://github.com/tari-project/tari/commit/0f6b4caba728440e12641494d8bd20f9efc61658))
+* **grpc:** bound the cost of GetTokensInCirculation ([#8081](https://github.com/tari-project/tari/issues/8081)) ([3640622](https://github.com/tari-project/tari/commit/364062213b7a9e67ba17a712657a3b1dcbfab902))
+* keep yamux connections moving when substreams back up ([#8089](https://github.com/tari-project/tari/issues/8089)) ([c66f7f8](https://github.com/tari-project/tari/commit/c66f7f84502fffa997ca39108da22c9ae04d51d7))
+* **minotari-utils:** fix three dbstats bugs affecting Windows and legacy chains ([#7866](https://github.com/tari-project/tari/issues/7866)) ([95d1fc2](https://github.com/tari-project/tari/commit/95d1fc224566f8717bbcc682cd2440514261e33e))
+* name the block, algorithm and peer when proof of work is rejected ([#8085](https://github.com/tari-project/tari/issues/8085)) ([55f0deb](https://github.com/tari-project/tari/commit/55f0deb7df1e91c7fd289fb5a386b565a05be30a))
+* narrow RandomX factory lock scope ([#8080](https://github.com/tari-project/tari/issues/8080)) ([4f2744a](https://github.com/tari-project/tari/commit/4f2744ae541eeb30ecf9cd4e0f1cfad2c1990888))
+
 ## [6.1.0-pre.0](https://github.com/tari-project/tari/compare/v6.0.1-pre.2...v6.1.0-pre.0) (2026-10-05)
 
 
