@@ -778,12 +778,17 @@ pub fn ledger_get_script_schnorr_signature(
 }
 
 /// Get the one sided metadata signature
+///
+/// `sender_offset_branch` is the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary output,
+/// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode. The device
+/// refuses any other branch with `BadBranchKey`, before its review; that refusal is mirrored here.
 pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
     txo_version: u8,
     value: u64,
     sender_offset_key_index: u64,
+    sender_offset_branch: LedgerKeyBranch,
     commitment_mask: &PrivateKey,
     receiver_address: &TariAddress,
     message: &[u8; 32],
@@ -793,6 +798,14 @@ pub fn ledger_get_one_sided_metadata_signature(
         "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
         account, message.to_hex()
     );
+    if !matches!(
+        sender_offset_branch,
+        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine
+    ) {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: '{sender_offset_branch}' is not a sender offset key branch"
+        )));
+    }
     verify_ledger_application()?;
 
     // Ensure the receiver address is valid
@@ -819,6 +832,7 @@ pub fn ledger_get_one_sided_metadata_signature(
         u64::from(network.as_byte()),
         u64::from(txo_version),
         sender_offset_key_index,
+        u64::from(sender_offset_branch.as_byte()),
         value,
         key_field(commitment_mask)?,
         &address_bytes,

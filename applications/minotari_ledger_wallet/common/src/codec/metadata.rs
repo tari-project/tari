@@ -5,11 +5,15 @@
 //!
 //! # Layout
 //!
-//! `account(8) | network(8) | txo_version(8) | sender_offset_key_index(8) | value(8) | commitment_mask(32) |
-//! address_size(2) | receiver_address(address_size) | message(32)`
+//! `account(8) | network(8) | txo_version(8) | sender_offset_key_index(8) | sender_offset_branch(8) | value(8) |
+//! commitment_mask(32) | address_size(2) | receiver_address(address_size) | message(32)`
 //!
-//! `network` and `txo_version` are bytes widened to little endian `u64`s, `address_size` is a little endian `u16`,
-//! and anything after `message` is ignored - all frozen, see the module docs.
+//! `network`, `txo_version` and `sender_offset_branch` are bytes widened to little endian `u64`s, `address_size` is a
+//! little endian `u16`, and anything after `message` is ignored.
+//!
+//! `sender_offset_branch` names the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary
+//! one-sided output, `PreMine` for one whose sender offset `GetScriptOffset` issued in pre-mine mode (the backup
+//! pre-mine spend). The device refuses any other branch before its review.
 //!
 //! # Why the device decodes this in three steps
 //!
@@ -34,7 +38,7 @@ use super::{ACCOUNT_SIZE, Decode, DecodeError, Encode, Reader, Request, Writer, 
 use crate::{TARI_DUAL_ADDRESS_MAX_SIZE, TARI_DUAL_ADDRESS_MIN_SIZE, common_types::Instruction};
 
 /// Offset of `address_size`: everything before it is fixed width.
-const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 4 + 32;
+const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 5 + 32;
 const ADDRESS_SIZE_SIZE: usize = 2;
 const MESSAGE_SIZE: usize = 32;
 
@@ -56,6 +60,7 @@ pub struct GetOneSidedMetadataSignatureRequest<'a> {
     pub network: u64,
     pub txo_version: u64,
     pub sender_offset_key_index: u64,
+    pub sender_offset_branch: u64,
     pub value: u64,
     pub commitment_mask: &'a [u8; 32],
     /// Private so that it can only be set through [`Self::new`], which is what guarantees the `u16` length prefix
@@ -68,10 +73,11 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
     /// The shortest payload the device reads any further than.
     ///
     /// This is **not** the shortest valid payload. That would be the fixed fields, the length prefix, a minimum size
-    /// dual address and the message - 173 bytes; the device has always checked for 171, two short. It is kept at 171
-    /// because the gap is observable: a 171 or 172 byte payload gets as far as the `commitment_mask` and address
-    /// checks, and fails with *their* status word if they fail, before the missing message is noticed.
-    pub const MIN_SIZE: usize = 171;
+    /// dual address and the message - 181 bytes; the device has always checked for two short of that (171 of 173
+    /// before `sender_offset_branch` was added). It is kept two short because the gap is observable: a 179 or 180
+    /// byte payload gets as far as the `commitment_mask` and address checks, and fails with *their* status word if
+    /// they fail, before the missing message is noticed.
+    pub const MIN_SIZE: usize = 179;
 
     /// Build a request, refusing a receiver address its `u16` length prefix cannot describe.
     #[allow(clippy::too_many_arguments)]
@@ -80,6 +86,7 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
         network: u64,
         txo_version: u64,
         sender_offset_key_index: u64,
+        sender_offset_branch: u64,
         value: u64,
         commitment_mask: &'a [u8; 32],
         receiver_address: &'a [u8],
@@ -91,6 +98,7 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
             network,
             txo_version,
             sender_offset_key_index,
+            sender_offset_branch,
             value,
             commitment_mask,
             receiver_address,
@@ -110,6 +118,7 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
         write_u64(out, self.network);
         write_u64(out, self.txo_version);
         write_u64(out, self.sender_offset_key_index);
+        write_u64(out, self.sender_offset_branch);
         write_u64(out, self.value);
         out.write(self.commitment_mask);
         // `new` has already refused anything longer, so this never saturates.
@@ -137,6 +146,7 @@ impl<'a> Decode<'a> for GetOneSidedMetadataSignatureRequest<'a> {
             network: head.network,
             txo_version: head.txo_version,
             sender_offset_key_index: head.sender_offset_key_index,
+            sender_offset_branch: head.sender_offset_branch,
             value: head.value,
             commitment_mask: head.commitment_mask,
             receiver_address: tail.receiver_address,
@@ -156,6 +166,7 @@ pub struct OneSidedMetadataSignatureHead<'a> {
     pub network: u64,
     pub txo_version: u64,
     pub sender_offset_key_index: u64,
+    pub sender_offset_branch: u64,
     pub value: u64,
     pub commitment_mask: &'a [u8; 32],
     /// Everything from `address_size` on.
@@ -170,6 +181,7 @@ impl<'a> Decode<'a> for OneSidedMetadataSignatureHead<'a> {
             network: reader.u64()?,
             txo_version: reader.u64()?,
             sender_offset_key_index: reader.u64()?,
+            sender_offset_branch: reader.u64()?,
             value: reader.u64()?,
             commitment_mask: reader.array()?,
             rest: reader.rest,
@@ -224,7 +236,7 @@ mod test {
     const MESSAGE: [u8; 32] = [0x42; 32];
 
     fn request(address: &[u8]) -> GetOneSidedMetadataSignatureRequest<'_> {
-        GetOneSidedMetadataSignatureRequest::new(1, 0x26, 1, 7, 1_000_000, &MASK, address, &MESSAGE).unwrap()
+        GetOneSidedMetadataSignatureRequest::new(1, 0x26, 1, 7, 0x06, 1_000_000, &MASK, address, &MESSAGE).unwrap()
     }
 
     #[test]
@@ -232,10 +244,17 @@ mod test {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE + 3];
         let bytes = request(&address).to_vec();
         assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32);
-        assert_eq!(&bytes[40..72], &MASK);
-        assert_eq!(&bytes[72..74], &70u16.to_le_bytes());
-        assert_eq!(&bytes[74..144], address.as_slice());
-        assert_eq!(&bytes[144..], &MESSAGE);
+        assert_eq!(&bytes[24..32], &7u64.to_le_bytes());
+        assert_eq!(
+            &bytes[32..40],
+            &0x06u64.to_le_bytes(),
+            "the sender offset branch follows its index"
+        );
+        assert_eq!(&bytes[40..48], &1_000_000u64.to_le_bytes());
+        assert_eq!(&bytes[48..80], &MASK);
+        assert_eq!(&bytes[80..82], &70u16.to_le_bytes());
+        assert_eq!(&bytes[82..152], address.as_slice());
+        assert_eq!(&bytes[152..], &MESSAGE);
         assert_eq!(
             GetOneSidedMetadataSignatureRequest::decode(&bytes),
             Ok(request(&address))
@@ -246,11 +265,11 @@ mod test {
     fn the_host_cannot_build_an_address_its_length_prefix_cannot_hold() {
         let address = vec![0; usize::from(u16::MAX) + 1];
         assert_eq!(
-            GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, &MASK, &address, &MESSAGE),
+            GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, 0, &MASK, &address, &MESSAGE),
             Err(ReceiverAddressTooLong)
         );
         let address = vec![0; usize::from(u16::MAX)];
-        assert!(GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, &MASK, &address, &MESSAGE).is_ok());
+        assert!(GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, 0, &MASK, &address, &MESSAGE).is_ok());
     }
 
     /// The staging is the point of this module: each stage fails only on its own length check, so a payload that
@@ -259,7 +278,7 @@ mod test {
     fn a_payload_short_in_its_message_still_yields_its_head_and_address() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
         let bytes = request(&address).to_vec();
-        // 171 bytes: two short of the message, but not short of the minimum the device checks first.
+        // 179 bytes: two short of the message, but not short of the minimum the device checks first.
         let short = &bytes[..GetOneSidedMetadataSignatureRequest::MIN_SIZE];
         let head = OneSidedMetadataSignatureHead::decode(short).unwrap();
         assert_eq!(head.commitment_mask, &MASK);
@@ -282,7 +301,7 @@ mod test {
             usize::from(u16::MAX),
         ] {
             let size = u16::try_from(size).unwrap();
-            bytes[72..74].copy_from_slice(&size.to_le_bytes());
+            bytes[80..82].copy_from_slice(&size.to_le_bytes());
             let head = OneSidedMetadataSignatureHead::decode(&bytes).unwrap();
             assert_eq!(head.receiver_address(), Err(DecodeError::WrongLength), "size {size}");
         }
@@ -292,7 +311,7 @@ mod test {
     fn an_address_that_runs_past_the_end_is_refused() {
         let mut bytes: Vec<u8> = request(&[0xaa; TARI_DUAL_ADDRESS_MIN_SIZE]).to_vec();
         let size = u16::try_from(TARI_DUAL_ADDRESS_MAX_SIZE).unwrap();
-        bytes[72..74].copy_from_slice(&size.to_le_bytes());
+        bytes[80..82].copy_from_slice(&size.to_le_bytes());
         let head = OneSidedMetadataSignatureHead::decode(&bytes).unwrap();
         assert_eq!(head.receiver_address(), Err(DecodeError::WrongLength));
     }

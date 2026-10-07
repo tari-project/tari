@@ -607,16 +607,27 @@ const REVIEW_VALUE: u64 = 12_345;
 ///    host built, and a message derived from the receiver's own stealth script. Which is to say: what the user approved
 ///    on screen and what the device signed are the same transaction. A device that displayed one address and signed for
 ///    another would pass every screen assertion ever written, and fails here.
+///
+/// Run once per sender offset branch the device accepts: `OneSidedSenderOffset` for an ordinary output, and `PreMine`
+/// for the backup pre-mine spend, whose sender offset `GetScriptOffset` issues in pre-mine mode. Each run's signature
+/// is checked against the public key on *its* branch, so a device that ignored the branch and derived on
+/// `OneSidedSenderOffset` regardless fails the `PreMine` run.
 fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> ScenarioResult {
+    for branch in [LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::PreMine] {
+        approved_metadata_signature_verifies(context, branch)?;
+    }
+    Ok(())
+}
+
+fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: LedgerKeyBranch) -> ScenarioResult {
     let account = fixtures::random_u64();
     let sender_offset_key_index = fixtures::random_u64();
     let commitment_mask = fixtures::random_secret_key();
     let common_message = fixtures::random_bytes_32();
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?;
 
-    let sender_offset_public_key =
-        ledger_get_public_key(account, sender_offset_key_index, LedgerKeyBranch::OneSidedSenderOffset)
-            .context(|| "GetPublicKey for the sender offset key".to_string())?;
+    let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
+        .context(|| format!("GetPublicKey for the {branch} sender offset key"))?;
 
     let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
     let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
@@ -626,13 +637,14 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
             0,
             REVIEW_VALUE,
             sender_offset_key_index,
+            branch,
             &commitment_mask,
             &receiver,
             &common_message,
         )
     });
-    review.context(|| "the device's review screen".to_string())?;
-    let signature = signature.context(|| "GetOneSidedMetadataSignature".to_string())?;
+    review.context(|| format!("the device's review screen ({branch} sender offset)"))?;
+    let signature = signature.context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
 
     // What the device should have signed, rebuilt from the same inputs the request carried.
     let value = RistrettoSecretKey::from(REVIEW_VALUE);
@@ -646,7 +658,7 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
     let message = fixtures::metadata_signature_message(network, &script, &common_message);
 
     verify_com_and_pub_signature(
-        "the one sided metadata signature",
+        &format!("the one sided metadata signature with a {branch} sender offset"),
         &signature.to_vec(),
         &commitment,
         &sender_offset_public_key,

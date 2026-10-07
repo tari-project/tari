@@ -637,17 +637,20 @@ impl KeyManager {
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
-            // The device derives this key on `OneSidedSenderOffset` whatever it is told, so a pre-mine sender offset
-            // key (on `PreMine`) would sign with the wrong key. Refuse it rather than produce an invalid output.
-            let sender_offset_key_index = match sender_offset_key_id {
-                TariKeyId::LedgerKey {
-                    branch: LedgerKeyBranch::OneSidedSenderOffset,
-                    index,
-                } => index,
+            // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine
+            // spend's is on `PreMine`, because `get_script_offset` issues it in pre-mine mode. The device derives the
+            // key on the branch it is sent and refuses any other, and so does this.
+            let (sender_offset_key_index, sender_offset_branch) = match sender_offset_key_id {
+                TariKeyId::LedgerKey { branch, index }
+                    if matches!(branch, LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine) =>
+                {
+                    (index, *branch)
+                },
                 TariKeyId::LedgerKey { branch, .. } => {
                     return Err(KeyManagerError::LedgerError(format!(
-                        "A one sided metadata signature needs a '{}' sender offset key, got '{branch}'",
-                        LedgerKeyBranch::OneSidedSenderOffset
+                        "A one sided metadata signature needs a '{}' or '{}' sender offset key, got '{branch}'",
+                        LedgerKeyBranch::OneSidedSenderOffset,
+                        LedgerKeyBranch::PreMine
                     )));
                 },
                 _ => {
@@ -663,6 +666,7 @@ impl KeyManager {
                 txo_version.as_u8(),
                 value.into(),
                 *sender_offset_key_index,
+                sender_offset_branch,
                 &commitment_mask,
                 receiver_address,
                 metadata_signature_message_common,

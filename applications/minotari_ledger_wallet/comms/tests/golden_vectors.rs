@@ -269,11 +269,12 @@ const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST: &str = concat!(
     "11",                                                               // ins
     "00",                                                               // p1
     "00",                                                               // p2
-    "b0",                                                               // lc
+    "b8",                                                               // lc
     "0102030405060708",                                                 // account
     "2600000000000000",                                                 // network (Esmeralda, widened to u64)
     "0100000000000000",                                                 // txo_version (widened to u64)
     "4142434445464748",                                                 // sender_offset_key_index
+    "0600000000000000",                                                 // sender_offset_branch (OneSidedSenderOffset)
     "87d6120000000000",                                                 // value
     "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
     "4600",                                                             // address_size (70, u16)
@@ -653,6 +654,7 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
         TXO_VERSION,
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
+        LedgerKeyBranch::OneSidedSenderOffset,
         &scalar(0xb8),
         &receiver_address(),
         &[0xb9; 32],
@@ -873,6 +875,7 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
             u64::from(NETWORK.as_byte()),
             u64::from(TXO_VERSION),
             SENDER_OFFSET_KEY_INDEX,
+            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
             VALUE,
             &mask,
             &address,

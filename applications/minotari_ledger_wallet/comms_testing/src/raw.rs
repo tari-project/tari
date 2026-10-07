@@ -323,6 +323,33 @@ pub mod payload {
         data
     }
 
+    /// `GetOneSidedMetadataSignature`, 82 + the address + 32 bytes with the account: `network(8) | txo_version(8) |
+    /// sender_offset_key_index(8) | sender_offset_branch(8) | value(8) | commitment_mask(32) | address_size(2) |
+    /// receiver_address | message(32)`. Only the refusal probes use it; the accepting path drives the accessor.
+    #[allow(clippy::too_many_arguments)]
+    pub fn one_sided_metadata_signature(
+        network: u8,
+        txo_version: u8,
+        sender_offset_key_index: u64,
+        sender_offset_branch: LedgerKeyBranch,
+        value: u64,
+        commitment_mask: &[u8; 32],
+        receiver_address: &[u8],
+        message: &[u8; 32],
+    ) -> Vec<u8> {
+        let mut data = u64::from(network).to_le_bytes().to_vec();
+        data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
+        data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
+        data.extend_from_slice(&branch_bytes(sender_offset_branch));
+        data.extend_from_slice(&value.to_le_bytes());
+        data.extend_from_slice(commitment_mask);
+        let address_size = u16::try_from(receiver_address.len()).unwrap_or(u16::MAX);
+        data.extend_from_slice(&address_size.to_le_bytes());
+        data.extend_from_slice(receiver_address);
+        data.extend_from_slice(message);
+        data
+    }
+
     /// `GetScriptSignatureManaged`, 168 bytes with the account: the common prefix then `branch(8) | index(8)`.
     pub fn script_signature_managed(
         network: u8,
