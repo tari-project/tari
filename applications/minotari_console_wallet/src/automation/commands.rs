@@ -959,11 +959,14 @@ pub async fn command_runner(
                     // device's nonce store is in RAM and holds eight. So they stay host indexed on the `Random`
                     // branch, and signing with them goes through `GetRawSchnorrSignatureLegacyNonce`.
                     //
-                    // These signatures therefore remain open to the two-signatures-one-nonce attack, which for
-                    // pre-mine outputs reaches the script key and the sender offset key - both on the `PreMine`
-                    // branch, the only one the legacy instruction will sign, and each shown on the device for
-                    // approval. The full cost, the scope, and the TODO that closes it live in
-                    // `minotari_ledger_wallet_common::legacy_nonce`; read that before touching either of these lines.
+                    // Two signatures under one of these nonces - or the script key and the sender offset key under
+                    // one - give up this output's pre-mine keys. The device refuses a second use of a nonce index
+                    // within one app run and shows every signature for approval; step 4 validates the self file,
+                    // checks each signature's nonce against the public nonce stored here, and refuses to run twice.
+                    // What is still open (an app restart between two approvals, devices on 6.1.0 or earlier) is the
+                    // "Residual" section of `minotari_ledger_wallet_common::legacy_nonce`; read that before touching
+                    // either of these lines. `get_random_key` never returns a `Random` index below 2^32, which the
+                    // device refuses.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let sender_offset_nonce =
                         key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
@@ -1519,9 +1522,10 @@ pub async fn command_runner(
                     );
 
                     // KNOWN, DELIBERATELY DEFERRED GAP: `script_nonce_key_id` is a host indexed nonce reserved
-                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce` and stays open to the
-                    // two-signatures-one-nonce attack. See `minotari_ledger_wallet_common::legacy_nonce` for the
-                    // full cost and the TODO that closes it, and the reservation site in step 2 for why.
+                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`. The self file was
+                    // validated above and the nonce is checked against the published one below; the device refuses
+                    // to reuse the nonce index for anything but this exact request until it restarts. See the
+                    // "Residual" section of `minotari_ledger_wallet_common::legacy_nonce` for what is still open.
                     let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.pre_mine_script_key_id,
                         &party_info.script_nonce_key_id,
@@ -1618,8 +1622,14 @@ pub async fn command_runner(
                     // `get_script_offset` issued in step 2, and `sender_offset_nonce_key_id` is a host indexed nonce
                     // reserved back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`.
                     //
-                    // A compromised host can recover this output's sender offset private key that way, and then
-                    // subtract it back out of the script offset to recover the script private key too. It cannot
+                    // Two signatures under one nonce index would give up this output's sender offset private key,
+                    // and the script offset then gives up the script private key; signing this key under the script
+                    // signature's nonce would give up both at once. Against that: the self file was validated before
+                    // anything was signed (distinct nonce ids, the expected key shapes), the device refuses a second
+                    // use of a nonce index within one app run (`LegacyNonceReused`), the nonce is checked against the
+                    // one step 2 published just below, and this step refuses to run twice for one session. A
+                    // compromised host that can also get the user to restart the device app between two approvals
+                    // is the residual - see `minotari_ledger_wallet_common::legacy_nonce`. It cannot
                     // reach `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
                     // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
                     // session. A step 2 file written with a ledger app before 6.1.1-pre.0 is invalid for a second

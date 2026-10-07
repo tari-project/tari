@@ -671,7 +671,11 @@ pub fn ledger_get_raw_schnorr_signature(
 /// flow, whose nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between -
 /// which the device's RAM backed nonce store cannot serve.
 ///
-/// Only `PreMine` keys are signed, and the device asks the user to approve every request.
+/// Only `PreMine` keys are signed, only with nonce indexes at or above 2^32, and the device asks the user to approve
+/// every request. The device also refuses a second use of a nonce index for anything but the identical request until
+/// the application restarts (`LegacyNonceReused`, mapped to a legible error here). That record is RAM: an application
+/// restart between two approvals is the remaining way to get two signatures under one nonce, and devices on 6.1.0 or
+/// earlier have none of this - see the "Residual" section of the module below.
 ///
 /// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine`, the scope of the exposure, and the TODO that deletes this function along with

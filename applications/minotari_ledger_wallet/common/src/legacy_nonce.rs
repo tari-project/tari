@@ -46,7 +46,9 @@
 //!   key, which this instruction cannot sign, and a reply blinded by a `PreMine` key has no `alpha` in it. Nothing the
 //!   legacy instruction can sign is a term of a reply that contains `alpha`.
 //! - The device shows a review for every legacy signature - key and nonce, branch and index, and which pre-mine
-//!   signature it is (see [`legacy_signature_purpose`]) - so a second request for the same pair is visible.
+//!   signature it is (see [`legacy_signature_purpose`]).
+//! - The device remembers which nonce indexes it has signed with ([`LegacyNonceUse`]) and refuses any second use but
+//!   the identical request, and refuses nonce indexes below 2^32 ([`check_legacy_nonce_index`]).
 //!
 //! What remains extractable is pre-mine script keys and pre-mine sender offset keys. A pre-mine output's script
 //! offset is its script key minus its sender offset key, so recovering either gives up the other.
@@ -57,9 +59,36 @@
 //! spend flows are unaffected: they sign through `GetRawSchnorrSignature` with a device-issued handle that the host
 //! can neither choose nor redeem twice, so there is no second signature to difference against.
 //!
-//! The residual: the pre-mine flow reserves its nonces in step 2 and signs in step 3 with a file in between, so a
-//! compromised host can still ask for a second signature under one nonce index - across a device restart if need
-//! be. The review makes that second request visible to the user; it does not make it impossible.
+//! # Residual
+//!
+//! The pre-mine flow reserves its nonces in step 2 and signs with them in step 4, with a session file in between, so
+//! the nonce is named by the host. What that still allows, and what holds each case:
+//!
+//! 1. **Same nonce, two keys.** A compromised host asks for the script signature as `(PreMine x, Random j, e1)` and the
+//!    metadata signature as `(PreMine 2^63|b, Random j, e2)`. With the step 2 script offset `off = P_x - K_b` that is
+//!    three equations in three unknowns, and both keys fall out - behind exactly the two reviews an honest step 4
+//!    shows; the only tell is the same nonce number on both. The device's used-nonce record refuses the second request
+//!    (`LegacyNonceReused`, before any screen). It is RAM, so the attack now needs the user to restart the application
+//!    between the two approvals.
+//! 2. **Malicious leader re-run.** A leader sends a changed step 3 file ("please redo step 4") and the party re-signs
+//!    under the same step 2 nonces, with identical screens. The host refuses to run step 4 when its output file for the
+//!    session exists; the device record refuses it within one application run.
+//! 3. **Session file tamper.** The step 2 self file is plain JSON: an attacker with write access can point two
+//!    signatures at one nonce, at an earlier session's nonce, or at another output's script key. Step 4 validates the
+//!    file's shape before signing and checks every signature's public nonce against the nonce step 2 published,
+//!    aborting before anything is written or sent - but after the device has signed, which is why the device record
+//!    matters.
+//! 4. **Pre-upgrade alias.** An application before 6.1.1-pre.0 derived nonce index `j` as `j mod 2^32`; this one
+//!    derives an index below 2^32 along that same path. One signature from an aborted pre-upgrade session plus one new
+//!    one at `j mod 2^32` gives up the key, and the record knows nothing of the old one. Nonce indexes below 2^32 are
+//!    refused ([`check_legacy_nonce_index`]), and the host never draws one.
+//! 5. **Old devices.** A device still on 6.1.0 or earlier signs `OneSidedSenderOffset` keys through this instruction
+//!    and so remains exposed to the `alpha` extraction above, whatever the host does. The host refuses such a device
+//!    (`MIN_LEDGER_APP_VERSION`), but a compromised host would not.
+//! 6. **Consent.** `GetScriptSchnorrSignature` and `GetRawSchnorrSignature` still sign `PreMine` keys with no prompt,
+//!    over messages the host chooses (with device drawn nonces, so nothing is extractable). That is a separate issue.
+//!    The legacy review is therefore an extraction control - it makes a second signature under one nonce visible and,
+//!    with the record, refused - not a consent control for pre-mine spending.
 //!
 //! # The fix, and what gets deleted with it
 //!
@@ -67,6 +96,9 @@
 //! branches and indexes. Handles survive a file fine - what they cannot survive is the device restarting between
 //! the two steps, so this also needs the pre-mine flow to reserve its nonces in the same device session that signs
 //! with them, or the device store to be made persistent.
+//!
+//! An NVM-backed used-nonce record is the intermediate step: it would close the restart gap in residuals 1 and 2
+//! without changing the session file.
 //!
 //! When that lands, these get deleted together:
 //!
