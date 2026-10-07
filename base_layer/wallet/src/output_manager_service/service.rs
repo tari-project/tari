@@ -1207,10 +1207,12 @@ where
         // A payload for the offline signer must leave change, and the selection may not have left any: an exact
         // match, or `force_change_output` finding no extra input. Ask the builder, set up as the signer will set up
         // its own, so this is the decision the signer will make - and refuse before any input is encumbered.
+        // The signer's builder always refuses a fee greater than the amount, whatever this wallet's
+        // `prevent_fee_gt_amount` says, so the probe does too.
         if let Some(pending) = required_change {
             let mut probe = builder.clone();
-            probe.with_memo(recipient_memo_field);
-            probe.check_change_output(&pending)?;
+            probe.with_memo(recipient_memo_field).with_prevent_fee_gt_amount(true);
+            probe.check_offline_payload(&pending)?;
         }
 
         self.resources

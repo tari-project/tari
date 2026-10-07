@@ -170,8 +170,9 @@ event_channel_size = 3500
 # Number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
 # If you set it to zero, the revalidation will be on every wallet rerun. Default is 3 days.
 #num_of_seconds_to_revalidate_invalid_utxos = 259200
-# Add another input when the chosen inputs would pay for a send exactly, so the transaction has a change output.
-# Payloads prepared for the offline signer always seek a change output regardless of this setting. (default = true)
+# Add another input when the chosen inputs leave too little over to pay for a change output, so the transaction has
+# one (standard selections only, not coin control). Payloads prepared for the offline signer behave as if this were
+# on, whatever its value; a coin-control offline prepare that would leave no change is refused. (default = true)
 #force_change_output = true
 
 

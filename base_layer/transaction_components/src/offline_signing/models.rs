@@ -279,14 +279,17 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 ///
 /// The offline signer refuses to sign any payload that would produce no change output, and returns
 /// [`crate::TransactionBuilderError::OfflineTransactionRequiresChange`] instead, before any sender offset key is
-/// generated. The online wallet refuses to prepare such a payload in the first place; if one arrives anyway it has to
-/// be prepared again with a smaller amount.
+/// generated. That is the case whenever what is left after the outputs and the fee is no more than a change output
+/// would cost. This wallet's transaction service refuses to prepare such a payload in the first place (the public
+/// `prepare_*` functions in [`crate::offline_signing::offline_signer`] do not check); a payload refused by the signer
+/// has to be prepared again with a smaller amount.
 ///
 /// The rule closes one way for the online wallet, which holds the view key, to recover the spend key: through the
 /// script offset of a transaction without change. The transaction publishes
 /// `script offset = sum(input script keys) - sum(sender offset keys)`, and every input script key is
-/// `H(mask) + spend key` with a mask the online wallet knows. The recipient outputs in `outputs` carry their sender
-/// offset key ids, which are wrapped under the view key, so the online wallet can learn those sender offset keys. The
+/// `H(mask) + spend key` with a mask the online wallet knows. Each recipient output in `outputs` carries its sender
+/// offset key id inside its `commitment_mask_key_id` (the `DHCommitmentMask` wrapper), wrapped under the view key, so
+/// the online wallet can learn those sender offset keys. The
 /// change output's sender offset key is generated and used inside the signer and never leaves it (`change_output`
 /// carries only its public key), so with a change output present that sum always has a term the online wallet cannot
 /// learn, and it cannot solve for the spend key. Outputs that arrived fully formed in the payload also have their

@@ -719,14 +719,15 @@ where
                         fee,
                         TxType::PaymentToOther,
                     )?;
-                    // Ask the builder, declared as the signer will declare it, whether this leaves change, so a drift
-                    // from the signer's decision fails here rather than after the operator has approved it.
+                    // Ask the builder, declared as the signer will declare it, whether the signer would sign this -
+                    // it leaves change and its fee does not exceed the amount - so a drift from the signer's decision
+                    // fails here rather than after the operator has approved it.
                     let declared_recipient = PaymentRecipient {
                         amount: total_amount,
                         payment_id: payment_id.clone(),
                         ..measured_recipient
                     };
-                    tx_builder.check_change_output(&[withdraw_pending_output(
+                    tx_builder.check_offline_payload(&[withdraw_pending_output(
                         consensus_constants,
                         &declared_recipient,
                         &payment_id,

@@ -445,7 +445,7 @@ mod test {
             builder
         };
         let err = builder_for(MicroMinotari(100_000), MicroMinotari(5000))
-            .check_change_output(&[])
+            .check_offline_payload(&[])
             .unwrap_err();
         assert!(matches!(err, TransactionBuilderError::InvalidMemo(_)), "got {err:?}");
 
@@ -454,7 +454,7 @@ mod test {
             .get_fee_estimate_without_change()
             .unwrap();
         let err = builder_for(MicroMinotari(5000) + fee, MicroMinotari(5000))
-            .check_change_output(&[])
+            .check_offline_payload(&[])
             .unwrap_err();
         assert!(
             matches!(err, TransactionBuilderError::OfflineTransactionRequiresChange { .. }),

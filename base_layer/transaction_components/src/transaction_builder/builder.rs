@@ -170,17 +170,6 @@ impl PendingOutput {
     }
 }
 
-/// Refuse a fee and change decision that emits no change output.
-fn require_change(fee_and_change: &FeeAndChange) -> Result<(), TransactionBuilderError> {
-    if fee_and_change.change.is_none() {
-        return Err(TransactionBuilderError::OfflineTransactionRequiresChange {
-            remainder: fee_and_change.remainder,
-            change_fee: fee_and_change.change_fee,
-        });
-    }
-    Ok(())
-}
-
 /// The fee and change the reservation committed the transaction to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FeeAndChange {
@@ -411,7 +400,7 @@ where KM: TransactionKeyManagerInterface
         let fee_and_change = self.decide_fee_and_change(pending_outputs)?;
         // Refuse before `get_script_offset` mints any sender offset key.
         if self.change_required {
-            require_change(&fee_and_change)?;
+            self.check_offline_decision(&fee_and_change, pending_outputs)?;
         }
         let extra = pending_outputs.iter().filter(|o| o.takes_reserved_key).count();
         let count = self
@@ -454,9 +443,9 @@ where KM: TransactionKeyManagerInterface
         Ok(caller_keys)
     }
 
-    /// Make [`Self::reserve_sender_offset_keys`] fail with
-    /// [`TransactionBuilderError::OfflineTransactionRequiresChange`], before any sender offset key is minted, if the
-    /// transaction would carry no change output.
+    /// Make [`Self::reserve_sender_offset_keys`] fail, before any sender offset key is minted, if the transaction
+    /// would carry no change output, or if its fee would exceed what it sends while
+    /// [`Self::with_prevent_fee_gt_amount`] is set - see [`Self::check_offline_payload`].
     ///
     /// The offline signer sets this; see [`crate::offline_signing::models::SignedTransaction`] for why it refuses to
     /// sign without change.
@@ -465,11 +454,38 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    /// Fail with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if reserving now, with `pending`
-    /// declared, would leave the transaction without a change output. This makes the same decision
-    /// [`Self::reserve_sender_offset_keys`] would, without reserving anything.
-    pub fn check_change_output(&self, pending: &[PendingOutput]) -> Result<(), TransactionBuilderError> {
-        require_change(&self.decide_fee_and_change(pending)?)
+    /// Fail if the offline signer would refuse this transaction with `pending` declared: with
+    /// [`TransactionBuilderError::OfflineTransactionRequiresChange`] if it would carry no change output, or with
+    /// [`TransactionBuilderError::FeeGreaterThanAmount`] if its fee would exceed what it sends while
+    /// [`Self::with_prevent_fee_gt_amount`] is set. This makes the same decision [`Self::reserve_sender_offset_keys`]
+    /// would, without reserving anything.
+    pub fn check_offline_payload(&self, pending: &[PendingOutput]) -> Result<(), TransactionBuilderError> {
+        self.check_offline_decision(&self.decide_fee_and_change(pending)?, pending)
+    }
+
+    /// Refuse a fee and change decision the offline signer must not sign. `build` would also refuse a fee greater
+    /// than the amount, but only once the keys have been minted.
+    fn check_offline_decision(
+        &self,
+        fee_and_change: &FeeAndChange,
+        pending: &[PendingOutput],
+    ) -> Result<(), TransactionBuilderError> {
+        if fee_and_change.change.is_none() {
+            return Err(TransactionBuilderError::OfflineTransactionRequiresChange {
+                remainder: fee_and_change.remainder,
+                change_fee: fee_and_change.change_fee,
+            });
+        }
+        if self.prevent_fee_gt_amount {
+            let sent = self.total_output_value(pending)?;
+            if fee_and_change.fee > sent {
+                return Err(TransactionBuilderError::FeeGreaterThanAmount {
+                    fee: fee_and_change.fee,
+                    sent,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Register a partial script offset the host derived itself.

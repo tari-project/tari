@@ -68,8 +68,9 @@ minotari_offline_signer sign \
     --network mainnet
 ```
 
-The signer only signs transactions that leave a change output. A payload that spends its inputs exactly, such as a
-send-all or sweep, is refused, because with no change output the script offset of the signed transaction, together
+The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
+the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change
+output the script offset of the signed transaction, together
 with what the online (view key) wallet already knows, would let that wallet work out the spend key. Prepare it again
 with a slightly smaller amount. This closes that one known way of recovering the spend key; it does not make it safe
 to treat the online wallet as untrusted in general, because a view key holder can produce a payload that passes
