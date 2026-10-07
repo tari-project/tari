@@ -23,7 +23,8 @@ impl<P> MemoryTreeStore<P> {
         }
     }
 
-    /// Removes every recorded stale node. A [`StaleTreeNode::Subtree`] removes the node and all of its descendants.
+    /// Removes every recorded stale node. A [`StaleTreeNode::Subtree`] removes the node and all of its descendants,
+    /// even those still shared with a newer root; see [`TreeStoreWriter::record_stale_tree_node`].
     pub fn clear_stale_nodes(&mut self) {
         for stale in self.stale_nodes.drain(..) {
             match stale {

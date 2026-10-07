@@ -104,6 +104,7 @@ use super::{
         SparseMerkleProofExt,
         SparseMerkleRangeProof,
         Version,
+        leaf_key_has_prefix,
     },
 };
 
@@ -195,6 +196,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 version,
                 deduped_and_sorted_kvs.as_slice(),
                 0,
+                None,
                 &mut batch,
             )?
         } else {
@@ -226,9 +228,14 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         version: Version,
         kvs: &[(&LeafKey, Option<&(TreeHash, P)>)],
         depth: usize,
+        expected_leaf: Option<bool>,
         batch: &mut TreeUpdateBatch<P>,
     ) -> Result<Option<Node<P>>, JmtStorageError> {
         let node = self.reader.get_node(node_key)?;
+        // `expected_leaf` is the kind the parent's `Child` entry records (`None` at the root)
+        if expected_leaf.is_some_and(|expected_leaf| expected_leaf != node.is_leaf()) {
+            return Err(JmtStorageError::InconsistentState);
+        }
         batch.put_stale_node(node_key.clone(), version, &node);
 
         match node {
@@ -271,7 +278,18 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     } else if let Some((old_child_nibble, old_child)) = old_children.iter().next() {
                         if old_child.is_leaf() {
                             let old_child_node_key = node_key.gen_child_node_key(old_child.version, *old_child_nibble);
-                            let old_child_node = self.reader.get_node(&old_child_node_key)?;
+                            // The parent records a leaf here, so anything else (or a leaf stored under a path its key
+                            // does not start with) is a corrupt store and must not be lifted into the new tree
+                            let old_child_node = match self.reader.get_node(&old_child_node_key)? {
+                                Node::Leaf(leaf)
+                                    if leaf_key_has_prefix(leaf.leaf_key(), old_child_node_key.nibble_path()) =>
+                                {
+                                    Node::Leaf(leaf)
+                                },
+                                Node::Leaf(_) | Node::Internal(_) | Node::Null => {
+                                    return Err(JmtStorageError::InconsistentState);
+                                },
+                            };
                             batch.put_stale_node(old_child_node_key, version, &old_child_node);
                             return Ok(Some(old_child_node));
                         }
@@ -331,6 +349,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 kvs.get(left..=right)
                     .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                 depth.saturating_add(1),
+                Some(child.is_leaf()),
                 batch,
             )?,
             None => Self::batch_update_subtree(
@@ -523,9 +542,14 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         let mut siblings = vec![];
         let nibble_path = NibblePath::new_even(key.bytes.to_vec());
         let mut nibble_iter = nibble_path.nibbles();
+        // The kind the parent's `Child` entry records for `next_node_key` (`None` at the root)
+        let mut expected_leaf = None;
 
         for _nibble_depth in 0..SANITY_NIBBLE_LIMIT {
             let next_node = self.reader.get_node(&next_node_key)?;
+            if expected_leaf.is_some_and(|expected_leaf| expected_leaf != next_node.is_leaf()) {
+                return Err(JmtStorageError::InconsistentState);
+            }
             match next_node {
                 Node::Internal(internal_node) => {
                     let queried_child_index = nibble_iter.next().ok_or(JmtStorageError::InconsistentState)?;
@@ -536,7 +560,15 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     )?;
                     siblings.append(&mut siblings_in_internal);
                     next_node_key = match child_node_key {
-                        Some(node_key) => node_key,
+                        Some(node_key) => {
+                            let child = node_key
+                                .nibble_path()
+                                .last()
+                                .and_then(|nibble| internal_node.child(nibble))
+                                .ok_or(JmtStorageError::InconsistentState)?;
+                            expected_leaf = Some(child.is_leaf());
+                            node_key
+                        },
                         None => {
                             return Ok((
                                 None,
@@ -638,14 +670,6 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
     }
 }
 
-/// Returns `true` if the first nibbles of `leaf_key` are `prefix`.
-fn leaf_key_has_prefix(leaf_key: &LeafKey, prefix: &NibblePath) -> bool {
-    prefix
-        .nibbles()
-        .enumerate()
-        .all(|(i, nibble)| leaf_key.get_nibble(i) == Some(nibble))
-}
-
 /// An iterator that iterates the index range (inclusive) of each different nibble at given
 /// `nibble_idx` of all the keys in a sorted key-value pairs which have the identical Hash
 /// prefix (up to nibble_idx).
@@ -694,8 +718,10 @@ impl<P> Iterator for NibbleRangeIterator<'_, P> {
 ///
 /// The tree emits each stale node as a [`StaleNodeIndex`]. A store records each one as
 /// [`StaleTreeNode::Node(node_key)`](crate::StaleTreeNode::Node), never as a subtree: only the listed node is stale,
-/// its descendants may still be referenced by newer versions. [`StaleTreeNode::Subtree`](crate::StaleTreeNode::Subtree)
-/// is for a store-driven prune of a whole version range.
+/// its descendants may still be referenced by newer versions. Pruning a version range means recording each of its
+/// `StaleNodeIndex` entries as `Node`. [`StaleTreeNode::Subtree`](crate::StaleTreeNode::Subtree) deletes everything
+/// reachable through the children's version links, including nodes that newer roots still share, so it is only safe
+/// when no retained root can reach any node in the subtree (e.g. dropping a whole tree).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TreeUpdateBatch<P> {
     pub node_batch: Vec<(NodeKey, Node<P>)>,
@@ -1004,7 +1030,7 @@ mod tests {
 
     #[test]
     fn it_errors_on_a_leaf_stored_under_the_wrong_path() {
-        let (mut mem, _, k2) = two_leaf_tree();
+        let (mut mem, k1, k2) = two_leaf_tree();
         let wrong_key = (3..)
             .map(leaf_key)
             .find(|k| k.get_nibble(0) != k2.get_nibble(0))
@@ -1019,9 +1045,116 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
 
+        // The mis-keyed leaf is also rejected when it is read as a sibling for another key's proof
+        let err = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(k1.as_ref(), 1)
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+
         // The update path refuses to move the mis-keyed leaf by its own key
         let err = JellyfishMerkleTree::new(&mem)
             .batch_put_value_set([(k2, Some((jmt_node_hash(&12), ())))], Some(1), 2)
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+    }
+
+    /// A key whose first nibble differs from `key`'s.
+    fn key_in_other_bucket(key: &LeafKey) -> LeafKey {
+        (3..)
+            .map(leaf_key)
+            .find(|k| k.get_nibble(0) != key.get_nibble(0))
+            .unwrap()
+    }
+
+    fn single_internal_child_node() -> Node<()> {
+        let child = Child::try_new(TreeHash::zero(), 1, NodeType::Internal { leaf_count: 1 }).unwrap();
+        InternalNode::try_new([(Nibble::from_masked(0), child)].into_iter().collect())
+            .unwrap()
+            .into()
+    }
+
+    #[test]
+    fn it_errors_when_collapsing_onto_a_corrupt_leaf() {
+        let (_, k1, _) = two_leaf_tree();
+        let corrupt_nodes = [
+            Node::Null,
+            single_internal_child_node(),
+            Node::new_leaf(key_in_other_bucket(&k1), jmt_node_hash(&10), (), 1),
+        ];
+        for corrupt in corrupt_nodes {
+            let (mut mem, k1, k2) = two_leaf_tree();
+            // Corrupt the store directly: `insert_node` refuses to overwrite.
+            mem.nodes
+                .insert(leaf_node_key(&k1), TreeNode::new_latest(corrupt.clone()));
+            // Deleting k2 leaves the root with only k1's leaf, which is lifted up to become the new root
+            let err = JellyfishMerkleTree::new(&mem)
+                .batch_put_value_set([(k2, None)], Some(1), 2)
+                .unwrap_err();
+            assert!(
+                matches!(err, JmtStorageError::InconsistentState),
+                "{corrupt:?}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn it_collapses_onto_the_remaining_leaf() {
+        let (mut mem, k1, k2) = two_leaf_tree();
+        let (root, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(k2, None)], Some(1), 2)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        assert_eq!(root, SparseMerkleLeafNode::new(k1, jmt_node_hash(&10)).hash());
+        let (value, proof) = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(k1.as_ref(), 2)
+            .unwrap();
+        assert!(value.is_some());
+        proof.verify_inclusion(&root, &k1, &jmt_node_hash(&10)).unwrap();
+    }
+
+    #[test]
+    fn it_errors_when_a_leaf_child_is_stored_as_an_internal_node() {
+        let (mut mem, _, k2) = two_leaf_tree();
+        // Corrupt the store directly: `insert_node` refuses to overwrite.
+        mem.nodes
+            .insert(leaf_node_key(&k2), TreeNode::new_latest(single_internal_child_node()));
+        let err = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(k2.as_ref(), 1)
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+
+        let err = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(k2, Some((jmt_node_hash(&12), ())))], Some(1), 2)
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+    }
+
+    #[test]
+    fn it_errors_when_an_internal_child_is_stored_as_a_leaf() {
+        let mut mem = MemoryTreeStore::<()>::new();
+        let [a, b, c] = three_level_keys();
+        let values = [a, b, c].map(|k| (k, Some((jmt_node_hash(&10), ()))));
+        let (_, diff) = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set(values, None, 1)
+            .unwrap();
+        for (k, v) in diff.node_batch {
+            mem.insert_node(k, v).unwrap();
+        }
+        // `a` and `b` share their first nibble, so the root records an internal child there
+        let internal_key = leaf_node_key(&a);
+        mem.nodes.insert(
+            internal_key,
+            TreeNode::new_latest(Node::new_leaf(a, jmt_node_hash(&10), (), 1)),
+        );
+        let err = JellyfishMerkleTree::new(&mem)
+            .get_with_proof_ext(a.as_ref(), 1)
+            .unwrap_err();
+        assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
+
+        let err = JellyfishMerkleTree::new(&mem)
+            .batch_put_value_set([(a, Some((jmt_node_hash(&12), ())))], Some(1), 2)
             .unwrap_err();
         assert!(matches!(err, JmtStorageError::InconsistentState), "{err:?}");
     }

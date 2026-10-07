@@ -136,6 +136,9 @@ fn jmt_internal_hash(left: &TreeHash, right: &TreeHash) -> TreeHash {
 pub const MAX_PROOF_SIBLINGS: usize = 256;
 
 /// The maximum number of nibbles in a [`NibblePath`], i.e. the nibble length of a [`LeafKey`].
+///
+/// Enforced when a `NibblePath` is decoded and by [`NibblePath::new_odd`], but not by [`NibblePath::new_even`] or
+/// [`NibblePath::push`]. Tree traversals bound their depth independently of this cap.
 pub const MAX_NIBBLE_PATH_LEN: usize = 64;
 
 /// A more detailed version of `SparseMerkleProof` with the only difference that all the leaf
@@ -752,6 +755,9 @@ impl FromIterator<Nibble> for NibblePath {
 
 impl NibblePath {
     /// Creates a new `NibblePath` from a vector of bytes assuming each byte has 2 nibbles.
+    ///
+    /// Does not enforce [`MAX_NIBBLE_PATH_LEN`] (that cap applies on decode and in [`Self::new_odd`]); tree traversals
+    /// bound their depth independently.
     pub fn new_even(bytes: Vec<u8>) -> Self {
         let num_nibbles = bytes.len().saturating_mul(2);
         NibblePath { num_nibbles, bytes }
@@ -765,6 +771,12 @@ impl NibblePath {
             return Err(NibblePathError::NonZeroTrailingNibble);
         }
         let num_nibbles = bytes.len().saturating_mul(2).saturating_sub(1);
+        if num_nibbles > MAX_NIBBLE_PATH_LEN {
+            return Err(NibblePathError::TooLong {
+                num_nibbles,
+                max: MAX_NIBBLE_PATH_LEN,
+            });
+        }
         Ok(NibblePath { num_nibbles, bytes })
     }
 
@@ -1032,6 +1044,14 @@ impl LeafKey {
             .take_while(|(x, y)| x == y)
             .count()
     }
+}
+
+/// Returns `true` if the first nibbles of `leaf_key` are `prefix`.
+pub(crate) fn leaf_key_has_prefix(leaf_key: &LeafKey, prefix: &NibblePath) -> bool {
+    prefix
+        .nibbles()
+        .enumerate()
+        .all(|(i, nibble)| leaf_key.get_nibble(i) == Some(nibble))
 }
 
 impl Display for LeafKey {
@@ -1342,9 +1362,14 @@ impl InternalNode {
             if matches!(only_child.node_type, NodeType::Leaf) {
                 let only_child_node_key = node_key.gen_child_node_key(only_child.version, only_child_index);
                 match tree_reader.get_node(&only_child_node_key)? {
-                    Node::Leaf(leaf_node) => NodeInProof::Leaf(SparseMerkleLeafNode::from(leaf_node)),
-                    // Corrupted internal node: in-memory leaf child is not a leaf on disk
-                    Node::Internal(_) | Node::Null => return Err(JmtStorageError::InconsistentState),
+                    Node::Leaf(leaf_node)
+                        if leaf_key_has_prefix(leaf_node.leaf_key(), only_child_node_key.nibble_path()) =>
+                    {
+                        NodeInProof::Leaf(SparseMerkleLeafNode::from(leaf_node))
+                    },
+                    // Corrupted internal node: in-memory leaf child is not a leaf on disk, or is stored under a path
+                    // its key does not start with
+                    Node::Leaf(_) | Node::Internal(_) | Node::Null => return Err(JmtStorageError::InconsistentState),
                 }
             } else {
                 NodeInProof::Other(only_child.hash)
@@ -1697,6 +1722,16 @@ mod tests {
         let path = NibblePath::new_odd(vec![0x10]).unwrap();
         assert_eq!(path.num_nibbles(), 1);
         assert_eq!(path.last(), Some(nibble(1)));
+
+        let path = NibblePath::new_odd([vec![0x11u8; 31], vec![0x10]].concat()).unwrap();
+        assert_eq!(path.num_nibbles(), 63);
+        assert_eq!(
+            NibblePath::new_odd([vec![0x11u8; 32], vec![0x10]].concat()).unwrap_err(),
+            NibblePathError::TooLong {
+                num_nibbles: 65,
+                max: MAX_NIBBLE_PATH_LEN
+            }
+        );
     }
 
     #[test]
