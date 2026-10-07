@@ -38,9 +38,12 @@ mod test;
 pub const RPC_MAX_FRAME_SIZE: usize = crate::protocol::messaging::MAX_FRAME_LENGTH + 1024; // 8 MiB + 1 KiB
 
 /// The maximum size of an encoded RPC request. Only responses need the larger [RPC_MAX_FRAME_SIZE] (to carry anything
-/// that fits in a messaging frame); requests keep the previous 6 MiB cap. Services decode the whole request before
-/// they can apply their own count limits, so a larger request cap would only raise the memory a hostile request can
-/// cost. The server rejects a larger request before decoding it.
+/// that fits in a messaging frame); requests keep the previous 6 MiB cap. The server rejects a larger request before
+/// decoding it.
+///
+/// This byte cap does not bound decode memory on its own: prost allocates a full struct per embedded message, so a
+/// small payload of empty elements can decode into many times its size. The bound on decode memory is the item budget
+/// enforced by [decode_guard] before every decode, together with the server's session limits.
 pub const RPC_MAX_REQUEST_SIZE: usize = 6 * 1024 * 1024;
 const _: () = assert!(RPC_MAX_REQUEST_SIZE <= RPC_MAX_FRAME_SIZE);
 

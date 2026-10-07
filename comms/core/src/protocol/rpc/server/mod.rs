@@ -293,11 +293,20 @@ impl RpcServerBuilder {
     }
 }
 
+/// The default limit on RPC sessions open at once across all peers. Each session may have one request decoding at a
+/// time, so this bounds how much decode memory the server can be made to hold. Use
+/// [RpcServerBuilder::with_unlimited_simultaneous_sessions] to opt out.
+const DEFAULT_MAXIMUM_SIMULTANEOUS_SESSIONS: usize = 100;
+
+/// The default limit on RPC sessions a single peer may have open at once. Use
+/// [RpcServerBuilder::with_unlimited_sessions_per_client] to opt out.
+const DEFAULT_MAXIMUM_SESSIONS_PER_CLIENT: usize = 10;
+
 impl Default for RpcServerBuilder {
     fn default() -> Self {
         Self {
-            maximum_simultaneous_sessions: None,
-            maximum_sessions_per_client: None,
+            maximum_simultaneous_sessions: Some(DEFAULT_MAXIMUM_SIMULTANEOUS_SESSIONS),
+            maximum_sessions_per_client: Some(DEFAULT_MAXIMUM_SESSIONS_PER_CLIENT),
             minimum_client_deadline: Duration::from_secs(1),
             maximum_client_deadline: DEFAULT_MAXIMUM_CLIENT_DEADLINE,
             handshake_timeout: Duration::from_secs(15),
