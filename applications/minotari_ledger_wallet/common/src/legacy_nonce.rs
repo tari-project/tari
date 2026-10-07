@@ -121,6 +121,31 @@ pub enum LegacyNonceBranchError {
     /// The nonce index is below 2^32, where it names the same nonce an application before 6.1.1-pre.0 derived for
     /// some index at or above 2^32. See [`check_legacy_nonce_index`].
     NonceIndexAliasesOldApp,
+    /// The account is 2^32 or more, where it names the same keys as `account mod 2^32`. See [`check_legacy_account`].
+    AccountWraps,
+}
+
+/// The account word that actually reaches the derivation path: its low 32 bits.
+///
+/// The device writes the `u64` account into a hardened path element that `make_bip32_path` parses into a wrapping
+/// `u32` - unlike the key index, the account was not split across two elements - so accounts `a` and `a + 2^32` derive
+/// the same keys and the same nonces. The used-nonce record keys on this word, not on the `u64` the host sent, so that
+/// two requests that sign with one nonce cannot pass as two different accounts.
+pub fn legacy_account_word(account: u64) -> u32 {
+    u32::try_from(account & u64::from(u32::MAX)).unwrap_or(u32::MAX)
+}
+
+/// Refuse a legacy request on an account of 2^32 or more.
+///
+/// Such an account names the same keys as its low word (see [`legacy_account_word`]), and nothing on the review shows
+/// the account, so a host could otherwise sign one nonce under two different-looking accounts. The record keys on the
+/// low word anyway; this refuses the ambiguous form outright. A ledger wallet's account is the small number the user
+/// chose at setup (the prompt suggests 1-9), so an honest request is never refused.
+pub fn check_legacy_account(account: u64) -> Result<(), LegacyNonceBranchError> {
+    if account > u64::from(u32::MAX) {
+        return Err(LegacyNonceBranchError::AccountWraps);
+    }
+    Ok(())
 }
 
 /// [`check_legacy_nonce_branches`] then [`check_legacy_nonce_index`]: every stateless rule a legacy request has to pass.
@@ -202,7 +227,9 @@ pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
 /// approvals. The record never evicts: when it is full it refuses, until the application is restarted.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LegacyNonceUse {
-    pub account: u64,
+    /// The account word that reaches the derivation path - [`legacy_account_word`] of the requested account - so that
+    /// accounts 2^32 apart, which sign with the same nonce, share one entry.
+    pub account: u32,
     pub nonce_index: u64,
     pub key_branch: u8,
     pub key_index: u64,
@@ -377,7 +404,7 @@ mod test {
 
     fn used(account: u64, nonce_index: u64, key_index: u64, challenge: u8) -> LegacyNonceUse {
         LegacyNonceUse {
-            account,
+            account: legacy_account_word(account),
             nonce_index,
             key_branch: LedgerKeyBranch::PreMine.as_byte(),
             key_index,
@@ -452,12 +479,47 @@ mod test {
         );
     }
 
-    /// Accounts derive different nonces from one index, so they are tracked independently.
+    /// Accounts with different low words derive different nonces from one index, so they are tracked independently.
     #[test]
-    fn accounts_are_independent() {
+    fn accounts_with_different_low_words_are_independent() {
         let mut record = [None; 4];
         record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
         assert_eq!(record_legacy_nonce_use(&mut record, used(9, 2, 7, 8)), Ok(()));
+    }
+
+    /// Accounts `a` and `a + 2^32` derive the same nonce, so they are one entry: the second, different use is refused.
+    #[test]
+    fn accounts_two_to_the_thirty_two_apart_are_one_entry() {
+        let mut record = [None; 4];
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(
+            record_legacy_nonce_use(
+                &mut record,
+                used(1 + (1 << 32), 2, PRE_MINE_SENDER_OFFSET_INDEX_BIT | 3, 5)
+            ),
+            Err(LegacyNonceRecordError::Reused)
+        );
+        // The identical use under the aliased account is the same entry, not a second one.
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, used(1 + (1 << 32), 2, 3, 4)),
+            Ok(())
+        );
+        assert_eq!(record[1], None);
+    }
+
+    #[test]
+    fn an_account_of_two_to_the_thirty_two_or_more_is_refused() {
+        for account in [0, 1, u64::from(u32::MAX)] {
+            assert_eq!(check_legacy_account(account), Ok(()), "{account}");
+        }
+        for account in [1 << 32, (1 << 32) + 1, u64::MAX] {
+            assert_eq!(
+                check_legacy_account(account),
+                Err(LegacyNonceBranchError::AccountWraps),
+                "{account}"
+            );
+        }
+        assert_eq!(legacy_account_word((1 << 32) + 7), 7);
     }
 
     #[test]

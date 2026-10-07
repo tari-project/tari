@@ -119,7 +119,7 @@ const SCENARIOS: &[Scenario] = &[
         run: the_reviewed_index_is_the_signing_index,
     },
     Scenario {
-        name: "a legacy nonce index below 2^32 is refused with BadBranchKey, before any review",
+        name: "a legacy nonce index below 2^32, or an account of 2^32 or more, is refused with BadBranchKey",
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::NotNeeded,
         run: a_nonce_index_below_two_to_the_thirty_two_is_refused,
@@ -490,6 +490,24 @@ fn a_nonce_index_below_two_to_the_thirty_two_is_refused(_context: &ScenarioConte
         )?;
         expect_status(
             &format!("a legacy signature under nonce index {nonce_index}, below 2^32"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
+    }
+
+    // And an account of 2^32 or more, which derives the same keys and nonces as its low word: the review does not
+    // show the account, so the device refuses the ambiguous form outright.
+    for account in [1u64 << 32, (1 << 32) | (fixtures::random_u64() % 100), u64::MAX] {
+        let reply = legacy_signature(
+            account,
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            legacy_nonce_index(),
+            LedgerKeyBranch::Random.as_byte(),
+            &fixtures::random_challenge(),
+        )?;
+        expect_status(
+            &format!("a legacy signature on account {account}, 2^32 or more"),
             &reply,
             AppSW::BadBranchKey,
         )?;

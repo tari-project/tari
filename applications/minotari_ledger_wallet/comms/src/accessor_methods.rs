@@ -54,7 +54,7 @@ use minotari_ledger_wallet_common::{
     },
     common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
-    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_request},
+    legacy_nonce::{LegacyNonceBranchError, check_legacy_account, check_legacy_nonce_request, legacy_account_word},
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_script_key_count,
@@ -697,20 +697,27 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     // The device enforces this too, against the same shared whitelist, and its check is the only one that
     // matters; this is here so a caller gets a legible error instead of a status word, and so that a request the
     // device would refuse never reaches the wire.
-    check_legacy_nonce_request(private_key_branch, nonce_branch, nonce_index).map_err(|e| match e {
-        LegacyNonceBranchError::KeyBranchNotAllowed => LedgerDeviceError::Processing(format!(
-            "GetRawSchnorrSignatureLegacyNonce: '{private_key_branch}' keys cannot be signed with a host chosen \
-             nonce; only the pre-mine spend flow may use this instruction"
-        )),
-        LegacyNonceBranchError::NonceBranchNotAllowed => LedgerDeviceError::Processing(format!(
-            "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
-            LedgerKeyBranch::Random
-        )),
-        LegacyNonceBranchError::NonceIndexAliasesOldApp => LedgerDeviceError::Processing(format!(
-            "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below 2^32, where it names a nonce a \
-             ledger application before 6.1.1-pre.0 may already have signed with; redo pre-mine step 2"
-        )),
-    })?;
+    check_legacy_nonce_request(private_key_branch, nonce_branch, nonce_index)
+        .and_then(|()| check_legacy_account(account))
+        .map_err(|e| match e {
+            LegacyNonceBranchError::KeyBranchNotAllowed => LedgerDeviceError::Processing(format!(
+                "GetRawSchnorrSignatureLegacyNonce: '{private_key_branch}' keys cannot be signed with a host chosen \
+                 nonce; only the pre-mine spend flow may use this instruction"
+            )),
+            LegacyNonceBranchError::NonceBranchNotAllowed => LedgerDeviceError::Processing(format!(
+                "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
+                LedgerKeyBranch::Random
+            )),
+            LegacyNonceBranchError::NonceIndexAliasesOldApp => LedgerDeviceError::Processing(format!(
+                "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below 2^32, where it names a nonce a \
+                 ledger application before 6.1.1-pre.0 may already have signed with; redo pre-mine step 2"
+            )),
+            LegacyNonceBranchError::AccountWraps => LedgerDeviceError::Processing(format!(
+                "GetRawSchnorrSignatureLegacyNonce: account {account} is 2^32 or more, where it names the same keys \
+                 as account {} on the device; the legacy instruction refuses it",
+                legacy_account_word(account)
+            )),
+        })?;
     verify_ledger_application()?;
 
     let request = GetRawSchnorrSignatureLegacyNonceRequest {
@@ -965,6 +972,24 @@ mod test {
             let error = sign(index, branch, &receiver);
             assert!(error.contains("is not a sender offset key"), "{error}");
         }
+    }
+
+    /// A legacy request on an account of 2^32 or more is refused before the wire: it names the same keys and nonces as
+    /// its low word, which the device's used-nonce record could otherwise be made to see as two accounts.
+    #[test]
+    fn a_legacy_request_on_a_wrapping_account_is_refused() {
+        let error = ledger_get_raw_schnorr_signature_legacy_nonce(
+            (1 << 32) + 1,
+            7,
+            LedgerKeyBranch::PreMine,
+            1 << 40,
+            LedgerKeyBranch::Random,
+            &[3u8; 64],
+        )
+        .expect_err("refused before the transport is opened")
+        .to_string();
+        assert!(error.contains("account 4294967297 is 2^32 or more"), "{error}");
+        assert!(error.contains("account 1 on the device"), "{error}");
     }
 
     /// An address too long for one APDU is refused with its length and the limit, before the wire.

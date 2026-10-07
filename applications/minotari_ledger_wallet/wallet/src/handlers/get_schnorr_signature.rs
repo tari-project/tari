@@ -23,9 +23,11 @@ use minotari_ledger_wallet_common::{
         SchnorrReply,
     },
     legacy_nonce::{
+        check_legacy_account,
         check_legacy_nonce_branches,
         check_legacy_nonce_index,
         check_legacy_nonce_use,
+        legacy_account_word,
         legacy_signature_purpose,
         record_legacy_nonce_use,
         LegacyNonceRecordError,
@@ -149,6 +151,9 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(
     check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|_| AppSW::BadBranchKey)?;
     // An index below 2^32 names a nonce an application before 6.1.1-pre.0 may already have signed with.
     check_legacy_nonce_index(request.nonce_index).map_err(|_| AppSW::BadBranchKey)?;
+    // An account of 2^32 or more derives the same keys and nonces as its low word, and the review does not show the
+    // account; refuse the ambiguous form. The record below keys on the low word regardless.
+    check_legacy_account(request.account).map_err(|_| AppSW::BadBranchKey)?;
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.
@@ -165,7 +170,7 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(
     // A nonce index may be signed with again only for the identical request. Checked before the review, so a reuse is
     // refused without a screen; recorded after the approval and before the signature, below.
     let use_of_nonce = LegacyNonceUse {
-        account,
+        account: legacy_account_word(account),
         nonce_index,
         key_branch: private_key_branch.as_byte(),
         key_index,

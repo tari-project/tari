@@ -509,10 +509,23 @@ impl KeyManager {
                 "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below 2^32, where it names a nonce a \
                  ledger application before 6.1.1-pre.0 may already have signed with; redo pre-mine step 2"
             )),
+            // Checked against the ledger wallet's account below; `check_legacy_nonce_request` never returns it.
+            LegacyNonceBranchError::AccountWraps => KeyManagerError::LedgerError(
+                "GetRawSchnorrSignatureLegacyNonce: the ledger account is 2^32 or more".to_string(),
+            ),
         })?;
 
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
+            // An account of 2^32 or more names the same keys as its low word; the device refuses it for this
+            // instruction.
+            minotari_ledger_wallet_common::legacy_nonce::check_legacy_account(ledger.account).map_err(|_| {
+                KeyManagerError::LedgerError(format!(
+                    "GetRawSchnorrSignatureLegacyNonce: ledger account {} is 2^32 or more, where it names the same \
+                     keys as a smaller account; the legacy instruction (pre-mine spend) refuses it",
+                    ledger.account
+                ))
+            })?;
             let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
                 ledger.account,
                 private_key_index,
